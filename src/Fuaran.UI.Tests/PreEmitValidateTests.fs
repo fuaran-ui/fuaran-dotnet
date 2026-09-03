@@ -570,6 +570,42 @@ let private tooltipCodes (tree: Node<Msg>) : string list =
         let code, _, _ = PreEmitValidate.describe d
         code)
 
+// ─── Phase 1113 fixtures ─ FUARAN120, the option-less combobox ─────────
+
+/// A one-field form whose field is a combobox over `options`. Everything else
+/// is deliberately unremarkable: the rule looks only at the option source, and
+/// a fixture that varied anything else would suggest otherwise.
+let private comboboxForm (fieldId: string) (options: Binding<SelectOption list>) : Node<Msg> =
+    Fuaran.form
+        "f"
+        { Defaults.form with
+            Fields =
+                [ { Defaults.formField with
+                      Id = fieldId
+                      Label = TextSource.Literal "Field"
+                      Kind = FormFieldKind.Combobox(false, None, options, Some(Binding.State(fieldId, None))) } ]
+            SubmitLabel = TextSource.Literal "Save" }
+
+/// A one-chip filter strip carrying the same control — the 0.2.0 unification
+/// means this is the SAME rule reached by a second route, and the pair of
+/// fixtures is what keeps it that way.
+let private comboboxFilters (name: string) (options: Binding<SelectOption list>) : Node<Msg> =
+    Fuaran.filters
+        "fs"
+        [ { Name = name
+            Label = TextSource.Literal "Chip"
+            Kind = FormFieldKind.Combobox(false, None, options, Some(Binding.Filter(name, None))) } ]
+
+/// Only the Phase 1113 defect, for the reason `embedDefects` states.
+let private comboboxDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.ComboboxWithoutOptions _ -> true
+            | _ -> false)
+
 /// Only the two Phase 1111 defects. The fixtures deliberately carry other
 /// shapes, so asserting `Ok()` would couple these tests to rules they are not
 /// about — the `closureDefects` posture one family over.
@@ -3141,4 +3177,77 @@ let tests =
               let tree = dashboard "root" [ markdown "note" "Body" ]
 
               Expect.isEmpty (tooltipDefects tree) "an absent trait is not a declaration"
+          } ]
+
+[<Tests>]
+let comboboxOptionRuleTests =
+    testList
+        "PreEmitValidate — FUARAN120, the option-less combobox (Phase 1113)"
+        [ test "FUARAN120: an EMPTY static option list is reported" {
+              let tree = comboboxForm "country" (Binding.Static(Some []))
+
+              Expect.equal
+                  (comboboxDefects tree
+                   |> List.map (fun d -> let c, _, _ = PreEmitValidate.describe d in c))
+                  [ "FUARAN120" ]
+                  "the empty static source is the defect"
+
+              Expect.equal
+                  (severityOf (comboboxDefects tree |> List.head))
+                  DefectSeverity.Warning
+                  "Warning, not Error — an empty static list is a legitimate transitional authoring state"
+          }
+
+          test "FUARAN120: an ABSENT static payload is the same defect" {
+              // `Static None` and `Static (Some [])` both say "no options, and
+              // none coming". Reporting one and not the other would make the
+              // rule evadable by a spelling.
+              let tree = comboboxForm "country" (Binding.Static None)
+
+              Expect.isNonEmpty (comboboxDefects tree) "an absent static payload is an empty option set"
+          }
+
+          test "FUARAN120 go-red check: a NON-static source is silent" {
+              // The half that keeps the rule usable. A Query suggestion feed is
+              // empty at authoring time BY CONSTRUCTION and is the shape this
+              // control exists for; firing on it would make the rule one authors
+              // switch off, which costs the estate the rule on the real defect.
+              let queryBound =
+                  comboboxForm "city" (Binding.Query("cities", (fun (raw: obj) -> unbox raw), None))
+
+              let stateBound = comboboxForm "city" (Binding.State("cityOptions", None))
+
+              Expect.isEmpty (comboboxDefects queryBound) "a Query option source is not judged"
+              Expect.isEmpty (comboboxDefects stateBound) "a State option source is not judged"
+          }
+
+          test "FUARAN120 go-red check: a NON-EMPTY static list is silent" {
+              let tree =
+                  comboboxForm "country" (Binding.Static(Some [ { Value = "fra"; Label = "France" } ]))
+
+              Expect.isEmpty (comboboxDefects tree) "a populated option set is the ordinary case"
+          }
+
+          test "FUARAN120 reaches a FILTER chip, not only a form field" {
+              // A chip carries an ordinary FormFieldKind since the 0.2.0
+              // unification, so an identically-broken chip must report the same
+              // rule; one walk that saw only forms would be residue.
+              let tree = comboboxFilters "region" (Binding.Static(Some []))
+
+              Expect.isNonEmpty (comboboxDefects tree) "the chip's combobox is judged by the same rule"
+          }
+
+          test "a form with no combobox raises the rule nowhere" {
+              let tree =
+                  Fuaran.form
+                      "f"
+                      { Defaults.form with
+                          Fields =
+                              [ { Defaults.formField with
+                                    Id = "name"
+                                    Label = TextSource.Literal "Name"
+                                    Kind = FormFieldKind.Text(Some(Binding.State("name", Some "")), None) } ]
+                          SubmitLabel = TextSource.Literal "Save" }
+
+              Expect.isEmpty (comboboxDefects tree) "a control that is not a combobox is not judged"
           } ]

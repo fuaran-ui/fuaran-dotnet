@@ -440,6 +440,7 @@ and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
     | SegmentedChoice of options: Binding<SelectOption list> * value: Binding<string> option * onChange: (string option -> Action<'Msg>) option * orientation: Orientation
     | Date of value: Binding<string> option * onChange: (string option -> Action<'Msg>) option * variant: DateVariant * min: string option * max: string option * step: float option
     | DateRange of value: Binding<DateRangePair> option * onChange: (string * string -> Action<'Msg>) option * variant: DateVariant * min: string option * max: string option * step: float option
+    | Combobox of allowFreeText: bool * onChange: (string option -> Action<'Msg>) option * options: Binding<SelectOption list> * value: Binding<string> option
 
 and [<RequireQualifiedAccess>] MediaKind =
     | Video of autoplay: bool * poster: Binding<string> option
@@ -1739,6 +1740,7 @@ and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     | FormFieldKind.SegmentedChoice (options, value, onChange, orientation) -> Canon.typed "SegmentedChoice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("orientation", encOrientation orientation) ] |> List.choose id)
     | FormFieldKind.Date (value, onChange, variant, min, max, step) -> Canon.typed "Date" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
     | FormFieldKind.DateRange (value, onChange, variant, min, max, step) -> Canon.typed "DateRange" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<DateRangePair>) -> match v with | Binding.Static(Some p) -> encDateRangePair p | __other -> encBinding encDateRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+    | FormFieldKind.Combobox (allowFreeText, onChange, options, value) -> Canon.typed "Combobox" ([ (if allowFreeText = false then None else Some("allowFreeText", JBool allowFreeText)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
 
 and private encMediaKind (v: MediaKind) : JVal =
     match v with
@@ -2851,6 +2853,12 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, string> =
             dOpt "max" __fs dStr |> Result.bind (fun max ->
             dOpt "step" __fs dFloat |> Result.bind (fun step ->
             Ok(FormFieldKind.DateRange(value, onChange, variant, min, max, step))))))))
+        | "Combobox" ->
+            dDef "allowFreeText" __fs dBool (false) |> Result.bind (fun allowFreeText ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
+            dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
+            Ok(FormFieldKind.Combobox(allowFreeText, onChange, options, value))))))
         | __other -> Error ("unknown FormFieldKind case: " + __other))
     | _ -> Error "expected a FormFieldKind object"
 

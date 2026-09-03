@@ -4111,6 +4111,30 @@
             "$type",
             "variant"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Combobox"
+            },
+            "allowFreeText": {
+              "type": "boolean"
+            },
+            "onChange": {
+              "const": "<closure>"
+            },
+            "options": {
+              "$ref": "#/$defs/Binding_list_SelectOption"
+            },
+            "value": {
+              "$ref": "#/$defs/Binding_str"
+            }
+          },
+          "required": [
+            "$type",
+            "options"
+          ]
         }
       ]
     },

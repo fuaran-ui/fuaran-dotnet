@@ -272,6 +272,8 @@ and mapFormFieldKind (f: 'a -> 'b) (kind: FormFieldKind<'a>) : FormFieldKind<'b>
     | FormFieldKind.Range(value, onChange, mn, mx, st) -> FormFieldKind.Range(value, mapHandler onChange, mn, mx, st)
     | FormFieldKind.SegmentedChoice(options, value, onChange, orientation) ->
         FormFieldKind.SegmentedChoice(options, value, mapHandler onChange, orientation)
+    | FormFieldKind.Combobox(allowFreeText, onChange, options, value) ->
+        FormFieldKind.Combobox(allowFreeText, mapHandler onChange, options, value)
     | FormFieldKind.Date(value, onChange, variant, mn, mx, st) ->
         FormFieldKind.Date(value, mapHandler onChange, variant, mn, mx, st)
     | FormFieldKind.DateRange(value, onChange, variant, mn, mx, st) ->

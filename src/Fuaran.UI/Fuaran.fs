@@ -582,6 +582,27 @@ module FormFieldKind =
         // option moved into the generated Static payload).
         FormFieldKind.SegmentedChoice(options, Some value, Some onChange, orientation)
 
+    /// `Combobox` (Phase 1113) — the typeahead / autocomplete control: the same
+    /// triple `choice` takes plus the free-text admission, in `segmentedChoice`'s
+    /// call shape (the discriminator last). A `Query`-bound `options` gives an
+    /// asynchronous suggestion source with no coordination vocabulary of its own.
+    ///
+    /// `allowFreeText = false` means the entered value must be one of the
+    /// options; `true` admits anything the reader types. Author example:
+    ///
+    ///   FormFieldKind.combobox
+    ///       (options = binding.query "cities" "name")
+    ///       (value = binding.state "city" None)
+    ///       (onChange = SetCity >> Action.dispatch)
+    ///       false
+    let combobox
+        (options: Binding<SelectOption list>)
+        (value: Binding<string>)
+        (onChange: string option -> Action<'Msg>)
+        (allowFreeText: bool)
+        : FormFieldKind<'Msg> =
+        FormFieldKind.Combobox(allowFreeText, Some onChange, options, Some value)
+
     /// `Date` / `Time` / `DateTime` field (Phase 288) with the optional
     /// ISO-8601 `min` / `max` + numeric `step` (seconds) constraints as named
     /// options. `variant` selects the native control (defaults are layered by
@@ -682,6 +703,15 @@ module FormFieldKind =
         : FormFieldKind<'Msg> =
         FormFieldKind.SegmentedChoice(options, Some value, None, orientation)
 
+    /// Handler-free `Combobox` (Phase 1113) — writes the chosen or typed value
+    /// back to the value slot; a cleared entry clears the slot.
+    let comboboxDeclarative
+        (options: Binding<SelectOption list>)
+        (value: Binding<string>)
+        (allowFreeText: bool)
+        : FormFieldKind<'Msg> =
+        FormFieldKind.Combobox(allowFreeText, None, options, Some value)
+
     /// Handler-free `Date` — writes the ISO-8601 string back to the value slot.
     let dateDeclarative
         (value: Binding<string>)
@@ -730,6 +760,11 @@ module FilterField =
         (orientation: Orientation)
         : FormFieldKind<'Msg> =
         FormFieldKind.SegmentedChoice(options, Some(Binding.Filter(name, None)), None, orientation)
+
+    /// Typeahead chip bound to its own filter key (Phase 1113) — the searchable
+    /// form of `choice`, for a filter over a set too large to scan.
+    let combobox (name: string) (options: Binding<SelectOption list>) (allowFreeText: bool) : FormFieldKind<'Msg> =
+        FormFieldKind.Combobox(allowFreeText, None, options, Some(Binding.Filter(name, None)))
 
     /// Dual-thumb range chip bound to its own filter key.
     let range (name: string) : FormFieldKind<'Msg> =

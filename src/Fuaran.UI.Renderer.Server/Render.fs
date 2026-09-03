@@ -2123,6 +2123,15 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
             "textarea", (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
         | FormFieldKind.Choice _ -> "choice", ""
         | FormFieldKind.SegmentedChoice _ -> "segmented-choice", ""
+        | FormFieldKind.Combobox(_, _, _, v) ->
+            // Phase 1113 — the combobox's own branch below builds the control;
+            // this tuple carries the resolved entry text so the SSR floor ships
+            // a filled input rather than an empty one.
+            let v =
+                v
+                |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.combobox))
+
+            "combobox", (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
         | FormFieldKind.Date(v, _, variant, _, _, _) ->
             let v =
                 v
@@ -2154,6 +2163,54 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
     // `data-tab-index` / `data-filter-name` / `data-step-index`.
     let control =
         match field.Kind with
+        // Phase 1113 — THE SSR FLOOR FOR A COMBOBOX, and the whole point of it
+        // is that it is not an approximation of the client's ARIA widget: a
+        // native `<input list>` bound to a `<datalist>` IS a combobox to the
+        // user agent, which supplies the popup, the filtering, the keyboard
+        // interaction and the accessibility semantics itself, with no script.
+        //
+        // NO HAND-WRITTEN ARIA IS EMITTED HERE, deliberately. Adding
+        // `role="combobox"` + `aria-expanded` to a `<input list>` would REPLACE
+        // the user agent's own correct semantics with a static claim this inert
+        // markup can never keep true — an `aria-expanded="false"` that never
+        // becomes `true` is worse than the native role it overwrote. The client
+        // tier owns the full pattern precisely because it owns the state that
+        // makes those attributes honest.
+        //
+        // RECORDED KNOWN LIMIT — `allowFreeText = false` is NOT enforced here,
+        // and cannot be: a `<datalist>` is a suggestion list, not a constraint,
+        // and HTML offers no native membership check for one. The declaration is
+        // emitted as `data-fuaran-combobox-constrained` so a reader can see it
+        // was not silently dropped, and it is NOT claimed as coverage — nothing
+        // in the platform reads that attribute. The enforcement is the
+        // server-side re-check (`Fuaran.UI.ServerDriven.FormValidation`), which
+        // is where a constraint that a client can type past belongs anyway.
+        | FormFieldKind.Combobox(allowFreeText, _, options, _) ->
+            let listId = field.Id + "-options"
+            let opts = resolveOptions ctx options
+
+            Html.span
+                [ prop.className "fuaran-combobox"
+                  prop.children
+                      [ Html.input
+                            [ prop.className "fuaran-form-field-control fuaran-combobox-input"
+                              prop.custom ("data-fuaran-field", field.Id)
+                              prop.custom ("type", "text")
+                              prop.custom ("list", listId)
+                              // The browser's own history dropdown would compete
+                              // with the datalist popup for the same gesture.
+                              prop.custom ("autocomplete", "off")
+                              prop.custom (
+                                  "data-fuaran-combobox-constrained",
+                                  (if allowFreeText then "false" else "true")
+                              )
+                              prop.required field.Required
+                              prop.value valueText ]
+                        Html.datalist
+                            [ prop.id listId
+                              prop.children
+                                  [ for option in opts ->
+                                        Html.option [ prop.value option.Value; prop.text option.Label ] ] ] ] ]
         | FormFieldKind.DateRange(v, _, _, mn, mx, st) ->
             // Phase 725 — SSR parity with the client's dual-input range: two
             // native date/time inputs (per variant) over the pair's ends,
@@ -2292,6 +2349,10 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
         | FormFieldKind.Toggle _ -> "toggle"
         | FormFieldKind.Choice _ -> "choice"
         | FormFieldKind.SegmentedChoice _ -> "segmented"
+        // Phase 1113 — a typeahead chip is a choice chip you can search; it
+        // takes its own class so the stylesheet can size the popup, and the
+        // client renderer uses the same one.
+        | FormFieldKind.Combobox _ -> "combobox"
         | FormFieldKind.Number _
         | FormFieldKind.RangedNumber _ -> "number"
         | FormFieldKind.Checkbox _ -> "checkbox"
@@ -2463,6 +2524,37 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
         | FormFieldKind.SegmentedChoice(options, value, _, orientation) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             renderSegmentedFilter ctx spec.Name options value orientation
+        | FormFieldKind.Combobox(allowFreeText, _, options, value) ->
+            // Phase 1113 — the form field's SSR floor, chip-addressed. Same
+            // native `<input list>` + `<datalist>`, same recorded limit on
+            // `allowFreeText = false`, `data-filter-name` in place of
+            // `data-fuaran-field`.
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
+            let listId = spec.Name + "-filter-options"
+            let opts = resolveOptions ctx options
+
+            let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
+
+            Html.span
+                [ prop.className "fuaran-combobox"
+                  prop.children
+                      [ Html.input
+                            [ prop.className "fuaran-filter-input fuaran-combobox-input"
+                              prop.custom ("type", "text")
+                              prop.custom ("list", listId)
+                              prop.custom ("autocomplete", "off")
+                              prop.custom (
+                                  "data-fuaran-combobox-constrained",
+                                  (if allowFreeText then "false" else "true")
+                              )
+                              prop.placeholder labelText
+                              prop.value current
+                              prop.custom ("data-filter-name", spec.Name) ]
+                        Html.datalist
+                            [ prop.id listId
+                              prop.children
+                                  [ for option in opts ->
+                                        Html.option [ prop.value option.Value; prop.text option.Label ] ] ] ] ]
 
     Html.label
         [ prop.className (Css.filter kindClass)

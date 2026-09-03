@@ -1359,6 +1359,14 @@ and CompareOp = Generated.CompareOp
 // (`Binding.Filter(name, None)` ⇒ `FilterStore`); any other binding shape means no write (the
 // FUARAN069 inert-control check covers it). Wire: `Some` → `"onChange":"<closure>"`
 // (byte-stable); `None` → the field is omitted.
+//
+// Phase 1113 — `Choice` vs `Combobox`, the one line an emitter has to hold, and
+// the pair this vocabulary most has to keep apart: a BOUNDED KNOWN set the
+// reader scans is `Choice`; a LARGE, SEARCHABLE or ASYNCHRONOUS set, or one that
+// admits a value not on the list, is `Combobox`. The failure mode this exists to
+// name is not an invalid document but a valid one — a `Choice` over two hundred
+// options renders perfectly and is unusable, which is the class no reactive
+// demand channel can report.
 and FormFieldKind<'Msg> = Generated.FormFieldKind<'Msg>
 
 /// Optional date/time-field bounds (Phase 288). `Min` / `Max` are ISO-8601

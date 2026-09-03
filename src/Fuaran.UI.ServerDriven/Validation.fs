@@ -119,6 +119,13 @@ let legitimateEvents (node: Node<'Msg>) : Set<string> =
     | NodeKind.Select _ -> set [ "change" ]
     // A Form node receives its submit, plus field-level change/input that
     // bubble to the form (per-field addressing is the driver's form policy).
+    //
+    // Phase 1113 — a `Combobox` field needs no row of its own: it delivers
+    // `input` as the reader types and `change` on commit, and BOTH already
+    // bubble to the enclosing Form here (and to Filters below). The allow-list
+    // is keyed by the node that RECEIVES the event, never by the control that
+    // produced it, so a new field control widens no boundary — which is the
+    // property worth stating rather than re-deriving at the next control.
     | NodeKind.Form _ -> set [ "submit"; "change"; "input" ]
     // Field-level change/input bubble to the Filters node; a segmented
     // filter's horizontal shape is per-option buttons, so its selection
@@ -208,6 +215,13 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
                 match f.Kind with
                 | FormFieldKind.Choice(options, _, _) -> checkOptions options
                 | FormFieldKind.SegmentedChoice(options, _, _, _) -> checkOptions options
+                // Phase 1113 — a combobox is bounds-checked exactly when it
+                // DECLARED itself bounded. `allowFreeText = true` is the author
+                // saying an off-list value is legitimate, so refusing one would
+                // refuse the shape the document asked for; `false` is the
+                // searchable select, and gets the select's check.
+                | FormFieldKind.Combobox(false, _, options, _) -> checkOptions options
+                | FormFieldKind.Combobox(true, _, _, _) -> Ok()
                 | _ -> Ok()
     | _ -> Ok()
 
@@ -252,6 +266,9 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
                     onChange |> Option.map (fun oc -> oc (chosen |> Option.defaultValue ""))
                 | FormFieldKind.Choice(_, _, onChange) -> onChange |> Option.map (fun oc -> oc chosen)
                 | FormFieldKind.SegmentedChoice(_, _, onChange, _) -> onChange |> Option.map (fun oc -> oc chosen)
+                // Phase 1113 — the combobox's handler is the choice handler
+                // (`string option`), so the clear-to-none contract is the same.
+                | FormFieldKind.Combobox(_, onChange, _, _) -> onChange |> Option.map (fun oc -> oc chosen)
                 // Numeric / bool / range / date chip payloads are not yet
                 // server-resolvable — the driver no-ops them (client store path).
                 | FormFieldKind.Number _

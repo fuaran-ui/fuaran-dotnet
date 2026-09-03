@@ -158,6 +158,8 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                         handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
                     | FormFieldKind.DateRange(v, oc, _, _, _, _) ->
                         handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                    | FormFieldKind.Combobox(_, oc, _, v) ->
+                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
 
                 []
             | NodeKind.Select s ->
@@ -191,6 +193,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                         | FormFieldKind.SegmentedChoice(_, _, oc, _) -> oc.IsSome
                         | FormFieldKind.Date(_, oc, _, _, _, _) -> oc.IsSome
                         | FormFieldKind.DateRange(_, oc, _, _, _, _) -> oc.IsSome
+                        | FormFieldKind.Combobox(_, oc, _, _) -> oc.IsSome
 
                     if present then
                         findings.Add(

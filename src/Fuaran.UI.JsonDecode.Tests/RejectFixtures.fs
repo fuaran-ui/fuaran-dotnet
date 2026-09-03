@@ -490,6 +490,14 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "an Embed permission of `true` — refused rather than coerced. A host that read a bare boolean as a granted permission would have to invent which one it names, and every answer is a relaxation the document never spelled" }
+      { Id = "reject-combobox-allowfreetext-nonbool"
+        Json =
+          """{"id":"f","kind":{"$type":"Form","fields":[{"id":"country","kind":{"$type":"Combobox","allowFreeText":"yes","options":{"$type":"Static","value":[{"label":"France","value":"fra"}]}},"label":"Country","required":false}],"onSubmit":"<closure>","submitLabel":"Save"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.fields[0].kind.allowFreeText"
+        IsOp = false
+        Description =
+          "a Combobox `allowFreeText` of `\"yes\"` — refused rather than coerced. The slot decides whether values OUTSIDE the option set are admitted, so a lenient truthiness read is a constraint silently relaxed by a string: `\"yes\"`, `\"no\"` and `\"false\"` are all non-empty, and a host that coerced them would widen the field on two of the three. It also omits at `false`, so absence already spells the safe answer and a wrong-typed present value can only mean the emitter meant something it did not say" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

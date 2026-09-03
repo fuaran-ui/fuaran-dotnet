@@ -730,6 +730,13 @@ let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
                 oc,
                 orientation
             )
+        | FormFieldKind.Combobox(allowFreeText, oc, options, value) ->
+            FormFieldKind.Combobox(
+                allowFreeText,
+                oc,
+                options,
+                collapse Fuaran.UI.Defaults.ControlValueDefaults.combobox value
+            )
         | FormFieldKind.Date(value, oc, variant, mn, mx, st) ->
             FormFieldKind.Date(
                 collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.date) value,
@@ -771,6 +778,8 @@ and private canonicalFilterItem (item: FilterSpec<'Msg>) : FilterSpec<'Msg> =
         | FormFieldKind.Range(value, oc, mn, mx, st) -> FormFieldKind.Range(collapse value, oc, mn, mx, st)
         | FormFieldKind.SegmentedChoice(options, value, oc, orientation) ->
             FormFieldKind.SegmentedChoice(options, collapse value, oc, orientation)
+        | FormFieldKind.Combobox(allowFreeText, oc, options, value) ->
+            FormFieldKind.Combobox(allowFreeText, oc, options, collapse value)
         | FormFieldKind.Date(value, oc, variant, mn, mx, st) ->
             FormFieldKind.Date(collapse value, oc, variant, mn, mx, st)
         | FormFieldKind.DateRange(value, oc, variant, mn, mx, st) ->

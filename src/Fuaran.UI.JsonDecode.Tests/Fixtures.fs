@@ -1537,6 +1537,99 @@ let formSegmentedChoice: Node<obj> =
         ))
         None
 
+/// Phase 1113 — `FormFieldKind.Combobox` with a STATIC option source and the
+/// default (omitted) `allowFreeText`. The omission is the point of the vector:
+/// the shortest combobox document is the CONSTRAINED one, so an emitter that
+/// says nothing gets the searchable-select shape and has to ask for anything
+/// looser.
+let formComboboxStatic: Node<obj> =
+    let opts: SelectOption list =
+        [ { Value = "gbr"
+            Label = "United Kingdom" }
+          { Value = "fra"; Label = "France" }
+          { Value = "deu"; Label = "Germany" } ]
+
+    let field: FormField<obj> =
+        { Defaults.formField with
+            Id = "country"
+            Label = TextSource.Literal "Country"
+            Required = true
+            Kind =
+                FormFieldKind.Combobox(
+                    false,
+                    Some(fun _ -> placeholderChain),
+                    Binding.Static(Some opts),
+                    Some(Binding.Static(Some "fra"))
+                ) }
+
+    node
+        "form-combobox-static"
+        (NodeKind.Form(
+            { Defaults.form with
+                Fields = [ field ]
+                OnSubmit = placeholderChain
+                SubmitLabel = TextSource.Literal "Save" }
+        ))
+        None
+
+/// Phase 1113 — the asynchronous suggestion source, which is the shape the
+/// control exists for and the one that needed NO new coordination vocabulary: a
+/// `Binding.Query` in the ordinary options slot. Declarative (no `onChange`) and
+/// with the value slot OMITTED, so the field auto-binds `State("city", None)`
+/// exactly as a `Choice` would.
+let formComboboxQuery: Node<obj> =
+    let field: FormField<obj> =
+        { Defaults.formField with
+            Id = "city"
+            Label = TextSource.Literal "City"
+            Kind =
+                FormFieldKind.Combobox(
+                    false,
+                    None,
+                    Binding.Query("cities", (fun (raw: obj) -> unbox raw), Some [ "country" ]),
+                    None
+                ) }
+
+    node
+        "form-combobox-query"
+        (NodeKind.Form(
+            { Defaults.form with
+                Fields = [ field ]
+                OnSubmit = placeholderChain
+                SubmitLabel = TextSource.Literal "Search" }
+        ))
+        None
+
+/// Phase 1113 — `allowFreeText = true`: the option list is a SUGGESTION and a
+/// value outside it is admitted. Carries the value as free text that matches no
+/// option, which is the state a constrained combobox can never be in.
+let formComboboxFreeText: Node<obj> =
+    let field: FormField<obj> =
+        { Defaults.formField with
+            Id = "tag"
+            Label = TextSource.Literal "Tag"
+            Kind =
+                FormFieldKind.Combobox(
+                    true,
+                    None,
+                    Binding.Static(
+                        Some
+                            [ { Value = "urgent"; Label = "Urgent" }
+                              { Value = "blocked"; Label = "Blocked" } ]
+                    ),
+                    Some(Binding.Static(Some "needs-a-second-look"))
+                ) }
+
+    node
+        "form-combobox-freetext"
+        (NodeKind.Form(
+            { Defaults.form with
+                Fields = [ field ]
+                OnSubmit = placeholderChain
+                SubmitLabel = TextSource.Literal "Save" }
+        ))
+        None
+
 /// Round-trip cover for `FilterKind.SegmentedFilter`. Parallel
 /// to `filtersBoth`'s ChoiceFilter; uses Horizontal orientation.
 let filtersSegmented: Node<obj> =
@@ -5141,6 +5234,9 @@ let allNodes: (string * Node<obj>) list =
       "Input/Filters (text + choice)", filtersBoth
       "Input/Filters (declarative — omitted onChange + typed range bounds)", filtersDeclarative
       "Input/Form (SegmentedChoice horizontal + vertical)", formSegmentedChoice
+      "Input/Form (Phase 1113 — Combobox: static options, allowFreeText omitted)", formComboboxStatic
+      "Input/Form (Phase 1113 — Combobox: Query-bound option source, declarative, auto-bound value)", formComboboxQuery
+      "Input/Form (Phase 1113 — Combobox: allowFreeText, value outside the option set)", formComboboxFreeText
       "Input/Form (Date — date/time/datetime variants + bounds)", formDate
       "Input/Form (Phase 725 — DateRange: single-control date range, bare {from,to} pair + bounds)", formDateRange
       "Input/Filters (Phase 725 — DateRange chip: one filter param carries the pair, value auto-bound)",

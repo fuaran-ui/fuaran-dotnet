@@ -347,6 +347,35 @@ let private checkField (values: Map<string, LiveValue>) (field: FormField<'Msg>)
                 // Non-numeric / absent value on a non-required field: `Required`
                 // already handled the empty case; nothing further to range-check.
                 | None -> None
+            // Phase 1113 — a `Combobox` that declared itself BOUNDED
+            // (`allowFreeText = false`) over a STATIC option source refuses a
+            // submitted value that is not one of those options, server-side.
+            // This is the same trust-boundary argument the whole module rests
+            // on: the renderer's listbox is an affordance, and a client that
+            // types past it is exactly what this floor exists to catch. No new
+            // constraint vocabulary — the control's own declaration is the
+            // constraint, read the way `RangedNumber`'s min/max are read above.
+            //
+            // The empty string is NOT refused here: an empty entry is "no
+            // selection", which is `Required`'s question and was already asked.
+            //
+            // RECORDED KNOWN LIMIT — a non-`Static` option source (a `Query`
+            // suggestion feed, a `State` list) is NOT checked, because this tier
+            // holds the submission and not the source it would have to be
+            // checked against. Reported rather than refused, for the reason the
+            // `compare` limit below states: refusing over a set nobody read
+            // would claim a check that was not performed. A host that can
+            // resolve the source enforces it in its own `FormValidator`, which
+            // composes ON TOP of this floor.
+            | FormFieldKind.Combobox(false, _, Binding.Static(Some options), _) ->
+                match value with
+                | Some(LiveValue.Str s) when
+                    s <> "" && not (options |> List.exists (fun (o: SelectOption) -> o.Value = s))
+                    ->
+                    Some
+                        { FieldId = field.Id
+                          Message = "Choose one of the listed options." }
+                | _ -> None
             | _ -> None
 
         // Phase 864 — the declared `rule` is checked AFTER the control's own

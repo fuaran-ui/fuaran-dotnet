@@ -105,7 +105,10 @@ let private harvestField (sources: BindingResolver.BindingSources) (field: FormF
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) v
         |> Option.map (fun b -> field.Id, JBool b)
     | FormFieldKind.Choice(_, v, _)
-    | FormFieldKind.SegmentedChoice(_, v, _, _) ->
+    | FormFieldKind.SegmentedChoice(_, v, _, _)
+    // Phase 1113 — the combobox harvests as a choice: same value slot, same
+    // no-selection contract. Free text is still just the string in that slot.
+    | FormFieldKind.Combobox(_, _, _, v) ->
         // The choice value is `Binding<string>`; a null resolution (the
         // default-less auto-bind State resolving `Unchecked.defaultof<string>`)
         // is no-selection — contribute nothing, like an unselected `<select>`.

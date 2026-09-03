@@ -167,6 +167,25 @@ public sealed class FormField
             help,
             rule);
 
+    /// <summary>A typeahead / autocomplete field (Phase 1113) — the searchable form of
+    /// <see cref="Choice"/>. Reach for it when the option set is large, searchable or
+    /// arrives asynchronously, or when a value outside the list is admissible; reach for
+    /// <see cref="Choice"/> for a bounded known set the reader can scan.
+    /// <paramref name="allowFreeText"/> defaults to <c>false</c> — the constrained form —
+    /// so the shortest call is the one that admits only the listed values.</summary>
+    public static FormField Combobox(string id, Text label, string? selected, IEnumerable<(string Value, string Label)> options, bool allowFreeText = false, bool required = false, Text? help = null, FieldRule? rule = null) =>
+        Make(
+            id,
+            label,
+            FsGen.FormFieldKind<object>.NewCombobox(
+                allowFreeText,
+                Fs.Some(Fuaran.NoOptStrHandler()),
+                Fuaran.OptionSource(options),
+                Fuaran.ChoiceValue(selected)),
+            required,
+            help,
+            rule);
+
     private static Microsoft.FSharp.Core.FSharpFunc<T, FsAction> NoFieldHandler<T>() =>
         Fs.Func<T, FsAction>(_ => FsAction.NewChain(Fs.Empty<FsAction>()));
 }
@@ -191,6 +210,20 @@ public sealed class Filter
             FsGen.FormFieldKind<object>.NewText(
                 Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewFilter(name, Microsoft.FSharp.Core.FSharpOption<string>.None)),
                 null),
+            label.Inner,
+            name));
+
+    /// <summary>A typeahead filter chip bound to its own filter key (Phase 1113) — the
+    /// searchable form of <see cref="Choice(string, Text, IEnumerable{ValueTuple{string, string}})"/>.</summary>
+    public static Filter Combobox(string name, Text label, IEnumerable<(string Value, string Label)> options, bool allowFreeText = false) =>
+        new(new FsGen.FilterSpec<object>(
+            FsGen.FormFieldKind<object>.NewCombobox(
+                allowFreeText,
+                null,
+                Fuaran.OptionSource(options),
+                Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewFilter(
+                    name,
+                    Microsoft.FSharp.Core.FSharpOption<string>.None))),
             label.Inner,
             name));
 

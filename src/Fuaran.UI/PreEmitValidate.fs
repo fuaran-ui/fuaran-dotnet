@@ -712,6 +712,34 @@ type PreEmitDefect =
     /// Carries the node's id.
     | TooltipOnHiddenNode of nodeId: string
 
+    /// **FUARAN120 (Warning)**. A `FormFieldKind.Combobox` whose option source
+    /// is a STATIC and EMPTY list (Phase 1113) — nothing to suggest, and no
+    /// dynamic source that could later supply anything.
+    ///
+    /// A typeahead over nothing is not a broken document; it is a control that
+    /// renders, accepts focus, opens no listbox and can never complete. With
+    /// `allowFreeText = true` it degrades to a plain text input the author did
+    /// not ask for; with `allowFreeText = false` it is a control from which NO
+    /// value is admissible, which is a field the reader cannot fill by any
+    /// route. Neither reading is reported by anything else — the bytes are
+    /// valid, every host renders them, and the emitter is told nothing.
+    ///
+    /// **Only a `Static` source is judged, on the family's standing restraint.**
+    /// A `Query` / `State` / `Filter` / `Transform` source is exactly the
+    /// asynchronous suggestion feed this control exists for, and it is empty at
+    /// authoring time by construction. Judging it would fire on the shape the
+    /// phase was built to enable, which is how a rule becomes one authors
+    /// switch off.
+    ///
+    /// **Warning, not Error.** An empty static list is a legitimate transitional
+    /// state — a form assembled before its options are known, a chip whose set
+    /// is filled by a later edit — and refusing it would make an ordinary
+    /// authoring step impossible. What is wrong is that nothing else would say
+    /// so.
+    ///
+    /// Carries the node's id and the field / filter name.
+    | ComboboxWithoutOptions of nodeId: string * fieldId: string
+
     // ── The accessibility family (FUARAN109/110/111, Phase 727) ──────────────
     //
     // Until this family landed the runtime validator carried NO accessibility
@@ -1264,6 +1292,13 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         sprintf
             "node '%s' carries a tooltip while declaring accessibility.hidden = true — aria-hidden removes the node and its whole subtree from the accessibility tree, taking the hint and its aria-describedby with it, so what is left is a hover affordance for sighted pointer users on a node declared not to be part of the interface. Drop the hint, or drop the hidden declaration if the node was meant to be announced"
             nodeId
+    | PreEmitDefect.ComboboxWithoutOptions(nodeId, fieldId) ->
+        "FUARAN120",
+        DefectSeverity.Warning,
+        sprintf
+            "combobox '%s' on node '%s' declares a STATIC and EMPTY option list — a typeahead with nothing to suggest, and no dynamic source that could supply anything later. It renders, it takes focus, and it opens no listbox: with allowFreeText it is a plain text input you did not ask for, and without it no value is admissible at all. Give the options a Query / State source if the suggestions arrive at runtime, list them if they are known, or use a Text field if free text is what you meant"
+            fieldId
+            nodeId
     | PreEmitDefect.InteractiveWithoutAccessibleName(nodeId, kind, slot) ->
         "FUARAN109",
         DefectSeverity.Warning,
@@ -1727,6 +1762,23 @@ let private validateCore
     // otherwise emit thousands of identical entries and bury the real report.
     let mutable depthReported = false
 
+    /// FUARAN120 (Phase 1113) — a combobox whose option source is a STATIC and
+    /// EMPTY list. One helper because a filter chip carries the same control as
+    /// a form field since the 0.2.0 unification, and one rule spelt twice is one
+    /// rule that will eventually differ.
+    ///
+    /// Only `Static` is judged: every other binding case names a source resolved
+    /// at render time, and a suggestion feed that is empty at authoring time is
+    /// this control's whole purpose. `Static None` counts as empty for the
+    /// reason `Static (Some [])` does — both say "no options, and none coming".
+    let comboboxWithoutOptions (nodeId: string) (fieldId: string) (kind: FormFieldKind<'Msg>) =
+        match kind with
+        | FormFieldKind.Combobox(_, _, Binding.Static None, _) ->
+            defects.Add(PreEmitDefect.ComboboxWithoutOptions(nodeId, fieldId))
+        | FormFieldKind.Combobox(_, _, Binding.Static(Some []), _) ->
+            defects.Add(PreEmitDefect.ComboboxWithoutOptions(nodeId, fieldId))
+        | _ -> ()
+
     let rec walk (n: Node<'Msg>) =
         depth <- depth + 1
 
@@ -2067,7 +2119,8 @@ let private validateCore
                  | FormFieldKind.Range(value, oc, _, _, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.SegmentedChoice(_, value, oc, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.Date(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.DateRange(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone)
+                 | FormFieldKind.DateRange(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
+                 | FormFieldKind.Combobox(_, oc, _, value) -> recordWriteBack value oc.IsNone)
 
                 // ── Phase 864 — the declared-rule family (FUARAN099/100/101) ──
                 //
@@ -2094,7 +2147,8 @@ let private validateCore
                  | FormFieldKind.Range(value, _, _, _, _) -> recordOwnedKey value
                  | FormFieldKind.SegmentedChoice(_, value, _, _) -> recordOwnedKey value
                  | FormFieldKind.Date(value, _, _, _, _, _) -> recordOwnedKey value
-                 | FormFieldKind.DateRange(value, _, _, _, _, _) -> recordOwnedKey value)
+                 | FormFieldKind.DateRange(value, _, _, _, _, _) -> recordOwnedKey value
+                 | FormFieldKind.Combobox(_, _, _, value) -> recordOwnedKey value)
 
                 match field.Rule with
                 | None -> ()
@@ -2116,6 +2170,14 @@ let private validateCore
                         | FormFieldKind.SegmentedChoice _ -> "SegmentedChoice", false, false
                         | FormFieldKind.Date _ -> "Date", false, false
                         | FormFieldKind.DateRange _ -> "DateRange", false, false
+                        // Phase 1113 — the combobox is a choice-shaped control,
+                        // so it honours neither the text bounds nor `format`,
+                        // exactly as `Choice` does. `allowFreeText` does NOT
+                        // change that: what the reader types is still a
+                        // selection expressed by typing, and a rule asking for
+                        // an email format on a suggestion list is the confusion
+                        // this table exists to name.
+                        | FormFieldKind.Combobox _ -> "Combobox", false, false
 
                     let unhonourable (slot: RuleSlot) =
                         defects.Add(PreEmitDefect.RuleSlotUnhonourable(nodeIdStr, field.Id, slot, control))
@@ -2192,6 +2254,9 @@ let private validateCore
                     | FormFieldKind.SegmentedChoice(_, value, oc, _) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.Date(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.DateRange(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
+                    | FormFieldKind.Combobox(_, oc, _, value) -> oc.IsNone && not (valueLive value)
+
+                comboboxWithoutOptions nodeIdStr field.Id field.Kind
 
                 if inert then
                     defects.Add(PreEmitDefect.InertControl(nodeIdStr, sprintf "FormField(%s)" field.Id))
@@ -2210,7 +2275,14 @@ let private validateCore
                     defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select(multiple)"))
             elif spec.OnChange.IsNone && not (isWriteBackTarget spec.Value) then
                 defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select"))
-        | NodeKind.Filters _
+        | NodeKind.Filters spec ->
+            // Phase 1113 — a filter chip carries an ordinary `FormFieldKind`
+            // since the 0.2.0 unification, so an empty static combobox is the
+            // same defect here as on a form field and is reported by the same
+            // rule. Split out of the no-op group below for that one check; the
+            // rest of a Filters node is still walked elsewhere.
+            spec.Items
+            |> List.iter (fun item -> comboboxWithoutOptions n.Id item.Name item.Kind)
         | NodeKind.Button _
         | NodeKind.FileUpload _ -> ()
         | NodeKind.Chart(spec) ->

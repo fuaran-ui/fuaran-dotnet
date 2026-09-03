@@ -1444,6 +1444,9 @@ let private keysOfFormFieldKind<'Msg>
     | FormFieldKind.Range(v, _, _, _, _) -> keysOfValue v
     | FormFieldKind.Choice(opts, value, _) -> keysOfBinding channel opts @ keysOfValue value
     | FormFieldKind.SegmentedChoice(opts, value, _, _) -> keysOfBinding channel opts @ keysOfValue value
+    // Phase 1113 — the combobox subscribes to BOTH: its option source (a Query
+    // suggestion feed is the shape the control exists for) and its value.
+    | FormFieldKind.Combobox(_, _, opts, value) -> keysOfBinding channel opts @ keysOfValue value
     | FormFieldKind.Date(v, _, _, _, _, _) -> keysOfValue v
     | FormFieldKind.DateRange(v, _, _, _, _, _) -> keysOfValue v
 
@@ -4795,6 +4798,32 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) v) ]
                 @ FieldRules.constraintAttrs false field.Rule
             )
+        | FormFieldKind.Combobox(allowFreeText, onChange, options, value) ->
+            // Phase 1113 — the full WAI-ARIA combobox, in `ComboboxControl`.
+            // The pattern is stateful (popup open, ACTIVE option, in-progress
+            // query) in a way the tree is not, so it is a React function
+            // component; the renderer resolves the bindings here and the
+            // component holds only the interaction. Nothing on the wire named a
+            // keystroke — the keyboard walk is entirely the renderer's, under
+            // the affordance→op charter.
+            let value =
+                value
+                |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.combobox))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
+
+            ComboboxControl.combobox
+                {| fieldId = field.Id
+                   className = "fuaran-form-field-control fuaran-combobox-input"
+                   listClassName = "fuaran-combobox-list"
+                   required = field.Required
+                   allowFreeText = allowFreeText
+                   placeholder = ""
+                   options = resolveOptions ctx options
+                   committed = current
+                   commit = fun chosen -> fieldChange ctx onChange value (chosen |> Option.map box) chosen |}
         | FormFieldKind.SegmentedChoice(options, value, onChange, orientation) ->
             // Visible-options exclusive-choice input. Horizontal
             // emits a `role="radiogroup"` of `role="radio"` buttons styled
@@ -5044,6 +5073,26 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                   prop.type'.date
                   prop.value current
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) (Some v)) ]
+        | FormFieldKind.Combobox(allowFreeText, onChange, options, value) ->
+            // Phase 1113 — the form field's widget, chip-addressed: the same
+            // `ComboboxControl`, writing through `filterWriteBinding` like every
+            // other declarative chip arm.
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
+
+            ComboboxControl.combobox
+                {| fieldId = spec.Name + "-filter"
+                   className = "fuaran-filter-input fuaran-combobox-input"
+                   listClassName = "fuaran-combobox-list"
+                   required = false
+                   allowFreeText = allowFreeText
+                   placeholder = labelText
+                   options = resolveOptions ctx options
+                   committed = current
+                   commit = fun chosen -> fieldChange ctx onChange filterWriteBinding (chosen |> Option.map box) chosen |}
         | FormFieldKind.Choice(options, value, onChange) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let opts = resolveOptions ctx options

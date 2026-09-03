@@ -563,6 +563,9 @@ let private usesOfFormFieldKind<'Msg> (implicitUse: BindingUse option) (kind: Fo
     | FormFieldKind.RangedNumber(v, _, _, _, _) -> usesOfValueSlot v
     | FormFieldKind.Range(v, _, _, _, _) -> usesOfValueSlot v
     | FormFieldKind.Choice(opts, value, _) -> usesOfBinding opts @ usesOfValueSlot value
+    // Phase 1113 — the combobox's option source is an ordinary binding, so a
+    // Query-bound suggestion source is a real read and is walked as one.
+    | FormFieldKind.Combobox(_, _, opts, value) -> usesOfBinding opts @ usesOfValueSlot value
     | FormFieldKind.SegmentedChoice(opts, value, _, _) -> usesOfBinding opts @ usesOfValueSlot value
     | FormFieldKind.Date(v, _, _, _, _, _) -> usesOfValueSlot v
     | FormFieldKind.DateRange(v, _, _, _, _, _) -> usesOfValueSlot v
@@ -707,6 +710,7 @@ let formFieldWriteFacts<'Msg> (kind: FormFieldKind<'Msg>) : FormFieldWrite =
     | FormFieldKind.RangedNumber(v, h, _, _, _) -> slot v h.IsSome
     | FormFieldKind.Range(v, h, _, _, _) -> slot v h.IsSome
     | FormFieldKind.Choice(_, v, h) -> slot v h.IsSome
+    | FormFieldKind.Combobox(_, h, _, v) -> slot v h.IsSome
     | FormFieldKind.SegmentedChoice(_, v, h, _) -> slot v h.IsSome
     | FormFieldKind.Date(v, h, _, _, _, _) -> slot v h.IsSome
     | FormFieldKind.DateRange(v, h, _, _, _, _) -> slot v h.IsSome

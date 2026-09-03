@@ -133,6 +133,9 @@ let all: Classification list =
       pt "FormFieldKind.TextArea" writeBack
       pt "FormFieldKind.RangedNumber" writeBack
       pt "FormFieldKind.SegmentedChoice" writeBack
+      // Phase 1113 — the typeahead control. The option source and the
+      // free-text admission survive; the onChange closure erases, as everywhere.
+      pt "FormFieldKind.Combobox" writeBack
       pt "FormFieldKind.Date" writeBack
       pt "FormFieldKind.DateRange" writeBack // Phase 725 — the pair survives; the onChange closure erases
 

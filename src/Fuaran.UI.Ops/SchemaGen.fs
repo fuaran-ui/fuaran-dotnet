@@ -585,7 +585,17 @@ let private defs: (string * J) list =
                   "variant", ref "DateVariant"
                   "min", str
                   "max", str
-                  "step", number ] ]
+                  "step", number ]
+            // Phase 1113 — the typeahead / autocomplete control. `options` is
+            // required (a combobox with no source is not a control); everything
+            // else is optional, `allowFreeText` omitting at `false`.
+            duCase
+                "Combobox"
+                [ "options" ]
+                [ "allowFreeText", boolean
+                  "onChange", closure
+                  "options", binding "list_SelectOption"
+                  "value", binding "str" ] ]
 
       // `onChange` is optional (Phase 423) — present as the `"<closure>"` const when an F#-authored
       // closure is set, omitted for a declarative (AI-authored) chip — so it stays in `props` but

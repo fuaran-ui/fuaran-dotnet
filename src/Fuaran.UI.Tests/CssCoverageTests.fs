@@ -306,6 +306,12 @@ let private declaredAbsences: (string * Absence) list =
       CoveredBy("fuaran-link", "zero-paint wrapper around the anchor and its interstitial")
       "fuaran-link-protected", CoveredBy("fuaran-link", "modifier on the anchor; the link rule styles it")
       "fuaran-form-date", CoveredBy("fuaran-form-input", "per-kind modifier; emitted alongside the input class")
+      // Phase 1113 — the combobox's text input carries no chrome of its own. It is
+      // emitted ALONGSIDE `fuaran-form-field-control` (form) or `fuaran-filter-input`
+      // (chip), both of which the sheet's shared input rule already styles; giving it
+      // rules too would mean two places to keep a text field looking like a text field.
+      "fuaran-combobox-input",
+      CoveredBy("fuaran-form-field-control", "identity hook; emitted alongside the styled field/filter input class")
       "fuaran-file-upload-label", CoveredBy("fuaran-file-upload", "child of the styled upload wrapper")
       "fuaran-grid-cell-link", CoveredBy("fuaran-grid-cell", "anchor inside a styled cell")
       "fuaran-map-marker", CoveredBy("fuaran-map-marker-list", "list item; the list carries the layout")

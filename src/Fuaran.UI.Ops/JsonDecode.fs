@@ -1560,7 +1560,13 @@ let knownFormFieldKinds =
       "SegmentedChoice"
       "TextArea"
       "Date"
-      "DateRange" ]
+      "DateRange"
+      // Phase 1113 — the typeahead control. Listed here so the UNKNOWN_DU_CASE
+      // hint names it: an emitter reaching for a searchable select has to be
+      // told the spelling exists, since the alternative it settles for
+      // (`Choice` over two hundred options) is VALID and therefore reported by
+      // nothing.
+      "Combobox" ]
 
 /// The `ExpectedShape` hint carried by every `UNKNOWN_DU_CASE` a control
 /// discriminator raises, projected from the vocabulary above rather than
@@ -5197,6 +5203,36 @@ let private decodeFormFieldKind
             | Ok options, Ok value -> Ok(FormFieldKind.Choice(options, value, handlerOpt "onChange"))
             | Error e, _
             | _, Error e -> Error e
+        | Ok "Combobox" ->
+            // Phase 1113 — the typeahead / autocomplete control. Wire shape is
+            // `Choice`'s (same option source, same value slot, same handler
+            // contract) plus `allowFreeText`, which OMITS at `false` — so the
+            // shortest document is the constrained one and admitting off-list
+            // values is what an emitter has to ask for.
+            let optionsR =
+                requireField path fields "options" "Binding<SelectOption list>"
+                |> Result.bind (decodeBindingSelectOptions (path + ".options"))
+
+            let valueR =
+                // The combobox value slot IS the choice value slot — a
+                // `Binding<string>` whose absent `Static` payload is "no
+                // selection" — so the same decoder and the same placeholder.
+                valueOr
+                    decodeBindingChoiceValue
+                    Fuaran.UI.Defaults.ControlValueDefaults.combobox
+                    "Binding<string> value"
+
+            let allowFreeTextR =
+                match tryField fields "allowFreeText" with
+                | None -> Ok false
+                | Some v -> requireBool (path + ".allowFreeText") v
+
+            match optionsR, valueR, allowFreeTextR with
+            | Ok options, Ok value, Ok allowFreeText ->
+                Ok(FormFieldKind.Combobox(allowFreeText, handlerOpt "onChange", options, value))
+            | Error e, _, _
+            | _, Error e, _
+            | _, _, Error e -> Error e
         | Ok "Range" ->
             // 0.2.0 — dual-thumb numeric range (absorbed FilterKind.RangeFilter).
             let valueR =

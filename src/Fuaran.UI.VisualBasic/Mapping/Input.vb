@@ -62,6 +62,10 @@ Friend Module InputMapping
                 Return Csharp.FormField.TextArea(id, label, AttrInt(f, "rows", 4), OptStr(f, "initial"), required, help, rule)
             Case "choice"
                 Return Csharp.FormField.Choice(id, label, OptStr(f, "selected"), ReadOptions(f), required, help, rule)
+            ' Phase 1113 — the typeahead field. `allowFreeText` defaults to False, so
+            ' the shortest spelling is the constrained one, exactly as on the wire.
+            Case "combobox"
+                Return Csharp.FormField.Combobox(id, label, OptStr(f, "selected"), ReadOptions(f), AttrBool(f, "allowFreeText"), required, help, rule)
             Case Else
                 Return Csharp.FormField.Text(id, label, If(HasAttr(f, "initial"), Attr(f, "initial"), ""), required, help, rule)
         End Select
@@ -77,6 +81,8 @@ Friend Module InputMapping
         Select Case Attr(f, "kind", "text").ToLowerInvariant()
             Case "choice"
                 Return Csharp.Filter.Choice(name, label, ReadOptions(f))
+            Case "combobox"
+                Return Csharp.Filter.Combobox(name, label, ReadOptions(f), AttrBool(f, "allowFreeText"))
             Case Else
                 Return Csharp.Filter.Text(name, label)
         End Select

@@ -3045,3 +3045,68 @@ spec record or fixture changes, and no wire vocabulary is added — a `State` bi
 wire has always carried, and this phase adds a *spelling* for it in one authoring dialect. It takes
 its own version slot rather than riding the in-flight 0.48.0, whose headline is a breaking DAG
 re-address.
+
+## Recorded change — 0.51.0, `FormFieldKind.Combobox` (fuaran#1113)
+
+**Additive on every axis.** `FormFieldKind<'Msg>` gains `Combobox of allowFreeText: bool * onChange:
+(string option -> Action<'Msg>) option * options: Binding<SelectOption list> * value: Binding<string>
+option` — the typeahead / autocomplete control. A DU CASE addition leaves every existing pattern
+match compiling and raises `FS0025` only where a match is exhaustive, which is the correct signal;
+contrast the 0.50.0 entry above, where a new FIELD on a shipped record was `FS0764` at every
+full-literal site. Adding a case is the cheap direction, and this document's own §2.1 note in the
+[vocabulary charter](docs/VOCABULARY.md) says why: widening an existing case would have been the
+expensive one.
+
+No shipped document's bytes move. The case is new, so nothing previously encoded it, and
+`allowFreeText` omits at `false` — which makes the SHORTEST combobox document the CONSTRAINED one.
+That is a deliberate default rather than a spelling economy: an emitter that says nothing gets the
+shape a `Select` would have had, and admitting values outside the option set is the thing it has to
+ask for.
+
+**Surface added.**
+
+- `FormFieldKind.Combobox`. Wire key order is the record's ordinal one — `allowFreeText`, `onChange`,
+  `options`, `value` — with `options` the only required member. The value slot and the handler are
+  `Choice`'s (`Binding<string>` whose absent `Static` payload is "no selection"; `string option`),
+  deliberately: the constrained combobox IS a searchable select, so the two must not differ at a call
+  site that migrates between them, and with free text an empty entry is genuinely no value.
+- The option source is an ordinary `Binding<SelectOption list>`, so a `Query`-bound source is the
+  asynchronous suggestion feed with **no coordination vocabulary minted for it**. That reuse is half
+  of the irreducibility argument in the charter row, not an implementation convenience.
+- `Fuaran.FormFieldKind.combobox` / `.comboboxDeclarative` and `Fuaran.FilterField.combobox` (F#),
+  `Input.FormField.Combobox` / `Filter.Combobox` (C#, `allowFreeText` defaulting to `false`), and
+  `kind="combobox"` with an `allowFreeText` attribute on `<Field>` and `<Filter>` in the VB XML
+  dialect.
+- `Fuaran.UI.Defaults.ControlValueDefaults.combobox` — a BINDING of `choice`, not a second literal:
+  the searchable form of a control must move when the control moves.
+- `Fuaran.UI.PreEmitValidate` gains **FUARAN120 (Warning)** — a combobox whose option source is a
+  STATIC and EMPTY list. Only `Static` is judged, on the family's standing restraint: a `Query`
+  suggestion feed is empty at authoring time by construction and is the shape the control exists for,
+  so judging it would make the rule one authors switch off. Warning and not Error because an empty
+  static list is a legitimate transitional authoring state; what is wrong is that nothing else would
+  say so.
+- Class vocabulary: `fuaran-combobox`, `fuaran-combobox-input`, `fuaran-combobox-list`,
+  `fuaran-combobox-option`, `fuaran-combobox-option-active`, and the `fuaran-filter-combobox` chip
+  class. `Theme.vocabularyFingerprint` moves with them.
+
+**Two renderer surfaces, and they are deliberately not the same widget.** The client tier owns the
+full WAI-ARIA combobox pattern — listbox popup, `role="combobox"`, `aria-expanded`,
+`aria-controls`, `aria-activedescendant`, arrow / Enter / Escape / Home / End, and a pointer commit on
+`mousedown` rather than `click` so the input's blur cannot close the popup first. The SSR floor is a
+native `<input list>` + `<datalist>`, which IS a combobox to the user agent and needs no script at
+all. **The server renderer emits no hand-written ARIA**, and that is the design: a static
+`aria-expanded="false"` that can never become `true` would replace the user agent's own correct
+semantics with a claim inert markup cannot keep. Nothing on the wire names a keystroke — the whole
+keyboard walk is the renderer's affordance, under the affordance→op charter.
+
+**`allowFreeText = false` is enforced server-side, and the client restore is an affordance.** Blurring
+a constrained combobox with an unmatched entry restores the committed value; that is a courtesy, not a
+gate. The trust boundary is `Fuaran.UI.ServerDriven.FormValidation.enforceDeclared`, which refuses a
+submitted value outside a STATIC option set, and the server-driven bounds check, which refuses the
+same on a filter chip's payload. Neither adds constraint vocabulary — the control's own declaration is
+the constraint, read the way `RangedNumber`'s `min`/`max` already are. A non-`Static` option source is
+a **recorded known limit**: that tier holds the submission and not the source it would have to check
+against, and a host that can resolve it enforces it in its own `FormValidator`, which composes on top.
+
+**Classification: minor on the pre-1.0 axis.** Additive case, additive wire, additive authoring
+surfaces, one new Warning-grade defect code.

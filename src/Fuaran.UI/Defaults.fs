@@ -1024,6 +1024,16 @@ module ControlValueDefaults =
     let number: float = 0.0
     let checkbox: bool = false
     let choice: string option = None
+
+    /// Phase 1113 — the `Combobox` value slot IS `Choice`'s (a `Binding<string>`
+    /// whose absent `Static` payload is "no selection"), so its placeholder is
+    /// deliberately a BINDING of the same value rather than a second literal:
+    /// the searchable form of a control must move when the control moves, and
+    /// two literals spelling one fact is how that stops being true. It gets its
+    /// own name because this module's contract is one entry per control type —
+    /// decode, encode and the resolver all reference the control by name.
+    let combobox: string option = choice
+
     let range: RangePair = { Max = 0.0; Min = 0.0 }
     /// ISO-empty — the Date control's value is an ISO-8601 string.
     let date: string = ""

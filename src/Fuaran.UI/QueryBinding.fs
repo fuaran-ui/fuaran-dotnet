@@ -238,6 +238,7 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
             | FormFieldKind.TextArea(value, _, _) -> addOpt BindingSinkClass.Categorical value
             | FormFieldKind.Choice(_, value, _) -> addOpt BindingSinkClass.Categorical value
             | FormFieldKind.SegmentedChoice(_, value, _, _) -> addOpt BindingSinkClass.Categorical value
+            | FormFieldKind.Combobox(_, _, _, value) -> addOpt BindingSinkClass.Categorical value
     | _ -> ()
 
     List.ofSeq acc

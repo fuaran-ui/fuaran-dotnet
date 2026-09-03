@@ -201,10 +201,15 @@ internal static class Vocabulary
         // Phase 864 / 873 — the `rule-*` family carries the field's DECLARED constraint.
         // Every slot is optional and an entirely empty rule is refused by the wire, so the
         // translator emits none unless at least one slot is stated.
+        // Phase 1113 — `allowFreeText` is the Combobox field's own attribute; it is
+        // declared on both <Field> and <Filter> because the 0.2.0 unification means a
+        // chip carries the same control, and a spelling admitted on one and refused on
+        // the other is a divergence the analyzer would have to explain.
         Add("Field", "kind", "id", "label", "required", "initial", "help", "selected", "rows",
+            "allowFreeText",
             "rule-format", "rule-pattern", "rule-min-length", "rule-max-length",
             "rule-compare-field", "rule-compare-op", "rule-message");
-        Add("Filter", "kind", "name", "label");
+        Add("Filter", "kind", "name", "label", "allowFreeText");
         // Phase 750 — `tone-field` / `default-tone` accompany <Tone> children and turn the
         // column into a declarative TonedPill; `tone-field` is only needed when the tone is
         // driven by a DIFFERENT row property than the column displays.

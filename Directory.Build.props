@@ -441,7 +441,14 @@
          not discover a source-breaking record widening inside it. Pre-1.0, so
          the major axis still rides a minor bump. See STABILITY.md "Recorded
          change — 0.50.0, the node-level `Tooltip` trait". -->
-    <Version>0.50.0</Version>
+    <!-- 0.51.0 (Phase 1113) — `FormFieldKind.Combobox`, the typeahead /
+         autocomplete control. Additive: a new DU case leaves every existing
+         match compiling and raises FS0025 only where one is exhaustive, which
+         is the correct signal. Wire-additive too — no shipped document's bytes
+         move, and `allowFreeText` omits at `false` so the shortest combobox is
+         the constrained one. See STABILITY.md "Recorded change — 0.51.0,
+         `FormFieldKind.Combobox`". -->
+    <Version>0.51.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
