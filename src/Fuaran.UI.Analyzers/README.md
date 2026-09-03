@@ -11,6 +11,7 @@ serves C# and, from Phase 315, VB with the same logic).
 |---|---|---|
 | **FUARAN001** | Error | A duplicate `Id` literal across a code block — every NodeId in a Fuaran tree must be unique (§4g op-target stability). |
 | **FUARAN010** | Warning | A `Binding.Query("name")` whose name is not in the manifest's `queries` list (silent when no manifest is wired). |
+| **FUARAN117** | Error | A VB XML-literal attribute value of `"$state"` or `"$state."` — the writable-state spelling with no key. Write `"$state.<key>"`; a bare `"$name"` is a host-fed query binding. Fires with or without a manifest, because a state key is not a manifest query. |
 
 ## Wiring
 

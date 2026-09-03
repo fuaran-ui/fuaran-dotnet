@@ -17,22 +17,21 @@ Imports Microsoft.FSharp.Core
 '
 '  WHAT THE INTERACTION IS, AND WHAT IT IS NOT.
 '
-'  The disclosure below is an UNCONTROLLED native <details>: clicking it toggles
-'  in the browser with no binding, no host code and no round trip. That is a
-'  real interaction and it survives the wire, because there is no closure in it
-'  to lose.
+'  The disclosure below is a STATE-BOUND control: `open="$state.detailsOpen"`
+'  binds it to a key in the reactive store, and because no handler is authored,
+'  toggling it writes the new value straight to that key and every reader of the
+'  key re-renders. No host code, no round trip - and it survives serialisation,
+'  because a state binding is data where a handler would have been a closure.
+'
+'  The two `$` prefixes differ in DIRECTION, and that is the whole distinction:
+'  `open="$panel"` is a QUERY binding, host-fed and read-only, so a toggle has
+'  nowhere to write; `open="$state.detailsOpen"` is a writable slot. Both are
+'  authorable from the dialect alone.
 '
 '  It is NOT `Action.Dispatch`. That case carries a host closure; the encoder
 '  drops the payload and a decoding browser gets an affordance that fires and
 '  does nothing. Full Fable is the one tier where it survives, because there the
 '  tree is never serialised. See docs/EMBEDDED-RENDERER.md section 2.
-'
-'  And it is not a STATE-BOUND control, which the C# leg does show. In the XML
-'  dialect a "$name" attribute maps to a QUERY binding - host-fed and read-only -
-'  so `open="$panel"` reads a value the host supplies and cannot be written back
-'  by a toggle. A state-bound control is authorable from VB today only through
-'  the C# factory surface (which is plain .NET and callable from VB directly).
-'  The sample says so rather than pretending otherwise; see the README.
 ' ============================================================================
 
 Module Program
@@ -47,9 +46,9 @@ Module Program
                    <Heading id="title" text="Embedded renderer - VB"/>
                    <Markdown id="note"
                        text="This tree was authored in **VB XML literals**, encoded as canonical wire JSON, and rendered in your browser by the renderer embedded in `Fuaran.UI.Renderer.Web`. No Node toolchain was involved on this side."/>
-                   <Disclosure id="details" heading="How this page was built" default-open="false">
+                   <Disclosure id="details" heading="How this page was built" open="$state.detailsOpen" default-open="false">
                        <Markdown id="details-body"
-                           text="The server translated an `XElement` into a `Node` tree, encoded it with `encodeNodeForTransport`, and inlined the JSON into this page. The browser decoded it and rendered it. This panel is a native `&lt;details&gt;` - toggling it made no request."/>
+                           text="The server translated an `XElement` into a `Node` tree, encoded it with `encodeNodeForTransport`, and inlined the JSON into this page. The browser decoded it and rendered it. This panel's open state lives in the reactive store under `detailsOpen` - toggling it writes that key and made no request."/>
                    </Disclosure>
                </Dashboard>
     End Function

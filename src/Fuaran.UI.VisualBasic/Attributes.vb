@@ -8,7 +8,10 @@ Imports Csharp = Fuaran.UI.CSharp
 '
 '   * a scalar attribute is a literal; a value prefixed "$" is a bound query
 '     (source="$revenue" -> Binding.Query), so authored data flows without a helper;
-'   * text slots read a string literal or a "$"-bound query;
+'   * a value prefixed "$state." is a WRITABLE state slot
+'     (open="$state.panelOpen" -> Binding.State), so a control the author leaves
+'     handler-free takes the write-back default and is live with no host code;
+'   * text slots read a string literal, a "$"-bound query, or a "$state." slot;
 '   * the format-* family (format-currency / format-number / format-percent /
 '     format-date) maps to the bounded CellFormat vocabulary;
 '   * enums parse by name (case-insensitive) to the C# facade enums.
@@ -27,9 +30,34 @@ Friend Module Attributes
         Return el.Attribute(name) IsNot Nothing
     End Function
 
-    ''' <summary>A text source — a literal, or a "$name" bound query.</summary>
+    ''' <summary>
+    ''' The declared state key for a <c>"$state.&lt;key&gt;"</c> attribute value, or Nothing
+    ''' when the value is not the state spelling (a literal, or a <c>"$name"</c> query).
+    ''' A malformed spelling — the prefix carrying no key — is an authoring error raised in
+    ''' the same shape as every other bad attribute value in this module.
+    ''' </summary>
+    ''' <remarks>
+    ''' Every reader below tests this BEFORE the <c>"$"</c> query test, because the state
+    ''' spelling is itself <c>"$"</c>-prefixed. The order is the whole discriminator.
+    ''' </remarks>
+    Friend Function StateKey(value As String) As String
+        If Not FuaranXml.IsStateBinding(value) Then Return Nothing
+        Dim key = FuaranXml.StateBindingKey(value)
+        If key Is Nothing Then
+            Throw New FuaranXmlException(
+                $"'{value}' names no state key — the writable-state spelling is ""$state.<key>"" " &
+                "(e.g. open=""$state.panelOpen""). A bare ""$name"" is a host-fed query binding.")
+        End If
+        Return key
+    End Function
+
+    ''' <summary>A text source — a literal, a "$name" bound query, or a "$state.name" slot.</summary>
     Friend Function AsText(value As String) As Csharp.Text
         If value Is Nothing Then Return CType("", Csharp.Text)
+        Dim key = StateKey(value)
+        If key IsNot Nothing Then
+            Return CType(Csharp.Binding.State(Of String)(key), Csharp.Text)
+        End If
         If value.StartsWith("$", StringComparison.Ordinal) Then
             Return CType(Csharp.Binding.Query(Of String)(value.Substring(1)), Csharp.Text)
         End If
@@ -42,36 +70,44 @@ Friend Module Attributes
         Return AsText(Attr(el, name))
     End Function
 
-    ''' <summary>A double binding — a static literal, or a "$name" bound query.</summary>
+    ''' <summary>A double binding — a static literal, a "$name" query, or a "$state.name" slot.</summary>
     Friend Function AsDoubleBinding(value As String) As Csharp.Binding(Of Double)
         If value Is Nothing Then Return CType(0.0, Csharp.Binding(Of Double))
+        Dim key = StateKey(value)
+        If key IsNot Nothing Then Return Csharp.Binding.State(Of Double)(key)
         If value.StartsWith("$", StringComparison.Ordinal) Then
             Return Csharp.Binding.Query(Of Double)(value.Substring(1))
         End If
         Return CType(Double.Parse(value, CultureInfo.InvariantCulture), Csharp.Binding(Of Double))
     End Function
 
-    ''' <summary>A string binding — a static literal, or a "$name" bound query.</summary>
+    ''' <summary>A string binding — a static literal, a "$name" query, or a "$state.name" slot.</summary>
     Friend Function AsStringBinding(value As String) As Csharp.Binding(Of String)
         If value Is Nothing Then Return CType("", Csharp.Binding(Of String))
+        Dim key = StateKey(value)
+        If key IsNot Nothing Then Return Csharp.Binding.State(Of String)(key)
         If value.StartsWith("$", StringComparison.Ordinal) Then
             Return Csharp.Binding.Query(Of String)(value.Substring(1))
         End If
         Return CType(value, Csharp.Binding(Of String))
     End Function
 
-    ''' <summary>A bool binding — a static literal, or a "$name" bound query.</summary>
+    ''' <summary>A bool binding — a static literal, a "$name" query, or a "$state.name" slot.</summary>
     Friend Function AsBoolBinding(value As String) As Csharp.Binding(Of Boolean)
         If value Is Nothing Then Return CType(False, Csharp.Binding(Of Boolean))
+        Dim key = StateKey(value)
+        If key IsNot Nothing Then Return Csharp.Binding.State(Of Boolean)(key)
         If value.StartsWith("$", StringComparison.Ordinal) Then
             Return Csharp.Binding.Query(Of Boolean)(value.Substring(1))
         End If
         Return CType(ParseBool(value), Csharp.Binding(Of Boolean))
     End Function
 
-    ''' <summary>An int binding — a static literal, or a "$name" bound query.</summary>
+    ''' <summary>An int binding — a static literal, a "$name" query, or a "$state.name" slot.</summary>
     Friend Function AsIntBinding(value As String) As Csharp.Binding(Of Integer)
         If value Is Nothing Then Return CType(0, Csharp.Binding(Of Integer))
+        Dim key = StateKey(value)
+        If key IsNot Nothing Then Return Csharp.Binding.State(Of Integer)(key)
         If value.StartsWith("$", StringComparison.Ordinal) Then
             Return Csharp.Binding.Query(Of Integer)(value.Substring(1))
         End If
@@ -249,24 +285,34 @@ Friend Module Attributes
         Return el.Elements().Where(Function(c) c.Name.LocalName = childName)
     End Function
 
-    ''' <summary>An optional obj-seq binding for data-bearing sources — only "$name" is meaningful.</summary>
+    ''' <summary>An optional obj-seq binding for data-bearing sources — only "$name" (a host
+    ''' query) and "$state.name" (a writable rows slot) are meaningful. The state form is the
+    ''' canonical editable-grid source: the grid's edits commit to a State key, so a grid whose
+    ''' rows come from a read-only query has nowhere to write them back to.</summary>
     Friend Function OptObjSeqBinding(el As XElement, name As String) As Csharp.Binding(Of IEnumerable(Of Object))
         Dim v = Attr(el, name)
+        Dim key = StateKey(v)
+        If key IsNot Nothing Then Return Csharp.Binding.State(Of IEnumerable(Of Object))(key)
         If v Is Nothing OrElse Not v.StartsWith("$", StringComparison.Ordinal) Then Return Nothing
         Return Csharp.Binding.Query(Of IEnumerable(Of Object))(v.Substring(1))
     End Function
 
     ''' <summary>An optional TYPED-ROW-seq binding (fuaran#665 — the chart source binds
-    ''' name→value row maps) — only "$name" is meaningful.</summary>
+    ''' name→value row maps) — only "$name" and "$state.name" are meaningful.</summary>
     Friend Function OptRowSeqBinding(el As XElement, name As String) As Csharp.Binding(Of IEnumerable(Of Microsoft.FSharp.Collections.FSharpMap(Of String, Object)))
         Dim v = Attr(el, name)
+        Dim key = StateKey(v)
+        If key IsNot Nothing Then Return Csharp.Binding.State(Of IEnumerable(Of Microsoft.FSharp.Collections.FSharpMap(Of String, Object)))(key)
         If v Is Nothing OrElse Not v.StartsWith("$", StringComparison.Ordinal) Then Return Nothing
         Return Csharp.Binding.Query(Of IEnumerable(Of Microsoft.FSharp.Collections.FSharpMap(Of String, Object)))(v.Substring(1))
     End Function
 
-    ''' <summary>An optional double-seq binding (sparkline source) — only "$name" is meaningful.</summary>
+    ''' <summary>An optional double-seq binding (sparkline source) — only "$name" and
+    ''' "$state.name" are meaningful.</summary>
     Friend Function OptDoubleSeqBinding(el As XElement, name As String) As Csharp.Binding(Of IEnumerable(Of Double))
         Dim v = Attr(el, name)
+        Dim key = StateKey(v)
+        If key IsNot Nothing Then Return Csharp.Binding.State(Of IEnumerable(Of Double))(key)
         If v Is Nothing OrElse Not v.StartsWith("$", StringComparison.Ordinal) Then Return Nothing
         Return Csharp.Binding.Query(Of IEnumerable(Of Double))(v.Substring(1))
     End Function

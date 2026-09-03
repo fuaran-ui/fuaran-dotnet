@@ -2253,7 +2253,7 @@ would weaken the gate to carry a marker that would then mean nothing. The hazard
 legible where it can be without a false accusation: a doc comment on `Action.dispatch` naming the
 constraint and the two remedies, the FUARAN112 rule, and the transport encoder's refusal.
 
-## Recorded change — 0.49.0, the node-level `Tooltip` trait (fuaran#1112)
+## Recorded change — 0.50.0, the node-level `Tooltip` trait (fuaran#1112)
 
 **BREAKING for record-literal construction of `Node`, additive on the wire.** `Node<'Msg>` gains
 `Tooltip: TextSource option`, beside `Accessibility` / `Motion` / `State` / `Style`. Two new pre-emit
@@ -2336,8 +2336,14 @@ is not removed: it is a shipped public field that renders correctly for the in-p
 it was built for, and deleting it would break that path's consumers to buy nothing the node-level
 trait does not already give a new one. Documented as the non-wire legacy spelling in `Types.fs`.
 
-**Version.** Minor on the producing packages — **0.49.0**, advanced from 0.48.0 for the reason above.
-Still untagged; `v0.46.0` is the newest tag on this family, so nothing here is a re-release.
+**Version.** Minor on the producing packages — **0.50.0**. Advanced from 0.48.0 for the reason
+above, and then from 0.49.0 for a second one: fuaran#1154 cut 0.49.0 while this phase was in the
+gate, and landed first. Its number stands and this one moves, on the reasoning fuaran#1111 recorded
+when the same thing happened to a defect code — a released identity outlives the phase that minted
+it, so two changes sharing one is worse than either moving. The argument is sharper here than it was
+there: 0.49.0 is an ADDITIVE authoring-surface change, and a consumer adopting it must not discover
+a source-breaking record widening inside it. Still untagged; `v0.46.0` is the newest tag on this
+family, so nothing here is a re-release.
 
 ## Recorded change — 0.48.0, `NodeKind.Embed` — the sandboxed third-party embed (fuaran#1111)
 
@@ -2974,3 +2980,68 @@ regeneration — and this host's `validator-coverage.json` gains the code, its `
 meaning it implements every code in the vocabulary. **The regeneration is not in this change-set:**
 the corpus is a separate repository and a concurrent session owns its regeneration this wave, so the
 two land separately and the coverage declaration here is the half that could move now.
+
+## Recorded change — 0.49.0, the VB state-binding spelling (fuaran#1154)
+
+**Two additive surfaces, one new analyzer code, and no byte any shipped tree encodes to
+changes.**
+
+**1. `Fuaran.UI.VisualBasic` — a second binding prefix in the XML dialect.** An attribute value
+of `"$state.<key>"` now translates to `Binding.State(key, None)`; `"$name"` keeps its meaning as
+`Binding.Query` exactly as before. Every reader in `Attributes.vb` learns it — the five scalar
+readers and the three sequence readers — so the spelling reaches every slot the dialect can bind,
+not only the ones this phase's tests exercise.
+
+**Why the dialect needed it at all.** A query binding is host-fed and read-only, so a control whose
+value binding is a query has nowhere for the control write-back default (0.x, fuaran#426) to write.
+Until this change a VB author could bind an interactive control only to a query, which is precisely
+the `FUARAN069` inert-control shape — so a *writable* control was authorable from VB only by dropping
+to the C# factory surface. The Phase 577 VB sample said so in a comment; it now authors the control
+instead.
+
+**No default is invented, and that is a wire decision rather than a taste one.** A `State` binding
+with a declared default encodes a `defaultValue` member and one without omits it — two different
+documents, both in the corpus (`controls-declarative.json` carries each). Choosing a default here
+would have made the undefaulted form unspellable, and the module already states the rule for itself
+twice (`OptEnum`, `OptBoolAttr`): absence is not a default. The initial value has a home where it
+matters — `default-open` on a `Disclosure`, a field's own auto-bind — and the defaulted binding stays
+authorable through the C# factory surface. **A defaulted state binding therefore has no XML
+spelling**, deliberately; adding one is a second syntax, not a fix.
+
+**2. `Fuaran.UI.CSharp` — `Binding.State<T>(string key)` (additive).** The no-default overload,
+mirroring the F# `binding.stateNoDefault` one-for-one. The translator drives it rather than
+constructing the F# DU case directly, which is what keeps the VB tier's stated invariant true (it
+names no FSharp.Core type on its authoring surface). It closes the identical gap for C# authors: the
+corpus's undefaulted `select` `value` was a document no C# author could express either.
+
+**3. Two reinterpretations, both narrow, both deliberate.** `"$state"` and `"$state."` were queries
+named `state` and `state.`; they are now translation errors, because the prefix must carry a key.
+`"$stateful"` is untouched and remains a query named `stateful` — the discriminator is the `$state.`
+prefix, not the letters. No shipped sample or fixture used either affected spelling.
+
+**4. `FUARAN117` (Error) — a `"$state"` value carrying no key.** Allocated at the top of the band
+rather than beside the analyzer's own FUARAN060/061, which already collide with the F# validator's
+codes of those numbers (`docs/VALIDATOR-MANIFEST.md` FUARAN060 is the extra-attribute allowlist;
+FUARAN061 the blank-code check). That collision is pre-existing and is not repaired here; minting a
+third number into the same range would have deepened it. FUARAN117 is the next free number — 115 and
+116 were claimed by the embed rules while this phase was in flight, which is the ordinary hazard of
+allocating at the top of a shared band and is why the number is asserted by the analyzer's own tests
+rather than by a comment.
+
+**The analyzer half is not a follow-up, it is the same change-set.** `FUARAN010` checks every
+`$`-prefixed value against the manifest's query list, and a state key is not a query name — so a
+translator that learned `$state.` without the analyzer learning it would report every valid state
+binding as an unresolved query. The analyzer test proves this directly: with the discriminator
+disabled, `open="$state.panelOpen"` raises FUARAN010.
+
+**The analyzer's copy of the spelling is pinned to the translator's.** A netstandard2.0 analyzer
+cannot load the net10 veneer, so the duplication is structural; `FuaranXml.IsStateBinding` /
+`StateBindingKey` are public for the same reason `KnownElements` is, and a case table in the analyzer
+test asserts the two agree — the `Vocabulary.Kinds == KnownElements` discipline applied one level
+down.
+
+**Classification: minor on the pre-1.0 axis.** Additive on both public surfaces; no encoder, decoder,
+spec record or fixture changes, and no wire vocabulary is added — a `State` binding is a shape the
+wire has always carried, and this phase adds a *spelling* for it in one authoring dialect. It takes
+its own version slot rather than riding the in-flight 0.48.0, whose headline is a breaking DAG
+re-address.

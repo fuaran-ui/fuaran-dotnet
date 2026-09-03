@@ -67,6 +67,21 @@ public static class Binding
     public static Binding<T> State<T>(string key, T defaultValue) =>
         new(FsGen.Binding<T>.NewState(key, Microsoft.FSharp.Core.FSharpOption<T>.Some(defaultValue)));
 
+    /// <summary>
+    /// A module-state binding whose slot carries NO default — it resolves to nothing
+    /// until the key is first written (the wire's <c>{"$type":"State","key":…}</c> form,
+    /// with <c>defaultValue</c> omitted). The F# twin is <c>binding.stateNoDefault</c>.
+    /// </summary>
+    /// <remarks>
+    /// This is a DIFFERENT wire document from <see cref="State{T}(string, T)"/>, not a
+    /// convenience over it: a declared default encodes a <c>defaultValue</c> key and an
+    /// undeclared one omits it, and the corpus carries both (a defaulted disclosure
+    /// <c>open</c>, an undefaulted select <c>value</c>). Either is writable, so both take
+    /// the control write-back default when the handler is omitted.
+    /// </remarks>
+    public static Binding<T> State<T>(string key) =>
+        new(FsGen.Binding<T>.NewState(key, Microsoft.FSharp.Core.FSharpOption<T>.None));
+
     /// <summary>A selection binding reading the current selection of node <paramref name="nodeId"/>.</summary>
     public static Binding<T> Selection<TRow, T>(string nodeId, Func<TRow, T> accessor) =>
         new(FsGen.Binding<T>.NewSelection(

@@ -424,7 +424,24 @@
          "the semver rules take effect from 1.0.0"). See STABILITY.md "Recorded
          breaking change — 0.48.0" and
          docs/migrations/1144-typed-actor-dag-fold.md. -->
-    <Version>0.49.0</Version>
+    <!-- 0.49.0 (Phase 1154) — the VB XML dialect's state-binding spelling, and
+         the `Binding.State(key)` overload on `Fuaran.UI.CSharp` it drives.
+         Both are additive on the public surface and neither changes a byte any
+         shipped tree encodes to, so a minor on the pre-1.0 axis. It takes its
+         own slot rather than riding the in-flight 0.48.0 for the mirror of the
+         reason that slot was cut: 0.48.0's headline is a BREAKING DAG
+         re-address, and an additive authoring-surface change must not be
+         findable only inside it. See STABILITY.md "Recorded change — 0.49.0,
+         the VB state-binding spelling". -->
+    <!-- 0.50.0 (Phase 1112) — the node-level `Tooltip` trait. BREAKING for
+         record-literal construction of `Node` (a new field is FS0764, an ERROR,
+         at every full-literal site), additive on the wire. It takes its own
+         slot rather than riding 0.49.0 for that slot's own stated reason: 0.49.0
+         is an ADDITIVE authoring-surface change, and a reader adopting it must
+         not discover a source-breaking record widening inside it. Pre-1.0, so
+         the major axis still rides a minor bump. See STABILITY.md "Recorded
+         change — 0.50.0, the node-level `Tooltip` trait". -->
+    <Version>0.50.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

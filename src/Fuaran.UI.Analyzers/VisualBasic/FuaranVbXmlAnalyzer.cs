@@ -17,7 +17,8 @@ namespace Fuaran.UI.Analyzers.VisualBasic;
 ///   * FUARAN060 — unknown element name (with a nearest-match suggestion);
 ///   * FUARAN061 — unknown attribute for the element's kind;
 ///   * FUARAN001 — duplicate NodeId across an XML-literal tree;
-///   * FUARAN010 — a "$name" binding resolves against the manifest queries list.
+///   * FUARAN010 — a "$name" binding resolves against the manifest queries list;
+///   * FUARAN117 — a "$state" value carries no state key.
 ///
 /// Only literals whose OUTERMOST element is a Fuaran kind are analysed, so a non-Fuaran
 /// VB XML literal is never touched.
@@ -31,7 +32,8 @@ public sealed class FuaranVbXmlAnalyzer : DiagnosticAnalyzer
             DiagnosticDescriptors.UnknownElement,
             DiagnosticDescriptors.UnknownAttribute,
             DiagnosticDescriptors.NodeIdUniqueness,
-            DiagnosticDescriptors.QueryResolution);
+            DiagnosticDescriptors.QueryResolution,
+            DiagnosticDescriptors.MalformedStateBinding);
 
     /// <inheritdoc/>
     public override void Initialize(AnalysisContext context)
@@ -90,8 +92,23 @@ public sealed class FuaranVbXmlAnalyzer : DiagnosticAnalyzer
                 ctx.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.UnknownAttribute, attr.GetLocation(), attrName, name));
             }
 
-            // FUARAN010 — a "$query" binding resolves against the manifest.
             var value = AttributeValue(attr);
+
+            // FUARAN117 / FUARAN010 — the two `$` binding spellings, discriminated
+            // BEFORE the query check. A state binding names a StateStore key, which no
+            // manifest lists, so running the query check over it would report every
+            // valid state binding as an unresolved query.
+            if (Vocabulary.IsStateBinding(value))
+            {
+                if (Vocabulary.StateBindingKey(value) is null)
+                {
+                    ctx.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.MalformedStateBinding, attr.GetLocation(), value));
+                }
+
+                continue;
+            }
+
+            // FUARAN010 — a "$query" binding resolves against the manifest.
             if (manifest.Present && value is not null && value.StartsWith("$") && value.Length > 1)
             {
                 var query = value.Substring(1);
