@@ -5833,8 +5833,26 @@ let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpe
             | None -> Ok None
             | Some v -> decodeBindingBool (path + ".disabled") v |> Result.map Some
 
-        match acceptR, labelR, multipleR, disabledR with
-        | Ok accept, Ok label, Ok multiple, Ok disabled ->
+        // Phase 1115 — the two ingress gestures, both omit-at-`false`. Absent
+        // reads as `false` (the plain picker, which is what every document
+        // written before this phase says); present-and-not-boolean is
+        // `WRONG_TYPE` and is NOT coerced, on the `allowFreeText` reasoning: the
+        // slot decides whether a whole ingress path exists, absence already
+        // spells the safe answer, so a present wrong-typed value can only mean
+        // the emitter meant something it did not say — and a lenient truthiness
+        // read would open a drop target on `"no"` and `"false"` alike.
+        let dropTargetR =
+            match tryField fields "dropTarget" with
+            | None -> Ok false
+            | Some v -> requireBool (path + ".dropTarget") v
+
+        let acceptPasteR =
+            match tryField fields "acceptPaste" with
+            | None -> Ok false
+            | Some v -> requireBool (path + ".acceptPaste") v
+
+        match acceptR, labelR, multipleR, disabledR, dropTargetR, acceptPasteR with
+        | Ok accept, Ok label, Ok multiple, Ok disabled, Ok dropTarget, Ok acceptPaste ->
             Ok
                 { Label = label
                   Accept = accept
@@ -5843,11 +5861,15 @@ let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpe
                     (match tryField fields "onSelect" with
                      | Some _ -> Some(fun _ -> Action.Chain [])
                      | None -> Option.None)
-                  Disabled = disabled }
-        | Error e, _, _, _
-        | _, Error e, _, _
-        | _, _, Error e, _
-        | _, _, _, Error e -> Error e
+                  Disabled = disabled
+                  AcceptPaste = acceptPaste
+                  DropTarget = dropTarget }
+        | Error e, _, _, _, _, _
+        | _, Error e, _, _, _, _
+        | _, _, Error e, _, _, _
+        | _, _, _, Error e, _, _
+        | _, _, _, _, Error e, _
+        | _, _, _, _, _, Error e -> Error e
 
 let private decodeInputKind (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
     match requireObject path j with

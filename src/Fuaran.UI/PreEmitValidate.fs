@@ -740,6 +740,33 @@ type PreEmitDefect =
     /// Carries the node's id and the field / filter name.
     | ComboboxWithoutOptions of nodeId: string * fieldId: string
 
+    /// **FUARAN121 (Warning)**. A `FileUpload` declaring `dropTarget` or
+    /// `acceptPaste` while carrying NO `onSelect` handler (Phase 1115) — a
+    /// gesture invited onto a control that consumes nothing.
+    ///
+    /// The picker degrades honestly without a handler: the user agent's own
+    /// chrome still shows the chosen filename, so a reader can see the pick
+    /// happened even when nothing downstream reads it. A drop zone and a paste
+    /// target have no such fallback — the file vanishes on release with no
+    /// user-agent feedback of any kind, which is a fake affordance in the sense
+    /// the affordance→op charter's declines use the term: an invitation the
+    /// document cannot honour.
+    ///
+    /// **The rule is about the GESTURE flags, not about the handler.** A plain
+    /// handler-less upload is a legitimate authoring intermediate and is left
+    /// alone; what this reports is the pairing. `AffordanceInertness` answers a
+    /// different question — whether a PRESENT handler survived decode — so
+    /// neither rule subsumes the other.
+    ///
+    /// **Warning, not Error.** A tree assembled before its handler is wired is
+    /// an ordinary authoring step, and refusing it would make that step
+    /// impossible. What is wrong is that nothing else would say so: the bytes
+    /// are valid, every host renders them, and the reader is the one who finds
+    /// out.
+    ///
+    /// Carries the node's id and the gesture(s) declared.
+    | UploadGestureWithoutHandler of nodeId: string * gestures: string
+
     // ── The accessibility family (FUARAN109/110/111, Phase 727) ──────────────
     //
     // Until this family landed the runtime validator carried NO accessibility
@@ -1299,6 +1326,13 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "combobox '%s' on node '%s' declares a STATIC and EMPTY option list — a typeahead with nothing to suggest, and no dynamic source that could supply anything later. It renders, it takes focus, and it opens no listbox: with allowFreeText it is a plain text input you did not ask for, and without it no value is admissible at all. Give the options a Query / State source if the suggestions arrive at runtime, list them if they are known, or use a Text field if free text is what you meant"
             fieldId
             nodeId
+    | PreEmitDefect.UploadGestureWithoutHandler(nodeId, gestures) ->
+        "FUARAN121",
+        DefectSeverity.Warning,
+        sprintf
+            "file upload '%s' declares %s and carries no onSelect handler — the gesture is invited and consumes nothing. A picker at least leaves the chosen filename in the user agent's own chrome; a dropped or pasted file disappears on release with no feedback at all, so the reader is told the upload worked and it did not. Wire onSelect, or drop the gesture declaration until it is wired"
+            nodeId
+            gestures
     | PreEmitDefect.InteractiveWithoutAccessibleName(nodeId, kind, slot) ->
         "FUARAN109",
         DefectSeverity.Warning,
@@ -2283,8 +2317,18 @@ let private validateCore
             // rest of a Filters node is still walked elsewhere.
             spec.Items
             |> List.iter (fun item -> comboboxWithoutOptions n.Id item.Name item.Kind)
-        | NodeKind.Button _
-        | NodeKind.FileUpload _ -> ()
+        | NodeKind.FileUpload spec ->
+            // FUARAN121 (Phase 1115) — a declared ingress gesture with nothing
+            // to consume it. Split out of the no-op group for this one check.
+            if spec.OnSelect.IsNone && (spec.DropTarget || spec.AcceptPaste) then
+                let gestures =
+                    match spec.DropTarget, spec.AcceptPaste with
+                    | true, true -> "dropTarget and acceptPaste"
+                    | true, false -> "dropTarget"
+                    | _ -> "acceptPaste"
+
+                defects.Add(PreEmitDefect.UploadGestureWithoutHandler(n.Id, gestures))
+        | NodeKind.Button _ -> ()
         | NodeKind.Chart(spec) ->
             // FUARAN086–089 (Phase 640): schema-grounded chart validation. An
             // ungrounded field reference is the LANGUAGE's defect to catch

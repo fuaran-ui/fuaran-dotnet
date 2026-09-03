@@ -3251,3 +3251,76 @@ let comboboxOptionRuleTests =
 
               Expect.isEmpty (comboboxDefects tree) "a control that is not a combobox is not judged"
           } ]
+
+// ─── Phase 1115 fixtures ─ FUARAN121, the unconsumed upload gesture ────────
+
+/// A file upload with the two gesture flags and the handler under the test's
+/// control. Everything else is `Defaults.fileUpload`, because the rule looks
+/// only at that pairing and a fixture varying more would suggest otherwise.
+let private uploadWith (dropTarget: bool) (acceptPaste: bool) (handler: bool) : Node<Msg> =
+    Fuaran.fileUpload
+        "up"
+        { Defaults.fileUpload with
+            Label = TextSource.Literal "Upload"
+            OnSelect = (if handler then Some(fun _ -> Action.Chain []) else None)
+            DropTarget = dropTarget
+            AcceptPaste = acceptPaste }
+
+/// Only the Phase 1115 defect, for the reason `embedDefects` states.
+let private uploadDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.UploadGestureWithoutHandler _ -> true
+            | _ -> false)
+
+[<Tests>]
+let uploadGestureRuleTests =
+    testList
+        "PreEmitValidate — FUARAN121, the unconsumed upload gesture (Phase 1115)"
+        [ test "FUARAN121: a drop target with no onSelect is reported" {
+              let tree = uploadWith true false false
+
+              Expect.equal
+                  (uploadDefects tree
+                   |> List.map (fun d -> let c, _, _ = PreEmitValidate.describe d in c))
+                  [ "FUARAN121" ]
+                  "the declared gesture with nothing to consume it is the defect"
+
+              Expect.equal
+                  (severityOf (uploadDefects tree |> List.head))
+                  DefectSeverity.Warning
+                  "Warning, not Error — a tree assembled before its handler is wired is an ordinary step"
+          }
+
+          test "FUARAN121: paste alone is the same defect" {
+              Expect.isNonEmpty (uploadDefects (uploadWith false true false)) "acceptPaste is judged too"
+          }
+
+          test "FUARAN121 names BOTH gestures when both are declared" {
+              // The message is the whole remedy here — an author told only
+              // 'a gesture' has to go and find which.
+              let _, _, message =
+                  PreEmitValidate.describe (uploadDefects (uploadWith true true false) |> List.head)
+
+              Expect.stringContains message "dropTarget and acceptPaste" "both declarations are named"
+          }
+
+          test "FUARAN121 go-red check: a WIRED gesture is silent" {
+              // The half that keeps the rule usable: this is the shape the
+              // phase exists to enable, and a rule that fired on it would be
+              // one authors switch off.
+              Expect.isEmpty (uploadDefects (uploadWith true true true)) "a handler consumes both gestures"
+          }
+
+          test "FUARAN121 go-red check: a handler-less PLAIN picker is silent" {
+              // The rule is about the pairing, not about the handler. A plain
+              // upload with no handler is a legitimate authoring intermediate,
+              // and the user agent's own chrome still shows the chosen file —
+              // which is exactly the feedback a drop has none of.
+              Expect.isEmpty
+                  (uploadDefects (uploadWith false false false))
+                  "no gesture is declared, so none is unconsumed"
+          } ]

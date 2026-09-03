@@ -5438,13 +5438,28 @@ and private renderFileUpload (ctx: RenderContext<'Msg>) (spec: FileUploadSpec<'M
               spec.OnSelect
               |> Option.iter (fun onSelect -> runAction ctx (onSelect selections))) ]
 
-    Html.label
-        [ prop.className "fuaran-file-upload"
-          prop.children
-              [ Html.span
-                    [ prop.className "fuaran-file-upload-label"
-                      prop.text (renderText ctx spec.Label) ]
-                Html.input inputProps ] ]
+    let labelChildren =
+        [ Html.span
+              [ prop.className "fuaran-file-upload-label"
+                prop.text (renderText ctx spec.Label) ]
+          Html.input inputProps ]
+
+    // Phase 1115 — the ingress gestures. Neither declared is the shape every
+    // document written before this phase has, and it renders EXACTLY what it
+    // rendered then: the polarity of the two omit-at-`false` flags is visible
+    // here as well as on the wire. Either declared hands the same children to
+    // `FileUploadDrop`, which wraps them in the drag / paste affordance without
+    // redefining the control — there is one definition of this markup.
+    if spec.DropTarget || spec.AcceptPaste then
+        FileUploadDrop.dropZone
+            {| className = "fuaran-file-upload"
+               dropTarget = spec.DropTarget
+               acceptPaste = spec.AcceptPaste
+               accept = spec.Accept
+               multiple = spec.Multiple
+               children = labelChildren |}
+    else
+        Html.label [ prop.className "fuaran-file-upload"; prop.children labelChildren ]
 
 // ─── Visualisations ────────────────────────────────────────────────────────
 

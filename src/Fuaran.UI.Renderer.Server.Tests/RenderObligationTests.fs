@@ -739,6 +739,54 @@ let private checkRefusedEmbedSourceOmitted () =
         (contains "src=\"https://player.example/embed/harbour\"" allowed)
         "a declared https origin still renders"
 
+// Phase 1115 — the picker-always-present checker. The obligation is that a
+// declared ingress gesture is ADDITIONAL, so both directions have to be pinned
+// and the interesting one is the DECLARED case: a host that replaced the picker
+// with a drop zone would pass an emission test on the plain upload and ship a
+// pointer-only control on the declared one.
+let private uploadWith dropTarget acceptPaste : Node<obj> =
+    Fuaran.fileUpload
+        "up"
+        { Defaults.fileUpload with
+            Label = TextSource.Literal "Attach a file"
+            Accept = [ ".csv" ]
+            DropTarget = dropTarget
+            AcceptPaste = acceptPaste }
+
+let private checkPickerAlwaysPresent () =
+    let plain = render (uploadWith false false)
+
+    Expect.isTrue (contains "type=\"file\"" plain) "the plain upload emits the picker"
+
+    Expect.isTrue (contains "Attach a file" plain) "…and its label"
+
+    for label, declared in
+        [ "a drop target", uploadWith true false
+          "a paste target", uploadWith false true
+          "both routes", uploadWith true true ] do
+        let html = render declared
+
+        Expect.isTrue
+            (contains "type=\"file\"" html)
+            (label
+             + " still emits the picker — the gesture is an additional route, never a replacement")
+
+        Expect.isTrue (contains "Attach a file" html) (label + " still emits the label that names it")
+
+    // The static floor is the plain picker, so the declared and undeclared
+    // markup differ ONLY by the recording marker. Without this the obligation
+    // above would also pass on a host that emitted an inert drop zone here.
+    let declaredHtml = render (uploadWith true true)
+
+    Expect.isTrue
+        (contains "data-fuaran-upload-drop=\"declared\"" declaredHtml
+         && contains "data-fuaran-upload-paste=\"declared\"" declaredHtml)
+        "each declared route is recorded, so the declaration is visibly read rather than dropped"
+
+    Expect.isFalse
+        (contains "data-fuaran-upload-drop" plain)
+        "…and an upload that declares neither carries neither marker"
+
 /// The registry: which (kind, claim) pairs this host asserts, and how.
 ///
 /// Keyed by the claim's WIRE token rather than the DU case, because the
@@ -759,7 +807,8 @@ let private checkers: ((string * string) * (unit -> unit)) list =
       ("Custom", "unregistered-custom-labelled"), checkUnregisteredCustomLabelled
       ("Embed", "accessible-name-always"), checkEmbedAccessibleNameAlways
       ("Embed", "sandbox-always-exactly-declared"), checkEmbedSandboxAlwaysExactlyDeclared
-      ("Embed", "refused-embed-source-omitted"), checkRefusedEmbedSourceOmitted ]
+      ("Embed", "refused-embed-source-omitted"), checkRefusedEmbedSourceOmitted
+      ("FileUpload", "picker-always-present"), checkPickerAlwaysPresent ]
 
 /// Obligations this host declares it does NOT check, each with a reason.
 ///

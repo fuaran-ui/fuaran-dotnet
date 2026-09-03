@@ -415,7 +415,13 @@ let fileUpload<'Msg> : FileUploadSpec<'Msg> =
       Accept = []
       Multiple = false
       OnSelect = Some(fun _ -> Action.Chain [])
-      Disabled = Option.None }
+      Disabled = Option.None
+      // Phase 1115 — both gestures OFF by default, which is the wire identity:
+      // a default upload encodes to exactly the bytes it always did, and the
+      // shortest document is the plain picker. Turning a gesture on is the
+      // thing an emitter has to ask for.
+      AcceptPaste = false
+      DropTarget = false }
 
 // ─── Visualisation defaults ─────────────────────────────────────────────────
 

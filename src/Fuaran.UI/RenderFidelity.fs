@@ -128,6 +128,13 @@ type ObligationClaim =
     /// is a well-defined empty context that fetches nothing. The refusal is
     /// still recorded in the emitted markup.
     | RefusedEmbedSourceOmitted
+    /// Every declared ingress route is ADDITIONAL: the file picker and its label
+    /// are emitted whatever gestures the document declares, so the
+    /// keyboard-accessible route survives and a no-script host renders a working
+    /// upload. A host that replaced the picker with a drop zone would leave a
+    /// pointer-only control behind, and a static one would leave no control at
+    /// all.
+    | PickerAlwaysPresent
 
 /// The stable wire token for a claim. This is what the artefact carries and what
 /// a host's checker registry is keyed by, so it may not change without a version
@@ -149,6 +156,7 @@ let claimId (claim: ObligationClaim) : string =
     | ObligationClaim.TranscriptDisclosureNamed -> "transcript-disclosure-named"
     | ObligationClaim.SandboxAlwaysExactlyDeclared -> "sandbox-always-exactly-declared"
     | ObligationClaim.RefusedEmbedSourceOmitted -> "refused-embed-source-omitted"
+    | ObligationClaim.PickerAlwaysPresent -> "picker-always-present"
 
 /// What the claim MEANS, kind-independently — the vocabulary entry a host reads
 /// when it meets a claim id it does not yet implement, so "unchecked" can be
@@ -185,6 +193,8 @@ let claimMeaning (claim: ObligationClaim) : string =
         "the sandbox declaration is emitted on every instance, empty when nothing is granted, and carries exactly the declared relaxations - de-duplicated, in declaration order, and never a token the document did not name"
     | ObligationClaim.RefusedEmbedSourceOmitted ->
         "a primary source the egress floor refuses omits the source attribute entirely rather than pointing the browsing context at the refusal URL, while still recording the refusal"
+    | ObligationClaim.PickerAlwaysPresent ->
+        "a declared ingress gesture is additional: the file picker and its label are emitted whatever the document declares, so the keyboard-accessible route survives and a no-script host renders a working upload"
 
 /// The closed vocabulary, in declaration order.
 ///
@@ -207,7 +217,8 @@ let allClaims: ObligationClaim list =
       ObligationClaim.SingleDefaultPerKind
       ObligationClaim.TranscriptDisclosureNamed
       ObligationClaim.SandboxAlwaysExactlyDeclared
-      ObligationClaim.RefusedEmbedSourceOmitted ]
+      ObligationClaim.RefusedEmbedSourceOmitted
+      ObligationClaim.PickerAlwaysPresent ]
 
 /// One obligation as a row declares it: which claim, the normative sentence for
 /// THIS kind, and the spec section that states it.
@@ -398,17 +409,22 @@ let all: FidelityRow list =
 
       plain "Fact" "the label / value TextSources" "the resolved, formatted fact row"
 
-      row
+      (row
           "FileUpload"
           false
-          "the accept / multiple declarations and the label"
-          "the file control with its classes and `disabled` state, carrying no event handlers"
+          "the accept / multiple declarations, the label, and the two Phase 1115 ingress declarations (`dropTarget` / `acceptPaste`)"
+          "the file control with its classes and `disabled` state, carrying no event handlers. The ingress declarations degrade to the PLAIN PICKER: a drop needs a `drop` listener and a paste needs a `paste` one, and no CSS observes a drag, so a static host emits the control it always emitted and marks each declared gesture with a `data-fuaran-upload-drop` / `data-fuaran-upload-paste` attribute recording that the declaration was read - the marker is NOT coverage and nothing in this tier acts on it"
           (RichTier.Behavioural(
-              "selection handling is wired on hydration",
+              "selection handling is wired on hydration, and a client tier honouring `dropTarget` / `acceptPaste` writes dropped or pasted files into the control's OWN input so the same selection path and the same `Accept` filter run whatever route the file arrived by",
               "the control is inert server-side (Phase 143); the `onSelect` payload is non-scalar and needs host wiring"
           ))
-          []
-          "docs/SSR.md (Input - rendered inert)"
+          [ "upload-1"; "upload-drop-1"; "upload-paste-1" ]
+          "Phase 1115; WIRE_FORMAT.md 3.6.10; docs/SSR.md (Input - rendered inert)"
+       |> obliged
+           [ owes
+                 ObligationClaim.PickerAlwaysPresent
+                 "WIRE_FORMAT.md 3.6.10"
+                 "the `<input type=\"file\">` and its label are emitted whatever gestures the document declares - a drop zone is an ADDITIONAL route and never a replacement, which is what keeps the keyboard-accessible route intact and what makes the no-script floor a working upload rather than an inert box" ])
 
       row
           "Filters"

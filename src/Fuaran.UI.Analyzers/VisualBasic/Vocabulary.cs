@@ -159,7 +159,9 @@ internal static class Vocabulary
         Add("Select", "id", "label", "value", "placeholder");
         Add("MultiSelect", "id", "label", "values");
         Add("Filters", "id");
-        Add("FileUpload", "id", "label", "accept", "multiple");
+        // Phase 1115 — `drop-target` / `accept-paste` spell the wire's
+        // `dropTarget` / `acceptPaste` ingress declarations.
+        Add("FileUpload", "id", "label", "accept", "multiple", "drop-target", "accept-paste");
         // Phase 876 — the value-format-* family carries the value axis's number
         // format (the `Format` vocabulary), the chart-side sibling of `format-*`.
         // Phase 878 — the axis names + the subtitle. Absent x-title / y-title

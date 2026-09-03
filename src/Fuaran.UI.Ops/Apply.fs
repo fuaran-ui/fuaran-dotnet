@@ -887,6 +887,18 @@ let private updateFileUpload (field: string) (v: obj) (spec: FileUploadSpec<'Msg
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryBool v
             |> Result.map (fun x -> { spec with Multiple = x }))
+    // Phase 1115 — the ingress gestures take `Multiple`'s disposition, not
+    // `Disabled`'s: they are plain wire booleans with a coercion, so an
+    // `UpdateProp` can turn a drop target on and off exactly as it can turn
+    // multi-select on and off.
+    | "DropTarget" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with DropTarget = x }))
+    | "AcceptPaste" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with AcceptPaste = x }))
     | "OnSelect"
     | "Disabled" -> NotSupportedYet
     | _ -> UnknownField

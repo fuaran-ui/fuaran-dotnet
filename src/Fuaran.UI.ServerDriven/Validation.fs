@@ -131,6 +131,15 @@ let legitimateEvents (node: Node<'Msg>) : Set<string> =
     // filter's horizontal shape is per-option buttons, so its selection
     // arrives as a bubbled click (mirrors the tab-header path).
     | NodeKind.Filters _ -> set [ "change"; "input"; "click" ]
+    // Phase 1115 — `dropTarget` / `acceptPaste` need no row of their own, and
+    // the reason is stronger than the combobox's above: they are not new events
+    // at all. A conformant client tier writes a dropped or pasted file into the
+    // control's own `<input type="file">` and lets the input's ordinary `change`
+    // fire, so an ingested file is INDISTINGUISHABLE here from a picked one —
+    // same event name, same element, same `input.files` for `ReadFileBody` to
+    // read. Widening this row would have implied a per-GESTURE keying the file
+    // does not have, and admitting a `drop` or `paste` event name would have
+    // opened a boundary nothing on the wire asks for.
     | NodeKind.FileUpload _ -> set [ "change"; "file-read" ]
     // Tab headers + step headers + disclosure summaries arrive as
     // bubbled clicks.

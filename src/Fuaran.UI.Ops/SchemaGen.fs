@@ -1057,7 +1057,11 @@ let private defs: (string * J) list =
             "label", ref "TextSource"
             "multiple", boolean
             "onSelect", closure
-            "disabled", binding "bool" ]
+            "disabled", binding "bool"
+            // Phase 1115 — the ingress gestures. Out of `required`, matching the
+            // decoder's omit-at-`false`: an absent member is the plain picker.
+            "dropTarget", boolean
+            "acceptPaste", boolean ]
 
       "InputKind",
       union

@@ -1420,6 +1420,20 @@ and FileRef = HostPrelude.FileRef
 /// opaque handle to it (Phase 136) so `OnSelect` can chain
 /// `Action.ReadFileBody` to ingest the body — the metadata + handle, never
 /// the blob, are what the spec hands the author.
+///
+/// **`DropTarget` / `AcceptPaste` (Phase 1115) name INGRESS, not gestures.**
+/// Both are `bool`, both omit at `false`, and neither adds an event name, a
+/// drag vocabulary or a clipboard capability: the drag-over, the drop, the
+/// paste, the visible drop state and the keyboard equivalent are the
+/// renderer's affordance under the affordance→op charter's governing sentence
+/// — *the wire names a capability on the node that hosts the gesture and
+/// consumes its effect.* A dropped or pasted file resolves through the SAME
+/// `OnSelect` / `FileSelection` path a picked one does, filtered by `Accept`
+/// exactly as a picked one is, so a host that already implements selection
+/// implements these by widening what reaches that path. The click-to-pick
+/// route is unchanged and is the affordance's required keyboard-accessible
+/// equivalent: a drop zone is an ADDITIONAL route to the picker, never a
+/// replacement for it.
 and FileUploadSpec<'Msg> = Generated.FileUploadSpec<'Msg>
 
 and FileSelection = HostPrelude.FileSelection

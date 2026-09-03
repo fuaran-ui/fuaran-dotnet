@@ -1024,6 +1024,8 @@ and FileUploadSpec<'Msg> =
       Multiple: bool
       OnSelect: (Fuaran.UI.HostPrelude.FileSelection list -> Action<'Msg>) option
       Disabled: Binding<bool> option
+      AcceptPaste: bool
+      DropTarget: bool
     }
 
 // Input
@@ -1992,7 +1994,7 @@ and private encSelectSpec<'Msg> (s: SelectSpec<'Msg>) : JVal =
     Canon.typed "Select" ([ Some("label", encTextSource s.Label); (s.OnChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (s.OnChangeMulti |> Option.map (fun v -> "onChangeMulti", JStr "<closure>")); Some("source", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) s.Source); Some("value", (encBinding JStr) s.Value); (s.Placeholder |> Option.map (fun v -> "placeholder", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (s.Multiple |> Option.map (fun v -> "multiple", JBool v)); (s.Values |> Option.map (fun v -> "values", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
 
 and private encFileUploadSpec<'Msg> (s: FileUploadSpec<'Msg>) : JVal =
-    Canon.typed "FileUpload" ([ Some("accept", JArr(List.map JStr s.Accept)); Some("label", encTextSource s.Label); Some("multiple", JBool s.Multiple); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
+    Canon.typed "FileUpload" ([ Some("accept", JArr(List.map JStr s.Accept)); Some("label", encTextSource s.Label); Some("multiple", JBool s.Multiple); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (if s.AcceptPaste = false then None else Some("acceptPaste", JBool s.AcceptPaste)); (if s.DropTarget = false then None else Some("dropTarget", JBool s.DropTarget)) ] |> List.choose id)
 
 and private encFormSpec<'Msg> (s: FormSpec<'Msg>) : JVal =
     Canon.typed "Form" ([ Some("fields", JArr(List.map encFormField s.Fields)); Some("onSubmit", encAction s.OnSubmit); Some("submitLabel", encTextSource s.SubmitLabel); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
@@ -3573,7 +3575,9 @@ and private decFileUploadSpec (j: JVal) : Result<FileUploadSpec<obj>, string> =
     dReq "multiple" __fs dBool |> Result.bind (fun multiple ->
     (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.UI.HostPrelude.FileSelection list) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
-    Ok { Accept = accept; Label = label; Multiple = multiple; OnSelect = onSelect; Disabled = disabled }))))))
+    dDef "acceptPaste" __fs dBool (false) |> Result.bind (fun acceptPaste ->
+    dDef "dropTarget" __fs dBool (false) |> Result.bind (fun dropTarget ->
+    Ok { Accept = accept; Label = label; Multiple = multiple; OnSelect = onSelect; Disabled = disabled; AcceptPaste = acceptPaste; DropTarget = dropTarget }))))))))
 
 and private decFormSpec (j: JVal) : Result<FormSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3917,7 +3921,7 @@ let mkSelect (id: string) (label: TextSource) (source: Binding<SelectOption list
     { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; OnChangeMulti = None; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkFileUpload (id: string) (accept: string list) (label: TextSource) (multiple: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None; AcceptPaste = false; DropTarget = false }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkForm (id: string) (fields: FormField<'Msg> list) (onSubmit: Action<'Msg>) (submitLabel: TextSource) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Form { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }

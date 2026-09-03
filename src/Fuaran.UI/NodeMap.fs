@@ -291,7 +291,11 @@ and mapFileUploadSpec (f: 'a -> 'b) (spec: FileUploadSpec<'a>) : FileUploadSpec<
       Accept = spec.Accept
       Multiple = spec.Multiple
       OnSelect = spec.OnSelect |> Option.map (fun h -> h >> mapAction f)
-      Disabled = spec.Disabled }
+      Disabled = spec.Disabled
+      // Phase 1115 — the gesture declarations carry no `'Msg`, so the map is
+      // the identity on both.
+      AcceptPaste = spec.AcceptPaste
+      DropTarget = spec.DropTarget }
 
 // ─── Visualisations — data-bound; the tree stores the erased grid shapes ────
 

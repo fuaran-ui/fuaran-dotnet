@@ -32,12 +32,17 @@ Friend Module InputMapping
         d("Filters") = Function(el) Csharp.Fuaran.Filters(
             New Csharp.FiltersOptions With {.Id = Attr(el, "id"), .Filters = ReadFilters(el)})
 
+        ' Phase 1115 — `drop-target` / `accept-paste` spell the wire's ingress
+        ' declarations, read through the existing AttrBool whose absent-is-false
+        ' default already matches the wire's omit-at-false.
         d("FileUpload") = Function(el) Csharp.Fuaran.FileUpload(
             New Csharp.FileUploadOptions With {
                 .Id = Attr(el, "id"),
                 .Label = AsText(Attr(el, "label")),
                 .Accept = PipeList(Attr(el, "accept")),
-                .Multiple = AttrBool(el, "multiple")})
+                .Multiple = AttrBool(el, "multiple"),
+                .DropTarget = AttrBool(el, "drop-target"),
+                .AcceptPaste = AttrBool(el, "accept-paste")})
     End Sub
 
     Private Function ReadFields(el As XElement) As IEnumerable(Of Csharp.FormField)

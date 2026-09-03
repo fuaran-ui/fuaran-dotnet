@@ -100,9 +100,9 @@ public static partial class Fuaran
         new(FsFactory.fileUpload<object>(
             options.Id,
             // Generated FileUploadSpec ctor is Generated.fs declaration order (Accept,
-            // Label, Multiple, OnSelect, Disabled); OnSelect is optional now and
-            // FileSelection lives in HostPrelude — the facade keeps its no-op handler
-            // (Some-wrapped) so the wire shape is unchanged.
+            // Label, Multiple, OnSelect, Disabled, AcceptPaste, DropTarget); OnSelect
+            // is optional now and FileSelection lives in HostPrelude — the facade keeps
+            // its no-op handler (Some-wrapped) so the wire shape is unchanged.
             new FsGen.FileUploadSpec<object>(
                 Fs.List(options.Accept ?? Enumerable.Empty<string>()),
                 options.Label.Inner,
@@ -110,7 +110,11 @@ public static partial class Fuaran
                 Fs.Some(
                     Fs.Func<Microsoft.FSharp.Collections.FSharpList<global::Fuaran.UI.HostPrelude.FileSelection>, FsAction>(
                         _ => NoAction)),
-                Fs.None<global::Fuaran.UI.Generated.Binding<bool>>())));
+                Fs.None<global::Fuaran.UI.Generated.Binding<bool>>(),
+                // Phase 1115 — both default false, so the shortest C# call is the
+                // plain picker and each gesture is asked for by name.
+                options.AcceptPaste,
+                options.DropTarget)));
 }
 
 /// <summary>A form field — build with the static factories (<see cref="Text"/> / <see cref="Number"/> / …).</summary>
@@ -320,4 +324,14 @@ public sealed record FileUploadOptions
 
     /// <summary>Whether multiple files may be selected.</summary>
     public bool Multiple { get; init; }
+
+    /// <summary>Whether the control renders a drop zone. Dropped files resolve
+    /// through the same selection path as picked ones, filtered by
+    /// <see cref="Accept"/>; the click-to-pick route is unchanged and remains the
+    /// keyboard-accessible equivalent.</summary>
+    public bool DropTarget { get; init; }
+
+    /// <summary>Whether a paste carrying files or images, on the focused control,
+    /// resolves through the same selection path as a pick.</summary>
+    public bool AcceptPaste { get; init; }
 }

@@ -461,7 +461,18 @@
          full-literal construction of that record is FS0764; `Relay.surfaceOf`
          (the supported route) fills it. See STABILITY.md "Recorded change -
          0.53.0, `read.nodeJson` on the DevTools relay". -->
-    <Version>0.53.0</Version>
+    <!-- 0.54.0 (Phase 1115) - `FileUpload` drop target + paste ingestion. Wire-
+         additive: two bool members on `FileUploadSpec`, both omitted at `false`,
+         so no shipped document's bytes move and every upload written before this
+         release decodes to the control it always was. Source-breaking in one
+         narrow place - the record gains fields, so a full-literal construction is
+         FS0764; `Defaults.fileUpload` fills both, which is why the supported
+         `{ Defaults.fileUpload with ... }` route is unaffected. Its own slot
+         rather than riding 0.53.0 for the reason 1112 recorded: 0.53.0's headline
+         is a relay-profile advance, and a reader adopting THAT number should not
+         discover a wire-vocabulary addition inside it. See STABILITY.md "Recorded
+         change - 0.54.0, `FileUpload` drop target and paste ingestion". -->
+    <Version>0.54.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

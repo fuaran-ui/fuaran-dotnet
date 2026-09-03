@@ -81,6 +81,18 @@ let private tree: Node<Msg> =
                                 Some(Binding.Static(Some "")),
                                 Some(fun v -> Action.Dispatch(NameFiltered v))
                             ) } ]
+                  // Phase 1115 — an upload declaring BOTH ingress gestures. The
+                  // fixture exists to verify (not to assert) that the two
+                  // existing allow-list rows carry the new routes: a conformant
+                  // client writes a dropped or pasted file into this control's
+                  // own input, so what reaches this boundary is the ordinary
+                  // `change` a pick produces.
+                  Fuaran.fileUpload
+                      "up"
+                      { Defaults.fileUpload<Msg> with
+                          Label = TextSource.Literal "Attach"
+                          DropTarget = true
+                          AcceptPaste = true }
                   Fuaran.markdown "md" "just text" ] }
 
 let private ev nodeId event payload =
@@ -306,4 +318,57 @@ let tests =
                   (Map.tryFind "value" fed.Payload)
                   (Some(LiveValue.Str poison))
                   "the fixture carries the poison"
+          }
+
+          // ── Phase 1115: the ingress gestures widen no boundary ──
+          //
+          // The phase's task was to CONFIRM the existing rows cover the drop and
+          // paste routes rather than to assert it, and this is the confirmation.
+          // It is a driver fixture and not a comment because the claim is about
+          // what THIS function admits, and a comment claiming coverage is
+          // exactly the shape that goes quietly wrong at the next control.
+          test "an upload declaring dropTarget / acceptPaste admits the SAME two events and no more" {
+              // The routes a conformant client actually delivers. A dropped file
+              // is written into the control's own input, so the boundary sees
+              // `change`; `ReadFileBody`'s body comes back as `file-read`.
+              // Neither resolves a server-side action — the file is browser-held
+              // — so `Action = None` is the pass, not a miss.
+              for event in [ "change"; "file-read" ] do
+                  match validate allow tree (ev "up" event []) with
+                  | Ok { Action = None } -> ()
+                  | other -> failtestf "expected the upload's '%s' to be admitted with no action, got %A" event other
+
+              // And the gestures themselves are NOT event names. A host that
+              // invented `drop` or `paste` on the wire would be refused here,
+              // which is what makes "no new event vocabulary" checkable rather
+              // than merely stated.
+              for event in [ "drop"; "paste"; "dragover" ] do
+                  match validate allow tree (ev "up" event []) with
+                  | Error(RejectReason.IllegitimateEvent("up", e, _)) ->
+                      Expect.equal e event "the refused event is named"
+                  | other -> failtestf "expected '%s' to be illegitimate on an upload, got %A" event other
+          }
+
+          test "the upload's admitted events do not depend on the gesture declarations" {
+              // The row is keyed by the node's KIND, so a plain upload and a
+              // drop-accepting one admit the same set. Asserting it here is what
+              // stops a later phase quietly making the allow-list gesture-aware.
+              let plain: Node<Msg> =
+                  Fuaran.fileUpload
+                      "plain"
+                      { Defaults.fileUpload<Msg> with
+                          Label = TextSource.Literal "Attach" }
+
+              let declared: Node<Msg> =
+                  Fuaran.fileUpload
+                      "declared"
+                      { Defaults.fileUpload<Msg> with
+                          Label = TextSource.Literal "Attach"
+                          DropTarget = true
+                          AcceptPaste = true }
+
+              Expect.equal
+                  (legitimateEvents declared)
+                  (legitimateEvents plain)
+                  "declaring an ingress gesture changes nothing about which events the boundary admits"
           } ]

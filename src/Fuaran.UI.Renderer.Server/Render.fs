@@ -1732,13 +1732,34 @@ and private renderKind
             [ prop.className "fuaran-filters"
               prop.children [ for spec in specs.Items -> renderFilterSpec ctx spec ] ]
     | NodeKind.FileUpload spec ->
-        Html.label
-            [ prop.className "fuaran-file-upload"
-              prop.children
-                  [ Html.span
-                        [ prop.className "fuaran-file-upload-label"
-                          prop.text (renderText ctx spec.Label) ]
-                    Html.input [ prop.className "fuaran-file-upload-control"; prop.custom ("type", "file") ] ] ]
+        // Phase 1115 — the SSR floor for `dropTarget` / `acceptPaste` is the
+        // PLAIN PICKER, and that is a decision rather than an omission. Both
+        // routes need script: there is no drop without a `drop` listener and no
+        // paste without a `paste` one, and a CSS-only drop state does not exist
+        // (`:hover` does not fire during a drag). Emitting drop-zone markup a
+        // no-script host could never wire would be a fake affordance — an
+        // invitation the document cannot honour — so the flags degrade to the
+        // control the picker always was, which is a fully working upload.
+        //
+        // What DOES ride is a marker per declared gesture, on the Phase 1113
+        // `data-fuaran-combobox-constrained` precedent: it records that the
+        // declaration was READ rather than silently dropped, and it is
+        // explicitly NOT claimed as coverage — nothing in this tier acts on it.
+        let gestureAttrs =
+            [ if spec.DropTarget then
+                  prop.custom ("data-fuaran-upload-drop", "declared")
+              if spec.AcceptPaste then
+                  prop.custom ("data-fuaran-upload-paste", "declared") ]
+
+        Html.label (
+            [ prop.className "fuaran-file-upload" ]
+            @ gestureAttrs
+            @ [ prop.children
+                    [ Html.span
+                          [ prop.className "fuaran-file-upload-label"
+                            prop.text (renderText ctx spec.Label) ]
+                      Html.input [ prop.className "fuaran-file-upload-control"; prop.custom ("type", "file") ] ] ]
+        )
     // -- Vis --
     | NodeKind.DataGrid spec ->
         match spec.StaticRows with

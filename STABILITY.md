@@ -3207,3 +3207,38 @@ live trees — a value the wire format cannot carry is encoded as a sentinel str
 than the wire vocabulary otherwise has only `NODE_NOT_FOUND` available, which is a lie about a node
 that is plainly there. A closed refusal set that forces an implementation to misreport is not a
 stricter contract; it is a less truthful one.
+
+---
+
+## Recorded change — 0.54.0, `FileUpload` drop target and paste ingestion (fuaran#1115)
+
+**Additive on every axis, and wire-additive in the strict sense that no shipped document's bytes
+move.** `FileUploadSpec` gains two `bool` members — `DropTarget` and `AcceptPaste` — each omitted on
+the wire when `false`. Every upload document written before this release omits both, encodes to the
+bytes it always did, and decodes to a control that renders exactly as before.
+
+**Source-breaking in one narrow place**, the 0.50.0 / 0.53.0 direction rather than the 0.51.0 one: a
+record gains fields, so a FULL-literal `FileUploadSpec` construction is `FS0764`. `Defaults.fileUpload`
+fills both (with `false`), so a consumer that builds through `{ Defaults.fileUpload with … }` — the
+supported route, and the one the estate's own `SpecConstruction` guard requires at an authoring site —
+is unaffected. The C# veneer's `FileUploadOptions` gains two `init` properties, both defaulting to
+`false`, so no existing C# or VB call site changes.
+
+**What did NOT change, deliberately.** No new `Action` case, no new handler slot, no new
+`FormFieldKind`, and no new server-driven event name: a dropped or pasted file resolves through the
+same `OnSelect` / `FileSelection` path a picked one does, and the server-driven boundary's existing
+`change` / `file-read` rows carry both routes because a conformant client writes ingested files into
+the control's own file input rather than dispatching around it. The gestures themselves — the drag,
+the drop, the paste, the visible drop state — are renderer affordances named nowhere on the wire.
+
+**New validator code: FUARAN121 (Warning)** — a `FileUpload` declaring either gesture while carrying
+no `onSelect`. Warning rather than Error because a tree assembled before its handler is wired is an
+ordinary authoring step; reported at all because a drop that lands nowhere has no user-agent feedback
+of any kind, where a handler-less picker at least leaves the chosen filename in the browser's own
+chrome.
+
+**New render-obligation claim: `picker-always-present`** — the file picker and its label are emitted
+whatever gestures a document declares. Every host in the §11.0 roster reports it UNCHECKED until it
+adopts the claim, which is the render-fidelity manifest working as designed.
+
+The normative cross-host contract is `WIRE_FORMAT.md` §3.6.10.

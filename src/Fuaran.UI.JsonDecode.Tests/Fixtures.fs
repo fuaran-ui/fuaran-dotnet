@@ -2003,6 +2003,42 @@ let fileUpload: Node<obj> =
         ))
         None
 
+/// Phase 1115 — a drop-target upload. `dropTarget` is present and
+/// `acceptPaste` is OMITTED, which is what makes this vector pin the polarity
+/// rather than merely exercise the field: a host reading an absent `acceptPaste`
+/// as "paste admitted" round-trips these bytes perfectly and is wrong about what
+/// the document permits. `accept` is populated deliberately — the same filter the
+/// picker applies has to apply to a drop, and a vector with no filter would say
+/// nothing about that.
+let fileUploadDrop: Node<obj> =
+    node
+        "upload-drop-1"
+        (NodeKind.FileUpload(
+            { Defaults.fileUpload with
+                Label = TextSource.Literal "Drop a spreadsheet"
+                Accept = [ ".csv"; "text/csv" ]
+                Multiple = true
+                OnSelect = Some(fun _ -> placeholderChain)
+                DropTarget = true }
+        ))
+        None
+
+/// Phase 1115 — a paste-accepting upload, the mirror vector: `acceptPaste`
+/// present, `dropTarget` omitted. Single-file and image-filtered, because
+/// pasting a screenshot into an avatar field is the shape this route exists for
+/// and it is the one that exercises the wildcard-MIME arm of the accept filter.
+let fileUploadPaste: Node<obj> =
+    node
+        "upload-paste-1"
+        (NodeKind.FileUpload(
+            { Defaults.fileUpload with
+                Label = TextSource.Literal "Paste an image"
+                Accept = [ "image/*" ]
+                OnSelect = Some(fun _ -> placeholderChain)
+                AcceptPaste = true }
+        ))
+        None
+
 let select: Node<obj> =
     node
         "select-1"
@@ -5247,6 +5283,8 @@ let allNodes: (string * Node<obj>) list =
       "Input/Button (Action.ReadFileBody base64)", buttonReadFile
       "Input/Button (Notify / SetState / AiTool — JSON payloads)", buttonJsonPayloads
       "Input/FileUpload", fileUpload
+      "Input/FileUpload (Phase 1115 — drop target; acceptPaste OMITTED)", fileUploadDrop
+      "Input/FileUpload (Phase 1115 — paste ingestion, image/* filtered; dropTarget OMITTED)", fileUploadPaste
       "Input/Select", select
       "Input/Select (multi-select — list value)", multiSelect
       "Input/Form (Phase 426 — handler-free write-back fields, State-bound)", formDeclarative

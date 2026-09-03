@@ -86,6 +86,7 @@
     <Compile Include="VisAdapter.fs" />
     <Compile Include="LocalBindings.fs" />
     <Compile Include="ComboboxControl.fs" />
+    <Compile Include="FileUploadDrop.fs" />
     <Compile Include="Render.fs" />
     <Compile Include="Hydration.fs" />
     <Compile Include="MathEnhance.fs" />

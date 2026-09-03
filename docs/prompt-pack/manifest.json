@@ -1,7 +1,7 @@
 {
   "name": "fuaran-ai-authoring-pack",
   "wireFormatVersion": "v1",
-  "languageVersion": "0.53.0",
+  "languageVersion": "0.54.0",
   "description": "Copy-pasteable prompt pack that makes any AI emit canonical Fuaran UI JSON. Generated from the wire-format-fixtures corpus and drift-checked in the build. References the public Fuaran surface only.",
   "schemaId": "https://fuaran.dev/wire-format/v1/schema.json",
   "artifacts": {

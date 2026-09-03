@@ -498,6 +498,22 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a Combobox `allowFreeText` of `\"yes\"` — refused rather than coerced. The slot decides whether values OUTSIDE the option set are admitted, so a lenient truthiness read is a constraint silently relaxed by a string: `\"yes\"`, `\"no\"` and `\"false\"` are all non-empty, and a host that coerced them would widen the field on two of the three. It also omits at `false`, so absence already spells the safe answer and a wrong-typed present value can only mean the emitter meant something it did not say" }
+      { Id = "reject-upload-droptarget-nonbool"
+        Json =
+          """{"id":"up","kind":{"$type":"FileUpload","accept":[".csv"],"dropTarget":"true","label":"Upload","multiple":false,"onSelect":"<closure>"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.dropTarget"
+        IsOp = false
+        Description =
+          "a FileUpload `dropTarget` of `\"true\"` — refused rather than coerced. The slot decides whether a whole INGRESS ROUTE exists, and it omits at `false`, so absence already spells the plain picker: a present wrong-typed value can only mean the emitter meant something it did not say. A lenient truthiness read would open a drop target on `\"no\"` and `\"false\"` alike, and the reader would find out by dropping a file into a control that never listened for it" }
+      { Id = "reject-upload-acceptpaste-nonbool"
+        Json =
+          """{"id":"up","kind":{"$type":"FileUpload","accept":["image/*"],"acceptPaste":1,"label":"Upload","multiple":false,"onSelect":"<closure>"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.acceptPaste"
+        IsOp = false
+        Description =
+          "a FileUpload `acceptPaste` of `1` — the second gesture slot, refused on the same reasoning and vectored separately because it is a separate decoder arm. A number is the shape a truthiness coercion is likeliest to admit, which is why this vector carries one where its `dropTarget` twin carries a string" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

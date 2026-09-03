@@ -6214,6 +6214,12 @@
         },
         "disabled": {
           "$ref": "#/$defs/Binding_bool"
+        },
+        "dropTarget": {
+          "type": "boolean"
+        },
+        "acceptPaste": {
+          "type": "boolean"
         }
       },
       "required": [
