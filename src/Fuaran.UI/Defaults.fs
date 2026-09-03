@@ -506,7 +506,12 @@ let grid<'row, 'Msg> : GridSpecOf<'row, 'Msg> =
       // Phase 1473 — the print-break declarations. Both off by default: the
       // pre-1473 wire, byte-for-byte, and a screen rendering that is unchanged.
       KeepRowsTogether = false
-      RepeatHeader = false }
+      RepeatHeader = false
+      // Phase 1123 — the cross-container transfer pair. Both absent by default,
+      // so a grid built from this default exchanges rows with nothing and emits
+      // the bytes and the DOM it always did.
+      TransferOutKey = Option.None
+      TransferInKey = Option.None }
 
 let column<'Msg> : Column<'Msg> =
     { Label = ""

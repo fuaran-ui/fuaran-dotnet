@@ -920,6 +920,66 @@ type PreEmitDefect =
     /// have to count out by hand through the nesting.
     | TreeItemWithoutLabel of nodeId: string * itemId: string
 
+    /// **FUARAN129 (Warning)**. A cross-container transfer declaration with no
+    /// counterpart anywhere in the tree (Phase 1123) — a dead pairing, the
+    /// FUARAN125 / FUARAN128 shape at a fifth slot, and the one this cluster
+    /// names by its own word: a **fake affordance**.
+    ///
+    /// TWO conditions share ONE code because they are one rule stated from the
+    /// two ends: *a transfer end was declared and there is no other end for it
+    /// to reach*.
+    ///
+    ///   * `NoSource` — a grid declares `transferInKey` K and no grid in this
+    ///     tree declares `transferOutKey` K. A drop zone nothing can reach: the
+    ///     grid draws its place control and its rows accept drops, so a reader
+    ///     is invited to move something in, and no drag that could satisfy the
+    ///     invitation can ever begin. This is the condition the charter row
+    ///     names, and the sharper of the two, because the affordance is VISIBLE
+    ///     and simply never fires.
+    ///   * `NoTarget` — a grid declares `transferOutKey` K and no grid in this
+    ///     tree declares `transferInKey` K. A drag handle with nowhere to go:
+    ///     the reader can lift a row and will find no list that will take it.
+    ///
+    /// **Whole-tree, so it cannot be a decoder rule.** A per-object codec sees
+    /// one grid and could never answer "does any OTHER grid name this key",
+    /// which is why `transferInKey` / `transferOutKey` decode as two independent
+    /// optional strings and the relation is judged here — the split
+    /// `ModalSpec.anchor` and `pageSize` already carry, for the same reason.
+    ///
+    /// **Warning, not Error.** A tree mid-authoring holds one end before the
+    /// other arrives, and a board whose second column is a later edit is an
+    /// ordinary state to be in. The FUARAN125 precedent exactly.
+    ///
+    /// **What is deliberately NOT judged.** Whether either end has a WRITABLE
+    /// destination. An end whose source is a `Transform` — a filtered view over
+    /// one collection — is the case cross-container transfer exists for: the
+    /// record is still written to the shared key and the application applies it,
+    /// so calling that end dead would be exactly backwards.
+    ///
+    /// Carries the grid's id, the key, and which condition fired.
+    | DeadTransferPairing of nodeId: string * key: string * defect: TransferDefect
+
+    /// **FUARAN130 (Warning)**. A grid declaring either end of the transfer pair
+    /// with no `rowKeyField` (Phase 1123) — the transfer can happen and cannot
+    /// SAY WHAT MOVED.
+    ///
+    /// The record the drop writes names the moved row by its identity, and
+    /// `rowKey` is a host closure that erases to `"<closure>"` on the wire — so
+    /// a DECODED transfer end carrying only a closure has no identity to put in
+    /// the record, and every transfer out of it would report that nothing moved.
+    /// That is a strictly narrower complaint than FUARAN078's
+    /// (`UnstableRowIdentity`), which fires when a grid has NEITHER spelling;
+    /// this one fires on a grid that has the closure and would pass that rule.
+    ///
+    /// **Warning, not Error**, and reported on the IN end as well as the OUT
+    /// end: an in-only grid receives a record whose `itemId` came from
+    /// elsewhere and can receive perfectly — but it is also the grid a reader
+    /// drags out of next when the pair is two-way, and an identity slot missing
+    /// on one end of a board is a defect of the board.
+    ///
+    /// Carries the grid's id.
+    | TransferWithoutRowIdentity of nodeId: string
+
     /// **FUARAN128 (Warning)**. A `Switch` declaring `autoAdvanceMs` that
     /// cannot advance (Phase 1122) — a dead declaration, the FUARAN125 shape at
     /// a fourth slot.
@@ -1167,6 +1227,16 @@ and [<RequireQualifiedAccess>] PrintBreakDefect =
     /// INSIDE it has nothing to act on. Reporting the pair together would have
     /// been tidier and wrong.
     | NoSubtreeToKeepTogether
+
+/// Which end of a cross-container transfer was declared without its
+/// counterpart (FUARAN129, Phase 1123). Typed rather than a string on the same
+/// reasoning `AutoAdvanceDefect` records: the shapes stay enumerable, and a
+/// third cannot be added by prose.
+and [<RequireQualifiedAccess>] TransferDefect =
+    /// `transferInKey` declared and no grid releases to that key.
+    | NoSource
+    /// `transferOutKey` declared and no grid accepts from that key.
+    | NoTarget
 
 /// Why a declared `autoAdvanceMs` cannot advance (FUARAN128, Phase 1122).
 /// Typed rather than a string for `PrintBreakDefect`'s reason: the shapes stay
@@ -1597,6 +1667,28 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "tree '%s' carries more than one row with the id '%s' — a row id is what the expanded set and the selection NAME, so a repeated one makes both ambiguous: expanding one row opens two, and a restored selection lands on whichever the host reached first. Give every row in this tree its own id"
             nodeId
             itemId
+    | PreEmitDefect.DeadTransferPairing(nodeId, key, TransferDefect.NoSource) ->
+        "FUARAN129",
+        DefectSeverity.Warning,
+        sprintf
+            "grid '%s' accepts transfers on the key '%s' and no grid in this tree releases to it — a dead drop zone. The grid draws its place control and its rows accept drops, so a reader is invited to move something into it, and no drag that could satisfy the invitation can ever begin. Declare transferOutKey '%s' on the grid rows should come FROM, or drop transferInKey"
+            nodeId
+            key
+            key
+    | PreEmitDefect.DeadTransferPairing(nodeId, key, TransferDefect.NoTarget) ->
+        "FUARAN129",
+        DefectSeverity.Warning,
+        sprintf
+            "grid '%s' releases transfers to the key '%s' and no grid in this tree accepts from it — a drag handle with nowhere to go. A reader can lift a row and will find no list that will take it. Declare transferInKey '%s' on the grid rows should go TO, or drop transferOutKey"
+            nodeId
+            key
+            key
+    | PreEmitDefect.TransferWithoutRowIdentity nodeId ->
+        "FUARAN130",
+        DefectSeverity.Warning,
+        sprintf
+            "grid '%s' declares a cross-container transfer with no rowKeyField — the transfer record names the moved row by its identity, and a rowKey closure crosses the wire as the closure placeholder, so a decoded transfer out of this grid would report that nothing moved. Name the column that identifies a row with rowKeyField"
+            nodeId
     | PreEmitDefect.DeadAutoAdvance(nodeId, AutoAdvanceDefect.NoWritableSelector) ->
         "FUARAN128",
         DefectSeverity.Warning,
@@ -2091,6 +2183,12 @@ let private validateCore
     // judged post-walk for the same reason the accessibility references are:
     // whether an id exists is not a per-node fact.
     let popoverAnchorUses = ResizeArray<string * string>()
+    // Phase 1123 (FUARAN129) — (gridNodeId, outKey option, inKey option) per
+    // grid declaring either end of the transfer pair. Judged post-walk for the
+    // same reason the two collections above are: whether ANOTHER grid names the
+    // same key is not a per-node fact, and a per-object decoder can never see
+    // it either.
+    let transferDeclarations = ResizeArray<string * string option * string option>()
 
     let recordNodeId (raw: string) =
         if raw = "" then
@@ -2284,6 +2382,19 @@ let private validateCore
 
             if spec.RowKey.IsNone && spec.RowKeyField.IsNone then
                 defects.Add(PreEmitDefect.UnstableRowIdentity nodeIdStr)
+
+            // Phase 1123 — the transfer pair. The PAIRING half is whole-tree and
+            // is recorded here for the post-walk pass (FUARAN129); the IDENTITY
+            // half is a per-node fact and is decided now (FUARAN130).
+            if spec.TransferInKey.IsSome || spec.TransferOutKey.IsSome then
+                transferDeclarations.Add(nodeIdStr, spec.TransferOutKey, spec.TransferInKey)
+
+                // Narrower than FUARAN078 above, which fires when a grid has
+                // NEITHER spelling: this one fires on a grid that HAS the closure
+                // and therefore passes that rule, while still having no identity
+                // any decoded host could put in a transfer record.
+                if spec.RowKeyField.IsNone then
+                    defects.Add(PreEmitDefect.TransferWithoutRowIdentity nodeIdStr)
 
             // FUARAN125 (Phase 1473) — `repeatHeader` on a grid that renders no
             // header cells. The two legs have different header sources and the
@@ -2950,6 +3061,37 @@ let private validateCore
     for (popoverId, target) in popoverAnchorUses do
         if not (Map.containsKey target facts.Nodes) then
             defects.Add(PreEmitDefect.PopoverWithoutAnchor(popoverId, Some target))
+
+    // FUARAN129 (Phase 1123) — a transfer end with no counterpart. Judged over
+    // the whole tree, because that is the only place the question has an answer:
+    // one grid's declaration is meaningless on its own, and the PAIRING is the
+    // capability.
+    //
+    // At most ONE finding per grid, and the IN condition is reported first when
+    // a two-way grid trips both, because a grid declaring both ends of one key
+    // in a tree where nothing else names it has ONE fix, and two findings on it
+    // would bury that fix.
+    // A grid's OWN declarations are excluded when judging it, and that exclusion
+    // is the rule rather than a refinement of it: a two-way column declares both
+    // ends of one key, so counting itself would make a lone grid on an otherwise
+    // empty board pair with itself and report nothing — while the only gesture
+    // it admits is a drop on the grid the drag began in, which is a REORDER and
+    // is Phase 934's, not a transfer at all.
+    let releasesTo (key: string) (exceptGrid: string) =
+        transferDeclarations
+        |> Seq.exists (fun (gridId, out, _) -> gridId <> exceptGrid && out = Some key)
+
+    let acceptsFrom (key: string) (exceptGrid: string) =
+        transferDeclarations
+        |> Seq.exists (fun (gridId, _, inKey) -> gridId <> exceptGrid && inKey = Some key)
+
+    for (gridId, outKey, inKey) in transferDeclarations do
+        match inKey, outKey with
+        | Some k, _ when not (releasesTo k gridId) ->
+            defects.Add(PreEmitDefect.DeadTransferPairing(gridId, k, TransferDefect.NoSource))
+        | _, Some k when not (acceptsFrom k gridId) ->
+            defects.Add(PreEmitDefect.DeadTransferPairing(gridId, k, TransferDefect.NoTarget))
+        | _ -> ()
 
     // FUARAN072 / FUARAN073: every wire-survivable `Action.Call` either
     // dispatches through a closure, or lands its response where a reader

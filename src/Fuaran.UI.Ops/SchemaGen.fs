@@ -1168,6 +1168,15 @@ let private defs: (string * J) list =
             "editStateKey", str
             // Phase 934 — declarative row reorder; omit-when-false, as `editable`.
             "reorderable", JObj [ "type", JStr "boolean" ]
+            // Phase 1123 — cross-container transfer: the two sides of ONE shared
+            // State key. Both plain optional strings here, and that is the whole
+            // of what a structural schema can say about them: whether any OTHER
+            // grid declares the counterpart is a cross-node relation, which
+            // Draft 2020-12 cannot state at all — so the pairing rule lives at
+            // pre-emit (FUARAN129), beside `pageSize`-without-`pageStateKey` and
+            // for the same reason.
+            "transferInKey", str
+            "transferOutKey", str
             // Phase 1473 — the grid's own two print-break declarations, on the
             // same omit-when-false convention. `keepRowsTogether` names the row
             // boundary, `repeatHeader` the header row group — the two the

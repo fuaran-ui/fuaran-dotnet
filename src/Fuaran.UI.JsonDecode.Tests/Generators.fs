@@ -1,4 +1,4 @@
-module Fuaran.UI.JsonDecode.Tests.Generators
+﻿module Fuaran.UI.JsonDecode.Tests.Generators
 
 // ============================================================================
 //  Phase 101 — generative / property-based wire-format fuzzer (generators).
@@ -867,6 +867,8 @@ let private genGridSpec: Gen<GridSpec<obj>> =
               OnRowClick = None
               Editable = editable
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = keepRowsTogether
               RepeatHeader = repeatHeader }

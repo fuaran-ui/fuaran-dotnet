@@ -1719,6 +1719,17 @@ and GridSpecOf<'row, 'Msg> =
         /// continues onto. Erases to `DataGridSpec.RepeatHeader`; omitted on the
         /// wire at `false`.
         RepeatHeader: bool
+        /// Phase 1123 — this grid may RELEASE rows onto the named State key.
+        /// Paired with `TransferInKey` below, which is the same key declared from
+        /// the accepting side; a grid declaring both does each. Erases to
+        /// `DataGridSpec.TransferOutKey`; omitted on the wire when absent.
+        TransferOutKey: string option
+        /// Phase 1123 — this grid ACCEPTS rows arriving on the named State key.
+        /// The drop writes `{"itemId","from","to","index"}` there, and the
+        /// renderer also commits each half through that end's own `EditStateKey`
+        /// destination. Erases to `DataGridSpec.TransferInKey`; omitted on the
+        /// wire when absent.
+        TransferInKey: string option
     }
 
 /// §4k Q3.2 — Column carries a typed `Kind`, not a nullable `OnEdit`.

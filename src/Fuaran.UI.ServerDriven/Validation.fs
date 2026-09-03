@@ -1,4 +1,4 @@
-module Fuaran.UI.ServerDriven.Validation
+﻿module Fuaran.UI.ServerDriven.Validation
 
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Introspect
@@ -176,6 +176,27 @@ let legitimateEvents (node: Node<'Msg>) : Set<string> =
     //
     // A `Switch` therefore stays on the default-deny `Set.empty` below with an
     // interval declared, exactly as it does without one.
+    //
+    // Phase 1123 — a `DataGrid` declaring `transferOutKey` / `transferInKey`
+    // takes no row either, on the `Switch` reasoning exactly and with one
+    // addition specific to this phase. A transfer's whole effect is a record
+    // written to a state key plus each end's own rows write, and every one of
+    // those is a STATE WRITE reaching a server-driven session as an ordinary
+    // `Action.SetState` — the sort header's and the pager's route, which needed
+    // no row when they shipped and needs none now.
+    //
+    // The addition: this is the first affordance whose gesture SPANS TWO NODES,
+    // and it is worth stating that the span changes nothing here. The allow-list
+    // is keyed by the node that RECEIVES an event; a transfer has no receiving
+    // node, because the two grids are the WRITERS of the gesture and never its
+    // addressees. A row admitting `drop` on the target would have opened a
+    // boundary that neither wire member asks for and that nothing on the
+    // server-driven path could address.
+    //
+    // The SSR floor is the reason there is nothing to admit even in principle:
+    // a static host emits neither the drag handle nor the place control (see
+    // `docs/SSR.md`), so there is no element on that path for an event to
+    // arrive at.
     | _ -> Set.empty
 
 // ─── payload accessors ──────────────────────────────────────────────────────

@@ -959,6 +959,24 @@ and DataGridSpec<'Msg> =
       // IS a write of the whole updated rows value, so it needs no destination of
       // its own.
       Reorderable: bool
+      // Phase 1123 — this grid ACCEPTS rows arriving on the named State key.
+      // Paired with `TransferOutKey` below, which is the same key declared from
+      // the releasing side: two grids naming one key may exchange rows, and a
+      // grid declaring both does each. The drop writes
+      // `{"itemId","from","to","index"}` to that key, and the renderer also
+      // commits each half through the end's own `EditStateKey` destination — a
+      // record nothing applies would be an affordance that moves nothing.
+      //
+      // The pairing is the fact only the tree knows: a host cannot infer that
+      // two grids on a page are one board rather than two unrelated tables.
+      // Omitted on the wire when absent.
+      TransferInKey: string option
+      // Phase 1123 — this grid may RELEASE rows to the named State key; see
+      // `TransferInKey` above for the pair. TWO fields rather than one symmetric
+      // key because the one-way ends are ordinary — an archive column that
+      // accepts and never releases, a Done column that releases nothing back.
+      // Omitted on the wire when absent.
+      TransferOutKey: string option
       // Phase 1473 — a ROW is one thing: when the rendering is paged, no row
       // is split across the boundary, so a wrapped cell does not leave half
       // its lines on one page and half on the next. `break-inside: avoid` on
@@ -2037,7 +2055,7 @@ and private encCustomSpec (s: CustomSpec) : JVal =
     Canon.typed "Custom" ([ Some("moduleId", JStr s.ModuleId); Some("componentId", JStr s.ComponentId); Some("props", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, id v))) s.Props); (s.ContentHash |> Option.map (fun v -> "contentHash", encContentHash v)); (s.ExposedNodeIds |> Option.map (fun v -> "exposedNodeIds", JArr(List.map JStr v))) ] |> List.choose id)
 
 and private encDataGridSpec<'Msg> (s: DataGridSpec<'Msg>) : JVal =
-    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); (s.PageSize |> Option.map (fun v -> "pageSize", JInt v)); (s.PageStateKey |> Option.map (fun v -> "pageStateKey", JStr v)); (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); (s.EditStateKey |> Option.map (fun v -> "editStateKey", JStr v)); (if s.Reorderable = false then None else Some("reorderable", JBool s.Reorderable)); (if s.KeepRowsTogether = false then None else Some("keepRowsTogether", JBool s.KeepRowsTogether)); (if s.RepeatHeader = false then None else Some("repeatHeader", JBool s.RepeatHeader)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
+    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); (s.PageSize |> Option.map (fun v -> "pageSize", JInt v)); (s.PageStateKey |> Option.map (fun v -> "pageStateKey", JStr v)); (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); (s.EditStateKey |> Option.map (fun v -> "editStateKey", JStr v)); (if s.Reorderable = false then None else Some("reorderable", JBool s.Reorderable)); (s.TransferInKey |> Option.map (fun v -> "transferInKey", JStr v)); (s.TransferOutKey |> Option.map (fun v -> "transferOutKey", JStr v)); (if s.KeepRowsTogether = false then None else Some("keepRowsTogether", JBool s.KeepRowsTogether)); (if s.RepeatHeader = false then None else Some("repeatHeader", JBool s.RepeatHeader)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encDisclosureSpec<'Msg> (s: DisclosureSpec<'Msg>) : JVal =
     Canon.typed "Disclosure" ([ Some("children", JArr(List.map encNode s.Children)); Some("defaultOpen", JBool s.DefaultOpen); Some("heading", encTextSource s.Heading); (s.OnToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")); Some("open", (encBinding JBool) s.Open) ] |> List.choose id)
@@ -3537,12 +3555,14 @@ and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, string> =
     dOpt "defaultSort" __fs decDefaultSort |> Result.bind (fun defaultSort ->
     dOpt "editStateKey" __fs dStr |> Result.bind (fun editStateKey ->
     dDef "reorderable" __fs dBool (false) |> Result.bind (fun reorderable ->
+    dOpt "transferInKey" __fs dStr |> Result.bind (fun transferInKey ->
+    dOpt "transferOutKey" __fs dStr |> Result.bind (fun transferOutKey ->
     dDef "keepRowsTogether" __fs dBool (false) |> Result.bind (fun keepRowsTogether ->
     dDef "repeatHeader" __fs dBool (false) |> Result.bind (fun repeatHeader ->
     dReq "source" __fs (decBinding Fuaran.Core.RowCodec.decodeRows) |> Result.bind (fun source ->
     dOpt "staticRows" __fs decStaticRows |> Result.bind (fun staticRows ->
     (dPresent "onRowClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onRowClick ->
-    Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; SortStateKey = sortStateKey; PageSize = pageSize; PageStateKey = pageStateKey; DefaultSort = defaultSort; EditStateKey = editStateKey; Reorderable = reorderable; KeepRowsTogether = keepRowsTogether; RepeatHeader = repeatHeader; Source = source; StaticRows = staticRows; OnRowClick = onRowClick }))))))))))))))))
+    Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; SortStateKey = sortStateKey; PageSize = pageSize; PageStateKey = pageStateKey; DefaultSort = defaultSort; EditStateKey = editStateKey; Reorderable = reorderable; TransferInKey = transferInKey; TransferOutKey = transferOutKey; KeepRowsTogether = keepRowsTogether; RepeatHeader = repeatHeader; Source = source; StaticRows = staticRows; OnRowClick = onRowClick }))))))))))))))))))
 
 and private decDisclosureSpec (j: JVal) : Result<DisclosureSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -4020,7 +4040,7 @@ let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<s
     { Id = id; Kind = NodeKind.Custom { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = None; ExposedNodeIds = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<Fuaran.Core.Row seq>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Reorderable = false; KeepRowsTogether = false; RepeatHeader = false; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Reorderable = false; TransferInKey = None; TransferOutKey = None; KeepRowsTogether = false; RepeatHeader = false; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkDisclosure (id: string) (children: Node<'Msg> list) (defaultOpen: bool) (heading: TextSource) (``open``: Binding<bool>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = None; Open = ``open`` }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }

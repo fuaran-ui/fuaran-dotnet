@@ -337,6 +337,24 @@ let support: Gen.GenSupport =
                     "// clicked column's `field` — a field-less closure column renders without"
                     "// the affordance. Omitted on the wire when absent; `staticRows`' own"
                     "// Phase-801 sort intent is untouched." ]
+                  "field:DataGridSpec.TransferInKey",
+                  [ "// Phase 1123 — this grid ACCEPTS rows arriving on the named State key."
+                    "// Paired with `TransferOutKey` below, which is the same key declared from"
+                    "// the releasing side: two grids naming one key may exchange rows, and a"
+                    "// grid declaring both does each. The drop writes"
+                    "// `{\"itemId\",\"from\",\"to\",\"index\"}` to that key, and the renderer also"
+                    "// commits each half through the end's own `EditStateKey` destination — a"
+                    "// record nothing applies would be an affordance that moves nothing."
+                    "//"
+                    "// The pairing is the fact only the tree knows: a host cannot infer that"
+                    "// two grids on a page are one board rather than two unrelated tables."
+                    "// Omitted on the wire when absent." ]
+                  "field:DataGridSpec.TransferOutKey",
+                  [ "// Phase 1123 — this grid may RELEASE rows to the named State key; see"
+                    "// `TransferInKey` above for the pair. TWO fields rather than one symmetric"
+                    "// key because the one-way ends are ordinary — an archive column that"
+                    "// accepts and never releases, a Done column that releases nothing back."
+                    "// Omitted on the wire when absent." ]
                   "type:ChartDataLabels",
                   [ "/// Whether a chart writes its values directly onto the picture, and where"
                     "/// (Phase 881)."

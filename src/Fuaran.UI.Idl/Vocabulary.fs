@@ -2112,6 +2112,32 @@ let visKinds: IdlKind list =
             // reordered rows commit to `editStateKey` above — a reorder IS a write of
             // the whole updated rows value, so it needs no destination of its own.
             omit "reorderable" TBool (VBool false)
+            // Fuaran-UI Phase 1123 — cross-container transfer. The affordance→op
+            // charter's governing sentence names "the node that both hosts the
+            // gesture and consumes its effect", singular; a transfer has TWO
+            // nodes and neither alone consumes it, so the sentence is extended:
+            // where a gesture spans two nodes, the wire names the capability on
+            // BOTH ENDS as a shared KEY each declares its own side of, and the
+            // effect is one record written to that key.
+            //
+            // `transferOutKey` — this grid may RELEASE rows to the named State
+            // key. `transferInKey` — this grid ACCEPTS rows arriving on it. Both
+            // name the SAME key, from the two sides; a grid declaring both with
+            // one key does both. Two fields rather than one symmetric key
+            // because the one-way ends are ordinary: an archive column that
+            // accepts and never releases, a Done column that releases nothing
+            // back.
+            //
+            // Deliberately NOT `-StateKey`, against the sortStateKey /
+            // pageStateKey / editStateKey convention: that suffix marks a key a
+            // node both writes AND READS to change its own presentation, and
+            // neither end reads this one for its own presentation.
+            //
+            // The pairing is the whole of what is added, and it is the fact only
+            // the tree knows — a host cannot infer that two grids on a page are
+            // one board rather than two unrelated tables.
+            opt "transferInKey" TStr
+            opt "transferOutKey" TStr
             // Phase 1473 — the two print-break declarations a grid can make and
             // that nothing else can make FOR it. `keepRowsTogether` says a row is
             // one thing and must not be split across a page boundary;

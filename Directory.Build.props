@@ -506,7 +506,7 @@
          nothing is removed and every pre-1120 document encodes and decodes to
          byte-identical bytes. 0.60.0 was taken by Phase 1473; this is the next
          slot. See STABILITY.md "Recorded change - 0.61.0, `NodeKind.Tree`". -->
-    <Version>0.62.0</Version>
+    <Version>0.63.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

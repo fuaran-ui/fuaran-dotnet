@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using FsFactory = global::Fuaran.UI.Fuaran;
@@ -117,7 +117,13 @@ public static partial class Fuaran
                 // Phase 1473 — the two print-break declarations, APPENDED to the
                 // typed facade so no earlier ctor position moved.
                 options.KeepRowsTogether,
-                options.RepeatHeader)));
+                options.RepeatHeader,
+                // Phase 1123 — the cross-container transfer pair, appended for
+                // the same reason. `null` is the F# `None`: no key is emitted and
+                // the grid exchanges rows with nothing, which is what every grid
+                // written before this release says.
+                Fs.OptStr(options.TransferOutKey),
+                Fs.OptStr(options.TransferInKey))));
 }
 
 /// <summary>A data-grid column. Accessors read the PROJECTED row (fuaran#665 —
@@ -405,4 +411,22 @@ public sealed record DataGridOptions<TRow>
     /// than script's — it holds with no JavaScript at all.
     /// </summary>
     public bool RepeatHeader { get; init; }
+    /// <summary>Phase 1123 — this grid may RELEASE rows onto the named State key.
+    /// Pair it with <see cref="TransferInKey"/> on the grid rows should arrive at (the same key
+    /// name), and a reader can drag or keyboard-move a row from here to there. Leave it
+    /// <c>null</c> (the default) and the grid exchanges rows with nothing.
+    /// <para>Declaring a key no other grid accepts from is a dead handle and is reported pre-emit
+    /// (FUARAN129); the moved row is identified through <see cref="RowKeyField"/>, so declare that
+    /// too (FUARAN130).</para></summary>
+    public string? TransferOutKey { get; init; }
+
+    /// <summary>Phase 1123 — this grid ACCEPTS rows arriving on the named State key; see
+    /// <see cref="TransferOutKey"/> for the releasing side. A grid declaring both with one key
+    /// does each, which is the ordinary board column; declaring only this one is the archive
+    /// column that accepts and never releases.
+    /// <para>The drop writes <c>{"itemId","from","to","index"}</c> to the key AND commits each
+    /// half through that end's own edit destination — the renderer owes the application, not only
+    /// the gesture.</para></summary>
+    public string? TransferInKey { get; init; }
+
 }

@@ -90,7 +90,15 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // its printed output would silently split the blocks the document declared
 // whole, which is precisely the unstyled-control skew this fingerprint exists
 // to catch.
-let vocabularyFingerprint = "fv1:8068069268d58955"
+// Phase 1123 moved this. Four classes ENTERED the vocabulary — the container
+// `fuaran-grid-transfer`, the drop state `fuaran-drag-over`, the keyboard
+// landing point `fuaran-drag-place` and the live region `fuaran-drag-status` —
+// and the reference sheet gained the rules that style them. A host pinning the
+// old value would accept a sheet that knows none of the four, and would then
+// render an unstyled place control and NO VISIBLE DROP STATE at all: a drag
+// whose target the reader cannot see is a guess, which is exactly the
+// unstyled-control skew this fingerprint exists to catch.
+let vocabularyFingerprint = "fv1:e697c1d1c162b9a7"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;

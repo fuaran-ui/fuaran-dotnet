@@ -1039,6 +1039,24 @@
           }
         },
         {
+          "name": "transferInKey",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "str"
+          }
+        },
+        {
+          "name": "transferOutKey",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "str"
+          }
+        },
+        {
           "name": "keepRowsTogether",
           "optionality": {
             "$type": "omitDefault",

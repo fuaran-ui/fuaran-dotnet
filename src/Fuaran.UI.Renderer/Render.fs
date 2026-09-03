@@ -2465,13 +2465,38 @@ let chartPointClick<'Msg>
     | None -> ()
     | Some row -> chartPointSelected dispatch nodeId spec row
 
-/// Phase 934 — the in-flight row drag's source (grid NodeId + ABSOLUTE row
-/// index). Module-level because HTML5 drag state must survive between two
-/// independent event handlers on two different elements; keyed by the grid's
-/// own id so a drop on one grid can never consume a drag begun on another.
+/// Phase 934 / Phase 1123 — the in-flight row move: which grid released it,
+/// from which ABSOLUTE index, and (since 1123) everything a DIFFERENT grid
+/// needs to complete the move without reaching into the source's bindings —
+/// the row's identity, the row value to insert, the transfer key it travels on,
+/// and the source's own removal commit.
+///
+/// Module-level because the state must survive between event handlers on two
+/// independent elements, and — this is what 1123 added — between elements
+/// belonging to two independent grids. It carries the KEYBOARD lift as well as
+/// the pointer drag: the two routes reach the same drop logic, which is why
+/// there is one holder and not two.
+///
+/// Keyed by the source grid's own id, so a within-grid drop is a REORDER (Phase
+/// 934's path) and a cross-grid one is a TRANSFER, decided by comparing ids
+/// rather than by two different drag channels.
+///
 /// Client-only by construction — SSR renders the handle, but no event ever
 /// fires there.
-let mutable private gridDragSource: (string * int) option = None
+let mutable private gridDragSource: GridTransfer.Lifted<Fuaran.Core.Row> option =
+    None
+
+/// Phase 1123 — write a live-region line for one grid's transfer status.
+/// Imperative because the renderer holds no hooks and nothing about a lift is
+/// part of the document: the region is rendered EMPTY by both pipelines, so the
+/// server and the client's first render agree, and only a reader's own gesture
+/// ever puts text in it. A missing element (SSR, or a grid that declares no
+/// transfer) is a silent no-op rather than a throw.
+let private announceTransfer (nodeId: string) (message: string) : unit =
+    let el = Browser.Dom.document.getElementById (nodeId + "-fuaran-drag-status")
+
+    if not (isNull (box el)) then
+        el.textContent <- message
 
 let rec private renderKind
     (ctx: RenderContext<'Msg>)
@@ -5978,15 +6003,156 @@ and private renderGrid
                                 if not (obj.ReferenceEquals(moved, rows)) then
                                     writeBackTo ctx dest (Some(box (Seq.ofList moved))))
 
+                // Phase 1123 — the RELEASING half. The source resolves its own
+                // removal destination and hands the target a closure over it,
+                // so neither grid ever reaches into the other's bindings; the
+                // destination is the shared `gridWriteDestination` rule again,
+                // never a second write path.
+                //
+                // `None` is not "inert": a column that is a filtered view over
+                // one collection has no writable slot, and that is precisely the
+                // case cross-container transfer exists for — the record is still
+                // written to the shared key, and the application applies it.
+                let releaseCommit: (int -> unit) option =
+                    BindingResolver.transferDestination spec.TransferOutKey spec.EditStateKey spec.Source
+                    |> Option.map (fun dest ->
+                        fun (absolute: int) ->
+                            let remaining = GridTransfer.removeAt absolute rows
+
+                            if not (obj.ReferenceEquals(remaining, rows)) then
+                                writeBackTo ctx dest (Some(box (Seq.ofList remaining))))
+
+                // Phase 1123 — everything a lift carries. Built here because
+                // only this grid knows its own rows, its own identity slot and
+                // its own removal destination; the consuming grid gets a value
+                // and a closure and needs none of that.
+                let liftedAt (absolute: int) : GridTransfer.Lifted<Row> option =
+                    if absolute < 0 || absolute >= List.length rows then
+                        None
+                    else
+                        let row = List.item absolute rows
+
+                        // A transfer must NAME what moved, and `rowKey` erases to
+                        // the `"<closure>"` placeholder on decode. Without a usable
+                        // identity the row can still be REORDERED inside its own
+                        // grid, so the drag is still begun — only its transfer half
+                        // is withheld. FUARAN130 reports the declaration that got
+                        // here.
+                        let itemId =
+                            match rowKeyOf with
+                            | Some keyOf ->
+                                let k = keyOf row
+                                if usableKey k then k else ""
+                            | None -> ""
+
+                        Some
+                            { SourceNodeId = parentNodeId
+                              SourceIndex = absolute
+                              ItemId = itemId
+                              OutKey = (if itemId = "" then None else spec.TransferOutKey)
+                              Row = row
+                              Release = releaseCommit |> Option.map (fun r -> fun () -> r absolute) }
+
+                // Advertised only where a lift can actually happen — an
+                // undiscoverable shortcut and an advertised one that does
+                // nothing are the same defect from opposite sides.
+                let transferShortcuts =
+                    match spec.TransferOutKey with
+                    | Some _ -> "ArrowUp ArrowDown Control+X"
+                    | None -> "ArrowUp ArrowDown"
+
+                // Phase 1123 — the RECEIVING half: write the record the wire
+                // specifies, then apply each end's own commit where that end has
+                // a destination. The record is written FIRST and unconditionally,
+                // because it is the only part of a transfer that is promised on
+                // every source shape.
+                let transferInDestination =
+                    BindingResolver.transferDestination spec.TransferInKey spec.EditStateKey spec.Source
+
+                let receive (lifted: GridTransfer.Lifted<Row>) (index: int) : unit =
+                    match spec.TransferInKey with
+                    | None -> ()
+                    | Some inKey ->
+                        let at = GridTransfer.clampInsert index (List.length rows)
+
+                        // Routed through `runSynthesisedAction` so the write
+                        // crosses the same gate, scope routing and
+                        // host-reserved-key guard as any tree-originated
+                        // `Action.SetState` — the sort header's and the pager's
+                        // path exactly.
+                        runSynthesisedAction
+                            ctx
+                            (Action.SetState(
+                                inKey,
+                                Some(GridTransfer.record lifted.ItemId lifted.SourceNodeId parentNodeId at),
+                                None
+                            ))
+
+                        transferInDestination
+                        |> Option.iter (fun dest ->
+                            writeBackTo ctx dest (Some(box (Seq.ofList (GridTransfer.insertAt at lifted.Row rows)))))
+
+                        lifted.Release |> Option.iter (fun release -> release ())
+                        gridDragSource <- None
+
+                        announceTransfer
+                            parentNodeId
+                            (GridTransfer.placeAnnouncement lifted.ItemId at (List.length rows + 1))
+
+                // Phase 1123 — the visible drop state, toggled IMPERATIVELY on
+                // the element whose own handler is running. The renderer holds no
+                // hooks, and `:hover` is not updated during an HTML5 drag, so
+                // there is no declarative route to "a compatible row is over me";
+                // a class added and removed inside the drag handlers touches
+                // nothing React re-renders, since no render happens between
+                // `dragover` and `drop`. It is transient view state and never
+                // part of the document.
+                let dropStateOn (target: obj) (on: bool) : unit =
+                    if not (isNull target) then
+                        let el = target :?> Browser.Types.HTMLElement
+
+                        if on then
+                            el.classList.add "fuaran-drag-over"
+                        else
+                            el.classList.remove "fuaran-drag-over"
+
                 // The handle is a real <button>: focusable, keyboard-activatable
                 // and screen-reader announced with no ARIA re-plumbing. Keyboard
                 // is arrow keys on the focused handle — the current pattern for
                 // list reorder (`aria-grabbed` is deprecated and deliberately
                 // absent); pointer is native HTML5 drag onto any row.
+                //
+                // Phase 1123 — drawn for a grid that declares `transferOutKey`
+                // too, not only a reorderable one: the handle IS the drag source
+                // and the keyboard lift point, so a releasing grid without one
+                // would declare a capability with no way to invoke it. The arrow
+                // keys still belong to `reorderCommit` alone.
+                let handleShown = reorderCommit.IsSome || spec.TransferOutKey.IsSome
+
+                // The name states the routes this handle ACTUALLY has, because a
+                // handle on a transfer-only grid cannot be arrow-keyed and one on
+                // a reorder-only grid cannot be lifted out — announcing either as
+                // available would be the fake affordance in words rather than in
+                // markup.
+                let handleLabel (absolute: int) (total: int) : string =
+                    match reorderCommit.IsSome, spec.TransferOutKey.IsSome with
+                    | true, true ->
+                        sprintf
+                            "Move row %d of %d — drag, press an arrow key to reorder, or Control+X to lift it into another list"
+                            (absolute + 1)
+                            total
+                    | true, false ->
+                        sprintf "Reorder row %d of %d — drag, or press an arrow key to move it" (absolute + 1) total
+                    | false, _ ->
+                        sprintf
+                            "Move row %d of %d — drag, or press Control+X to lift it into another list"
+                            (absolute + 1)
+                            total
+
                 let reorderCellFor (rowIndex: int) : ReactElement list =
-                    match reorderCommit with
-                    | None -> []
-                    | Some commit ->
+                    if not handleShown then
+                        []
+                    else
                         let absolute = rowOffset + rowIndex
                         let total = List.length rows
 
@@ -5998,52 +6164,161 @@ and private renderGrid
                                             prop.type' "button"
                                             prop.custom ("data-reorder-handle", string absolute)
                                             prop.draggable true
-                                            prop.custom (
-                                                "aria-label",
-                                                sprintf
-                                                    "Reorder row %d of %d — drag, or press an arrow key to move it"
-                                                    (absolute + 1)
-                                                    total
-                                            )
-                                            prop.custom ("aria-keyshortcuts", "ArrowUp ArrowDown")
-                                            prop.onDragStart (fun _ -> gridDragSource <- Some(parentNodeId, absolute))
+                                            prop.custom ("aria-label", handleLabel absolute total)
+                                            prop.custom ("aria-keyshortcuts", transferShortcuts)
+                                            prop.onDragStart (fun _ -> gridDragSource <- liftedAt absolute)
                                             prop.onDragEnd (fun _ -> gridDragSource <- None)
                                             prop.onKeyDown (fun (e: Browser.Types.KeyboardEvent) ->
-                                                match e.key with
-                                                | "ArrowUp" ->
+                                                match e.key, reorderCommit with
+                                                | "ArrowUp", Some commit ->
                                                     e.preventDefault ()
                                                     commit absolute (absolute - 1)
-                                                | "ArrowDown" ->
+                                                | "ArrowDown", Some commit ->
                                                     e.preventDefault ()
                                                     commit absolute (absolute + 1)
-                                                | _ -> ())
+                                                | key, _ ->
+                                                    // Phase 1123 — the keyboard route into a transfer,
+                                                    // beside the arrow keys rather than replacing them:
+                                                    // a lift moves a row BETWEEN lists, the arrows move
+                                                    // it WITHIN one, and between them they reach every
+                                                    // position the pointer reaches. Lift fires only where
+                                                    // this grid declares it may release — a chord that
+                                                    // silently did nothing on a reorder-only grid would
+                                                    // be exactly the fake affordance the announcements
+                                                    // exist to prevent.
+                                                    match
+                                                        GridTransfer.keyIntent key (e.ctrlKey || e.metaKey),
+                                                        spec.TransferOutKey
+                                                    with
+                                                    | GridTransfer.TransferIntent.Lift, Some _ ->
+                                                        e.preventDefault ()
+
+                                                        match liftedAt absolute with
+                                                        | Some lifted ->
+                                                            gridDragSource <- Some lifted
+
+                                                            announceTransfer
+                                                                parentNodeId
+                                                                (GridTransfer.liftAnnouncement lifted.ItemId)
+                                                        | None -> ()
+                                                    | GridTransfer.TransferIntent.Cancel, _ ->
+                                                        if gridDragSource.IsSome then
+                                                            e.preventDefault ()
+                                                            gridDragSource <- None
+
+                                                            announceTransfer
+                                                                parentNodeId
+                                                                GridTransfer.cancelAnnouncement
+                                                    | _ -> ())
                                             prop.text "\u28ff" ] ] ] ]
 
                 let reorderHeaderCells: ReactElement list =
-                    match reorderCommit with
-                    | None -> []
-                    | Some _ ->
+                    if not handleShown then
+                        []
+                    else
                         [ Html.th
                               [ prop.className "fuaran-grid-reorder-header"
                                 prop.custom ("scope", "col")
-                                prop.custom ("aria-label", "Reorder") ] ]
+                                prop.custom ("aria-label", (if spec.TransferOutKey.IsSome then "Move" else "Reorder")) ] ]
 
-                // Phase 934 — the drop-target props a row gains while a reorder
-                // is possible; `preventDefault` on dragover is what marks the
-                // row droppable to the browser, and the drop consumes only a
-                // drag begun on THIS grid.
+                // Phase 934 / Phase 1123 — the drop-target props a row gains.
+                // `preventDefault` on dragover is what marks the row droppable to
+                // the browser.
+                //
+                // ONE set of handlers for BOTH routes, deliberately: a row is a
+                // drop target for its own grid's reorder and for a transfer
+                // arriving from another grid, and two prop lists would hand React
+                // two `onDrop`s of which only the last survives — a silent
+                // shadowing rather than an error. Which route applies is decided
+                // by comparing the lifted row's source id with this grid's,
+                // exactly as the module-level holder's doc comment says.
                 let reorderRowProps (rowIndex: int) : IReactProperty list =
-                    match reorderCommit with
-                    | None -> []
-                    | Some commit ->
-                        [ prop.onDragOver (fun e -> e.preventDefault ())
-                          prop.onDrop (fun e ->
+                    let absolute = rowOffset + rowIndex
+
+                    let reorderRoute (lifted: GridTransfer.Lifted<Row>) =
+                        match reorderCommit with
+                        | Some commit when lifted.SourceNodeId = parentNodeId -> Some commit
+                        | _ -> None
+
+                    let transferRoute (lifted: GridTransfer.Lifted<Row>) =
+                        GridTransfer.canReceive lifted parentNodeId spec.TransferInKey
+
+                    if reorderCommit.IsNone && spec.TransferInKey.IsNone then
+                        []
+                    else
+                        [ prop.onDragOver (fun (e: Browser.Types.DragEvent) ->
                               match gridDragSource with
-                              | Some(sourceGrid, sourceIndex) when sourceGrid = parentNodeId ->
+                              | Some lifted when (reorderRoute lifted).IsSome || transferRoute lifted ->
                                   e.preventDefault ()
-                                  gridDragSource <- None
-                                  commit sourceIndex (rowOffset + rowIndex)
-                              | _ -> ()) ]
+                                  dropStateOn e.currentTarget true
+                              | _ -> ())
+                          prop.onDragLeave (fun (e: Browser.Types.DragEvent) -> dropStateOn e.currentTarget false)
+                          prop.onDrop (fun (e: Browser.Types.DragEvent) ->
+                              dropStateOn e.currentTarget false
+
+                              match gridDragSource with
+                              | Some lifted ->
+                                  match reorderRoute lifted with
+                                  | Some commit ->
+                                      e.preventDefault ()
+                                      gridDragSource <- None
+                                      commit lifted.SourceIndex absolute
+                                  | None ->
+                                      if transferRoute lifted then
+                                          e.preventDefault ()
+                                          receive lifted absolute
+                              | None -> ()) ]
+
+                // Phase 1123 — the KEYBOARD landing point, and the pointer's
+                // append target. One focusable control per accepting grid rather
+                // than a tab stop on every row: a reader lifts with Control+X,
+                // tabs to the list they want, activates this, and then uses Phase
+                // 934's arrow keys to position the row. Two shipped affordances
+                // reach between them everywhere the pointer reaches, and the tab
+                // order grows by one element per LIST instead of one per ROW.
+                //
+                // Activated with nothing lifted it REFUSES OUT LOUD rather than
+                // doing nothing: the precondition is the reader's to meet, and
+                // silence would make a real control read as broken.
+                let placeControl () : ReactElement =
+                    match spec.TransferInKey with
+                    | None -> Html.none
+                    | Some _ ->
+                        Html.button
+                            [ prop.className "fuaran-drag-place"
+                              prop.type' "button"
+                              prop.custom ("aria-label", "Place the lifted row at the end of this list")
+                              prop.onDragOver (fun (e: Browser.Types.DragEvent) ->
+                                  match gridDragSource with
+                                  | Some lifted when GridTransfer.canReceive lifted parentNodeId spec.TransferInKey ->
+                                      e.preventDefault ()
+                                      dropStateOn e.currentTarget true
+                                  | _ -> ())
+                              prop.onDragLeave (fun (e: Browser.Types.DragEvent) -> dropStateOn e.currentTarget false)
+                              prop.onDrop (fun (e: Browser.Types.DragEvent) ->
+                                  dropStateOn e.currentTarget false
+
+                                  match gridDragSource with
+                                  | Some lifted when GridTransfer.canReceive lifted parentNodeId spec.TransferInKey ->
+                                      e.preventDefault ()
+                                      receive lifted (List.length rows)
+                                  | _ -> ())
+                              prop.onClick (fun _ ->
+                                  match gridDragSource with
+                                  | Some lifted when GridTransfer.canReceive lifted parentNodeId spec.TransferInKey ->
+                                      receive lifted (List.length rows)
+                                  | _ -> announceTransfer parentNodeId GridTransfer.nothingLiftedAnnouncement)
+                              prop.text "Place here" ]
+
+                // Rendered EMPTY by both pipelines, so the server's markup and
+                // the client's first render agree and hydration finds what it
+                // expects; only a reader's own gesture ever puts text in it.
+                let transferStatus () : ReactElement =
+                    Html.div
+                        [ prop.id (parentNodeId + "-fuaran-drag-status")
+                          prop.className "fuaran-drag-status"
+                          prop.custom ("role", "status")
+                          prop.custom ("aria-live", "polite") ]
 
                 // Phase 818 — the sortable-header affordance for a
                 // `sortStateKey` grid. A header whose column declares a
@@ -6236,12 +6511,24 @@ and private renderGrid
                                                     @ [ prop.children (reorderCellFor rowIndex @ bodyCells) ]
                                                 ) ] ] ] ]
 
-                match pagination with
-                | None -> gridTable
-                | Some _ ->
-                    // The paged grid gains ONE wrapper element; an unpaged grid
-                    // emits byte-identical DOM to before this phase.
-                    Html.div [ prop.className "fuaran-grid-paged"; prop.children [ gridTable; pager () ] ]
+                let paged =
+                    match pagination with
+                    | None -> gridTable
+                    | Some _ ->
+                        // The paged grid gains ONE wrapper element; an unpaged grid
+                        // emits byte-identical DOM to before this phase.
+                        Html.div [ prop.className "fuaran-grid-paged"; prop.children [ gridTable; pager () ] ]
+
+                // Phase 1123 — a grid that declares NEITHER end of the transfer
+                // pair emits byte-identical DOM to before this phase, which is
+                // why the chrome is conditional rather than always present and
+                // empty.
+                if spec.TransferInKey.IsNone && spec.TransferOutKey.IsNone then
+                    paged
+                else
+                    Html.div
+                        [ prop.className "fuaran-grid-transfer"
+                          prop.children [ paged; placeControl (); transferStatus () ] ]
 
 and private renderGridCell
     (ctx: RenderContext<'Msg>)

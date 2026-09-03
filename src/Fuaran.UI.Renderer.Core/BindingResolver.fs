@@ -1,4 +1,4 @@
-module Fuaran.UI.Renderer.BindingResolver
+﻿module Fuaran.UI.Renderer.BindingResolver
 
 // ============================================================================
 //  Fuaran — binding resolution (§4b Binding<'T>, §4c idioms lines 591–602)
@@ -1348,6 +1348,28 @@ let reorderDestination
         gridWriteDestination editStateKey source
     else
         None
+
+/// Phase 1123 — where a CROSS-CONTAINER TRANSFER commits at one end: the same
+/// shared grid destination, drawn only where that end declares its side of the
+/// pair (`transferOutKey` on the releasing grid, `transferInKey` on the
+/// receiving one). A third caller of one rule rather than a third rule: a
+/// transfer IS a write of each end's whole rows value, so it mints no
+/// destination of its own — the `reorderable` ruling one field over, extended
+/// across two nodes.
+///
+/// `None` does NOT mean the declaration is inert. The record is still written
+/// to the shared key, because a column that is a filtered view over one
+/// collection has no writable slot and is exactly the case the transfer
+/// vocabulary exists for; what `None` means is that THIS host cannot apply that
+/// half, and the application reading the key does.
+let transferDestination
+    (declared: string option)
+    (editStateKey: string option)
+    (source: Binding<Row seq>)
+    : Binding<Row seq> option =
+    match declared with
+    | Some _ -> gridWriteDestination editStateKey source
+    | None -> None
 
 /// Phase 863 — where an EDITED CELL commits: the shared grid destination
 /// above, drawn only where the grid declares itself editable.

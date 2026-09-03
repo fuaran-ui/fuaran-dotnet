@@ -1546,6 +1546,11 @@ module Fuaran =
               DefaultSort = None
               EditStateKey = None
               Reorderable = false
+              // Phase 1123 — a static table holds its rows in the tree, so it has
+              // no state-held collection for a transfer to move and declares
+              // neither end of the pair.
+              TransferInKey = None
+              TransferOutKey = None
               // Phase 1473 — a static table declares no print break; the author sets
               // it on the `DataGridSpec` directly, or on the typed facade below.
               KeepRowsTogether = false
@@ -1656,6 +1661,12 @@ module Fuaran =
               // Phase 934's `reorderable` has no typed-facade slot yet — the
               // §11-step-6 follow-up for that phase, not this one's.
               Reorderable = false
+              // Phase 1123 — the transfer pair DOES have typed-facade slots, so
+              // it passes through. `reorderable` still does not, which is the
+              // §11-step-6 follow-up that shipped with Phase 934 and is not
+              // this phase's to close.
+              TransferInKey = spec.TransferInKey
+              TransferOutKey = spec.TransferOutKey
               // Phase 1473 — the print-break declarations DO have typed-facade
               // slots, so they pass through rather than being pinned off.
               KeepRowsTogether = spec.KeepRowsTogether

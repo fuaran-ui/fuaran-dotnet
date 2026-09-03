@@ -6582,6 +6582,24 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             | None -> Ok None
             | Some fJ -> requireString (path + ".pageStateKey") fJ |> Result.map Some
 
+        // Phase 1123 — the cross-container transfer pair. Both name the SAME
+        // State key from the two sides: `transferOutKey` says this grid may
+        // release rows onto it, `transferInKey` that it accepts rows arriving
+        // on it. Two independent optional strings here, because a per-object
+        // codec judges no relation between siblings — whether any grid in the
+        // tree declares the other end is a whole-tree question and belongs to
+        // pre-emit validation (FUARAN129), exactly as `pageSize` without
+        // `pageStateKey` does.
+        let transferInKeyR =
+            match tryField fields "transferInKey" with
+            | None -> Ok None
+            | Some fJ -> requireString (path + ".transferInKey") fJ |> Result.map Some
+
+        let transferOutKeyR =
+            match tryField fields "transferOutKey" with
+            | None -> Ok None
+            | Some fJ -> requireString (path + ".transferOutKey") fJ |> Result.map Some
+
         // Phase 393 — the static read-only mode. `staticRows` (optional, omitted for a
         // data-bound grid so existing fixtures stay byte-identical) carries the retired
         // `Table`'s `TextSource` header/row matrix; when present the renderer emits static
@@ -6624,25 +6642,31 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             // reported, matching the generated arm exactly.
             reorderableR
             |> Result.bind (fun reorderable ->
-                keepRowsTogetherR
-                |> Result.bind (fun keepRowsTogether ->
-                    repeatHeaderR
-                    |> Result.map (fun repeatHeader ->
-                        { Source = source
-                          RowKey = rowKey
-                          RowKeyField = rowKeyField
-                          SortStateKey = sortStateKey
-                          PageSize = pageSize
-                          PageStateKey = pageStateKey
-                          DefaultSort = defaultSort
-                          EditStateKey = editStateKey
-                          Columns = columns
-                          OnRowClick = onRowClick
-                          Editable = editable
-                          Reorderable = reorderable
-                          KeepRowsTogether = keepRowsTogether
-                          RepeatHeader = repeatHeader
-                          StaticRows = staticRows })))
+                transferInKeyR
+                |> Result.bind (fun transferInKey ->
+                    transferOutKeyR
+                    |> Result.bind (fun transferOutKey ->
+                        keepRowsTogetherR
+                        |> Result.bind (fun keepRowsTogether ->
+                            repeatHeaderR
+                            |> Result.map (fun repeatHeader ->
+                                { Source = source
+                                  RowKey = rowKey
+                                  RowKeyField = rowKeyField
+                                  SortStateKey = sortStateKey
+                                  PageSize = pageSize
+                                  PageStateKey = pageStateKey
+                                  DefaultSort = defaultSort
+                                  EditStateKey = editStateKey
+                                  Columns = columns
+                                  OnRowClick = onRowClick
+                                  Editable = editable
+                                  Reorderable = reorderable
+                                  TransferInKey = transferInKey
+                                  TransferOutKey = transferOutKey
+                                  KeepRowsTogether = keepRowsTogether
+                                  RepeatHeader = repeatHeader
+                                  StaticRows = staticRows })))))
         | Error e, _, _, _, _, _, _, _, _, _, _, _
         | _, Error e, _, _, _, _, _, _, _, _, _, _
         | _, _, Error e, _, _, _, _, _, _, _, _, _

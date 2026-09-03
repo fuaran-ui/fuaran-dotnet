@@ -1,4 +1,4 @@
-module Fuaran.UI.Renderer.Server.Tests.EmailProjectionTests
+﻿module Fuaran.UI.Renderer.Server.Tests.EmailProjectionTests
 
 // ============================================================================
 //  The email-safe render projection's conformance corpus (Phase 441).
@@ -133,6 +133,8 @@ let private dynamicGrid id : Node<obj> =
               DefaultSort = Option.None
               EditStateKey = Option.None
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               Columns = []
               OnRowClick = Option.None
               Editable = false

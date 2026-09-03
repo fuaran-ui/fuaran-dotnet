@@ -1,4 +1,4 @@
-module Fuaran.UI.Tests.FilterWiringValidate
+﻿module Fuaran.UI.Tests.FilterWiringValidate
 
 // ============================================================================
 //  The consolidated 421/424/425 validator follow-up: the cross-tree filter
@@ -71,6 +71,8 @@ let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<
               OnRowClick = None
               Editable = editable
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -117,6 +119,8 @@ let private gridNamingFields
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -273,6 +277,8 @@ let tests =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false }

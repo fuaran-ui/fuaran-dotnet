@@ -6479,6 +6479,12 @@
         "reorderable": {
           "type": "boolean"
         },
+        "transferInKey": {
+          "type": "string"
+        },
+        "transferOutKey": {
+          "type": "string"
+        },
         "keepRowsTogether": {
           "type": "boolean"
         },

@@ -328,6 +328,11 @@ and mapGridSpec (f: 'a -> 'b) (spec: GridSpec<'a>) : GridSpec<'b> =
       DefaultSort = spec.DefaultSort
       EditStateKey = spec.EditStateKey
       Reorderable = spec.Reorderable
+      // Phase 1123 — the transfer pair carries no `'Msg` either: both halves
+      // are State-key names, so they copy verbatim like every other
+      // grid-behaviour declaration.
+      TransferInKey = spec.TransferInKey
+      TransferOutKey = spec.TransferOutKey
       // Phase 1473 — the print-break declarations carry no `'Msg` either.
       KeepRowsTogether = spec.KeepRowsTogether
       RepeatHeader = spec.RepeatHeader

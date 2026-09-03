@@ -3210,6 +3210,80 @@ stricter contract; it is a less truthful one.
 
 ---
 
+## Recorded change — 0.63.0, cross-container transfer — moving a row between two grids (fuaran#1123)
+
+**Additive on the wire; SOURCE-BREAKING at one narrow place; a `WIRE_FORMAT.md` §11
+forward-coupling event.** Every pre-0.63.0 document encodes and decodes to byte-identical bytes,
+and every pre-0.63.0 grid renders exactly as it did — both new members are optional, absence is
+their only spelling of "declares nothing", and a grid declaring neither emits the DOM it always did.
+
+**`DataGridSpec.TransferOutKey` / `.TransferInKey` — a §2.1 FIELD PAIR, and the first wire members
+in this tier whose subject is a RELATION BETWEEN TWO NODES.** Between them they say one thing: these
+grids exchange rows. A grid declaring `transferOutKey` K may release rows onto the State key K; a
+grid declaring `transferInKey` K accepts them from it; a grid declaring both with one K does each.
+
+  * **On the wire:** `transferOutKey` / `transferInKey`, both omitted when absent. A present member
+    of any type but string is `WRONG_TYPE` and is not coerced.
+  * **The record a drop writes** is fixed normatively in `WIRE_FORMAT.md` §3.6.13:
+    `{"itemId","from","to","index"}`, all four always present, `index` 0-based and written even at
+    `0`. It is a STATE value, not a member of any node, so no fixture carries it — the sort
+    descriptor's posture exactly.
+  * **Source-breaking surface:** `DataGridSpec` is a record, so a FULL-literal construction stops
+    compiling (`FS0764`). `{ Defaults.grid with … }` is unaffected, and the public `mkDataGrid` /
+    `Fuaran.grid` constructors and the C#/VB facades keep their existing signatures — the pair has
+    no typed-facade slot yet, which is the §11-step-6 follow-up `reorderable` already carries and
+    which this release does not close.
+
+**TWO members rather than one symmetric key**, because the one-way ends are ordinary — an archive
+column that accepts and never releases, a Done column that releases nothing back — and a single key
+would make those documents inexpressible. Neither takes the `-StateKey` suffix its sibling behaviour
+fields carry: that suffix marks a key a grid both writes AND READS to change its own presentation,
+and neither end reads this one for its own presentation.
+
+**The renderer OWES the application, not only the gesture, and that is the release's real content.**
+A drop writes the record AND commits each half through the destination that end already declares —
+`editStateKey`, else the Phase-663 `State`-source floor. **No second write path is introduced**: a
+transfer is a write of each end's whole rows value, exactly as an edit and a reorder are, and every
+write still crosses the same tree-state-write gate, scope routing and host-reserved-key guard. An end
+with no writable destination (a filtered view over one collection, which is the canonical board's own
+shape) is simply not applied, and the record still names what the reader asked for. A record nothing
+applies would have been a fake affordance: the reader drags, an object appears in State, and no row
+moves — while `reorderable` one field over works out of the box.
+
+**The keyboard route is part of the affordance and not a follow-up.** A drag has no keyboard analogue
+and none is invented; what ships is a SECOND ROUTE — `Control+X` lifts a row on its handle, the
+receiving grid's own place control puts it down, and `reorderable`'s arrow keys position it from
+there. Two shipped affordances reach between them everywhere the pointer reaches. The chord is
+advertised (`aria-keyshortcuts`) and every transition is announced through a `role="status"` line,
+because an undiscoverable shortcut is another fake affordance.
+
+**FUARAN129 (Warning), a transfer end with no counterpart.** Two conditions, one code, on the
+FUARAN125 / FUARAN128 precedent: an accepting grid nothing releases to (a drop zone no drag can
+reach) and a releasing grid nothing accepts from (a handle with nowhere to go). Judged over the whole
+tree, because a per-object codec sees one grid and could never answer it — the split
+`pageSize`-without-`pageStateKey` already carries. A grid's own declarations are excluded when judging
+it, so a two-way column alone in a tree is reported rather than pairing with itself. Warning rather
+than Error: a board whose second column is a later edit is an ordinary mid-edit state.
+
+**FUARAN130 (Warning), a transfer end that cannot say what moved.** A grid declaring either member
+with no `rowKeyField`: the record identifies the moved row, and the closure form `rowKey` crosses the
+wire as `"<closure>"`, so a decoded transfer out of such a grid would report that nothing moved.
+Strictly narrower than FUARAN078, which fires only when a grid has NEITHER spelling.
+
+**The vocabulary charter's Interaction / affordance cluster is amended in this same change-set**, per
+the rule the 0.46.0 `Media` admission established, and the amendment is to its GOVERNING SENTENCE
+rather than to a row: that sentence named *the node that both hosts the gesture and consumes its
+effect*, singular, and a transfer has two nodes of which neither alone consumes it. **The Appendix A
+`KanbanBoard` row is amended in the same change-set too** — its **Composition** disposition stands and
+is now honest, where until this release it redirected to a composition that could not be composed.
+
+**`Theme.vocabularyFingerprint` → `fv1:e697c1d1c162b9a7`**; four classes entered the vocabulary
+(`fuaran-grid-transfer`, `fuaran-drag-over`, `fuaran-drag-place`, `fuaran-drag-status`) and the
+reference sheet gained the block that styles them. The four tier copies were regenerated in the same
+change-set.
+
+---
+
 ## Recorded change — 0.62.0, switch transitions + timed advance — the carousel behaviour (fuaran#1122)
 
 **Additive on the wire; SOURCE-BREAKING at two narrow places; a `WIRE_FORMAT.md` §11

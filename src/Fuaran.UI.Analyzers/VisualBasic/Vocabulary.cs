@@ -210,10 +210,16 @@ internal static class Vocabulary
         // attribute is FUARAN061 rather than allow-any. `Box`'s matching pair
         // needs no entry for the mirror-image reason — `Box` is absent from this
         // table and therefore not attribute-checked at all.
+        // Phase 1123 — `transfer-out-key` / `transfer-in-key` name the two sides
+        // of ONE shared State key. Both are key NAMES and neither is a flag, so
+        // an unrecognised spelling here is FUARAN061 rather than a silent
+        // no-declaration — a misspelled key pairs with nothing and would render a
+        // grid that looks like a board and exchanges nothing.
         Add("DataGrid", "id", "source", "editable",
             "sort-state-key", "default-sort-column", "default-sort-direction",
             "page-size", "page-state-key", "edit-state-key",
-            "keep-rows-together", "repeat-header");
+            "keep-rows-together", "repeat-header",
+            "transfer-out-key", "transfer-in-key");
         Add("Custom", "id", "module-id", "component-id", "exposed-node-ids");
         Add("ErrorBoundary", "id");
         Add("FragmentDecl", "id", "name");

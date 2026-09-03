@@ -1,4 +1,4 @@
-module Fuaran.UI.Tests.SelectionLoop
+﻿module Fuaran.UI.Tests.SelectionLoop
 
 // ============================================================================
 //  Phase 427 — the selection loop: reactive `SelectionStore` + the decoded
@@ -449,6 +449,8 @@ let private gridSpecWith (onRowClick: (Row -> Action<obj>) option) : GridSpec<ob
       OnRowClick = onRowClick
       Editable = false
       Reorderable = false
+      TransferInKey = None
+      TransferOutKey = None
       StaticRows = None
       KeepRowsTogether = false
       RepeatHeader = false }

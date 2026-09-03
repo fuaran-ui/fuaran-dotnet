@@ -1,4 +1,4 @@
-Imports System
+﻿Imports System
 Imports System.Collections.Generic
 Imports System.Linq
 Imports System.Xml.Linq
@@ -52,6 +52,12 @@ Friend Module VisualisationMapping
         ' Phase 1473 — `keep-rows-together` / `repeat-header`, the grid's own two
         ' print-break declarations. Same AttrBool route and same absent-is-false
         ' default as <Box>'s pair.
+        '
+        ' Phase 1123 — `transfer-out-key` / `transfer-in-key`, the two sides of one
+        ' shared State key. OptStr rather than AttrBool deliberately: there is no
+        ' boolean spelling of "this grid may release rows", because a release with
+        ' no key names no counterpart. Two grids naming one key exchange rows; a
+        ' grid naming it on one side only is the one-way column.
         d("DataGrid") = Function(el) Csharp.Fuaran.DataGrid(Of Object)(
             New Csharp.DataGridOptions(Of Object) With {
                 .Id = Attr(el, "id"),
@@ -65,7 +71,9 @@ Friend Module VisualisationMapping
                 .PageStateKey = OptStr(el, "page-state-key"),
                 .EditStateKey = OptStr(el, "edit-state-key"),
                 .KeepRowsTogether = AttrBool(el, "keep-rows-together"),
-                .RepeatHeader = AttrBool(el, "repeat-header")})
+                .RepeatHeader = AttrBool(el, "repeat-header"),
+                .TransferOutKey = OptStr(el, "transfer-out-key"),
+                .TransferInKey = OptStr(el, "transfer-in-key")})
     End Sub
 
     ''' fuaran#665 — the required ToRow projection for XML-authored grids, whose row

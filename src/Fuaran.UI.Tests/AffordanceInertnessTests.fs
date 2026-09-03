@@ -1,4 +1,4 @@
-module Fuaran.UI.Tests.AffordanceInertness
+﻿module Fuaran.UI.Tests.AffordanceInertness
 
 // ============================================================================
 //  Phase 924 — the decode-side inertness report.
@@ -63,6 +63,8 @@ let private gridWith (id: string) (col: ColumnErased<Msg>) : Node<Msg> =
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }

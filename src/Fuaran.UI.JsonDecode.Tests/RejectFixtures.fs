@@ -1309,6 +1309,43 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "Switch autoAdvanceMs is fractional — the slot is an integer count of milliseconds, and a decoder truncating where another rounded would leave two hosts disagreeing about a document neither refused (Phase 1122)" }
+      // ─── Phase 1123 — the transfer pair is a KEY NAME, and only that ──
+      //
+      // Two vectors, one per side, because the two fields are read by two
+      // independent decoder steps and a vector on one proves nothing about the
+      // other — the asymmetry the pair exists for (an archive column declares
+      // only `transferInKey`) is exactly the shape a single vector would leave
+      // untested.
+      //
+      // A NUMBER is the wrong-shaped value worth pinning rather than an
+      // arbitrary one: a state key looks like an identifier, and an emitter that
+      // reaches for a column index or an ordinal to name "which list" is
+      // reaching for a plausible thing. WRONG_TYPE and not a code of its own —
+      // this is a value outside the slot's value space, the class every other
+      // key-named slot on this kind already occupies, and there is no legal SET
+      // to name back at the author.
+      //
+      // What is NOT rejected here, and cannot be: a key naming no counterpart.
+      // Whether ANY OTHER grid declares the other end is a whole-tree question,
+      // and a per-object codec sees one grid — so the dead-pairing case is
+      // FUARAN129 at pre-emit rather than a reject vector, which is the same
+      // split `pageSize` without `pageStateKey` already carries.
+      { Id = "reject-wrongtype-grid-transfer-in-key"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[{"field":"card","format":{"$type":"None"},"kind":{"$type":"Text"},"label":"Card","width":{"$type":"Auto"}}],"rowKeyField":"card","source":{"$type":"State","key":"todo"},"transferInKey":2}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.transferInKey"
+        IsOp = false
+        Description =
+          "DataGrid transferInKey is a number — the slot names the shared State key a transfer travels on, so it is a key name and never an ordinal; a grid identified by position could not be paired with by any other grid (Phase 1123)" }
+      { Id = "reject-wrongtype-grid-transfer-out-key"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[{"field":"card","format":{"$type":"None"},"kind":{"$type":"Text"},"label":"Card","width":{"$type":"Auto"}}],"rowKeyField":"card","source":{"$type":"State","key":"todo"},"transferOutKey":true}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.transferOutKey"
+        IsOp = false
+        Description =
+          "DataGrid transferOutKey is a boolean — the releasing side names a KEY, never declares a flag; there is deliberately no boolean spelling of \"this grid may release rows\", because a release with no key names no counterpart and would be an affordance with nowhere to go (Phase 1123)" }
       { Id = "reject-limit-json-depth-at-max"
         Json =
           String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "["

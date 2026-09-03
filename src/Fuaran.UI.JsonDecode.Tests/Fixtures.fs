@@ -1,4 +1,4 @@
-module Fuaran.UI.JsonDecode.Tests.Fixtures
+﻿module Fuaran.UI.JsonDecode.Tests.Fixtures
 
 // ============================================================================
 //  Round-trip fixture corpus.
@@ -2821,6 +2821,8 @@ let gridVis: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -2859,6 +2861,8 @@ let gridKeepRowsTogether: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = true
               RepeatHeader = false }
@@ -2898,6 +2902,8 @@ let gridRepeatHeader: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = true }
@@ -2991,6 +2997,8 @@ let gridTonedPill: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -3205,6 +3213,8 @@ let gridEditableState: Node<obj> =
               OnRowClick = None
               Editable = true
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -3270,6 +3280,8 @@ let gridTransform: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -3315,6 +3327,8 @@ let gridTransformParam: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -3397,6 +3411,8 @@ let multiselectChipListParam: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false }
@@ -3443,6 +3459,8 @@ let gridFieldNamed: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -3504,6 +3522,8 @@ let masterDetailPreselected: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false }
@@ -3585,6 +3605,8 @@ let masterDetailPreselected: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false }
@@ -3684,6 +3706,8 @@ let masterDetailMultiField: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false }
@@ -3835,6 +3859,8 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false }
@@ -3887,6 +3913,8 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false }
@@ -4014,6 +4042,8 @@ let nowEnvironmentBinding: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false }
@@ -4089,6 +4119,8 @@ let scalarTransformComposition: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false }
@@ -4265,6 +4297,8 @@ let filterableStaticDashboard: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false }
@@ -4297,6 +4331,8 @@ let table: Node<obj> =
         NodeKind.DataGrid
             { SortStateKey = None
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               PageSize = None
               PageStateKey = None
               EditStateKey = None
@@ -4333,6 +4369,8 @@ let tableSortable: Node<obj> =
         (NodeKind.DataGrid
             { SortStateKey = None
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               PageSize = None
               PageStateKey = None
               EditStateKey = None
@@ -4513,6 +4551,8 @@ let switchOnSelection: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false }
@@ -5105,6 +5145,8 @@ let sharedSourceSeededPair: Node<obj> =
                   OnRowClick = None
                   Editable = false
                   Reorderable = false
+                  TransferInKey = None
+                  TransferOutKey = None
                   StaticRows = None
                   KeepRowsTogether = false
                   RepeatHeader = false }
@@ -5182,6 +5224,8 @@ let gridBoundSort: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -5222,6 +5266,8 @@ let gridDeclaredEdit: Node<obj> =
               OnRowClick = None
               Editable = true
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -5267,10 +5313,82 @@ let gridReorderable: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = true
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
         ))
+        None
+
+/// Phase 1123 — cross-container transfer: THE canonical corner, and the first
+/// fixture in this corpus whose subject is a RELATION BETWEEN TWO NODES rather
+/// than one node's declaration. A single grid could not carry it: `transferOutKey`
+/// and `transferInKey` name one shared State key from the two sides, and a
+/// document holding only one side declares a capability with no counterpart
+/// (which is what FUARAN129 reports).
+///
+/// The board shape, deliberately: two columns each declaring BOTH ends of the key
+/// `board`, so cards move in either direction, plus an `archive` column that
+/// accepts and never releases — the one-way end that is the whole reason the pair
+/// is two fields rather than one symmetric key. Every column names `rowKeyField`,
+/// because the record a drop writes identifies the moved row and a closure erases
+/// to `"<closure>"` on the wire.
+///
+/// The transfer record itself is NOT in this fixture and cannot be: it is a STATE
+/// value a reader's gesture writes, not a member of any node. `WIRE_FORMAT.md`
+/// §3.6.11 fixes its shape normatively, exactly as it fixes the sort descriptor's.
+let gridTransferBoard: Node<obj> =
+    let col (label: string) (field: string) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    let cards (titles: string list) : Row list =
+        titles |> List.map (fun t -> Map.ofList [ "card", box t ])
+
+    let column (id: string) (key: string) (outKey: string option) (inKey: string option) (titles: string list) =
+        node
+            id
+            (NodeKind.DataGrid(
+                { SortStateKey = None
+                  PageSize = None
+                  PageStateKey = None
+                  EditStateKey = None
+                  DefaultSort = None
+                  Source = Binding.State(key, Some(Seq.ofList (cards titles)))
+                  RowKey = None
+                  RowKeyField = Some "card"
+                  Columns = [ col "Card" "card" ]
+                  OnRowClick = None
+                  Editable = false
+                  Reorderable = true
+                  TransferInKey = inKey
+                  TransferOutKey = outKey
+                  StaticRows = None
+                  KeepRowsTogether = false
+                  RepeatHeader = false }
+            ))
+            None
+
+    node
+        "transfer-board"
+        (NodeKind.Box
+            { Children =
+                [ column "todo" "board-todo" (Some "board") (Some "board") [ "Draft the brief"; "Size the work" ]
+                  column "doing" "board-doing" (Some "board") (Some "board") [ "Write the walk" ]
+                  // Accepts and never releases: a card filed here stays filed.
+                  column "archive" "board-archive" None (Some "board") [] ]
+              Heading = Some(TextSource.Literal "Sprint board")
+              Layout = BoxLayout.Auto
+              Role = BoxRole.Group
+              KeepTogether = false
+              BreakBefore = false })
         None
 
 /// Phase 862 — declarative pagination: `pageStateKey` names the State slot
@@ -5306,6 +5424,8 @@ let gridPaged: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -5344,6 +5464,8 @@ let gridPagedSorted: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -5397,6 +5519,8 @@ let gridSortStateKey: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -5836,6 +5960,8 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Grid (Phase 863 — declared edit destination + per-column read-only narrowing)", gridDeclaredEdit
       "Visualisation/Grid (Phase 934 — declarative row reorder: omit-when-false flag; edits and reorders share one destination)",
       gridReorderable
+      "Layout/Box (Phase 1123 — cross-container transfer: two two-way columns and a one-way archive on one shared key)",
+      gridTransferBoard
       "Visualisation/Grid (Phase 862 — pageStateKey + pageSize: declarative pagination, renderer-owned pager)",
       gridPaged
       "Visualisation/Grid (Phase 862 — paging and sorting composed: two behaviours, two state keys, one rule)",

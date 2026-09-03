@@ -1,4 +1,4 @@
-module Fuaran.UI.Tests.PreEmitValidate
+﻿module Fuaran.UI.Tests.PreEmitValidate
 
 open Expecto
 open Fuaran.UI
@@ -203,6 +203,8 @@ let private seedingGrid (id: string) (key: string) : Node<Msg> =
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -356,6 +358,8 @@ let private sortGrid
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -400,6 +404,8 @@ let private editGrid
               OnRowClick = None
               Editable = gridEditable
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -435,6 +441,8 @@ let private pagedGrid
               OnRowClick = None
               Editable = false
               Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false }
@@ -1452,6 +1460,8 @@ let tests =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false }
@@ -3977,4 +3987,187 @@ let popoverAnchorRuleTests =
               Expect.isEmpty
                   (anchorDefects (surfaceWith ModalityKind.Modal None))
                   "no modality declared, no anchor declared, nothing to say"
+          } ]
+
+// ─── Phase 1123 fixtures ─ FUARAN129 / FUARAN130, cross-container transfer ──
+//
+//  The pairing rule is the first in this module whose subject is a RELATION
+//  BETWEEN TWO NODES, so every fixture below is a two-grid tree: a one-grid
+//  fixture could not express the passing case at all, which is itself the
+//  argument for judging the rule post-walk rather than per node.
+
+let private transferGrid
+    (id: string)
+    (outKey: string option)
+    (inKey: string option)
+    (rowKeyField: string option)
+    : Node<Msg> =
+    { Id = id
+      Kind =
+        NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort = None
+              Source = Binding.State(id + "-rows", None)
+              RowKey = None
+              RowKeyField = rowKeyField
+              Columns =
+                [ { Label = "Task"
+                    Value = None
+                    Field = Some "task"
+                    Sortable = None
+                    Editable = None
+                    Format = CellFormat.None
+                    Kind = CellKindErased.Text
+                    Width = ColumnWidth.Auto } ]
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              TransferInKey = inKey
+              TransferOutKey = outKey
+              KeepRowsTogether = false
+              RepeatHeader = false
+              StaticRows = None }
+        )
+      Accessibility = None
+      ExtraAttributes = None
+      Motion = None
+      State = None
+      Style = None
+      Tooltip = None }
+
+let private board (grids: Node<Msg> list) : Node<Msg> = dashboard "board" grids
+
+let private transferDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.DeadTransferPairing _
+            | PreEmitDefect.TransferWithoutRowIdentity _ -> true
+            | _ -> false)
+
+let private transferCodes (tree: Node<Msg>) : string list =
+    transferDefects tree
+    |> List.map (fun d ->
+        let code, _, _ = PreEmitValidate.describe d
+        code)
+
+[<Tests>]
+let crossContainerTransferTests =
+    testList
+        "PreEmitValidate — FUARAN129 / FUARAN130, cross-container transfer (Phase 1123)"
+        [ test "FUARAN129: a grid accepting on a key nothing releases to is a dead drop zone" {
+              let tree =
+                  board
+                      [ transferGrid "todo" None None (Some "id")
+                        transferGrid "done" None (Some "board") (Some "id") ]
+
+              Expect.equal (transferCodes tree) [ "FUARAN129" ] "the accepting end has no source"
+
+              let d = transferDefects tree |> List.head
+              let _, severity, message = PreEmitValidate.describe d
+
+              Expect.equal
+                  severity
+                  DefectSeverity.Warning
+                  "Warning — a tree mid-authoring holds one end before the other arrives"
+
+              Expect.stringContains message "board" "the key is named, so the missing declaration is findable"
+              Expect.stringContains message "transferOutKey" "the message names the remedy, not only the defect"
+          }
+
+          test "FUARAN129: a grid releasing to a key nothing accepts is the SAME code" {
+              let tree =
+                  board
+                      [ transferGrid "todo" (Some "board") None (Some "id")
+                        transferGrid "done" None None (Some "id") ]
+
+              Expect.equal (transferCodes tree) [ "FUARAN129" ] "one consequence, one remedy, one code"
+
+              let _, _, message = PreEmitValidate.describe (transferDefects tree |> List.head)
+
+              Expect.stringContains message "nowhere to go" "the message discriminates which end was declared"
+          }
+
+          test "FUARAN129: a two-way grid alone in the tree reports ONCE, not twice" {
+              // Both conditions hold — nothing else names the key from either
+              // side — and the fix is one edit, so two findings on one grid
+              // would bury it.
+              let tree = board [ transferGrid "todo" (Some "board") (Some "board") (Some "id") ]
+
+              Expect.equal (transferCodes tree) [ "FUARAN129" ] "one grid, one finding"
+          }
+
+          test "FUARAN129: the two ends need not be on the same grid to pair" {
+              // The one-way board: an archive column that accepts and never
+              // releases, which is exactly why the pair is two fields and not
+              // one symmetric key. Neither end is dead here.
+              let tree =
+                  board
+                      [ transferGrid "inbox" (Some "board") None (Some "id")
+                        transferGrid "archive" None (Some "board") (Some "id") ]
+
+              Expect.isEmpty (transferDefects tree) "in on one grid, out on the other — the pairing is complete"
+          }
+
+          test "FUARAN129 go-red check: two two-way grids on one key are silent" {
+              // The canonical board, and the shape the phase exists to enable. A
+              // rule firing here would be one authors switch off, which costs the
+              // estate the rule on the real defects above.
+              let tree =
+                  board
+                      [ transferGrid "todo" (Some "board") (Some "board") (Some "id")
+                        transferGrid "done" (Some "board") (Some "board") (Some "id") ]
+
+              Expect.isEmpty (transferDefects tree) "both ends of one key are declared, twice over"
+          }
+
+          test "FUARAN129 go-red check: two DIFFERENT keys are two independent pairings" {
+              // The rule must key off the KEY and not merely off "some grid
+              // somewhere declares the other end", or two unrelated boards in one
+              // document would silence each other's defects.
+              let tree =
+                  board
+                      [ transferGrid "a-todo" (Some "alpha") (Some "alpha") (Some "id")
+                        transferGrid "a-done" (Some "alpha") (Some "alpha") (Some "id")
+                        transferGrid "b-todo" (Some "beta") (Some "beta") (Some "id")
+                        transferGrid "b-done" (Some "beta") (Some "beta") (Some "id") ]
+
+              Expect.isEmpty (transferDefects tree) "each key pairs within its own board"
+          }
+
+          test "FUARAN129 go-red check: a grid declaring NEITHER end is silent" {
+              // Every grid authored before this release. If this fired, the rule
+              // would report the entire existing corpus.
+              Expect.isEmpty
+                  (transferDefects (board [ transferGrid "plain" None None (Some "id") ]))
+                  "no declaration, nothing to pair, nothing to say"
+          }
+
+          test "FUARAN130: a transfer end with no rowKeyField cannot name what moved" {
+              let tree =
+                  board
+                      [ transferGrid "todo" (Some "board") (Some "board") None
+                        transferGrid "done" (Some "board") (Some "board") (Some "id") ]
+
+              Expect.equal (transferCodes tree) [ "FUARAN130" ] "only the identity-less end is reported"
+
+              let _, severity, message =
+                  PreEmitValidate.describe (transferDefects tree |> List.head)
+
+              Expect.equal severity DefectSeverity.Warning "Warning — the transfer happens; it cannot be described"
+              Expect.stringContains message "rowKeyField" "the message names the slot to fill"
+          }
+
+          test "FUARAN130 go-red check: rowKeyField on every transfer end is silent" {
+              let tree =
+                  board
+                      [ transferGrid "todo" (Some "board") (Some "board") (Some "id")
+                        transferGrid "done" (Some "board") (Some "board") (Some "id") ]
+
+              Expect.isEmpty (transferDefects tree) "both ends can say what moved"
           } ]
