@@ -31,14 +31,14 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.dagLaws` | Adopted | `the UI op-stream witness certifies under Core's dagLaws` — via `Conformance.dagLaws` |
 | `Conformance.deferredLaws` | Adopted | `the Deferred value codec certifies under Core's deferredLaws` — via `Conformance.deferredLaws` |
 | `Conformance.diffLaws` | Adopted | `the Fuaran.UI witness certifies end-to-end via the unified Conformance.certify` — via `Conformance.certify` |
-| `Conformance.dirtyPropagationLaws` | Carried by phase | fuaran#1479 |
+| `Conformance.dirtyPropagationLaws` | Adopted | `dirtyPropagationLaws certifies the propagation seam's cone at this pin` — via `Conformance.dirtyPropagationLaws — beside the tier-shaped 'the dirty cone over the binding walk is sound and minimal on generated binding sets'` |
 | `Conformance.encoderInjectivityLaws` | Adopted | `the FastPath memo-key encoder is collision-free (encoderInjectivityLaws)` — via `Conformance.encoderInjectivityLaws` |
 | `Conformance.footprintLaws` | Adopted | `the tier's tree footprints are sound, monotone and deterministic (footprintLaws)` — via `Conformance.footprintLaws` |
 | `Conformance.functionVerifyLaws` | Adopted | `a sound and a broken FastPath pattern certify under Core's functionVerifyLaws` — via `Conformance.functionVerifyLaws` |
 | `Conformance.hashFnAdversarialLaws` | Adopted | `the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)` — via `Conformance.hashFnAdversarialLaws` |
 | `Conformance.hashFnLaws` | Adopted | `the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)` — via `Conformance.hashFnLaws` |
 | `Conformance.idempotencyLaws` | Adopted | `idempotencyLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.idempotencyLaws` |
-| `Conformance.incrementalLaws` | Carried by phase | fuaran#1479 |
+| `Conformance.incrementalLaws` | Adopted | `incrementalLaws certifies change-driven and op-driven equivalence at this pin` — via `Conformance.incrementalLaws — beside the tier-shaped 'the seven corpus vectors obey the one-scale bound, declined ones included'` |
 | `Conformance.leaseLaws` | Not used | Fuaran.Core.Lease — leases are a coordination-plane mechanism for concurrent writers; the UI tier takes none |
 | `Conformance.memoLaws` | Adopted | `FastPath application memoises soundly under Core's memoLaws` — via `Conformance.memoLaws` |
 | `Conformance.memoSoundnessLaws` | Adopted | `an under-declared FastPath function is never cached (memoSoundnessLaws)` — via `Conformance.memoSoundnessLaws` |
@@ -61,15 +61,15 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.witnessLaws` | Adopted | `the Fuaran.UI witness certifies end-to-end via the unified Conformance.certify` — via `Conformance.certify` |
 | `FoldConfluence.laneFoldLaws` | Adopted | `N-lane folding is arrival-order-invariant under Core's laneFoldLaws` — via `FoldConfluence.laneFoldLaws` |
 | `FoldConfluence.laneFoldLawsWith` | Adopted | `lane folding survives the host hash swap under laneFoldLawsWith` — via `FoldConfluence.laneFoldLawsWith` |
-| `IncrementalDelta.laws` | Carried by phase | fuaran#1479 |
-| `IncrementalDelta.lawsWith` | Carried by phase | fuaran#1479 |
+| `IncrementalDelta.laws` | Adopted | `IncrementalDelta.laws certifies the incremental seam at the kit's shipped row bound` — via `IncrementalDelta.laws — beside the tier-shaped 'the refresh answers what a full evaluation over the changed source answers'` |
+| `IncrementalDelta.lawsWith` | Adopted | `IncrementalDelta.lawsWith certifies at the tier's own live-grid row bound` — via `IncrementalDelta.lawsWith — beside the tier-shaped 'the refresh evaluates no more rows than a full evaluation, on one scale'` |
 
 ## Summary
 
 | Status | Families |
 |---|---|
-| Adopted | 36 |
-| Carried by phase | 4 |
+| Adopted | 40 |
+| Carried by phase | 0 |
 | Not used | 10 |
 | Sibling host | 1 |
 | **Total** | **51** |
