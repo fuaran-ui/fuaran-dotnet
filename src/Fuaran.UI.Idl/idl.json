@@ -4914,6 +4914,9 @@
           "tag": "WriteToClipboard"
         },
         {
+          "annotations": {
+            "inProcessOnly": true
+          },
           "fields": [
             {
               "name": "msg",

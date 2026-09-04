@@ -42,8 +42,14 @@ let update (msgObj: obj) (model: Model) : Model =
     | SelectTab i -> { model with Tab = i }
     | ToggleAdvanced isOpen -> { model with Advanced = isOpen }
 
+// Phase 1152 - through the documented `Action.dispatch` helper rather than the
+// generated case, which now carries the IDL's `inProcessOnly` marking. This is an
+// authoring site, so the honest answer to the warning is the route whose doc
+// comment states the constraint, not a suppression. Identical behaviour; and this
+// driver is the in-process host where the case is correct - what leaves this
+// process is a patch, never the action.
 let private dispatch (msg: Msg) : Action<obj> =
-    Action.Dispatch(Unchecked.nonNull (box msg))
+    Action.dispatch (Unchecked.nonNull (box msg))
 
 let private btn (id: string) (label: string) (msg: Msg) : Node<obj> =
     Fuaran.button

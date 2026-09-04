@@ -343,6 +343,14 @@ let private tonesOf (node: Node<'Msg>) : ToneVariant list =
 /// a decoded `Dispatch`, or a clipboard write.
 type private Carried = { Tag: string; Disc: string option }
 
+// Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
+// annotation, which renders as `[<Obsolete(…, false)>]`: FS0044 at every
+// mention. Scoped off for this ONE declaration. `carriedOf` is exhaustive by
+// design (see the forward-coupling note below), so it must name every case the
+// union has; naming one is not authoring one, and this function neither builds
+// a tree nor serialises it. `#warnon` immediately below.
+#nowarn "44"
+
 /// The actions reachable from one action value, recursing `Chain`.
 ///
 /// FORWARD-COUPLING: exhaustive on purpose — a new `Action` case declares its
@@ -369,6 +377,8 @@ let rec private carriedOf (label: 'Msg -> string option) (action: Action<'Msg>) 
         [ { Tag = "ReadFileBody"
             Disc = Some fileRef } ]
     | Action.Print -> [ { Tag = "Print"; Disc = None } ]
+
+#warnon "44"
 
 /// The actions `node` carries in a WIRE-SURVIVABLE action slot — `Button.OnClick`,
 /// `Form.OnSubmit`, `Modal.OnDismiss`, the same three the tier's shared binding

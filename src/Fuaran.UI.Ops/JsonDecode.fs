@@ -3565,6 +3565,15 @@ let private decodeBindingMarkerSeq (path: string) (j: Json) : Result<Binding<Map
 // Storage-shape erasure: every `Action<'Msg>` decodes to `Action<obj>`.
 // Closure-bearing slots (`Dispatch msg`, `Call onResult`) substitute a
 // `box closureSentinel` placeholder; non-closure slots decode fully.
+//
+// Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
+// annotation, which renders as `[<Obsolete(…, false)>]`: FS0044 at every
+// mention, and an error here under `TreatWarningsAsErrors`. Scoped off for this
+// ONE declaration and reopened after it. This decoder is the very mechanism the
+// marking DESCRIBES — its `"Dispatch"` arm is where the sentinel replaces the
+// lost closure — so it is the last place the warning could tell anyone
+// something they did not already know.
+#nowarn "44"
 
 let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, DecodeError> =
     // 0.2.2 DIDACTIC — a bare string in an Action slot (pilot-3: gemini wrote
@@ -3794,6 +3803,8 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                     path
                     s
                     "Dispatch | Call | Notify | Navigate | SetState | AiTool | Chain | CommitLocal | WriteToClipboard | ReadFileBody | Invoke | Print"
+
+#warnon "44"
 
 // ─── Spec decoders ───────────────────────────────────────────────────────
 

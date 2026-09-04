@@ -107,7 +107,30 @@ internal static class Act
     public static FsAction WriteToClipboard(string text) =>
         // Phase 1126 — the payload is a `TextSource`; a literal wraps in `Literal`.
         FsAction.NewWriteToClipboard(TextSource.NewLiteral(text));
+    /// <summary>
+    /// Carry a typed host message. <b>IN-PROCESS ONLY</b> — read this before putting
+    /// one on a tree you intend to serialise (Phase 1152).
+    /// </summary>
+    /// <remarks>
+    /// The payload has no wire projection: <c>{"$type":"Dispatch"}</c> is the whole
+    /// encoding, and the canonical decoder restores the payload as the
+    /// <c>"&lt;closure&gt;"</c> sentinel, so a host fed canonical wire JSON observes
+    /// THAT the affordance fired and can never receive the message. To reach a host
+    /// across the wire use <c>Notify</c> (channel + JSON payload) or <c>Call</c> with
+    /// an <c>into:</c> target. Two shipped surfaces make this checkable rather than
+    /// remembered: the transport encoder refuses a tree carrying one, and the
+    /// pre-emit validator reports it as FUARAN112.
+    /// <para>
+    /// The generated case now carries the IDL's <c>inProcessOnly</c> annotation, which
+    /// reaches C# as <c>CS0618</c>. It is suppressed for this one expression — the
+    /// F#-side <c>Action.dispatch</c> helper is scoped the same way, for the same
+    /// reason: a helper whose whole job is to build the case cannot warn about
+    /// building it, and what the caller gets instead is this paragraph.
+    /// </para>
+    /// </remarks>
+#pragma warning disable CS0618 // in-process only — see the remarks above
     public static FsAction Dispatch(object msg) => FsAction.NewDispatch(msg);
+#pragma warning restore CS0618
 }
 
 // ─── Shared default fragments (mirror Fixtures.fs `node` helper) ────────────

@@ -584,6 +584,18 @@ let private usesOfFormFieldKind<'Msg> (implicitUse: BindingUse option) (kind: Fo
         (suggestions |> Option.map usesOfBinding |> Option.defaultValue [])
         @ usesOfValueSlot value
 
+// Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
+// annotation, which renders as `[<Obsolete(…, false)>]`: FS0044 at every
+// mention, and an error here under `TreatWarningsAsErrors`. Scoped off across
+// the three action walks below and reopened immediately after them, so a
+// genuine deprecation used inside `collect` (the 560-line walk further down) is
+// still seen. All three are EXHAUSTIVE analyses of the union — two of them say
+// so in their own doc comments — and the marking is addressed to code that puts
+// a `Dispatch` on a tree it means to serialise. `closuresOfAction` in
+// particular exists to REPORT this very case, which is how FUARAN112 and the
+// transport encoder's refusal find it.
+#nowarn "44"
+
 /// The `Action.Call`s reachable from a wire-survivable action value,
 /// recursing `Chain` (Phase 428). Non-Call arms carry no fetch.
 let rec callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse list =
@@ -675,6 +687,8 @@ let rec usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
     | Action.Print
     | Action.Invoke _ -> []
 
+#warnon "44"
+
 /// The State key a WRITE-BACK slot commits to, and whether committing also runs
 /// host code that may write elsewhere. A slot holding any other binding shape
 /// gives the renderer's write-back default nowhere to write — the FUARAN069
@@ -737,6 +751,13 @@ let formFieldWriteFacts<'Msg> (kind: FormFieldKind<'Msg>) : FormFieldWrite =
     | FormFieldKind.Rating(_, _, h, v) -> slot v h.IsSome
     | FormFieldKind.Color(h, v) -> slot v h.IsSome
     | FormFieldKind.Tokens(_, h, _, v) -> slot v h.IsSome
+
+// Phase 1152 — see the note above `callsOfAction`. The inner `recordStateAction`
+// walk classifies `Action.Dispatch` as an opaque writer, so it names the marked
+// case. The directive sits on the WHOLE declaration rather than on that inner
+// walk because a `#nowarn` inside a function body, while the compiler accepts
+// it, is not parseable by Fantomas — and an unformattable file fails the gate.
+#nowarn "44"
 
 /// Collect the tree-wide binding facts for `node` (see `TreeBindingFacts`),
 /// descending through layout children, error-boundary subtrees, and
@@ -1303,3 +1324,5 @@ let stateSeeds<'Msg> (root: Node<'Msg>) : Map<string, obj> =
                 else
                     Map.add d.Key value acc)
         Map.empty
+
+#warnon "44"

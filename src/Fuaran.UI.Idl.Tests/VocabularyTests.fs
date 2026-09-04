@@ -181,6 +181,57 @@ let tests =
                       generated
                       "src/Fuaran.UI/Generated.fs is not what src/Fuaran.UI.Idl/{idl,support}.json regenerate. If the vocabulary changed deliberately: FUARAN_REGEN=1 dotnet run --project src/Fuaran.UI.Idl.Tests. If it did not, the generated file was hand-edited — it is generated output, and content it needs belongs in the support document beside the vocabulary.")
 
+          // Phase 1152 — the `Action.Dispatch` in-process-only marking, pinned at
+          // all three of its stations.
+          //
+          // Deliberately NOT covered by the two artifact tests above, and the
+          // distinction is the reason this case exists: those assert that the
+          // committed bytes are what the SOURCES render, so deleting
+          // `InProcessOnly = true` from `Vocabulary.fs` and regenerating leaves
+          // them perfectly green. They pin agreement; this pins the CLAIM.
+          //
+          // The claim has three parts because it can be lost in three places —
+          // the declaration (someone edits the vocabulary), the artifact (the
+          // annotation stops being projected, which is what every other host
+          // reads), and the emission (the F# backend stops rendering it, which is
+          // what a .NET author sees). `Fuaran.Core.Idl.Codegen` owns the exact
+          // attribute text, so this asserts the parts that are THIS repo's claim
+          // — that a member is marked, and that the mark reaches the generated
+          // declaration of this case — rather than restating the engine's wording.
+          testCase "Action.Dispatch is declared, projected and emitted as in-process-only" (fun _ ->
+              let dispatchCase =
+                  Fuaran.UI.Vocabulary.uiIdl.Unions
+                  |> List.tryFind (fun u -> u.Name = "Action")
+                  |> Option.bind (fun u -> u.Cases |> List.tryFind (fun c -> c.Tag = "Dispatch"))
+
+              match dispatchCase with
+              | None -> failtest "the vocabulary declares no `Action.Dispatch` case"
+              | Some c ->
+                  Expect.isTrue
+                      c.Annotations.InProcessOnly
+                      "the vocabulary no longer declares `Action.Dispatch` in-process-only — the `msg` payload has no wire projection, so the marking is the only thing telling an author its value is lost across a wire boundary"
+
+              Expect.stringContains
+                  (read idlPath)
+                  "\"inProcessOnly\": true"
+                  "idl.json carries no `inProcessOnly` annotation — every non-.NET host reads the marking from this artifact, not from the F# sources"
+
+              // The emitted line for this case, located by its declaration rather
+              // than by a whole-file substring: an `Obsolete` attribute anywhere in
+              // a 3000-line module would satisfy a bare `stringContains` even if it
+              // sat on some other member entirely.
+              let dispatchLine =
+                  (read generatedPath).Split('\n')
+                  |> Array.tryFind (fun l -> l.Contains "| " && l.Contains "Dispatch of msg:")
+
+              match dispatchLine with
+              | None -> failtest "Generated.fs declares no `Dispatch of msg:` case"
+              | Some l ->
+                  Expect.stringContains
+                      l
+                      "System.Obsolete"
+                      "the generated `Action.Dispatch` case carries no `Obsolete` attribute — an author reaching for the case gets no compiler signal that its payload does not survive the wire")
+
           // The prelude the support document NAMES has to be there, or the
           // regenerated module does not compile — a failure that would otherwise
           // surface as an unrelated build break in Fuaran.UI.

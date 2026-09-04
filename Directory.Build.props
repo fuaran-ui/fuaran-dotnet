@@ -543,7 +543,7 @@
          the contract under a consumer whose NuGet cache still serves the old bits.
          See STABILITY.md "Recorded change - 0.71.0, the op-stream sinks'
          compare-and-append and keyed append". -->
-    <Version>0.71.0</Version>
+    <Version>0.72.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

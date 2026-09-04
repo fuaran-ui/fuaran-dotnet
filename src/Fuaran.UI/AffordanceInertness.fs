@@ -284,6 +284,15 @@ let private finding (nodeId: string) (subject: string) (verdictOverride: Decoded
                   |> Map.tryFind subject
                   |> Option.bind (fun s -> s.Alternative) } ]
 
+// Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
+// annotation, which renders as `[<Obsolete(…, false)>]`: FS0044 at every
+// mention. Scoped off for this ONE declaration. This is the sharpest case of
+// "not an authoring site" in the repo: `actionFindings` exists precisely TO
+// report the marked case as inert on the wire, so warning it about the hazard
+// it is the detector for adds nothing a reader does not already have. `#warnon`
+// immediately below.
+#nowarn "44"
+
 /// The wire-survivable action slots, recursing `Chain` — the same slot set the
 /// shared binding walk uses for `Action.Call` collection. A closure-held action
 /// is invisible by construction: the walk sees what the wire sees.
@@ -293,6 +302,8 @@ let rec private actionFindings (nodeId: string) (action: Action<'Msg>) : InertAf
     | Action.Dispatch _ -> finding nodeId "Action.Dispatch" None
     | Action.ReadFileBody(_, _, _, Some _) -> finding nodeId "Action.ReadFileBody.onRead" None
     | _ -> []
+
+#warnon "44"
 
 /// The grid-cell arm: six whole-case cell erasures plus the custom cell format.
 /// `Progress` is verdict-shifted by the column's own `field`, which is the one

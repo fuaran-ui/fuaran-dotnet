@@ -480,6 +480,15 @@ let private iconHook (kindClass: string) (name: string) : ReactElement =
 // runtime itself decides whether to no-op or actually execute; this is
 // just a UX hint.
 
+// Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
+// annotation, which renders as `[<Obsolete(…, false)>]`: FS0044 at every
+// mention, and an error here under `TreatWarningsAsErrors`. Scoped off for this
+// ONE declaration and reopened after it. `containsUnwiredAction` classifies
+// every case for a dev-mode tooltip; it neither constructs a `Dispatch` nor
+// serialises one, and its `Dispatch` arm answers `false` precisely because the
+// renderer is the in-process host where the case is CORRECT.
+#nowarn "44"
+
 let rec private containsUnwiredAction (action: Action<'Msg>) : bool =
     match action with
     | Action.Dispatch _ -> false
@@ -515,6 +524,8 @@ let rec private containsUnwiredAction (action: Action<'Msg>) : bool =
     // cancels the dialogue) is intrinsic to the host, which is the clipboard
     // arm's reasoning exactly — treat as wired, never as an unwired stub.
     | Action.Print -> false
+
+#warnon "44"
 
 // ─── Action interpretation ─────────────────────────────────────────────────
 //
@@ -650,6 +661,15 @@ let treeNavigate
 /// rather than short-circuited because `Chain` genuinely runs its remaining
 /// arms after one is refused, and a record that reported only the first would
 /// mis-describe the gesture.
+// Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
+// annotation, which renders as `[<Obsolete(…, false)>]`: FS0044 at every
+// mention, and an error here under `TreatWarningsAsErrors`. Scoped off for this
+// ONE declaration and reopened after it. This is the interpreter's `Dispatch`
+// arm — the IN-PROCESS host itself, executing the case on the one path where it
+// is not merely correct but the point. A warning here would be the compiler
+// telling the intended consumer not to consume.
+#nowarn "44"
+
 let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list ref) (action: Action<'Msg>) : unit =
     let note (r: Result<unit, string>) : unit =
         match r with
@@ -837,6 +857,7 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
         gate (Runtime.ActionDescriptor.AiTool capabilityId) (fun () ->
             ctx.Runtime.Warn(sprintf "[Fuaran] capability invoke (no host dispatch wired): %s" capabilityId))
 
+#warnon "44"
 
 /// **The single client-side emission point** (Phase 889). One record per user
 /// gesture, at the outer entry, with the outcome the interpretation actually

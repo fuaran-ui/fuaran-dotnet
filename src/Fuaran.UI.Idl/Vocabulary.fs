@@ -626,9 +626,26 @@ let private action =
           // `Dispatch of 'Msg`. The payload is a host value with NO wire projection —
           // `{"$type":"Dispatch"}` is the whole encoding, before and after. Declaring it
           // host-only is what lets the generated `Action` be the authoring `Action`.
+          //
+          // Phase 1152 — `InProcessOnly` is the ANNOTATION half of that fact, and it is
+          // declared here rather than written onto the generated file because the
+          // generated file is a byte-pinned projection: a hand-added attribute is erased
+          // by the next regeneration. `hostOnly` above already states the wire behaviour
+          // to the CODEC; this states it to the READER of the declaration, which is a
+          // different audience and the one that keeps putting a `Dispatch` on a tree it
+          // means to serialise. The generator emits two doc lines and one
+          // `[<System.Obsolete(…, false)>]` — FS0044, a WARNING, deliberately not an
+          // error: every in-process construction site in this repo and in every
+          // downstream Fable host is CORRECT, and a marking that fails their builds
+          // would be a claim about them that is not true. Hosts that serialise escalate
+          // it (`--warnaserror:44`); hosts that do not scope it away (`NoWarn 44`) with
+          // a comment saying why. See `STABILITY.md` and Support.fs's
+          // `case:Action.Dispatch` doc block for the remedies.
           { Tag = "Dispatch"
             Fields = [ hostOnly "msg" "'Msg" "((\"<dispatch>\" :> obj))" ]
-            Annotations = Annotations.Empty }
+            Annotations =
+              { Annotations.Empty with
+                  InProcessOnly = true } }
           { Tag = "Invoke"
             Fields = [ req "capabilityId" TStr; req "args" (TList(TRecord "InvokeArg")) ]
             Annotations = Annotations.Empty }
