@@ -8,6 +8,13 @@
   <ItemGroup>
     <Compile Include="FastPathTests.fs" />
     <Compile Include="GoldensTests.fs" />
+    <!-- Phase 1478: the Core conformance kit's function-registry, capability,
+         composition, verification and memo families over this tier's own
+         artifact witness, egress gate and memo-key encoder — plus the
+         host-neutral vector export the other wire hosts run. -->
+    <Compile Include="CoreLawSupport.fs" />
+    <Compile Include="LawVectorExport.fs" />
+    <Compile Include="CoreFunctionLawTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -17,5 +24,7 @@
   <ItemGroup>
     <PackageReference Include="Expecto" />
     <PackageReference Include="FSharp.Core" />
+    <!-- Phase 1478: the Core conformance kit (test-only — CoreFunctionLawTests.fs). -->
+    <PackageReference Include="Fuaran.Core.Conformance" />
   </ItemGroup>
 </Project>
