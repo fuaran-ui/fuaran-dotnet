@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The get-started tour: six short lessons, each a runnable console program,
+    covering what makes this language different from a component library. It is
+    a plain console app on purpose — no browser, no bundler, no dev server — so
+    "clone it and run it" is one command and the output is readable in a
+    terminal.
+
+    Five of the six lessons run with no key and no network. Only the last one
+    (`ai`) makes an HTTPS call, and only when the reader supplies their own key.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- The samples read as teaching material, so a stray unused binding in a
+         lesson should not fail the solution build the way it would in src/. -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Lesson01Authoring.fs" />
+    <Compile Include="Lesson02EditByOps.fs" />
+    <Compile Include="Lesson03Replay.fs" />
+    <Compile Include="Lesson04Safety.fs" />
+    <Compile Include="Lesson05DeclaredOperations.fs" />
+    <Compile Include="Lesson06AiAuthoring.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.FastPath\Fuaran.UI.FastPath.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer.Server\Fuaran.UI.Renderer.Server.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+
+</Project>
