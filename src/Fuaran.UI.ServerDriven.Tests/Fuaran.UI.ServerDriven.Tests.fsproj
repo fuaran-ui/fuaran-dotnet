@@ -27,6 +27,11 @@
     <!-- Phase 1179: the live-Transform incremental seam, measured against the
          incremental-recompute conformance family's own edit streams. -->
     <Compile Include="LiveTransformCorpusTests.fs" />
+    <!-- Phase 1479: the footprint and delta law families over the live-Transform
+         seam — the pinned kit's own incremental and dirty-propagation families,
+         and the same properties stated over THIS tier's live path. After the
+         corpus tests, whose recorded vectors it reads as fixed cases. -->
+    <Compile Include="CoreIncrementalLawsTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -49,5 +54,11 @@
   <ItemGroup>
     <PackageReference Include="Expecto" />
     <PackageReference Include="FSharp.Core" />
+    <!-- Phase 1479: the pinned Fuaran.Core conformance kit. Its incremental and
+         dirty-propagation families are run in CoreIncrementalLawsTests.fs, and
+         this reference is also what enrols the project in the Phase-1475 census
+         scan (which discovers conformance-referencing test projects from their
+         .fsproj rather than from a list). -->
+    <PackageReference Include="Fuaran.Core.Conformance" />
   </ItemGroup>
 </Project>
