@@ -98,6 +98,41 @@ let private concurrencyWithTest =
 let private arbitrationTest =
     "proposal arbitration partitions totally and confluently (arbitrationLaws)"
 
+/// The artifact-function families adopted by fuaran#1478, which run in
+/// `Fuaran.UI.FastPath.Tests/CoreFunctionLawTests.fs`. Named once each for the same reason the
+/// rows above are: a row and the test it enrols must not drift apart by a typo.
+let private capabilityTest =
+    "the invocable-capability contract certifies under Core's capabilityLaws"
+
+let private registryTest =
+    "the signature-typed function registry certifies under Core's registryLaws"
+
+let private packLoadingTest =
+    "content-pack loading certifies under Core's packLoadingLaws"
+
+let private paramTest =
+    "parameterised-query binding certifies under Core's paramLaws"
+
+let private deferredTest =
+    "the Deferred value codec certifies under Core's deferredLaws"
+
+let private compositionTest =
+    "FastPath artifact-functions compose hygienically under Core's compositionLaws"
+
+let private functionVerifyTest =
+    "a sound and a broken FastPath pattern certify under Core's functionVerifyLaws"
+
+let private verifyHonestyTest =
+    "verification over FastPath patterns claims structure only (verifyHonestyLaws)"
+
+let private memoTest = "FastPath application memoises soundly under Core's memoLaws"
+
+let private memoSoundnessTest =
+    "an under-declared FastPath function is never cached (memoSoundnessLaws)"
+
+let private encoderInjectivityTest =
+    "the FastPath memo-key encoder is collision-free (encoderInjectivityLaws)"
+
 /// One row per public law family of the pinned kit. Order here is authoring order (grouped by
 /// classification); the report sorts by family key, so this list may be reordered freely.
 let census: (string * Adoption) list =
@@ -151,22 +186,47 @@ let census: (string * Adoption) list =
       "Conformance.snapshotLaws", CarriedBy "fuaran#1477"
       "Conformance.snapshotLawsWith", CarriedBy "fuaran#1477"
 
-      // ---- fuaran#1478 — function-registry and capability laws over the FastPath seam ----
-      "Conformance.registryLaws", CarriedBy "fuaran#1478"
-      "Conformance.capabilityLaws", CarriedBy "fuaran#1478"
-      "Conformance.memoLaws", CarriedBy "fuaran#1478"
-      "Conformance.memoSoundnessLaws", CarriedBy "fuaran#1478"
-      "Conformance.functionVerifyLaws", CarriedBy "fuaran#1478"
-      "Conformance.verifyHonestyLaws", CarriedBy "fuaran#1478"
-      "Conformance.compositionLaws", CarriedBy "fuaran#1478"
-      "Conformance.packLoadingLaws", CarriedBy "fuaran#1478"
-      "Conformance.paramLaws", CarriedBy "fuaran#1478"
-      "Conformance.deferredLaws", CarriedBy "fuaran#1478"
-      // Not named by 1478's task list, placed there because it is the precondition of the memo
+      // ---- adopted by fuaran#1478: Fuaran.UI.FastPath.Tests/CoreFunctionLawTests.fs ----
+      // Two shapes again, and the difference decides what each green row means — the same
+      // distinction the 1476 block draws, arriving here as a sharper one because five of these
+      // families are SELF-CONTAINED `(seed, iterations)` entry points that run over Core's own
+      // types and cannot see this tier at all.
+      //
+      // PARAMETERISED — `compositionLaws`, `functionVerifyLaws`, `verifyHonestyLaws`, `memoLaws`,
+      // `memoSoundnessLaws` and `encoderInjectivityLaws` are instantiated over the FastPath seam's
+      // own artifact algebra (`CoreLawSupport.witness`: a bank `Pattern`'s Core `HoleDecl`s, the
+      // hole values bound into it, and the sub-functions composed into its slots), with the tier's
+      // OWN egress gate as the validity oracle — `PreEmitValidate.validate`, the check
+      // `FastPath.tryInstantiate` runs — and the tier's own memo-key encoder. A defect in the seam
+      // fails these.
+      //
+      // SELF-CONTAINED — `registryLaws`, `capabilityLaws`, `packLoadingLaws`, `paramLaws` and
+      // `deferredLaws` certify the PINNED KIT's contract on this machine at this pin, which is
+      // real evidence and is not evidence about the tier. The port names each family itself, so
+      // the row does not overstate what it reaches. Two of the five certify a mechanism the seam
+      // genuinely uses (`FastPath.bank` mints a `Capability` per pattern and registers it in a
+      // Core `FunctionRegistry`; `FastPath.find` IS `findBySignature`), and for those the same
+      // project asserts the property directly over `SeedCatalogue.defaultBank` rather than
+      // wrapping the law to look tier-shaped. The other three have no call site in this tier at
+      // all — no content pack, no query parameter, no `Deferred` — and that is said in the test
+      // bodies rather than left to be inferred from a green row.
+      "Conformance.registryLaws", Adopted(registryTest, "Conformance.registryLaws")
+      "Conformance.capabilityLaws", Adopted(capabilityTest, "Conformance.capabilityLaws")
+      "Conformance.memoLaws", Adopted(memoTest, "Conformance.memoLaws")
+      "Conformance.memoSoundnessLaws", Adopted(memoSoundnessTest, "Conformance.memoSoundnessLaws")
+      "Conformance.functionVerifyLaws", Adopted(functionVerifyTest, "Conformance.functionVerifyLaws")
+      "Conformance.verifyHonestyLaws", Adopted(verifyHonestyTest, "Conformance.verifyHonestyLaws")
+      "Conformance.compositionLaws", Adopted(compositionTest, "Conformance.compositionLaws")
+      "Conformance.packLoadingLaws", Adopted(packLoadingTest, "Conformance.packLoadingLaws")
+      "Conformance.paramLaws", Adopted(paramTest, "Conformance.paramLaws")
+      "Conformance.deferredLaws", Adopted(deferredTest, "Conformance.deferredLaws")
+      // Not named by 1478's task list, assigned to it because it is the precondition of the memo
       // families that phase carries: `applyMemo`'s content-addressed key is a tree encoding, and a
-      // non-injective encoder makes the cache serve the WRONG tree. The tier consumes that cache
-      // model (`Fuaran.UI.Memo`, Phase 360), so the family has a real subject here.
-      "Conformance.encoderInjectivityLaws", CarriedBy "fuaran#1478"
+      // non-injective encoder makes the cache serve the WRONG tree. Adopted over the encoder the
+      // FastPath memo families here actually pass to `applyMemo`, which is the encoder whose
+      // injectivity those two rows silently depend on — the same file, the same witness, so the
+      // precondition and the thing it conditions cannot drift apart.
+      "Conformance.encoderInjectivityLaws", Adopted(encoderInjectivityTest, "Conformance.encoderInjectivityLaws")
 
       // ---- fuaran#1479 — footprint and delta laws over the live-transform seam ----
       // `Conformance.footprintLaws` was listed here and is adopted by 1476 instead — see the
@@ -216,6 +276,11 @@ let census: (string * Adoption) list =
       "Conformance.normalizeLaws",
       NotUsed
           "Fuaran.Core.Ops.normalize — Apply.fs delegates only the structural-five APPLY to Core (applyContained); the tier ships no op-script normaliser, so the family's subject has no call site here"
+      // fuaran#1478 re-derived this classification while choosing which law families to export as
+      // host-neutral vectors for fuaran#1482, and left the row where it is: exporting a parity
+      // family run with the reference as its own `under` would publish Core's self-consistency
+      // check under this tier's name. The corpus records the absence as a statement in
+      // `laws/manifest.json` rather than leaving it a gap.
       "Conformance.transformLaws",
       NotUsed
           "a host dataframe evaluator — QueryRefine consumes Fuaran.Core.DataFrame.evalPipeline as the pinned reference rather than shipping a second evaluator, so the parity laws have no host implementation to compare against the reference"
