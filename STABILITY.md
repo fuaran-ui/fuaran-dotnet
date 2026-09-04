@@ -4406,3 +4406,67 @@ regenerated.
 **No render-fidelity obligation and no host-adoption roster row**, on the 0.67.0 / 0.68.0 / 0.70.0
 precedent: the sink contract is a .NET-tier persistence seam, not a wire claim a sibling host could
 conform to.
+
+## Recorded change — 0.73.0, the `Binding` `Static` payload-presence split (fuaran#1140)
+
+**Additive-but-visible change to the published wire-format JSON Schema
+([`wire-format-fixtures/schema.json`](../wire-format-fixtures/schema.json), emitted by
+`Fuaran.UI.Ops.SchemaGen`). No canonical JSON changes: no fixture payload moves, no encoder or
+decoder behaviour moves, and every document that was legal before is legal now.** What changes is
+what the schema is willing to say NO to, and one new `$defs` entry.
+
+**The gap.** Phase 1068 gave every `Binding` slot a `$def` instantiated at its element type, so a
+boolean at `Metric.trend` stopped being structurally well-formed. What it did not state is whether
+the `Static` payload is PRESENT. `bindingDef` emitted the `Static` arm with `value` optional in all
+ten instantiations — Phase 677's "absence is structural" — so `{"$type":"Static"}` validated against
+`Binding_float` exactly as it validated against `Binding_json`, while the decoder routes the missing
+key through the slot's OWN parser and the answer differs per slot: a scalar parser refuses the
+resulting null, a collection parser normalises it to the empty collection, and a choice slot reads
+it as "no selection". A schema-driven emitter that fills a kind's required fields and nothing else —
+the shape every such walker takes, because required-ness is the only signal the dialect gives it —
+therefore emitted the valueless form at every scalar `Binding` slot and had the decoder refuse the
+node, with nothing in the artefact to tell it otherwise.
+
+**What moved.**
+
+  * **`Binding_bool` / `Binding_float` / `Binding_int` / `Binding_str` now carry `value` in their
+    `Static` arm's `required` list.** The four element types whose parser has no reading for an
+    absent payload. A document these now refuse is a document the decoder already refused with
+    `WRONG_TYPE`, so no legal document became illegal — the schema caught up with the decoder rather
+    than the other way round.
+
+  * **`Binding_str_choice` is a NEW `$def`, and this is a SPLIT rather than a tightening.** The
+    schema pointed `Choice.value`, `SegmentedChoice.value`, `Combobox.value` and `Select.value` at
+    the same `#/$defs/Binding_str` as `TextArea.value`, `Link.href` and `Image.src` — but the
+    decoder splits them: the control slots go through `decodeBindingChoiceValue`, where an absent
+    `Static` payload is first-class ("no selection", the typed `Static None`). One `$def`, two
+    contracts. A required-key edit to `Binding_str` would have started refusing four shipped accept
+    fixtures (`controls-closure`, `form-segmented`, `multiselect-1`,
+    `multiselect-chip-list-param`), so those four slots now `$ref` their own instantiation, whose
+    `Static.value` stays optional and which carries a `description` saying what the absence MEANS —
+    the one thing the structure cannot state.
+
+  * **The collection instantiations and the two any-JSON abstentions are UNCHANGED**, deliberately:
+    `Binding_list_SelectOption` / `_list_str` / `_list_float` / `_list_MapMarker` normalise an
+    absent payload to the empty collection, and `Binding_json` / `Binding_hosted` pass it through.
+    Requiring the key there would refuse documents the decoder accepts.
+
+**Consumer impact.** A consumer that VALIDATES gains four refusals it previously had to get from the
+decoder, and loses nothing. A consumer that WALKS the schema structurally must follow one more `$ref`
+name (`Binding_str_choice`) and will now find `value` in `required` at the four scalar
+instantiations — which is the point: it is what lets a schema-driven synthesiser emit a decodable
+default at a typed scalar slot. A consumer that generates provider-native constrained emission from
+the schema gets a strictly narrower grammar, all of whose removed shapes the decoder rejected.
+
+**Pinned by** `src/Fuaran.UI.JsonDecode.Tests/BindingStaticPresenceTests.fs`, rewritten from the
+inverse pin the same phase's first slice landed: three lists — the scalar slots (schema INVALID,
+decoder ERROR), the four choice slots (schema VALID, decoder OK), and the absentable instantiations
+(schema VALID, decoder OK) — each probe asserting BOTH sides of the seam and carrying its own
+payload-present control node, plus a disjointness check that fails if the two string contracts are
+ever re-merged. `WIRE_FORMAT.md` §13's Shape paragraph is amended to describe both axes; the
+corpus's `schema.json` and this repo's byte-copied `docs/prompt-pack/schema.json` are regenerated.
+
+**No `NodeKind` change, no `Theme.vocabularyFingerprint` event, no reference-stylesheet change, no
+render-fidelity obligation.** The wire vocabulary is untouched; `idl.json` is byte-unchanged, which
+is the expected result — the IDL always carried the element type, and presence is a property of the
+schema's expression of it, not of the vocabulary.
