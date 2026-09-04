@@ -4337,3 +4337,72 @@ streamed-upload adoption table instead, with `fuaran` adopted and every other ho
 **§11 step 6 authoring surfaces:** C# `FileUploadOptions.Destination` (a nullable `string`); the VB
 `destination` attribute on `<FileUpload>`, read through the plain `Attr` so absence stays the
 client-only control; and the analyzer vocabulary row.
+
+## Recorded change — 0.71.0, the op-stream sinks' compare-and-append and keyed append (fuaran#1485)
+
+**ADDITIVE on every axis: no existing member changed signature, no DU gained a case, no record
+gained a field, and `IOpStreamSink<'Msg>` gained nothing.** `Fuaran.UI.OpStream.Abstractions` gains
+`AppendReceipt`, `CasAppendOutcome`, `KeyedAppendOutcome`, and two OPTIONAL extension interfaces —
+`IOpStreamCasSink<'Msg>` and `IOpStreamKeyedSink<'Msg>`; `Fuaran.UI.OpStream.Replay` gains
+`ApplyPersist.applyWithSinksKeyed`. Both shipped stores (`InMemorySink`, `SqliteSink`) implement
+both new interfaces.
+
+  * **Why the members are on extension interfaces rather than on `IOpStreamSink<'Msg>`.** That
+    interface is shipped and implemented outside this repo; an abstract member added to it breaks
+    every external implementor at compile time, which would make this a major change in everything
+    but the version number. `IOpStreamCheckpointSink<'Msg>` established the shape here — inherit the
+    base, add the members, let a consumer ask for the capability by type — and it is what keeps the
+    addition free for a consumer who wants none of it.
+
+  * **Two interfaces and not one, deliberately.** A compare-and-append and a keyed append are
+    independently implementable: a store that can compare a head cheaply may carry no key index, and
+    a queue with an idempotency header may have no addressable head. Both shipped stores implement
+    both; a third-party sink is not made to claim what it does not do.
+
+  * **`AppendIf` returns a VALUE where the old guard threw, and that is the point.**
+    `CasAppendOutcome.StaleHead (expected, actual)` names the head the store actually holds, so a
+    retry loop rebuilds its record against `actual` without a second round trip. Nothing is
+    persisted on a refusal. The SQLite implementation wraps the head read and the insert in one
+    transaction — outside one they are two statements a concurrent writer can interleave, which is a
+    slower race rather than a compare-and-append.
+
+  * **The NO-EXPECTATION path is unchanged, deliberately.** `Append` still takes no head, still
+    THROWS on a duplicate `(StreamId, Sequence)`, and still accepts a record whose `PreviousHash`
+    does not link to the current head — that mis-chain is caught on the READ path by
+    `LoadVerification.Full`, exactly as before. A caller that wants the head checked asks for it by
+    calling `AppendIf`. A duplicate sequence reached through `AppendIf` at a MATCHING head throws
+    for the same reason it always did: it is a structural defect, not a stale head, and reporting it
+    as one would tell the caller to retry a record that is already there.
+
+  * **`AppendKeyed` is keyed on `(StreamId, invocationKey)` and answers a re-send from the key, not
+    from the record.** The first call persists and returns `Appended receipt`; every later call for
+    that key persists nothing and returns `Duplicate receipt` — the SAME receipt, whatever the second
+    call's record says. The asymmetry is the contract: a caller that rebuilt its record after a lost
+    acknowledgement carries a fresh timestamp and a re-derived sequence, and must still be told about
+    the record it already has. The key is opaque to the sink; choosing one that separates genuinely
+    distinct invocations is the caller's obligation, as it is for Core's `keyOf` projection.
+
+  * **The SQLite store gains an `op_invocation` side table, not a column on `op_stream`.** Its
+    `PRIMARY KEY (stream_id, invocation_key)` IS the unique index on the key, and the SELECT in front
+    of it is only a fast path — a writer that takes the key in between is refused by the index, by
+    name. **An existing database migrates by being opened**: `ensureSchema` runs
+    `CREATE TABLE IF NOT EXISTS` on construction, no `op_stream` row is read or rewritten, and a
+    database written by an older version is fully usable by this one and vice versa (an older
+    version simply ignores the extra table). No migration step is required of a host.
+
+  * **`applyWithSinksKeyed` takes the sink as `IOpStreamKeyedSink<'Msg>` rather than probing for the
+    capability at run time.** A host cannot then ask for idempotency from a store with no key index
+    and silently receive a plain append — the one outcome worse than not offering the contract.
+    `applyWithSinks` is UNCHANGED and still cannot recognise a retry: nothing in an op says which
+    invocation produced it, and two genuinely distinct user actions may carry the identical op, so
+    the wrapper that was never given a key cannot invent one. The two entry points differ by exactly
+    that fact.
+
+**No wire-format change, no `WIRE_FORMAT.md` §11 event, no validator code, no class vocabulary.**
+The addition is a durable-port contract; nothing about a `Node`, a `TreeOp` or their encodings moves,
+so `Theme.vocabularyFingerprint` and the reference stylesheet are untouched and no corpus fixture is
+regenerated.
+
+**No render-fidelity obligation and no host-adoption roster row**, on the 0.67.0 / 0.68.0 / 0.70.0
+precedent: the sink contract is a .NET-tier persistence seam, not a wire claim a sibling host could
+conform to.

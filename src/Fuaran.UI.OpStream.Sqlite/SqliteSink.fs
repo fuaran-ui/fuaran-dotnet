@@ -177,6 +177,13 @@ CREATE TABLE IF NOT EXISTS op_checkpoint (
     snapshot_json        TEXT    NOT NULL,
     timestamp            INTEGER NOT NULL,
     PRIMARY KEY (stream_id, sequence)
+);
+CREATE TABLE IF NOT EXISTS op_invocation (
+    stream_id            TEXT    NOT NULL,
+    invocation_key       TEXT    NOT NULL,
+    sequence             INTEGER NOT NULL,
+    hash                 TEXT    NOT NULL,
+    PRIMARY KEY (stream_id, invocation_key)
 );"""
 
         cmd.ExecuteNonQuery() |> ignore
@@ -192,6 +199,150 @@ CREATE TABLE IF NOT EXISTS op_checkpoint (
         | Ok() -> records
         | Error e -> invalidOp ("SqliteSink: " + Verify.describe streamId e)
 
+    /// The one INSERT into `op_stream`. Callers own the connection, and pass a
+    /// transaction where a second statement has to land or not land with it
+    /// (Phase 1485's keyed append). Extracted rather than duplicated so the
+    /// column list, the typed-actor encoding and the SQLITE_CONSTRAINT
+    /// translation cannot drift between the three append paths.
+    let insertRecordOn
+        (conn: SqliteConnection)
+        (tx: SqliteTransaction option)
+        (record: OpRecord<'Msg>)
+        : AppendReceipt =
+        use cmd = conn.CreateCommand()
+
+        match tx with
+        | Some t -> cmd.Transaction <- t
+        | None -> ()
+
+        cmd.CommandText <-
+            """INSERT INTO op_stream
+    (stream_id, sequence, previous_hash, hash, op_json, prompt_id, user_id, timestamp, result_envelope_json)
+VALUES
+    (@stream_id, @sequence, @previous_hash, @hash, @op_json, @prompt_id, @user_id, @timestamp, @result_envelope_json);"""
+
+        cmd.Parameters.AddWithValue("@stream_id", record.StreamId) |> ignore
+        cmd.Parameters.AddWithValue("@sequence", record.Sequence) |> ignore
+        cmd.Parameters.AddWithValue("@previous_hash", record.PreviousHash) |> ignore
+        cmd.Parameters.AddWithValue("@hash", record.Hash) |> ignore
+        cmd.Parameters.AddWithValue("@op_json", codec.EncodeOp record.Op) |> ignore
+
+        let promptIdValue: obj =
+            match record.PromptId with
+            | Some s -> upcast s
+            | None -> upcast DBNull.Value
+
+        cmd.Parameters.AddWithValue("@prompt_id", promptIdValue) |> ignore
+        // Phase 320 — the `user_id` column now holds the canonical typed-actor
+        // JSON (`Actor.encode`); pre-320 rows held a bare user-id string and read
+        // back as `Human` via the `ofLegacyString` fallback below.
+        cmd.Parameters.AddWithValue("@user_id", Actor.encode record.Actor) |> ignore
+
+        cmd.Parameters.AddWithValue("@timestamp", record.Timestamp.ToUnixTimeSeconds())
+        |> ignore
+
+        cmd.Parameters.AddWithValue("@result_envelope_json", ResultEnvelopeJson.encode record.ResultEnvelope)
+        |> ignore
+
+        try
+            cmd.ExecuteNonQuery() |> ignore
+        with :? SqliteException as ex when ex.SqliteErrorCode = 19 ->
+            // SQLITE_CONSTRAINT — duplicate (stream_id, sequence) PK.
+            invalidOp (
+                sprintf
+                    "SqliteSink: duplicate (StreamId=%s, Sequence=%d) — sinks reject overwrites."
+                    record.StreamId
+                    record.Sequence
+            )
+
+        { StreamId = record.StreamId
+          Sequence = record.Sequence
+          Hash = record.Hash }
+
+    /// The chain head as `IOpStreamCasSink.Head` reports it — the hash of the
+    /// row at the highest sequence, or the genesis anchor for an empty stream.
+    /// Takes the caller's connection (and transaction) so the compare and the
+    /// append below are one atomic read-then-write rather than two races.
+    let headOn (conn: SqliteConnection) (tx: SqliteTransaction option) (streamId: string) : string =
+        use cmd = conn.CreateCommand()
+
+        match tx with
+        | Some t -> cmd.Transaction <- t
+        | None -> ()
+
+        cmd.CommandText <- "SELECT hash FROM op_stream WHERE stream_id = @stream_id ORDER BY sequence DESC LIMIT 1;"
+
+        cmd.Parameters.AddWithValue("@stream_id", streamId) |> ignore
+
+        match cmd.ExecuteScalar() with
+        | :? string as h -> h
+        | _ -> HashChain.genesisPreviousHash
+
+    /// The receipt a previous append under `invocationKey` produced, or `None`
+    /// if the key is unseen on this stream. Reads the `op_invocation` side
+    /// table rather than a column on `op_stream`, which is what lets an
+    /// existing database gain the contract by opening it: `ensureSchema` adds
+    /// the table, and no row of the op log is rewritten or re-read.
+    let invocationReceiptOn
+        (conn: SqliteConnection)
+        (tx: SqliteTransaction option)
+        (streamId: string)
+        (invocationKey: string)
+        : AppendReceipt option =
+        use cmd = conn.CreateCommand()
+
+        match tx with
+        | Some t -> cmd.Transaction <- t
+        | None -> ()
+
+        cmd.CommandText <-
+            "SELECT sequence, hash FROM op_invocation WHERE stream_id = @stream_id AND invocation_key = @key;"
+
+        cmd.Parameters.AddWithValue("@stream_id", streamId) |> ignore
+        cmd.Parameters.AddWithValue("@key", invocationKey) |> ignore
+        use reader = cmd.ExecuteReader()
+
+        if reader.Read() then
+            Some
+                { StreamId = streamId
+                  Sequence = reader.GetInt32(0)
+                  Hash = reader.GetString(1) }
+        else
+            None
+
+    /// Claim `invocationKey` for the record just inserted. The
+    /// `(stream_id, invocation_key)` primary key is the unique index that makes
+    /// the claim one-writer; the SELECT above is only a fast path, and a
+    /// concurrent writer that took the key between the two is refused HERE.
+    let claimInvocationOn
+        (conn: SqliteConnection)
+        (tx: SqliteTransaction)
+        (streamId: string)
+        (invocationKey: string)
+        (receipt: AppendReceipt)
+        : unit =
+        use cmd = conn.CreateCommand()
+        cmd.Transaction <- tx
+
+        cmd.CommandText <-
+            """INSERT INTO op_invocation (stream_id, invocation_key, sequence, hash)
+VALUES (@stream_id, @key, @sequence, @hash);"""
+
+        cmd.Parameters.AddWithValue("@stream_id", streamId) |> ignore
+        cmd.Parameters.AddWithValue("@key", invocationKey) |> ignore
+        cmd.Parameters.AddWithValue("@sequence", receipt.Sequence) |> ignore
+        cmd.Parameters.AddWithValue("@hash", receipt.Hash) |> ignore
+
+        try
+            cmd.ExecuteNonQuery() |> ignore
+        with :? SqliteException as ex when ex.SqliteErrorCode = 19 ->
+            invalidOp (
+                sprintf
+                    "SqliteSink: invocation key (StreamId=%s, Key=%s) was taken concurrently — retry to read the winner's receipt."
+                    streamId
+                    invocationKey
+            )
+
     /// Three-arg constructor — verifies the whole loaded segment on `Replay`.
     new(connectionString: string, codec: IOpJsonCodec<'Msg>, nodeCodec: INodeJsonCodec<'Msg>) =
         SqliteSink<'Msg>(connectionString, codec, nodeCodec, LoadVerification.Full)
@@ -204,52 +355,16 @@ CREATE TABLE IF NOT EXISTS op_checkpoint (
     new(connectionString: string, codec: IOpJsonCodec<'Msg>) =
         SqliteSink<'Msg>(connectionString, codec, NodeJsonCodec.encodeOnly<'Msg> (), LoadVerification.Full)
 
-    interface IOpStreamCheckpointSink<'Msg> with
+    // The BASE interface is implemented explicitly rather than through the
+    // checkpoint extension's block, because Phase 1485 gives this type three
+    // interfaces that all inherit it and F# then requires the shared base to be
+    // implemented once, by name (FS0363). Nothing about the four members moved.
+    interface IOpStreamSink<'Msg> with
 
         member _.Append(record: OpRecord<'Msg>) : Async<unit> =
             async {
                 use conn = openConnection ()
-                use cmd = conn.CreateCommand()
-
-                cmd.CommandText <-
-                    """INSERT INTO op_stream
-    (stream_id, sequence, previous_hash, hash, op_json, prompt_id, user_id, timestamp, result_envelope_json)
-VALUES
-    (@stream_id, @sequence, @previous_hash, @hash, @op_json, @prompt_id, @user_id, @timestamp, @result_envelope_json);"""
-
-                cmd.Parameters.AddWithValue("@stream_id", record.StreamId) |> ignore
-                cmd.Parameters.AddWithValue("@sequence", record.Sequence) |> ignore
-                cmd.Parameters.AddWithValue("@previous_hash", record.PreviousHash) |> ignore
-                cmd.Parameters.AddWithValue("@hash", record.Hash) |> ignore
-                cmd.Parameters.AddWithValue("@op_json", codec.EncodeOp record.Op) |> ignore
-
-                let promptIdValue: obj =
-                    match record.PromptId with
-                    | Some s -> upcast s
-                    | None -> upcast DBNull.Value
-
-                cmd.Parameters.AddWithValue("@prompt_id", promptIdValue) |> ignore
-                // Phase 320 — the `user_id` column now holds the canonical typed-actor
-                // JSON (`Actor.encode`); pre-320 rows held a bare user-id string and read
-                // back as `Human` via the `ofLegacyString` fallback below.
-                cmd.Parameters.AddWithValue("@user_id", Actor.encode record.Actor) |> ignore
-
-                cmd.Parameters.AddWithValue("@timestamp", record.Timestamp.ToUnixTimeSeconds())
-                |> ignore
-
-                cmd.Parameters.AddWithValue("@result_envelope_json", ResultEnvelopeJson.encode record.ResultEnvelope)
-                |> ignore
-
-                try
-                    cmd.ExecuteNonQuery() |> ignore
-                with :? SqliteException as ex when ex.SqliteErrorCode = 19 ->
-                    // SQLITE_CONSTRAINT — duplicate (stream_id, sequence) PK.
-                    invalidOp (
-                        sprintf
-                            "SqliteSink: duplicate (StreamId=%s, Sequence=%d) — sinks reject overwrites."
-                            record.StreamId
-                            record.Sequence
-                    )
+                insertRecordOn conn None record |> ignore
             }
 
         member _.Replay(streamId: string, fromSequence: int, toSequence: int) : Async<OpRecord<'Msg> list> =
@@ -346,6 +461,8 @@ ORDER BY sequence;"""
 
                 return List.ofSeq results
             }
+
+    interface IOpStreamCheckpointSink<'Msg> with
 
         member _.AppendCheckpoint(checkpoint: Checkpoint<'Msg>) : Async<unit> =
             async {
@@ -484,6 +601,58 @@ ORDER BY sequence;"""
                 cmd.Parameters.AddWithValue("@stream_id", streamId) |> ignore
                 cmd.Parameters.AddWithValue("@before", beforeSequence) |> ignore
                 return cmd.ExecuteNonQuery()
+            }
+
+    // ── Phase 1485: the two contracts a durable port owes a consumer ────────
+    // Both wrap their read-then-write in an explicit transaction. Without one,
+    // the head read and the insert are two statements a concurrent writer can
+    // interleave, which is a slower race rather than a compare-and-append —
+    // and the keyed path's two inserts could land half-applied, leaving a
+    // record no key names or a key naming no record.
+
+    interface IOpStreamCasSink<'Msg> with
+
+        member _.Head(streamId: string) : Async<string> =
+            async {
+                use conn = openConnection ()
+                return headOn conn None streamId
+            }
+
+        member _.AppendIf(record: OpRecord<'Msg>, expectedHead: string) : Async<CasAppendOutcome> =
+            async {
+                use conn = openConnection ()
+                use tx = conn.BeginTransaction()
+                let actual = headOn conn (Some tx) record.StreamId
+
+                if actual <> expectedHead then
+                    // Nothing was written, so the rollback is what makes "the stream is
+                    // untouched" true rather than merely intended.
+                    tx.Rollback()
+                    return CasAppendOutcome.StaleHead(expectedHead, actual)
+                else
+                    let receipt = insertRecordOn conn (Some tx) record
+                    tx.Commit()
+                    return CasAppendOutcome.Appended receipt
+            }
+
+    interface IOpStreamKeyedSink<'Msg> with
+
+        member _.AppendKeyed(record: OpRecord<'Msg>, invocationKey: string) : Async<KeyedAppendOutcome> =
+            async {
+                use conn = openConnection ()
+                use tx = conn.BeginTransaction()
+
+                match invocationReceiptOn conn (Some tx) record.StreamId invocationKey with
+                | Some receipt ->
+                    // The retry contract: the FIRST receipt, unchanged, and nothing
+                    // written. The second call's `record` is not consulted at all.
+                    tx.Rollback()
+                    return KeyedAppendOutcome.Duplicate receipt
+                | None ->
+                    let receipt = insertRecordOn conn (Some tx) record
+                    claimInvocationOn conn tx record.StreamId invocationKey receipt
+                    tx.Commit()
+                    return KeyedAppendOutcome.Appended receipt
             }
 
 module SqliteSink =
