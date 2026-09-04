@@ -458,20 +458,20 @@ let tests =
 //   * `columnarValidatorLaws` — `Fuaran.UI.Validator` ships no columnar rule
 //     (its grid checks are CSS `grid-template-columns` and AST row types), and
 //     nothing in this repo registers a Core columnar validator. The tier's real
-//     columnar-validation rule is FUARAN114 (Phase 1149) in
-//     `PreEmitValidate.fs`: it grounds a grid's column `field` / `rowKeyField`
-//     against the schema of the `Table` the grid reads. The same two properties
+//     columnar-validation rule is FUARAN114 (Phase 1149, widened by Phase 1486)
+//     in `PreEmitValidate.fs`: it grounds a grid's column `field` /
+//     `rowKeyField` against the schema the grid's source PRODUCES. The same two properties
 //     the law certifies for Core's validator — determinism, and a defect count
 //     equal to the injected-fault count — are asserted over that rule.
-//   * `schemaWalkLaws` — nothing in this repo calls the schema walk yet. The
-//     rule above derives its column set by hand from an EMPTY pipeline, and its
-//     own doc comment records the widening as waiting on a pin that carries the
-//     walk. That pin arrived: 0.18.0 ships it. So the agreement the widening
-//     would rest on is asserted here — the walk against the rule's window, and
-//     the walk against the schema the tier's OWN refinement evaluator produces
-//     for the pipelines the rule currently stands down on. Widening the shipped
-//     rule is a change to what FUARAN114 reports and is deliberately not made
-//     here.
+//   * `schemaWalkLaws` — the tier calls the schema walk since Phase 1486: the
+//     rule above derived its column set by hand from an EMPTY pipeline until the
+//     pin carried the walk, and now folds the whole pipeline through
+//     `SchemaWalk`. What is asserted here is the AGREEMENT that widening rests
+//     on, which no law about Core alone can state — the walk against the rule's
+//     own window, and the walk against the schema the tier's OWN refinement
+//     evaluator (`QueryRefine.refineLocally`) produces for pipelines the rule now
+//     judges. Written before the widening landed, so two of its assertions were
+//     go-red proofs for it and read as the widened claim now.
 // ============================================================================
 
 module Columnar =
@@ -883,14 +883,25 @@ module Columnar =
                                       (List.contains n actual)
                                       (sprintf "%s: an open walk claims no column the result lacks ('%s')" name n)
 
-                          // And the gap itself, as a live fact rather than a
-                          // comment: the rule stands down here, so a field the
-                          // pipeline cannot produce passes ungrounded.
-                          Expect.isEmpty
-                              (gridOver pipeline [ "no-such-column" ] (Some "dept") |> ungroundedOf)
-                              (sprintf "%s: FUARAN114 stands down on a non-empty pipeline" name)
+                          // And the widening itself, as a live fact rather than a
+                          // comment (Phase 1486). These two assertions were
+                          // written to go RED when the rule took the walk, and
+                          // they did: where the walk CLOSES, FUARAN114 now
+                          // refuses a field the pipeline cannot produce; where it
+                          // stays open the rule still stands down, because an
+                          // ignorance is not an absence.
+                          let ungrounded =
+                              gridOver pipeline [ "no-such-column" ] (Some "dept") |> ungroundedOf
+
+                          if SchemaWalk.isClosed derived then
+                              Expect.equal
+                                  ungrounded
+                                  [ "grid", "no-such-column" ]
+                                  (sprintf "%s: FUARAN114 refuses the unproducible field under a closed walk" name)
+                          else
+                              Expect.isEmpty ungrounded (sprintf "%s: FUARAN114 stands down under an open walk" name)
 
                   Expect.isGreaterThan
                       closedNonEmpty
                       0
-                      "at least one non-empty pipeline the rule stands down on has a closed walk — the widening's whole subject" ]
+                      "at least one non-empty pipeline has a closed walk — the widening's whole subject" ]

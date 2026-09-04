@@ -272,11 +272,24 @@ let census: (string * Adoption) list =
       // All four run in `Fuaran.UI.OpStream.Tests`, beside the durable ports they are about. Note
       // what the ROW claims and what it does not: these families are parameterised over a
       // `StreamWitness` (Apply / Encode / Decode) and Core owns the append, so the adoption is over
-      // the tier's reducer, op codec, chain digest and node encoder — NOT over `IOpStreamSink`,
-      // which offers neither a compare-and-append nor an idempotency key. That gap is asserted
-      // directly by the store tests in the same file.
-      "Conformance.casLaws", Adopted(casTest, "Conformance.casLaws")
-      "Conformance.idempotencyLaws", Adopted(idempotencyTest, "Conformance.idempotencyLaws")
+      // the tier's reducer, op codec, chain digest and node encoder — NOT over `IOpStreamSink`.
+      //
+      // fuaran#1485 gave the ports the two contracts these families name (`IOpStreamCasSink` /
+      // `IOpStreamKeyedSink`, both stores), so the store side is no longer a gap the same file
+      // pins as negatives — it is a set of store-shaped tests, and the two ports below cite them
+      // beside the reducer-level run. The distinction still holds and is why both are named: the
+      // law certifies Core's append over the tier's witness, and the store-shaped test certifies
+      // the tier's own durable ports through the new surface. Neither substitutes for the other.
+      "Conformance.casLaws",
+      Adopted(
+          casTest,
+          "Conformance.casLaws — beside the store-shaped 'both durable stores refuse a stale-head append with a typed StaleHead naming the actual head' and 'the store-shaped compare-and-append and keyed-append laws hold over both durable stores' (fuaran#1485)"
+      )
+      "Conformance.idempotencyLaws",
+      Adopted(
+          idempotencyTest,
+          "Conformance.idempotencyLaws — beside the store-shaped 'both durable stores return the same receipt for a re-sent keyed append and persist nothing the second time' and 'the store-shaped compare-and-append and keyed-append laws hold over both durable stores' (fuaran#1485)"
+      )
       "Conformance.snapshotLaws", Adopted(snapshotTest, "Conformance.snapshotLaws")
       "Conformance.snapshotLawsWith", Adopted(snapshotTest, "Conformance.snapshotLawsWith")
 
@@ -390,18 +403,21 @@ let census: (string * Adoption) list =
       // The port names each family itself, so no row overstates its reach.
       //
       // What the tier actually carries, since the phase text assumed otherwise:
-      // there is no columnar op-algebra call site here at all, no Core columnar
-      // validator registration, and no schema-walk call site — and the one
-      // production `Column.create` authoring surface is `RetrievalSource.Hit.toTable`.
+      // there is no columnar op-algebra call site here at all and no Core columnar
+      // validator registration — and the one production `Column.create` authoring
+      // surface is `RetrievalSource.Hit.toTable`. (The schema walk was the third
+      // such absence until Phase 1486 gave FUARAN114 and FUARAN086 a call site in
+      // `PreEmitValidate.fs`; the row below still enrols the LAW, which is about
+      // the pinned kit, not about that call site.)
       // So beside each law run the same file asserts the family's property
       // DIRECTLY over the surface the tier does have, rather than wrapping the law
       // to look tier-shaped: the authoring surface's columns are well-formed
       // against the schema it declares; aggregating a column THAT surface built
       // equals the single-group GroupBy; the tier's own columnar-validation rule
-      // (FUARAN114, Phase 1149) is deterministic and reports exactly the
+      // (FUARAN114, Phase 1149/1486) is deterministic and reports exactly the
       // ungrounded names; and the schema walk agrees both with that rule's window
       // and with the schema `QueryRefine.refineLocally` produces for the pipelines
-      // the rule stands down on. Those four are tests in their own right, not
+      // the rule judges. Those four are tests in their own right, not
       // second spellings of these rows — a row names the law it enrols.
       "Conformance.columnarOpLaws", Adopted(columnarOpTest, "Conformance.columnarOpLaws")
       "Conformance.columnarValidatorLaws", Adopted(columnarValidatorTest, "Conformance.columnarValidatorLaws")

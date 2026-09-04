@@ -1628,7 +1628,7 @@ let tests =
               | Ok() -> failtest "Expected ChartFieldUngrounded"
           }
 
-          test "a grounded chart over an embedded table passes; a non-empty pipeline is unknowable and passes" {
+          test "a grounded chart over an embedded table passes; a derived column grounds the chart that plots it" {
               let table: Fuaran.Core.Table =
                   { Schema =
                       [ "quarter", Fuaran.Core.ColumnType.StringType
@@ -1649,8 +1649,11 @@ let tests =
               | Ok() -> ()
               | Error defects -> failtestf "Expected Ok for a grounded chart, got: %A" defects
 
-              // The same typo'd field behind a Derive pipeline: the output
-              // schema is not statically derivable, so grounding must NOT fire.
+              // Phase 1486 — a column the pipeline ADDS. Before the widening this
+              // passed because the whole pipelined shape was unjudged; it passes
+              // now because the walk names `variance` as produced. And the
+              // derived column's TYPE is data-dependent, so FUARAN087 says
+              // nothing about it rather than guessing.
               let piped: Node<Msg> =
                   Fuaran.chart
                       "cht2"
@@ -1667,7 +1670,90 @@ let tests =
 
               match PreEmitValidate.validate piped with
               | Ok() -> ()
-              | Error defects -> failtestf "Expected Ok for a piped chart (unknowable schema), got: %A" defects
+              | Error defects -> failtestf "Expected Ok for a chart plotting a derived column, got: %A" defects
+          }
+
+          // ── Phase 1486 — FUARAN086 widens to the schema walk ──
+          //
+          // The chart rule moves with FUARAN114: the window is no longer the
+          // EMPTY pipeline but the schema `Fuaran.Core.SchemaWalk` derives for the
+          // whole one. Two directions and one restraint, the same three the grid
+          // rule's tests carry.
+
+          test "FUARAN086: a chart plotting a column the pipeline renames away is refused" {
+              let table: Fuaran.Core.Table =
+                  { Schema =
+                      [ "quarter", Fuaran.Core.ColumnType.StringType
+                        "revenue", Fuaran.Core.ColumnType.FloatType ]
+                    Columns = [] }
+
+              // `project` closes the set to exactly its output names, so
+              // `revenue` no longer exists downstream — a fact the tree does not
+              // show and the walk does.
+              let renamedAway: Node<Msg> =
+                  Fuaran.chart
+                      "cht"
+                      { Defaults.chart<Msg> with
+                          Kind = ChartKind.Bar
+                          Source =
+                              Binding.Transform(
+                                  TransformSource.Data(Fuaran.Core.DataSource.Embedded table),
+                                  [ Fuaran.Core.Transform.Project [ "quarter", "quarter"; "revenue", "takings" ] ],
+                                  None
+                              )
+                          XField = "quarter"
+                          YFields = [ "revenue" ] }
+
+              match PreEmitValidate.validate renamedAway with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.ChartFieldUngrounded("cht", "revenue"))
+                      "the renamed-away y-field is refused under a closed walk"
+              | Ok() -> failtest "Expected ChartFieldUngrounded for the renamed-away y-field"
+
+              // The produced name plots, and its type survives the projection, so
+              // FUARAN087 stays silent too.
+              let renamed: Node<Msg> =
+                  Fuaran.chart
+                      "cht2"
+                      { Defaults.chart<Msg> with
+                          Kind = ChartKind.Bar
+                          Source =
+                              Binding.Transform(
+                                  TransformSource.Data(Fuaran.Core.DataSource.Embedded table),
+                                  [ Fuaran.Core.Transform.Project [ "quarter", "quarter"; "revenue", "takings" ] ],
+                                  None
+                              )
+                          XField = "quarter"
+                          YFields = [ "takings" ] }
+
+              match PreEmitValidate.validate renamed with
+              | Ok() -> ()
+              | Error defects -> failtestf "Expected Ok for a chart plotting the produced name, got: %A" defects
+          }
+
+          test "FUARAN086 stands down where the produced schema is not derivable" {
+              // The restraint the widening preserves. A `Ref` source names rows
+              // the HOST resolves and the validator has no host, so the walk is
+              // open and an absence there is an ignorance, never a fact.
+              let refSourced: Node<Msg> =
+                  Fuaran.chart
+                      "cht"
+                      { Defaults.chart<Msg> with
+                          Kind = ChartKind.Bar
+                          Source =
+                              Binding.Transform(
+                                  TransformSource.Data(Fuaran.Core.DataSource.Ref "revenue-by-quarter"),
+                                  [ Fuaran.Core.Transform.Sort [ "quarter", Fuaran.Core.Asc ] ],
+                                  None
+                              )
+                          XField = "quarter"
+                          YFields = [ "revenue" ] }
+
+              match PreEmitValidate.validate refSourced with
+              | Ok() -> ()
+              | Error defects -> failtestf "Expected Ok for a chart over an unresolvable Ref source, got: %A" defects
           }
 
           test "a string-typed y-field and a string-typed scatter x fire ChartFieldTypeMismatch" {

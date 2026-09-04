@@ -194,21 +194,33 @@ type PreEmitDefect =
     /// the switch node's id.
     | UngroundedSwitchStateKey of nodeId: string
     /// **FUARAN086 (Error)**. A `ChartSpec` field reference (`XField` or a
-    /// `YFields` entry) names a column absent from the chart's statically-known
-    /// data schema (Phase 640). Today the schema is statically known for a
-    /// `Binding.Transform` over an `Embedded` table with an EMPTY pipeline —
-    /// the common inline-data chart. A non-empty pipeline (Derive/Project/
-    /// GroupBy change the column set), a `Ref` source, a `Query`, or a host
-    /// `Static` obj-seq is unknowable pre-emit and deliberately passes
-    /// ungrounded (the fuaran-core#90 rule: only refuse what is PROVABLY
-    /// wrong). Carries the chart node's id and the ungrounded field name.
+    /// `YFields` entry) names a column the chart's own source cannot produce
+    /// (Phase 640, widened by Phase 1486). The schema is the one
+    /// `Fuaran.Core.SchemaWalk` derives for the `Binding.Transform`'s data
+    /// source under its whole pipeline — so a chart plotting a `derive`d column,
+    /// or one the pipeline `project`s or `groupBy`s into being, is now grounded
+    /// where it previously passed unjudged, and one plotting a column the
+    /// pipeline renames away is refused.
+    ///
+    /// The restraint is unchanged and is now held by the walk's own shape rather
+    /// than by the narrowness of the pattern: only a CLOSED walk — these columns
+    /// and no others — supports a negative verdict. An open walk (a `Ref` source
+    /// this validator has no host to resolve, a pivot whose value columns are
+    /// named by the data), a `Query`, a `State`, or a host `Static` obj-seq is
+    /// unknowable pre-emit and passes ungrounded, per the fuaran-core#90 rule:
+    /// only refuse what is PROVABLY wrong.
+    ///
+    /// Carries the chart node's id and the ungrounded field name.
     | ChartFieldUngrounded of nodeId: string * field: string
     /// **FUARAN087 (Error)**. A grounded chart value field (a `YFields` entry,
     /// or `XField` on a `Scatter`) carries a column type the lowering cannot
     /// plot numerically — anything outside int/float/bool (bool coerces 1/0)
     /// reads 0.0 at lowering time, a silently-flat series (Phase 640). Fires
-    /// only when the schema is statically known (see FUARAN086). Carries the
-    /// node id, the field, and the offending column-type tag.
+    /// only when the schema is statically known (see FUARAN086) AND the column's
+    /// type is decidable there — a `derive`d column exists with a data-dependent
+    /// type, so it grounds FUARAN086 and says nothing here rather than being
+    /// guessed at. Carries the node id, the field, and the offending column-type
+    /// tag.
     | ChartFieldTypeMismatch of nodeId: string * field: string * columnType: string
     /// **FUARAN088 (Error)**. A `Pie` chart carries other than exactly ONE
     /// `YFields` series (Phase 640/638). The pie lowering REFUSES multi-series
@@ -314,10 +326,12 @@ type PreEmitDefect =
     /// grounded validator is for: the alternative postures were silent coercion
     /// (a flat wrong picture) and inference from the cell strings (a guess
     /// dressed as a rule). Fires only where the schema is statically known —
-    /// FUARAN086's window, an `Embedded` table with an EMPTY pipeline — so an
+    /// FUARAN086's window, which since Phase 1486 is the schema the source
+    /// PRODUCES under its whole pipeline rather than only the empty one — so an
     /// unknowable source passes ungrounded per the fuaran-core#90 rule: refuse
-    /// only what is PROVABLY wrong. Carries the chart node's id, the x field,
-    /// and the offending column-type tag.
+    /// only what is PROVABLY wrong.
+    /// Carries the chart node's id, the x field, and the offending column-type
+    /// tag.
     | ChartTemporalXNotDate of nodeId: string * field: string * columnType: string
     /// **FUARAN098 (Warning)**. An `Action.SetState` writes a state key that
     /// NOTHING in the tree reads (Phase 932) — the general form of the fake
@@ -1287,7 +1301,8 @@ type PreEmitDefect =
     /// **FUARAN114 (Error)**. A `DataGrid` names a column its own source cannot
     /// produce: a column `field`, or the grid's `rowKeyField`, absent from the
     /// statically-known schema of the `Binding.Transform` the grid reads
-    /// (Phase 1149). The row projection resolves the name against each row and
+    /// (Phase 1149, widened to the whole pipeline by Phase 1486). The row
+    /// projection resolves the name against each row and
     /// finds nothing, so the cell renders blank — or, for `rowKeyField`, every
     /// row keys off the same empty string and row identity silently collapses.
     /// A blank cell is indistinguishable from a legitimately empty value, which
@@ -1295,29 +1310,38 @@ type PreEmitDefect =
     ///
     /// **The read-side twin of FUARAN086**, which grounds a chart's field
     /// references against the same schema, over the same window, for the same
-    /// reason. The window is the one the tier can DERIVE: a `Transform` over an
-    /// `Embedded` table with an EMPTY pipeline. A non-empty pipeline changes the
-    /// column set — `derive` adds, `project` and `groupBy` remove — and a `Ref`
-    /// source, a `Query`, a `State` or a host `Static` row-seq is unknowable
-    /// before the tree runs. All of those pass ungrounded, per the
-    /// fuaran-core#90 rule: refuse only what is PROVABLY wrong. That is not a
-    /// gap being tolerated; a rule that guessed here would fire on correct
-    /// authoring, and an Error that is occasionally wrong gets suppressed.
+    /// reason. **Phase 1486 widened that window from the empty pipeline to the
+    /// whole one**: the produced column set is what `Fuaran.Core.SchemaWalk`
+    /// (fuaran-core#112) derives by folding the pipeline over the source's
+    /// schema, so `derive`'s added column grounds a grid that reads it, and
+    /// `project` / `groupBy` / `unpivot` REFUSE a grid still naming a column
+    /// they renamed or dropped — which is exactly where a mis-bound field is
+    /// most likely, and precisely what the rule could not see before.
+    ///
+    /// The restraint is unchanged; what changed is that the walk holds it in its
+    /// own shape rather than the pattern holding it by being narrow. Only a
+    /// CLOSED walk — these columns and no others — supports a negative verdict.
+    /// An OPEN walk stands down: a `DataSource.Ref` names rows the host resolves
+    /// and this validator has no host, and a `pivot`'s value columns are named
+    /// by the data, so neither is even countable. A `Query`, a `State` or a host
+    /// `Static` row-seq never reaches the rule at all. All of those pass
+    /// ungrounded per the fuaran-core#90 rule: refuse only what is PROVABLY
+    /// wrong. That is not a gap being tolerated; a rule that guessed here would
+    /// fire on correct authoring, and an Error that is occasionally wrong gets
+    /// suppressed.
     ///
     /// **Why this lives in the validator rather than a tier above it.** The
     /// alternative considered was hosting the check where a pipeline's output
     /// schema is already computable. It was declined: the chart's identical
     /// grounding rule lives here, and splitting one rule across two homes gives
     /// it two vocabularies and a code space that no longer says where a defect
-    /// came from. The pipeline-bearing widening is a single call to the
-    /// schema-walk `fuaran-core#112` shipped, at the one call site below, once
-    /// this package's `Fuaran.Core.DataFrame` pin can name the version carrying
-    /// it — the pins here are deliberately held behind what the public index
-    /// serves, and this rule does not wait on that to be useful.
+    /// came from. The widening confirms the choice — it was one call at one call
+    /// site, and both rules took it through the same helper.
     ///
-    /// Carries the grid node's id, the ungrounded field name, and the schema's
+    /// Carries the grid node's id, the ungrounded field name, and the PRODUCED
     /// column set — the author needs both halves to see whether it is a typo or
-    /// the wrong source.
+    /// the wrong source, and under a pipeline the produced set is no longer
+    /// readable off the tree.
     | GridFieldUngrounded of nodeId: string * field: string * schemaColumns: string list
 
 /// Which `FieldRule` slot a control cannot honour (FUARAN100, Phase 864).
@@ -1551,7 +1575,7 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         "FUARAN086",
         DefectSeverity.Error,
         sprintf
-            "chart '%s' references field '%s' absent from its statically-known data schema — it would lower silently flat/empty (Phase 640)"
+            "chart '%s' references field '%s' absent from the schema its own source PRODUCES — it would lower silently flat/empty (Phase 640/1486)"
             nodeId
             field
     | PreEmitDefect.ChartFieldTypeMismatch(nodeId, field, columnType) ->
@@ -1970,10 +1994,37 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         "FUARAN114",
         DefectSeverity.Error,
         sprintf
-            "grid '%s' names field '%s', absent from its source's statically-known schema [%s] — the row projection resolves it against nothing, so the cell renders blank (or, for rowKeyField, every row shares one empty key and row identity collapses); fix the name, or source the grid from data that carries the column (Phase 1149)"
+            "grid '%s' names field '%s', absent from the schema its own source PRODUCES [%s] — the row projection resolves it against nothing, so the cell renders blank (or, for rowKeyField, every row shares one empty key and row identity collapses); fix the name, or change the pipeline so it produces the column (Phase 1149/1486)"
             nodeId
             field
             (String.concat ", " schemaColumns)
+
+// ── The schema-grounding window FUARAN086 and FUARAN114 share (Phase 1486) ──
+//
+// Both rules ask the same question of a `Binding.Transform`: which columns can
+// this source PRODUCE, and is the name the author wrote one of them. Until this
+// phase the answer was derived by hand and only for the trivial case — an
+// `Embedded` table with an EMPTY pipeline — because no static output-schema
+// derivation existed in the pinned substrate. `Fuaran.Core.DataFrame` 0.18.0
+// ships `SchemaWalk` (fuaran-core#112), so the answer is a call now, and the two
+// rules reach it through this one helper rather than each keeping a copy.
+//
+// The walk is total and evaluates nothing, and it carries its own ignorance in
+// its SHAPE: `Closed` means these columns and no others, `AtLeast` means these
+// are present and the rest are unnameable. Only `Closed` supports a NEGATIVE
+// verdict — which is exactly the fuaran-core#90 restraint both rules already
+// state (refuse only what is PROVABLY wrong), now held by the type rather than
+// by the narrowness of the pattern that reached it.
+//
+// `noSources` on both arms is deliberate: a `DataSource.Ref` names rows the HOST
+// resolves, and this validator has no host. So a `Ref` opens the walk and both
+// rules stand down over it — unless a later `Project` or `GroupBy` CLOSES the
+// set on its own terms, which is sound whatever the input was, because those
+// verbs' outputs are exactly the names they list.
+//
+// FSharp.Core-only and Fable-clean, like everything else in this file.
+let private producedSchema (source: DataSource) (pipeline: Transform list) : SchemaKnowledge =
+    SchemaWalk.ofPipelineFrom SchemaWalk.noSources (SchemaWalk.ofSource SchemaWalk.noSources source) pipeline
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -2705,29 +2756,32 @@ let private validateCore
             // ANYTHING; this asks whether what it names is THERE — the read-side
             // twin of FUARAN086, over the same window and by the same restraint.
             //
-            // The window is what this tier can derive: an `Embedded` table with
-            // an EMPTY pipeline. A non-empty pipeline changes the column set
-            // (derive adds, project/groupBy remove) and every other source shape
-            // is unknowable pre-emit, so both pass ungrounded rather than
-            // false-positive. `fuaran-core#112` shipped the pipeline walk into
-            // the dataframe package this file already consumes: widening this
-            // rule is replacing the `[]` pattern below with that call, once the
-            // pin here can name the version carrying it.
+            // The window is what this tier can DERIVE, and since Phase 1486 that
+            // is the whole pipeline rather than the empty one: `producedSchema`
+            // walks the grid's own source and steps through
+            // `Fuaran.Core.SchemaWalk`. A CLOSED walk names the produced columns
+            // and no others, so an absence there is a fact and is refused; an
+            // OPEN walk — an unresolvable `Ref`, a pivot whose value columns are
+            // named by the data — is an ignorance and stands down, exactly as the
+            // empty-pipeline pattern did for everything it could not see.
             (match spec.Source with
-             | Binding.Transform(TransformSource.Data(DataSource.Embedded table), [], _) ->
-                 let schemaColumns = table.Schema |> List.map fst
+             | Binding.Transform(TransformSource.Data source, pipeline, _) ->
+                 let produced = producedSchema source pipeline
 
-                 let ground (field: string) =
-                     if not (List.contains field schemaColumns) then
-                         defects.Add(PreEmitDefect.GridFieldUngrounded(nodeIdStr, field, schemaColumns))
+                 if SchemaWalk.isClosed produced then
+                     let schemaColumns = SchemaWalk.names produced
 
-                 // Reported per offending name rather than once per grid: a grid
-                 // pointed at the wrong source names several missing columns, and
-                 // the author repairs each of them.
-                 for col in spec.Columns do
-                     col.Field |> Option.iter ground
+                     let ground (field: string) =
+                         if not (SchemaWalk.has field produced) then
+                             defects.Add(PreEmitDefect.GridFieldUngrounded(nodeIdStr, field, schemaColumns))
 
-                 spec.RowKeyField |> Option.iter ground
+                     // Reported per offending name rather than once per grid: a grid
+                     // pointed at the wrong source names several missing columns, and
+                     // the author repairs each of them.
+                     for col in spec.Columns do
+                         col.Field |> Option.iter ground
+
+                     spec.RowKeyField |> Option.iter ground
              | _ -> ())
 
             // FUARAN090 (Phase 663): `editable: true` only means anything when the
@@ -3207,63 +3261,83 @@ let private validateCore
                  defects.Add(PreEmitDefect.ChartStackedMeaningless(nodeIdStr, kindName))
              | _ -> ())
 
-            // FUARAN086/087 — grounding, only where the schema is statically
-            // known: an Embedded table with an EMPTY pipeline (a non-empty
-            // pipeline changes the column set — Derive adds, Project/GroupBy
-            // remove — and no static output-schema derivation exists yet, so
-            // it deliberately passes ungrounded rather than false-positive).
+            // FUARAN086/087 — grounding over the schema the source PRODUCES
+            // (Phase 1486), which since `Fuaran.Core.DataFrame` 0.18.0 shipped
+            // `SchemaWalk` is the whole pipeline rather than the empty one. The
+            // grid rule below shares the window and the helper: refuse under a
+            // CLOSED walk, stand down under an open one.
+            //
+            // The walk separates two facts the hand-derivation could not: whether
+            // a column EXISTS (`has`) and whether its type is DECIDABLE
+            // (`typeOf`). A `Derive`d column exists with a data-dependent type, so
+            // it grounds FUARAN086 and is silent for FUARAN087/097 — reporting a
+            // type mismatch about a type nobody can name would be a guess, and the
+            // walk declines to guess precisely so this rule need not either.
             (match spec.Source with
-             | Binding.Transform(TransformSource.Data(DataSource.Embedded table), [], _) ->
-                 let colType (name: string) : ColumnType option =
-                     table.Schema |> List.tryFind (fun (c, _) -> c = name) |> Option.map snd
+             | Binding.Transform(TransformSource.Data source, pipeline, _) ->
+                 let produced = producedSchema source pipeline
 
-                 let numeric (t: ColumnType) : bool =
-                     match t with
-                     | ColumnType.IntType
-                     | ColumnType.FloatType
-                     | ColumnType.BoolType -> true
-                     | _ -> false
+                 if SchemaWalk.isClosed produced then
+                     let colType (name: string) : ColumnType option = SchemaWalk.typeOf name produced
 
-                 // FUARAN097 (Phase 882) — a temporal x-axis is a DECLARATION,
-                 // and this is where the language grounds it. `date` and
-                 // `timestamp` are both honoured (a timestamp's time-of-day is
-                 // discarded by the lowering, which is a documented narrowing,
-                 // not a mismatch); anything else cannot parse as a date, so
-                 // every row's x would read as the epoch.
-                 let temporalX =
-                     match spec.XScale with
-                     | Some ChartXScale.Temporal -> true
-                     | _ -> false
+                     let numeric (t: ColumnType) : bool =
+                         match t with
+                         | ColumnType.IntType
+                         | ColumnType.FloatType
+                         | ColumnType.BoolType -> true
+                         | _ -> false
 
-                 let dated (t: ColumnType) : bool =
-                     match t with
-                     | ColumnType.DateType
-                     | ColumnType.TimestampType -> true
-                     | _ -> false
+                     // FUARAN097 (Phase 882) — a temporal x-axis is a DECLARATION,
+                     // and this is where the language grounds it. `date` and
+                     // `timestamp` are both honoured (a timestamp's time-of-day is
+                     // discarded by the lowering, which is a documented narrowing,
+                     // not a mismatch); anything else cannot parse as a date, so
+                     // every row's x would read as the epoch.
+                     let temporalX =
+                         match spec.XScale with
+                         | Some ChartXScale.Temporal -> true
+                         | _ -> false
 
-                 (match colType spec.XField with
-                  | None -> defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, spec.XField))
-                  | Some t ->
-                      if temporalX && not (dated t) then
-                          defects.Add(PreEmitDefect.ChartTemporalXNotDate(nodeIdStr, spec.XField, ColumnType.tag t))
+                     let dated (t: ColumnType) : bool =
+                         match t with
+                         | ColumnType.DateType
+                         | ColumnType.TimestampType -> true
+                         | _ -> false
 
-                      // FUARAN087's x arm is NARROWED by a temporal declaration:
-                      // a temporal Scatter reads its x as dates, so a date
-                      // column there is correct rather than "not numeric", and
-                      // FUARAN097 above is the rule that governs it. Without the
-                      // narrowing a correctly-authored time-series scatter would
-                      // raise a mismatch about the very column it declared.
-                      match spec.Kind with
-                      | ChartKind.Scatter when not (numeric t) && not temporalX ->
-                          defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, spec.XField, ColumnType.tag t))
-                      | _ -> ())
+                     if not (SchemaWalk.has spec.XField produced) then
+                         defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, spec.XField))
+                     else
+                         match colType spec.XField with
+                         // Present, type data-dependent (a `Derive`'s column): the
+                         // field is grounded and nothing typed can be said.
+                         | None -> ()
+                         | Some t ->
+                             if temporalX && not (dated t) then
+                                 defects.Add(
+                                     PreEmitDefect.ChartTemporalXNotDate(nodeIdStr, spec.XField, ColumnType.tag t)
+                                 )
 
-                 for yf in spec.YFields do
-                     match colType yf with
-                     | None -> defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, yf))
-                     | Some t ->
-                         if not (numeric t) then
-                             defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, yf, ColumnType.tag t))
+                             // FUARAN087's x arm is NARROWED by a temporal declaration:
+                             // a temporal Scatter reads its x as dates, so a date
+                             // column there is correct rather than "not numeric", and
+                             // FUARAN097 above is the rule that governs it. Without the
+                             // narrowing a correctly-authored time-series scatter would
+                             // raise a mismatch about the very column it declared.
+                             match spec.Kind with
+                             | ChartKind.Scatter when not (numeric t) && not temporalX ->
+                                 defects.Add(
+                                     PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, spec.XField, ColumnType.tag t)
+                                 )
+                             | _ -> ()
+
+                     for yf in spec.YFields do
+                         if not (SchemaWalk.has yf produced) then
+                             defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, yf))
+                         else
+                             match colType yf with
+                             | Some t when not (numeric t) ->
+                                 defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, yf, ColumnType.tag t))
+                             | _ -> ()
              | _ -> ())
         // The other visualisations are leaves with no pre-emit invariants yet.
         | NodeKind.Chart _

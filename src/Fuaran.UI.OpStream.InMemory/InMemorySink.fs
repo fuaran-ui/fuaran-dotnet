@@ -37,15 +37,27 @@ open Fuaran.UI.OpStream.Abstractions
 /// case — hosts append at LatestSequence + 1). Without this, persisting N ops
 /// (LatestSequence + Replay per op) was O(N²).
 type private StreamState<'Msg> =
-    { Records: ResizeArray<OpRecord<'Msg>>
-      Seen: HashSet<int>
-      mutable MaxSequence: int
-      mutable Ascending: bool }
+    {
+        Records: ResizeArray<OpRecord<'Msg>>
+        Seen: HashSet<int>
+        /// Phase 1485 — the key map that sits BESIDE the log, holding the receipt
+        /// the first append under each invocation key produced. Nothing else
+        /// reads it, so an unkeyed append is exactly as cheap as it was.
+        Keys: Dictionary<string, AppendReceipt>
+        mutable MaxSequence: int
+        /// Phase 1485 — the chain hash at `MaxSequence`, maintained on append so
+        /// `Head` is O(1) like `LatestSequence`. Scanning for it instead would
+        /// put the O(N²) back that the metadata above exists to remove.
+        mutable HeadHash: string
+        mutable Ascending: bool
+    }
 
     static member Create() : StreamState<'Msg> =
         { Records = ResizeArray<OpRecord<'Msg>>()
           Seen = HashSet<int>()
+          Keys = Dictionary<string, AppendReceipt>()
           MaxSequence = 0
+          HeadHash = HashChain.genesisPreviousHash
           Ascending = true }
 
 type InMemorySink<'Msg>(loadVerification: LoadVerification) =
@@ -71,6 +83,50 @@ type InMemorySink<'Msg>(loadVerification: LoadVerification) =
             streams[streamId] <- fresh
             fresh
 
+    /// The one place a record enters the log. Callers hold `lockObj`. Returns
+    /// the receipt so the keyed and compare-and-append paths (Phase 1485) name
+    /// the record they just wrote without re-reading the store — and so all
+    /// three paths share ONE duplicate-sequence guard and ONE metadata update,
+    /// which is what keeps `Ascending` / `MaxSequence` / `HeadHash` from
+    /// drifting between them.
+    let appendLocked (record: OpRecord<'Msg>) : AppendReceipt =
+        let st = getOrCreateStream record.StreamId
+
+        // Duplicate (StreamId, Sequence) is a structural defect — the
+        // host should have queried LatestSequence + 1 before assigning.
+        // `HashSet.Add` returns false (without mutating) when present, so
+        // it is both the O(1) membership check and the insert.
+        if not (st.Seen.Add record.Sequence) then
+            invalidOp (
+                sprintf
+                    "InMemorySink: duplicate (StreamId=%s, Sequence=%d) — sinks reject overwrites."
+                    record.StreamId
+                    record.Sequence
+            )
+
+        // Records arrive ascending iff each new sequence exceeds the max so
+        // far; one out-of-order append flips Replay back to an explicit sort.
+        if st.Records.Count > 0 && record.Sequence <= st.MaxSequence then
+            st.Ascending <- false
+
+        if record.Sequence > st.MaxSequence then
+            st.MaxSequence <- record.Sequence
+            st.HeadHash <- record.Hash
+
+        st.Records.Add record
+
+        { StreamId = record.StreamId
+          Sequence = record.Sequence
+          Hash = record.Hash }
+
+    /// The chain head as `IOpStreamCasSink.Head` reports it: the hash at
+    /// `MaxSequence`, or the genesis anchor for a stream with no records.
+    let headLocked (streamId: string) : string =
+        match streams.TryGetValue streamId with
+        | false, _ -> HashChain.genesisPreviousHash
+        | true, st when st.Records.Count = 0 -> HashChain.genesisPreviousHash
+        | true, st -> st.HeadHash
+
     let getOrCreateCheckpointBucket (streamId: string) : ResizeArray<Checkpoint<'Msg>> =
         match checkpoints.TryGetValue streamId with
         | true, existing -> existing
@@ -82,35 +138,14 @@ type InMemorySink<'Msg>(loadVerification: LoadVerification) =
     /// Default construction verifies the whole loaded segment (Phase 793).
     new() = InMemorySink<'Msg>(LoadVerification.Full)
 
-    interface IOpStreamCheckpointSink<'Msg> with
+    // The BASE interface is implemented explicitly rather than through the
+    // checkpoint extension's block, because Phase 1485 gives this type three
+    // interfaces that all inherit it and F# then requires the shared base to be
+    // implemented once, by name (FS0363). Nothing about the four members moved.
+    interface IOpStreamSink<'Msg> with
 
         member _.Append(record: OpRecord<'Msg>) : Async<unit> =
-            async {
-                lock lockObj (fun () ->
-                    let st = getOrCreateStream record.StreamId
-
-                    // Duplicate (StreamId, Sequence) is a structural defect — the
-                    // host should have queried LatestSequence + 1 before assigning.
-                    // `HashSet.Add` returns false (without mutating) when present, so
-                    // it is both the O(1) membership check and the insert.
-                    if not (st.Seen.Add record.Sequence) then
-                        invalidOp (
-                            sprintf
-                                "InMemorySink: duplicate (StreamId=%s, Sequence=%d) — sinks reject overwrites."
-                                record.StreamId
-                                record.Sequence
-                        )
-
-                    // Records arrive ascending iff each new sequence exceeds the max so
-                    // far; one out-of-order append flips Replay back to an explicit sort.
-                    if st.Records.Count > 0 && record.Sequence <= st.MaxSequence then
-                        st.Ascending <- false
-
-                    if record.Sequence > st.MaxSequence then
-                        st.MaxSequence <- record.Sequence
-
-                    st.Records.Add record)
-            }
+            async { lock lockObj (fun () -> appendLocked record |> ignore) }
 
         member _.Replay(streamId: string, fromSequence: int, toSequence: int) : Async<OpRecord<'Msg> list> =
             async {
@@ -147,6 +182,8 @@ type InMemorySink<'Msg>(loadVerification: LoadVerification) =
 
         member _.Streams() : Async<string list> =
             async { return lock lockObj (fun () -> streams.Keys |> List.ofSeq) }
+
+    interface IOpStreamCheckpointSink<'Msg> with
 
         member _.AppendCheckpoint(checkpoint: Checkpoint<'Msg>) : Async<unit> =
             async {
@@ -218,6 +255,16 @@ type InMemorySink<'Msg>(loadVerification: LoadVerification) =
                                 else
                                     st.Records |> Seq.map _.Sequence |> Seq.max
 
+                            // The head moves only if truncation emptied the stream — a
+                            // prefix removal leaves the record at MaxSequence in place.
+                            // Recomputed rather than assumed, so a policy that ever
+                            // removes a suffix cannot leave a head naming a gone record.
+                            st.HeadHash <-
+                                if st.Records.Count = 0 then
+                                    HashChain.genesisPreviousHash
+                                else
+                                    st.Records |> Seq.maxBy _.Sequence |> _.Hash
+
                             removed)
             }
 
@@ -235,6 +282,52 @@ type InMemorySink<'Msg>(loadVerification: LoadVerification) =
                                 bucket.Remove c |> ignore
 
                             toRemove.Length)
+            }
+
+    // ── Phase 1485: the two contracts a durable port owes a consumer ────────
+    // Both run inside the SAME `lockObj` the plain append takes, so the
+    // read-then-write each performs is atomic against a concurrent writer.
+    // Doing the check outside the lock would give a compare-and-append that
+    // reads a head another thread has already moved — which is not a
+    // compare-and-append at all, just a slower race.
+
+    interface IOpStreamCasSink<'Msg> with
+
+        member _.Head(streamId: string) : Async<string> =
+            async { return lock lockObj (fun () -> headLocked streamId) }
+
+        member _.AppendIf(record: OpRecord<'Msg>, expectedHead: string) : Async<CasAppendOutcome> =
+            async {
+                return
+                    lock lockObj (fun () ->
+                        let actual = headLocked record.StreamId
+
+                        if actual <> expectedHead then
+                            CasAppendOutcome.StaleHead(expectedHead, actual)
+                        else
+                            CasAppendOutcome.Appended(appendLocked record))
+            }
+
+    interface IOpStreamKeyedSink<'Msg> with
+
+        member _.AppendKeyed(record: OpRecord<'Msg>, invocationKey: string) : Async<KeyedAppendOutcome> =
+            async {
+                return
+                    lock lockObj (fun () ->
+                        let st = getOrCreateStream record.StreamId
+
+                        match st.Keys.TryGetValue invocationKey with
+                        | true, receipt ->
+                            // The retry contract: the FIRST receipt, unchanged, and nothing
+                            // written. The second call's `record` is not consulted at all —
+                            // a caller that rebuilt it after a lost acknowledgement carries a
+                            // fresh timestamp and a re-derived sequence, and must still be
+                            // told about the record it already has.
+                            KeyedAppendOutcome.Duplicate receipt
+                        | false, _ ->
+                            let receipt = appendLocked record
+                            st.Keys[invocationKey] <- receipt
+                            KeyedAppendOutcome.Appended receipt)
             }
 
 module InMemorySink =
