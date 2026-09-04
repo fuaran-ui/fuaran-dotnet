@@ -111,6 +111,19 @@ let private concurrencyWithTest =
 let private arbitrationTest =
     "proposal arbitration partitions totally and confluently (arbitrationLaws)"
 
+/// The attributed / attestation families (fuaran#1480), enrolled from `Fuaran.UI.OpStream.Tests`
+/// beside the persistence families above and over the SAME witness those use — the attestation one
+/// additionally over the tier's own claim minting and ECDSA keyring, adapted to Core's
+/// `IAttestationSink`.
+let private attributedTest =
+    "attributedLaws certifies over the Fuaran.UI op-stream witness"
+
+let private attestationTest =
+    "attestationLaws certifies over the tier's claim minting and ECDSA keyring"
+
+let private vacuityTest =
+    "noAttestationVacuityLaws certifies that the un-attested default proves nothing"
+
 /// One row per public law family of the pinned kit. Order here is authoring order (grouped by
 /// classification); the report sorts by family key, so this list may be reordered freely.
 let census: (string * Adoption) list =
@@ -200,9 +213,19 @@ let census: (string * Adoption) list =
       "Conformance.incrementalLaws", CarriedBy "fuaran#1479"
 
       // ---- fuaran#1480 — attributed and attestation laws over the attributed op-stream ----
-      "Conformance.attributedLaws", CarriedBy "fuaran#1480"
-      "Conformance.attestationLaws", CarriedBy "fuaran#1480"
-      "Conformance.noAttestationVacuityLaws", CarriedBy "fuaran#1480"
+      // All three run in `Fuaran.UI.OpStream.Tests`, over the witness fuaran#1477 built. Read what
+      // each row claims. `attributedLaws` and `noAttestationVacuityLaws` are parameterised by the
+      // witness and the digest alone, so they certify the tier's reducer, op codec and SHA-256
+      // chain under Core's attribution lift and under the un-attested default. `attestationLaws`
+      // additionally takes an `IAttestationSink`, and the one supplied is not a double: it mints the
+      // tier's canonical `SegmentAttestation.claimPayload`, signs through the tier's BCL ECDSA
+      // P-256 signer, and verifies through the tier's crypto verifier against its key directory.
+      // What it does NOT cover is the descriptor's range / anchor fields — Core's seam signs an
+      // opaque head, so those are pinned by a fixed claim shell and are covered on their own terms
+      // by `AttestationTests.fs` (`RangeMismatch`, `ChainBroken` off a signed anchor).
+      "Conformance.attributedLaws", Adopted(attributedTest, "Conformance.attributedLaws")
+      "Conformance.attestationLaws", Adopted(attestationTest, "Conformance.attestationLaws")
+      "Conformance.noAttestationVacuityLaws", Adopted(vacuityTest, "Conformance.noAttestationVacuityLaws")
 
       // ---- fuaran#1481 — columnar laws over the tier's Column usage ----
       "Conformance.columnarOpLaws", CarriedBy "fuaran#1481"

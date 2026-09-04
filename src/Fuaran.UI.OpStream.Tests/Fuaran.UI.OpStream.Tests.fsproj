@@ -49,6 +49,10 @@
          snapshotLaws / snapshotLawsWith) over the tier's op-stream witness, plus
          the two durable ports' own account of the same three claims. -->
     <Compile Include="PersistenceLawsTests.fs" />
+    <!-- Phase 1480: the attributed / attestation / no-attestation-vacuity families over the
+         SAME witness, with the tier's real claim minting and ECDSA keyring adapted to Core's
+         IAttestationSink. Compiles after PersistenceLawsTests.fs, whose witness it reuses. -->
+    <Compile Include="CoreAttestationLawsTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

@@ -145,8 +145,14 @@ let private coreSw: Fuaran.Core.StreamWitness<TreeOp<obj>, EqNode, ApplyError> =
       Encode = CanonicalJson.encodeOp
       Decode = fun s -> JsonDecode.decodeOp s |> Result.mapError (sprintf "%A") }
 
-/// The same witness at the equality-bearing op wrapper, for the two families that compare records.
-let private eqOpSw: Fuaran.Core.StreamWitness<EqOp, EqNode, ApplyError> =
+/// The same witness at the equality-bearing op wrapper, for the families that compare records.
+///
+/// NOT private, and deliberately: `CoreAttestationLawsTests.fs` (fuaran#1480) binds the attributed
+/// and attestation families to THIS witness rather than constructing a second one over the same op
+/// algebra — two witnesses for one stream could disagree, and then a green law would be a statement
+/// about whichever of them the reader happened to open. Same reason for `eqOpStreamGen`, `hashFn`
+/// and `assertAllPassed` below.
+let eqOpSw: Fuaran.Core.StreamWitness<EqOp, EqNode, ApplyError> =
     { Apply = fun eop e -> UiApply.apply eop.Op e.Node |> Result.map wrap
       Encode = fun eop -> CanonicalJson.encodeOp eop.Op
       Decode =
@@ -173,7 +179,7 @@ let private genStreamOp (rng: CoreRng.T) : TreeOp<obj> * CoreRng.T =
 let private streamGen: Fuaran.Core.StreamGen<TreeOp<obj>, EqNode> =
     { State0 = baseTree; Op = genStreamOp }
 
-let private eqOpStreamGen: Fuaran.Core.StreamGen<EqOp, EqNode> =
+let eqOpStreamGen: Fuaran.Core.StreamGen<EqOp, EqNode> =
     { State0 = baseTree
       Op =
         fun rng ->
@@ -182,7 +188,7 @@ let private eqOpStreamGen: Fuaran.Core.StreamGen<EqOp, EqNode> =
 
 /// The tier's shipped chain digest — the portable SHA-256 `HashFn` the persisted op stream is
 /// actually hashed under (Phase 405/406), not Core's FNV-1a default.
-let private hashFn: Fuaran.Core.HashFn = StreamEntry.hashFn
+let hashFn: Fuaran.Core.HashFn = StreamEntry.hashFn
 
 /// The tier's shipped canonical node encoder, as the snapshot laws' `stateEncode`. The snapshot's
 /// integrity claim is only as good as this encoder, which is the same one `Checkpoint.SnapshotHash`
@@ -197,7 +203,7 @@ let private stateEncode (e: EqNode) : string = CanonicalJson.encodeNode e.Node
 /// borrowed guarantee.
 let private keyOf (eop: EqOp) : string = CanonicalJson.encodeOp eop.Op
 
-let private assertAllPassed (context: string) (results: Fuaran.Core.LawResult list) =
+let assertAllPassed (context: string) (results: Fuaran.Core.LawResult list) =
     let failures = results |> List.filter (fun r -> not r.Passed)
 
     if not (List.isEmpty failures) then
@@ -254,7 +260,9 @@ let private freshDbPath () : string =
 /// Run `body` against each durable port in turn. The SQLite leg owns a temp database per run,
 /// deleted in `finally` (best-effort: Microsoft.Data.Sqlite holds its pool open, so deletion may
 /// race — the file is small and the name is unique per run).
-let private overBothStores (body: string -> IOpStreamCheckpointSink<obj> -> unit) : unit =
+/// (Not private, for the reason given at `eqOpSw`: fuaran#1480's attribution-durability test runs
+/// over the same two ports through the same shipped codecs.)
+let overBothStores (body: string -> IOpStreamCheckpointSink<obj> -> unit) : unit =
     body "InMemory" (InMemorySink.createWithCheckpoints<obj> ())
 
     let path = freshDbPath ()

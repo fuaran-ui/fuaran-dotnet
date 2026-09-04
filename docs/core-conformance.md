@@ -15,8 +15,8 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.aggregateParityLaws` | Carried by phase | fuaran#1481 |
 | `Conformance.aiSurfaceLaws` | Not used | Fuaran.Core.AiSurface — the tier ships its own runtime introspection surface (Fuaran.UI.AiTools) and consumes no Core AI surface |
 | `Conformance.arbitrationLaws` | Adopted | `proposal arbitration partitions totally and confluently (arbitrationLaws)` — via `Conformance.arbitrationLaws` |
-| `Conformance.attestationLaws` | Carried by phase | fuaran#1480 |
-| `Conformance.attributedLaws` | Carried by phase | fuaran#1480 |
+| `Conformance.attestationLaws` | Adopted | `attestationLaws certifies over the tier's claim minting and ECDSA keyring` — via `Conformance.attestationLaws` |
+| `Conformance.attributedLaws` | Adopted | `attributedLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.attributedLaws` |
 | `Conformance.canonicalFloatLaws` | Not used | Wire.Canon.canonicalFloat — the tier's canonical-JSON encoder carries its own Fable-safe float formatter (CanonicalJson.formatFiniteDouble), and this family is self-contained over Core's encoder rather than taking a host one; cross-host float parity here is gated by the wire-format conformance corpus, a multi-host oracle it cannot replace |
 | `Conformance.capabilityLaws` | Carried by phase | fuaran#1478 |
 | `Conformance.capabilityPipelineIncrementalLaws` | Not used | Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline |
@@ -43,7 +43,7 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.memoLaws` | Carried by phase | fuaran#1478 |
 | `Conformance.memoSoundnessLaws` | Carried by phase | fuaran#1478 |
 | `Conformance.mergeConflictLaws` | Adopted | `merge-conflict reporting is symmetric, deterministic and complete (mergeConflictLaws)` — via `Conformance.mergeConflictLaws` |
-| `Conformance.noAttestationVacuityLaws` | Carried by phase | fuaran#1480 |
+| `Conformance.noAttestationVacuityLaws` | Adopted | `noAttestationVacuityLaws certifies that the un-attested default proves nothing` — via `Conformance.noAttestationVacuityLaws` |
 | `Conformance.normalizeLaws` | Not used | Fuaran.Core.Ops.normalize — Apply.fs delegates only the structural-five APPLY to Core (applyContained); the tier ships no op-script normaliser, so the family's subject has no call site here |
 | `Conformance.packLoadingLaws` | Carried by phase | fuaran#1478 |
 | `Conformance.paramLaws` | Carried by phase | fuaran#1478 |
@@ -68,8 +68,8 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 
 | Status | Families |
 |---|---|
-| Adopted | 18 |
-| Carried by phase | 22 |
+| Adopted | 21 |
+| Carried by phase | 19 |
 | Not used | 10 |
 | Sibling host | 1 |
 | **Total** | **51** |
