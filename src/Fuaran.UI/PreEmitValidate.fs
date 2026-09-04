@@ -210,8 +210,13 @@ type PreEmitDefect =
     /// unknowable pre-emit and passes ungrounded, per the fuaran-core#90 rule:
     /// only refuse what is PROVABLY wrong.
     ///
-    /// Carries the chart node's id and the ungrounded field name.
-    | ChartFieldUngrounded of nodeId: string * field: string
+    /// Carries the chart node's id, the ungrounded field name, and the PRODUCED
+    /// column set — the same three parts FUARAN114 carries, for the same reason.
+    /// Under a pipeline the produced set is no longer readable off the tree: a
+    /// `project` or `groupBy` renames the columns the source declares, so a
+    /// message naming only the field the author wrote leaves them to re-derive
+    /// by hand exactly the walk this rule already performed.
+    | ChartFieldUngrounded of nodeId: string * field: string * schemaColumns: string list
     /// **FUARAN087 (Error)**. A grounded chart value field (a `YFields` entry,
     /// or `XField` on a `Scatter`) carries a column type the lowering cannot
     /// plot numerically — anything outside int/float/bool (bool coerces 1/0)
@@ -1571,13 +1576,14 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         sprintf
             "Switch '%s' has an empty stateKey — it can never resolve a case and is stuck on its default; name the state key the switch selects on (Phase 392)"
             nodeId
-    | PreEmitDefect.ChartFieldUngrounded(nodeId, field) ->
+    | PreEmitDefect.ChartFieldUngrounded(nodeId, field, schemaColumns) ->
         "FUARAN086",
         DefectSeverity.Error,
         sprintf
-            "chart '%s' references field '%s' absent from the schema its own source PRODUCES — it would lower silently flat/empty (Phase 640/1486)"
+            "chart '%s' references field '%s' absent from the schema its own source PRODUCES [%s] — it would lower silently flat/empty; fix the name, or change the pipeline so it produces the column (Phase 640/1486)"
             nodeId
             field
+            (String.concat ", " schemaColumns)
     | PreEmitDefect.ChartFieldTypeMismatch(nodeId, field, columnType) ->
         "FUARAN087",
         DefectSeverity.Error,
@@ -3278,6 +3284,11 @@ let private validateCore
                  let produced = producedSchema source pipeline
 
                  if SchemaWalk.isClosed produced then
+                     // The produced set, read once and carried on every finding —
+                     // the same shape the grid rule takes, so the two twins say
+                     // the same thing about the same walk.
+                     let schemaColumns = SchemaWalk.names produced
+
                      let colType (name: string) : ColumnType option = SchemaWalk.typeOf name produced
 
                      let numeric (t: ColumnType) : bool =
@@ -3305,7 +3316,7 @@ let private validateCore
                          | _ -> false
 
                      if not (SchemaWalk.has spec.XField produced) then
-                         defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, spec.XField))
+                         defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, spec.XField, schemaColumns))
                      else
                          match colType spec.XField with
                          // Present, type data-dependent (a `Derive`'s column): the
@@ -3332,7 +3343,7 @@ let private validateCore
 
                      for yf in spec.YFields do
                          if not (SchemaWalk.has yf produced) then
-                             defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, yf))
+                             defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, yf, schemaColumns))
                          else
                              match colType yf with
                              | Some t when not (numeric t) ->

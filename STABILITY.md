@@ -1,4 +1,4 @@
-﻿# Fuaran language-tier stability policy
+# Fuaran language-tier stability policy
 
 This document declares which Fuaran *language-tier* surfaces are stable, what counts as a breaking change in each, and the semver rules that govern the `Fuaran.UI.*` NuGet packages shipped from this repo. It is the contract that downstream consumers (runtime tiers, demo applications, third-party adopters) can rely on when pinning a Fuaran version.
 
@@ -4473,6 +4473,12 @@ schema's expression of it, not of the vocabulary.
 
 ## Recorded BREAKING change — 0.74.0, the two-sided merge-conflict envelope and the shared-children merge (fuaran#1497)
 
+**0.74.0 is an unreleased slot and carries more than one change.** §1–§3 are fuaran#1497; §4 onward
+are later changes of the same class, recorded here rather than minting a number of their own —
+`<Version>` does not move, because a slot already saying "breaking" says nothing new when another
+breaking change of the same class rides it. Each section names its own subject, and the closing note
+under §3 scopes its claims to §1–§3.
+
 **BREAKING for a consumer that constructs or exhaustively reads `MergeConflict`.** The record gains
 two fields, so every full-literal construction of it stops compiling (FS0764); and two fields it
 already had change WHEN they are populated, so a consumer that read them without consulting
@@ -4574,10 +4580,33 @@ refusal set by `(NodeId, Facet)` so the encoding is stable regardless of the fol
     style sub-field is enum-shaped; a host must not generalise it to a compound cell. The manifest's
     `refusalDescription` says so.
 
-**No wire-format change, no `WIRE_FORMAT.md` §11 event, no validator code, no `NodeKind` / `TreeOp`
-/ `Spec` case.** Nothing about a `Node` or its encoding moves, so `Theme.vocabularyFingerprint` and
+**§1–§3: no wire-format change, no `WIRE_FORMAT.md` §11 event, no validator code, no `NodeKind` /
+`TreeOp` / `Spec` case.** Nothing about a `Node` or its encoding moves, so
+`Theme.vocabularyFingerprint` and
 the reference stylesheet are untouched and no `nodes/` / `ops/` / `reject/` / `lenient/` fixture is
 regenerated. The `MergeChoice` menu is likewise unchanged: with two secondary sides `KeepSecondary`
 still names neither side in particular, which the two-sided envelope makes visible without resolving
 — a `MergeChoice` widening is a host-facing vocabulary change and is left to a phase that can carry
 the hosts with it.
+
+### 4. `PreEmitDefect.ChartFieldUngrounded` carries the produced columns (FUARAN086)
+
+**BREAKING for a consumer that constructs or exhaustively reads
+`PreEmitValidate.PreEmitDefect.ChartFieldUngrounded`.** The case gains a third field,
+`schemaColumns: string list`, so every construction and every positional pattern over it stops
+compiling — the same class §1 carries, on a different type.
+
+Phase 1486 widened FUARAN086's and FUARAN114's window from the EMPTY pipeline to the whole one, via
+the shared `producedSchema` helper. It gave FUARAN114's case the produced column set at the same
+time, because under a pipeline that set is no longer readable off the tree: `project` / `groupBy` /
+`unpivot` close the columns to names the author never wrote down. FUARAN086 — the same rule over the
+same window through the same helper — was left carrying `(nodeId, field)`, so its message could name
+what the author asked for and not what was available. The two twins now say the same thing about the
+same walk, and the message gains FUARAN114's `[…]` rendering and its remedy clause.
+
+No new code, no severity change, no change to WHEN the rule fires: the walk, the closed/open
+restraint and every stand-down are exactly as Phase 1486 left them. The shared corpus's generated
+`validator/defect-vocabulary.json` re-emits with FUARAN086's new `messageShape` — descriptive
+metadata only; the hosts' coverage gates read the `code` set, and `message-parity.json`'s
+`mustConvey` groups for FUARAN086 are all still conveyed.
+

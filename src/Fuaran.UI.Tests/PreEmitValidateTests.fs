@@ -1623,8 +1623,8 @@ let tests =
               | Error defects ->
                   Expect.contains
                       defects
-                      (PreEmitDefect.ChartFieldUngrounded("cht", "revenu"))
-                      "the typo'd y-field is ungrounded"
+                      (PreEmitDefect.ChartFieldUngrounded("cht", "revenu", [ "quarter"; "revenue" ]))
+                      "the typo'd y-field is ungrounded, carrying the produced column set"
               | Ok() -> failtest "Expected ChartFieldUngrounded"
           }
 
@@ -1680,7 +1680,7 @@ let tests =
           // whole one. Two directions and one restraint, the same three the grid
           // rule's tests carry.
 
-          test "FUARAN086: a chart plotting a column the pipeline renames away is refused" {
+          test "FUARAN086: a chart plotting a column the pipeline renames away is refused, naming the produced columns" {
               let table: Fuaran.Core.Table =
                   { Schema =
                       [ "quarter", Fuaran.Core.ColumnType.StringType
@@ -1706,10 +1706,27 @@ let tests =
 
               match PreEmitValidate.validate renamedAway with
               | Error defects ->
+                  // The produced set is `quarter` + `takings`, and it is the half
+                  // the tree does not show: under a pipeline the author cannot
+                  // read off the chart what the source still offers, so a message
+                  // naming only the field they wrote leaves them to re-derive by
+                  // hand the walk this rule already performed.
                   Expect.contains
                       defects
-                      (PreEmitDefect.ChartFieldUngrounded("cht", "revenue"))
-                      "the renamed-away y-field is refused under a closed walk"
+                      (PreEmitDefect.ChartFieldUngrounded("cht", "revenue", [ "quarter"; "takings" ]))
+                      "the renamed-away y-field is refused under a closed walk, carrying the PRODUCED column set"
+
+                  let code, severity, message =
+                      PreEmitValidate.describe (
+                          PreEmitDefect.ChartFieldUngrounded("cht", "revenue", [ "quarter"; "takings" ])
+                      )
+
+                  Expect.equal code "FUARAN086" "the stable code"
+                  Expect.equal severity DefectSeverity.Error "FUARAN086 is an error, not an advisory"
+
+                  Expect.isTrue
+                      (message.Contains "[quarter, takings]")
+                      "the message names what WAS produced, not only what was asked for"
               | Ok() -> failtest "Expected ChartFieldUngrounded for the renamed-away y-field"
 
               // The produced name plots, and its type survives the projection, so
