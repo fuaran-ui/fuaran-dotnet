@@ -112,12 +112,17 @@ module ValidatorGate =
     /// it) and the human-readable description in `SecondaryTag`. There is no
     /// three-up authorship — both parents are defect-free for this cell by
     /// construction, so `KeepBase` (abandon the merge for this cell) is the
-    /// enumerated recovery.
+    /// enumerated recovery. For the same reason the two-sided `A` / `B` slots
+    /// (Phase 1497) are empty: this refusal is a property of the MERGED tree that
+    /// neither branch exhibits, so there is no per-side value to report and
+    /// inventing one would name a side that did nothing wrong.
     let toConflict (d: MergeDefect) : MergeConflict =
         { NodeId = d.NodeId
           Facet = d.Facet
           Class = MergeConflictClass.CombinedCycle
           Base = d.Code
+          A = None
+          B = None
           Primary = None
           Secondary = None
           SecondaryTag = Some d.Message

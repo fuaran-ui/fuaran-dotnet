@@ -542,8 +542,37 @@
          than a re-pack for the reason every entry above does: a re-packed slot swaps
          the contract under a consumer whose NuGet cache still serves the old bits.
          See STABILITY.md "Recorded change - 0.71.0, the op-stream sinks'
-         compare-and-append and keyed append". -->
-    <Version>0.74.0</Version>
+         compare-and-append and keyed append".
+
+         fuaran#1497 (0.74.0) - BREAKING: the `Fuaran.UI.OpStream.Dag.Merge`
+         conflict envelope is TWO-SIDED. `MergeConflict` gains `A` and `B` (a new
+         public `MergeSide` record) carrying both branches' values on every
+         refusal, so a full-literal construction of the record stops compiling
+         (FS0764); and `Primary` / `Secondary` / `SecondaryTag` become the
+         precedence view alone, populated exactly when `PrimacyHeld` is true, so a
+         consumer that read them without consulting the pin now reads `None`.
+         Shipped with the children facet's shared-value guard, which the widened
+         envelope is what makes safe. A MINOR bump under the pre-1.0 rule, in the
+         same commit as the change, per the producer-side rule and the 2026-08-04
+         record-widening dispensation. Cut as 0.74.0 rather than 0.72.0: the phase
+         branched at 0.71.0 and main had reached 0.73.0 by the integrate, so it
+         advances from what main declares. 0.72.0 is unclaimed here. See
+         STABILITY.md "Recorded BREAKING change - 0.74.0, the two-sided
+         merge-conflict envelope and the shared-children merge".
+
+         fuaran#1152 (0.75.0) - the generated `Action.Dispatch` case carries the
+         IDL's `inProcessOnly` annotation, so it is declared with a doc block and
+         one `[<System.Obsolete(..., isError = false)>]`. Mentioning the case
+         raises FS0044 in F# and CS0618 in C# - a WARNING, deliberately not an
+         error, because every in-process construction is correct and an error
+         would be a claim about those sites that is not true. Not source-breaking:
+         no signature moved, no DU gained a case, no record gained a field, and
+         no wire byte moves. A minor bump all the same, because the declaration a
+         consumer compiles against changed. Cut as 0.75.0: the phase branched at
+         0.71.0 and main reached 0.74.0 during the integrate, so it advances from
+         what main declares. See STABILITY.md "Recorded change - 0.75.0,
+         `Action.Dispatch` marked in-process-only". -->
+    <Version>0.75.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

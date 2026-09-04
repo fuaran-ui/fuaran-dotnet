@@ -134,16 +134,23 @@ let mkBox (id: string) (kids: EqNode list) : EqNode =
           ExtraAttributes = Option.None
           Tooltip = None }
 
-let mkLeaf (id: string) : EqNode =
+/// A leaf carrying CONTENT (Phase 1497). Two branches that insert the same id
+/// must be distinguishable by what they inserted, or the same-id-different-content
+/// refusal the shared-children guard reaches can never be sampled — the generator
+/// would only ever produce agreeing inserts and the law would certify one branch
+/// of the new code.
+let mkLeafText (id: string) (text: string) : EqNode =
     wrap
         { Id = id
-          Kind = NodeKind.Markdown({ Text = TextSource.Literal "" })
+          Kind = NodeKind.Markdown({ Text = TextSource.Literal text })
           State = None
           Style = None
           Accessibility = Option.None
           Motion = Option.None
           ExtraAttributes = Option.None
           Tooltip = None }
+
+let mkLeaf (id: string) : EqNode = mkLeafText id ""
 
 // ---------------------------------------------------------------------------
 //  the tier's own footprint projection over its own op algebra

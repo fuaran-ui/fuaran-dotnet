@@ -23,14 +23,26 @@ open Fuaran.UI.OpStream.Abstractions
 //   - "children"        — the ordered child-id list (structural).
 //
 //  When a facet changed on at most one side, take that side's value. When both
-//  sides changed it to different values, it is a CONFLICT — surfaced as a
-//  `MergeConflict` recovery envelope (three-up base/primary/secondary), NOT a
-//  silent pick. Under PRECEDENCE (one side classified `Primary` by the host's
-//  author classifier), the conflict lists `KeepPrimary` first and is
-//  `PrimacyHeld`; with both sides `Secondary`, no pin is held. The one
-//  structural case auto-merged across both sides is
-//  disjoint pure inserts into the same parent, ordered by NodeId canonical
-//  bytes (the deterministic, wall-clock-free tie-break, inherited from M1).
+//  sides changed it to the SAME value, take the shared value — that is not a
+//  conflict, it is agreement. When both sides changed it to DIFFERENT values, it
+//  is a CONFLICT — surfaced as a `MergeConflict` recovery envelope, NOT a silent
+//  pick.
+//
+//  The envelope is TWO-SIDED (Phase 1497): `A` and `B` carry the first- and
+//  second-argument branches' values on every refusal, so swapping the branches
+//  transposes them and changes nothing else. `Base` / `Primary` / `Secondary`
+//  are the precedence view on top of that: under PRECEDENCE (one side classified
+//  `Primary` by the host's author classifier) the conflict lists `KeepPrimary`
+//  first, is `PrimacyHeld`, and names the pinned winner in `Primary`; with both
+//  sides `Secondary` no pin is held and neither precedence slot is populated,
+//  because a value in either slot IS a precedence claim.
+//
+//  The structural cases auto-merged across both sides are (a) disjoint pure
+//  inserts into the same parent, ordered by NodeId canonical bytes (the
+//  deterministic, wall-clock-free tie-break, inherited from M1), and (b) two
+//  sides that reached the SAME child-id list, whose shared new children must then
+//  also agree on content — two branches inserting one id with different content
+//  is a refusal naming that id, never an arrival-order-dependent pick.
 //
 //  All equality is `CanonicalJson` bytes (closure-safe), never F# structural
 //  equality — except the closure-free `SemanticStyle` sub-fields, compared
@@ -121,6 +133,12 @@ module TreeMerge =
 
     /// Which side wins a conflicted facet under precedence, and whether a pin is
     /// held. Returns `(aIsPrimary, pinHeld, choices, secondaryTag)`.
+    ///
+    /// `secondaryTag` names the tag of the side that LOST TO A PIN, so it is
+    /// `None` whenever no pin is held (Phase 1497). It used to be the A-side
+    /// branch's tag in the two-secondary case, which made it a function of the
+    /// order the caller passed its branches rather than of the merge; each
+    /// branch's own tag now rides in its own side of the two-sided envelope.
     let private resolveAuthor
         (authorA: MergeAuthor)
         (authorB: MergeAuthor)
@@ -131,11 +149,30 @@ module TreeMerge =
             true, true, [ MergeChoice.KeepPrimary; MergeChoice.KeepSecondary; MergeChoice.KeepBase ], r
         | MergeAuthor.Secondary r, MergeAuthor.Primary ->
             false, true, [ MergeChoice.KeepPrimary; MergeChoice.KeepSecondary; MergeChoice.KeepBase ], r
-        | MergeAuthor.Secondary r, MergeAuthor.Secondary _ ->
-            false, false, [ MergeChoice.KeepBase; MergeChoice.KeepSecondary ], r
+        | MergeAuthor.Secondary _, MergeAuthor.Secondary _ ->
+            false, false, [ MergeChoice.KeepBase; MergeChoice.KeepSecondary ], None
         | MergeAuthor.Primary, MergeAuthor.Primary ->
             // Two primary sides — no precedence pin; surface for host decision.
             false, false, [ MergeChoice.KeepBase ], None
+
+    /// The opaque provenance tag a side carries — a `Primary` side carries none
+    /// (the tag is the `Secondary` case's payload).
+    let private tagOf (author: MergeAuthor) : string option =
+        match author with
+        | MergeAuthor.Primary -> None
+        | MergeAuthor.Secondary t -> t
+
+    /// The SIDES view of a refusal (Phase 1497): each branch's value for the
+    /// contended cell, carrying that branch's own tag, populated whether or not a
+    /// pin is held. Swapping the caller's branches swaps the author arguments
+    /// too, so the envelope transposes and nothing in it is rewritten.
+    let private sidesOf
+        (authorA: MergeAuthor)
+        (authorB: MergeAuthor)
+        (aValue: string)
+        (bValue: string)
+        : MergeSide option * MergeSide option =
+        Some { Value = aValue; Tag = tagOf authorA }, Some { Value = bValue; Tag = tagOf authorB }
 
     /// Merge a single SemanticStyle sub-field; record a conflict on divergence.
     /// `cellAuthor nodeId facet` yields the per-cell `(A-side, B-side)` authorship
@@ -155,18 +192,25 @@ module TreeMerge =
         if aChanged && bChanged && aV <> bV then
             let authorA, authorB = cellAuthor nodeId facet
             let aPrimary, pinHeld, choices, secondaryTag = resolveAuthor authorA authorB
+            let sideA, sideB = sidesOf authorA authorB (sprintf "%A" aV) (sprintf "%A" bV)
 
             conflicts.Add
                 { NodeId = nodeId
                   Facet = facet
                   Class = MergeConflictClass.ConcurrentEdit
                   Base = sprintf "%A" baseV
+                  A = sideA
+                  B = sideB
                   Primary =
                     (if pinHeld then
                          Some(sprintf "%A" (if aPrimary then aV else bV))
                      else
                          None)
-                  Secondary = Some(sprintf "%A" (if aPrimary then bV else aV))
+                  Secondary =
+                    (if pinHeld then
+                         Some(sprintf "%A" (if aPrimary then bV else aV))
+                     else
+                         None)
                   SecondaryTag = secondaryTag
                   PrimacyHeld = pinHeld
                   Choices = choices
@@ -200,14 +244,17 @@ module TreeMerge =
         if aChanged && bChanged && aC <> bC then
             let authorA, authorB = cellAuthor nodeId facet
             let aPrimary, pinHeld, choices, secondaryTag = resolveAuthor authorA authorB
+            let sideA, sideB = sidesOf authorA authorB aC bC
 
             conflicts.Add
                 { NodeId = nodeId
                   Facet = facet
                   Class = cls
                   Base = baseC
+                  A = sideA
+                  B = sideB
                   Primary = (if pinHeld then Some(if aPrimary then aC else bC) else None)
-                  Secondary = Some(if aPrimary then bC else aC)
+                  Secondary = (if pinHeld then Some(if aPrimary then bC else aC) else None)
                   SecondaryTag = secondaryTag
                   PrimacyHeld = pinHeld
                   Choices = choices
@@ -250,6 +297,7 @@ module TreeMerge =
         if aChanged && bChanged && aKC <> bKC then
             let authorA, authorB = cellAuthor id "kind"
             let aPrimary, pinHeld, choices, secondaryTag = resolveAuthor authorA authorB
+            let sideA, sideB = sidesOf authorA authorB aKC bKC
             let primaryNode = if aPrimary then a else b
             let secondaryNode = if aPrimary then b else a
             let baseName = kindName baseN.Kind
@@ -273,6 +321,8 @@ module TreeMerge =
                       Facet = "kind"
                       Class = MergeConflictClass.KindSwapOrphansPin
                       Base = baseKC
+                      A = sideA
+                      B = sideB
                       Primary = Some(kindCanonical primaryNode)
                       Secondary = Some(kindCanonical secondaryNode)
                       SecondaryTag = secondaryTag
@@ -287,12 +337,18 @@ module TreeMerge =
                       Facet = "kind"
                       Class = MergeConflictClass.ConcurrentEdit
                       Base = baseKC
+                      A = sideA
+                      B = sideB
                       Primary =
                         (if pinHeld then
                              Some(if aPrimary then aKC else bKC)
                          else
                              None)
-                      Secondary = Some(if aPrimary then bKC else aKC)
+                      Secondary =
+                        (if pinHeld then
+                             Some(if aPrimary then bKC else aKC)
+                         else
+                             None)
                       SecondaryTag = secondaryTag
                       PrimacyHeld = pinHeld
                       Choices = choices
@@ -407,8 +463,61 @@ module TreeMerge =
             | Some bc -> merge3 conflicts cellAuthor bc (Map.tryFind cid aMap) (Map.tryFind cid bMap)
             | None ->
                 match Map.tryFind cid aMap, Map.tryFind cid bMap with
-                | Some ac, _ -> ac
-                | _, Some bc -> bc
+                | Some ac, Some bc ->
+                    // BOTH branches introduced this id. There is no base to merge
+                    // against, so agreement is the only clean outcome: identical
+                    // content is the shared value, and DIFFERENT content is a
+                    // refusal naming the id (Phase 1497).
+                    //
+                    // Taking the A side unconditionally — which is what this did
+                    // until 1497 — is a silent, arrival-order-dependent pick, and
+                    // it is the case the disjointness test below used to make
+                    // unreachable. The shared-children guard reaches it, so the
+                    // guard and this check land together or the merge trades a
+                    // spurious refusal for a divergence.
+                    let acC = CanonicalJson.encodeNode ac
+                    let bcC = CanonicalJson.encodeNode bc
+
+                    if acC = bcC then
+                        ac
+                    else
+                        let authorA, authorB = cellAuthor cid "insert"
+                        let aPrimary, pinHeld, choices, secondaryTag = resolveAuthor authorA authorB
+                        let sideA, sideB = sidesOf authorA authorB acC bcC
+
+                        conflicts.Add
+                            { NodeId = cid
+                              Facet = "insert"
+                              Class = MergeConflictClass.ConcurrentEdit
+                              // The id exists on neither side of the LCA, so it
+                              // has no base value — the empty string, not an
+                              // encoding of some node that was never there.
+                              Base = ""
+                              A = sideA
+                              B = sideB
+                              Primary =
+                                (if pinHeld then
+                                     Some(if aPrimary then acC else bcC)
+                                 else
+                                     None)
+                              Secondary =
+                                (if pinHeld then
+                                     Some(if aPrimary then bcC else acC)
+                                 else
+                                     None)
+                              SecondaryTag = secondaryTag
+                              PrimacyHeld = pinHeld
+                              Choices = choices
+                              Hint = ApplyHint.empty }
+
+                        // The merge has already refused, so this value reaches no
+                        // caller of `merge3Way` — but `merge3WayLenient` builds a
+                        // virtual ancestor from it, and that tree must not depend
+                        // on which branch arrived first. Same doctrine as the
+                        // insert tie-break: order by canonical bytes.
+                        if String.CompareOrdinal(acC, bcC) <= 0 then ac else bc
+                | Some ac, None -> ac
+                | None, Some bc -> bc
                 | None, None -> failwithf "merge3: child id %s vanished" cid
 
         let mergedChildren: Node<'Msg> list =
@@ -416,6 +525,15 @@ module TreeMerge =
             | false, false -> baseIds |> List.map recurseChild
             | true, false -> aIds |> List.map recurseChild
             | false, true -> bIds |> List.map recurseChild
+            | true, true when aIds = bIds ->
+                // Both sides changed the children to the SAME id list — agreement,
+                // not a conflict, and the guard every other facet already has
+                // (`mergeCanonicalFacet`'s `aC <> bC`). Its absence here is what
+                // made `merge3Way base a a` refuse for any branch that touched
+                // children at all. The shared ids' CONTENTS are checked by
+                // `recurseChild` above, which refuses a same-id-different-content
+                // insert rather than defaulting to a side.
+                aIds |> List.map recurseChild
             | true, true ->
                 let aNew = Set.difference (Set.ofList aIds) (Set.ofList baseIds)
                 let bNew = Set.difference (Set.ofList bIds) (Set.ofList baseIds)
@@ -437,15 +555,28 @@ module TreeMerge =
                 else
                     // both structurally changed the same parent differently
                     let authorA, authorB = cellAuthor id "children"
-                    let _, pinHeld, choices, secondaryTag = resolveAuthor authorA authorB
+                    let aPrimary, pinHeld, choices, secondaryTag = resolveAuthor authorA authorB
+                    let aOrder = String.Join(",", aIds)
+                    let bOrder = String.Join(",", bIds)
+                    let sideA, sideB = sidesOf authorA authorB aOrder bOrder
 
                     conflicts.Add
                         { NodeId = id
                           Facet = "children"
                           Class = MergeConflictClass.ReorderVsStructural
                           Base = String.Join(",", baseIds)
-                          Primary = (if pinHeld then Some(String.Join(",", aIds)) else None)
-                          Secondary = Some(String.Join(",", bIds))
+                          A = sideA
+                          B = sideB
+                          Primary =
+                            (if pinHeld then
+                                 Some(if aPrimary then aOrder else bOrder)
+                             else
+                                 None)
+                          Secondary =
+                            (if pinHeld then
+                                 Some(if aPrimary then bOrder else aOrder)
+                             else
+                                 None)
                           SecondaryTag = secondaryTag
                           PrimacyHeld = pinHeld
                           Choices = choices

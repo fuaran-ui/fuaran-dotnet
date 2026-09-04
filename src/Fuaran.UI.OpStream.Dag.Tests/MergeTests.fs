@@ -225,6 +225,131 @@ let tests =
               | other -> failtestf "expected NoCommonBase, got %A" other
           }
 
+          // ── Phase 1497: the two-sided envelope + the shared-children guard ──
+          //
+          // Both repairs were MEASURED by Phase 1488's Fable law harness and left open there,
+          // because both change a shipped package's public conflict contract. The harness states
+          // them over generated edits on two pipelines; these state them on the shipped types,
+          // where a wrong FIELD (rather than a wrong count) is visible.
+
+          test "a refusal records BOTH sides' values with no primacy pin held" {
+              let baseTree = buildDashboard ()
+              let a = baseTree |> applyOk brand
+              let b = baseTree |> applyOk critical
+
+              match TreeMerge.merge3Way baseTree a b with
+              | Ok _ -> failtest "expected a refusal on the contended left tone"
+              | Error conflicts ->
+                  let c =
+                      conflicts |> List.find (fun c -> c.NodeId = "left" && c.Facet = "style.tone")
+
+                  Expect.isFalse c.PrimacyHeld "two secondary sides hold no pin"
+                  Expect.isSome c.A "the A-side value is recorded"
+                  Expect.isSome c.B "the B-side value is recorded"
+
+                  Expect.notEqual
+                      (c.A |> Option.map _.Value)
+                      (c.B |> Option.map _.Value)
+                      "the two sides wanted different things"
+                  // The precedence slots are a precedence CLAIM, so with no pin they say nothing.
+                  // Before 1497 `Secondary` carried whichever branch arrived first.
+                  Expect.isNone c.Primary "no pin held: no primary claim"
+                  Expect.isNone c.Secondary "no pin held: no secondary claim"
+          }
+
+          test "swapping the branches TRANSPOSES a refusal envelope and changes nothing else" {
+              let baseTree = buildDashboard ()
+              let a = baseTree |> applyOk brand
+              let b = baseTree |> applyOk critical
+
+              match TreeMerge.merge3Way baseTree a b, TreeMerge.merge3Way baseTree b a with
+              | Error forward, Error reverse ->
+                  let f = MergeConflict.sortCanonical forward
+                  let r = MergeConflict.sortCanonical reverse
+
+                  Expect.equal (List.length f) (List.length r) "the same number of contended cells"
+
+                  for (fc, rc) in List.zip f r do
+                      Expect.equal (fc.NodeId, fc.Facet) (rc.NodeId, rc.Facet) "the same cell"
+                      Expect.equal fc.Class rc.Class "the same class"
+                      Expect.equal fc.Base rc.Base "the same base value"
+                      Expect.equal fc.A rc.B "the forward A side is the swapped B side"
+                      Expect.equal fc.B rc.A "the forward B side is the swapped A side"
+                      Expect.equal fc.PrimacyHeld rc.PrimacyHeld "the same pin verdict"
+              | other -> failtestf "expected both orders to refuse, got %A" other
+          }
+
+          test "merge3Way base a a returns a, even when a changed a node's children" {
+              let baseTree = buildDashboard ()
+              // A pure structural branch — the case that refused outright before Phase 1497 (223 of
+              // 300 trials in the 1488 harness), because the children facet had no
+              // "both sides changed it identically" guard.
+              let a =
+                  baseTree
+                  |> applyOk (TreeOp.InsertChild(dashboardId, Fuaran.markdown "zzz" "Z pane"))
+                  |> applyOk brand
+
+              match TreeMerge.merge3Way baseTree a a with
+              | Ok merged -> Expect.equal (canonical merged) (canonical a) "self-merge is the identity"
+              | Error conflicts -> failtestf "self-merge refused: %A" conflicts
+          }
+
+          test "two branches inserting the same id with DIFFERENT content refuse, naming the id" {
+              let baseTree = buildDashboard ()
+
+              let a =
+                  baseTree
+                  |> applyOk (TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "A wrote this"))
+
+              let b =
+                  baseTree
+                  |> applyOk (TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "B wrote this"))
+
+              // The shared-children guard reaches this case; without the content check beneath it
+              // `recurseChild` would take the A side unconditionally and the merged tree would
+              // depend on the argument order.
+              match TreeMerge.merge3Way baseTree a b with
+              | Ok merged -> failtestf "expected a refusal, got a merged tree: %s" (canonical merged)
+              | Error conflicts ->
+                  let c = conflicts |> List.find (fun c -> c.NodeId = "new")
+                  Expect.equal c.Facet "insert" "the contended cell is the insert itself"
+                  Expect.equal c.Class MergeConflictClass.ConcurrentEdit "ConcurrentEdit class"
+                  Expect.equal c.Base "" "the id has no base value — it exists on neither side of the LCA"
+                  Expect.isSome c.A "the A-side inserted node is recorded"
+                  Expect.isSome c.B "the B-side inserted node is recorded"
+          }
+
+          test "two branches inserting the same id with the SAME content take the shared value" {
+              let baseTree = buildDashboard ()
+              let ins = TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "agreed")
+              let a = baseTree |> applyOk ins
+              let b = baseTree |> applyOk ins
+
+              match TreeMerge.merge3Way baseTree a b with
+              | Ok merged ->
+                  let ids =
+                      match merged.Kind with
+                      | NodeKind.Box(spec) -> spec.Children |> List.map _.Id
+                      | _ -> []
+
+                  Expect.equal ids [ "left"; "right"; "new" ] "the shared child appears exactly once"
+              | Error conflicts -> failtestf "agreeing inserts refused: %A" conflicts
+          }
+
+          test "the refusal envelope encodes to byte-stable canonical JSON" {
+              let baseTree = buildDashboard ()
+              let a = baseTree |> applyOk brand
+              let b = baseTree |> applyOk critical
+
+              match TreeMerge.merge3Way baseTree a b, TreeMerge.merge3Way baseTree a b with
+              | Error one, Error two ->
+                  let encoded = MergeConflict.encodeEnvelope one
+                  Expect.equal encoded (MergeConflict.encodeEnvelope two) "the encoding is stable"
+                  Expect.stringStarts encoded "[{\"a\":" "keys are emitted in alphabetical order"
+                  Expect.stringContains encoded "\"primacyHeld\":false" "the precedence verdict is projected"
+              | other -> failtestf "expected refusals, got %A" other
+          }
+
           test "commitMerge adds the node and advances the trunk under CAS" {
               let sink = InMemoryDagSink.create<TestMsg> ()
               let initial = buildDashboard ()
