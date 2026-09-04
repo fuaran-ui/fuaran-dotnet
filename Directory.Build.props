@@ -527,7 +527,23 @@
          re-packed slot swaps the contract under a consumer whose NuGet cache
          still serves the old bits. See STABILITY.md "Recorded change - 0.68.0,
          the media-capture upload field". -->
-    <Version>0.70.0</Version>
+    <!-- fuaran#1485 (0.71.0) - the op-stream sinks' compare-and-append and keyed
+         append. ADDITIVE. `Fuaran.UI.OpStream.Abstractions` gains `AppendReceipt`,
+         `CasAppendOutcome`, `KeyedAppendOutcome` and two OPTIONAL extension
+         interfaces - `IOpStreamCasSink<'Msg>` / `IOpStreamKeyedSink<'Msg>` - on the
+         `IOpStreamCheckpointSink` shape: they INHERIT `IOpStreamSink<'Msg>` rather
+         than widening it, so an existing implementer of the base compiles unchanged.
+         `Fuaran.UI.OpStream.Replay` gains `ApplyPersist.applyWithSinksKeyed`. Both
+         shipped stores implement both; the SQLite store gains an `op_invocation`
+         side table created by `CREATE TABLE IF NOT EXISTS` on open, so an existing
+         database migrates by being opened and no `op_stream` row is rewritten. No
+         existing member changed signature, no DU gained a case and no record gained
+         a field, so nothing here is source-breaking. It rides a minor bump rather
+         than a re-pack for the reason every entry above does: a re-packed slot swaps
+         the contract under a consumer whose NuGet cache still serves the old bits.
+         See STABILITY.md "Recorded change - 0.71.0, the op-stream sinks'
+         compare-and-append and keyed append". -->
+    <Version>0.71.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

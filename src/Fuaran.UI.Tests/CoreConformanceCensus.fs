@@ -245,11 +245,24 @@ let census: (string * Adoption) list =
       // All four run in `Fuaran.UI.OpStream.Tests`, beside the durable ports they are about. Note
       // what the ROW claims and what it does not: these families are parameterised over a
       // `StreamWitness` (Apply / Encode / Decode) and Core owns the append, so the adoption is over
-      // the tier's reducer, op codec, chain digest and node encoder — NOT over `IOpStreamSink`,
-      // which offers neither a compare-and-append nor an idempotency key. That gap is asserted
-      // directly by the store tests in the same file.
-      "Conformance.casLaws", Adopted(casTest, "Conformance.casLaws")
-      "Conformance.idempotencyLaws", Adopted(idempotencyTest, "Conformance.idempotencyLaws")
+      // the tier's reducer, op codec, chain digest and node encoder — NOT over `IOpStreamSink`.
+      //
+      // fuaran#1485 gave the ports the two contracts these families name (`IOpStreamCasSink` /
+      // `IOpStreamKeyedSink`, both stores), so the store side is no longer a gap the same file
+      // pins as negatives — it is a set of store-shaped tests, and the two ports below cite them
+      // beside the reducer-level run. The distinction still holds and is why both are named: the
+      // law certifies Core's append over the tier's witness, and the store-shaped test certifies
+      // the tier's own durable ports through the new surface. Neither substitutes for the other.
+      "Conformance.casLaws",
+      Adopted(
+          casTest,
+          "Conformance.casLaws — beside the store-shaped 'both durable stores refuse a stale-head append with a typed StaleHead naming the actual head' and 'the store-shaped compare-and-append and keyed-append laws hold over both durable stores' (fuaran#1485)"
+      )
+      "Conformance.idempotencyLaws",
+      Adopted(
+          idempotencyTest,
+          "Conformance.idempotencyLaws — beside the store-shaped 'both durable stores return the same receipt for a re-sent keyed append and persist nothing the second time' and 'the store-shaped compare-and-append and keyed-append laws hold over both durable stores' (fuaran#1485)"
+      )
       "Conformance.snapshotLaws", Adopted(snapshotTest, "Conformance.snapshotLaws")
       "Conformance.snapshotLawsWith", Adopted(snapshotTest, "Conformance.snapshotLawsWith")
 

@@ -22,7 +22,7 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.capabilityPipelineIncrementalLaws` | Not used | Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline |
 | `Conformance.capabilityPipelineLaws` | Not used | Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline |
 | `Conformance.captureReplayLaws` | Sibling host | fuaran-ts / fuaran-go (fuaran#1482) |
-| `Conformance.casLaws` | Adopted | `casLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.casLaws` |
+| `Conformance.casLaws` | Adopted | `casLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.casLaws — beside the store-shaped 'both durable stores refuse a stale-head append with a typed StaleHead naming the actual head' and 'the store-shaped compare-and-append and keyed-append laws hold over both durable stores' (fuaran#1485)` |
 | `Conformance.columnarOpLaws` | Adopted | `the columnar op algebra certifies under Core's columnarOpLaws` — via `Conformance.columnarOpLaws` |
 | `Conformance.columnarValidatorLaws` | Adopted | `the columnar validator certifies under Core's columnarValidatorLaws` — via `Conformance.columnarValidatorLaws` |
 | `Conformance.compositionLaws` | Adopted | `FastPath artifact-functions compose hygienically under Core's compositionLaws` — via `Conformance.compositionLaws` |
@@ -37,7 +37,7 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.functionVerifyLaws` | Adopted | `a sound and a broken FastPath pattern certify under Core's functionVerifyLaws` — via `Conformance.functionVerifyLaws` |
 | `Conformance.hashFnAdversarialLaws` | Adopted | `the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)` — via `Conformance.hashFnAdversarialLaws` |
 | `Conformance.hashFnLaws` | Adopted | `the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)` — via `Conformance.hashFnLaws` |
-| `Conformance.idempotencyLaws` | Adopted | `idempotencyLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.idempotencyLaws` |
+| `Conformance.idempotencyLaws` | Adopted | `idempotencyLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.idempotencyLaws — beside the store-shaped 'both durable stores return the same receipt for a re-sent keyed append and persist nothing the second time' and 'the store-shaped compare-and-append and keyed-append laws hold over both durable stores' (fuaran#1485)` |
 | `Conformance.incrementalLaws` | Adopted | `incrementalLaws certifies change-driven and op-driven equivalence at this pin` — via `Conformance.incrementalLaws — beside the tier-shaped 'the seven corpus vectors obey the one-scale bound, declined ones included'` |
 | `Conformance.leaseLaws` | Not used | Fuaran.Core.Lease — leases are a coordination-plane mechanism for concurrent writers; the UI tier takes none |
 | `Conformance.memoLaws` | Adopted | `FastPath application memoises soundly under Core's memoLaws` — via `Conformance.memoLaws` |

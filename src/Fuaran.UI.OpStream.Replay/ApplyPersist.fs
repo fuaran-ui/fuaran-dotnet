@@ -94,19 +94,30 @@ module ApplyPersist =
 
     let private currentTimestamp () : DateTimeOffset = DateTimeOffset.UtcNow
 
+    /// Surface a sink failure through `ctx.OnSinkError` without propagating it —
+    /// durability is best-effort by contract. Extracted at Phase 1485 so the
+    /// keyed append path below reports through exactly the same channel as the
+    /// unkeyed one; a second hand-rolled `try ... with` is how the two would
+    /// come to report differently.
+    let private reportSinkError (ctx: PersistContext) (ex: exn) : unit =
+        match ctx.OnSinkError with
+        | Some hook ->
+            try
+                hook ex
+            with _ ->
+                ()
+        | None -> ()
+
     /// Build the hash-chained `OpRecord` for an already-applied `op` at the
-    /// given `sequence` and append it to `sink`. Returns the sequence used.
-    /// Sink.Append failures are surfaced via `ctx.OnSinkError` (when set) but
-    /// do NOT propagate — durability is best-effort. Shared by
-    /// `applyAndPersist` and `applyWithSinks` so the persistence path (hash
-    /// chain, previous-hash recovery, error handling) is identical between
-    /// the single-sink and both-sinks wrappers (Phase 124).
-    let private appendRecordAt<'Msg>
+    /// given `sequence`, recovering the previous hash from `sink`. The single
+    /// place a record's `PreviousHash` / `Sequence` / chain hash is computed —
+    /// a second implementation is how a stream silently mis-chains.
+    let private buildRecordAt<'Msg>
         (sink: IOpStreamSink<'Msg>)
         (ctx: PersistContext)
         (sequence: int)
         (op: TreeOp<'Msg>)
-        : Async<unit> =
+        : Async<OpRecord<'Msg>> =
         async {
             let! previousHash =
                 async {
@@ -138,7 +149,7 @@ module ApplyPersist =
             let hash =
                 HashChain.computeHash previousHash op sequence timestamp actor ctx.PromptId resultEnvelope
 
-            let record: OpRecord<'Msg> =
+            return
                 { StreamId = ctx.StreamId
                   Sequence = sequence
                   PreviousHash = previousHash
@@ -148,17 +159,26 @@ module ApplyPersist =
                   Actor = actor
                   Timestamp = timestamp
                   ResultEnvelope = resultEnvelope }
+        }
+
+    /// Build the record for `op` at `sequence` and append it to `sink`.
+    /// `Append` failures are surfaced via `ctx.OnSinkError` (when set) but do
+    /// NOT propagate — durability is best-effort. Shared by `applyAndPersist`,
+    /// `journalApplied` and `applyWithSinks` so the persistence path is
+    /// identical across the wrappers (Phase 124).
+    let private appendRecordAt<'Msg>
+        (sink: IOpStreamSink<'Msg>)
+        (ctx: PersistContext)
+        (sequence: int)
+        (op: TreeOp<'Msg>)
+        : Async<unit> =
+        async {
+            let! record = buildRecordAt sink ctx sequence op
 
             try
                 do! sink.Append record
             with ex ->
-                match ctx.OnSinkError with
-                | Some hook ->
-                    try
-                        hook ex
-                    with _ ->
-                        ()
-                | None -> ()
+                reportSinkError ctx ex
         }
 
     /// Apply `op` against `tree`. On `Ok`, persist a hash-chained `OpRecord`
@@ -256,6 +276,84 @@ module ApplyPersist =
             | Error e -> return Error e
             | Ok updated ->
                 do! appendRecordAt sink ctx sequence op
+                return Ok updated
+        }
+
+    /// `applyWithSinks` under an INVOCATION KEY — the retry-safe call site
+    /// (Phase 1485).
+    ///
+    /// `applyWithSinks` above swallows a telemetry throw AFTER the op-stream
+    /// append has committed, so a caller that reads the throw as "the call
+    /// failed" and retries appends a second record: the unkeyed wrapper cannot
+    /// tell a retry from a fresh op, because nothing in an op says which
+    /// invocation produced it. This entry point takes that missing fact from
+    /// the caller and hands it to the sink, so the SECOND call for a key
+    /// persists nothing and answers with the first call's receipt.
+    ///
+    /// The sink is typed `IOpStreamKeyedSink<'Msg>` rather than probed for at
+    /// run time. A host cannot then ask for idempotency from a store that has
+    /// no key index and receive a silent plain append — the one outcome worse
+    /// than not offering the contract at all. Both sinks shipped in this tier
+    /// implement it.
+    ///
+    /// `invocationKey` is opaque and scoped to `ctx.StreamId`. It names ONE
+    /// intent of the caller's — a command id, a request id, an idempotency
+    /// header — and two genuinely distinct user actions that share a key are
+    /// collapsed into one record, so a key derived from the op alone is wrong
+    /// wherever the same op may legitimately be applied twice.
+    ///
+    /// Returns the applied tree exactly as `applyWithSinks` does, including on
+    /// a duplicate: the apply is deterministic and ran against the same tree,
+    /// so the caller's state is correct either way — what the key changes is
+    /// what is DURABLE, not what is returned.
+    let applyWithSinksKeyed<'Msg>
+        (sink: IOpStreamKeyedSink<'Msg>)
+        (telemetrySink: IFuaranTelemetrySink)
+        (ctx: PersistContext)
+        (invocationKey: string)
+        (op: TreeOp<'Msg>)
+        (tree: Node<'Msg>)
+        : Async<Result<Node<'Msg>, ApplyError>> =
+        async {
+            let baseSink = sink :> IOpStreamSink<'Msg>
+            let! latest = baseSink.LatestSequence ctx.StreamId
+            let sequence = latest + 1
+
+            let sw = Stopwatch.StartNew()
+            let result = Apply.apply op tree
+            sw.Stop()
+
+            let telemetry: OpApplyTelemetry =
+                { StreamId = ctx.StreamId
+                  Sequence = sequence
+                  OpKind = OpKind.ofTreeOp op
+                  NodeId = OpApplyTelemetry.topLevelNodeId op
+                  Outcome = OpOutcome.ofApplyResult result
+                  TimeToApplyMs = sw.Elapsed.TotalMilliseconds
+                  PromptId = ctx.PromptId
+                  UserId = ctx.UserId
+                  Timestamp = currentTimestamp () }
+
+            try
+                telemetrySink.RecordOpApply telemetry
+            with _ ->
+                // Telemetry is best-effort by contract; never let a sink
+                // throw poison the apply + persist path. This is the throw a
+                // caller misreads as failure — which is precisely why the
+                // append below carries the key.
+                ()
+
+            match result with
+            | Error e -> return Error e
+            | Ok updated ->
+                let! record = buildRecordAt baseSink ctx sequence op
+
+                try
+                    let! _outcome = sink.AppendKeyed(record, invocationKey)
+                    ()
+                with ex ->
+                    reportSinkError ctx ex
+
                 return Ok updated
         }
 #endif
