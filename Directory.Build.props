@@ -542,8 +542,22 @@
          than a re-pack for the reason every entry above does: a re-packed slot swaps
          the contract under a consumer whose NuGet cache still serves the old bits.
          See STABILITY.md "Recorded change - 0.71.0, the op-stream sinks'
-         compare-and-append and keyed append". -->
-    <Version>0.71.0</Version>
+         compare-and-append and keyed append".
+
+         fuaran#1497 (0.72.0) - BREAKING: the `Fuaran.UI.OpStream.Dag.Merge`
+         conflict envelope is TWO-SIDED. `MergeConflict` gains `A` and `B` (a new
+         public `MergeSide` record) carrying both branches' values on every
+         refusal, so a full-literal construction of the record stops compiling
+         (FS0764); and `Primary` / `Secondary` / `SecondaryTag` become the
+         precedence view alone, populated exactly when `PrimacyHeld` is true, so a
+         consumer that read them without consulting the pin now reads `None`.
+         Shipped with the children facet's shared-value guard, which the widened
+         envelope is what makes safe. A MINOR bump under the pre-1.0 rule, in the
+         same commit as the change, per the producer-side rule and the 2026-08-04
+         record-widening dispensation. See STABILITY.md "Recorded BREAKING change -
+         0.72.0, the two-sided merge-conflict envelope and the shared-children
+         merge". -->
+    <Version>0.72.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

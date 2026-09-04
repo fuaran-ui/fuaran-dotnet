@@ -4406,3 +4406,114 @@ regenerated.
 **No render-fidelity obligation and no host-adoption roster row**, on the 0.67.0 / 0.68.0 / 0.70.0
 precedent: the sink contract is a .NET-tier persistence seam, not a wire claim a sibling host could
 conform to.
+
+## Recorded BREAKING change — 0.72.0, the two-sided merge-conflict envelope and the shared-children merge (fuaran#1497)
+
+**BREAKING for a consumer that constructs or exhaustively reads `MergeConflict`.** The record gains
+two fields, so every full-literal construction of it stops compiling (FS0764); and two fields it
+already had change WHEN they are populated, so a consumer that read them without consulting
+`PrimacyHeld` reads `None` where it used to read a value. `Fuaran.UI.OpStream.Dag.Merge` therefore
+cuts a MINOR under the pre-1.0 rule, in the same commit as the change, and the whole `Fuaran.UI.*`
+family moves with it.
+
+Both repairs were MEASURED by Phase 1488's Fable law harness and deliberately left open there,
+because both touch a shipped package's public conflict contract. The harness printed
+`MERGEFINDING valueAsymmetries=101 selfMergeRefusals=223` on every gate run for exactly that reason.
+It prints the same line under the same names now, and it reads zero — the numbers were the finding,
+so they are the proof.
+
+### 1. The envelope carries BOTH sides
+
+`MergeConflict` gains `A: MergeSide option` and `B: MergeSide option`, where
+`MergeSide = { Value: string; Tag: string option }` is a new public type: the first- and
+second-argument branches' values for the contended cell, each with that branch's own opaque
+provenance tag, populated on every two-sided refusal whether or not a primacy pin is held.
+
+  * **The defect this closes.** The envelope was documented three-up (base / primary / secondary)
+    but populated `Primary` only when a pin was held. Under `merge3Way` both sides are `Secondary`,
+    so exactly ONE branch's value was recorded — in the `Secondary` slot — and which one depended on
+    the order the caller passed its branches (`mergeCanonicalFacet` wrote `if aPrimary then bC else
+    aC`, and `aPrimary` is false for two secondaries). Two replicas refusing the same merge agreed
+    about every contended cell and disagreed about what the other side wanted. That is the one thing
+    a merge whose entire promise is order-independence must not do.
+
+  * **`Primary` / `Secondary` are now the PRECEDENCE view and nothing else**, populated exactly when
+    `PrimacyHeld` is `true`. A value in either slot IS a precedence claim; before 0.72.0 `Secondary`
+    made that claim in the two-secondary case on the strength of argument position. `SecondaryTag`
+    follows the same rule for the same reason — it names the tag of the side that LOST TO A PIN, so
+    with no pin there is no such side, and each branch's own tag now rides in its own side.
+    `ValidatorGate.toConflict` is unchanged in this respect: a `CombinedCycle` refusal is a property
+    of the merged tree that neither branch exhibits, so it populates neither `A` nor `B`.
+
+  * **Why `A` / `B` rather than repurposing `Primary` / `Secondary`.** The existing consumers'
+    matches make this the cheapest spelling: every reader in the tree either checks `PrimacyHeld`
+    first or asserts `Primary` is present in a pinned case, and all of those keep compiling and keep
+    meaning what they meant. Repurposing the precedence slots would have left those readers
+    compiling while silently changing what they assert — a consumer would infer a precedence that no
+    pin supports. The new names also match the merge's own vocabulary (`merge3Way base a b`).
+
+  * **The claim, stated exactly:** swapping the caller's branches TRANSPOSES `A` and `B` and changes
+    nothing else in the envelope. Not "the envelope is byte-identical under swap" — the sides
+    genuinely swap, and canonically ordering them would have thrown away which branch wanted what.
+    Asserted on .NET (`MergeTests.fs`) and, over 300 generated three-way edits on both pipelines, by
+    the Phase 1488 harness.
+
+  * One latent defect fell out with it: the `ReorderVsStructural` refusal recorded the A-side child
+    order in `Primary` regardless of which side held the pin. It now records the pinned side's.
+
+### 2. The children facet takes the shared value
+
+`merge3Way base a a` REFUSED whenever `a` changed any node's children — 223 of 300 trials in the
+Phase 1488 sample. Every other facet takes the shared value when both sides changed it identically
+(`mergeCanonicalFacet`'s `aC <> bC` guard); the children facet had no such guard, and its auto-merge
+path additionally demanded `Set.isEmpty (Set.intersect aNew bNew)`, which two identical branches
+maximally violate. The facet now takes the shared value when `aIds = bIds`.
+
+  * **The guard could not ship alone**, and this is the whole reason the repair waited for a phase
+    of its own. `aIds = bIds` implies take it opens a case the disjointness test made unreachable:
+    two branches inserting the SAME id with DIFFERENT content, where `recurseChild` took the A side
+    unconditionally. That would have traded a spurious refusal for an arrival-order-DEPENDENT tree —
+    a refutation of the order-independence law rather than a fix. So the content check lands beneath
+    the guard: identical content is the shared value, and different content is a REFUSAL naming the
+    id, at facet `"insert"`, class `ConcurrentEdit`, with an empty `Base` because the id exists on
+    neither side of the LCA.
+
+  * **`merge3WayLenient` still returns a tree on that refusal**, and that tree must not depend on
+    argument order either — it builds the virtual ancestor for a criss-cross merge. It takes the
+    canonically-lesser side by `String.CompareOrdinal` over the encoded nodes: the same
+    deterministic, wall-clock-free tie-break doctrine the disjoint-insert ordering already runs on.
+
+  * **No auto-merge outcome moved.** Every committed `merge-3way` and `merge-validator-gated` fixture
+    re-emitted byte-identical, including the outcome and verdict hashes; the manifest's only diff is
+    the new key below. The guard fires exactly where the engine previously refused.
+
+### 3. The corpus records what a merge REFUSES
+
+`wire-format-fixtures/merge-conformance/` gains a `merge-refusal` family under a NEW top-level
+manifest key `refusalFixtures` (with its own `refusalDescription`): `base` / `a` / `b` payloads plus
+the canonically-encoded envelope and its sha256, produced by the new `MergeConflict.encodeEnvelope`
+— the analogue of `ValidatorGate.encodeVerdict` for a refused structural merge, and of the outcome
+hash for an auto-merge. Two fixtures: the canonical concurrent edit, and the
+same-id-different-content insert (the case §2 opened). `MergeConflict.sortCanonical` orders a
+refusal set by `(NodeId, Facet)` so the encoding is stable regardless of the fold's emission order.
+
+  * **Its own key, not a third `kind` in `fixtures`, and the reason is host behaviour rather than
+    taste.** The Go merge leg iterates every `fixtures` entry and asserts the merge SUCCEEDS before
+    it looks at `kind`; a refusal triad added there would turn a conformant host red for reading the
+    corpus correctly. A new top-level key is invisible to a host that does not read it, so each host
+    adopts the wider envelope when it ports it, and its merge leg is meanwhile exactly as green as
+    it was.
+
+  * **One limit named rather than assumed.** A side's `value` is the contended cell's canonical
+    encoding, EXCEPT for the `style.*` sub-facets, whose value is the sub-field's case name (an F#
+    `%A` rendering, which predates this change). It coincides with the wire spelling because every
+    style sub-field is enum-shaped; a host must not generalise it to a compound cell. The manifest's
+    `refusalDescription` says so.
+
+**No wire-format change, no `WIRE_FORMAT.md` §11 event, no validator code, no `NodeKind` / `TreeOp`
+/ `Spec` case.** Nothing about a `Node` or its encoding moves, so `Theme.vocabularyFingerprint` and
+the reference stylesheet are untouched and no `nodes/` / `ops/` / `reject/` / `lenient/` fixture is
+regenerated. The `MergeChoice` menu is likewise unchanged: with two secondary sides `KeepSecondary`
+still names neither side in particular, which the two-sided envelope makes visible without resolving
+— a `MergeChoice` widening is a host-facing vocabulary change and is left to a phase that can carry
+the hosts with it.

@@ -134,6 +134,65 @@ let verdictOf (baseT: Node<TestMsg>) (a: Node<TestMsg>) (b: Node<TestMsg>) : Mer
     | Ok merged -> ValidatorGate.introducedDefects gatedValidator a b merged
     | Error conflicts -> failwithf "gated merge-corpus fixture is not structurally clean: %A" conflicts
 
+// ── refusal fixtures (Phase 1497) ───────────────────────────────────────────
+//
+// Until 1497 the corpus committed only what a merge PRODUCED. What a merge
+// REFUSES is equally a cross-host contract — a host that resolves a conflict is
+// resolving against the envelope's contents — and it was pinned nowhere. It
+// could not usefully be pinned before, either: the envelope recorded one side's
+// value and which one depended on the argument order, so any committed bytes
+// would have been a fixture for one arrival order.
+//
+// The deterministic artefact is the ENVELOPE — the refusal set canonically
+// encoded by `MergeConflict.encodeEnvelope` — plus its hash, exactly as the
+// gated family's artefact is the verdict.
+
+/// `(id, description, base, a, b)` triads that REFUSE. Both arrival orders are
+/// asserted by the conformance leg; the committed bytes are the forward order.
+let refusalFixtures: (string * string * Node<TestMsg> * Node<TestMsg> * Node<TestMsg>) list =
+    let baseTree = buildDashboard ()
+
+    // 1. The canonical concurrent edit: both sides retone the SAME pane.
+    let toneA =
+        baseTree
+        |> applyOk (style (fun s -> { s with Tone = ToneVariant.Brand }) leftChildId)
+
+    let toneB =
+        baseTree
+        |> applyOk (style (fun s -> { s with Tone = ToneVariant.Critical }) leftChildId)
+
+    // 2. Both sides insert the SAME id with DIFFERENT content. Before Phase 1497
+    //    the disjointness test made this unreachable — it fell out as a
+    //    whole-parent `ReorderVsStructural` refusal — and the shared-children
+    //    guard reaches it, so the content check beneath that guard is what keeps
+    //    it a refusal instead of an arrival-order-dependent A-side tree.
+    let sameIdA =
+        baseTree
+        |> applyOk (TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "A wrote this"))
+
+    let sameIdB =
+        baseTree
+        |> applyOk (TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "B wrote this"))
+
+    [ "merge-refusal-concurrent-tone",
+      "Both sides retone the same pane — a two-sided ConcurrentEdit refusal with no primacy pin",
+      baseTree,
+      toneA,
+      toneB
+      "merge-refusal-same-id-insert",
+      "Both sides insert the same NodeId with different content — refused naming the id, never an A-side default",
+      baseTree,
+      sameIdA,
+      sameIdB ]
+
+/// The refusal ENVELOPE for a fixture. Fails loudly if the triad merges: a
+/// refusal fixture that stopped refusing would otherwise be committed as an
+/// empty envelope, which is a green fixture asserting nothing.
+let envelopeOf (baseT: Node<TestMsg>) (a: Node<TestMsg>) (b: Node<TestMsg>) : MergeConflict list =
+    match TreeMerge.merge3Way baseT a b with
+    | Error conflicts -> conflicts
+    | Ok merged -> failwithf "refusal merge-corpus fixture auto-merged: %s" (canonical merged)
+
 let emit (root: string) : unit =
     let dir = Path.Combine(root, "merge-conformance")
     Directory.CreateDirectory dir |> ignore
@@ -181,9 +240,41 @@ let emit (root: string) : unit =
                 description
         )
 
+    // Refusal envelopes (Phase 1497) live under their OWN manifest key rather
+    // than beside the auto-merge triads in `fixtures`. Deliberate, and the reason
+    // is what a host does with an unknown entry: the Go leg iterates every
+    // `fixtures` entry and asserts the merge SUCCEEDS before it looks at `kind`,
+    // so a refusal triad added there would turn a conformant host red for
+    // modelling the corpus correctly. A new top-level key is invisible to every
+    // host that does not read it, so each host adopts the wider envelope when it
+    // ports it, and until then its merge leg is exactly as green as it was.
+    let refusalEntries = ResizeArray<string>()
+
+    for (id, description, baseT, a, b) in refusalFixtures do
+        let envelopeJson = envelopeOf baseT a b |> MergeConflict.encodeEnvelope
+        let envelopeHash = envelopeJson |> HashChain.sha256Hex
+        File.WriteAllText(Path.Combine(dir, id + ".base.json"), CanonicalJson.encodeNode baseT)
+        File.WriteAllText(Path.Combine(dir, id + ".a.json"), CanonicalJson.encodeNode a)
+        File.WriteAllText(Path.Combine(dir, id + ".b.json"), CanonicalJson.encodeNode b)
+        File.WriteAllText(Path.Combine(dir, id + ".envelope.json"), envelopeJson)
+
+        refusalEntries.Add(
+            sprintf
+                "    {\n      \"id\": \"%s\",\n      \"kind\": \"merge-refusal\",\n      \"baseFile\": \"%s.base.json\",\n      \"aFile\": \"%s.a.json\",\n      \"bFile\": \"%s.b.json\",\n      \"envelopeFile\": \"%s.envelope.json\",\n      \"envelopeHash\": \"%s\",\n      \"description\": \"%s\"\n    }"
+                id
+                id
+                id
+                id
+                id
+                envelopeHash
+                description
+        )
+
     let manifest =
         "{\n  \"version\": 1,\n  \"description\": \"Fuaran merge-conformance corpus (Phase 179 + 184, additive). merge-3way: decode base/a/b, run the deterministic 3-way tree merge, assert byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-validator-gated (Phase 184): run the documented sample validator over the auto-merge, diff introduced defects vs both parents, assert encodeVerdict(introduced) byte-equal to verdictFile and sha256(verdict) == verdictHash. See fuaran-dotnet/docs/WIRE_FORMAT.md.\",\n  \"fixtures\": [\n"
         + System.String.Join(",\n", entries)
+        + "\n  ],\n  \"refusalDescription\": \"merge-refusal (Phase 1497, additive, SEPARATE key): decode base/a/b, run the 3-way merge, assert it REFUSES, and assert the canonically-encoded two-sided conflict envelope is byte-equal to envelopeFile with sha256(envelope) == envelopeHash. Swapping a and b must transpose each entry's 'a' and 'b' and change nothing else. Held under its own key because a host that iterates 'fixtures' expecting every entry to auto-merge is correct to do so. A side's 'value' is the contended cell's canonical encoding, EXCEPT for the style.* sub-facets, whose value is the sub-field's case name — that coincides with its wire spelling because every style sub-field is enum-shaped, and a host must not generalise it to a compound cell.\",\n  \"refusalFixtures\": [\n"
+        + System.String.Join(",\n", refusalEntries)
         + "\n  ]\n}\n"
 
     File.WriteAllText(Path.Combine(dir, "manifest.json"), manifest)

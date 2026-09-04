@@ -56,4 +56,36 @@ let tests =
                       let committed = File.ReadAllText(verdictPath).TrimEnd('\n', '\r')
 
                       Expect.equal verdictJson committed (sprintf "%s: F# verdict == committed verdict" id)
+          }
+
+          // Leg A for the Phase 1497 refusal envelopes: the F# merge refuses each
+          // triad and reproduces the committed envelope bytes. The swap is asserted
+          // here rather than committed twice — two files that were transpositions of
+          // each other would pin the same fact in a form a host could satisfy by
+          // emitting both from one side.
+          test "committed refusal envelopes match the F# two-sided merge envelope" {
+              if not (Directory.Exists corpusDir) then
+                  skiptest "wire-format-fixtures/merge-conformance corpus absent (single-repo checkout)"
+              else
+                  for (id, _description, baseT, a, b) in MergeCorpus.refusalFixtures do
+                      let envelope = MergeCorpus.envelopeOf baseT a b
+                      Expect.isNonEmpty envelope (sprintf "%s: the fixture refuses" id)
+                      let envelopeJson = MergeConflict.encodeEnvelope envelope
+                      let envelopePath = Path.Combine(corpusDir, id + ".envelope.json")
+                      Expect.isTrue (File.Exists envelopePath) (sprintf "%s envelope fixture present" id)
+                      let committed = File.ReadAllText(envelopePath).TrimEnd('\n', '\r')
+
+                      Expect.equal envelopeJson committed (sprintf "%s: F# envelope == committed envelope" id)
+
+                      // The swapped merge transposes the envelope and changes nothing else.
+                      let swapped = MergeCorpus.envelopeOf baseT b a |> MergeConflict.sortCanonical
+
+                      for (fc, rc) in List.zip (MergeConflict.sortCanonical envelope) swapped do
+                          Expect.equal
+                              (fc.NodeId, fc.Facet, fc.Class)
+                              (rc.NodeId, rc.Facet, rc.Class)
+                              (sprintf "%s: same cell" id)
+
+                          Expect.equal fc.A rc.B (sprintf "%s: forward A == swapped B" id)
+                          Expect.equal fc.B rc.A (sprintf "%s: forward B == swapped A" id)
           } ]
