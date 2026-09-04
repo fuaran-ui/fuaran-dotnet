@@ -121,6 +121,55 @@ let tests =
               Expect.equal cache.Misses 1 "one miss"
           }
 
+          test "an ABSENT slot and a PRESENT slot both round-trip through the erased store" {
+              // The slot's NULLABILITY, made falsifiable. Expansions are held
+              // erased (`objnull`, because `box` is typed that way), so absence
+              // and a stored value travel the same channel and can be confused:
+              // a store that minted a slot with `Unchecked.defaultof<_>` and read
+              // that back as a value would serve a null tree, and one that read a
+              // null as a hit would stop recomputing. Neither is visible to the
+              // hit/miss counters alone — this walks both states end to end.
+              let cache = privateCache ()
+              let calls = ref 0
+              let b = body "slot"
+
+              // ABSENT — nothing has ever been stored under this (body, prefix),
+              // so the probe misses, `compute` runs, and the result is written in.
+              let fromAbsent = cache.Expand(b, "ref1.", countingCompute calls "ref1.")
+
+              Expect.equal calls.Value 1 "the absent slot missed and computed"
+              Expect.equal cache.Misses 1 "and was accounted a miss"
+              Expect.equal cache.Hits 0 "with no hit yet"
+
+              Expect.equal
+                  (ids fromAbsent)
+                  [ "ref1.card"; "ref1.title"; "ref1.count" ]
+                  "the miss produced the namespaced expansion, not an empty read-back"
+
+              Expect.stringContains (bytes fromAbsent) "Title slot" "carrying this body's own content"
+
+              // PRESENT — the same key now holds a value, so the probe hits and
+              // the erased value comes back out as the very tree that went in.
+              let fromPresent = cache.Expand(b, "ref1.", countingCompute calls "ref1.")
+
+              Expect.equal calls.Value 1 "the present slot hit, so nothing recomputed"
+              Expect.equal cache.Hits 1 "and was accounted a hit"
+              Expect.isTrue (Object.ReferenceEquals(fromAbsent, fromPresent)) "the stored tree itself came back out"
+              Expect.equal (bytes fromPresent) (bytes fromAbsent) "byte-identical through the canonical encoder"
+
+              // Still ABSENT — a prefix the slot has never held stays a miss even
+              // though the body's slot now exists, so absence is the probe's
+              // `None` rather than a null sitting in a freshly-minted neighbour.
+              let other = cache.Expand(b, "ref2.", countingCompute calls "ref2.")
+
+              Expect.equal calls.Value 2 "an unheld prefix in an existing slot is still a miss"
+
+              Expect.equal
+                  (ids other)
+                  [ "ref2.card"; "ref2.title"; "ref2.count" ]
+                  "and computes its own expansion under its own prefix"
+          }
+
           test "the same fragment NAME with a DIFFERENT BODY never returns the stale expansion" {
               // The soundness criterion. Two bodies are constructed under the
               // same fragment name and the same ref prefix — a name-keyed cache

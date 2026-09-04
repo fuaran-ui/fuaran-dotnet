@@ -87,23 +87,36 @@ let defaultPrefixCapacity = 32
 /// A bounded, lifetime-owning memo of namespaced fragment bodies, keyed by
 /// `(body instance, prefix)`.
 ///
-/// Values are held as `obj` because the cache is process-global and the tree it
+/// Values are held erased because the cache is process-global and the tree it
 /// caches is generic in `'Msg`. The unbox on the hit path is safe by
 /// construction, not by convention: the value under a key was produced by
 /// applying the caller's own `compute` to THAT key, so it has the key's type.
 /// The same object cannot be a `Node<int>` and a `Node<string>`, and on the
 /// Fable pipeline generics are erased so the cast is not emitted at all.
 /// Boxing a `Node<'Msg>` allocates nothing — it is a record, so `box` is a cast.
+///
+/// The erased type is `objnull` (`obj | null`), not `obj`, and the distinction is
+/// load-bearing rather than cosmetic. `box` is typed `'T -> objnull` under F# 10's
+/// nullness checker, because the operand's own type is free to admit null; a slot
+/// declared `obj` therefore cannot hold what `box` produces without an implicit
+/// widening the checker refuses (FS3261, and the repo builds warnings as errors —
+/// the Fable leg, which compiles this source under the entry project's
+/// nullness-enabled settings, is where that refusal surfaces). Declaring the slot
+/// `objnull` states the type the values actually have instead of asserting them
+/// non-null at the boundary. Nothing about the memo's behaviour changes: no store
+/// writes null, so no probe ever reads one, and a miss stays the `None` of
+/// `TryGet` rather than a null value — absence and emptiness remain different
+/// things, which is what keeps the hit/miss accounting meaningful.
 type FragmentExpansionCache(bodyCapacity: int, prefixCapacity: int) =
     let prefixCapacity = max 1 prefixCapacity
-    let bodies = BoundedRefMemo<obj, BoundedLru<obj>>(bodyCapacity)
+    let bodies = BoundedRefMemo<objnull, BoundedLru<objnull>>(bodyCapacity)
     let syncRoot = obj ()
     let mutable hits = 0
     let mutable misses = 0
 
     /// The prefix slot for a body, minted on first sight. Callers hold the lock.
-    let slotFor (body: obj) : BoundedLru<obj> =
-        bodies.GetOrAdd(body, (fun _ -> BoundedLru<obj>(prefixCapacity)))
+    let slotFor (body: objnull) : BoundedLru<objnull> =
+        bodies.GetOrAdd(body, (fun _ -> BoundedLru<objnull>(prefixCapacity)))
 
     /// The configured bound on distinct body instances.
     member _.BodyCapacity = bodies.Capacity
