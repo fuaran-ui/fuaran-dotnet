@@ -656,6 +656,36 @@ module FormFieldKind =
     let color (value: Binding<string>) (onChange: string -> Action<'Msg>) : FormFieldKind<'Msg> =
         FormFieldKind.Color(Some onChange, Some value)
 
+    /// `Tokens` (Phase 1121) — the multi-token input: several values
+    /// accumulated as removable chips, over a set that may be open, searchable,
+    /// asynchronous, or absent entirely. Recipients, labels, skills.
+    ///
+    /// **Which of the three to reach for.** `Select` with `multiple` is a CLOSED
+    /// set small enough for a reader to scan; `combobox` picks ONE value from a
+    /// searchable set; this takes SEVERAL. The mistake worth naming is a
+    /// combobox per item — that is not a smaller version of this control, it is
+    /// a different one, and it has no gesture for removing the third entry.
+    ///
+    /// `suggestions` is an ordinary option-list binding, so a `Query`-bound
+    /// source IS the asynchronous suggestion feed. `allowFreeText` admits
+    /// tokens that are not on it — and it defaults to TRUE here, unlike
+    /// `combobox`, because a token box with nothing to suggest is the commonest
+    /// shape rather than a degenerate one. Passing `false` with no suggestions
+    /// at all is refused: the field could admit nothing.
+    ///
+    ///   FormFieldKind.tokens
+    ///       (value = binding.state "labels" [ "urgent" ])
+    ///       (onChange = SetLabels >> Action.dispatch)
+    ///       (Some(Binding.Static(Some knownLabels)))
+    ///       true
+    let tokens
+        (value: Binding<string list>)
+        (onChange: string list -> Action<'Msg>)
+        (suggestions: Binding<SelectOption list> option)
+        (allowFreeText: bool)
+        : FormFieldKind<'Msg> =
+        FormFieldKind.Tokens(allowFreeText, Some onChange, suggestions, Some value)
+
     /// `Date` / `Time` / `DateTime` field (Phase 288) with the optional
     /// ISO-8601 `min` / `max` + numeric `step` (seconds) constraints as named
     /// options. `variant` selects the native control (defaults are layered by
@@ -774,6 +804,17 @@ module FormFieldKind =
     /// the value slot.
     let colorDeclarative (value: Binding<string>) : FormFieldKind<'Msg> = FormFieldKind.Color(None, Some value)
 
+    /// Handler-free `Tokens` (Phase 1121) — writes the WHOLE token list back to
+    /// the value slot on every add and every remove. That is what keeps the
+    /// reader's own chip order on a decoded tree with no host code: the slot is
+    /// rewritten, never appended to.
+    let tokensDeclarative
+        (value: Binding<string list>)
+        (suggestions: Binding<SelectOption list> option)
+        (allowFreeText: bool)
+        : FormFieldKind<'Msg> =
+        FormFieldKind.Tokens(allowFreeText, None, suggestions, Some value)
+
     /// Handler-free `Date` — writes the ISO-8601 string back to the value slot.
     let dateDeclarative
         (value: Binding<string>)
@@ -836,6 +877,16 @@ module FilterField =
     /// Colour chip bound to its own filter key (Phase 1130).
     let color (name: string) : FormFieldKind<'Msg> =
         FormFieldKind.Color(None, Some(Binding.Filter(name, None)))
+
+    /// Token chip bound to its own filter key (Phase 1121) — "show me anything
+    /// carrying any of these labels". The filter slot holds the whole list, so
+    /// one filter key carries the whole multi-token selection.
+    let tokens
+        (name: string)
+        (suggestions: Binding<SelectOption list> option)
+        (allowFreeText: bool)
+        : FormFieldKind<'Msg> =
+        FormFieldKind.Tokens(allowFreeText, None, suggestions, Some(Binding.Filter(name, None)))
 
     /// Dual-thumb range chip bound to its own filter key.
     let range (name: string) : FormFieldKind<'Msg> =

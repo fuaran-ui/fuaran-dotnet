@@ -150,6 +150,12 @@ let all: Classification list =
       // onChange closure erases, as everywhere.
       pt "FormFieldKind.Rating" writeBack
       pt "FormFieldKind.Color" writeBack
+      // Phase 1121 — the token list, the free-text declaration and the
+      // suggestion source all survive; the onChange closure erases, as
+      // everywhere. Note what survives is the ORDERED list: the write-back
+      // default rewrites the whole slot on every add and remove, so a decoded
+      // token field keeps the reader's own order with no host code at all.
+      pt "FormFieldKind.Tokens" writeBack
 
       // 0.2.0 filters-unification: chips carry FormFieldKind controls — the
       // FormFieldKind rows above cover them; Range is the absorbed range chip.

@@ -4546,3 +4546,165 @@ let captureAcceptRuleTests =
               Expect.isEmpty (captureDefects (captureWith None [ ".csv" ])) "no capture is declared"
               Expect.isEmpty (captureDefects (captureWith None [])) "and an unfiltered picker is not judged either"
           } ]
+
+// ─── Phase 1121 fixtures ─ FUARAN135 / FUARAN136, the two token rules ──────
+
+/// A one-field form whose field is a token control.
+let private tokensForm
+    (fieldId: string)
+    (allowFreeText: bool)
+    (suggestions: Binding<SelectOption list> option)
+    (value: Binding<string list> option)
+    : Node<Msg> =
+    Fuaran.form
+        "f"
+        { Defaults.form with
+            Fields =
+                [ { Defaults.formField with
+                      Id = fieldId
+                      Label = TextSource.Literal "Labels"
+                      Kind = FormFieldKind.Tokens(allowFreeText, None, suggestions, value) } ]
+            SubmitLabel = TextSource.Literal "Save" }
+
+/// The same control as a FILTER chip. The 0.2.0 unification means these are the
+/// SAME rules reached by a second route, and the pair of fixtures is what keeps
+/// it that way (the `ratingFilters` posture).
+let private tokensFilters
+    (name: string)
+    (allowFreeText: bool)
+    (suggestions: Binding<SelectOption list> option)
+    (value: Binding<string list> option)
+    : Node<Msg> =
+    Fuaran.filters
+        "fs"
+        [ { Name = name
+            Label = TextSource.Literal "Chip"
+            Kind = FormFieldKind.Tokens(allowFreeText, None, suggestions, value) } ]
+
+/// Only the two Phase 1121 defects, for the reason `embedDefects` states: the
+/// fixtures carry other shapes, so asserting `Ok()` would couple these tests to
+/// rules they are not about.
+let private tokensDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.TokensAdmitsNothing _
+            | PreEmitDefect.TokensStaticDuplicate _ -> true
+            | _ -> false)
+
+let private someOption (value: string) : SelectOption = { Label = value; Value = value }
+
+[<Tests>]
+let tokensValueRuleTests =
+    testList
+        "PreEmitValidate — FUARAN135 / FUARAN136, the two token rules (Phase 1121)"
+        [ test "FUARAN135: a closed field over a static and EMPTY suggestion list is reported" {
+              // The half the decoder structurally cannot hold. It refuses a
+              // closed field with NO suggestion slot at all; it cannot refuse
+              // this one, because a source IS present and whether it yields
+              // anything is a question about a `Binding`.
+              let tree = tokensForm "labels" false (Some(Binding.Static(Some []))) None
+
+              Expect.equal
+                  (tokensDefects tree
+                   |> List.map (fun d -> let c, _, _ = PreEmitValidate.describe d in c))
+                  [ "FUARAN135" ]
+                  "a token field into which no token can ever be put"
+
+              Expect.equal
+                  (severityOf (tokensDefects tree |> List.head))
+                  DefectSeverity.Warning
+                  "Warning — the document decodes and renders; what is wrong is that no reader can use it"
+          }
+
+          test "FUARAN135 go-red check: every neighbouring shape is silent" {
+              // An OPEN field with an empty static list is the ordinary plain
+              // token box — the commonest shape there is — and firing on it
+              // would make this a rule authors switch off.
+              Expect.isEmpty
+                  (tokensDefects (tokensForm "labels" true (Some(Binding.Static(Some []))) None))
+                  "an open field needs no suggestions at all"
+
+              // A closed field over a NON-EMPTY static list is exactly the
+              // shape the flag exists for.
+              Expect.isEmpty
+                  (tokensDefects (tokensForm "labels" false (Some(Binding.Static(Some [ someOption "a" ]))) None))
+                  "a closed field with something to offer"
+
+              // A closed field over a BOUND source is the asynchronous
+              // suggestion feed. Judging it would fire on the shape the slot
+              // exists for; the server-driven floor re-states membership.
+              Expect.isEmpty
+                  (tokensDefects (
+                      tokensForm
+                          "labels"
+                          false
+                          (Some(Binding.Query("labels", (fun (raw: obj) -> unbox raw), None)))
+                          None
+                  ))
+                  "a bound source is not judged statically"
+          }
+
+          test "FUARAN136: a repeated static token is reported, naming it" {
+              let tree =
+                  tokensForm "labels" true None (Some(Binding.Static(Some [ "a"; "b"; "a" ])))
+
+              Expect.equal
+                  (tokensDefects tree
+                   |> List.map (fun d -> let c, _, _ = PreEmitValidate.describe d in c))
+                  [ "FUARAN136" ]
+                  "one fact drawn twice"
+
+              match tokensDefects tree with
+              | [ PreEmitDefect.TokensStaticDuplicate(_, _, token) ] ->
+                  Expect.equal token "a" "the message names the repeat, not merely its existence"
+              | other -> failtestf "Expected exactly one duplicate defect, got %A" other
+          }
+
+          test "FUARAN136 reports the FIRST repeat only" {
+              // A second finding on the same field would say the same thing
+              // about the same slot, and the remedy is one edit.
+              let tree =
+                  tokensForm "labels" true None (Some(Binding.Static(Some [ "a"; "a"; "b"; "b" ])))
+
+              Expect.equal (List.length (tokensDefects tree)) 1 "one finding per field"
+          }
+
+          test "FUARAN136 go-red check: a list with no repeat, and a bound one, are silent" {
+              Expect.isEmpty
+                  (tokensDefects (tokensForm "labels" true None (Some(Binding.Static(Some [ "a"; "b"; "c" ])))))
+                  "three distinct tokens"
+
+              Expect.isEmpty
+                  (tokensDefects (tokensForm "labels" true None (Some(Binding.Static(Some [])))))
+                  "an empty list has no repeat"
+
+              // The auto-bind — no value slot at all — is the commonest shape
+              // and carries no literal to judge.
+              Expect.isEmpty (tokensDefects (tokensForm "labels" true None None)) "the auto-bind"
+
+              Expect.isEmpty
+                  (tokensDefects (tokensForm "labels" true None (Some(Binding.State("labels", None)))))
+                  "a bound value is invisible from here"
+          }
+
+          test "both rules are reached by the FILTER-CHIP route as well" {
+              // The 0.2.0 unification: a chip carries the same control as a
+              // field, so a walk that saw only forms would leave half the
+              // vocabulary unjudged.
+              Expect.equal
+                  (tokensFilters "chip" false (Some(Binding.Static(Some []))) None
+                   |> tokensDefects
+                   |> List.map (fun d -> let c, _, _ = PreEmitValidate.describe d in c))
+                  [ "FUARAN135" ]
+                  "the admits-nothing rule, on a chip"
+
+              Expect.equal
+                  (tokensFilters "chip" true None (Some(Binding.Static(Some [ "x"; "x" ])))
+                   |> tokensDefects
+                   |> List.map (fun d -> let c, _, _ = PreEmitValidate.describe d in c))
+                  [ "FUARAN136" ]
+                  "the duplicate rule, on a chip"
+          } ]

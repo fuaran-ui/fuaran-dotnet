@@ -493,6 +493,7 @@ and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
     | Combobox of allowFreeText: bool * onChange: (string option -> Action<'Msg>) option * options: Binding<SelectOption list> * value: Binding<string> option
     | Rating of allowHalf: bool * max: int * onChange: (float -> Action<'Msg>) option * value: Binding<float> option
     | Color of onChange: (string -> Action<'Msg>) option * value: Binding<string> option
+    | Tokens of allowFreeText: bool * onChange: (string list -> Action<'Msg>) option * suggestions: Binding<SelectOption list> option * value: Binding<string list> option
 
 and [<RequireQualifiedAccess>] Format =
     | Number of decimals: int option
@@ -1945,6 +1946,7 @@ and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     | FormFieldKind.Combobox (allowFreeText, onChange, options, value) -> Canon.typed "Combobox" ([ (if allowFreeText = false then None else Some("allowFreeText", JBool allowFreeText)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
     | FormFieldKind.Rating (allowHalf, max, onChange, value) -> Canon.typed "Rating" ([ (if allowHalf = false then None else Some("allowHalf", JBool allowHalf)); Some("max", JInt max); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding encFloat) v)) ] |> List.choose id)
     | FormFieldKind.Color (onChange, value) -> Canon.typed "Color" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
+    | FormFieldKind.Tokens (allowFreeText, onChange, suggestions, value) -> Canon.typed "Tokens" ([ (if allowFreeText = true then None else Some("allowFreeText", JBool allowFreeText)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (suggestions |> Option.map (fun v -> "suggestions", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) v)); (value |> Option.map (fun v -> "value", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
 
 and private encFormat (v: Format) : JVal =
     match v with
@@ -3111,6 +3113,15 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, string> =
             | Some(Binding.Static(Some __text)) when not (Fuaran.UI.HostPrelude.HexColor.isValid __text) ->
                 Error (sprintf "Color 'value' must be a '#rrggbb' hex colour — got %s" __text)
             | _ -> Ok(FormFieldKind.Color(onChange, value))))
+        | "Tokens" ->
+            dDef "allowFreeText" __fs dBool (true) |> Result.bind (fun allowFreeText ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string list) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "suggestions" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun suggestions ->
+            dOpt "value" __fs (decBinding (dList dStr)) |> Result.bind (fun value ->
+            if not allowFreeText && Option.isNone suggestions then
+                Error "Tokens declares 'allowFreeText' false and no 'suggestions' source — the field could admit no token by any gesture. Give it a suggestion source, or leave 'allowFreeText' at its default of true"
+            else
+                Ok(FormFieldKind.Tokens(allowFreeText, onChange, suggestions, value))))))
         | __other -> Error ("unknown FormFieldKind case: " + __other))
     | _ -> Error "expected a FormFieldKind object"
 

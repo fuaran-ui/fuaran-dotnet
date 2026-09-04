@@ -11,6 +11,10 @@
     {
       "case": "FormFieldKind.Rating",
       "expression": "if max < 1 then\u000a                Error (sprintf \"Rating 'max' must be at least 1 — a scale with %d positions cannot be rendered or announced\" max)\u000a            else\u000a                Ok(FormFieldKind.Rating(allowHalf, max, onChange, value))"
+    },
+    {
+      "case": "FormFieldKind.Tokens",
+      "expression": "if not allowFreeText && Option.isNone suggestions then\u000a                Error \"Tokens declares 'allowFreeText' false and no 'suggestions' source — the field could admit no token by any gesture. Give it a suggestion source, or leave 'allowFreeText' at its default of true\"\u000a            else\u000a                Ok(FormFieldKind.Tokens(allowFreeText, onChange, suggestions, value))"
     }
   ],
   "description": "The declared-support record for a Fuaran IDL vocabulary — doc comments, verbatim source splices, per-case decode refinements and per-kind host projections — plus the host prelude the generated module is compiled after. Together with idl.json beside it and the prelude file it names, this is everything a domain needs to regenerate its structural layer against the packaged engine. Every string here is host-language source, not wire spec.",

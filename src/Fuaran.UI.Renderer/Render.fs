@@ -1480,6 +1480,13 @@ let private keysOfFormFieldKind<'Msg>
     // colour has no second source, so nothing else to subscribe to.
     | FormFieldKind.Rating(_, _, _, v) -> keysOfValue v
     | FormFieldKind.Color(_, v) -> keysOfValue v
+    // Phase 1121 — like the combobox, a token field subscribes to BOTH: its
+    // suggestion source (a Query feed is a shape the control exists for) and
+    // its value. The source is OPTIONAL here, so an absent one contributes no
+    // subscription — a plain token box re-renders on its own value alone.
+    | FormFieldKind.Tokens(_, _, suggestions, value) ->
+        (suggestions |> Option.map (keysOfBinding channel) |> Option.defaultValue [])
+        @ keysOfValue value
 
 
 /// The single-`HashSet` DFS behind `collectKeys` (Phase 207) — the reactive
@@ -5302,6 +5309,36 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   prop.required field.Required
                   prop.value current
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) v) ]
+        | FormFieldKind.Tokens(allowFreeText, onChange, suggestions, value) ->
+            // Phase 1121 — the multi-token input, in `TokensControl`. The
+            // pattern is stateful (the in-progress entry, the popup, the active
+            // suggestion, which chip has focus) in a way the tree is not, so it
+            // is a React function component on `ComboboxControl`'s precedent;
+            // the renderer resolves the bindings here and the component holds
+            // only the interaction. Every judgement it then makes is in
+            // `TokensModel`, which the SSR floor reads too.
+            let value =
+                value
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.tokens))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
+
+            TokensControl.tokens
+                {| fieldId = field.Id
+                   className = "fuaran-form-field-control fuaran-tokens-input"
+                   listClassName = "fuaran-tokens-suggestions"
+                   required = field.Required
+                   allowFreeText = allowFreeText
+                   placeholder = ""
+                   // `None` and `Some []` are kept apart deliberately: the
+                   // control emits combobox ARIA only where a source was
+                   // DECLARED, and an asynchronous source that has not resolved
+                   // yet is still a declared one.
+                   suggestions = suggestions |> Option.map (resolveOptions ctx)
+                   tokens = current
+                   commit = fun next -> fieldChange ctx onChange value (Some(box next)) next |}
         | FormFieldKind.SegmentedChoice(options, value, onChange, orientation) ->
             // Visible-options exclusive-choice input. Horizontal
             // emits a `role="radiogroup"` of `role="radio"` buttons styled
@@ -5721,6 +5758,26 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                   prop.type'.color
                   prop.value current
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
+        // Phase 1121 — the token chip. One filter key carries the whole
+        // multi-token selection, which is what makes "anything carrying any of
+        // these labels" a single declarative filter rather than N of them.
+        | FormFieldKind.Tokens(allowFreeText, onChange, suggestions, value) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
+
+            TokensControl.tokens
+                {| fieldId = spec.Name
+                   className = "fuaran-filter-control fuaran-tokens-input"
+                   listClassName = "fuaran-tokens-suggestions"
+                   required = false
+                   allowFreeText = allowFreeText
+                   placeholder = ""
+                   suggestions = suggestions |> Option.map (resolveOptions ctx)
+                   tokens = current
+                   commit = fun next -> fieldChange ctx onChange filterWriteBinding (Some(box next)) next |}
 
     Html.label
         [ prop.className "fuaran-filter"

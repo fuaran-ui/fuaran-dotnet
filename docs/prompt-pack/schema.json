@@ -4210,6 +4210,29 @@
           "required": [
             "$type"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Tokens"
+            },
+            "allowFreeText": {
+              "type": "boolean"
+            },
+            "onChange": {
+              "const": "<closure>"
+            },
+            "suggestions": {
+              "$ref": "#/$defs/Binding_list_SelectOption"
+            },
+            "value": {
+              "$ref": "#/$defs/Binding_list_str"
+            }
+          },
+          "required": [
+            "$type"
+          ]
         }
       ]
     },

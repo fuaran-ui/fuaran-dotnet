@@ -85,6 +85,21 @@ Friend Module InputMapping
             ' unset default is black, which is what a native colour input reports.
             Case "color"
                 Return Csharp.FormField.Color(id, label, If(HasAttr(f, "initial"), Attr(f, "initial"), "#000000"), required, help, rule)
+            ' Phase 1121 — the multi-token input. `initial` carries the tokens
+            ' COMMA-SEPARATED, which is the same projection the SSR floor uses;
+            ' the dialect has no list literal, and a repeated child element would
+            ' have collided with <Option>. `allowFreeText` defaults to True here
+            ' — the opposite of `combobox` — so the shortest spelling is the
+            ' plain open token box, which is the commonest one.
+            Case "tokens"
+                Dim tokens = If(HasAttr(f, "initial"),
+                                Attr(f, "initial").Split(","c).Select(Function(t) t.Trim()).Where(Function(t) t <> "").ToList(),
+                                New List(Of String)())
+                ' No <Option> children means NO suggestion source, which is a
+                ' different fact from an empty one: the renderer emits combobox
+                ' ARIA only where a source was declared.
+                Dim opts = ReadOptions(f)
+                Return Csharp.FormField.Tokens(id, label, tokens, If(opts.Any(), opts, Nothing), AttrBool(f, "allowFreeText", True), required, help, rule)
             Case Else
                 Return Csharp.FormField.Text(id, label, If(HasAttr(f, "initial"), Attr(f, "initial"), ""), required, help, rule)
         End Select
@@ -106,6 +121,9 @@ Friend Module InputMapping
                 Return Csharp.Filter.Rating(name, label, AttrInt(f, "max", 5), AttrBool(f, "allowHalf"))
             Case "color"
                 Return Csharp.Filter.Color(name, label)
+            Case "tokens"
+                Dim opts = ReadOptions(f)
+                Return Csharp.Filter.Tokens(name, label, If(opts.Any(), opts, Nothing), AttrBool(f, "allowFreeText", True))
             Case Else
                 Return Csharp.Filter.Text(name, label)
         End Select

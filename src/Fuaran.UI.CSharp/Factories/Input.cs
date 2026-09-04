@@ -230,6 +230,36 @@ public sealed class FormField
             help,
             rule);
 
+    /// <summary>A token field (Phase 1121) — several values accumulated as removable
+    /// chips, over a suggestion set that may be open, searchable, asynchronous, or
+    /// absent entirely. Recipients, labels, skills.
+    /// <para>Which of the three to reach for: a closed set small enough to scan is a
+    /// multi-<c>Select</c>; ONE value from a searchable set is <see cref="Combobox"/>;
+    /// SEVERAL is this. A combobox per item is not a smaller version of this control.</para>
+    /// <para><paramref name="allowFreeText"/> defaults to <c>true</c> here — the OPPOSITE
+    /// of <see cref="Combobox"/>, and deliberately: a combobox always has an option set,
+    /// so constrained is its resting state, while a token box with nothing to suggest is
+    /// the commonest shape rather than a degenerate one. Passing <c>false</c> with no
+    /// suggestions at all is refused by the decoder: the field could admit nothing.</para></summary>
+    public static FormField Tokens(string id, Text label, IEnumerable<string>? initial = null, IEnumerable<(string Value, string Label)>? suggestions = null, bool allowFreeText = true, bool required = false, Text? help = null, FieldRule? rule = null) =>
+        Make(
+            id,
+            label,
+            FsGen.FormFieldKind<object>.NewTokens(
+                allowFreeText,
+                Fs.Some(NoFieldHandler<Microsoft.FSharp.Collections.FSharpList<string>>()),
+                // `null` suggestions is an ABSENT source, not an empty one — the two are
+                // different facts on the wire and the renderer emits combobox ARIA only
+                // for the first.
+                suggestions is null
+                    ? Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<FsGen.SelectOption>>>.None
+                    : Fs.Some(Fuaran.OptionSource(suggestions)),
+                Fs.Some(global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<string>>.NewStatic(
+                    Fs.Some(Fs.List(initial ?? Enumerable.Empty<string>()))))),
+            required,
+            help,
+            rule);
+
     private static Microsoft.FSharp.Core.FSharpFunc<T, FsAction> NoFieldHandler<T>() =>
         Fs.Func<T, FsAction>(_ => FsAction.NewChain(Fs.Empty<FsAction>()));
 }
@@ -281,6 +311,23 @@ public sealed class Filter
                 Fs.Some(global::Fuaran.UI.Generated.Binding<double>.NewFilter(
                     name,
                     Microsoft.FSharp.Core.FSharpOption<double>.None))),
+            label.Inner,
+            name));
+
+    /// <summary>A token filter chip bound to its own filter key (Phase 1121) — one
+    /// filter key carries the whole multi-token selection, which is what makes
+    /// "anything carrying any of these labels" a single declarative filter.</summary>
+    public static Filter Tokens(string name, Text label, IEnumerable<(string Value, string Label)>? suggestions = null, bool allowFreeText = true) =>
+        new(new FsGen.FilterSpec<object>(
+            FsGen.FormFieldKind<object>.NewTokens(
+                allowFreeText,
+                null,
+                suggestions is null
+                    ? Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<FsGen.SelectOption>>>.None
+                    : Fs.Some(Fuaran.OptionSource(suggestions)),
+                Fs.Some(global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<string>>.NewFilter(
+                    name,
+                    Microsoft.FSharp.Core.FSharpOption<Microsoft.FSharp.Collections.FSharpList<string>>.None))),
             label.Inner,
             name));
 

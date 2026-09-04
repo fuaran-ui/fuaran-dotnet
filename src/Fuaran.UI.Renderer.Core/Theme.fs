@@ -106,7 +106,19 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // real <button> that must be visibly focusable, so an unstyled one is not
 // merely plain but keyboard-invisible, which is exactly the unstyled-control
 // skew this fingerprint exists to catch.
-let vocabularyFingerprint = "fv1:6702894e3f667a62"
+// Phase 1121 moved this. Nine classes ENTERED the vocabulary — the token
+// control's wrapper `fuaran-tokens`, its chip row `fuaran-tokens-list`, the chip
+// itself and its two parts (`fuaran-tokens-chip`, `-chip-label`,
+// `-chip-remove`), the entry `fuaran-tokens-input`, the suggestion popup
+// `fuaran-tokens-suggestions` with its `-option` / `-option-active` pair, and
+// the refusal live region `fuaran-tokens-status` — and the reference sheet
+// gained the rules that style them. A host pinning the old value would accept a
+// sheet that knows none of them, and would then render the chips as unstyled
+// list items with an invisible focus ring on their remove buttons: the remove
+// control is the ONLY way a keyboard reader takes a token back, so an unstyled
+// one is not merely plain but keyboard-invisible, which is exactly the
+// unstyled-control skew this fingerprint exists to catch.
+let vocabularyFingerprint = "fv1:609b5d83ca7fc9d3"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;

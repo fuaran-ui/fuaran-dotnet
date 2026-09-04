@@ -1504,6 +1504,20 @@ and CompareOp = Generated.CompareOp
 // rating is a judgement a person GIVES, a ranged number is a measurement they
 // REPORT. Both carry a `Binding<float>` and a ceiling, which is exactly why the
 // sentence has to be written down rather than inferred from the shapes.
+//
+// Phase 1121 — the TRIANGLE, the third and largest of these, and the one an
+// emitter meets most often. `Select` with `multiple` is a CLOSED set of a size
+// a reader can scan; `Combobox` is a searchable set the reader picks ONE from;
+// `Tokens` is SEVERAL values accumulated as removable chips, over a set that
+// may be open, searchable, asynchronous, or absent entirely. The two axes are
+// how many values (one / several) and whether the set is closed — and the
+// mistake the triangle exists to prevent is reaching for a `Combobox` per item,
+// which is not a smaller version of this control but a different one.
+//
+// Note the case is `Tokens` and not `Tags`: `Tags` is a reserved union-case
+// name in F# (the compiler generates a nested `Tags` class in every union for
+// its case-tag constants), so no F# host can spell it. The vocabulary charter's
+// reserved NAME is still `Tags`, which is what a reader searches for.
 and FormFieldKind<'Msg> = Generated.FormFieldKind<'Msg>
 
 /// Optional date/time-field bounds (Phase 288). `Min` / `Max` are ISO-8601

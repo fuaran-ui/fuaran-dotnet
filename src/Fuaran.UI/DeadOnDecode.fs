@@ -164,6 +164,8 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                         handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
                     | FormFieldKind.Color(oc, v) ->
                         handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                    | FormFieldKind.Tokens(_, oc, _, v) ->
+                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
 
                 []
             | NodeKind.Select s ->
@@ -200,6 +202,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                         | FormFieldKind.Combobox(_, oc, _, _) -> oc.IsSome
                         | FormFieldKind.Rating(_, _, oc, _) -> oc.IsSome
                         | FormFieldKind.Color(oc, _) -> oc.IsSome
+                        | FormFieldKind.Tokens(_, oc, _, _) -> oc.IsSome
 
                     if present then
                         findings.Add(

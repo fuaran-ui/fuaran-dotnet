@@ -778,6 +778,48 @@ type PreEmitDefect =
     /// Carries the node's id, the field / filter name and the offending literal.
     | ColorValueNotHex of nodeId: string * fieldId: string * value: string
 
+    /// **FUARAN135 (Warning)**. A `FormFieldKind.Tokens` that admits no free
+    /// text and whose suggestion source is a STATIC and EMPTY list (Phase 1121)
+    /// — a token field into which no token can ever be put.
+    ///
+    /// **This is the half of the rule the DECODER cannot hold.** Decode refuses
+    /// a closed `Tokens` with no `suggestions` slot AT ALL, because that
+    /// document names a control that cannot exist. It cannot refuse this one:
+    /// a suggestion source is present, and whether it will yield anything is a
+    /// question about a `Binding`, which is the shape the slot exists for. Here
+    /// the list is a literal and therefore visible, so it is judged here — the
+    /// same division `Rating`'s scale and value take.
+    ///
+    /// **Warning, on FUARAN120's reasoning and not Error.** The document
+    /// decodes and renders: a chip row with nothing in it and an entry box that
+    /// refuses every keystroke. Nothing is broken; what is wrong is that the
+    /// author declared a control no reader can use. A `Query`- or `State`-bound
+    /// source that resolves empty at runtime is the same mistake and is
+    /// invisible to every static check, which is why the server-driven
+    /// submission floor re-states membership rather than trusting this one.
+    ///
+    /// Carries the node's id and the field / filter name.
+    | TokensAdmitsNothing of nodeId: string * fieldId: string
+
+    /// **FUARAN136 (Warning)**. A `FormFieldKind.Tokens` whose STATIC value
+    /// carries the same token twice (Phase 1121).
+    ///
+    /// A token list is a SET the reader sees as chips, and two identical chips
+    /// are not two facts — they are one fact drawn twice, with two remove
+    /// buttons that do different things. The renderer refuses the duplicate at
+    /// the moment of adding and the submission floor refuses it on arrival;
+    /// this is the third place, the authoring one, where the value is visible.
+    ///
+    /// **Warning, not Error, and the reason differs from FUARAN133's.** These
+    /// bytes decode: duplicates are deliberately NOT a decode refusal, because
+    /// duplication is a property of the VALUE and a bound value is invisible to
+    /// a decoder — a rule enforced only on literals would be two rules wearing
+    /// one name. So the document is readable everywhere; what is wrong is what
+    /// it says.
+    ///
+    /// Carries the node's id, the field / filter name and the repeated token.
+    | TokensStaticDuplicate of nodeId: string * fieldId: string * token: string
+
     /// **FUARAN121 (Warning)**. A `FileUpload` declaring `dropTarget` or
     /// `acceptPaste` while carrying NO `onSelect` handler (Phase 1115) — a
     /// gesture invited onto a control that consumes nothing.
@@ -1749,6 +1791,21 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             fieldId
             nodeId
             value
+    | PreEmitDefect.TokensAdmitsNothing(nodeId, fieldId) ->
+        "FUARAN135",
+        DefectSeverity.Warning,
+        sprintf
+            "token field '%s' on node '%s' admits no free text and declares a STATIC and EMPTY suggestion list — no token can ever be put into it, by any gesture. It renders as an empty chip row beside an entry box that refuses every keystroke. Give the suggestions a Query / State source if they arrive at runtime, list them if they are known, or leave allowFreeText at its default of true if open tokens are what you meant"
+            fieldId
+            nodeId
+    | PreEmitDefect.TokensStaticDuplicate(nodeId, fieldId, token) ->
+        "FUARAN136",
+        DefectSeverity.Warning,
+        sprintf
+            "token field '%s' on node '%s' declares the static token '%s' more than once. A token list is a set the reader sees as chips, and two identical chips are one fact drawn twice with two remove buttons that do different things. The renderer refuses a duplicate at the moment of adding and the server-side submission floor refuses it on arrival; remove the repeat here"
+            fieldId
+            nodeId
+            token
     | PreEmitDefect.UploadGestureWithoutHandler(nodeId, gestures) ->
         "FUARAN121",
         DefectSeverity.Warning,
@@ -2406,6 +2463,38 @@ let private validateCore
             defects.Add(PreEmitDefect.ColorValueNotHex(nodeId, fieldId, text))
         | _ -> ()
 
+    /// FUARAN135 / FUARAN136 (Phase 1121) — the two static checks `Tokens`
+    /// owns, held together for `ratingAndColourValue`'s reason: they run at both
+    /// call sites, and one rule spelt twice is one rule that will differ.
+    ///
+    /// Only `Static` is judged, on the family's standing restraint. Both rules
+    /// are the AUTHORING half of a division the decoder deliberately does not
+    /// hold — it refuses a closed field with NO suggestion slot, because that is
+    /// a control that cannot exist, and refuses nothing about the token list or
+    /// an empty suggestion source, because both are properties a bound slot
+    /// carries in from outside the document.
+    ///
+    /// The duplicate scan reports the FIRST repeat only. A second finding on the
+    /// same field would say the same thing about the same slot, and the remedy
+    /// is one edit; the value is re-scanned on the next pass.
+    let tokensValue (nodeId: string) (fieldId: string) (kind: FormFieldKind<'Msg>) =
+        match kind with
+        | FormFieldKind.Tokens(allowFreeText, _, suggestions, value) ->
+            match suggestions with
+            | Some(Binding.Static(Some [])) when not allowFreeText ->
+                defects.Add(PreEmitDefect.TokensAdmitsNothing(nodeId, fieldId))
+            | _ -> ()
+
+            match value with
+            | Some(Binding.Static(Some tokens)) ->
+                let seen = System.Collections.Generic.HashSet<string>()
+
+                match tokens |> List.tryFind (fun t -> not (seen.Add t)) with
+                | Some repeated -> defects.Add(PreEmitDefect.TokensStaticDuplicate(nodeId, fieldId, repeated))
+                | None -> ()
+            | _ -> ()
+        | _ -> ()
+
     let rec walk (n: Node<'Msg>) =
         depth <- depth + 1
 
@@ -2868,7 +2957,8 @@ let private validateCore
                  | FormFieldKind.DateRange(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.Combobox(_, oc, _, value) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.Rating(_, _, oc, value) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.Color(oc, value) -> recordWriteBack value oc.IsNone)
+                 | FormFieldKind.Color(oc, value) -> recordWriteBack value oc.IsNone
+                 | FormFieldKind.Tokens(_, oc, _, value) -> recordWriteBack value oc.IsNone)
 
                 // ── Phase 864 — the declared-rule family (FUARAN099/100/101) ──
                 //
@@ -2898,7 +2988,8 @@ let private validateCore
                  | FormFieldKind.DateRange(value, _, _, _, _, _) -> recordOwnedKey value
                  | FormFieldKind.Combobox(_, _, _, value) -> recordOwnedKey value
                  | FormFieldKind.Rating(_, _, _, value) -> recordOwnedKey value
-                 | FormFieldKind.Color(_, value) -> recordOwnedKey value)
+                 | FormFieldKind.Color(_, value) -> recordOwnedKey value
+                 | FormFieldKind.Tokens(_, _, _, value) -> recordOwnedKey value)
 
                 match field.Rule with
                 | None -> ()
@@ -2937,6 +3028,17 @@ let private validateCore
                         // already holds absolutely.
                         | FormFieldKind.Rating _ -> "Rating", false, false
                         | FormFieldKind.Color _ -> "Color", false, false
+                        // Phase 1121 — a token field's VALUE is a list, and
+                        // every slot in this table constrains a single piece of
+                        // text: `minLength` over a list has two readings (how
+                        // many tokens, or how long each is) and `format` has no
+                        // reading at all. Rather than pick one silently, the
+                        // control honours neither and an author asking for one
+                        // is told. The constraint a token field DOES carry is
+                        // its own — `allowFreeText` over the suggestion set,
+                        // enforced by the renderer, the validator and the
+                        // server-side floor.
+                        | FormFieldKind.Tokens _ -> "Tokens", false, false
 
                     let unhonourable (slot: RuleSlot) =
                         defects.Add(PreEmitDefect.RuleSlotUnhonourable(nodeIdStr, field.Id, slot, control))
@@ -3016,9 +3118,11 @@ let private validateCore
                     | FormFieldKind.Combobox(_, oc, _, value) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.Rating(_, _, oc, value) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.Color(oc, value) -> oc.IsNone && not (valueLive value)
+                    | FormFieldKind.Tokens(_, oc, _, value) -> oc.IsNone && not (valueLive value)
 
                 comboboxWithoutOptions nodeIdStr field.Id field.Kind
                 ratingAndColourValue nodeIdStr field.Id field.Kind
+                tokensValue nodeIdStr field.Id field.Kind
 
                 if inert then
                     defects.Add(PreEmitDefect.InertControl(nodeIdStr, sprintf "FormField(%s)" field.Id))
@@ -3050,7 +3154,8 @@ let private validateCore
                 // a chip's rating and colour carry the same value rules a
                 // field's do, and a walk that saw only forms would leave the
                 // chip route unjudged.
-                ratingAndColourValue n.Id item.Name item.Kind)
+                ratingAndColourValue n.Id item.Name item.Kind
+                tokensValue n.Id item.Name item.Kind)
         | NodeKind.FileUpload spec ->
             // FUARAN121 (Phase 1115) — a declared ingress gesture with nothing
             // to consume it. Split out of the no-op group for this one check.

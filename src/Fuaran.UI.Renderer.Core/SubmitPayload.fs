@@ -131,6 +131,17 @@ let private harvestField (sources: BindingResolver.BindingSources) (field: FormF
     | FormFieldKind.Color(_, v) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.color) v
         |> Option.map (fun s -> field.Id, JStr s)
+    // Phase 1121 — a token field harvests as the ARRAY it is, in reader order:
+    // `JArr` of `JStr`, never a comma-joined string. The comma spelling is the
+    // SSR floor's degraded projection and belongs to that medium alone; a
+    // client that posted it would make every consumer re-parse a separator, and
+    // would lose any token containing one. An EMPTY list contributes an empty
+    // array rather than dropping out — "no tokens" is a real answer to a
+    // question the form asked, and `Required` is the slot that decides whether
+    // it is an acceptable one.
+    | FormFieldKind.Tokens(_, _, _, v) ->
+        resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.tokens) v
+        |> Option.map (fun (ts: string list) -> field.Id, JArr(ts |> List.map JStr))
 
 /// The client-side submit harvest: every declared field's current value (see
 /// `harvestField` for exactly what "current" means per field shape), keyed by

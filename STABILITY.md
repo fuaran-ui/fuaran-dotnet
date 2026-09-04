@@ -4184,3 +4184,82 @@ host into "unchecked", which is a separate deliberate act.
 **§11 step 6 authoring surfaces:** C# `FileUploadOptions.Capture` (a nullable `CaptureSource`); the
 VB `capture` attribute on `<FileUpload>`, read through `OptEnum` so absence stays the picker; and the
 analyzer vocabulary row.
+
+
+## Recorded change — 0.69.0, the multi-token form field (fuaran#1121)
+
+**ADDITIVE to the wire, EXHAUSTIVENESS-BREAKING in F#, and a `WIRE_FORMAT.md` §11 forward-coupling
+event.** One `FormFieldKind` case — `Tokens` — the multi-token input: several values accumulated as
+removable chips, over a suggestion set that may be open, searchable, asynchronous, or absent
+entirely.
+
+* **Every document written before 0.69.0 encodes and decodes to byte-identical bytes.** The case is
+  new; no existing case gained, lost or moved a member, and no default changed. The break is
+  `FS0025` in a consumer's own exhaustive `match` over `FormFieldKind`, and nowhere else — which the
+  Semver section above classifies as minor rather than major, deliberately.
+
+**THE SPELLING IS `Tokens`, NOT `Tags`, AND THE CAUSE IS THE F# COMPILER.** The phase was chartered
+as `FormFieldKind.Tags`, and `Tags` turns out to be a RESERVED union-case name in F#: the compiler
+generates a nested static class `Tags` in every discriminated union to hold its case-tag constants,
+so a case spelled that way is `FS1219` in ANY F# union, not merely in this one. Splitting the names —
+`"Tags"` on the wire, `Tokens` in F# — was considered and DECLINED, because this vocabulary's IDL has
+no case↔wire mapping for union cases at all (`Declare.enumWith` gives enums one; unions have none):
+it would be new generator, schema, TypeScript-emitter and sampler machinery to produce exactly one
+case whose wire token no host's own source can spell, and the reference host is what GENERATES the
+corpus. The charter's reserved NAME stays `Tags`, which is what a reader searches for; the case, the
+`$type` and every authoring surface say `Tokens`. Same ceremony as 0.67.0's `ColorPicker` → `Color`
+correction, different cause.
+
+**`allowFreeText` OMITS AT `true` HERE AND AT `false` ON `Combobox`, and that inversion is the one
+thing a consumer is most likely to get wrong.** It is one rule rather than two habits: the default
+follows the REQUIRED-NESS OF THE SET. `Combobox.options` is required, so a combobox always has a
+candidate set and constrained is its resting state; `Tokens.suggestions` is OPTIONAL, so a token box
+with nothing to suggest is the commonest shape rather than a degenerate one, and open is its resting
+state. The consequence worth stating: `{"$type":"Tokens"}` is a complete, useful document — the plain
+open token box — where the same omission on `Combobox` gives a constrained one.
+
+**One decode refusal, and two rules that deliberately are not.** `allowFreeText: false` with NO
+`suggestions` member is refused: no gesture could ever put a token into that field, so the document
+names a control that cannot exist rather than a control with a bad value in it (the `Rating.max < 1`
+line). Under the polarity above it is reachable only deliberately, which is what makes refusing it
+right. DUPLICATES and MEMBERSHIP are NOT refused at decode, because both are properties of the VALUE
+and a bound value is invisible to a decoder — a rule enforced only on literals would be two rules
+wearing one name. They are held where the value becomes visible: `FUARAN136` (Warning — a repeated
+static token) and `FUARAN135` (Warning — a closed field over a static and empty suggestion list) for
+an author, and the server-driven submission floor for a client, which is the only one that is a trust
+boundary. A coercion at none of the three.
+
+**The token list is ORDERED and stays that way.** `value` is a `Binding<string list>` — the slot type
+the multi-select `values` has carried since Phase 291 — and nothing sorts or de-duplicates it: the
+chip order is a fact the reader can see, and de-duplicating on decode would silently repair a document
+this specification calls wrong. The declarative write-back rewrites the WHOLE slot on every add and
+every remove, which is what preserves that order on a decoded tree with no host code.
+
+Every judgement the control makes — what an entry may become, what the list becomes, which
+suggestions to show, what a chip reads as, and the SSR comma projection with its inverse — is a pure
+function in `Fuaran.UI.Renderer.TokensModel`, which both renderers read: the .NET runner mounts no
+DOM, so a model inside the React component would be unreachable by any test here, and the hydrated
+control and the SSR floor must not disagree about what one token list IS.
+
+**The a11y decision, recorded in `TokensModel`'s header.** The chip row is `role="list"` of
+`role="listitem"` with a real `<button>` per chip, NOT a `role="listbox"` of `role="option"`: a
+listbox is for choosing among candidates and these are the value already chosen; `aria-selected` has
+no honest value on a chip; and the gesture a chip offers is removal, which is a button. The entry
+input carries `role="combobox"` only where a suggestion source was DECLARED — an absent source and a
+resolved-empty one are different facts, and a combobox role with nothing to expand is the overclaim
+the SSR floor is forbidden to make. The SSR floor is one comma-separated `<input>`, with two limits
+recorded rather than claimed: a comma-bearing token does not survive the projection, and
+`allowFreeText = false` is not enforceable by a text input.
+
+Class vocabulary moved: nine classes entered, `Theme.vocabularyFingerprint` restamped to
+`fv1:609b5d83ca7fc9d3`, four tier CSS copies regenerated.
+
+**No render-fidelity obligation is added**, on the 0.67.0 precedent: a new claim puts every roster
+host into "unchecked", which is a separate deliberate act.
+
+**§11 step 6 authoring surfaces:** C# `FormField.Tokens` / `Filter.Tokens` (with `allowFreeText`
+defaulting to `true`, matching the wire), the VB `kind="tokens"` mapping on both `<Field>` and
+`<Filter>` — reading the token list from a comma-separated `initial` and the suggestions from
+`<Option>` children — and NO new analyzer vocabulary row, because the dialect attributes it needs
+(`allowFreeText`, `initial`, `<Option>`) all already mean the right thing and a dialect attribute
+that already exists is not duplicated under a second name.

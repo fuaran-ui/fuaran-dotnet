@@ -6924,6 +6924,76 @@
             }
           ],
           "tag": "Color"
+        },
+        {
+          "fields": [
+            {
+              "name": "allowFreeText",
+              "optionality": {
+                "$type": "omitDefault",
+                "default": {
+                  "$type": "bool",
+                  "value": true
+                }
+              },
+              "type": {
+                "$type": "bool"
+              }
+            },
+            {
+              "name": "onChange",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "fn",
+                "hostSurface": {
+                  "fsharp": "string list -> Action<'Msg>",
+                  "placeholder": "(fun (_: string list) -> Action.Chain [])",
+                  "typescript": "(v: string[]) => Action"
+                },
+                "wire": "<closure>"
+              }
+            },
+            {
+              "name": "suggestions",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "union",
+                "args": [
+                  {
+                    "$type": "list",
+                    "of": {
+                      "$type": "record",
+                      "name": "SelectOption"
+                    }
+                  }
+                ],
+                "name": "Binding"
+              }
+            },
+            {
+              "name": "value",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "union",
+                "args": [
+                  {
+                    "$type": "list",
+                    "of": {
+                      "$type": "str"
+                    }
+                  }
+                ],
+                "name": "Binding"
+              }
+            }
+          ],
+          "tag": "Tokens"
         }
       ],
       "name": "FormFieldKind",

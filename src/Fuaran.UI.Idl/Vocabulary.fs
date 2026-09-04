@@ -1032,6 +1032,91 @@ let private formFieldKind =
             Fields =
               [ opt "onChange" (handlerOf "string" "string")
                 opt "value" (TUnion("Binding", [ TStr ])) ]
+            Annotations = Annotations.Empty }
+          // Fuaran-UI Phase 1121 — the MULTI-TOKEN input. `Combobox` commits ONE
+          // value from a searchable set; `Tokens` accumulates SEVERAL, each
+          // shown as a removable chip. Recipients, labels, skills: today
+          // expressible only as a multi-`Select` over a closed set, which cannot
+          // admit a token nobody listed in advance.
+          //
+          // THE CASE IS `Tokens` AND NOT `Tags`, AND THE REASON IS THE F#
+          // COMPILER RATHER THAN A PREFERENCE. `Tags` is a RESERVED union-case
+          // name in F#: the compiler generates a nested static class `Tags` in
+          // every discriminated union to hold the case-tag constants, so a case
+          // spelled that way is `FS1219` — "the union case named 'Tags'
+          // conflicts with the generated type 'Tags'" — in ANY F# union, not
+          // merely in this one. The phase was chartered as `FormFieldKind.Tags`
+          // and the charter's reserved NAME is still `Tags`, which is what a
+          // reader searches for; the SPELLING is corrected here on exactly the
+          // ceremony `Color` took when it arrived as `ColorPicker`.
+          //
+          // The alternative — wire token `"Tags"`, F# case `Tokens` — was
+          // considered and DECLINED. This IDL has no case↔wire split for union
+          // cases at all (`enumWith` gives enums one; unions have none), so it
+          // would be new machinery through the generator, the schema, the TS
+          // emitter and the sampler, to produce exactly ONE case in the whole
+          // vocabulary whose wire token no host's own source can spell. The
+          // reference host generates the corpus; a token it cannot name is a
+          // trap for every other host author and for every emitter that reads
+          // this file as documentation. One name on both sides is worth more
+          // than the domain word.
+          //
+          // `value` is `Binding<string list>`, which is not a new shape — the
+          // `Select.values` multi-select slot has carried exactly that type
+          // since Phase 291, through the same resolver and the same write-back.
+          // So the ORDERED LIST is the wire form, and order is the reader's:
+          // chips appear where they were added, and a codec that sorted them
+          // would rewrite a fact the reader can see.
+          //
+          // `suggestions` is `Binding<SelectOption list>` and shares 1113's
+          // machinery exactly — a `Query`-bound source IS the asynchronous
+          // suggestion feed, resolved by binding machinery that already exists.
+          // No coordination vocabulary is minted for it, and none is needed.
+          //
+          // THE POLARITY, AND WHY IT IS THE OPPOSITE OF `Combobox`'s. This is
+          // the one decision in the case that a reader will stop at, so it is
+          // recorded where it binds. `Combobox.allowFreeText` omits at `false`:
+          // that case's `options` is REQUIRED, so a combobox ALWAYS has a set
+          // and "constrained" is its resting state. Here `suggestions` is
+          // OPTIONAL — a plain tag box with nothing to suggest is not a
+          // degenerate `Tokens`, it is the COMMONEST one — so the resting state
+          // is open, and `{"$type":"Tokens"}` is a complete, useful document
+          // rather than a control that admits nothing. The default follows the
+          // REQUIRED-NESS OF THE SET, which is one rule rather than two habits.
+          //
+          // What that buys, and what it costs. It buys a shortest document that
+          // works: every open tag input in the world would otherwise have to
+          // carry `"allowFreeText":true` as ceremony. It costs one member name
+          // defaulting differently on two cases — visible in the omit-at-default
+          // table, and stated normatively in the spec — which is the price of
+          // the shortest document being the useful one on BOTH cases rather
+          // than on one.
+          //
+          // `allowFreeText = false` WITH NO `suggestions` is refused at DECODE
+          // (`Support.fs`, `CaseRefines`): the field could admit nothing at all,
+          // by any gesture, ever — a document naming a control that cannot
+          // exist, which is the `Rating.max < 1` line. Under this polarity it is
+          // reachable only DELIBERATELY, which is what makes refusing it right
+          // rather than hostile.
+          //
+          // What is NOT refused at decode: duplicates in the token list, and
+          // membership of a token in the suggestion set. Both are properties of
+          // the VALUE, and a bound value is invisible to a decoder — a rule
+          // enforced only on literals would be two rules wearing one name. They
+          // are held where the value becomes visible instead: FUARAN135 /
+          // FUARAN134 for an author, and the server-driven submission floor for
+          // a client, which is the only one that is a trust boundary. Exactly
+          // the split `Rating`'s value bounds take.
+          //
+          // Nothing here names a keystroke. Enter, Backspace, Delete, the chip
+          // row and the suggestion popup are the renderer's affordance under
+          // the affordance→op charter.
+          { Tag = "Tokens"
+            Fields =
+              [ omit "allowFreeText" TBool (VBool true)
+                opt "onChange" (handlerOf "string list" "string[]")
+                opt "suggestions" (TUnion("Binding", [ TList(TRecord "SelectOption") ]))
+                opt "value" (TUnion("Binding", [ TList TStr ])) ]
             Annotations = Annotations.Empty } ] }
 
 // _(The separate `FilterKind` union this file carried until the Phase 692

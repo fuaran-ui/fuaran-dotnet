@@ -243,6 +243,17 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
             // average), and a hex colour is a categorical string.
             | FormFieldKind.Rating(_, _, _, value) -> addOpt BindingSinkClass.Numeric value
             | FormFieldKind.Color(_, value) -> addOpt BindingSinkClass.Categorical value
+            // Phase 1121 — a token LIST contributes no query-bound ref, and the
+            // silence is a statement rather than an omission. Every class in
+            // this taxonomy names a SCALAR column type, and the compatibility
+            // table is default-deny: a `string` column is not a `string list`,
+            // so calling this `Categorical` would assert a pairing that is
+            // false and would then be checked as though it were true. The
+            // `Select.values` multi-select slot — the same `Binding<string
+            // list>` since Phase 291 — is walked the same way, which is to say
+            // not at all. Widening the taxonomy to carry a list class is a
+            // separate question with a separate table to fill in.
+            | FormFieldKind.Tokens _ -> ()
     | _ -> ()
 
     List.ofSeq acc

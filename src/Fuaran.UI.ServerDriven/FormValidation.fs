@@ -408,6 +408,65 @@ let private checkField (values: Map<string, LiveValue>) (field: FormField<'Msg>)
                         { FieldId = field.Id
                           Message = "Must be a colour in #rrggbb form." }
                 | _ -> None
+            // Phase 1121 — the token field's own declarations are its
+            // constraints, composing `Combobox`'s membership slot directly
+            // below rather than minting a second vocabulary for the same
+            // question. Two rules, both the DYNAMIC half of a split whose
+            // static half FUARAN135 / FUARAN136 hold for an author:
+            //
+            //   * DUPLICATES are refused whatever the field admits. The chip row
+            //     refuses one at the moment of adding, so a submission carrying
+            //     two of the same token did not come from the control.
+            //   * MEMBERSHIP is refused when the field declared itself bounded
+            //     (`allowFreeText = false`) over a STATIC suggestion source —
+            //     exactly the shape and exactly the reason the combobox check
+            //     below has. The chip row's refusal is an affordance; a client
+            //     that posts past it is what this floor exists to catch.
+            //
+            // RECORDED KNOWN LIMIT, and it is the reason this arm reads a
+            // STRING: `LiveValue` has no array case, so a token list submitted
+            // as a JSON ARRAY is not representable at this tier at all and
+            // reaches this floor as nothing to check. What IS checked is the
+            // comma-separated form — which is what the SSR floor submits, and
+            // what a client posting a joined string sends — parsed by
+            // `Fuaran.UI.Renderer.TokensModel.fromCommaSeparated`, the same function the floor's
+            // projection inverts, so the two cannot disagree about a separator.
+            // Widening `LiveValue` is a change to the live-event payload
+            // contract and belongs to whichever phase takes multi-valued
+            // submissions as a whole; the multi-`Select` values slot has stood
+            // in the same position since Phase 291. Reported rather than
+            // silently passed, on the module's standing rule: refusing over a
+            // shape nobody read would claim a check that was not performed.
+            | FormFieldKind.Tokens(allowFreeText, _, suggestions, _) ->
+                match value with
+                | Some(LiveValue.Str s) when s <> "" ->
+                    let submitted = Fuaran.UI.Renderer.TokensModel.fromCommaSeparated s
+                    // `fromCommaSeparated` de-duplicates, so a repeat shows up
+                    // as a SHORTER list than the raw split — which is how the
+                    // duplicate is detected without a second scan.
+                    let rawCount =
+                        s.Split(',')
+                        |> Array.filter (fun t -> Fuaran.UI.Renderer.TokensModel.normalise t <> "")
+                        |> Array.length
+
+                    if rawCount <> List.length submitted then
+                        Some
+                            { FieldId = field.Id
+                              Message = "Each token may appear only once." }
+                    else
+                        match allowFreeText, suggestions with
+                        | false, Some(Binding.Static(Some options)) ->
+                            let known (t: string) =
+                                options |> List.exists (fun (o: SelectOption) -> o.Value = t)
+
+                            if submitted |> List.forall known then
+                                None
+                            else
+                                Some
+                                    { FieldId = field.Id
+                                      Message = "Every token must be one of the listed suggestions." }
+                        | _ -> None
+                | _ -> None
             | FormFieldKind.Combobox(false, _, Binding.Static(Some options), _) ->
                 match value with
                 | Some(LiveValue.Str s) when

@@ -1972,6 +1972,120 @@ let filtersRatingColour: Node<obj> =
                     Kind = FormFieldKind.Color(None, Some(Binding.Filter("swatch", None))) } ] })
         None
 
+/// Phase 1121 — `FormFieldKind.Tokens` in its SHORTEST spelling: `allowFreeText`
+/// omitted (which is TRUE on this case, the opposite of `Combobox`'s polarity),
+/// no suggestion source at all, and the value slot omitted entirely so the field
+/// auto-binds. The omission is the whole point of the vector — `{"$type":
+/// "Tokens"}` plus the field envelope is a complete, useful document, and a host
+/// that read absence as `false` would refuse it as a control that admits nothing.
+let formTokensFreeText: Node<obj> =
+    let field: FormField<obj> =
+        { Defaults.formField with
+            Id = "labels"
+            Label = TextSource.Literal "Labels"
+            Kind = FormFieldKind.Tokens(true, None, None, None) }
+
+    node
+        "form-tokens-freetext"
+        (NodeKind.Form(
+            { Defaults.form with
+                Fields = [ field ]
+                OnSubmit = placeholderChain
+                SubmitLabel = TextSource.Literal "Save" }
+        ))
+        None
+
+/// Phase 1121 — the CONSTRAINED shape, which is what an emitter has to ask for
+/// on this case: `allowFreeText` present and `false`, over a STATIC suggestion
+/// source, carrying a static token list in reader order. The order is the
+/// vector's second job — `"deu"` before `"fra"` is not alphabetical, so a host
+/// that sorted the list would fail the byte round-trip.
+let formTokensSuggested: Node<obj> =
+    let field: FormField<obj> =
+        { Defaults.formField with
+            Id = "countries"
+            Label = TextSource.Literal "Countries"
+            Required = true
+            Kind =
+                FormFieldKind.Tokens(
+                    false,
+                    Some(fun _ -> placeholderChain),
+                    Some(
+                        Binding.Static(
+                            Some
+                                [ { Label = "France"; Value = "fra" }
+                                  { Label = "Germany"; Value = "deu" }
+                                  { Label = "Spain"; Value = "esp" } ]
+                        )
+                    ),
+                    Some(Binding.Static(Some [ "deu"; "fra" ]))
+                ) }
+
+    node
+        "form-tokens-suggested"
+        (NodeKind.Form(
+            { Defaults.form with
+                Fields = [ field ]
+                OnSubmit = placeholderChain
+                SubmitLabel = TextSource.Literal "Search" }
+        ))
+        None
+
+/// Phase 1121 — the `Query`-bound suggestion source: the asynchronous
+/// suggestion feed, expressed with no coordination vocabulary at all, exactly as
+/// `form-combobox-query` does it one case over. Declarative (no `onChange`) and
+/// with `dependsOn` giving the feed its dependency edge; `allowFreeText` stays
+/// omitted, so the field is open while its suggestions load — which is the state
+/// a bound source spends its first frame in.
+let formTokensQuery: Node<obj> =
+    let field: FormField<obj> =
+        { Defaults.formField with
+            Id = "skills"
+            Label = TextSource.Literal "Skills"
+            Kind =
+                FormFieldKind.Tokens(
+                    true,
+                    None,
+                    Some(Binding.Query("skills", (fun (raw: obj) -> unbox raw), Some [ "role" ])),
+                    None
+                ) }
+
+    node
+        "form-tokens-query"
+        (NodeKind.Form(
+            { Defaults.form with
+                Fields = [ field ]
+                OnSubmit = placeholderChain
+                SubmitLabel = TextSource.Literal "Save" }
+        ))
+        None
+
+/// Phase 1121 — the control as a FILTER chip, declarative and auto-bound to its
+/// own filter key. A chip carries the same control as a field since the 0.2.0
+/// unification, and a corpus covering only the field route would leave half the
+/// vocabulary unpinned.
+let filtersTokens: Node<obj> =
+    node
+        "filters-tokens"
+        (NodeKind.Filters
+            { Items =
+                [ { Name = "labels"
+                    Label = TextSource.Literal "Labels"
+                    Kind =
+                      FormFieldKind.Tokens(
+                          false,
+                          None,
+                          Some(
+                              Binding.Static(
+                                  Some
+                                      [ { Label = "Urgent"; Value = "urgent" }
+                                        { Label = "Blocked"; Value = "blocked" } ]
+                              )
+                          ),
+                          Some(Binding.Filter("labels", None))
+                      ) } ] })
+        None
+
 /// Round-trip cover for `FilterKind.SegmentedFilter`. Parallel
 /// to `filtersBoth`'s ChoiceFilter; uses Horizontal orientation.
 let filtersSegmented: Node<obj> =
@@ -6157,6 +6271,12 @@ let allNodes: (string * Node<obj>) list =
       formRatingHalves
       "Input/Form (Phase 1130 — Color: upper-case hex, preserved not normalised)", formColor
       "Input/Filters (Phase 1130 — Rating + Color chips, declarative and auto-bound)", filtersRatingColour
+      "Input/Form (Phase 1121 — Tokens: the shortest spelling, allowFreeText omitted (true), value auto-bound)",
+      formTokensFreeText
+      "Input/Form (Phase 1121 — Tokens: allowFreeText false over a static suggestion source, tokens in reader order)",
+      formTokensSuggested
+      "Input/Form (Phase 1121 — Tokens: Query-bound suggestion source, declarative, value auto-bound)", formTokensQuery
+      "Input/Filters (Phase 1121 — Tokens chip, constrained and auto-bound)", filtersTokens
       "Input/Form (Date — date/time/datetime variants + bounds)", formDate
       "Input/Form (Phase 725 — DateRange: single-control date range, bare {from,to} pair + bounds)", formDateRange
       "Input/Filters (Phase 725 — DateRange chip: one filter param carries the pair, value auto-bound)",

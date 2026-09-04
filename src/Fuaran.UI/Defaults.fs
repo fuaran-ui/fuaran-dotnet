@@ -1113,6 +1113,14 @@ module ControlValueDefaults =
     /// their own idea of the unset colour.
     let color: string = Fuaran.UI.HostPrelude.HexColor.unset
 
+    /// Phase 1121 — "no tokens yet" is the EMPTY LIST, and there is no second
+    /// spelling of it. A `Tokens` field never distinguishes "unset" from "no
+    /// tokens": an empty chip row is what both look like to a reader, and a
+    /// separate `null` state would be a distinction only the wire could see.
+    /// Named once here so decode, the encoder's collapse and both renderers
+    /// cannot each invent their own empty.
+    let tokens: string list = []
+
     let range: RangePair = { Max = 0.0; Min = 0.0 }
     /// ISO-empty — the Date control's value is an ISO-8601 string.
     let date: string = ""

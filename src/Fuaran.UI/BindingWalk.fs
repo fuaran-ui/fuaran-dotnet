@@ -574,6 +574,15 @@ let private usesOfFormFieldKind<'Msg> (implicitUse: BindingUse option) (kind: Fo
     // source), so the value slot IS the whole read.
     | FormFieldKind.Rating(_, _, _, v) -> usesOfValueSlot v
     | FormFieldKind.Color(_, v) -> usesOfValueSlot v
+    // Phase 1121 — the suggestion source is an ordinary binding on `Combobox`'s
+    // model, so a Query-bound suggestion feed is a real read and is walked as
+    // one. It is OPTIONAL here (a plain token box suggests nothing), so an
+    // absent source contributes no read at all — `usesOfValueSlot`'s
+    // implicit-use substitution is for the VALUE slot, which is the only slot
+    // the renderer auto-binds.
+    | FormFieldKind.Tokens(_, _, suggestions, value) ->
+        (suggestions |> Option.map usesOfBinding |> Option.defaultValue [])
+        @ usesOfValueSlot value
 
 /// The `Action.Call`s reachable from a wire-survivable action value,
 /// recursing `Chain` (Phase 428). Non-Call arms carry no fetch.
@@ -727,6 +736,7 @@ let formFieldWriteFacts<'Msg> (kind: FormFieldKind<'Msg>) : FormFieldWrite =
     | FormFieldKind.DateRange(v, h, _, _, _, _) -> slot v h.IsSome
     | FormFieldKind.Rating(_, _, h, v) -> slot v h.IsSome
     | FormFieldKind.Color(h, v) -> slot v h.IsSome
+    | FormFieldKind.Tokens(_, h, _, v) -> slot v h.IsSome
 
 /// Collect the tree-wide binding facts for `node` (see `TreeBindingFacts`),
 /// descending through layout children, error-boundary subtrees, and

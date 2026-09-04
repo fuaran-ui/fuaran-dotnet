@@ -793,6 +793,16 @@ let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
             )
         | FormFieldKind.Color(oc, value) ->
             FormFieldKind.Color(oc, collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.color) value)
+        // Phase 1121 — the token list collapses on the same rule: a value slot
+        // spelling exactly this field's auto-binding IS the omitted form, and
+        // the empty list is the one placeholder a token field has.
+        | FormFieldKind.Tokens(allowFreeText, oc, suggestions, value) ->
+            FormFieldKind.Tokens(
+                allowFreeText,
+                oc,
+                suggestions,
+                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.tokens) value
+            )
 
     { field with Kind = kind }
 
@@ -824,6 +834,8 @@ and private canonicalFilterItem (item: FilterSpec<'Msg>) : FilterSpec<'Msg> =
             FormFieldKind.DateRange(collapse value, oc, variant, mn, mx, st)
         | FormFieldKind.Rating(allowHalf, max, oc, value) -> FormFieldKind.Rating(allowHalf, max, oc, collapse value)
         | FormFieldKind.Color(oc, value) -> FormFieldKind.Color(oc, collapse value)
+        | FormFieldKind.Tokens(allowFreeText, oc, suggestions, value) ->
+            FormFieldKind.Tokens(allowFreeText, oc, suggestions, collapse value)
 
     { item with Kind = kind }
 

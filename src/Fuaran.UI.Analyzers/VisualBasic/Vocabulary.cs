@@ -250,6 +250,13 @@ internal static class Vocabulary
         // admitted on one and refused on the other is a divergence the analyzer would
         // have to explain. The Color field needs no attribute of its own — `initial`
         // already carries its `#rrggbb` value.
+        // Phase 1121 — the Tokens field needs NO NEW ATTRIBUTE, and that is worth
+        // stating rather than leaving as an absence: it reuses `allowFreeText` (with
+        // the opposite default — True here, because a token box with nothing to suggest
+        // is the commonest shape rather than a degenerate one), reuses `initial` for the
+        // comma-separated token list, and reuses <Option> children for its suggestion
+        // source. A dialect attribute that already means the right thing is not
+        // duplicated under a second name.
         Add("Field", "kind", "id", "label", "required", "initial", "help", "selected", "rows",
             "allowFreeText", "max", "allowHalf",
             "rule-format", "rule-pattern", "rule-min-length", "rule-max-length",

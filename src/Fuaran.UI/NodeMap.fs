@@ -302,6 +302,8 @@ and mapFormFieldKind (f: 'a -> 'b) (kind: FormFieldKind<'a>) : FormFieldKind<'b>
     | FormFieldKind.Rating(allowHalf, max, onChange, value) ->
         FormFieldKind.Rating(allowHalf, max, mapHandler onChange, value)
     | FormFieldKind.Color(onChange, value) -> FormFieldKind.Color(mapHandler onChange, value)
+    | FormFieldKind.Tokens(allowFreeText, onChange, suggestions, value) ->
+        FormFieldKind.Tokens(allowFreeText, mapHandler onChange, suggestions, value)
 
 and mapFilterSpec (f: 'a -> 'b) (spec: FilterSpec<'a>) : FilterSpec<'b> =
     // 0.2.0 filters-unification: the chip's control is an ordinary

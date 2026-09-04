@@ -611,6 +611,22 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a FileUpload `capture` of `\"Screen\"` — outside the closed pair `Camera | Microphone`. The HTML capture attribute cannot ask for a display at all, and a screen capture is a standing grant reaching every window the reader has open rather than a third device behind the same picker permission, so it is refused exactly like a name nobody has proposed: a later admission would be an ADDITION, never a re-meaning of shipped bytes" }
+      { Id = "reject-tokens-value-not-list"
+        Json =
+          """{"id":"f","kind":{"$type":"Form","fields":[{"id":"labels","kind":{"$type":"Tokens","value":{"$type":"Static","value":"urgent"}},"label":"Labels","required":false}],"onSubmit":"<closure>","submitLabel":"Save"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.fields[0].kind.value"
+        IsOp = false
+        Description =
+          "a Tokens `value` carrying a bare STRING where the slot is a `Binding<string list>` — refused rather than lifted into a one-element list. The lift is the tempting coercion and it is exactly wrong: a document saying `\"urgent\"` where the wire says a list has a misunderstanding of the slot, and silently agreeing with it would let an emitter ship a token field that can only ever hold one token while every host round-tripped it perfectly" }
+      { Id = "reject-tokens-closed-without-suggestions"
+        Json =
+          """{"id":"f","kind":{"$type":"Form","fields":[{"id":"labels","kind":{"$type":"Tokens","allowFreeText":false},"label":"Labels","required":false}],"onSubmit":"<closure>","submitLabel":"Save"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.fields[0].kind.allowFreeText"
+        IsOp = false
+        Description =
+          "a Tokens field admitting no free text and declaring NO suggestion source — refused. No gesture could ever put a token into it: this is not a control with a bad value in it but a document naming a control that cannot exist, the same line `Rating`'s `max` of zero is refused on. Note the polarity that makes the refusal fair rather than hostile: `allowFreeText` omits at TRUE on this case (unlike `Combobox`, whose option source is required), so the shortest document `{\"$type\":\"Tokens\"}` is the plain open token box and passes — only an emitter that wrote `false` and then omitted the suggestions lands here. Note also what is NOT refused anywhere: duplicate tokens and membership of a token in the suggestion set are properties of the VALUE, invisible to a decoder whenever the slot is bound, and are held by the pre-emit validator and the server-side submission floor instead" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

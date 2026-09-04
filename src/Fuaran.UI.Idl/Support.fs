@@ -616,7 +616,30 @@ let encodeTextSourceJson (t: TextSource) : JVal = encTextSource t"""
                   """match value with
             | Some(Binding.Static(Some __text)) when not (Fuaran.UI.HostPrelude.HexColor.isValid __text) ->
                 Error (sprintf "Color 'value' must be a '#rrggbb' hex colour — got %s" __text)
-            | _ -> Ok(FormFieldKind.Color(onChange, value))""" ]
+            | _ -> Ok(FormFieldKind.Color(onChange, value))"""
+                  // Phase 1121 — the ONE cross-member refusal on `Tokens`, and the
+                  // `Rating.max < 1` line applied to a pair of members rather
+                  // than to one. A field that admits no free text AND declares
+                  // no suggestion source can never hold a token: there is no
+                  // gesture that adds one, so the document names a control that
+                  // cannot exist rather than a control with a bad value in it.
+                  //
+                  // It is reachable only DELIBERATELY, which is what makes
+                  // refusing it right. `allowFreeText` omits at TRUE on this
+                  // case (see the vocabulary comment), so the shortest document
+                  // `{"$type":"Tokens"}` is the open token input and passes; only
+                  // an emitter that wrote `"allowFreeText":false` and then
+                  // omitted `suggestions` lands here.
+                  //
+                  // What is NOT refused: duplicates and membership. Those are
+                  // properties of the VALUE, invisible to a decoder whenever the
+                  // slot is bound, and they are held by the validator and the
+                  // server-driven floor instead — the split `Rating` records.
+                  "FormFieldKind.Tokens",
+                  """if not allowFreeText && Option.isNone suggestions then
+                Error "Tokens declares 'allowFreeText' false and no 'suggestions' source — the field could admit no token by any gesture. Give it a suggestion source, or leave 'allowFreeText' at its default of true"
+            else
+                Ok(FormFieldKind.Tokens(allowFreeText, onChange, suggestions, value))""" ]
         KindProjections = Map.ofList [ "Switch", switchProjection ] }
 
 /// The declared-support DOCUMENT — the record above plus the host-prelude

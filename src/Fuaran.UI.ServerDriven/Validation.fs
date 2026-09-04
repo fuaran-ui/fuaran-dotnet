@@ -354,7 +354,14 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
                 // inventing a coercion here would resolve the WRONG action
                 // rather than none.
                 | FormFieldKind.Rating _
-                | FormFieldKind.Color _ -> None)
+                | FormFieldKind.Color _
+                // Phase 1121 — a token chip's handler takes a `string list`,
+                // which this name-addressed resolution cannot carry: it has one
+                // chosen string, and inventing a one-element list from it would
+                // resolve an action asserting the reader had removed every other
+                // token. The declarative client-store path is what these chips
+                // use, exactly as the numeric chips above.
+                | FormFieldKind.Tokens _ -> None)
     | NodeKind.Disclosure(spec) ->
         // Default to "open" when no explicit bool rides along (a summary click).
         // `OnToggle` is optional (Phase 426) — a `None` disclosure has no

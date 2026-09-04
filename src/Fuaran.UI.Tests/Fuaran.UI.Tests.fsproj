@@ -320,6 +320,7 @@
     <Compile Include="GridExportTests.fs" />
     <Compile Include="GridPasteTests.fs" />
     <Compile Include="RatingModelTests.fs" />
+    <Compile Include="TokensModelTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

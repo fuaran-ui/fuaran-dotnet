@@ -2351,6 +2351,40 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
             (BindingResolver.tryResolve ctx.Sources v
              |> Option.filter Fuaran.UI.HostPrelude.HexColor.isValid
              |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.color)
+        // Phase 1121 — THE SSR FLOOR FOR A TOKEN FIELD IS ONE TEXT INPUT, and
+        // it is not an approximation of the client's chip row so much as the
+        // only honest thing this medium can render. A chip row is BUILT by a
+        // keystroke handler: zero-JS there is no gesture that adds a chip, no
+        // gesture that removes one, and a row of static chips with dead remove
+        // buttons would be an affordance the markup cannot honour — which is
+        // the failure the whole SSR family exists to avoid. So the floor is a
+        // single `<input type="text">` carrying the tokens comma-separated,
+        // which a reader CAN edit and which submits with the form.
+        //
+        // The separator lives in `TokensModel` and not here, so the projection
+        // and its inverse cannot drift apart.
+        //
+        // TWO RECORDED KNOWN LIMITS, neither claimed as coverage.
+        //   1. A token CONTAINING A COMMA cannot survive the projection — it
+        //      re-parses as two. Escaping it would put a quoting grammar into a
+        //      degraded medium that no reader can see, which trades a visible
+        //      limit for an invisible one.
+        //   2. `allowFreeText = false` is NOT enforced here and cannot be: a
+        //      text input has no native membership constraint. The declaration
+        //      rides as `data-fuaran-tokens-constrained` so a reader can see it
+        //      was not silently dropped, on the `data-fuaran-combobox-constrained`
+        //      precedent — nothing in the platform reads it. Enforcement is the
+        //      server-side re-check in `Fuaran.UI.ServerDriven.FormValidation`,
+        //      which is where a constraint a client can type past belongs.
+        | FormFieldKind.Tokens(_, _, _, v) ->
+            let v =
+                v
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.tokens))
+
+            "text",
+            (BindingResolver.tryResolve ctx.Sources v
+             |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
+             |> TokensModel.toCommaSeparated)
         | FormFieldKind.Date(v, _, variant, _, _, _) ->
             let v =
                 v
@@ -2506,6 +2540,46 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                               prop.children
                                   [ for option in opts ->
                                         Html.option [ prop.value option.Value; prop.text option.Label ] ] ] ] ]
+        // Phase 1121 — the token floor. `valueText` above already carries the
+        // comma-separated projection; this branch exists to emit the two things
+        // the generic input arm cannot: the declared constraint marker, and the
+        // `<datalist>` when a suggestion source resolves. The datalist is a real
+        // gain here rather than decoration — it lets the user agent suggest
+        // tokens as the reader types the comma-separated string, with no script,
+        // which is the same trade the combobox floor makes one branch above.
+        | FormFieldKind.Tokens(allowFreeText, _, suggestions, _) ->
+            let listId = field.Id + "-suggestions"
+
+            let opts = suggestions |> Option.map (resolveOptions ctx)
+
+            Html.span
+                [ prop.className "fuaran-tokens"
+                  prop.children
+                      [ Html.input
+                            [ prop.className "fuaran-form-field-control fuaran-tokens-input"
+                              prop.custom ("data-fuaran-field", field.Id)
+                              prop.custom ("type", "text")
+                              if Option.isSome opts then
+                                  prop.custom ("list", listId)
+                              // The browser's own history dropdown would compete
+                              // with the datalist popup for the same gesture.
+                              prop.custom ("autocomplete", "off")
+                              // Declared, never claimed — see the limits recorded
+                              // at the `controlType` branch above.
+                              prop.custom (
+                                  "data-fuaran-tokens-constrained",
+                                  (if allowFreeText then "false" else "true")
+                              )
+                              prop.required field.Required
+                              prop.value valueText ]
+                        match opts with
+                        | Some options ->
+                            Html.datalist
+                                [ prop.id listId
+                                  prop.children
+                                      [ for option in options ->
+                                            Html.option [ prop.value option.Value; prop.text option.Label ] ] ]
+                        | None -> () ] ]
         | FormFieldKind.DateRange(v, _, _, mn, mx, st) ->
             // Phase 725 — SSR parity with the client's dual-input range: two
             // native date/time inputs (per variant) over the pair's ends,
@@ -2659,6 +2733,9 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
         // swatch size nothing like the text chip they would otherwise inherit.
         | FormFieldKind.Rating _ -> "rating"
         | FormFieldKind.Color _ -> "color"
+        // Phase 1121 — a token chip is a row of chips beside an entry box; it
+        // sizes like nothing else in this table and takes its own class.
+        | FormFieldKind.Tokens _ -> "tokens"
 
     let labelText = renderText ctx spec.Label
 
@@ -2908,6 +2985,45 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                   prop.custom ("type", "color")
                   prop.value current
                   prop.custom ("data-filter-name", spec.Name) ]
+        // Phase 1121 — the token chip's floor is the field floor's, chip-
+        // addressed: one comma-separated text input, optionally backed by a
+        // `<datalist>`, with the same two recorded limits. The chip route gets
+        // the same floor as the field route because it carries the same control
+        // since the 0.2.0 unification — a floor on one and not the other is how
+        // half a vocabulary ends up unrendered without JavaScript.
+        | FormFieldKind.Tokens(allowFreeText, _, suggestions, value) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
+
+            let listId = spec.Name + "-suggestions"
+            let opts = suggestions |> Option.map (resolveOptions ctx)
+
+            Html.span
+                [ prop.className "fuaran-tokens"
+                  prop.children
+                      [ Html.input
+                            [ prop.className "fuaran-filter-input fuaran-tokens-input"
+                              prop.custom ("type", "text")
+                              if Option.isSome opts then
+                                  prop.custom ("list", listId)
+                              prop.custom ("autocomplete", "off")
+                              prop.custom (
+                                  "data-fuaran-tokens-constrained",
+                                  (if allowFreeText then "false" else "true")
+                              )
+                              prop.value (TokensModel.toCommaSeparated current)
+                              prop.custom ("data-filter-name", spec.Name) ]
+                        match opts with
+                        | Some options ->
+                            Html.datalist
+                                [ prop.id listId
+                                  prop.children
+                                      [ for option in options ->
+                                            Html.option [ prop.value option.Value; prop.text option.Label ] ] ]
+                        | None -> () ] ]
 
     Html.label
         [ prop.className (Css.filter kindClass)

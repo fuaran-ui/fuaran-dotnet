@@ -640,7 +640,27 @@ let private defs: (string * J) list =
             // slot is a `Binding` and only its `Static` case carries text at
             // all — a `pattern` here would either miss the bound case or refuse
             // it.
-            duCase "Color" [] [ "onChange", closure; "value", binding "str" ] ]
+            duCase "Color" [] [ "onChange", closure; "value", binding "str" ]
+            // Phase 1121 — the multi-token input. Everything optional: the
+            // suggestion source is genuinely absent on a plain token box, and
+            // `allowFreeText` omits at TRUE, so it stays out of `required` on the
+            // Phase 460 discipline exactly as `allowFreeText` does on `Combobox`
+            // — with the OPPOSITE default, which the schema cannot express and
+            // the spec's omit-at-default table states instead.
+            //
+            // The cross-member refusal (`allowFreeText` false with no
+            // `suggestions`) is a decode-time rule and not a schema constraint,
+            // deliberately. A `dependentRequired` here would refuse the document
+            // on ABSENCE of a member rather than on its value, and the shape
+            // that has to be caught is the pair, which no per-member keyword
+            // names.
+            duCase
+                "Tokens"
+                []
+                [ "allowFreeText", boolean
+                  "onChange", closure
+                  "suggestions", binding "list_SelectOption"
+                  "value", binding "list_str" ] ]
 
       // `onChange` is optional (Phase 423) — present as the `"<closure>"` const when an F#-authored
       // closure is set, omitted for a declarative (AI-authored) chip — so it stays in `props` but

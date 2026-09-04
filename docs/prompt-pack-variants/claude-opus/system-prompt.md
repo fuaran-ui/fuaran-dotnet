@@ -509,6 +509,7 @@ FormFieldKind =
 | Combobox { options:Binding_list_SelectOption; allowFreeText?:bool; value?:Binding_str }
 | Rating { max:int; allowHalf?:bool; value?:Binding_float }
 | Color { value?:Binding_str }
+| Tokens { allowFreeText?:bool; suggestions?:Binding_list_SelectOption; value?:Binding_list_str }
 Format =
 | Number { decimals?:int }
 | Currency { isoCode:str }

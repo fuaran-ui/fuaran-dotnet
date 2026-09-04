@@ -701,3 +701,109 @@ let ratingAndColourFloorTests =
                   // about. Refusing it here would give one absence two answers.
                   Expect.isEmpty (submitTo (colourForm ()) [ "brand", LiveValue.Str "" ]) "empty is not a format error"
               } ]
+
+[<Tests>]
+let tokensFloorTests =
+    testList
+        "FormValidation — the Phase 1121 token control's declared bounds"
+        // The control's OWN declarations are the constraints, composing the
+        // combobox membership slot rather than minting a second vocabulary for
+        // the same question. These matter for the module's standing reason: the
+        // client-side halves — the chip row's duplicate refusal and its
+        // off-list refusal — are AFFORDANCES, and a client that posts past them
+        // is exactly what this floor exists to catch.
+        [ let tokensForm (allowFreeText: bool) (suggestions: Binding<SelectOption list> option) : FormSpec<Msg> =
+              { Defaults.form<Msg> with
+                  OnSubmit = Action.Dispatch Submit
+                  Fields =
+                      [ { Defaults.formField<Msg> with
+                            Id = "labels"
+                            Label = TextSource.Literal "Labels"
+                            Kind = FormFieldKind.Tokens(allowFreeText, None, suggestions, None) } ] }
+
+          let known: Binding<SelectOption list> =
+              Binding.Static(
+                  Some
+                      [ { Label = "Urgent"; Value = "urgent" }
+                        { Label = "Blocked"; Value = "blocked" } ]
+              )
+
+          let submitTo (form: FormSpec<Msg>) (values: (string * LiveValue) list) =
+              enforceDeclared
+                  { FormNodeId = "f"
+                    Form = form
+                    Values = Map.ofList values }
+
+          yield
+              test "a submission repeating a token is refused, whatever the field admits" {
+                  // The chip row refuses a repeat at the moment of adding, so a
+                  // submission carrying two of the same token did not come from
+                  // the control.
+                  let errs = submitTo (tokensForm true None) [ "labels", LiveValue.Str "a, b, a" ]
+
+                  Expect.equal (errs |> List.map (fun e -> e.FieldId)) [ "labels" ] "the repeat is refused"
+                  Expect.stringContains (List.head errs).Message "only once" "the message says why"
+
+                  Expect.isNonEmpty
+                      (submitTo (tokensForm false (Some known)) [ "labels", LiveValue.Str "urgent, urgent" ])
+                      "and a closed field refuses one too"
+              }
+
+          yield
+              test "a closed field refuses a token that is not one of its static suggestions" {
+                  let errs =
+                      submitTo (tokensForm false (Some known)) [ "labels", LiveValue.Str "urgent, invented" ]
+
+                  Expect.equal (errs |> List.map (fun e -> e.FieldId)) [ "labels" ] "the off-list token is refused"
+                  Expect.stringContains (List.head errs).Message "suggestions" "the message names the set"
+              }
+
+          yield
+              test "go-red check: the OPEN field takes the same submission" {
+                  // This is the whole difference `allowFreeText` makes, asserted
+                  // rather than assumed — a floor that refused here would refuse
+                  // the shape the flag exists for.
+                  Expect.isEmpty
+                      (submitTo (tokensForm true (Some known)) [ "labels", LiveValue.Str "urgent, invented" ])
+                      "an open field admits an off-list token"
+              }
+
+          yield
+              test "go-red check: an in-set submission, an empty one, and a bound source all pass" {
+                  Expect.isEmpty
+                      (submitTo (tokensForm false (Some known)) [ "labels", LiveValue.Str "urgent, blocked" ])
+                      "every token is in the set"
+
+                  // Empty is "nothing was sent", which `Required` already asked
+                  // about. Refusing it here would give one absence two answers.
+                  Expect.isEmpty (submitTo (tokensForm false (Some known)) [ "labels", LiveValue.Str "" ]) "empty"
+
+                  // RECORDED KNOWN LIMIT — a non-`Static` suggestion source is
+                  // NOT checked, because this tier holds the submission and not
+                  // the source it would have to be checked against. Reported
+                  // rather than refused, on the module's standing rule: refusing
+                  // over a set nobody read would claim a check that was not
+                  // performed.
+                  Expect.isEmpty
+                      (submitTo
+                          (tokensForm false (Some(Binding.Query("labels", (fun (raw: obj) -> unbox raw), None))))
+                          [ "labels", LiveValue.Str "anything" ])
+                      "a bound suggestion source is out of this tier's reach"
+              }
+
+          yield
+              test "go-red check: the suggestion set is the DOCUMENT's, not a constant" {
+                  // `blocked` is in one document's set and not the other's. A
+                  // floor that hard-coded a set would pass both and be right by
+                  // accident once.
+                  let narrower: Binding<SelectOption list> =
+                      Binding.Static(Some [ { Label = "Urgent"; Value = "urgent" } ])
+
+                  Expect.isEmpty
+                      (submitTo (tokensForm false (Some known)) [ "labels", LiveValue.Str "blocked" ])
+                      "inside the wider set"
+
+                  Expect.isNonEmpty
+                      (submitTo (tokensForm false (Some narrower)) [ "labels", LiveValue.Str "blocked" ])
+                      "outside the narrower one"
+              } ]

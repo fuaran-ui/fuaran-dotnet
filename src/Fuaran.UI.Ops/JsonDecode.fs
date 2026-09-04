@@ -1575,7 +1575,14 @@ let knownFormFieldKinds =
       // replace (a `RangedNumber` wearing stars, a `Text` field holding a hex
       // string) are both VALID documents and are therefore reported by nothing.
       "Rating"
-      "Color" ]
+      "Color"
+      // Phase 1121 — the multi-token input, and it belongs here for the sharpest
+      // instance of this list's reason. The shape it replaces is a `Select` with
+      // `multiple` over a closed set, or — worse and commoner — a `Combobox` per
+      // item: both are VALID documents that decode, validate and render, so no
+      // sighting channel can report the emitter that reached for one. A spelling
+      // absent from this list is a spelling an emitter is never told about.
+      "Tokens" ]
 
 /// The `ExpectedShape` hint carried by every `UNKNOWN_DU_CASE` a control
 /// discriminator raises, projected from the vocabulary above rather than
@@ -5505,6 +5512,63 @@ let private decodeFormFieldKind
                 | Some(Binding.Static(Some text)) when not (Fuaran.UI.HostPrelude.HexColor.isValid text) ->
                     wrongType (path + ".value") "a '#rrggbb' hex colour (the one shape a native colour input can hold)"
                 | _ -> Ok(FormFieldKind.Color(handlerOpt "onChange", value)))
+        | Ok "Tokens" ->
+            // Phase 1121 — the multi-token input. The value slot is the SAME
+            // `Binding<string list>` the multi-select `values` slot has carried
+            // since Phase 291, through the same decoder: the ordered list is the
+            // wire form, and nothing here sorts or de-duplicates it, because a
+            // codec that rewrote the reader's own chip order would be rewriting
+            // a fact the reader can see.
+            //
+            // `suggestions` is OPTIONAL — unlike `Combobox.options`, which is
+            // required — and that optionality is what sets this case's default
+            // polarity: `allowFreeText` omits at TRUE, so the shortest document
+            // `{"$type":"Tokens"}` is the plain open token box rather than a
+            // control that admits nothing.
+            //
+            // THE ONE REFUSAL, and it is a cross-member rule rather than a
+            // member's own: `allowFreeText` false WITH no suggestion source at
+            // all. No gesture could add a token to that field — it is the
+            // `Rating.max < 1` line, a document naming a control that cannot
+            // exist rather than a control with a bad value in it — and under
+            // this polarity it is reachable only deliberately, which is what
+            // makes refusing it right. The generated decoder carries the same
+            // refinement: one rule, two decoders.
+            //
+            // What is NOT refused here: duplicate tokens, and membership of a
+            // token in the suggestion set. Both are properties of the VALUE,
+            // invisible whenever the slot is bound, so a rule enforced only on
+            // literals would be two rules wearing one name. FUARAN136 /
+            // FUARAN135 hold the static half for an author and the
+            // server-driven floor holds the submitted half for a client, which
+            // is the only one that is a trust boundary.
+            let valueR =
+                valueOr
+                    decodeBindingStringList
+                    (Some Fuaran.UI.Defaults.ControlValueDefaults.tokens)
+                    "Binding<string list> value"
+
+            let suggestionsR =
+                match tryField fields "suggestions" with
+                | None -> Ok None
+                | Some v -> decodeBindingSelectOptions (path + ".suggestions") v |> Result.map Some
+
+            let allowFreeTextR =
+                match tryField fields "allowFreeText" with
+                | None -> Ok true
+                | Some v -> requireBool (path + ".allowFreeText") v
+
+            match valueR, suggestionsR, allowFreeTextR with
+            | Ok value, Ok suggestions, Ok allowFreeText ->
+                if not allowFreeText && Option.isNone suggestions then
+                    wrongType
+                        (path + ".allowFreeText")
+                        "true, or a 'suggestions' source alongside it (a token field admitting no free text and offering no suggestions could hold no token by any gesture)"
+                else
+                    Ok(FormFieldKind.Tokens(allowFreeText, handlerOpt "onChange", suggestions, value))
+            | Error e, _, _
+            | _, Error e, _
+            | _, _, Error e -> Error e
         | Ok "Range" ->
             // 0.2.0 — dual-thumb numeric range (absorbed FilterKind.RangeFilter).
             let valueR =

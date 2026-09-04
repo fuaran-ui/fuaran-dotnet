@@ -35,6 +35,7 @@
     <Compile Include="Formatting.fs" />
     <Compile Include="BindingResolver.fs" />
     <Compile Include="RatingModel.fs" />
+    <Compile Include="TokensModel.fs" />
     <Compile Include="SubmitPayload.fs" />
     <Compile Include="DrawingSvg.fs" />
     <Compile Include="MathMl.fs" />
