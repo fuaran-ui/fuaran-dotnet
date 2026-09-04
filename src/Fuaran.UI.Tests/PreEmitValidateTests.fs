@@ -4452,3 +4452,97 @@ let ratingAndColourValueRuleTests =
 
               Expect.isEmpty (ratingColourDefects tree) "neither rule quantifies over fields in general"
           } ]
+
+// ─── Phase 1116 fixtures ─ FUARAN134, the capture device the filter misses ──
+
+/// A file upload with the capture declaration and the accept list under the
+/// test's control. Everything else is `Defaults.fileUpload` plus a handler, so
+/// FUARAN121 never fires and each assertion below is about one rule.
+let private captureWith (capture: CaptureSource option) (accept: string list) : Node<Msg> =
+    Fuaran.fileUpload
+        "up"
+        { Defaults.fileUpload with
+            Label = TextSource.Literal "Upload"
+            Accept = accept
+            OnSelect = Some(fun _ -> Action.Chain [])
+            Capture = capture }
+
+/// Only the Phase 1116 defect, for the reason `embedDefects` states.
+let private captureDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.CaptureAcceptMismatch _ -> true
+            | _ -> false)
+
+[<Tests>]
+let captureAcceptRuleTests =
+    testList
+        "PreEmitValidate — FUARAN134, the capture device the accept list misses (Phase 1116)"
+        [ test "FUARAN134: a camera capture filtered to a document type is reported" {
+              let tree = captureWith (Some CaptureSource.Camera) [ ".csv"; "text/csv" ]
+
+              Expect.equal
+                  (captureDefects tree
+                   |> List.map (fun d -> let c, _, _ = PreEmitValidate.describe d in c))
+                  [ "FUARAN134" ]
+                  "the pair names a device the filter cannot select"
+
+              Expect.equal
+                  (severityOf (captureDefects tree |> List.head))
+                  DefectSeverity.Warning
+                  "Warning, not Error — the document decodes, renders, and on a desktop behaves as intended"
+          }
+
+          test "FUARAN134: an EMPTY accept list is reported, which is the case the rule exists for" {
+              // An empty list does not EXCLUDE the device — it simply does not
+              // choose it, and choosing is the whole of what the declaration is
+              // for. It is also the shape an author reaches for first, because
+              // `capture` reads as though it were self-sufficient.
+              Expect.isNonEmpty
+                  (captureDefects (captureWith (Some CaptureSource.Microphone) []))
+                  "no filter at all leaves the device to the user agent's guess"
+          }
+
+          test "FUARAN134: a microphone under an image filter is reported" {
+              // The crossed pair, and the one that misfires most visibly: the
+              // document asks to record and the reader is handed a camera.
+              let _, _, message =
+                  PreEmitValidate.describe (
+                      captureDefects (captureWith (Some CaptureSource.Microphone) [ "image/*" ])
+                      |> List.head
+                  )
+
+              Expect.stringContains message "microphone" "the message names the device that was asked for"
+              Expect.stringContains message "image/*" "and the filter that cannot select it"
+          }
+
+          test "FUARAN134 go-red check: the matching pairs are silent" {
+              // The four shapes the phase exists to enable. A rule that fired on
+              // any of them is one authors switch off.
+              Expect.isEmpty
+                  (captureDefects (captureWith (Some CaptureSource.Camera) [ "image/*" ]))
+                  "a camera under image/*"
+
+              Expect.isEmpty
+                  (captureDefects (captureWith (Some CaptureSource.Camera) [ "video/*" ]))
+                  "a camera under video/* — the platform camera records clips from the same surface"
+
+              Expect.isEmpty
+                  (captureDefects (captureWith (Some CaptureSource.Camera) [ "image/png"; "image/jpeg" ]))
+                  "a concrete MIME type selects the device exactly as a wildcard does"
+
+              Expect.isEmpty
+                  (captureDefects (captureWith (Some CaptureSource.Microphone) [ "audio/*" ]))
+                  "a microphone under audio/*"
+          }
+
+          test "FUARAN134 go-red check: an upload declaring NO capture is silent" {
+              // The rule is about the pairing. An ordinary picker with a narrow
+              // filter — the commonest upload there is — names no device, so
+              // there is no device for the filter to miss.
+              Expect.isEmpty (captureDefects (captureWith None [ ".csv" ])) "no capture is declared"
+              Expect.isEmpty (captureDefects (captureWith None [])) "and an unfiltered picker is not judged either"
+          } ]

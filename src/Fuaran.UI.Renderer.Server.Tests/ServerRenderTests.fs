@@ -388,3 +388,92 @@ let extraAttributeNameInjectionTests =
               Expect.isFalse (contains "data-fuaran-depth-exceeded" html) "no truncation at the limit"
               Expect.isTrue (contains "deep-leaf-marker" html) "the leaf at exactly MaxDepth is rendered"
           } ]
+
+// ─── Phase 1116 — the capture projection, and the floor that fully holds ────
+
+let private captureUpload (capture: CaptureSource option) (accept: string list) : Node<obj> =
+    Fuaran.fileUpload
+        "up"
+        { Defaults.fileUpload with
+            Label = TextSource.Literal "Attach a file"
+            Accept = accept
+            Capture = capture }
+
+[<Tests>]
+let mediaCaptureSsrTests =
+    testList
+        "SSR — FileUpload capture (Phase 1116)"
+        [ test "the capture keyword is a conforming HTML enumerated value, per device" {
+              // Both renderers read THIS function, so the hydrated control and
+              // the zero-JS floor cannot disagree about what a document
+              // produces. Pinning it here rather than only through the emitted
+              // markup is what makes that a property rather than a coincidence
+              // of two call sites happening to match today.
+              Expect.equal (MediaCapture.keyword CaptureSource.Camera) "environment" "a camera faces the world"
+
+              Expect.equal
+                  (MediaCapture.keyword CaptureSource.Microphone)
+                  "user"
+                  "a recording made by the reader is the reader's own side"
+
+              for source in [ CaptureSource.Camera; CaptureSource.Microphone ] do
+                  Expect.isTrue
+                      (List.contains (MediaCapture.keyword source) [ "user"; "environment" ])
+                      "every projected value is one of HTML's two keywords — a non-keyword value is non-conforming markup"
+          }
+
+          test "the static floor emits BOTH attributes, because one without the other does not select a device" {
+              let html =
+                  Render.render BindingResolver.empty (captureUpload (Some CaptureSource.Camera) [ "image/*" ])
+
+              Expect.isTrue (contains "type=\"file\"" html) "the picker is still the control"
+              Expect.isTrue (contains "capture=\"environment\"" html) "the capture request rides the static markup"
+
+              Expect.isTrue
+                  (contains "accept=\"image/*\"" html)
+                  "…and so does the filter that decides WHICH device the keyword opens"
+          }
+
+          test "a microphone capture projects its own pair" {
+              let html =
+                  Render.render BindingResolver.empty (captureUpload (Some CaptureSource.Microphone) [ "audio/*" ])
+
+              Expect.isTrue (contains "capture=\"user\"" html) "the microphone keyword"
+              Expect.isTrue (contains "accept=\"audio/*\"" html) "beside the audio filter"
+          }
+
+          test "go-red check: an upload declaring no capture emits no capture attribute" {
+              // The polarity, visible in the markup as well as on the wire. A
+              // host that emitted a default keyword would open a camera on every
+              // upload ever written.
+              let html = Render.render BindingResolver.empty (captureUpload None [ ".csv" ])
+
+              Expect.isFalse (contains "capture=" html) "nothing is declared, so nothing is requested"
+              Expect.isTrue (contains "accept=\".csv\"" html) "the filter is still emitted on its own"
+          }
+
+          test "go-red check: an upload with no accept list emits no accept attribute" {
+              let html = Render.render BindingResolver.empty (captureUpload None [])
+              Expect.isFalse (contains "accept=" html) "an empty list is absence, not an empty attribute"
+          }
+
+          test "the accept-selects-device predicate is the one the validator reads" {
+              // Pinned here beside the projection because the two halves are one
+              // decision: the renderer projects, and never repairs, precisely
+              // because this predicate reports instead.
+              Expect.isTrue
+                  (MediaCapture.acceptSelectsDevice CaptureSource.Camera [ "video/*" ])
+                  "a platform camera records clips from the same surface it takes stills from"
+
+              Expect.isFalse
+                  (MediaCapture.acceptSelectsDevice CaptureSource.Camera [ ".jpg" ])
+                  "an extension names files on a disk; a capture device hands back whatever container it likes"
+
+              Expect.isFalse
+                  (MediaCapture.acceptSelectsDevice CaptureSource.Microphone [])
+                  "an empty list admits the device without choosing it, and choosing is the point"
+
+              Expect.isFalse
+                  (MediaCapture.acceptSelectsDevice CaptureSource.Microphone [ "*/*" ])
+                  "…and so does */*, for the same reason"
+          } ]

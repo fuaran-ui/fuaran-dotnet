@@ -319,7 +319,9 @@ and mapFileUploadSpec (f: 'a -> 'b) (spec: FileUploadSpec<'a>) : FileUploadSpec<
       // Phase 1115 — the gesture declarations carry no `'Msg`, so the map is
       // the identity on both.
       AcceptPaste = spec.AcceptPaste
-      DropTarget = spec.DropTarget }
+      DropTarget = spec.DropTarget
+      // Phase 1116 — the capture declaration carries no `'Msg` either.
+      Capture = spec.Capture }
 
 // ─── Visualisations — data-bound; the tree stores the erased grid shapes ────
 

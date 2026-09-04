@@ -452,7 +452,13 @@ let fileUpload<'Msg> : FileUploadSpec<'Msg> =
       // shortest document is the plain picker. Turning a gesture on is the
       // thing an emitter has to ask for.
       AcceptPaste = false
-      DropTarget = false }
+      DropTarget = false
+      // Phase 1116 — `None`, which is the ordinary picker and the wire identity:
+      // a default upload still encodes to exactly the bytes it always did.
+      // Deliberately not a "no device" case of the enum — an upload that names
+      // no capture device is asking for the picker, which is a different
+      // statement from asking for a device and being unable to say which.
+      Capture = Option.None }
 
 // ─── Visualisation defaults ─────────────────────────────────────────────────
 

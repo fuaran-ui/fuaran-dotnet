@@ -356,6 +356,10 @@ let private defs: (string * J) list =
       // Phase 1119 — which overlay a `Modal` node is. Omitted at `Modal`, so the
       // member is NOT in `ModalSpec`'s required list.
       "ModalityKind", enumDef [ "Modal"; "Popover" ]
+      // Phase 1116 — closed at the two devices a file picker can stand in front
+      // of. A screen is deliberately not a case: the HTML `capture` attribute
+      // cannot express one, and the charter rules display capture Host chrome.
+      "CaptureSource", enumDef [ "Camera"; "Microphone" ]
       "DateVariant", enumDef [ "Date"; "Time"; "DateTime" ]
       // Phase 864 — both lower-case on the wire, the `LinkProtection` posture.
       "TextFormat", enumDef [ "email"; "url"; "tel" ]
@@ -1136,7 +1140,10 @@ let private defs: (string * J) list =
             // Phase 1115 — the ingress gestures. Out of `required`, matching the
             // decoder's omit-at-`false`: an absent member is the plain picker.
             "dropTarget", boolean
-            "acceptPaste", boolean ]
+            "acceptPaste", boolean
+            // Phase 1116 — likewise out of `required`: an absent member is the
+            // ordinary picker, not a device the emitter forgot to name.
+            "capture", ref "CaptureSource" ]
 
       "InputKind",
       union

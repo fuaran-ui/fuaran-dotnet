@@ -140,6 +140,12 @@ let legitimateEvents (node: Node<'Msg>) : Set<string> =
     // read. Widening this row would have implied a per-GESTURE keying the file
     // does not have, and admitting a `drop` or `paste` event name would have
     // opened a boundary nothing on the wire asks for.
+    // Phase 1116 — `capture` needs no row either, and for a shorter reason than
+    // the gestures above: it adds no listener anywhere. It is an attribute the
+    // USER AGENT reads off the same `<input type="file">`, which then fires its
+    // ordinary `change` with a file in `input.files` exactly as a picked one
+    // would. A captured photo is indistinguishable here from a chosen one, on
+    // purpose — that is what makes it reach `ReadFileBody` and this tier at all.
     | NodeKind.FileUpload _ -> set [ "change"; "file-read" ]
     // Tab headers + step headers + disclosure summaries arrive as
     // bubbled clicks.

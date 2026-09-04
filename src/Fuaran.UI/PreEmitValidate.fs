@@ -805,6 +805,39 @@ type PreEmitDefect =
     /// Carries the node's id and the gesture(s) declared.
     | UploadGestureWithoutHandler of nodeId: string * gestures: string
 
+    /// **FUARAN134 (Warning)**. A `FileUpload` declaring `capture` whose
+    /// `accept` list does not select the declared device (Phase 1116).
+    ///
+    /// **The two members are one statement, and only together do they name a
+    /// device.** The HTML `capture` attribute asks the platform for a recording
+    /// device; WHICH one it opens is decided by `accept`. So an upload asking
+    /// for a microphone under `accept="image/*"` gets a camera, and one asking
+    /// for a camera under `accept=".csv"` — or under no filter at all — gets
+    /// whatever the user agent guesses. In every case the reader is handed a
+    /// different device from the one the document named, silently.
+    ///
+    /// **An EMPTY accept list is reported, and that is the case the rule most
+    /// exists for.** An empty list does not EXCLUDE the device, which is why
+    /// this is not a soundness error — but it does not select it either, and
+    /// selection is the whole of what a capture declaration is for. It is also
+    /// the shape an author reaches for first, because the declaration reads as
+    /// though it were self-sufficient.
+    ///
+    /// **Warning, not Error.** The document decodes, every host renders it, and
+    /// on a desktop — where `capture` is ignored entirely — it behaves exactly
+    /// as intended. What is wrong is a pairing that misfires only on the devices
+    /// the feature exists for, which is precisely the class nothing else
+    /// reports.
+    ///
+    /// **Not repaired anywhere, deliberately.** No renderer synthesises an
+    /// `accept` from the device: that would put a filter on the wire's behalf
+    /// that nobody wrote, and would make this rule unfireable in the empty case
+    /// by fixing it before anything could see it. One rule, reported where the
+    /// pair becomes visible. (The Phase 1130 posture, at a different slot.)
+    ///
+    /// Carries the node's id, the declared device and the declared accept list.
+    | CaptureAcceptMismatch of nodeId: string * device: string * accept: string list
+
     /// **FUARAN122 (Warning)**. A `Modal` node whose `Modality` is `Popover` and
     /// which is not anchored (Phase 1119) — either it declares no `Anchor` at
     /// all, or the `Anchor` names an id this tree does not carry.
@@ -1723,6 +1756,17 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "file upload '%s' declares %s and carries no onSelect handler — the gesture is invited and consumes nothing. A picker at least leaves the chosen filename in the user agent's own chrome; a dropped or pasted file disappears on release with no feedback at all, so the reader is told the upload worked and it did not. Wire onSelect, or drop the gesture declaration until it is wired"
             nodeId
             gestures
+    | PreEmitDefect.CaptureAcceptMismatch(nodeId, device, accept) ->
+        "FUARAN134",
+        DefectSeverity.Warning,
+        sprintf
+            "file upload '%s' asks for the %s but its accept list (%s) does not select that device. The capture keyword asks the platform for a recording device; which one it opens is decided by accept, so this document opens whichever the user agent guesses and the reader is handed a device you did not name. Add the device's own media type to accept (image/* or video/* for the camera, audio/* for the microphone), or drop the capture declaration if the ordinary file picker was what you meant"
+            nodeId
+            (device.ToLowerInvariant())
+            (if List.isEmpty accept then
+                 "empty — every file type"
+             else
+                 String.concat ", " accept)
     | PreEmitDefect.PopoverWithoutAnchor(nodeId, declaredAnchor) ->
         "FUARAN122",
         DefectSeverity.Warning,
@@ -3018,6 +3062,14 @@ let private validateCore
                     | _ -> "acceptPaste"
 
                 defects.Add(PreEmitDefect.UploadGestureWithoutHandler(n.Id, gestures))
+
+            // FUARAN134 (Phase 1116) — a capture device the accept list cannot
+            // select. Independent of FUARAN121 above: a handler-less capture
+            // upload is BOTH defects, and each names a different repair.
+            match spec.Capture with
+            | Some source when not (MediaCapture.acceptSelectsDevice source spec.Accept) ->
+                defects.Add(PreEmitDefect.CaptureAcceptMismatch(n.Id, string source, spec.Accept))
+            | _ -> ()
         | NodeKind.Button _ -> ()
         | NodeKind.Chart(spec) ->
             // FUARAN086–089 (Phase 640): schema-grounded chart validation. An

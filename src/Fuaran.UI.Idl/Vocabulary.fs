@@ -230,6 +230,35 @@ let private modalityKind = Declare.enumOf "ModalityKind" [ "Modal"; "Popover" ]
 let private fileReadEncoding =
     Declare.enumOf "FileReadEncoding" [ "Text"; "Base64"; "DataUrl" ]
 
+/// Fuaran-UI Phase 1116 — `FileUpload.capture`: which of the reader's own
+/// recording devices this upload asks the platform to open, instead of the
+/// ordinary file picker. It is the HTML `capture` attribute's semantics and
+/// nothing more: a REQUEST the user agent may honour or ignore, mediated by the
+/// same picker permission the control already has, and carrying no stream, no
+/// live preview and no standing grant. On a handset the OS camera or recorder
+/// opens directly; on a desktop with no such device the input degrades to the
+/// picker it already was, which is a working control rather than a dead one.
+///
+/// An ENUM rather than a boolean, on the `TrendPolarity` precedent: the two
+/// devices are not one capability with a flag, and a third source (a screen, a
+/// user-facing camera) is then an ADDITION to a closed set rather than the
+/// replacement of a boolean that could only ever have meant one of them.
+///
+/// The DEVICE is what the document knows; the FACING is not. `Camera` projects
+/// to the environment-facing keyword because a document asking for a photo is
+/// asking for a photo of something, and `Microphone` to the user-facing one
+/// because a recording of the reader is by construction the reader's own side —
+/// but the keyword only ever constrains a camera, and which device actually
+/// opens is decided by `accept`. That is why the pairing has a validator rule
+/// (FUARAN134) rather than a renderer default: see `Renderer/Render.fs`.
+///
+/// Deliberately NOT here: screen capture, live recording, `getUserMedia` and any
+/// stream vocabulary. The HTML attribute cannot express them, and the charter's
+/// `ScreenCapture` / `CameraInput` row rules them Host chrome on trust grounds —
+/// this enum is only the half a file picker already mediates.
+let private captureSource =
+    Declare.enumOf "CaptureSource" [ "Camera"; "Microphone" ]
+
 let private dateVariant =
     Declare.enumOf "DateVariant" [ "Date"; "Time"; "DateTime" ]
 
@@ -2163,7 +2192,16 @@ let inputKinds: IdlKind list =
             // constructor's existing positions do not move, and omit-at-`false`
             // so an upload that says nothing encodes to the bytes it always did.
             omit "acceptPaste" TBool (VBool false)
-            omit "dropTarget" TBool (VBool false) ] }
+            omit "dropTarget" TBool (VBool false)
+            // Phase 1116 — the third ingress route, and the one that produces a
+            // file rather than moving one that already exists. An OPTION rather
+            // than an omit-at-default enum, because "say nothing" is a real and
+            // distinct state here: an upload with no `capture` asks for the
+            // ordinary picker, which is not one of the two devices wearing a
+            // default. Appended, so no generated constructor position moves, and
+            // absent-at-`None`, so every upload document written before this
+            // release encodes to the bytes it always did.
+            opt "capture" (TEnum "CaptureSource") ] }
       { Tag = "Form"
         Category = "Input"
         Annotations = Annotations.Empty
@@ -2721,6 +2759,7 @@ let uiIdl: Idl =
           buttonVariant
           modalityKind
           fileReadEncoding
+          captureSource
           dateVariant
           textFormat
           compareOp

@@ -27,6 +27,11 @@ type ButtonVariant =
     | Destructive
 
 [<RequireQualifiedAccess>]
+type CaptureSource =
+    | Camera
+    | Microphone
+
+[<RequireQualifiedAccess>]
 type ChannelDirection =
     | OutOnly
     | TwoWay
@@ -1127,6 +1132,7 @@ and FileUploadSpec<'Msg> =
       Disabled: Binding<bool> option
       AcceptPaste: bool
       DropTarget: bool
+      Capture: CaptureSource option
     }
 
 // Input
@@ -1510,6 +1516,11 @@ let private encButtonVariant (v: ButtonVariant) : JVal =
     | ButtonVariant.Secondary -> JStr "Secondary"
     | ButtonVariant.Tertiary -> JStr "Tertiary"
     | ButtonVariant.Destructive -> JStr "Destructive"
+
+let private encCaptureSource (v: CaptureSource) : JVal =
+    match v with
+    | CaptureSource.Camera -> JStr "Camera"
+    | CaptureSource.Microphone -> JStr "Microphone"
 
 let private encChannelDirection (v: ChannelDirection) : JVal =
     match v with
@@ -2139,7 +2150,7 @@ and private encFactSpec (s: FactSpec) : JVal =
     Canon.typed "Fact" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); Some("label", encTextSource s.Label); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); Some("value", encTextSource s.Value) ] |> List.choose id)
 
 and private encFileUploadSpec<'Msg> (s: FileUploadSpec<'Msg>) : JVal =
-    Canon.typed "FileUpload" ([ Some("accept", JArr(List.map JStr s.Accept)); Some("label", encTextSource s.Label); Some("multiple", JBool s.Multiple); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (if s.AcceptPaste = false then None else Some("acceptPaste", JBool s.AcceptPaste)); (if s.DropTarget = false then None else Some("dropTarget", JBool s.DropTarget)) ] |> List.choose id)
+    Canon.typed "FileUpload" ([ Some("accept", JArr(List.map JStr s.Accept)); Some("label", encTextSource s.Label); Some("multiple", JBool s.Multiple); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (if s.AcceptPaste = false then None else Some("acceptPaste", JBool s.AcceptPaste)); (if s.DropTarget = false then None else Some("dropTarget", JBool s.DropTarget)); (s.Capture |> Option.map (fun v -> "capture", encCaptureSource v)) ] |> List.choose id)
 
 and private encFiltersSpec<'Msg> (s: FiltersSpec<'Msg>) : JVal =
     Canon.typed "Filters" ([ Some("items", JArr(List.map encFilterSpec s.Items)) ] |> List.choose id)
@@ -2380,6 +2391,12 @@ let private decButtonVariant (j: JVal) : Result<ButtonVariant, string> =
     | JStr "Tertiary" -> Ok ButtonVariant.Tertiary
     | JStr "Destructive" -> Ok ButtonVariant.Destructive
     | _ -> Error "not a ButtonVariant"
+
+let private decCaptureSource (j: JVal) : Result<CaptureSource, string> =
+    match j with
+    | JStr "Camera" -> Ok CaptureSource.Camera
+    | JStr "Microphone" -> Ok CaptureSource.Microphone
+    | _ -> Error "not a CaptureSource"
 
 let private decChannelDirection (j: JVal) : Result<ChannelDirection, string> =
     match j with
@@ -3708,7 +3725,8 @@ and private decFileUploadSpec (j: JVal) : Result<FileUploadSpec<obj>, string> =
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     dDef "acceptPaste" __fs dBool (false) |> Result.bind (fun acceptPaste ->
     dDef "dropTarget" __fs dBool (false) |> Result.bind (fun dropTarget ->
-    Ok { Accept = accept; Label = label; Multiple = multiple; OnSelect = onSelect; Disabled = disabled; AcceptPaste = acceptPaste; DropTarget = dropTarget }))))))))
+    dOpt "capture" __fs decCaptureSource |> Result.bind (fun capture ->
+    Ok { Accept = accept; Label = label; Multiple = multiple; OnSelect = onSelect; Disabled = disabled; AcceptPaste = acceptPaste; DropTarget = dropTarget; Capture = capture })))))))))
 
 and private decFiltersSpec (j: JVal) : Result<FiltersSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -4151,7 +4169,7 @@ let mkFact (id: string) (label: TextSource) (value: TextSource) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Fact { Emphasis = false; Help = None; Icon = None; Label = label; Tone = ToneVariant.Default; Value = value }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkFileUpload (id: string) (accept: string list) (label: TextSource) (multiple: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None; AcceptPaste = false; DropTarget = false }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None; AcceptPaste = false; DropTarget = false; Capture = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkFilters (id: string) (items: FilterSpec<'Msg> list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
