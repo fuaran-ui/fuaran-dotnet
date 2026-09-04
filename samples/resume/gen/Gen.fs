@@ -8,6 +8,10 @@ module Fuaran.Samples.Resume.Gen
 // what the client must execute at load.
 
 open System.IO
+// `Fuaran.UI` is load-bearing, not decorative: it carries the `Action` MODULE
+// holding the `dispatch` helper. Without it `Action` binds to the DU TYPE from
+// `Fuaran.UI.Types` alone and `Action.dispatch` does not resolve.
+open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
 open Fuaran.UI.Renderer.Server
