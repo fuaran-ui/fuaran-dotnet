@@ -68,6 +68,19 @@ let private certifyTest =
 let private hashFnTest =
     "the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)"
 
+/// The persistence families (fuaran#1477) are enrolled from a DIFFERENT test project —
+/// `Fuaran.UI.OpStream.Tests`, where the durable ports they are about live. The census already
+/// discovers every `*.Tests` project whose `.fsproj` references the kit, and checks each `Adopted`
+/// row against the project that actually runs the family, so no convention needed extending for
+/// this; the names are declared here beside the others so all enrolment reads from one place.
+let private casTest = "casLaws certifies over the Fuaran.UI op-stream witness"
+
+let private idempotencyTest =
+    "idempotencyLaws certifies over the Fuaran.UI op-stream witness"
+
+let private snapshotTest =
+    "snapshotLaws and snapshotLawsWith certify over the Fuaran.UI op-stream witness"
+
 /// The multi-writer families adopted by fuaran#1476, which run in
 /// `Fuaran.UI.OpStream.Dag.Tests/CoreDagLawTests.fs` over that tier's own tree witness, op
 /// algebra and footprint projection. Named once each, for the same reason the two above are:
@@ -133,6 +146,19 @@ let private memoSoundnessTest =
 let private encoderInjectivityTest =
     "the FastPath memo-key encoder is collision-free (encoderInjectivityLaws)"
 
+/// The attributed / attestation families (fuaran#1480), enrolled from `Fuaran.UI.OpStream.Tests`
+/// beside the persistence families above and over the SAME witness those use — the attestation one
+/// additionally over the tier's own claim minting and ECDSA keyring, adapted to Core's
+/// `IAttestationSink`.
+let private attributedTest =
+    "attributedLaws certifies over the Fuaran.UI op-stream witness"
+
+let private attestationTest =
+    "attestationLaws certifies over the tier's claim minting and ECDSA keyring"
+
+let private vacuityTest =
+    "noAttestationVacuityLaws certifies that the un-attested default proves nothing"
+
 /// One row per public law family of the pinned kit. Order here is authoring order (grouped by
 /// classification); the report sorts by family key, so this list may be reordered freely.
 let census: (string * Adoption) list =
@@ -180,11 +206,17 @@ let census: (string * Adoption) list =
       // word.
       "Conformance.footprintLaws", Adopted(footprintTest, "Conformance.footprintLaws")
 
-      // ---- fuaran#1477 — persistence laws over the Sqlite / in-memory stores ----
-      "Conformance.casLaws", CarriedBy "fuaran#1477"
-      "Conformance.idempotencyLaws", CarriedBy "fuaran#1477"
-      "Conformance.snapshotLaws", CarriedBy "fuaran#1477"
-      "Conformance.snapshotLawsWith", CarriedBy "fuaran#1477"
+      // ---- fuaran#1477 — persistence laws over the tier's op-stream witness ----
+      // All four run in `Fuaran.UI.OpStream.Tests`, beside the durable ports they are about. Note
+      // what the ROW claims and what it does not: these families are parameterised over a
+      // `StreamWitness` (Apply / Encode / Decode) and Core owns the append, so the adoption is over
+      // the tier's reducer, op codec, chain digest and node encoder — NOT over `IOpStreamSink`,
+      // which offers neither a compare-and-append nor an idempotency key. That gap is asserted
+      // directly by the store tests in the same file.
+      "Conformance.casLaws", Adopted(casTest, "Conformance.casLaws")
+      "Conformance.idempotencyLaws", Adopted(idempotencyTest, "Conformance.idempotencyLaws")
+      "Conformance.snapshotLaws", Adopted(snapshotTest, "Conformance.snapshotLaws")
+      "Conformance.snapshotLawsWith", Adopted(snapshotTest, "Conformance.snapshotLawsWith")
 
       // ---- adopted by fuaran#1478: Fuaran.UI.FastPath.Tests/CoreFunctionLawTests.fs ----
       // Two shapes again, and the difference decides what each green row means — the same
@@ -241,9 +273,19 @@ let census: (string * Adoption) list =
       "Conformance.incrementalLaws", CarriedBy "fuaran#1479"
 
       // ---- fuaran#1480 — attributed and attestation laws over the attributed op-stream ----
-      "Conformance.attributedLaws", CarriedBy "fuaran#1480"
-      "Conformance.attestationLaws", CarriedBy "fuaran#1480"
-      "Conformance.noAttestationVacuityLaws", CarriedBy "fuaran#1480"
+      // All three run in `Fuaran.UI.OpStream.Tests`, over the witness fuaran#1477 built. Read what
+      // each row claims. `attributedLaws` and `noAttestationVacuityLaws` are parameterised by the
+      // witness and the digest alone, so they certify the tier's reducer, op codec and SHA-256
+      // chain under Core's attribution lift and under the un-attested default. `attestationLaws`
+      // additionally takes an `IAttestationSink`, and the one supplied is not a double: it mints the
+      // tier's canonical `SegmentAttestation.claimPayload`, signs through the tier's BCL ECDSA
+      // P-256 signer, and verifies through the tier's crypto verifier against its key directory.
+      // What it does NOT cover is the descriptor's range / anchor fields — Core's seam signs an
+      // opaque head, so those are pinned by a fixed claim shell and are covered on their own terms
+      // by `AttestationTests.fs` (`RangeMismatch`, `ChainBroken` off a signed anchor).
+      "Conformance.attributedLaws", Adopted(attributedTest, "Conformance.attributedLaws")
+      "Conformance.attestationLaws", Adopted(attestationTest, "Conformance.attestationLaws")
+      "Conformance.noAttestationVacuityLaws", Adopted(vacuityTest, "Conformance.noAttestationVacuityLaws")
 
       // ---- fuaran#1481 — columnar laws over the tier's Column usage ----
       "Conformance.columnarOpLaws", CarriedBy "fuaran#1481"

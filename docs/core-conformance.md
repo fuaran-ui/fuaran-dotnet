@@ -15,14 +15,14 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.aggregateParityLaws` | Carried by phase | fuaran#1481 |
 | `Conformance.aiSurfaceLaws` | Not used | Fuaran.Core.AiSurface — the tier ships its own runtime introspection surface (Fuaran.UI.AiTools) and consumes no Core AI surface |
 | `Conformance.arbitrationLaws` | Adopted | `proposal arbitration partitions totally and confluently (arbitrationLaws)` — via `Conformance.arbitrationLaws` |
-| `Conformance.attestationLaws` | Carried by phase | fuaran#1480 |
-| `Conformance.attributedLaws` | Carried by phase | fuaran#1480 |
+| `Conformance.attestationLaws` | Adopted | `attestationLaws certifies over the tier's claim minting and ECDSA keyring` — via `Conformance.attestationLaws` |
+| `Conformance.attributedLaws` | Adopted | `attributedLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.attributedLaws` |
 | `Conformance.canonicalFloatLaws` | Not used | Wire.Canon.canonicalFloat — the tier's canonical-JSON encoder carries its own Fable-safe float formatter (CanonicalJson.formatFiniteDouble), and this family is self-contained over Core's encoder rather than taking a host one; cross-host float parity here is gated by the wire-format conformance corpus, a multi-host oracle it cannot replace |
 | `Conformance.capabilityLaws` | Adopted | `the invocable-capability contract certifies under Core's capabilityLaws` — via `Conformance.capabilityLaws` |
 | `Conformance.capabilityPipelineIncrementalLaws` | Not used | Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline |
 | `Conformance.capabilityPipelineLaws` | Not used | Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline |
 | `Conformance.captureReplayLaws` | Sibling host | fuaran-ts / fuaran-go (fuaran#1482) |
-| `Conformance.casLaws` | Carried by phase | fuaran#1477 |
+| `Conformance.casLaws` | Adopted | `casLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.casLaws` |
 | `Conformance.columnarOpLaws` | Carried by phase | fuaran#1481 |
 | `Conformance.columnarValidatorLaws` | Carried by phase | fuaran#1481 |
 | `Conformance.compositionLaws` | Adopted | `FastPath artifact-functions compose hygienically under Core's compositionLaws` — via `Conformance.compositionLaws` |
@@ -37,13 +37,13 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.functionVerifyLaws` | Adopted | `a sound and a broken FastPath pattern certify under Core's functionVerifyLaws` — via `Conformance.functionVerifyLaws` |
 | `Conformance.hashFnAdversarialLaws` | Adopted | `the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)` — via `Conformance.hashFnAdversarialLaws` |
 | `Conformance.hashFnLaws` | Adopted | `the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)` — via `Conformance.hashFnLaws` |
-| `Conformance.idempotencyLaws` | Carried by phase | fuaran#1477 |
+| `Conformance.idempotencyLaws` | Adopted | `idempotencyLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.idempotencyLaws` |
 | `Conformance.incrementalLaws` | Carried by phase | fuaran#1479 |
 | `Conformance.leaseLaws` | Not used | Fuaran.Core.Lease — leases are a coordination-plane mechanism for concurrent writers; the UI tier takes none |
 | `Conformance.memoLaws` | Adopted | `FastPath application memoises soundly under Core's memoLaws` — via `Conformance.memoLaws` |
 | `Conformance.memoSoundnessLaws` | Adopted | `an under-declared FastPath function is never cached (memoSoundnessLaws)` — via `Conformance.memoSoundnessLaws` |
 | `Conformance.mergeConflictLaws` | Adopted | `merge-conflict reporting is symmetric, deterministic and complete (mergeConflictLaws)` — via `Conformance.mergeConflictLaws` |
-| `Conformance.noAttestationVacuityLaws` | Carried by phase | fuaran#1480 |
+| `Conformance.noAttestationVacuityLaws` | Adopted | `noAttestationVacuityLaws certifies that the un-attested default proves nothing` — via `Conformance.noAttestationVacuityLaws` |
 | `Conformance.normalizeLaws` | Not used | Fuaran.Core.Ops.normalize — Apply.fs delegates only the structural-five APPLY to Core (applyContained); the tier ships no op-script normaliser, so the family's subject has no call site here |
 | `Conformance.packLoadingLaws` | Adopted | `content-pack loading certifies under Core's packLoadingLaws` — via `Conformance.packLoadingLaws` |
 | `Conformance.paramLaws` | Adopted | `parameterised-query binding certifies under Core's paramLaws` — via `Conformance.paramLaws` |
@@ -53,8 +53,8 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.reconcileLaws` | Adopted | `two-branch reconciliation is order-pinned and conflict-honest (reconcileLaws)` — via `Conformance.reconcileLaws` |
 | `Conformance.registryLaws` | Adopted | `the signature-typed function registry certifies under Core's registryLaws` — via `Conformance.registryLaws` |
 | `Conformance.schemaWalkLaws` | Carried by phase | fuaran#1481 |
-| `Conformance.snapshotLaws` | Carried by phase | fuaran#1477 |
-| `Conformance.snapshotLawsWith` | Carried by phase | fuaran#1477 |
+| `Conformance.snapshotLaws` | Adopted | `snapshotLaws and snapshotLawsWith certify over the Fuaran.UI op-stream witness` — via `Conformance.snapshotLaws` |
+| `Conformance.snapshotLawsWith` | Adopted | `snapshotLaws and snapshotLawsWith certify over the Fuaran.UI op-stream witness` — via `Conformance.snapshotLawsWith` |
 | `Conformance.streamLaws` | Adopted | `the Fuaran.UI witness certifies end-to-end via the unified Conformance.certify` — via `Conformance.certify (also Conformance.certifyStream)` |
 | `Conformance.transformLaws` | Not used | a host dataframe evaluator — QueryRefine consumes Fuaran.Core.DataFrame.evalPipeline as the pinned reference rather than shipping a second evaluator, so the parity laws have no host implementation to compare against the reference |
 | `Conformance.verifyHonestyLaws` | Adopted | `verification over FastPath patterns claims structure only (verifyHonestyLaws)` — via `Conformance.verifyHonestyLaws` |
@@ -68,8 +68,8 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 
 | Status | Families |
 |---|---|
-| Adopted | 25 |
-| Carried by phase | 15 |
+| Adopted | 32 |
+| Carried by phase | 8 |
 | Not used | 10 |
 | Sibling host | 1 |
 | **Total** | **51** |
