@@ -261,12 +261,14 @@ module CoreFunctionLawTests =
 
               testCase "every seed pattern declares value holes only (the builder cannot receive a tree)"
               <| fun _ ->
-                  // `FastPath.bank` DOES project a `SlotHole` into the
-                  // registered signature, but `Pattern.Build` takes only
-                  // `Map<string, string>` — so a slot-bearing seed pattern
-                  // would be searchable and not instantiable. Nothing enters
-                  // that gap today; this is what keeps it from being entered
-                  // silently. See `CoreLawSupport.fs`, header note 2.
+                  // THE STATEMENT OF THE CONTRACT, not an observation about
+                  // today's catalogue. `Pattern.Build` takes
+                  // `Map<string, string>`, so a value hole is the only hole a
+                  // caller can bind; a pattern declaring any other is declaring
+                  // something nothing honours. This is the guard that keeps such
+                  // a pattern from being authored, and the seam's own narrowing
+                  // (below) is what keeps the registered signature honest if one
+                  // ever is. See `CoreLawSupport.fs`, header note 2.
                   for p in SeedCatalogue.all do
                       for h in p.Holes do
                           match h.Kind with
@@ -277,6 +279,59 @@ module CoreFunctionLawTests =
                                   p.Id
                                   h.Addr
                                   other
+
+              testCase "the registered signature does not advertise a slot hole the builder cannot receive"
+              <| fun _ ->
+                  // The other half of the same contract, and the go-red for the
+                  // narrowing. A `SlotHole`'s argument is a TREE; `Pattern.Build`
+                  // takes scalars. Projected as a REQUIRED `"slot"` entry — which
+                  // it was — such a pattern is findable by `findBySignature` and
+                  // then uninstantiable: the caller who offered the slot has
+                  // nothing to pass it through. The seam is narrowed rather than
+                  // the builder widened, so a REGISTERED signature states exactly
+                  // what a caller can influence. The QUERY side is untouched —
+                  // a caller's declaration of their own context is faithful, and
+                  // is what the shared cross-host goldens certify.
+                  let slotBearing: FastPath.Pattern =
+                      { Id = "test.slot-bearing"
+                        Title = "a pattern declaring a hole the builder cannot receive"
+                        Summary = "fixture only — never a seed"
+                        ResultType = "Markdown"
+                        Holes =
+                          [ FastPath.textHole "body" "body"
+                            { Addr = "inner"
+                              Name = "inner"
+                              Kind = SlotHole(Some "Markdown") } ]
+                        Build = fun _ -> Fuaran.markdown "md" "hello" }
+
+                  let b = FastPath.bank [ slotBearing ]
+
+                  let holes =
+                      FunctionRegistry.enumerate b.Registry
+                      |> List.collect (fun e -> e.Capability.Signature.Holes)
+
+                  Expect.equal
+                      (holes |> List.map (fun h -> h.Addr))
+                      [ "body" ]
+                      "only the hole the builder can receive reaches the registered signature"
+
+                  Expect.isEmpty
+                      (holes |> List.filter (fun h -> h.Kind = "slot"))
+                      "no signature entry advertises a slot"
+
+                  // And the consequence that is the whole point. A caller
+                  // offering exactly what the builder can receive now finds the
+                  // pattern; before the narrowing it did not, because the
+                  // signature also demanded a slot — so the ONLY caller who could
+                  // find this pattern was one offering a slot they then had no
+                  // way to pass in.
+                  let byValue =
+                      FastPath.findRunnable (FastPath.query [ FastPath.textHole "body" "body" ] None) b
+
+                  Expect.equal
+                      (byValue |> List.map (fun p -> p.Id))
+                      [ "test.slot-bearing" ]
+                      "the pattern is found on exactly the holes the builder can receive"
 
               // ---- the vector export for the other hosts (fuaran#1482) -----
 

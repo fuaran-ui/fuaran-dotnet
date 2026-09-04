@@ -4666,3 +4666,58 @@ in-process trees are the ones affected; a wire consumer never had the payload.
 a .NET/C# DECLARATION; the fact it states is already normative in the wire format, and a sibling
 host's own declaration is its own business. What the corpus's `idl.json` carries is the fact, not an
 obligation to render it.
+
+### The 0.75.0 slot also carries a validator-case widening and a FastPath signature narrowing
+
+Both land on the SAME unreleased slot as the marking above (newest tag `v0.71.0`), so they ride it
+rather than minting numbers of their own. Neither is a wire change and neither touches the marking;
+the classification the section above records is its own, and the two below are theirs.
+
+#### `PreEmitDefect.ChartFieldUngrounded` carries the produced columns (FUARAN086)
+
+**BREAKING for a consumer that constructs or exhaustively reads
+`PreEmitValidate.PreEmitDefect.ChartFieldUngrounded`.** The case gains a third field,
+`schemaColumns: string list`, so every construction and every positional pattern over it stops
+compiling (the FS0764-shaped break, on a DU case rather than a record). Every minor may break
+pre-1.0, and this is one of them; the `Action.Dispatch` marking above is separately, and correctly,
+classified as not breaking.
+
+Phase 1486 widened FUARAN086's and FUARAN114's window from the EMPTY pipeline to the whole one, via
+the shared `producedSchema` helper. It gave FUARAN114's case the produced column set at the same
+time, because under a pipeline that set is no longer readable off the tree: `project` / `groupBy` /
+`unpivot` close the columns to names the author never wrote down. FUARAN086 — the same rule over the
+same window through the same helper — was left carrying `(nodeId, field)`, so its message could name
+what the author asked for and not what was available. The two twins now say the same thing about the
+same walk, and the message gains FUARAN114's `[…]` rendering and its remedy clause.
+
+No new code, no severity change, no change to WHEN the rule fires: the walk, the closed/open
+restraint and every stand-down are exactly as Phase 1486 left them. The shared corpus's generated
+`validator/defect-vocabulary.json` re-emits with FUARAN086's new `messageShape` — descriptive
+metadata only; the hosts' coverage gates read the `code` set, and `message-parity.json`'s
+`mustConvey` groups for FUARAN086 are all still conveyed.
+
+#### A FastPath registered signature no longer advertises a slot hole (narrowing)
+
+**BREAKING for a caller relying on `FastPath.bank` registering a `SlotHole` as a required signature
+entry.** `Pattern.Build : Map<string, string> -> Node<unit>` takes scalars, so a `SlotHole` — whose
+argument is a TREE — has no way to be bound through this seam. The registered signature advertised
+one anyway, as a REQUIRED `"slot"` entry, which made a slot-bearing pattern findable by
+`findBySignature` and then uninstantiable: the only caller who could find it was one offering a slot
+they then had no way to pass in.
+
+The seam is NARROWED rather than the builder widened. A slot-aware builder is a different contract,
+and neither the public seed catalogue nor any bank in this repo declares a slot hole to need one, so
+widening would be paying for a capability nothing asks for. A registered signature now states
+exactly what a caller can influence.
+
+  * **The narrowing is on the REGISTRATION side alone.** `FastPath.find` projects the caller's OWN
+    declared context, which is a different statement — "here is what I have" — and is the shape the
+    shared cross-host `function-registry/goldens.json` certifies five ways. It is unchanged, and the
+    goldens leg is the reason to say so rather than leave it inferred.
+
+  * **The contract is stated on both sides in `Fuaran.UI.FastPath.Tests`**: a pattern declares value
+    holes only (the Phase 1478 guard, now the statement of the contract rather than an observation
+    about today's catalogue), and the projection does not advertise a slot if one ever does.
+
+`SeedCatalogue.fs` is untouched: graduating a slot-bearing pattern into the public seed is a separate
+decision, and this change neither makes nor pre-empts it.
