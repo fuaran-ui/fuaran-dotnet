@@ -24,6 +24,14 @@ unrunnable because you have not signed up for anything.
 | 5 | `operations` | **Declared operations need no model.** A control publishes typed operations; a structural search dispatches one deterministically, offline. |
 | 6 | `ai` | **Bring your own key**: prompt → wire JSON → strict decode → render. The whole loop, in one file. |
 
+## Try this: run lesson 3 in another host
+
+The TypeScript and Python hosts ship the same tour. Run `replay` in any two of them
+and compare the chain hashes: they are character for character the same. The
+pre-image is a shared, versioned envelope over the canonical op bytes, so a session
+recorded by one host verifies in another — which is what having a specification
+buys you over having a library.
+
 ## Running lesson 6 with your own key
 
 ```bash

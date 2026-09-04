@@ -19,6 +19,18 @@ module Samples.GettingStarted.Lesson03Replay
 //
 //  Note the actor. Every record says whether a human or a model made the edit,
 //  and it is inside the hash, so provenance cannot be edited off afterwards.
+//
+//  AND THE HASHES BELOW ARE NOT .NET'S. The TypeScript and Python hosts ship the
+//  same tour; run `replay` in any two of them and the two chain hashes printed are
+//  character for character the same. The pre-image is a shared, versioned envelope
+//  over the canonical op bytes, so a session recorded by one host verifies in
+//  another. That is what having a specification buys over having a library, and it
+//  is worth ten seconds to check rather than take on trust.
+//
+//  One host difference worth knowing, since the other two tours name it too: this
+//  host's `Replay.applyTo` VERIFIES the chain before applying anything, where the
+//  TypeScript and Python `applyTo` fold without verifying and expect a separate
+//  `verifyChain` call. Same chain, same hashes, different default.
 // ============================================================================
 
 open Fuaran.UI.Types
