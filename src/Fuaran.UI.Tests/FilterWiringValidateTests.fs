@@ -13,8 +13,10 @@
 //    FUARAN078 — unstable row identity (neither RowKey nor RowKeyField)
 //    FUARAN090 — inert editable grid (editable: true without a direct
 //                Binding.State source — Phase 663 write-back floor)
-//    FUARAN114 — a column `field` / `rowKeyField` naming a column absent from
-//                the source's statically-known schema (Phase 1149 — error)
+//    FUARAN114 — a column `field` / `rowKeyField` naming a column the source
+//                cannot PRODUCE — absent from the schema `Fuaran.Core.SchemaWalk`
+//                derives for the whole pipeline (Phase 1149, widened by Phase
+//                1486 — error)
 // ============================================================================
 
 open Expecto
@@ -369,8 +371,8 @@ let tests =
           }
 
           // Phase 1149 — FUARAN114: the grid's read-side grounding, the twin of
-          // FUARAN086's chart rule. Positive, negative, and the two shapes where
-          // the schema is not derivable and the rule must stay silent.
+          // FUARAN086's chart rule. Positive, negative, and the shapes where the
+          // schema is not derivable and the rule must stay silent.
           test "FUARAN114: a column field absent from the source's schema is an error" {
               let grid =
                   gridNamingFields
@@ -428,25 +430,86 @@ let tests =
               | Error defects -> failtestf "Expected Ok for a fully grounded grid, got: %A" defects
           }
 
-          test "FUARAN114 stands down where the output schema is not derivable" {
-              // A non-empty pipeline changes the column set — derive adds,
-              // project/groupBy remove — so a name absent from the SOURCE schema
-              // may be perfectly correct against the pipeline's output. Refusing
-              // it here would be a guess, and an error that is occasionally wrong
-              // gets suppressed.
-              let pipelined =
+          // Phase 1486 — the widening. The window is no longer the EMPTY pipeline
+          // but the schema `Fuaran.Core.SchemaWalk` derives for the whole one, so
+          // the shape a grid is most likely to get wrong — a pipeline that
+          // renames or drops the column the grid still binds — is now refused
+          // instead of passing unjudged.
+          test "FUARAN114: a column the pipeline renames away is refused, naming the produced columns" {
+              // The go-red fixture. `project` closes the column set to exactly
+              // its output names, so `dept` is gone and `department` is what the
+              // grid can read — a fact the tree does not show and the walk does.
+              let renamedAway =
+                  gridNamingFields
+                      [ "dept" ]
+                      (Some "department")
+                      (Binding.Transform(
+                          TransformSource.Data(embeddedSource),
+                          [ Fuaran.Core.Project [ "dept", "department" ] ],
+                          None
+                      ))
+
+              match PreEmitValidate.validate (dashboard "root" [ renamedAway ]) with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.GridFieldUngrounded("grid", "dept", [ "department" ]))
+                      "the renamed-away column field is refused, carrying the PRODUCED column set"
+
+                  // The row key names the surviving column, so it is grounded —
+                  // the rule still reports per offending name, not per grid.
+                  Expect.isFalse
+                      (defects
+                       |> List.exists (fun d ->
+                           match d with
+                           | PreEmitDefect.GridFieldUngrounded(_, "department", _) -> true
+                           | _ -> false))
+                      "the produced column must not be reported"
+              | Ok() -> failtest "Expected FUARAN114 for the renamed-away column, got Ok"
+          }
+
+          test "FUARAN114: a column the pipeline ADDS grounds the grid that reads it" {
+              // The other direction, and the reason the widening is not merely a
+              // stricter rule: `derive` names a column the source schema never
+              // carried, and a grid binding it was previously unjudged only
+              // because the whole pipelined shape was.
+              let derived =
+                  gridNamingFields
+                      [ "dept"; "shouty" ]
+                      (Some "dept")
+                      (Binding.Transform(
+                          TransformSource.Data(embeddedSource),
+                          [ Fuaran.Core.Derive("shouty", Fuaran.Core.Col "dept") ],
+                          None
+                      ))
+
+              match PreEmitValidate.validate (dashboard "root" [ derived ]) with
+              | Ok() -> ()
+              | Error defects -> failtestf "Expected Ok for a grid reading a derived column, got: %A" defects
+          }
+
+          test "FUARAN114 stands down where the produced schema is not derivable" {
+              // The restraint the widening preserves: an OPEN walk is an
+              // ignorance, never an absence. A `Ref` source names rows the HOST
+              // resolves and this validator has no host, so nothing it carries is
+              // nameable and a field absent from the walk may be perfectly
+              // correct. Refusing here would be a guess, and an error that is
+              // occasionally wrong gets suppressed.
+              let refSourced =
                   gridNamingFields
                       [ "headcount" ]
                       (Some "id")
                       (Binding.Transform(
-                          TransformSource.Data(embeddedSource),
-                          paramPipeline,
+                          TransformSource.Data(Fuaran.Core.Ref "orders"),
+                          [ Fuaran.Core.Filter(
+                                Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.Param "dept")
+                            ) ],
                           Some
                               [ { From = Binding.Filter("dept", None)
                                   Name = "dept" } ]
                       ))
 
-              match PreEmitValidate.validate (dashboard "root" [ declarativeChip "dept"; pipelined ]) with
+              match PreEmitValidate.validate (dashboard "root" [ declarativeChip "dept"; refSourced ]) with
               | Ok() -> ()
               | Error defects ->
                   Expect.isFalse
@@ -455,7 +518,7 @@ let tests =
                            match d with
                            | PreEmitDefect.GridFieldUngrounded _ -> true
                            | _ -> false))
-                      (sprintf "FUARAN114 must not fire over a non-empty pipeline, got: %A" defects)
+                      (sprintf "FUARAN114 must not fire over an unresolvable Ref source, got: %A" defects)
 
               // Every other source shape is unknowable before the tree runs.
               for source in

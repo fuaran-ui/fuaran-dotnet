@@ -363,18 +363,21 @@ let census: (string * Adoption) list =
       // The port names each family itself, so no row overstates its reach.
       //
       // What the tier actually carries, since the phase text assumed otherwise:
-      // there is no columnar op-algebra call site here at all, no Core columnar
-      // validator registration, and no schema-walk call site — and the one
-      // production `Column.create` authoring surface is `RetrievalSource.Hit.toTable`.
+      // there is no columnar op-algebra call site here at all and no Core columnar
+      // validator registration — and the one production `Column.create` authoring
+      // surface is `RetrievalSource.Hit.toTable`. (The schema walk was the third
+      // such absence until Phase 1486 gave FUARAN114 and FUARAN086 a call site in
+      // `PreEmitValidate.fs`; the row below still enrols the LAW, which is about
+      // the pinned kit, not about that call site.)
       // So beside each law run the same file asserts the family's property
       // DIRECTLY over the surface the tier does have, rather than wrapping the law
       // to look tier-shaped: the authoring surface's columns are well-formed
       // against the schema it declares; aggregating a column THAT surface built
       // equals the single-group GroupBy; the tier's own columnar-validation rule
-      // (FUARAN114, Phase 1149) is deterministic and reports exactly the
+      // (FUARAN114, Phase 1149/1486) is deterministic and reports exactly the
       // ungrounded names; and the schema walk agrees both with that rule's window
       // and with the schema `QueryRefine.refineLocally` produces for the pipelines
-      // the rule stands down on. Those four are tests in their own right, not
+      // the rule judges. Those four are tests in their own right, not
       // second spellings of these rows — a row names the law it enrols.
       "Conformance.columnarOpLaws", Adopted(columnarOpTest, "Conformance.columnarOpLaws")
       "Conformance.columnarValidatorLaws", Adopted(columnarValidatorTest, "Conformance.columnarValidatorLaws")
