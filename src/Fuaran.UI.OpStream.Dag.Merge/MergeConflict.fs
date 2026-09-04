@@ -80,11 +80,26 @@ type MergeAuthor =
 /// An enumerated resolution choice for a conflict. `KeepPrimary` is listed first
 /// (the default) when a primacy pin is held; the M2 engine applies it under the
 /// precedence policy, and an unresolved proposal leaves the trunk unchanged.
+///
+/// **Every offered choice names a POPULATED slot of the envelope it is offered
+/// in.** `KeepPrimary` / `KeepSecondary` name the precedence view, which is
+/// populated exactly when `PrimacyHeld` is `true`; `KeepA` / `KeepB` name the
+/// sides view, populated on every two-sided refusal. Offering `KeepSecondary`
+/// under a plain (unpinned) `merge3Way` refusal — which the menu did until this
+/// change — named a slot that is `None` there, so a resolver applying it had
+/// nothing to keep or had to pick a side itself: the argument-order dependence
+/// Phase 1497 removed from the envelope, coming back through the resolver.
 [<RequireQualifiedAccess>]
 type MergeChoice =
     | KeepPrimary
     | KeepSecondary
     | KeepBase
+    /// Keep the FIRST-argument branch's value — the envelope's `A` side. The
+    /// side-addressed keep for a refusal with no primacy pin, where `Primary` /
+    /// `Secondary` are both `None` and the two values live in `A` / `B` alone.
+    | KeepA
+    /// Keep the SECOND-argument branch's value — the envelope's `B` side.
+    | KeepB
     /// Re-stamp the primary side's pinned value onto the new kind's name+type-
     /// compatible field (the R1 migration for `KindSwapOrphansPin`).
     | ReassertPinOntoNewKind
@@ -118,8 +133,10 @@ type MergeSide = { Value: string; Tag: string option }
 ///   `Secondary` was populated in that case from whichever branch arrived first,
 ///   which read as a precedence claim that no pin supported.
 ///
-/// `Choices` is the enumerated resolution menu (KeepPrimary first when pinned);
-/// `Hint` embeds the existing `ApplyHint`.
+/// `Choices` is the enumerated resolution menu — `KeepPrimary` first when
+/// pinned, and `KeepA` / `KeepB` (never `KeepSecondary`) when not, so that every
+/// offered choice names a slot this envelope actually populated. `Hint` embeds
+/// the existing `ApplyHint`.
 type MergeConflict =
     { NodeId: string
       Facet: string

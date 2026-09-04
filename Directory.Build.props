@@ -571,8 +571,16 @@
          consumer compiles against changed. Cut as 0.75.0: the phase branched at
          0.71.0 and main reached 0.74.0 during the integrate, so it advances from
          what main declares. See STABILITY.md "Recorded change - 0.75.0,
-         `Action.Dispatch` marked in-process-only". -->
-    <Version>0.75.0</Version>
+         `Action.Dispatch` marked in-process-only".
+
+         (0.76.0) - `MergeChoice` gains `KeepA` / `KeepB`, and a plain (unpinned)
+         three-way refusal offers those instead of `KeepSecondary`, which named an
+         empty precedence slot there. A DU case addition: minor per the "Semver"
+         section above (FS0025 exhaustiveness warnings are not breaking), and it
+         ADVANCES rather than riding 0.75.0 because v0.75.0 is tagged - the slot
+         is released, not a draft. See STABILITY.md "Recorded change - 0.76.0,
+         `MergeChoice.KeepA` / `KeepB`". -->
+    <Version>0.76.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -4721,3 +4721,59 @@ exactly what a caller can influence.
 
 `SeedCatalogue.fs` is untouched: graduating a slot-bearing pattern into the public seed is a separate
 decision, and this change neither makes nor pre-empts it.
+
+## Recorded change — 0.76.0, `MergeChoice.KeepA` / `KeepB` (fuaran#1497 follow-on)
+
+**An additive DU widening (minor, per [Semver](#semver) — an `FS0025` exhaustiveness warning is not
+breaking) plus a change to the resolution menu a plain three-way refusal offers.** No wire byte
+moves and no shared-corpus fixture changes; see the corpus note at the end.
+
+```fsharp
+// Fuaran.UI.OpStream.Dag.Merge — MergeChoice
+| KeepA   // keep the FIRST-argument branch's value — the envelope's `A` side
+| KeepB   // keep the SECOND-argument branch's value — the envelope's `B` side
+```
+
+**The rule the menu now keeps: every offered choice names a POPULATED slot of the envelope it is
+offered in.** Since 0.74.0 the refusal envelope has two views. `A` / `B` (the sides view) are
+populated on every two-sided refusal; `Primary` / `Secondary` / `SecondaryTag` (the precedence view)
+are populated exactly when `PrimacyHeld` is `true`, because a value in either slot IS a precedence
+claim. The menu did not follow: with two secondary sides — the plain `merge3Way` shape, where no pin
+is held — it still offered `KeepSecondary`, which there names `None`. A resolver applying it has
+nothing to keep, or picks a side itself; and picking a side without a pin is precisely the
+argument-order dependence 0.74.0 removed from the envelope, arriving instead through the resolver.
+
+| Author pair | Pin | Menu before | Menu now |
+|---|---|---|---|
+| `Primary` / `Secondary` (either order) | held | `KeepPrimary; KeepSecondary; KeepBase` | unchanged |
+| `Secondary` / `Secondary` | none | `KeepBase; KeepSecondary` | **`KeepBase; KeepA; KeepB`** |
+| `Primary` / `Primary` | none (two claims) | `KeepBase` | unchanged |
+| kind-swap-orphans-pin | held (branch is pin-guarded) | `ReassertPinOntoNewKind; KeepOldKind; KeepSecondary` (or the last two) | unchanged |
+
+  * **`KeepSecondary` survives only under precedence.** Both places that still offer it — the pinned
+    pair and the `KindSwapOrphansPin` branch, which is guarded by `pinHeld` — populate `Secondary`,
+    so the token keeps naming what it always claimed to name.
+
+  * **`Primary` / `Primary` deliberately stays `[KeepBase]`**, though `A` and `B` are populated there
+    too. Keeping one side there discards the OTHER side's pin, which is a materially different act
+    from keeping a side where no pin exists; a menu listing it beside `KeepBase` would understate it.
+    `KeepBase` discards both pins symmetrically, which is why it is the only safe enumerated option
+    and why a double pin is resolved out of band.
+
+  * **The law is asserted, not described.** `Dag.M2` walks every choice of every refusal from a
+    pinned and an unpinned probe and requires the slot it names to be `Some`. It goes red on a menu
+    that offers a choice the envelope did not populate — which is the defect this change fixes, in
+    the shape a future one would reintroduce it.
+
+**Nothing applies a `MergeChoice` yet.** Grepped across this repo: the menu is produced by
+`TreeMerge` / `ValidatorGate` and read by tests; there is no resolver, in `Fuaran.UI.OpStream.Dag.Inspect`
+or anywhere else. `KeepA` / `KeepB` are therefore an enumeration widening only, and the first
+resolver written against them takes the named side's `Value` from `A` / `B`.
+
+**Corpus: unchanged, by construction.** `MergeConflict.encodeEnvelope` projects the precedence view
+as `primacyHeld` alone and does not encode `Choices` at all — a deliberate 0.74.0 decision, because
+the menu is derivable from the sides plus the pin, and committing derived state pins the same fact
+twice. So the `merge-conformance/` refusal fixtures carry no choice tokens, regenerating them after
+this change reproduces the committed bytes and hashes exactly (verified), and no host has a token to
+decode. The one host that mirrors the menu internally is the Go port, whose `resolveAuthor` is a
+line-for-line mirror of this one and moves with it.

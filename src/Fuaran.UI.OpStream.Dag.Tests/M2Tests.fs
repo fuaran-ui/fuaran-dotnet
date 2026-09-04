@@ -142,7 +142,73 @@ let tests =
 
                   Expect.isFalse c.PrimacyHeld "no human pin between two AI sides"
                   Expect.isFalse (List.contains MergeChoice.KeepPrimary c.Choices) "no KeepHuman choice"
+
+                  // Every offered choice names a POPULATED slot. With no pin the
+                  // precedence slots are empty, so the menu is side-addressed:
+                  // `KeepSecondary` here would name `None`, and a resolver
+                  // applying it would have nothing to keep or would pick a side
+                  // itself — the order dependence the two-sided envelope removed.
+                  Expect.equal
+                      c.Choices
+                      [ MergeChoice.KeepBase; MergeChoice.KeepA; MergeChoice.KeepB ]
+                      "unpinned menu is side-addressed"
+
+                  Expect.isFalse (List.contains MergeChoice.KeepSecondary c.Choices) "KeepSecondary names no slot here"
+                  Expect.isNone c.Secondary "no precedence claim without a pin"
+                  Expect.isSome c.A "KeepA names a populated slot"
+                  Expect.isSome c.B "KeepB names a populated slot"
               | other -> failtestf "expected NeedsManualMerge, got %A" other
+          }
+
+          test "every offered MergeChoice names a populated envelope slot" {
+              // The law behind the menu, asserted over BOTH shapes at once: a
+              // pinned refusal may offer the precedence keeps, an unpinned one
+              // may only offer the side-addressed ones, and neither may offer a
+              // choice whose slot is `None`.
+              let sink = InMemoryDagSink.create<TestMsg> ()
+              let initial = buildDashboard ()
+              let a = stepRecord "s" None (TreeOp.UpdateStyle(rightChildId, Defaults.style)) 1L
+              add sink a
+
+              let branchA =
+                  aiStep (Some a) (styleWith (fun s -> { s with Tone = ToneVariant.Brand })) "t1" 2L
+
+              let branchB =
+                  aiStep (Some a) (styleWith (fun s -> { s with Tone = ToneVariant.Critical })) "t2" 3L
+
+              let pinnedEdit =
+                  stepRecord "s" (Some a) (styleWith (fun s -> { s with Tone = ToneVariant.Brand })) 4L
+
+              add sink branchA
+              add sink branchB
+              add sink pinnedEdit
+
+              let cellsOf headA headB =
+                  match
+                      DagMerge.merge recordAuthor sink "s" initial headA headB now
+                      |> Async.RunSynchronously
+                  with
+                  | MergeResult.NeedsManualMerge cells -> cells
+                  | other -> failtestf "expected NeedsManualMerge, got %A" other
+
+              let cells = cellsOf branchA.Hash branchB.Hash @ cellsOf pinnedEdit.Hash branchB.Hash
+
+              Expect.isNonEmpty cells "the probe produced refusals to check"
+
+              for c in cells do
+                  for choice in c.Choices do
+                      match choice with
+                      | MergeChoice.KeepPrimary -> Expect.isSome c.Primary "KeepPrimary offered with an empty Primary"
+                      | MergeChoice.KeepSecondary ->
+                          Expect.isSome c.Secondary "KeepSecondary offered with an empty Secondary"
+                      | MergeChoice.KeepA -> Expect.isSome c.A "KeepA offered with an empty A"
+                      | MergeChoice.KeepB -> Expect.isSome c.B "KeepB offered with an empty B"
+                      // `KeepBase` reads `Base`, a non-optional field; the two
+                      // kind-swap migrations read the pinned primary side, which
+                      // their `pinHeld`-guarded branch populates by construction.
+                      | MergeChoice.KeepBase
+                      | MergeChoice.ReassertPinOntoNewKind
+                      | MergeChoice.KeepOldKind -> ()
           }
 
           test "KindSwapOrphansPin: an AI kind-swap orphaning a human pin raises the swap class, not ConcurrentEdit" {

@@ -150,9 +150,22 @@ module TreeMerge =
         | MergeAuthor.Secondary r, MergeAuthor.Primary ->
             false, true, [ MergeChoice.KeepPrimary; MergeChoice.KeepSecondary; MergeChoice.KeepBase ], r
         | MergeAuthor.Secondary _, MergeAuthor.Secondary _ ->
-            false, false, [ MergeChoice.KeepBase; MergeChoice.KeepSecondary ], None
+            // No pin, so `Primary` / `Secondary` are both `None` and the two
+            // values live in `A` / `B` alone — the menu is side-addressed. It
+            // offered `KeepSecondary` until this change, which named an empty
+            // slot: a resolver applying it had nothing to keep, or picked a side
+            // itself, which is the argument-order dependence Phase 1497 removed
+            // from the envelope coming back through the resolver.
+            false, false, [ MergeChoice.KeepBase; MergeChoice.KeepA; MergeChoice.KeepB ], None
         | MergeAuthor.Primary, MergeAuthor.Primary ->
             // Two primary sides — no precedence pin; surface for host decision.
+            // Deliberately NOT widened to `KeepA` / `KeepB` even though both
+            // sides are populated here too: keeping one side discards the OTHER
+            // side's pin, which is a materially different act from keeping a
+            // side where no pin exists, and a menu that lists it beside
+            // `KeepBase` understates it. `KeepBase` discards both pins
+            // symmetrically, which is why it is the only safe enumerated option
+            // and why a double pin is resolved out of band.
             false, false, [ MergeChoice.KeepBase ], None
 
     /// The opaque provenance tag a side carries — a `Primary` side carries none
@@ -308,6 +321,9 @@ module TreeMerge =
                 // Secondary-side kind-swap orphans the primary side's field-pin.
                 let migrated = ReassertPin.tryReassert baseN primaryNode secondaryNode
 
+                // This branch is guarded by `pinHeld`, so `Primary` / `Secondary`
+                // below are both populated and `KeepSecondary` names a real slot
+                // — the one place it still belongs.
                 let swapChoices =
                     match migrated with
                     | Some _ ->
