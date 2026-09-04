@@ -1964,7 +1964,7 @@ let displayKinds: IdlKind list =
       // `title` is REQUIRED and is the a11y floor, on `MediaSpec.label`'s
       // argument one kind over: a frame with no accessible name is announced as
       // "frame" and nothing else, and there is no decorative embed — a frame is
-      // a focus container a reader tabs into. FUARAN114 refuses the empty
+      // a focus container a reader tabs into. FUARAN111 refuses the empty
       // literal that satisfies the requirement while meaning nothing.
       //
       // `permissions` is a LIST over the closed `EmbedPermission` enum, omitted
