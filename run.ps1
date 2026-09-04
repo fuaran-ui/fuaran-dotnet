@@ -176,15 +176,15 @@ if ($Validate) {
 
 # ─── Publish readiness: is the public channel behind <Version>? ──────
 # The packages restore from nuget.org for every consumer outside this
-# workspace — including eval-suite's free-tier CI, which builds against the
-# RELEASED packages and has no local feed. Publication is triggered by a `v*`
+# workspace — including a downstream consumer's free-tier CI that builds
+# against the RELEASED packages and has no local feed. Publication is triggered by a `v*`
 # tag (see .github/workflows/publish-packages.yml), so a <Version> bump that
 # is never tagged leaves those consumers pinning a version that exists only
 # on the machine that packed it.
 #
 # That is not hypothetical: <Version> ran 0.18.0 -> 0.26.0 between 2026-08-13
-# and 2026-08-16 with no tag pushed after v0.18.0, and eval-suite's every-PR
-# conformance gate was red on NU1102 for five days as a result — 60
+# and 2026-08-16 with no tag pushed after v0.18.0, and a downstream consumer's
+# every-PR conformance gate was red on NU1102 for five days as a result — 60
 # consecutive failing runs, whose cause was a wall of "Unable to find package"
 # lines rather than anything naming the omission.
 #
