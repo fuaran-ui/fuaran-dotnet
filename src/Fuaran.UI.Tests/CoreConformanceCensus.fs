@@ -159,6 +159,22 @@ let private attestationTest =
 let private vacuityTest =
     "noAttestationVacuityLaws certifies that the un-attested default proves nothing"
 
+/// The columnar families adopted by fuaran#1481, which run in `CoreAdoptionTests.fs` beside the
+/// tree/op-stream adoption above — in the appended `Columnar` module, whose header carries the
+/// self-contained-vs-tier-shaped split these rows summarise. Named once each for the same reason
+/// every block above does: a row and the test it enrols must not drift apart by a typo.
+let private columnarOpTest =
+    "the columnar op algebra certifies under Core's columnarOpLaws"
+
+let private columnarValidatorTest =
+    "the columnar validator certifies under Core's columnarValidatorLaws"
+
+let private aggregateParityTest =
+    "aggregate parity certifies under Core's aggregateParityLaws"
+
+let private schemaWalkTest =
+    "static output-schema derivation certifies under Core's schemaWalkLaws"
+
 /// One row per public law family of the pinned kit. Order here is authoring order (grouped by
 /// classification); the report sorts by family key, so this list may be reordered freely.
 let census: (string * Adoption) list =
@@ -288,10 +304,31 @@ let census: (string * Adoption) list =
       "Conformance.noAttestationVacuityLaws", Adopted(vacuityTest, "Conformance.noAttestationVacuityLaws")
 
       // ---- fuaran#1481 — columnar laws over the tier's Column usage ----
-      "Conformance.columnarOpLaws", CarriedBy "fuaran#1481"
-      "Conformance.columnarValidatorLaws", CarriedBy "fuaran#1481"
-      "Conformance.aggregateParityLaws", CarriedBy "fuaran#1481"
-      "Conformance.schemaWalkLaws", CarriedBy "fuaran#1481"
+      // All four run in `CoreAdoptionTests.fs` (the `Columnar` module appended
+      // there), and ALL FOUR ARE SELF-CONTAINED `(seed, iterations)` in the pinned
+      // kit — they build their own Core tables and pipelines and take no consumer
+      // witness, so each row claims exactly what the 1478 block's self-contained
+      // half claims: the PINNED KIT's contract holds on this machine at this pin.
+      // The port names each family itself, so no row overstates its reach.
+      //
+      // What the tier actually carries, since the phase text assumed otherwise:
+      // there is no columnar op-algebra call site here at all, no Core columnar
+      // validator registration, and no schema-walk call site — and the one
+      // production `Column.create` authoring surface is `RetrievalSource.Hit.toTable`.
+      // So beside each law run the same file asserts the family's property
+      // DIRECTLY over the surface the tier does have, rather than wrapping the law
+      // to look tier-shaped: the authoring surface's columns are well-formed
+      // against the schema it declares; aggregating a column THAT surface built
+      // equals the single-group GroupBy; the tier's own columnar-validation rule
+      // (FUARAN114, Phase 1149) is deterministic and reports exactly the
+      // ungrounded names; and the schema walk agrees both with that rule's window
+      // and with the schema `QueryRefine.refineLocally` produces for the pipelines
+      // the rule stands down on. Those four are tests in their own right, not
+      // second spellings of these rows — a row names the law it enrols.
+      "Conformance.columnarOpLaws", Adopted(columnarOpTest, "Conformance.columnarOpLaws")
+      "Conformance.columnarValidatorLaws", Adopted(columnarValidatorTest, "Conformance.columnarValidatorLaws")
+      "Conformance.aggregateParityLaws", Adopted(aggregateParityTest, "Conformance.aggregateParityLaws")
+      "Conformance.schemaWalkLaws", Adopted(schemaWalkTest, "Conformance.schemaWalkLaws")
 
       // ---- a sibling host's family ----
       "Conformance.captureReplayLaws", SiblingHost "fuaran-ts / fuaran-go (fuaran#1482)"
