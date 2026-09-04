@@ -21,13 +21,16 @@ namespace Fuaran.UI.FastPath.Tests
 //  file is simultaneously the record and the check — a vector that disagreed
 //  with the law would fail here before it could be published.
 //
-//  `transformLaws` is deliberately NOT exported. It is a PARITY family: it
-//  takes a host dataframe evaluator and compares it byte-for-byte against
-//  `Fuaran.Core.DataFrame.evalPipeline`, and this repo ships no second
-//  evaluator (`QueryRefine` consumes the Core reference rather than twinning
-//  it). Running it here with the reference as its own `under` would export
-//  Core's self-consistency check wearing this tier's name. The `laws/`
-//  manifest records that absence as a statement rather than leaving it a gap.
+//  This exporter writes ONE file: `laws/capability-laws.json`. The
+//  `laws/manifest.json` beside it is CURATED BY HAND and deliberately not
+//  rendered here. It indexes every family in `laws/`, and those families come
+//  from more than one exporter in more than one repository — `transformLaws`
+//  is exported by `Fuaran.Core`'s own suite, which takes the same posture and
+//  says so. A wholesale renderer would therefore silently drop whatever it did
+//  not know about, and two of them would take turns reverting each other. What
+//  this exporter is entitled to assert about the index is that its own row
+//  still describes the file it writes, which is what `CoreFunctionLawTests`
+//  checks — structurally, never as bytes.
 // ============================================================================
 
 module LawVectorExport =
@@ -37,9 +40,10 @@ module LawVectorExport =
     open System.Text
     open Fuaran.Core
 
-    /// The family directory inside the shared corpus, and the two artefacts in
-    /// it. The directory name is the interface — hosts resolve `laws/` — so it
-    /// is named once here.
+    /// The family directory inside the shared corpus, the file this exporter
+    /// writes, and the hand-curated index beside it (read by the suite, never
+    /// written here). The directory name is the interface — hosts resolve
+    /// `laws/` — so it is named once here.
     let familyDirName = "laws"
     let capabilityFileName = "capability-laws.json"
     let manifestFileName = "manifest.json"
@@ -292,55 +296,6 @@ module LawVectorExport =
         line "}"
         sb.ToString()
 
-    let private manifestDescription =
-        "Fuaran conformance-law vector corpus. SELF-ENUMERATED: these vectors are deliberately not indexed by the "
-        + "corpus root manifest.json, which indexes the canonical wire-format codec families only — the "
-        + "merge-conformance/ and devtools-relay/ precedent. A `law-vectors` file carries the (input, expected) "
-        + "pairs one Fuaran.Core conformance law family draws from a declared seed, computed by calling the pinned "
-        + "kit, so a host that is not the reference can run the same family over the same sample. These are "
-        + "BEHAVIOUR vectors, not byte-parity fixtures: a host asserts the verdicts and derived values, not the "
-        + "framing of this file."
-
-    let renderManifest () : string =
-        let sb = StringBuilder()
-        let line (s: string) = sb.Append(s).Append('\n') |> ignore
-
-        line "{"
-        line "  \"version\": 1,"
-        line ("  \"description\": " + jstr manifestDescription + ",")
-        line "  \"families\": ["
-
-        line (
-            "    "
-            + jobj
-                [ "id", jstr "capabilityLaws"
-                  "kind", jstr "law-vectors"
-                  "file", jstr capabilityFileName
-                  "kitVersion", jstr (kitVersion ())
-                  "seed", jint seed
-                  "iterations", jint iterations
-                  "vectors", jint (List.length (allVectors ()))
-                  "description",
-                  jstr
-                      "The invocable-capability contract: arg validation, the capture-replay key, the declaration codec round-trip, and id-stable registry enumeration." ]
-        )
-
-        line "  ],"
-        line "  \"notExported\": ["
-
-        line (
-            "    "
-            + jobj
-                [ "id", jstr "transformLaws"
-                  "reason",
-                  jstr
-                      "A parity family: it takes a HOST dataframe evaluator and compares it byte-for-byte against the Fuaran.Core.DataFrame reference. The reference implementation exporting these vectors ships no second evaluator, so running it here would export the reference's own self-consistency check. Derive these vectors from a host that has one." ]
-        )
-
-        line "  ]"
-        line "}"
-        sb.ToString()
-
     // -----------------------------------------------------------------------
     //  writing
     // -----------------------------------------------------------------------
@@ -353,9 +308,12 @@ module LawVectorExport =
     let manifestPath (corpusDir: string) : string =
         Path.Combine(familyDir corpusDir, manifestFileName)
 
-    /// Write both artefacts with LF endings, whatever the host platform — the
+    /// Write the vectors with LF endings, whatever the host platform — the
     /// corpus is byte-compared by five hosts on three operating systems.
+    ///
+    /// `manifest.json` is NOT written: it is the hand-curated index over every
+    /// family in `laws/`, several of which come from other exporters, so no
+    /// single exporter may own it. See the header.
     let write (corpusDir: string) : unit =
         Directory.CreateDirectory(familyDir corpusDir) |> ignore
         File.WriteAllText(capabilityPath corpusDir, renderCapabilityVectors ())
-        File.WriteAllText(manifestPath corpusDir, renderManifest ())

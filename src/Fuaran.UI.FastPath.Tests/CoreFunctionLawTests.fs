@@ -354,7 +354,48 @@ module CoreFunctionLawTests =
                           (LawVectorExport.renderCapabilityVectors ())
                           "laws/capability-laws.json"
 
-                      check
-                          (LawVectorExport.manifestPath corpusDir)
-                          (LawVectorExport.renderManifest ())
-                          "laws/manifest.json" ]
+                      // The index beside it is HAND-CURATED: it spans every
+                      // family in `laws/`, and those come from more than one
+                      // exporter in more than one repository. So it is read
+                      // structurally, not byte-compared — every other family's
+                      // row is none of this exporter's business, and asserting
+                      // the whole file would make this suite revert whatever
+                      // another exporter had just added. What is asserted is
+                      // only what this exporter is entitled to: that the index
+                      // still describes the file it writes.
+                      let manifestPath = LawVectorExport.manifestPath corpusDir
+
+                      if not (File.Exists manifestPath) then
+                          failtest "laws/manifest.json is missing from the corpus — it is curated by hand, not emitted"
+
+                      let field (name: string) (v: JVal) : JVal option =
+                          match v with
+                          | JObj members -> members |> List.tryPick (fun (k, x) -> if k = name then Some x else None)
+                          | _ -> None
+
+                      let manifest =
+                          match Json.parse (File.ReadAllText manifestPath) with
+                          | Ok doc -> doc
+                          | Error m -> failtestf "laws/manifest.json did not parse: %s" m
+
+                      let entry =
+                          match field "families" manifest with
+                          | Some(JArr families) ->
+                              match families |> List.tryFind (fun f -> field "id" f = Some(JStr "capabilityLaws")) with
+                              | Some e -> e
+                              | None -> failtest "laws/manifest.json lists no `families` entry with id `capabilityLaws`"
+                          | _ -> failtest "laws/manifest.json carries no `families` array"
+
+                      let indexed (name: string) (expected: JVal) =
+                          Expect.equal
+                              (field name entry)
+                              (Some expected)
+                              (sprintf
+                                  "laws/manifest.json's capabilityLaws `%s` disagrees with the exported vectors — the manifest is curated by hand, so correct it there"
+                                  name)
+
+                      indexed "file" (JStr LawVectorExport.capabilityFileName)
+                      indexed "kitVersion" (JStr(LawVectorExport.kitVersion ()))
+                      indexed "seed" (JInt LawVectorExport.seed)
+                      indexed "iterations" (JInt LawVectorExport.iterations)
+                      indexed "vectors" (JInt(List.length (LawVectorExport.allVectors ()))) ]
