@@ -15,6 +15,5 @@ let main argv =
     | "--emit-laws" :: dir :: _ ->
         LawVectorExport.write dir
         printfn "Wrote %s" (LawVectorExport.capabilityPath dir)
-        printfn "Wrote %s" (LawVectorExport.manifestPath dir)
         0
     | _ -> runTestsInAssemblyWithCLIArgs [] argv
