@@ -594,6 +594,23 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a Color `value` of `\"rebeccapurple\"` — refused rather than coerced. `#rrggbb` is the one shape a native colour input can hold, so a literal outside it names a colour this control could never carry, and a host that narrowed it would show a colour the document did not choose. Only the STATIC case is judged, because it is the only text a decoder has: a bound value is re-checked by the pre-emit validator for an author and by the server-side submission floor for a client, which is one rule checked wherever the value becomes visible" }
+      // Phase 1116 — an unrecognised capture device. The set is closed at the
+      // two devices a file picker can stand in front of, and the near miss an
+      // emitter will actually write is a THIRD one: a screen. It is refused
+      // rather than reserved, because display capture is not a wider spelling of
+      // this member — it is a standing grant over everything the reader has open,
+      // ruled Host chrome on trust grounds, so a decoder that guessed at it would
+      // be inventing the one capability this vocabulary deliberately does not
+      // carry. The path is the bare slot with no `.$type` suffix, per §6 and the
+      // Phase 1073 ruling: a bare enum carries no discriminator on the wire.
+      { Id = "reject-unknown-capture-source"
+        Json =
+          """{"id":"up","kind":{"$type":"FileUpload","accept":["image/*"],"capture":"Screen","label":"Capture","multiple":false,"onSelect":"<closure>"}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.capture"
+        IsOp = false
+        Description =
+          "a FileUpload `capture` of `\"Screen\"` — outside the closed pair `Camera | Microphone`. The HTML capture attribute cannot ask for a display at all, and a screen capture is a standing grant reaching every window the reader has open rather than a third device behind the same picker permission, so it is refused exactly like a name nobody has proposed: a later admission would be an ADDITION, never a re-meaning of shipped bytes" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

@@ -35,6 +35,11 @@
          renderer so `Fuaran.UI.AiTools` (which must stay renderer-free) and the
          renderer reference ONE field set instead of two hand-duplicated ones.
          Depends only on Types.fs; no resolver logic. -->
+    <!-- Phase 1116: the `FileUpload.Capture` projection and its accept-list
+         coherence predicate. Depends only on Types.fs, and sits here so BOTH
+         renderers, the pre-emit validator and the server-driven authoring check
+         read one definition instead of four. -->
+    <Compile Include="MediaCapture.fs" />
     <Compile Include="BindingSources.fs" />
     <!-- Phase 268: Node.mapMsg — exhaustive ('a -> 'b) -> Node<'a> -> Node<'b>
          relabel of a tree's message type (the erasure `embed` lowers through).

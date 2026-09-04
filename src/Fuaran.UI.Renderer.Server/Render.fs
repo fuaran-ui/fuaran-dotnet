@@ -1873,6 +1873,38 @@ and private renderKind
               if spec.AcceptPaste then
                   prop.custom ("data-fuaran-upload-paste", "declared") ]
 
+        // Phase 1116 — `capture` is the one declaration on this control whose
+        // floor FULLY holds, and it is emitted as the attribute rather than as a
+        // read-marker for exactly that reason. It needs no listener and no
+        // script: the user agent reads it off the static markup, opens the
+        // camera or the recorder on a device that has one, and shows the file
+        // browser on one that does not. That is the whole of the behaviour, so
+        // this tier degrades nowhere and the two renderers emit the same pair.
+        //
+        // `accept` rides with it, and must. The device is selected by `accept`,
+        // not by the keyword — a `capture` with no filter beside it asks the
+        // user agent to guess which device, which is the uncertainty the
+        // declaration exists to remove. Emitting one without the other would
+        // make this tier's floor hold only by accident. (`accept` was absent
+        // here before this phase, which no test caught because nothing paired
+        // the two; the client renderer has emitted it since Phase 130.)
+        //
+        // SANITIZATION.md: both are ordinary attribute VALUES, which the view
+        // engine escapes — no URL, no markup and no event seam. `capture`'s
+        // value is a closed-enum keyword and never author data at all; `accept`
+        // carries the same author strings the client renderer has emitted as an
+        // attribute value since Phase 130, at the same seam.
+        let acceptAttr =
+            if List.isEmpty spec.Accept then
+                []
+            else
+                [ prop.custom ("accept", String.concat "," spec.Accept) ]
+
+        let captureAttr =
+            match spec.Capture with
+            | Some source -> [ prop.custom ("capture", Fuaran.UI.MediaCapture.keyword source) ]
+            | None -> []
+
         Html.label (
             [ prop.className "fuaran-file-upload" ]
             @ gestureAttrs
@@ -1880,7 +1912,11 @@ and private renderKind
                     [ Html.span
                           [ prop.className "fuaran-file-upload-label"
                             prop.text (renderText ctx spec.Label) ]
-                      Html.input [ prop.className "fuaran-file-upload-control"; prop.custom ("type", "file") ] ] ]
+                      Html.input (
+                          [ prop.className "fuaran-file-upload-control"; prop.custom ("type", "file") ]
+                          @ acceptAttr
+                          @ captureAttr
+                      ) ] ]
         )
     // -- Vis --
     | NodeKind.DataGrid spec ->

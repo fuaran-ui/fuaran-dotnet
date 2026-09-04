@@ -35,6 +35,11 @@ Friend Module InputMapping
         ' Phase 1115 — `drop-target` / `accept-paste` spell the wire's ingress
         ' declarations, read through the existing AttrBool whose absent-is-false
         ' default already matches the wire's omit-at-false.
+        '
+        ' Phase 1116 — `capture` names the recording device, read through OptEnum
+        ' rather than AsEnum: the spec field is itself optional, absence is the
+        ' ordinary picker rather than a device, and an unrecognised device name is
+        ' an authoring error here exactly as it is a decode refusal on the wire.
         d("FileUpload") = Function(el) Csharp.Fuaran.FileUpload(
             New Csharp.FileUploadOptions With {
                 .Id = Attr(el, "id"),
@@ -42,7 +47,8 @@ Friend Module InputMapping
                 .Accept = PipeList(Attr(el, "accept")),
                 .Multiple = AttrBool(el, "multiple"),
                 .DropTarget = AttrBool(el, "drop-target"),
-                .AcceptPaste = AttrBool(el, "accept-paste")})
+                .AcceptPaste = AttrBool(el, "accept-paste"),
+                .Capture = OptEnum(Of Csharp.CaptureSource)(el, "capture")})
     End Sub
 
     Private Function ReadFields(el As XElement) As IEnumerable(Of Csharp.FormField)

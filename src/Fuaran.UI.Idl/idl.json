@@ -33,6 +33,13 @@
     },
     {
       "cases": [
+        "Camera",
+        "Microphone"
+      ],
+      "name": "CaptureSource"
+    },
+    {
+      "cases": [
         "OutOnly",
         "TwoWay"
       ],
@@ -1525,6 +1532,16 @@
           },
           "type": {
             "$type": "bool"
+          }
+        },
+        {
+          "name": "capture",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "enum",
+            "name": "CaptureSource"
           }
         }
       ],

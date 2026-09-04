@@ -2402,6 +2402,43 @@ let fileUploadPaste: Node<obj> =
         ))
         None
 
+/// Phase 1116 — a camera capture. `capture` is present and `accept` names the
+/// media type that selects the device, which is the pairing the feature actually
+/// requires: the keyword asks for a recording device, `accept` decides which one,
+/// and a vector carrying only the keyword would say nothing about the half that
+/// makes it work. `multiple` is left at its default, because a platform camera
+/// hands back one capture at a time and a vector claiming otherwise would model a
+/// control no host produces.
+let fileUploadCaptureCamera: Node<obj> =
+    node
+        "upload-capture-camera-1"
+        (NodeKind.FileUpload(
+            { Defaults.fileUpload with
+                Label = TextSource.Literal "Photograph the receipt"
+                Accept = [ "image/*" ]
+                OnSelect = Some(fun _ -> placeholderChain)
+                Capture = Some CaptureSource.Camera }
+        ))
+        None
+
+/// Phase 1116 — a microphone capture, the mirror vector. It is not merely the
+/// second enum case: it is what pins the SOURCE and the FILTER as two separate
+/// members, since a host that read the device off `accept` alone would decode
+/// both of these correctly and be wrong about what either document says. The
+/// drop and paste routes are OMITTED here, so this vector also holds the polarity
+/// of the two Phase 1115 flags alongside a declared capture.
+let fileUploadCaptureMicrophone: Node<obj> =
+    node
+        "upload-capture-microphone-1"
+        (NodeKind.FileUpload(
+            { Defaults.fileUpload with
+                Label = TextSource.Literal "Record a voice note"
+                Accept = [ "audio/*" ]
+                OnSelect = Some(fun _ -> placeholderChain)
+                Capture = Some CaptureSource.Microphone }
+        ))
+        None
+
 let select: Node<obj> =
     node
         "select-1"
@@ -6134,6 +6171,8 @@ let allNodes: (string * Node<obj>) list =
       "Input/FileUpload", fileUpload
       "Input/FileUpload (Phase 1115 — drop target; acceptPaste OMITTED)", fileUploadDrop
       "Input/FileUpload (Phase 1115 — paste ingestion, image/* filtered; dropTarget OMITTED)", fileUploadPaste
+      "Input/FileUpload (Phase 1116 — camera capture, image/* filtered)", fileUploadCaptureCamera
+      "Input/FileUpload (Phase 1116 — microphone capture, audio/* filtered)", fileUploadCaptureMicrophone
       "Input/Select", select
       "Input/Select (multi-select — list value)", multiSelect
       "Input/Form (Phase 426 — handler-free write-back fields, State-bound)", formDeclarative

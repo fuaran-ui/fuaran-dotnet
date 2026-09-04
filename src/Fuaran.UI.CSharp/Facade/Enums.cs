@@ -193,6 +193,23 @@ public enum Modality
     Popover,
 }
 
+/// <summary>
+/// Which of the reader's own recording devices a <see cref="Fuaran.FileUpload"/>
+/// asks the platform to open instead of the file browser (Phase 1116) — maps to
+/// the F# <c>CaptureSource</c>. It is the HTML <c>capture</c> attribute and
+/// nothing more: a request the user agent may ignore, mediated by the picker
+/// permission the control already has, with no stream and no standing grant. A
+/// device that has no camera or microphone simply shows the file browser.
+/// </summary>
+public enum CaptureSource
+{
+    /// <summary>The platform camera — stills or short clips.</summary>
+    Camera,
+
+    /// <summary>The platform audio recorder.</summary>
+    Microphone,
+}
+
 /// <summary>Math presentation — maps to the F# <c>MathDisplay</c>.</summary>
 public enum MathDisplay
 {
@@ -373,6 +390,9 @@ internal static class EnumMap
 
     internal static FsGen.ModalityKind ToFs(this Modality m) =>
         m == Modality.Popover ? FsGen.ModalityKind.Popover : FsGen.ModalityKind.Modal;
+
+    internal static FsGen.CaptureSource ToFs(this CaptureSource c) =>
+        c == CaptureSource.Microphone ? FsGen.CaptureSource.Microphone : FsGen.CaptureSource.Camera;
 
     internal static FsGen.MathDisplay ToFs(this MathDisplay d) =>
         d == MathDisplay.Inline ? FsGen.MathDisplay.Inline : FsGen.MathDisplay.Block;

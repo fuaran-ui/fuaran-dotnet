@@ -100,9 +100,10 @@ public static partial class Fuaran
         new(FsFactory.fileUpload<object>(
             options.Id,
             // Generated FileUploadSpec ctor is Generated.fs declaration order (Accept,
-            // Label, Multiple, OnSelect, Disabled, AcceptPaste, DropTarget); OnSelect
-            // is optional now and FileSelection lives in HostPrelude — the facade keeps
-            // its no-op handler (Some-wrapped) so the wire shape is unchanged.
+            // Label, Multiple, OnSelect, Disabled, AcceptPaste, DropTarget, Capture);
+            // OnSelect is optional now and FileSelection lives in HostPrelude — the
+            // facade keeps its no-op handler (Some-wrapped) so the wire shape is
+            // unchanged.
             new FsGen.FileUploadSpec<object>(
                 Fs.List(options.Accept ?? Enumerable.Empty<string>()),
                 options.Label.Inner,
@@ -114,7 +115,12 @@ public static partial class Fuaran
                 // Phase 1115 — both default false, so the shortest C# call is the
                 // plain picker and each gesture is asked for by name.
                 options.AcceptPaste,
-                options.DropTarget)));
+                options.DropTarget,
+                // Phase 1116 — absent by default, which is the plain picker and
+                // the wire identity; a device is asked for by name.
+                options.Capture is { } capture
+                    ? Fs.Some(capture.ToFs())
+                    : Fs.None<global::Fuaran.UI.Generated.CaptureSource>())));
 }
 
 /// <summary>A form field — build with the static factories (<see cref="Text"/> / <see cref="Number"/> / …).</summary>
@@ -392,4 +398,13 @@ public sealed record FileUploadOptions
     /// <summary>Whether a paste carrying files or images, on the focused control,
     /// resolves through the same selection path as a pick.</summary>
     public bool AcceptPaste { get; init; }
+
+    /// <summary>Which recording device the platform should open instead of the
+    /// file browser (Phase 1116); <c>null</c> — the default — is the ordinary
+    /// picker. Set it beside an <see cref="Accept"/> list that admits the
+    /// device's own media type (<c>image/*</c> or <c>video/*</c> for a camera,
+    /// <c>audio/*</c> for a microphone): the keyword asks for a capture, the
+    /// accept list is what chooses which device, and a pair that disagrees is
+    /// reported by the validator rather than repaired.</summary>
+    public CaptureSource? Capture { get; init; }
 }

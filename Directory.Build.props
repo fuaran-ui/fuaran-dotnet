@@ -516,7 +516,18 @@
          effect is renderer-native on the `Action.CommitLocal` precedent, so no
          existing implementer gains a member. See STABILITY.md "Recorded change -
          0.64.0, `Action.Print` and the print stylesheet". -->
-    <Version>0.67.0</Version>
+    <!-- fuaran#1116 (0.68.0) - `FileUploadSpec.Capture : CaptureSource option`,
+         plus the new closed two-case enum it names. Additive on the wire: the
+         member is absent at `None`, so every upload document written before this
+         release encodes to byte-identical bytes. Source-breaking ONLY at a
+         full-literal `FileUploadSpec` construction (FS0764), which
+         `Defaults.fileUpload` fills - and NOT exhaustiveness-breaking, because
+         `CaptureSource` is a new type nothing matches on yet. It rides a minor
+         bump rather than a re-pack for the reason every entry above does: a
+         re-packed slot swaps the contract under a consumer whose NuGet cache
+         still serves the old bits. See STABILITY.md "Recorded change - 0.68.0,
+         the media-capture upload field". -->
+    <Version>0.68.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -5895,6 +5895,20 @@ and private renderFileUpload (ctx: RenderContext<'Msg>) (spec: FileUploadSpec<'M
               prop.disabled true
           if acceptStr <> "" then
               prop.accept acceptStr
+          // Phase 1116 — the capture request, projected as the HTML attribute
+          // and nothing else. There is no code here for the desktop case, and
+          // that is the feature rather than an omission: a user agent with no
+          // such device ignores `capture` and shows the file browser, so the
+          // degradation is the platform's and the control stays a working
+          // upload. Nothing else changes — the same input, the same `change`,
+          // the same `onSelect` and the same `input.files` the server-driven
+          // tier reads, so a captured photo travels every route a picked one
+          // does. `accept` is emitted exactly as declared above and is never
+          // synthesised from the device; an incoherent pair is REPORTED by
+          // FUARAN134, not repaired here (see `Fuaran.UI.MediaCapture`).
+          match spec.Capture with
+          | Some source -> prop.custom ("capture", Fuaran.UI.MediaCapture.keyword source)
+          | None -> ()
           // Feliz `prop.onChange (fun (files: File list) -> ...)` overload —
           // pulls files off `e.target.files` for us. Per-file metadata is
           // browser-side; the consumer's Action.Call typically pairs the

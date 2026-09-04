@@ -292,7 +292,7 @@ InputKind =
 | Form { fields:FormField[]; onSubmit:Action; submitLabel:TextSource; disabled?:Binding_bool }
 | Filters { items:FilterSpec[] }
 | Button { label:TextSource; onClick:Action; variant:"Primary"|"Secondary"|"Tertiary"|"Destructive"; disabled?:Binding_bool; icon?:str }
-| FileUpload { accept:str[]; label:TextSource; multiple:bool; onSelect:closure; acceptPaste?:bool; disabled?:Binding_bool; dropTarget?:bool }
+| FileUpload { accept:str[]; label:TextSource; multiple:bool; onSelect:closure; acceptPaste?:bool; capture?:"Camera"|"Microphone"; disabled?:Binding_bool; dropTarget?:bool }
 | Select { label:TextSource; source:Binding_list_SelectOption; value:Binding_str; disabled?:Binding_bool; multiple?:bool; placeholder?:TextSource; values?:Binding_list_str }
 VisKind =
 | DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; exportable?:bool; keepRowsTogether?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; repeatHeader?:bool; rowKeyField?:str; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool }; transferInKey?:str; transferOutKey?:str }

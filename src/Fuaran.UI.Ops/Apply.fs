@@ -912,6 +912,14 @@ let private updateFileUpload (field: string) (v: obj) (spec: FileUploadSpec<'Msg
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryBool v
             |> Result.map (fun x -> { spec with AcceptPaste = x }))
+    // Phase 1116 — the capture device takes the optional-enum disposition
+    // (`ModalSpec.Anchor`'s shape, not `Modality`'s): a `null` clears the
+    // declaration back to the ordinary picker, a string names a device, and an
+    // unreadable string is refused rather than read as "no device".
+    | "Capture" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryCaptureSourceOption v
+            |> Result.map (fun x -> { spec with Capture = x }))
     | "OnSelect"
     | "Disabled" -> NotSupportedYet
     | _ -> UnknownField

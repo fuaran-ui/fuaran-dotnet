@@ -127,6 +127,16 @@ type ScrollOrientation = Generated.ScrollOrientation
 /// > something the reader pointed at — is a `Popover`. A **blocking task** that
 /// > must be finished or abandoned before the page continues is a `Modal`.
 type ModalityKind = Generated.ModalityKind
+
+/// Which of the reader's own recording devices a `FileUpload` asks the platform
+/// to open instead of the ordinary file browser (Phase 1116). Two cases, closed:
+/// a screen is not one of them, because the HTML `capture` attribute cannot ask
+/// for one and the charter rules display capture Host chrome on trust grounds.
+///
+/// An enum rather than a boolean so that a later source — a user-facing camera,
+/// say — is an ADDITION to a closed set rather than the replacement of a flag
+/// that could only ever have meant one device.
+type CaptureSource = Generated.CaptureSource
 /// Temporal breadth for `FormFieldKind.Date` (Phase 288). Selects the native
 /// HTML control the renderer emits: `Date` → `<input type=date>`, `Time` →
 /// `<input type=time>`, `DateTime` → `<input type=datetime-local>`. The bound
@@ -1561,6 +1571,22 @@ and FileRef = HostPrelude.FileRef
 /// route is unchanged and is the affordance's required keyboard-accessible
 /// equivalent: a drop zone is an ADDITIONAL route to the picker, never a
 /// replacement for it.
+///
+/// **`Capture` (Phase 1116) is the HTML `capture` attribute and nothing more.**
+/// `Some Camera` / `Some Microphone` asks the platform to open the reader's own
+/// camera or recorder in place of the file browser; `None` — the default — is
+/// the ordinary picker, so every upload written before this release means what
+/// it always did. It is a REQUEST, not a grant: the user agent decides, the same
+/// picker permission mediates it, and a desktop with no such device simply shows
+/// the file browser, which is a working control and not a dead affordance. There
+/// is no stream, no live preview, no recording surface and no standing
+/// permission anywhere in it — those are the reserved follow-on and are Host
+/// chrome under the charter's `ScreenCapture` / `CameraInput` ruling.
+///
+/// The device is what the document knows; whether the `Accept` list can actually
+/// admit that device's output is a question about the two members TOGETHER, and
+/// the renderer answers it by projecting both exactly as declared rather than
+/// repairing either. FUARAN134 reports the incoherent pair.
 and FileUploadSpec<'Msg> = Generated.FileUploadSpec<'Msg>
 
 and FileSelection = HostPrelude.FileSelection

@@ -4130,3 +4130,57 @@ the new sheet, which is the check working.
 **§11 step 6 authoring surfaces:** C# `FormField.Rating` / `FormField.Color` and `Filter.Rating` /
 `Filter.Color`; VB `kind="rating"` (with `max` / `allowHalf`) and `kind="color"` on both `<Field>` and
 `<Filter>`; both analyzer vocabulary rows.
+
+
+## Recorded change — 0.68.0, the media-capture upload field (fuaran#1116)
+
+**ADDITIVE to the wire, source-breaking only at a full-literal construction, and a `WIRE_FORMAT.md`
+§11 forward-coupling event.** `FileUploadSpec` gains `Capture: CaptureSource option`, and
+`CaptureSource` is a new closed two-case enum (`Camera | Microphone`) whose wire spelling is a bare
+string in the `capture` member.
+
+  * **Every document written before 0.68.0 encodes and decodes to byte-identical bytes.** The member
+    is absent-at-`None`, `Defaults.fileUpload` sets it to `None`, and `nodes/upload-1.json` is
+    unchanged in the corpus. The field is APPENDED to the generated record, so no existing
+    constructor position moves.
+
+  * **The break is FS0764 at a full-literal `FileUploadSpec` construction, and nowhere else.** A
+    consumer building the record through `{ Defaults.fileUpload with … }` — which is how the samples,
+    the fixtures and every authoring veneer build it — is unaffected. No DU gains a case, so there is
+    no exhaustiveness break: `CaptureSource` is a NEW type, and nothing matches on it yet.
+
+  * **It is the HTML `capture` attribute and nothing more.** The renderers project the declared
+    device onto the file input as `capture="environment"` (`Camera`) or `capture="user"`
+    (`Microphone`) — both conforming enumerated-attribute keywords — beside the `accept` the document
+    already declared. No stream, no live preview, no recording surface and no standing permission is
+    introduced; the request is mediated by the same picker the control already had, and a platform
+    with no such device ignores it and shows the file browser. `getUserMedia` and screen capture stay
+    declined as Host chrome (`docs/VOCABULARY.md`, Appendix A — the `ScreenCapture` / `CameraInput`
+    row, amended by this phase so the boundary is stated on both sides).
+
+  * **An OPTION, not an omit-at-default enum.** "Say nothing" is a state of its own: an upload naming
+    no device asks for the file browser, which is not one of the two devices wearing a default. A
+    value outside the pair is `UNKNOWN_DU_CASE` at the bare slot and is never read as either device.
+
+  * **The `capture`/`accept` pair is REPORTED, never repaired.** The two members are one statement —
+    the keyword asks the platform for a recording device and `accept` decides which — so no renderer
+    synthesises the missing half. A synthesised filter would be one the document did not write, would
+    make emitted markup depend on renderer defaults, and would silently fix the case most worth
+    reporting: an empty `accept`, which admits the device without selecting it.
+
+**One new validator code**, additive: `FUARAN134` (Warning — a declared capture device the `accept`
+list does not select). A consumer that enumerates `PreEmitDefect` exhaustively gains one case.
+
+**One behavioural correction on the server renderer**, in the same change-set and for this feature's
+sake: the SSR file input now emits `accept`, which it had never emitted while the client renderer has
+emitted it since 0.x/Phase 130. It is required here rather than opportunistic — `capture` without
+`accept` leaves the platform to guess the device — but it does change the SSR bytes of every upload
+that declares an `accept` list. No class vocabulary moved, so `Theme.vocabularyFingerprint` is
+unchanged and no CSS copy is regenerated.
+
+**No render-fidelity obligation is added**, on the 0.67.0 precedent: a new claim puts every roster
+host into "unchecked", which is a separate deliberate act.
+
+**§11 step 6 authoring surfaces:** C# `FileUploadOptions.Capture` (a nullable `CaptureSource`); the
+VB `capture` attribute on `<FileUpload>`, read through `OptEnum` so absence stays the picker; and the
+analyzer vocabulary row.

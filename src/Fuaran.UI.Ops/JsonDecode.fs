@@ -2093,6 +2093,20 @@ let private decodeModalityKind (path: string) (j: Json) : Result<ModalityKind, D
     | JString s -> unknownEnumCase path s "Modal | Popover"
     | _ -> wrongType path "JSON string (ModalityKind)"
 
+/// Phase 1116 — `FileUploadSpec.capture`. A BARE enum, so an unrecognised token
+/// reports at the field's own path with no `.$type` suffix (§6). The set is
+/// closed at the two devices a file picker can stand in front of; a screen, a
+/// facing-mode or a live stream is an ADMISSION rather than a spelling a decoder
+/// may guess at, so an unknown token is `UNKNOWN_DU_CASE` and never a fallback
+/// to one of the two. Absence is the ordinary picker, which is what every
+/// document written before this release says.
+let private decodeCaptureSource (path: string) (j: Json) : Result<CaptureSource, DecodeError> =
+    match j with
+    | JString "Camera" -> Ok CaptureSource.Camera
+    | JString "Microphone" -> Ok CaptureSource.Microphone
+    | JString s -> unknownEnumCase path s "Camera | Microphone"
+    | _ -> wrongType path "JSON string (CaptureSource)"
+
 let private decodeImageLoading (path: string) (j: Json) : Result<ImageLoading, DecodeError> =
     match j with
     | JString "Eager" -> Ok ImageLoading.Eager
@@ -6109,8 +6123,16 @@ let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpe
             | None -> Ok false
             | Some v -> requireBool (path + ".acceptPaste") v
 
-        match acceptR, labelR, multipleR, disabledR, dropTargetR, acceptPasteR with
-        | Ok accept, Ok label, Ok multiple, Ok disabled, Ok dropTarget, Ok acceptPaste ->
+        // Phase 1116 — the capture device. Absent is `None`, the ordinary
+        // picker; present-and-unrecognised is `UNKNOWN_DU_CASE` at the bare
+        // slot's own path, never a fallback onto one of the two devices.
+        let captureR =
+            match tryField fields "capture" with
+            | None -> Ok Option.None
+            | Some v -> decodeCaptureSource (path + ".capture") v |> Result.map Some
+
+        match acceptR, labelR, multipleR, disabledR, dropTargetR, acceptPasteR, captureR with
+        | Ok accept, Ok label, Ok multiple, Ok disabled, Ok dropTarget, Ok acceptPaste, Ok capture ->
             Ok
                 { Label = label
                   Accept = accept
@@ -6121,13 +6143,15 @@ let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpe
                      | None -> Option.None)
                   Disabled = disabled
                   AcceptPaste = acceptPaste
-                  DropTarget = dropTarget }
-        | Error e, _, _, _, _, _
-        | _, Error e, _, _, _, _
-        | _, _, Error e, _, _, _
-        | _, _, _, Error e, _, _
-        | _, _, _, _, Error e, _
-        | _, _, _, _, _, Error e -> Error e
+                  DropTarget = dropTarget
+                  Capture = capture }
+        | Error e, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _
+        | _, _, Error e, _, _, _, _
+        | _, _, _, Error e, _, _, _
+        | _, _, _, _, Error e, _, _
+        | _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, Error e -> Error e
 
 let private decodeInputKind (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
     match requireObject path j with
@@ -8932,6 +8956,13 @@ module Coerce =
     /// `UpdateProp` switches a surface between blocking and anchored exactly as
     /// one switches a scroll axis.
     let tryModalityKind (v: obj) : Result<ModalityKind, string> = viaJson decodeModalityKind v
+
+    /// Phase 1116 — `FileUploadSpec.Capture`. An OPTION coercion, so a `null`
+    /// clears the declaration back to the ordinary picker and a string names a
+    /// device; an unrecognised string is the decoder's own refusal rather than a
+    /// silent clear, which is the difference between "no device" and "a device I
+    /// could not read".
+    let tryCaptureSourceOption (v: obj) : Result<CaptureSource option, string> = viaJsonOpt decodeCaptureSource v
 
     let tryChartKind (v: obj) : Result<ChartKind, string> = viaJson decodeChartKind v
 
