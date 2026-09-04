@@ -24,6 +24,10 @@
   Switches stack: -SkipFormat / -SkipBuild / -SkipTests for fast iteration
   loops inside the verify mode.
 
+  "Every Expecto suite" means the roster declared in `test-suites.json`, which
+  `Build.fs`'s `Test` target reads too — so this script and the FAKE pipeline
+  run the same suites in the same order, and cannot drift apart.
+
 .EXAMPLE
   pwsh ./run.ps1
 
@@ -81,16 +85,35 @@ if ($Demo) {
 $config = if ($env:FUARAN_BUILD_CONFIGURATION) { $env:FUARAN_BUILD_CONFIGURATION } else { "Release" }
 
 $sln = "Fuaran.sln"
-$testProjects = @(
-    "src/Fuaran.UI.Tests/Fuaran.UI.Tests.fsproj"
-    "src/Fuaran.UI.Ops.Tests/Fuaran.UI.Ops.Tests.fsproj"
-    "src/Fuaran.UI.AiTools.Tests/Fuaran.UI.AiTools.Tests.fsproj"
-    "src/Fuaran.UI.Validator.Tests/Fuaran.UI.Validator.Tests.fsproj"
-    "src/Fuaran.UI.JsonDecode.Tests/Fuaran.UI.JsonDecode.Tests.fsproj"
-    "src/Fuaran.UI.OpStream.Tests/Fuaran.UI.OpStream.Tests.fsproj"
-    "src/Fuaran.UI.LayoutObserver.Tests/Fuaran.UI.LayoutObserver.Tests.fsproj"
-    "src/Fuaran.UI.Telemetry.Tests/Fuaran.UI.Telemetry.Tests.fsproj"
-)
+
+# ─── The test-suite roster ───────────────────────────────────────────
+# DECLARED ONCE, in `test-suites.json` at the repo root, and read by BOTH entry
+# points: this script and `Build.fs`'s `Test` target (what CI runs).
+#
+# It used to be declared twice — thirty entries in `Build.fs`, eight here — and
+# the two lists drifted, as two hand-maintained copies of one roster will. The
+# DAG op-stream, FastPath, server-driven, IDL, analyzer and veneer-conformance
+# suites all ran in the FAKE target and in CI while this script, which is the
+# gate other tooling invokes, never saw them: a break in any of them was green
+# locally and red only on a push. One file read by both cannot diverge.
+#
+# `requiresCorpus` (default false) marks a suite that loads the wire-format
+# conformance corpus from a sibling of this repo. In a single-repo checkout that
+# corpus is absent and the suite crashes at startup, so it is skipped by name —
+# never silently, and never treated as a pass.
+$manifestPath = Join-Path $PSScriptRoot "test-suites.json"
+if (-not (Test-Path $manifestPath)) {
+    Write-Error "test-suites.json not found at $manifestPath — the test roster cannot be read."
+    exit 1
+}
+$testSuites = @((Get-Content -Raw -Path $manifestPath | ConvertFrom-Json).suites)
+if ($testSuites.Count -eq 0) {
+    # An empty roster would let this gate pass having run nothing, which is the
+    # one failure the shared file exists to make impossible.
+    Write-Error "test-suites.json ($manifestPath) lists no suites."
+    exit 1
+}
+$corpusPresent = Test-Path (Join-Path $PSScriptRoot "../wire-format-fixtures/manifest.json")
 
 Write-Step "dotnet tool restore"
 dotnet tool restore
@@ -112,7 +135,15 @@ if (-not $SkipBuild) {
 }
 
 if (-not $SkipTests) {
-    foreach ($project in $testProjects) {
+    foreach ($suite in $testSuites) {
+        $project = $suite.project
+
+        if ($suite.requiresCorpus -and -not $corpusPresent) {
+            Write-Step "SKIPPING $project"
+            Write-Host "wire-format-fixtures corpus absent (single-repo checkout; conformance runs where the workspace corpus is present)." -ForegroundColor Yellow
+            continue
+        }
+
         Write-Step "Expecto: $project"
         # Expecto console runner — `dotnet run --project`, NOT `dotnet test`
         # (`dotnet test` silently no-ops on Expecto consoles).

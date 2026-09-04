@@ -8,160 +8,86 @@ open Fake.IO
 let private repoRoot = __SOURCE_DIRECTORY__
 let private solution = Path.Combine(repoRoot, "Fuaran.sln")
 
-let private testProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Tests", "Fuaran.UI.Tests.fsproj")
+// ─── The test-suite roster ───────────────────────────────────────────
+//
+// DECLARED ONCE, in `test-suites.json` at the repo root, and read by BOTH entry
+// points: the `Test` target below, and `run.ps1`.
+//
+// It used to be declared twice — thirty entries here, eight in `run.ps1` — and
+// the two lists drifted, as two hand-maintained copies of one roster will. The
+// DAG op-stream, FastPath, server-driven, IDL, analyzer and veneer-conformance
+// suites all ran here and in CI while `run.ps1` — the gate other tooling invokes
+// — never saw them, so a break in any of them was green locally and red only on
+// a push, attached to whatever change happened to be carrying it. One file read
+// by both cannot diverge; a second list, however carefully written, will.
+//
+// `requiresCorpus` marks a suite that loads the wire-format conformance corpus
+// from a sibling of this repo. In a single-repo checkout (e.g. the
+// publish-packages workflow) that corpus is absent and the suite crashes at
+// startup, so those are skipped LOUDLY rather than run — full conformance in a
+// workspace checkout, a named skip in a bare one. The corpus-present path leaves
+// each suite's own fail-loud-if-absent contract intact.
 
-let private opsTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Ops.Tests", "Fuaran.UI.Ops.Tests.fsproj")
+type private TestSuite =
+    { Project: string
+      RequiresCorpus: bool }
 
-let private aiToolsTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.AiTools.Tests", "Fuaran.UI.AiTools.Tests.fsproj")
+let private readTestSuites () =
+    let manifestPath = Path.Combine(repoRoot, "test-suites.json")
+
+    if not (File.Exists manifestPath) then
+        failwithf "test-suites.json not found at %s — the test roster cannot be read." manifestPath
+
+    use doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText manifestPath)
+
+    let suites =
+        match doc.RootElement.TryGetProperty "suites" with
+        | true, entries -> entries
+        | _ -> failwithf "test-suites.json (%s) has no `suites` array." manifestPath
+
+    let parsed =
+        [ for entry in suites.EnumerateArray() ->
+              let relative =
+                  match entry.GetProperty("project").GetString() with
+                  | null -> failwithf "test-suites.json (%s) has an entry with no `project`." manifestPath
+                  | value -> value
+
+              { Project = Path.Combine(repoRoot, relative.Replace('/', Path.DirectorySeparatorChar))
+                RequiresCorpus =
+                  match entry.TryGetProperty "requiresCorpus" with
+                  | true, flag -> flag.GetBoolean()
+                  | _ -> false } ]
+
+    // An empty roster would let the gate pass having run nothing, which is the
+    // one failure this file exists to make impossible.
+    if List.isEmpty parsed then
+        failwithf "test-suites.json (%s) lists no suites." manifestPath
+
+    parsed
+
+let private testSuites = readTestSuites ()
+
+/// The absolute path of the rostered suite whose project file bears this name.
+/// The targets that run ONE suite on its own (`SsrParity`, `DomPatchCorpus`)
+/// resolve it through the roster rather than re-deriving the path, so a suite
+/// that moves moves in exactly one place — and naming one that is not rostered
+/// fails at startup rather than running a target that tests nothing.
+let private rosteredSuite (projectFileName: string) =
+    match
+        testSuites
+        |> List.tryFind (fun suite -> Path.GetFileName suite.Project = projectFileName)
+    with
+    | Some suite -> suite.Project
+    | None -> failwithf "test-suites.json does not list %s." projectFileName
 
 let private validatorProject =
     Path.Combine(repoRoot, "src", "Fuaran.UI.Validator", "Fuaran.UI.Validator.fsproj")
 
-let private validatorTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Validator.Tests", "Fuaran.UI.Validator.Tests.fsproj")
-
-let private opStreamTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.OpStream.Tests", "Fuaran.UI.OpStream.Tests.fsproj")
-
-// Phase 178 — branching op-stream DAG (opt-in, rung-4). Its own test project so
-// the DAG suite runs alongside the linear op-stream suite without coupling the
-// linear consumers to the DAG packages.
-let private dagOpStreamTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.OpStream.Dag.Tests", "Fuaran.UI.OpStream.Dag.Tests.fsproj")
-
-// Phase 186 — DAG-aware op-stream inspector substrate suite (render model +
-// audition + overlay + arbitrary-coordinate diff).
-let private dagInspectTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.OpStream.Dag.Inspect.Tests", "Fuaran.UI.OpStream.Dag.Inspect.Tests.fsproj")
-
-let private layoutObserverTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.LayoutObserver.Tests", "Fuaran.UI.LayoutObserver.Tests.fsproj")
-
-let private styleObserverTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.StyleObserver.Tests", "Fuaran.UI.StyleObserver.Tests.fsproj")
-
-let private themeManifestTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.ThemeManifest.Tests", "Fuaran.UI.ThemeManifest.Tests.fsproj")
-
-let private telemetryTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Telemetry.Tests", "Fuaran.UI.Telemetry.Tests.fsproj")
-
-let private fastPathTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.FastPath.Tests", "Fuaran.UI.FastPath.Tests.fsproj")
-
-let private jsonDecodeTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.JsonDecode.Tests", "Fuaran.UI.JsonDecode.Tests.fsproj")
-
 let private serverRenderTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Renderer.Server.Tests", "Fuaran.UI.Renderer.Server.Tests.fsproj")
-
-let private rendererWebTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Renderer.Web.Tests", "Fuaran.UI.Renderer.Web.Tests.fsproj")
+    rosteredSuite "Fuaran.UI.Renderer.Server.Tests.fsproj"
 
 let private serverDrivenTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.ServerDriven.Tests", "Fuaran.UI.ServerDriven.Tests.fsproj")
-
-let private serverDrivenAspNetCoreTestProject =
-    Path.Combine(
-        repoRoot,
-        "src",
-        "Fuaran.UI.ServerDriven.AspNetCore.Tests",
-        "Fuaran.UI.ServerDriven.AspNetCore.Tests.fsproj"
-    )
-
-let private serverDrivenWebSocketTestProject =
-    Path.Combine(
-        repoRoot,
-        "src",
-        "Fuaran.UI.ServerDriven.WebSocket.Tests",
-        "Fuaran.UI.ServerDriven.WebSocket.Tests.fsproj"
-    )
-
-let private giraffeTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Giraffe.Tests", "Fuaran.UI.Giraffe.Tests.fsproj")
-
-// Host-neutral validated-exemplar seam (decodeExemplar + 3-gate integrity).
-// Corpus-independent — builds a node, encodes, and checks the round-trip
-// fixed point; runs unconditionally (single-repo checkout included).
-let private contentTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Content.Tests", "Fuaran.UI.Content.Tests.fsproj")
-
-// Phase 380 — the certified fragment library. Drives every entry in
-// `Stdlib.all` through the Phase 359 certification floor (valid-for-all-bindings
-// over each fragment's hole-space) plus the template / reference consistency
-// checks. Corpus-independent — the wire fixtures for the same fragments live in
-// the shared corpus and are gated by the JsonDecode suite; this one runs
-// unconditionally, single-repo checkout included.
-let private fragmentsTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Fragments.Tests", "Fuaran.UI.Fragments.Tests.fsproj")
-
-// Page-set layer (SitePage + SiteCheck + Nav projection + RenderPlan + static-
-// export planning). Pure + corpus-independent — runs unconditionally.
-let private siteTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Site.Tests", "Fuaran.UI.Site.Tests.fsproj")
-
-// Phase 205 — structure-only clean room (content-free skeleton projection +
-// structural-op gate + audit). Pure + Fable-clean; no workspace corpus needed.
-let private cleanRoomTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Ops.CleanRoom.Tests", "Fuaran.UI.Ops.CleanRoom.Tests.fsproj")
-
-// Phase 169 — catalog wire-JSON round-trip guard. Compile-links the catalog's
-// Matrix.fs and asserts every entry's canonical JSON decodes back through the
-// canonical decoder, so the "the JSON shown next to the render is real" promise
-// is build-time-checked, not hand-maintained. No corpus dependency — runs
-// unconditionally (single-repo checkout included).
-let private catalogTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Catalog.Tests", "Fuaran.UI.Catalog.Tests.fsproj")
-
-// Phase 1181 — the generated-layer drift guard, in-process. Regenerates
-// src/Fuaran.UI/Generated.fs from this repo's own idl.json + support.json through
-// the packaged IDL engine and byte-compares. It replaced a hand-run byte-copy from
-// a sibling Fuaran-Core checkout, which is why it reads nothing outside this repo
-// and fails (never skips) if it cannot find its inputs. No corpus dependency —
-// runs unconditionally, single-repo checkout included.
-let private idlTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Idl.Tests", "Fuaran.UI.Idl.Tests.fsproj")
-
-// Phase 172 — C# fluent-builder authoring-shape PoC (§4e evidence). A console
-// harness that proves C#-authored Fuaran trees encode byte-identically to the
-// corpus. PoC posture: under samples/, deletable without touching any shipped
-// suite; runs in the Test target as a wire-identity gate (exit non-zero on
-// divergence).
-let private csharpAuthoringPocProject =
-    Path.Combine(repoRoot, "samples", "csharp-authoring-poc", "Fuaran.UI.CSharp.Poc.csproj")
-
-// Phase 306 — the C# authoring veneer's corpus-conformance suite (the supportable
-// promotion of the PoC's byte-compare harness). Console-Exe, gated on the
-// workspace corpus like the JsonDecode + PoC suites.
-let private csharpConformanceTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.CSharp.Conformance.Tests", "Fuaran.UI.CSharp.Conformance.Tests.csproj")
-
-// Phase 314 — the Roslyn analyzer's test suite (drives the analyzer over source
-// snippets). Corpus-independent, so it runs unconditionally.
-let private analyzerTestProject =
-    Path.Combine(repoRoot, "src", "Fuaran.UI.Analyzers.Tests", "Fuaran.UI.Analyzers.Tests.csproj")
-
-// Phase 315 — the VB XML-literal analyzer's test suite. Corpus-independent.
-let private vbAnalyzerTestProject =
-    Path.Combine(
-        repoRoot,
-        "src",
-        "Fuaran.UI.Analyzers.VisualBasic.Tests",
-        "Fuaran.UI.Analyzers.VisualBasic.Tests.csproj"
-    )
-
-// Phase 312 — the VB XML-literal veneer's corpus-conformance suite (a VB console
-// runner, since XML literals are a VB language feature). Corpus-gated.
-let private vbConformanceTestProject =
-    Path.Combine(
-        repoRoot,
-        "src",
-        "Fuaran.UI.VisualBasic.Conformance.Tests",
-        "Fuaran.UI.VisualBasic.Conformance.Tests.vbproj"
-    )
+    rosteredSuite "Fuaran.UI.ServerDriven.Tests.fsproj"
 
 // Phase 169 — the public component-reference catalog. Its static site is a
 // Fable transpile of these sources followed by a Vite bundle; the Vite half
@@ -528,76 +454,23 @@ let private registerTargets (args: string array) =
         dotnet [ "build"; solution; "-c"; configuration ] repoRoot)
 
     Target.create "Test" (fun _ ->
-        dotnet [ "run"; "--project"; testProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; opsTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; aiToolsTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; fastPathTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; validatorTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; opStreamTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; dagOpStreamTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; dagInspectTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; layoutObserverTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; styleObserverTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; themeManifestTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; telemetryTestProject; "-c"; configuration ] repoRoot
-
-        // The JsonDecode conformance suite loads the wire-format-fixtures corpus
-        // from the workspace root (a sibling of this repo). In a single-repo CI
-        // checkout (e.g. the publish-packages workflow) that corpus is absent and
-        // the suite crashes at startup. Run it only when the corpus is present —
-        // full conformance locally / in a workspace checkout, gracefully skipped
-        // in a bare single-repo checkout. The corpus-present path keeps the
-        // suite's own fail-loud-if-absent contract intact.
+        // The roster is `test-suites.json` — see the block at the head of this
+        // file. `run.ps1` reads the same file, in the same order, with the same
+        // corpus gate, so the two entry points cannot run different sets.
         let corpusManifest =
             Path.Combine(repoRoot, "..", "wire-format-fixtures", "manifest.json")
 
-        if File.Exists corpusManifest then
-            dotnet [ "run"; "--project"; jsonDecodeTestProject; "-c"; configuration ] repoRoot
-        else
-            Trace.traceImportant
-                "SKIPPING Fuaran.UI.JsonDecode.Tests — wire-format-fixtures corpus absent (single-repo checkout; conformance runs where the workspace corpus is present)."
+        let corpusPresent = File.Exists corpusManifest
 
-        dotnet [ "run"; "--project"; serverRenderTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; rendererWebTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; serverDrivenTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; serverDrivenAspNetCoreTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; serverDrivenWebSocketTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; giraffeTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; contentTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; fragmentsTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; siteTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; cleanRoomTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; catalogTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; idlTestProject; "-c"; configuration ] repoRoot
-
-        // The C# authoring PoC emits canonical nodes against the workspace
-        // wire-format-fixtures corpus, so it too needs the workspace checkout —
-        // skip it in a single-repo checkout for the same reason as the
-        // JsonDecode suite above.
-        if File.Exists corpusManifest then
-            dotnet [ "run"; "--project"; csharpAuthoringPocProject; "-c"; configuration ] repoRoot
-        else
-            Trace.traceImportant
-                "SKIPPING Fuaran.UI.CSharp.Poc — wire-format-fixtures corpus absent (single-repo checkout)."
-
-        // The C# authoring veneer's corpus-conformance suite (Phase 306) — same
-        // workspace-corpus gate as the PoC + JsonDecode suites.
-        if File.Exists corpusManifest then
-            dotnet [ "run"; "--project"; csharpConformanceTestProject; "-c"; configuration ] repoRoot
-        else
-            Trace.traceImportant
-                "SKIPPING Fuaran.UI.CSharp.Conformance.Tests — wire-format-fixtures corpus absent (single-repo checkout)."
-
-        // The Roslyn analyzer's tests are corpus-independent — always run.
-        dotnet [ "run"; "--project"; analyzerTestProject; "-c"; configuration ] repoRoot
-        dotnet [ "run"; "--project"; vbAnalyzerTestProject; "-c"; configuration ] repoRoot
-
-        // The VB XML-literal veneer's corpus-conformance suite — same corpus gate.
-        if File.Exists corpusManifest then
-            dotnet [ "run"; "--project"; vbConformanceTestProject; "-c"; configuration ] repoRoot
-        else
-            Trace.traceImportant
-                "SKIPPING Fuaran.UI.VisualBasic.Conformance.Tests — wire-format-fixtures corpus absent (single-repo checkout).")
+        for suite in testSuites do
+            if suite.RequiresCorpus && not corpusPresent then
+                Trace.traceImportant (
+                    sprintf
+                        "SKIPPING %s — wire-format-fixtures corpus absent (single-repo checkout; conformance runs where the workspace corpus is present)."
+                        (Path.GetFileNameWithoutExtension suite.Project)
+                )
+            else
+                dotnet [ "run"; "--project"; suite.Project; "-c"; configuration ] repoRoot)
 
     Target.create "Validate" (fun _ ->
         let srcDir = Path.Combine(repoRoot, "src")

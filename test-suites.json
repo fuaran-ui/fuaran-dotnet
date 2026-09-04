@@ -1,0 +1,129 @@
+{
+  "kind": "testSuites",
+  "comment": [
+    "The repo's test-suite roster, DECLARED ONCE and read by BOTH entry points: the FAKE",
+    "`Test` target in Build.fs (`dotnet run --project Build.fsproj -- Test`) and `run.ps1`.",
+    "Order is significant and is the order both run them in.",
+    "",
+    "`project` is repo-relative and forward-slashed; both readers normalise separators.",
+    "`requiresCorpus` (default false) marks a suite that loads the wire-format conformance",
+    "corpus from a sibling of this repo: present in a workspace checkout, absent in a",
+    "single-repo checkout (e.g. the publish-packages workflow), where the suite would crash",
+    "at startup. Both readers skip those loudly rather than run them.",
+    "`note` is documentation only — no reader consults it."
+  ],
+  "suites": [
+    {
+      "project": "src/Fuaran.UI.Tests/Fuaran.UI.Tests.fsproj",
+      "note": "Language-tier integration tests, including the generated-layer coverage assertions over the corpus as a set."
+    },
+    {
+      "project": "src/Fuaran.UI.Ops.Tests/Fuaran.UI.Ops.Tests.fsproj"
+    },
+    {
+      "project": "src/Fuaran.UI.AiTools.Tests/Fuaran.UI.AiTools.Tests.fsproj"
+    },
+    {
+      "project": "src/Fuaran.UI.FastPath.Tests/Fuaran.UI.FastPath.Tests.fsproj",
+      "note": "Phase 512 — the public signature-searchable pattern bank (engine + domain-neutral seed catalogue)."
+    },
+    {
+      "project": "src/Fuaran.UI.Validator.Tests/Fuaran.UI.Validator.Tests.fsproj"
+    },
+    {
+      "project": "src/Fuaran.UI.OpStream.Tests/Fuaran.UI.OpStream.Tests.fsproj"
+    },
+    {
+      "project": "src/Fuaran.UI.OpStream.Dag.Tests/Fuaran.UI.OpStream.Dag.Tests.fsproj",
+      "note": "Phase 178 — branching op-stream DAG (opt-in, rung-4). Its own project so the DAG suite runs alongside the linear op-stream suite without coupling the linear consumers to the DAG packages."
+    },
+    {
+      "project": "src/Fuaran.UI.OpStream.Dag.Inspect.Tests/Fuaran.UI.OpStream.Dag.Inspect.Tests.fsproj",
+      "note": "Phase 186 — DAG-aware op-stream inspector substrate (render model + audition + overlay + arbitrary-coordinate diff)."
+    },
+    {
+      "project": "src/Fuaran.UI.LayoutObserver.Tests/Fuaran.UI.LayoutObserver.Tests.fsproj"
+    },
+    {
+      "project": "src/Fuaran.UI.StyleObserver.Tests/Fuaran.UI.StyleObserver.Tests.fsproj"
+    },
+    {
+      "project": "src/Fuaran.UI.ThemeManifest.Tests/Fuaran.UI.ThemeManifest.Tests.fsproj"
+    },
+    {
+      "project": "src/Fuaran.UI.Telemetry.Tests/Fuaran.UI.Telemetry.Tests.fsproj"
+    },
+    {
+      "project": "src/Fuaran.UI.JsonDecode.Tests/Fuaran.UI.JsonDecode.Tests.fsproj",
+      "requiresCorpus": true,
+      "note": "The wire-format conformance suite. Its own fail-loud-if-absent contract is intact on the corpus-present path; the gate here decides whether to invoke it at all."
+    },
+    {
+      "project": "src/Fuaran.UI.Renderer.Server.Tests/Fuaran.UI.Renderer.Server.Tests.fsproj",
+      "note": "Phase 142 — the SSR client/server class+ARIA parity corpus. Also runnable on its own via the `SsrParity` target."
+    },
+    {
+      "project": "src/Fuaran.UI.Renderer.Web.Tests/Fuaran.UI.Renderer.Web.Tests.fsproj"
+    },
+    {
+      "project": "src/Fuaran.UI.ServerDriven.Tests/Fuaran.UI.ServerDriven.Tests.fsproj",
+      "note": "Phase 158 QW6 — the golden TreeOp -> DomPatch lowering corpus. Also runnable on its own via the `DomPatchCorpus` target."
+    },
+    {
+      "project": "src/Fuaran.UI.ServerDriven.AspNetCore.Tests/Fuaran.UI.ServerDriven.AspNetCore.Tests.fsproj"
+    },
+    {
+      "project": "src/Fuaran.UI.ServerDriven.WebSocket.Tests/Fuaran.UI.ServerDriven.WebSocket.Tests.fsproj"
+    },
+    {
+      "project": "src/Fuaran.UI.Giraffe.Tests/Fuaran.UI.Giraffe.Tests.fsproj"
+    },
+    {
+      "project": "src/Fuaran.UI.Content.Tests/Fuaran.UI.Content.Tests.fsproj",
+      "note": "Host-neutral validated-exemplar seam (decodeExemplar + 3-gate integrity). Corpus-independent — builds a node, encodes, and checks the round-trip fixed point."
+    },
+    {
+      "project": "src/Fuaran.UI.Fragments.Tests/Fuaran.UI.Fragments.Tests.fsproj",
+      "note": "Phase 380 — the certified fragment library. Drives every entry in `Stdlib.all` through the Phase 359 certification floor plus the template / reference consistency checks. The wire fixtures for the same fragments live in the shared corpus and are gated by the JsonDecode suite; this one runs unconditionally."
+    },
+    {
+      "project": "src/Fuaran.UI.Site.Tests/Fuaran.UI.Site.Tests.fsproj",
+      "note": "Page-set layer (SitePage + SiteCheck + Nav projection + RenderPlan + static-export planning). Pure + corpus-independent."
+    },
+    {
+      "project": "src/Fuaran.UI.Ops.CleanRoom.Tests/Fuaran.UI.Ops.CleanRoom.Tests.fsproj",
+      "note": "Phase 205 — structure-only clean room (content-free skeleton projection + structural-op gate + audit). Pure + Fable-clean."
+    },
+    {
+      "project": "src/Fuaran.UI.Catalog.Tests/Fuaran.UI.Catalog.Tests.fsproj",
+      "note": "Phase 169 — catalog wire-JSON round-trip guard. Compile-links the catalog's Matrix.fs and asserts every entry's canonical JSON decodes back through the canonical decoder, so the \"the JSON shown next to the render is real\" promise is build-time-checked."
+    },
+    {
+      "project": "src/Fuaran.UI.Idl.Tests/Fuaran.UI.Idl.Tests.fsproj",
+      "note": "Phase 1181 — the generated-layer drift guard, in-process. Regenerates src/Fuaran.UI/Generated.fs from this repo's own idl.json + support.json through the packaged IDL engine and byte-compares. Reads nothing outside this repo and fails (never skips) if it cannot find its inputs."
+    },
+    {
+      "project": "samples/csharp-authoring-poc/Fuaran.UI.CSharp.Poc.csproj",
+      "requiresCorpus": true,
+      "note": "Phase 172 — C# fluent-builder authoring-shape PoC. A console harness that proves C#-authored trees encode byte-identically to the corpus; runs as a wire-identity gate (exit non-zero on divergence)."
+    },
+    {
+      "project": "src/Fuaran.UI.CSharp.Conformance.Tests/Fuaran.UI.CSharp.Conformance.Tests.csproj",
+      "requiresCorpus": true,
+      "note": "Phase 306 — the C# authoring veneer's corpus-conformance suite (the supportable promotion of the PoC's byte-compare harness)."
+    },
+    {
+      "project": "src/Fuaran.UI.Analyzers.Tests/Fuaran.UI.Analyzers.Tests.csproj",
+      "note": "Phase 314 — the Roslyn analyzer's test suite (drives the analyzer over source snippets). Corpus-independent."
+    },
+    {
+      "project": "src/Fuaran.UI.Analyzers.VisualBasic.Tests/Fuaran.UI.Analyzers.VisualBasic.Tests.csproj",
+      "note": "Phase 315 — the VB XML-literal analyzer's test suite. Corpus-independent."
+    },
+    {
+      "project": "src/Fuaran.UI.VisualBasic.Conformance.Tests/Fuaran.UI.VisualBasic.Conformance.Tests.vbproj",
+      "requiresCorpus": true,
+      "note": "Phase 312 — the VB XML-literal veneer's corpus-conformance suite (a VB console runner, since XML literals are a VB language feature)."
+    }
+  ]
+}
