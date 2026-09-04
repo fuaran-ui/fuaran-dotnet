@@ -63,6 +63,10 @@ module FastPath =
 
     // ── projection: HoleDecl → SigEntry (mirrors Fuaran.Core.Function.signature) ──
 
+    /// The faithful `HoleDecl` → `SigEntry` projection, over every Core hole
+    /// kind. This is the QUERY side's projection — what a caller declares they
+    /// can provide — and it is the shape the shared cross-host
+    /// `function-registry` goldens certify, so it stays total.
     let private sigEntryOf (h: HoleDecl) : SigEntry =
         let kindStr, space, slot, action, required =
             match h.Kind with
@@ -79,9 +83,34 @@ module FastPath =
           Action = action
           Required = required }
 
+    /// True for a hole this tier's builder can actually be given a value for.
+    ///
+    /// `Pattern.Build : Map<string, string> -> Node<unit>` takes scalars, so a
+    /// `SlotHole` — a hole whose argument is a TREE — has no way to be bound
+    /// here. The REGISTERED signature used to advertise one anyway, as a
+    /// REQUIRED `"slot"` entry: a slot-bearing pattern was findable by
+    /// `findBySignature` (a caller offering a slot subsumes it) and then
+    /// uninstantiable, because nothing the caller can pass reaches the slot.
+    ///
+    /// The seam is NARROWED rather than the builder widened — a slot-aware
+    /// builder is a different contract, and nothing in this tier declares a slot
+    /// hole to need one — so a registered signature now states exactly what a
+    /// caller can influence. Note the narrowing is on the REGISTRATION side
+    /// alone: the query side above is the caller's own declaration of context
+    /// and is left faithful.
+    ///
+    /// The contract that keeps a pattern from declaring a hole nothing honours
+    /// is the guard in `Fuaran.UI.FastPath.Tests` — value holes only.
+    let private isBindable (h: HoleDecl) : bool =
+        match h.Kind with
+        | SlotHole _ -> false
+        | ValueHole _
+        | RepeatHole _
+        | ActionHole _ -> true
+
     let private signatureOf (name: string) (holes: HoleDecl list) : Signature =
         { Name = name
-          Holes = holes |> List.map sigEntryOf
+          Holes = holes |> List.filter isBindable |> List.map sigEntryOf
           Effect = Effect.pureDeterministic }
 
     // ── build + search ───────────────────────────────────────────────────────

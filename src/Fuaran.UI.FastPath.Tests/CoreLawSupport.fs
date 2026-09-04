@@ -35,11 +35,14 @@ namespace Fuaran.UI.FastPath.Tests
 //      tree, so the fix is indirection rather than a comparison wrapper.
 //
 //   2. `Pattern.Build : Map<string, string> -> Node<unit>` cannot receive a
-//      TREE, while `FastPath.bank` DOES project a `SlotHole` into the
-//      registered signature (`FastPath.sigEntryOf`). So a slot-bearing pattern
-//      is registerable and searchable but not instantiable. The seed catalogue
-//      declares only value holes today, so nothing enters that gap — and
-//      `CoreFunctionLawTests` pins that fact so nothing can enter it silently.
+//      TREE. `FastPath.bank` used to project a `SlotHole` into the registered
+//      signature as a REQUIRED entry anyway (`FastPath.sigEntryOf`), which made
+//      a slot-bearing pattern searchable and then uninstantiable. The seam is
+//      NARROWED rather than the builder widened: a slot hole no longer reaches
+//      the registered signature, so the signature states exactly what a caller
+//      can influence, and `CoreFunctionLawTests` states the contract on both
+//      sides — a pattern declares value holes only, and the projection does not
+//      advertise a slot if one ever does.
 //      The composition fixtures below therefore exercise the seam's SIGNATURE
 //      algebra, which is real, and which is what `composeAcross` is about:
 //      hygiene, disjoint-slot commutation, the effect join, and

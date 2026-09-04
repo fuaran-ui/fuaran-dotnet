@@ -4473,7 +4473,7 @@ schema's expression of it, not of the vocabulary.
 
 ## Recorded BREAKING change — 0.74.0, the two-sided merge-conflict envelope and the shared-children merge (fuaran#1497)
 
-**0.74.0 is an unreleased slot and carries more than one change.** §1–§3 are fuaran#1497; §4 onward
+**0.74.0 is an unreleased slot and carries more than one change.** §1–§3 are fuaran#1497; §4 and §5
 are later changes of the same class, recorded here rather than minting a number of their own —
 `<Version>` does not move, because a slot already saying "breaking" says nothing new when another
 breaking change of the same class rides it. Each section names its own subject, and the closing note
@@ -4610,3 +4610,28 @@ restraint and every stand-down are exactly as Phase 1486 left them. The shared c
 metadata only; the hosts' coverage gates read the `code` set, and `message-parity.json`'s
 `mustConvey` groups for FUARAN086 are all still conveyed.
 
+### 5. A FastPath registered signature no longer advertises a slot hole (narrowing)
+
+**BREAKING for a caller relying on `FastPath.bank` registering a `SlotHole` as a required signature
+entry.** `Pattern.Build : Map<string, string> -> Node<unit>` takes scalars, so a `SlotHole` — whose
+argument is a TREE — has no way to be bound through this seam. The registered signature advertised
+one anyway, as a REQUIRED `"slot"` entry, which made a slot-bearing pattern findable by
+`findBySignature` and then uninstantiable: the only caller who could find it was one offering a slot
+they then had no way to pass in.
+
+The seam is NARROWED rather than the builder widened. A slot-aware builder is a different contract,
+and neither the public seed catalogue nor any bank in this repo declares a slot hole to need one, so
+widening would be paying for a capability nothing asks for. A registered signature now states
+exactly what a caller can influence.
+
+  * **The narrowing is on the REGISTRATION side alone.** `FastPath.find` projects the caller's OWN
+    declared context, which is a different statement — "here is what I have" — and is the shape the
+    shared cross-host `function-registry/goldens.json` certifies five ways. It is unchanged, and the
+    goldens leg is the reason to say so rather than leave it inferred.
+
+  * **The contract is stated on both sides in `Fuaran.UI.FastPath.Tests`**: a pattern declares value
+    holes only (the Phase 1478 guard, now the statement of the contract rather than an observation
+    about today's catalogue), and the projection does not advertise a slot if one ever does.
+
+`SeedCatalogue.fs` is untouched: graduating a slot-bearing pattern into the public seed is a separate
+decision, and this change neither makes nor pre-empts it.
