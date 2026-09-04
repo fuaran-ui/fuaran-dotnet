@@ -424,3 +424,473 @@ let tests =
                   |> List.map (fun r -> sprintf "  %s — %A" r.Law r.Counterexample)
                   |> String.concat "\n"
                   |> failtestf "StreamEntry witness failed certifyStream:\n%s" ]
+
+// ============================================================================
+//  Phase 1481 — the columnar law families, run in this tier's suite.
+//
+//  All FOUR are SELF-CONTAINED `(seed, iterations)` entry points in the pinned
+//  0.18.0 kit: `columnarOpLaws`, `columnarValidatorLaws`, `aggregateParityLaws`
+//  and `schemaWalkLaws` each build their own Core tables and pipelines and take
+//  no consumer witness, so none of them can be instantiated "over the tier's
+//  own X" in the literal sense. Running them here is real evidence — that the
+//  PINNED kit's contract holds on this machine at this pin — and it is evidence
+//  about the pin, not about the tier. That is what the census rows record, and
+//  the port names each family itself so the row cannot overstate its reach.
+//
+//  Beside each, where the tier has a genuine surface the family's property
+//  should hold over, a SEPARATE tier-shaped test asserts that property
+//  DIRECTLY, using Core's public `Column` / `DataFrame` / `SchemaWalk` surfaces
+//  rather than a wrapper pretending the law took the tier's input:
+//
+//   * `columnarOpLaws` — the tier's one production `Column.create` authoring
+//     surface is `RetrievalSource.Hit.toTable`. The op algebra the family
+//     certifies (`Fuaran.Core.Column.Ops`) has NO call site in this tier at
+//     all — nothing here edits a table through a table-edit op — so what is
+//     asserted is the precondition that algebra rests on and this tier can
+//     actually break: the columns that surface builds are well-formed against
+//     the schema it declares.
+//   * `aggregateParityLaws` — Core's aggregate entry point likewise has no
+//     direct call site here, but the tier DOES reach Core's aggregation through
+//     `QueryRefine.refineLocally` -> `DataFrame.evalPipeline`. So the parity
+//     property is asserted over a column the TIER authored rather than one Core
+//     generated. Only the parity half has a tier instance: `Hit.toTable` is
+//     total and emits no `Null`, so the law's null-skip half has no shape here.
+//   * `columnarValidatorLaws` — `Fuaran.UI.Validator` ships no columnar rule
+//     (its grid checks are CSS `grid-template-columns` and AST row types), and
+//     nothing in this repo registers a Core columnar validator. The tier's real
+//     columnar-validation rule is FUARAN114 (Phase 1149) in
+//     `PreEmitValidate.fs`: it grounds a grid's column `field` / `rowKeyField`
+//     against the schema of the `Table` the grid reads. The same two properties
+//     the law certifies for Core's validator — determinism, and a defect count
+//     equal to the injected-fault count — are asserted over that rule.
+//   * `schemaWalkLaws` — nothing in this repo calls the schema walk yet. The
+//     rule above derives its column set by hand from an EMPTY pipeline, and its
+//     own doc comment records the widening as waiting on a pin that carries the
+//     walk. That pin arrived: 0.18.0 ships it. So the agreement the widening
+//     would rest on is asserted here — the walk against the rule's window, and
+//     the walk against the schema the tier's OWN refinement evaluator produces
+//     for the pipelines the rule currently stands down on. Widening the shipped
+//     rule is a change to what FUARAN114 reports and is deliberately not made
+//     here.
+// ============================================================================
+
+module Columnar =
+
+    open Fuaran.Core
+
+    /// One seed for every family and every tier-shaped test below, so a failure
+    /// anywhere reproduces from a single number.
+    let private lawSeed = 20260904
+
+    let private assertAllPassed (context: string) (results: Fuaran.Core.LawResult list) =
+        let failures = results |> List.filter (fun r -> not r.Passed)
+
+        if not (List.isEmpty failures) then
+            failures
+            |> List.map (fun r -> sprintf "  %s — %A" r.Law r.Counterexample)
+            |> String.concat "\n"
+            |> failtestf "%s failed:\n%s" context
+
+    // -----------------------------------------------------------------------
+    //  the tier's own columnar surfaces
+    // -----------------------------------------------------------------------
+
+    /// A seed-replayable sample of retrieval hits — the input to the tier's one
+    /// production `Column.create` authoring surface.
+    let private genHits (n: int) (rng: CoreRng.T) : Fuaran.UI.RetrievalSource.Hit list * CoreRng.T =
+        let mutable r = rng
+
+        let mkHit (i: int) (score: float) : Fuaran.UI.RetrievalSource.Hit =
+            { Score = score
+              Title = sprintf "t%d" i
+              Snippet = sprintf "s%d" i
+              SourceId = sprintf "doc-%d" (i % 3)
+              Date = sprintf "2026-01-%02d" ((i % 28) + 1) }
+
+        let hits =
+            [ for i in 1..n ->
+                  let s, r1 = CoreRng.intBelow 1000 r
+                  r <- r1
+                  mkHit i (float s * 0.001) ]
+
+        hits, r
+
+    /// The three-column table the grid rule and the schema walk are exercised
+    /// over. Deliberately wider than the one-column fixture the shipped
+    /// FUARAN114 tests use, so a pipeline can drop columns as well as add them.
+    let private deptTable: Table =
+        { Schema = [ "dept", StringType; "headcount", IntType; "spend", FloatType ]
+          Columns =
+            [ Column.create "dept" StringType [ Str "eng"; Str "ops"; Str "eng" ]
+              Column.create "headcount" IntType [ Int 12; Int 3; Int 7 ]
+              Column.create "spend" FloatType [ Float 100.0; Float 25.5; Float 60.25 ] ] }
+
+    let private deptNames = deptTable.Schema |> List.map fst
+
+    /// A `DataGrid` naming `columnFields` as its column fields and `rowKeyField`
+    /// as its row key, reading `source`. The same shape the shipped FUARAN114
+    /// tests build; repeated here rather than shared because those fixtures are
+    /// private to their own file and a test project cannot reference another.
+    let private gridNamingFields
+        (columnFields: string list)
+        (rowKeyField: string option)
+        (source: Fuaran.UI.Types.Binding<Fuaran.UI.Types.Row seq>)
+        : Fuaran.UI.Types.Node<obj> =
+        { Id = "grid"
+          Kind =
+            Fuaran.UI.Types.NodeKind.DataGrid(
+                { SortStateKey = None
+                  PageSize = None
+                  PageStateKey = None
+                  EditStateKey = None
+                  DefaultSort = None
+                  Source = source
+                  RowKey = None
+                  RowKeyField = rowKeyField
+                  Columns =
+                    columnFields
+                    |> List.map (fun f ->
+                        { Label = f
+                          Value = None
+                          Field = Some f
+                          Sortable = None
+                          Editable = None
+                          Format = Fuaran.UI.Types.CellFormat.None
+                          Kind = Fuaran.UI.Types.CellKindErased.Text
+                          Width = Fuaran.UI.Types.ColumnWidth.Auto })
+                  OnRowClick = None
+                  Editable = false
+                  Reorderable = false
+                  TransferInKey = None
+                  TransferOutKey = None
+                  StaticRows = None
+                  KeepRowsTogether = false
+                  RepeatHeader = false
+                  Exportable = false }
+            )
+          State = None
+          Style = None
+          Accessibility = None
+          Motion = Fuaran.UI.Defaults.Motion.none
+          ExtraAttributes = None
+          Tooltip = None }
+
+    let private dashboardOf (children: Fuaran.UI.Types.Node<obj> list) =
+        Fuaran.UI.Fuaran.dashboard
+            "root"
+            { Fuaran.UI.Defaults.dashboard<obj> with
+                Children = children }
+
+    /// The grid-field defects a validation of `node` reports, as
+    /// `(nodeId, field)` pairs. Every other defect class is dropped: this is a
+    /// test about ONE rule, and a second rule firing must not read as a
+    /// grounding failure.
+    let private ungroundedOf (node: Fuaran.UI.Types.Node<obj>) =
+        match Fuaran.UI.PreEmitValidate.validate node with
+        | Ok() -> []
+        | Error defects ->
+            defects
+            |> List.choose (fun d ->
+                match d with
+                | Fuaran.UI.PreEmitValidate.PreEmitDefect.GridFieldUngrounded(id, field, _) -> Some(id, field)
+                | _ -> None)
+
+    /// A grid reading `pipeline` over `deptTable`, embedded.
+    let private gridOver (pipeline: Transform list) (columnFields: string list) (rowKeyField: string option) =
+        gridNamingFields
+            columnFields
+            rowKeyField
+            (Fuaran.UI.Types.Binding.Transform(Fuaran.UI.Types.TransformSource.Data(Embedded deptTable), pipeline, None))
+
+    /// Pipelines the tier's own refinement evaluator accepts over `deptTable`.
+    /// Chosen to reach the three schema-shaping directions the walk must model:
+    /// unchanged, appending, and closing.
+    let private refinementMenu: (string * Transform list) list =
+        [ "sort", [ Sort [ "headcount", Asc ] ]
+          "filter", [ Filter(Binary(Gt, Col "headcount", Lit(Int 4))) ]
+          "derive", [ Derive("total", Binary(Add, Col "headcount", Lit(Int 1))) ]
+          "project", [ Project [ "dept", "dept"; "spend", "cost" ] ]
+          "groupBy",
+          [ GroupBy(
+                [ "dept" ],
+                [ { Name = "heads"
+                    Fn = Sum
+                    Of = "headcount" } ]
+            ) ]
+          "derive+project",
+          [ Derive("total", Binary(Add, Col "headcount", Lit(Int 1)))
+            Project [ "dept", "dept"; "total", "total" ] ] ]
+
+    // -----------------------------------------------------------------------
+    //  the tests
+    // -----------------------------------------------------------------------
+
+    [<Tests>]
+    let tests =
+        testList
+            "Core columnar laws (Fuaran.UI)"
+            [
+
+              // ---- self-contained: the pinned kit's own contract -----------
+
+              testCase "the columnar op algebra certifies under Core's columnarOpLaws"
+              <| fun _ ->
+                  // The tier edits no table through a table-edit op — that
+                  // algebra has no call site in this repo — so this is evidence
+                  // about the PIN, recorded as such in the census row's port.
+                  CoreConf.columnarOpLaws lawSeed 100
+                  |> assertAllPassed "columnarOpLaws over the pinned columnar op algebra"
+
+              testCase "the columnar validator certifies under Core's columnarValidatorLaws"
+              <| fun _ ->
+                  // Likewise: nothing here registers a Core columnar validator.
+                  // The tier's own columnar-grounding rule is asserted below.
+                  CoreConf.columnarValidatorLaws lawSeed 100
+                  |> assertAllPassed "columnarValidatorLaws over the pinned columnar validator"
+
+              testCase "aggregate parity certifies under Core's aggregateParityLaws"
+              <| fun _ ->
+                  CoreConf.aggregateParityLaws lawSeed 100
+                  |> assertAllPassed "aggregateParityLaws over the pinned aggregate surface"
+
+              testCase "static output-schema derivation certifies under Core's schemaWalkLaws"
+              <| fun _ ->
+                  CoreConf.schemaWalkLaws lawSeed 100
+                  |> assertAllPassed "schemaWalkLaws over the pinned schema walk"
+
+              // ---- tier-shaped: the same properties, over the tier ---------
+
+              testCase "the tier's Column authoring surface builds columns well-formed against its own schema"
+              <| fun _ ->
+                  // The precondition every columnar op and every aggregate
+                  // rests on, and the one this tier can actually break:
+                  // `Hit.toTable` writes five columns by hand, so a reordered
+                  // or mistyped cell list is a silent corruption of everything
+                  // downstream. `Table.validate` is Core's own well-formedness
+                  // check (equal lengths, schema/column agreement); the cell
+                  // identity below is what it cannot see.
+                  let mutable rng = CoreRng.ofSeed lawSeed
+
+                  for i in 0..49 do
+                      let n, r1 = CoreRng.intBelow 6 rng
+                      let hits, r2 = genHits (n + 1) r1
+                      rng <- r2
+
+                      let table = Fuaran.UI.RetrievalSource.Hit.toTable hits
+
+                      Expect.equal
+                          (Table.validate table)
+                          (Ok())
+                          (sprintf "iteration %d: the authored table is well-formed" i)
+
+                      Expect.equal
+                          table.Schema
+                          Fuaran.UI.RetrievalSource.hitSchema
+                          (sprintf "iteration %d: the authored table declares the canonical hit schema" i)
+
+                      for j in 0 .. List.length hits - 1 do
+                          let hit = List.item j hits
+
+                          let cellAt name =
+                              match Table.tryColumn name table with
+                              | Some c -> Column.cell j c
+                              | None -> failtestf "iteration %d: the authored table has no column '%s'" i name
+
+                          Expect.equal
+                              (cellAt "score")
+                              (Float hit.Score)
+                              (sprintf "iteration %d row %d: the score cell addresses its own hit" i j)
+
+                          Expect.equal
+                              (cellAt "title")
+                              (Str hit.Title)
+                              (sprintf "iteration %d row %d: the title cell addresses its own hit" i j)
+
+                          Expect.equal
+                              (cellAt "sourceId")
+                              (Str hit.SourceId)
+                              (sprintf "iteration %d row %d: the sourceId cell addresses its own hit" i j)
+
+                          Expect.equal
+                              (cellAt "date")
+                              (Date hit.Date)
+                              (sprintf "iteration %d row %d: the date cell addresses its own hit" i j)
+
+              testCase "aggregating a tier-authored column equals the single-group GroupBy"
+              <| fun _ ->
+                  // `aggregateParityLaws`' parity half, over a column the TIER
+                  // built rather than one Core generated. The law's other half
+                  // (null-skip) has no tier instance: `Hit.toTable` is total and
+                  // emits no `Null`, so there is no fault to skip.
+                  let mutable rng = CoreRng.ofSeed lawSeed
+
+                  let fns = [ Sum; Mean; Min; Max; Count; Median; StdDev; First; Last; CountDistinct ]
+
+                  for i in 0..19 do
+                      let n, r1 = CoreRng.intBelow 6 rng
+                      let hits, r2 = genHits (n + 1) r1
+                      rng <- r2
+
+                      let table = Fuaran.UI.RetrievalSource.Hit.toTable hits
+
+                      let scoreCol =
+                          match Table.tryColumn "score" table with
+                          | Some c -> c
+                          | None -> failtest "the authored table has no score column"
+
+                      for fn in fns do
+                          let direct = Column.aggregate fn scoreCol |> Result.mapError (fun _ -> "aggErr")
+
+                          let viaGroup =
+                              match
+                                  DataFrame.evalPipeline
+                                      [ GroupBy([], [ { Name = "a"; Fn = fn; Of = "score" } ]) ]
+                                      table
+                              with
+                              | Ok t ->
+                                  match Table.tryColumn "a" t with
+                                  | Some ac -> Ok(Column.cell 0 ac)
+                                  | None -> Error "no agg column"
+                              | Error _ -> Error "aggErr"
+
+                          Expect.equal
+                              direct
+                              viaGroup
+                              (sprintf
+                                  "iteration %d fn=%A: aggregating the tier's own column = single-group GroupBy"
+                                  i
+                                  fn)
+
+              testCase "the tier's grid-field rule is deterministic and reports exactly the ungrounded names"
+              <| fun _ ->
+                  // The two properties `columnarValidatorLaws` certifies for
+                  // Core's columnar validator, asserted over the tier's own
+                  // columnar-validation rule (FUARAN114, Phase 1149): the
+                  // verdict is stable on a re-run of the same tree, and the
+                  // defect count equals the injected-fault count — here, the
+                  // number of named fields the source's schema cannot produce.
+                  let mutable rng = CoreRng.ofSeed lawSeed
+                  let ghosts = [ "headcnt"; "id"; "cost"; "region" ]
+                  let mutable groundedSeen = 0
+                  let mutable ungroundedSeen = 0
+
+                  for i in 0..49 do
+                      let nCols, r1 = CoreRng.intBelow 4 rng
+                      let mutable r = r1
+
+                      let draw () =
+                          let useGhost, ra = CoreRng.intBelow 3 r
+                          r <- ra
+
+                          if useGhost = 0 then
+                              let k, rb = CoreRng.intBelow (List.length ghosts) r
+                              r <- rb
+                              List.item k ghosts
+                          else
+                              let k, rb = CoreRng.intBelow (List.length deptNames) r
+                              r <- rb
+                              List.item k deptNames
+
+                      let fields = [ for _ in 0..nCols -> draw () ]
+                      let rowKey = draw ()
+                      rng <- r
+
+                      let node = gridOver [] fields (Some rowKey)
+                      let first = ungroundedOf node
+                      let second = ungroundedOf node
+
+                      Expect.equal first second (sprintf "iteration %d: the grid-field rule is deterministic" i)
+
+                      // Soundness: one defect per NAMED field the schema cannot
+                      // produce — per column entry rather than per distinct
+                      // name, because the author repairs each of them, and the
+                      // rowKeyField counted alongside.
+                      let expected =
+                          (fields @ [ rowKey ])
+                          |> List.filter (fun f -> not (List.contains f deptNames))
+                          |> List.length
+
+                      Expect.equal
+                          (List.length first)
+                          expected
+                          (sprintf "iteration %d: one defect per ungrounded name (fields=%A key=%s)" i fields rowKey)
+
+                      if expected = 0 then
+                          groundedSeen <- groundedSeen + 1
+                      else
+                          ungroundedSeen <- ungroundedSeen + 1
+
+                  // A parity law whose sample never produced one of the two
+                  // verdicts is a green that proves half of what it says — the
+                  // guard `schemaWalkLaws` carries, applied to this sample.
+                  Expect.isGreaterThan groundedSeen 0 "the sample reached a fully-grounded grid"
+                  Expect.isGreaterThan ungroundedSeen 0 "the sample reached an ungrounded grid"
+
+              testCase "the schema walk agrees with the grid rule's window and with the tier's refinement evaluator"
+              <| fun _ ->
+                  // What the widening recorded in FUARAN114's own doc comment
+                  // would rest on, asserted rather than assumed. Two halves:
+                  //
+                  //  1. Over the window the rule DOES cover — an `Embedded`
+                  //     table with an EMPTY pipeline — the walk is closed over
+                  //     exactly the schema the rule reads by hand, and its
+                  //     membership test agrees name-for-name with the rule's
+                  //     accept / refuse.
+                  //  2. Over the pipelines the rule stands DOWN on, the walk's
+                  //     answer agrees with the schema the tier's own refinement
+                  //     evaluator (`QueryRefine.refineLocally`) actually
+                  //     produces — the schema that path re-types a dashboard
+                  //     against, so a walk that disagreed would mistype it.
+                  let emptyWalk = SchemaWalk.ofPipeline deptTable.Schema []
+
+                  Expect.isTrue (SchemaWalk.isClosed emptyWalk) "an empty pipeline closes the schema"
+
+                  Expect.equal
+                      (SchemaWalk.names emptyWalk)
+                      deptNames
+                      "the walk's column set is the one the grid rule reads by hand"
+
+                  for field in deptNames @ [ "headcnt"; "id" ] do
+                      let refused =
+                          gridOver [] [ field ] (Some "dept")
+                          |> ungroundedOf
+                          |> List.exists (fun (_, f) -> f = field)
+
+                      Expect.equal
+                          (not refused)
+                          (SchemaWalk.has field emptyWalk)
+                          (sprintf "the grid rule and the walk's membership test agree about '%s'" field)
+
+                  let mutable closedNonEmpty = 0
+
+                  for name, pipeline in refinementMenu do
+                      match Fuaran.UI.QueryRefine.refineLocally deptTable pipeline (dashboardOf []) with
+                      | Error e -> failtestf "%s: the tier's refinement evaluator rejected the pipeline (%A)" name e
+                      | Ok(refined, _) ->
+                          let derived = SchemaWalk.ofPipeline deptTable.Schema pipeline
+                          let actual = refined.Schema |> List.map fst
+
+                          if SchemaWalk.isClosed derived then
+                              closedNonEmpty <- closedNonEmpty + 1
+
+                              Expect.equal
+                                  (SchemaWalk.names derived)
+                                  actual
+                                  (sprintf "%s: a closed walk names the evaluated schema exactly, in order" name)
+                          else
+                              for n in SchemaWalk.names derived do
+                                  Expect.isTrue
+                                      (List.contains n actual)
+                                      (sprintf "%s: an open walk claims no column the result lacks ('%s')" name n)
+
+                          // And the gap itself, as a live fact rather than a
+                          // comment: the rule stands down here, so a field the
+                          // pipeline cannot produce passes ungrounded.
+                          Expect.isEmpty
+                              (gridOver pipeline [ "no-such-column" ] (Some "dept") |> ungroundedOf)
+                              (sprintf "%s: FUARAN114 stands down on a non-empty pipeline" name)
+
+                  Expect.isGreaterThan
+                      closedNonEmpty
+                      0
+                      "at least one non-empty pipeline the rule stands down on has a closed walk — the widening's whole subject" ]
