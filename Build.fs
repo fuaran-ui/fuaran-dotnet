@@ -432,6 +432,91 @@ let private dotnet args workingDir =
     |> Proc.run
     |> ignore
 
+// ─── Phase 1488 — per-suite output capture in the gate log ─────────────────
+//
+// `dotnet` above INHERITS the child's streams (FAKE traces each process as
+// `In/Out/Err false` — nothing redirected). One suite's output is therefore
+// indistinguishable from the next one's in the gate log: a session asking "how
+// many tests did the OpStream suite run" had to re-parse the raw log guessing
+// where one suite stopped and another started, and a suite that printed nothing
+// at all looked exactly like one that ran.
+//
+// This helper captures the child's stdout+stderr, echoes it verbatim under a
+// banner naming the suite, and prints ONE attributed summary line per suite.
+// Nothing is lost — the whole output is still in the log — and the counts are
+// now attached to the suite that produced them.
+//
+// The cost is that a captured suite prints on completion rather than as it
+// goes. Accepted deliberately for `Test`, where attribution is the point, and
+// taken nowhere else: every other target keeps the streaming `dotnet` above.
+
+/// The ANSI colour codes Expecto emits even when its output is redirected. A
+/// summary regex over the raw bytes would match on a console and miss in a
+/// capture, which is the worst of both.
+let private ansi =
+    System.Text.RegularExpressions.Regex(
+        @"\x1B\[[0-9;?]*[A-Za-z]",
+        System.Text.RegularExpressions.RegexOptions.Compiled
+    )
+
+/// Three details of Expecto's summary line are easy to get wrong and silent when you do — all
+/// three were, across two drafts, and each one made the parser report a REAL summary as absent
+/// while the suites around it parsed:
+///
+///   * the counts are THOUSANDS-FORMATTED (`1,520 tests run`), so `\d+` matches the leading `1`
+///     and then fails — it is `[\d,]+` here;
+///   * the separator before the counts is an EN DASH, not a hyphen;
+///   * the test-list NAME is arbitrary text and routinely contains spaces and dashes of its own
+///     (`for Phase 380 — the certified fragment library –`), so it cannot be `\S+`.
+///
+/// Hence `.+?` for the name, non-greedy so it stops at the first counts group, and `.` not
+/// matching a newline so it cannot run past the line.
+let private expectoSummary =
+    System.Text.RegularExpressions.Regex(
+        @"([\d,]+) tests run in \S+ for .+? ([\d,]+) passed, ([\d,]+) ignored, ([\d,]+) failed, ([\d,]+) errored",
+        System.Text.RegularExpressions.RegexOptions.Compiled
+    )
+
+/// Run one test suite, capturing its output and attributing its counts to it.
+/// A non-zero exit still fails the target — the capture changes what the log
+/// SAYS, never what the gate DECIDES.
+let private runSuiteCaptured (label: string) (args: string list) workingDir =
+    Trace.tracefn "---- suite: %s ----------------------------------------" label
+
+    let result =
+        CreateProcess.fromRawCommand "dotnet" args
+        |> CreateProcess.withWorkingDirectory workingDir
+        |> CreateProcess.redirectOutput
+        |> Proc.run
+
+    let plain = ansi.Replace(result.Result.Output + result.Result.Error, "")
+
+    if plain.Trim() <> "" then
+        printfn "%s" plain
+
+    let verdict =
+        let m = expectoSummary.Match plain
+
+        if m.Success then
+            sprintf
+                "tests=%s passed=%s ignored=%s failed=%s errored=%s"
+                m.Groups[1].Value
+                m.Groups[2].Value
+                m.Groups[3].Value
+                m.Groups[4].Value
+                m.Groups[5].Value
+        else
+            // Not every rostered suite is an Expecto console — the C# / VB
+            // conformance runners, the authoring PoC and the Fable law harness
+            // are plain programs. Say so, rather than reporting a count of zero,
+            // which would read as a suite that ran nothing.
+            "no Expecto summary (not an Expecto console, or it did not reach its summary)"
+
+    Trace.tracefn "---- suite: %s exit=%d %s" label result.ExitCode verdict
+
+    if result.ExitCode <> 0 then
+        failwithf "%s FAILED (exit %d)" label result.ExitCode
+
 let private init (args: string array) =
     args
     |> Array.toList
@@ -470,7 +555,16 @@ let private registerTargets (args: string array) =
                         (Path.GetFileNameWithoutExtension suite.Project)
                 )
             else
-                dotnet [ "run"; "--project"; suite.Project; "-c"; configuration ] repoRoot)
+                // `GetFileNameWithoutExtension` is `string | null` under F# 10 nullness. A rostered
+                // project path always has a file name, so the fallback is unreachable rather than
+                // lenient — and naming the whole path is still an attribution, which an empty label
+                // would not be.
+                let label =
+                    Path.GetFileNameWithoutExtension suite.Project
+                    |> Option.ofObj
+                    |> Option.defaultValue suite.Project
+
+                runSuiteCaptured label [ "run"; "--project"; suite.Project; "-c"; configuration ] repoRoot)
 
     Target.create "Validate" (fun _ ->
         let srcDir = Path.Combine(repoRoot, "src")
@@ -621,6 +715,38 @@ let private registerTargets (args: string array) =
     // All/Check so the inner loop stays lean.
     Target.create "Catalog" (fun _ -> dotnet [ "fable"; "-o"; "output"; "--noCache" ] catalogDir)
 
+    // ─── Phase 1488 — the Fable stage of the gate ──────────────────────────
+    //
+    // `Catalog` above is a TRANSPILE of a sample: it is run standalone, it is
+    // deliberately outside `Check`, and it executes no assertions. So until this
+    // target landed the gate made no claim about the client tier at all — a
+    // server-only API leaking into a Fable-consumed file, or an F# 10 nullness
+    // cascade through a pre-nullable Fable library, passed `Check` whole and
+    // surfaced in a consumer's browser. And nothing anywhere said whether the
+    // TRANSPILED algebra still behaves: `TreeMerge.merge3Way` ships in a package
+    // that runs in a browser, and its order-independence was demonstrated by two
+    // examples on .NET and certified on neither pipeline.
+    //
+    // The work is in `tests/fable-laws/fable-check.ps1` rather than here, the
+    // same split `RendererWeb` takes and for the same reason: the stage shells a
+    // JS runtime, and a FAKE target is the wrong place for that. `run.ps1` calls
+    // the SAME script, so the two entry points cannot run different Fable
+    // stages — the posture `test-suites.json` takes for the test roster.
+    //
+    // Ordered AFTER `Test` inside `Check` (a soft `?=>`, imposing no dependency
+    // of its own): both stages are about the code, and when both run the .NET
+    // suites are the cheaper diagnosis, so they answer first.
+    let fableCheck () =
+        let script = Path.Combine(repoRoot, "tests", "fable-laws", "fable-check.ps1")
+
+        CreateProcess.fromRawCommand "pwsh" [ "-NoProfile"; "-File"; script ]
+        |> CreateProcess.withWorkingDirectory repoRoot
+        |> CreateProcess.ensureExitCode
+        |> Proc.run
+        |> ignore
+
+    Target.create "FableCheck" (fun _ -> fableCheck ())
+
     Target.create "All" ignore
 
     Target.create "Check" ignore
@@ -632,6 +758,11 @@ let private registerTargets (args: string array) =
     "Build" ==> "DomPatchCorpus" |> ignore
     "Build" ==> "Catalog" |> ignore
     "Test" ==> "Validate" ==> "Check" |> ignore
+    // Phase 1488. The HARD `Build` edge is real: the law harness's .NET leg is
+    // run by the script through `dotnet run`, and the portability compiles need
+    // the project graph restored.
+    "Build" ==> "FableCheck" ==> "Check" |> ignore
+    "Test" ?=> "FableCheck" |> ignore
 
     // Phase 110 — AI-authoring pack drift check. Runs docs/tools/authoring-pack.fsx in
     // --check mode: fails the build if any corpus-derived wire example in the authoring

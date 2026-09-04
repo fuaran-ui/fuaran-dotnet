@@ -48,6 +48,15 @@ type Adoption =
     /// exist); `port` is the kit entry point through which it is reached — several families are
     /// reached through an aggregate (`Conformance.certify`) rather than by their own name.
     | Adopted of test: string * port: string
+    /// TWO OR MORE PORTS run the same family — the same law instantiated on .NET and again on
+    /// another pipeline the tier ships to. Each `(test, port)` pair is checked exactly as
+    /// `Adopted` is, in the project that holds it, so a second port is a second CHECKED claim
+    /// rather than a longer string in one. Added by fuaran#1488, whose Fable law harness runs
+    /// `FoldConfluence.laneFoldLaws` a second time over the transpiled algebra: a row that merely
+    /// mentioned the Fable run in its port text would have asserted nothing about it, and the
+    /// census's own reverse check (a project that runs a family must hold the test the row names)
+    /// would have refused the enrolment outright.
+    | AdoptedAcross of ports: (string * string) list
     /// The tier does not use the mechanism the family certifies. The reason names the mechanism, so
     /// the next reader can CHECK the classification rather than trust it.
     | NotUsed of mechanism: string
@@ -89,6 +98,15 @@ let private dagLawsTest = "the UI op-stream witness certifies under Core's dagLa
 
 let private laneFoldTest =
     "N-lane folding is arrival-order-invariant under Core's laneFoldLaws"
+
+/// The FABLE port of that family (fuaran#1488). It runs in `tests/fable-laws`, the repo's Fable
+/// law harness, over the same reducer / op codec / footprint projection the .NET run uses —
+/// `TestSupport.fs` there copies them from `CoreLawSupport.fs` verbatim, so the two ports certify
+/// one witness on two pipelines rather than two witnesses. It is not an Expecto case (Expecto does
+/// not transpile); the harness prints this name as its family label, so the census row, the code
+/// and the gate log all name one thing.
+let private laneFoldFableTest =
+    "laneFoldLaws certifies through the Fable law harness over the tier's reducer and codec"
 
 let private laneFoldWithTest =
     "lane folding survives the host hash swap under laneFoldLawsWith"
@@ -219,7 +237,16 @@ let census: (string * Adoption) list =
       // per-port; the port question they can pose — does an op survive each sink's codec seam —
       // is answered against the real sinks in the same file.
       "Conformance.dagLaws", Adopted(dagLawsTest, "Conformance.dagLaws")
-      "FoldConfluence.laneFoldLaws", Adopted(laneFoldTest, "FoldConfluence.laneFoldLaws")
+      // TWO PORTS since fuaran#1488, and the second one is the point of that phase rather than a
+      // duplicate of the first. The tier's DAG merge ships in a package that transpiles and runs
+      // in a browser, so ".NET folds these lanes confluently" was only ever half the claim; the
+      // Fable port runs the same family over the same witnesses on the transpiled algebra, and
+      // the harness byte-compares the two runs' output so a pipeline disagreement that leaves
+      // both sides internally lawful is a failure rather than two green runs.
+      "FoldConfluence.laneFoldLaws",
+      AdoptedAcross
+          [ laneFoldTest, "FoldConfluence.laneFoldLaws (.NET)"
+            laneFoldFableTest, "FoldConfluence.laneFoldLaws (Fable and Node)" ]
       // The `With` form is adopted on its own terms rather than as a second spelling: its
       // parameter is the `HashFn`, and it is instantiated with the tier's shipped SHA-256 where
       // the defaulted form takes the kit's FNV-1a. Node ids are content hashes of
@@ -509,19 +536,33 @@ let private stripLineComments (text: string) =
 /// Every test project that references the conformance kit, as `(projectDir, [ file, source ])`.
 /// Discovered from the `.fsproj` files rather than named here, so a project that adopts a law
 /// family in a later phase enters this scan with no edit.
+///
+/// TWO ROOTS since fuaran#1488. `src/*.Tests` is where the tier's Expecto suites live and was the
+/// whole scan; `tests/*` is where the repo's non-Expecto law harnesses live (`fable-laws`, and its
+/// two neighbours which reference no kit and are filtered out by the same predicate as everything
+/// else). Extending the scan rather than exempting the new project is the smallest change that
+/// keeps the census's second direction — a project that RUNS a family must carry a row naming a
+/// test in THAT project — true of the whole repo instead of true of one directory.
 let private conformanceTestProjects () =
-    let src = Path.Combine(repoRoot.Value, "src")
-
     // `Path.GetFileName` is `string | null` under F# 10 nullness; a path from `GetDirectories`
     // always has one, so falling back to the whole path is unreachable rather than lenient.
     let leaf (p: string) =
         Path.GetFileName p |> Option.ofObj |> Option.defaultValue p
 
-    Directory.GetDirectories(src)
+    let dirsUnder (root: string) (accept: string -> bool) =
+        let full = Path.Combine(repoRoot.Value, root)
+
+        if Directory.Exists full then
+            Directory.GetDirectories full |> Array.filter (leaf >> accept)
+        else
+            [||]
+
+    Array.append
+        (dirsUnder "src" (fun name -> name.EndsWith(".Tests", StringComparison.Ordinal)))
+        (dirsUnder "tests" (fun _ -> true))
     |> Array.filter (fun dir ->
-        (leaf dir).EndsWith(".Tests", StringComparison.Ordinal)
-        && Directory.GetFiles(dir, "*.fsproj")
-           |> Array.exists (fun p -> File.ReadAllText(p).Contains "Fuaran.Core.Conformance"))
+        Directory.GetFiles(dir, "*.fsproj")
+        |> Array.exists (fun p -> File.ReadAllText(p).Contains "Fuaran.Core.Conformance"))
     |> Array.map (fun dir ->
         let sources =
             Directory.GetFiles(dir, "*.fs")
@@ -573,14 +614,30 @@ let private reportPath () =
 
 let private statusOf =
     function
-    | Adopted _ -> "Adopted"
+    | Adopted _
+    | AdoptedAcross _ -> "Adopted"
     | NotUsed _ -> "Not used"
     | SiblingHost _ -> "Sibling host"
     | CarriedBy _ -> "Carried by phase"
 
+/// Every `(test, port)` pair a row claims. One for `Adopted`, several for `AdoptedAcross`, none
+/// for the rest — so both directions' checks quantify over pairs and neither has to know which
+/// case it is looking at.
+let private adoptedPairs =
+    function
+    | Adopted(test, port) -> [ test, port ]
+    | AdoptedAcross ports -> ports
+    | NotUsed _
+    | SiblingHost _
+    | CarriedBy _ -> []
+
 let private detailOf =
     function
     | Adopted(test, port) -> sprintf "`%s` — via `%s`" test port
+    | AdoptedAcross ports ->
+        ports
+        |> List.map (fun (test, port) -> sprintf "`%s` — via `%s`" test port)
+        |> String.concat "<br>"
     | NotUsed mechanism -> mechanism
     | SiblingHost host -> host
     | CarriedBy phase -> phase
@@ -681,6 +738,7 @@ let tests =
                   let reason =
                       match adoption with
                       | Adopted(test, port) -> test + port
+                      | AdoptedAcross ports -> ports |> List.map (fun (t, p) -> t + p) |> String.concat ""
                       | NotUsed mechanism -> mechanism
                       | SiblingHost host -> host
                       | CarriedBy phase -> phase
@@ -718,8 +776,9 @@ let tests =
               let projects = conformanceTestProjects ()
 
               for family, adoption in census do
-                  match adoption with
-                  | Adopted(test, port) ->
+                  // Every claimed port is checked on its own, in the project that holds it — a
+                  // second port that were not checked would be a sentence rather than a claim.
+                  for test, port in adoptedPairs adoption do
                       let hosting =
                           projects
                           |> Array.filter (fun (_, sources) ->
@@ -751,7 +810,6 @@ let tests =
                               family
                               port
                               test)
-                  | _ -> ()
 
           testCase "a test that runs a Core law family has an Adopted row for it in the same project"
           <| fun _ ->
@@ -762,12 +820,15 @@ let tests =
               // references must carry an `Adopted` row naming a test in THAT project.
               let familySet = shippedFamilies () |> Set.ofList
 
+              // A family may be adopted through more than one PORT (`AdoptedAcross`), each in its
+              // own project, so the map holds every test a row names and the check below asks
+              // whether THIS project holds one of them. Collapsing to a single test would refuse a
+              // legitimate second port for living in the second project — which is the whole point
+              // of the case.
               let adoptedTests =
                   census
-                  |> List.choose (fun (family, adoption) ->
-                      match adoption with
-                      | Adopted(test, _) -> Some(family, test)
-                      | _ -> None)
+                  |> List.map (fun (family, adoption) -> family, adoptedPairs adoption |> List.map fst)
+                  |> List.filter (snd >> List.isEmpty >> not)
                   |> Map.ofList
 
               for projectName, sources in conformanceTestProjects () do
@@ -784,14 +845,16 @@ let tests =
                               "%s runs the law family %s but the census does not classify it as Adopted — enrol it with the test name, or the census is describing a tier it has not read"
                               projectName
                               family
-                      | Some test ->
+                      | Some tests ->
                           Expect.isTrue
-                              (sources |> Array.exists (fun (_, text) -> text.Contains test))
+                              (tests
+                               |> List.exists (fun test ->
+                                   sources |> Array.exists (fun (_, text) -> text.Contains test)))
                               (sprintf
-                                  "%s runs %s, but its Adopted row names the test \"%s\", which lives in a different project"
+                                  "%s runs %s, but the census's Adopted row(s) name only %A, none of which live in this project"
                                   projectName
                                   family
-                                  test)
+                                  tests)
 
           testCase "the committed docs/core-conformance.md matches the rendered census"
           <| fun _ ->

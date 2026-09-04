@@ -21,12 +21,18 @@
                                     #           (Fable watcher + Vite +
                                     #           browser at 24000)
 
-  Switches stack: -SkipFormat / -SkipBuild / -SkipTests for fast iteration
-  loops inside the verify mode.
+  Switches stack: -SkipFormat / -SkipBuild / -SkipTests / -SkipFable for fast
+  iteration loops inside the verify mode.
 
   "Every Expecto suite" means the roster declared in `test-suites.json`, which
   `Build.fs`'s `Test` target reads too — so this script and the FAKE pipeline
   run the same suites in the same order, and cannot drift apart.
+
+  The FABLE STAGE (Phase 1488) is `tests/fable-laws/fable-check.ps1`, which the
+  FAKE `FableCheck` target calls too — again declared once, read by both. It
+  Fable-compiles the three client-tier projects under their own settings and
+  runs the Fable law harness under Node against the same harness on .NET, so a
+  client-tier break fails HERE rather than in a consumer's browser.
 
 .EXAMPLE
   pwsh ./run.ps1
@@ -49,6 +55,7 @@ param(
     [switch] $SkipFormat,
     [switch] $SkipBuild,
     [switch] $SkipTests,
+    [switch] $SkipFable,
     [switch] $Validate,
     [switch] $SkipPublishCheck,
     [switch] $Demo
@@ -157,6 +164,26 @@ if (-not $SkipTests) {
         }
         if ($LASTEXITCODE -ne 0) { Write-Error "$project failed (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
     }
+}
+
+# ─── The Fable stage (Phase 1488) ────────────────────────────────────
+# One script, called by this entry point AND by `Build.fs`'s `FableCheck`
+# target — the same "declared once, read by both" posture `test-suites.json`
+# takes for the test roster, so the two gates cannot run different Fable stages.
+#
+# It comes AFTER the .NET suites for the reason the FAKE ordering states: both
+# stages are about the code, and when both run the .NET suites are the cheaper
+# diagnosis, so they answer first.
+if (-not $SkipFable) {
+    Write-Step "Fable stage (client-tier portability + the Fable law harness)"
+
+    $fableCheck = Join-Path $PSScriptRoot "tests/fable-laws/fable-check.ps1"
+    if (-not (Test-Path $fableCheck)) {
+        Write-Error "Fable stage script not found at $fableCheck"
+        exit 1
+    }
+    & $fableCheck
+    if ($LASTEXITCODE -ne 0) { Write-Error "Fable stage failed (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
 }
 
 if ($Validate) {

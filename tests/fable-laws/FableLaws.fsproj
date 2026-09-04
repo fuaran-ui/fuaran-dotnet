@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Phase 1488 — the repo's Fable LAW harness.
+
+    Until this landed the only Fable target in the build was `Catalog`, a transpile-only pass over
+    a sample. A transpile proves the client tier COMPILES; it asserts nothing, so a claim about
+    behaviour under Fable had nowhere to live and the browser merge — `TreeMerge.merge3Way`, which
+    ships in `Fuaran.UI.OpStream.Dag.Merge` and runs in a browser — was demonstrated by example on
+    .NET and certified nowhere.
+
+    This project is the assertion side. It compiles on BOTH pipelines and prints the same
+    fixed-shape lines on each, so `fable-check.ps1` beside it can run it twice and byte-compare:
+    every line carries COUNTS, so two pipelines that are each internally lawful but disagree about
+    a merge outcome still differ line-for-line. A law-only probe would report that as two greens.
+
+    It is in `Fuaran.sln` and in `test-suites.json`, unlike its two neighbours here
+    (`pure-tier-laws`, `ids-parity-probe`). That is deliberate and it is the difference between
+    this project and those: the .NET leg is an ordinary Expecto-shaped console the gate already
+    knows how to run, so registering it costs the gate nothing and gains it the same laws on the
+    canonical pipeline. The FABLE leg needs Node and is reached through the `FableCheck` target.
+
+    NOTHING HERE MAY USE A CONSTRUCT FABLE CANNOT LOWER. No Expecto (it does not transpile), no
+    `System.IO`, no reflection, no `StringComparer`. The whole file set is compiled to JavaScript,
+    which is the point.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <!--
+      NULLNESS OFF, and it is load-bearing rather than laziness. Under Fable the ENTRY project's
+      MSBuild properties govern the WHOLE transpiled source graph (the reason CI's
+      `fable-portability` job exists at all). With nullness ON, `Fuaran.Core.Wire`'s canonical
+      encoder emits `StringBuilder__ToString(sb)`, which `fable-library-js` 5.0.0 does not export
+      — the transpile is GREEN and every module that imports the wire types then dies at import
+      with a `SyntaxError`. `samples/apply-demo`, the only other Fable entry project in this repo
+      that is actually EXECUTED, carries the same setting for the same reason.
+
+      Nothing is lost by it: this project is the RUN side of the gate. The nullness-ON compile is
+      the other half, and `fable-check.ps1` does it explicitly over the three client-tier projects
+      under THEIR own settings — which is the compile CI performs and the one this repo's gate
+      lacked. See `CLAUDE.md`, "Fable method traps".
+    -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="TestSupport.fs" />
+    <Compile Include="Laws.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <!-- The subject of the first law: the three-way merge that runs in the browser. -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <!-- For `emitJsStatement` alone — Fable drops `main`'s return value, so the Node exit status
+         has to be set by hand. See `Program.setExitCode`. -->
+    <PackageReference Include="Fable.Core" />
+    <!-- The conformance kit ships `fable/` sources, so its law families transpile with the rest of
+         the graph — which is what makes a Fable PORT of a family possible at all. -->
+    <PackageReference Include="Fuaran.Core.Conformance" />
+    <PackageReference Include="Fuaran.Core.Ops" />
+  </ItemGroup>
+</Project>

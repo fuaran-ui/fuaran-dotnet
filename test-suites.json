@@ -124,6 +124,10 @@
       "project": "src/Fuaran.UI.VisualBasic.Conformance.Tests/Fuaran.UI.VisualBasic.Conformance.Tests.vbproj",
       "requiresCorpus": true,
       "note": "Phase 312 — the VB XML-literal veneer's corpus-conformance suite (a VB console runner, since XML literals are a VB language feature)."
+    },
+    {
+      "project": "tests/fable-laws/FableLaws.fsproj",
+      "note": "Phase 1488 — the Fable law harness, on its .NET leg. The SAME program the `FableCheck` stage compiles and runs under Node (tests/fable-laws/fable-check.ps1), so its laws — TreeMerge.merge3Way's order-independence, and the pinned kit's FoldConfluence.laneFoldLaws over this tier's reducer, codec and footprint — are asserted on the canonical pipeline here and on the transpiled one there. Not an Expecto console: it prints fixed-shape count lines the two pipelines are byte-compared on, and exits non-zero on any violation."
     }
   ]
 }

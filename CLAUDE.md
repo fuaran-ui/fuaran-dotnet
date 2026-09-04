@@ -66,7 +66,50 @@ dotnet run --project Build.fsproj -- Css           # regenerate the reference st
 dotnet run --project Build.fsproj -- CssCheck      # fail on any tier copy that has drifted (in `Check`)
 dotnet run --project Build.fsproj -- RendererWeb      # re-sync the embedded browser-renderer assets
 dotnet run --project Build.fsproj -- RendererWebCheck # fail when the embedded copy is stale (in `Check`)
+dotnet run --project Build.fsproj -- FableCheck       # the Fable stage: client-tier portability + the law harness (in `Check`)
 ```
+
+## The Fable stage
+
+`Check` and `run.ps1` both run [`tests/fable-laws/fable-check.ps1`](tests/fable-laws/fable-check.ps1)
+— declared once, called by both, the same posture `test-suites.json` takes for the test roster. It
+does two things, and they answer different questions:
+
+1. **Portability.** The three client-tier projects that ship their `.fs` sources in the package
+   (`Fuaran.UI`, `Fuaran.UI.StyleObserver`, `Fuaran.UI.ServerDriven`) are Fable-compiled **under
+   their own MSBuild properties**, with `--noCache`. Under Fable it is the ENTRY project's
+   properties that govern the whole transpiled source graph, so a compile entered through a
+   `<Nullable>disable</Nullable>` sample proves nothing about a nullable-enabled consumer. A
+   server-only API leaking into a Fable-consumed file fails here, naming the file.
+2. **The laws.** [`tests/fable-laws/`](tests/fable-laws/) is a Fable-compilable law project. It runs
+   on both pipelines and its output is compared byte for byte, so two pipelines that are each
+   internally lawful and disagree about a result still fail. Its `.NET` leg is also a rostered suite
+   in `test-suites.json`. It currently states `TreeMerge.merge3Way`'s order-independence over
+   generated three-way edits and runs `FoldConfluence.laneFoldLaws` over this tier's reducer, op
+   codec and footprint projection.
+
+Add a law by adding it to `tests/fable-laws/Laws.fs`; nothing there may use a construct Fable cannot
+lower (no Expecto, no `System.IO`, no reflection).
+
+### Fable method traps
+
+Three, each of which cost real time and none of which announces itself:
+
+- **A transpile is not a run.** `dotnet fable` can finish green on JavaScript that dies at its first
+  `import`. With nullness ON at the entry project, the canonical wire encoder emits
+  `StringBuilder__ToString(sb)`, which the bundled `fable-library-js` 5.0.0 does not export — so
+  every module importing the wire types throws a `SyntaxError` before a line of it runs. That is why
+  `tests/fable-laws/FableLaws.fsproj` sets `<Nullable>disable</Nullable>` (as `samples/apply-demo`
+  does, the other Fable entry project that is actually executed) and why the nullness-ON compile is
+  a separate stage that only has to COMPILE.
+- **Never pipe `dotnet fable`.** A pipeline reports the LAST command's status, so
+  `dotnet fable … | tail` reports `tail`'s success and a failed compile reads as a pass. Read
+  `$LASTEXITCODE` from the unpiped call. The same trap catches `node …  | tail` — and note that
+  Fable does not wire `[<EntryPoint>] main`'s return value to the process exit status at all, so a
+  Fable console must set `process.exitCode` itself (`tests/fable-laws/Program.fs` does).
+- **Never Fable-output into `obj/`.** Fable writes beside the project's own build intermediates
+  there, re-parses part of the project, and reports errors against files the change never touched.
+  Use a fresh directory — `output/` (gitignored) or a temp path.
 
 `Fuaran.UI.Renderer.Web` embeds a **built artefact from `fuaran-ts`** — the standalone
 `@fuaran-ui/renderer` browser bundle — so a .NET consumer needs no Node toolchain. The copy is
