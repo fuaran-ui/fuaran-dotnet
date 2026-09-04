@@ -39,7 +39,11 @@
 //      slot's `Static` payload is constrained by the type the slot declares.
 //      The two element types that stay `true` (any JSON) are the §5 abstentions
 //      the encoder genuinely cannot decompose: a structured JSON payload and a
-//      HOSTED row feed.
+//      HOSTED row feed. Phase 1140 adds the second axis — whether the `Static`
+//      payload is PRESENT. The four scalar instantiations require it; the
+//      collections and abstentions do not; and `Binding_str` splits, because
+//      four control slots read an absent payload as "no selection" where every
+//      other string slot refuses it.
 //    - Optional (None-omitted) fields are absent from `required`; the schema
 //      does not set `additionalProperties:false`, matching the decoder's
 //      tolerance of unknown keys (rule 2 / field-lookup-by-name).
@@ -234,6 +238,51 @@ let private union (branches: J list) : J = JObj [ "oneOf", JArr branches ]
 /// artefacts' `$defs` carry the same names for the same instantiations.
 let private binding (elem: string) : J = ref ("Binding_" + elem)
 
+/// A choice-valued control's `value` slot (Phase 1140) — `Binding<string>`, as
+/// `binding "str"` is, but pointing at the instantiation whose `Static` payload
+/// is OPTIONAL because its absence is the value ("no selection"). The four slots
+/// using it are the four `decodeBindingChoiceValue` reads: `Choice.value`,
+/// `SegmentedChoice.value`, `Combobox.value`, `Select.value`. Every other
+/// string-valued slot keeps `binding "str"`, where the decoder refuses a
+/// valueless `Static`.
+let private bindingChoiceValue: J = binding "str_choice"
+
+/// Prepend an annotation-only `description` to a definition. Draft 2020-12
+/// treats it as pure annotation — it constrains nothing and no validator's
+/// verdict changes — so it is safe on any `$def`. Used sparingly: only where the
+/// STRUCTURE of a definition under-states its contract and a reader (or a
+/// schema-walking emitter) would otherwise have to guess.
+///
+/// Every `$def` in this module is built by `record` / `union` / `enumDef`, all of
+/// which return a `JObj`, so the second arm is unreachable rather than lenient.
+/// It returns the schema untouched rather than throwing because this module's
+/// output is a module-level `let`: a throw here would fail at ASSEMBLY LOAD, in
+/// every consumer at once, for a defect a compiler change would have to
+/// introduce.
+let private described (text: string) (schema: J) : J =
+    match schema with
+    | JObj members -> JObj(("description", JStr text) :: members)
+    | other -> other
+
+/// Whether an instantiation's `Static` arm REQUIRES its payload (Phase 1140).
+///
+/// Phase 1068 typed each instantiation's payload; what it left untyped was the
+/// payload's PRESENCE, so `{"$type":"Static"}` validated against `Binding_float`
+/// exactly as it validated against `Binding_json` — while the decoder routes a
+/// missing `value` through the slot's own parser (Phase 677, "absence is
+/// structural") and the answer differs per slot. This is that fork, stated.
+type private StaticPayload =
+    /// The slot's parser has no reading for an absent payload, so `value` is in
+    /// `required`: the four scalar element types, whose `requireString` /
+    /// `requireFloat` / `requireInt` / `requireBool` refuse the `JNull` an
+    /// absent key routes to (`WRONG_TYPE`).
+    | Required
+    /// Absence is meaningful at every slot pointing here, so `value` stays out
+    /// of `required`: the collection instantiations (an absent payload
+    /// normalises to the empty collection), the two any-JSON abstentions, and
+    /// the choice-value contract below.
+    | Absentable
+
 /// One `Binding<'T>` definition, instantiated at a single element type
 /// (Phase 1068). Every `'T`-typed wire slot — `Static.value` and the three
 /// `defaultValue`s — carries `elem` rather than the any-JSON envelope the single
@@ -254,12 +303,22 @@ let private binding (elem: string) : J = ref ("Binding_" + elem)
 /// "don't constrain content the encoder doesn't decompose" (§5 / §13). What
 /// changed is that they are now *named* abstentions at their own slots instead
 /// of every slot inheriting one.
-let private bindingDef (self: string) (elem: J) : J =
+///
+/// `payload` (Phase 1140) is the second axis: whether this instantiation's
+/// `Static` arm requires its `value`. Phase 677 made an absent payload
+/// STRUCTURAL — the key is omitted rather than emitted as JSON null, for which
+/// the wire model has no case — and routed it through the slot's own parser,
+/// which is where the two answers diverge. The `defaultValue` slots are NOT on
+/// this axis and stay optional throughout: an absent default is read as the
+/// typed `None` before any parser sees it, so it is legal at every element type.
+let private bindingDef (self: string) (payload: StaticPayload) (elem: J) : J =
+    let staticRequired =
+        match payload with
+        | Required -> [ "value" ]
+        | Absentable -> []
+
     union
-        // Phase 677 — `value` is OPTIONAL: absence is structural, so a binding
-        // carrying no value omits the key rather than emitting JSON null (for
-        // which the wire model has no case).
-        [ duCase "Static" [] [ "value", elem ]
+        [ duCase "Static" staticRequired [ "value", elem ]
           // `dependsOn` (Phase 421) is optional (omitted-when-empty) — the declared filter edge.
           duCase "Query" [ "name" ] [ "dependsOn", arrayOf str; "name", str ]
           duCase "Filter" [ "name" ] [ "defaultValue", elem; "name", str ]
@@ -429,18 +488,52 @@ let private defs: (string * J) list =
       // their slots rather than sitting beside them. The rows feed stays
       // any-JSON — see `bindingDef` for why that is abstention, not erasure.
       //
+      // Phase 1140 completes the pair: 1068 typed each instantiation's payload,
+      // this names whether the payload is THERE. `Static.value` was optional in
+      // all ten, so `{"$type":"Static"}` — the shape a schema-driven emitter
+      // produces when it fills a kind's required fields and nothing else, which
+      // is every such emitter, because required-ness is the only signal the
+      // dialect gives it — validated at `Metric.value` and was then refused by
+      // the decoder with `WRONG_TYPE`. The four scalar instantiations now
+      // REQUIRE it.
+      //
+      // The valueless form stays legal where the decoder means something by it,
+      // and that is why this is a SPLIT rather than a tightening: `Binding_str`
+      // served two contracts. `Choice`/`SegmentedChoice`/`Combobox`/`Select`
+      // read an absent payload as "no selection" (`decodeBindingChoiceValue` →
+      // `Static None`) where `TextArea.value` / `Link.href` / `Image.src` refuse
+      // it, so those four slots point at their own `Binding_str_choice` and a
+      // required-key edit to `Binding_str` — which would have started refusing
+      // four shipped accept fixtures (`controls-closure`, `form-segmented`,
+      // `multiselect-1`, `multiselect-chip-list-param`) — is not what happened.
+      //
       // Names are sorted so this block reads as an enumeration; the `$defs`
       // object is order-free (resolution is by name).
-      "Binding_bool", bindingDef "Binding_bool" boolean
-      "Binding_float", bindingDef "Binding_float" number
-      "Binding_hosted", bindingDef "Binding_hosted" anyJson
-      "Binding_int", bindingDef "Binding_int" integer
-      "Binding_json", bindingDef "Binding_json" anyJson
-      "Binding_list_MapMarker", bindingDef "Binding_list_MapMarker" (arrayOf (ref "MapMarker"))
-      "Binding_list_SelectOption", bindingDef "Binding_list_SelectOption" (arrayOf (ref "SelectOption"))
-      "Binding_list_float", bindingDef "Binding_list_float" (arrayOf number)
-      "Binding_list_str", bindingDef "Binding_list_str" (arrayOf str)
-      "Binding_str", bindingDef "Binding_str" str
+      "Binding_bool", bindingDef "Binding_bool" Required boolean
+      "Binding_float", bindingDef "Binding_float" Required number
+      "Binding_hosted", bindingDef "Binding_hosted" Absentable anyJson
+      "Binding_int", bindingDef "Binding_int" Required integer
+      "Binding_json", bindingDef "Binding_json" Absentable anyJson
+      "Binding_list_MapMarker", bindingDef "Binding_list_MapMarker" Absentable (arrayOf (ref "MapMarker"))
+      "Binding_list_SelectOption", bindingDef "Binding_list_SelectOption" Absentable (arrayOf (ref "SelectOption"))
+      "Binding_list_float", bindingDef "Binding_list_float" Absentable (arrayOf number)
+      "Binding_list_str", bindingDef "Binding_list_str" Absentable (arrayOf str)
+      "Binding_str", bindingDef "Binding_str" Required str
+
+      // The choice-value contract (Phase 1140) — `Binding<string>` at the four
+      // control slots that read an ABSENT `Static` payload as "no selection".
+      // Structurally it is `Binding_str` with `value` out of `required`; the
+      // `description` carries what the structure cannot, namely that absence
+      // MEANS something here rather than being unconstrained, so an emitter
+      // walking the schema can tell "may omit" from "omit to mean no selection".
+      //
+      // `Local.initialFrom` points back at `self`, so a `Local` nested under a
+      // choice slot keeps the choice contract — which is correct: it is the same
+      // slot, one level down.
+      "Binding_str_choice",
+      described
+          "Binding<string> at a choice-valued control (Choice / SegmentedChoice / Combobox / Select). The Static payload is OPTIONAL and its absence is the value: no selection. Every other string-valued slot uses Binding_str, where the payload is required."
+          (bindingDef "Binding_str_choice" Absentable str)
 
       "LocalFlushTrigger",
       union
@@ -574,7 +667,7 @@ let private defs: (string * J) list =
                 [ "options" ]
                 [ "onChange", closure
                   "options", binding "list_SelectOption"
-                  "value", binding "str" ]
+                  "value", bindingChoiceValue ]
             duCase
                 "RangedNumber"
                 []
@@ -589,7 +682,7 @@ let private defs: (string * J) list =
                 [ "onChange", closure
                   "options", binding "list_SelectOption"
                   "orientation", ref "Orientation"
-                  "value", binding "str" ]
+                  "value", bindingChoiceValue ]
             duCase "TextArea" [ "rows" ] [ "onChange", closure; "rows", integer; "value", binding "str" ]
             duCase
                 "Date"
@@ -622,7 +715,7 @@ let private defs: (string * J) list =
                 [ "allowFreeText", boolean
                   "onChange", closure
                   "options", binding "list_SelectOption"
-                  "value", binding "str" ]
+                  "value", bindingChoiceValue ]
             // Phase 1130 — the star scale. `max` is required (a rating with no
             // declared ceiling is not a scale); `allowHalf` omits at `false`, so
             // it stays out of `required` on the Phase 460 discipline.
@@ -1140,7 +1233,7 @@ let private defs: (string * J) list =
           [ "label", ref "TextSource"
             "onChange", closure
             "source", binding "list_SelectOption"
-            "value", binding "str"
+            "value", bindingChoiceValue
             "placeholder", ref "TextSource"
             "disabled", binding "bool"
             // Phase 291 — multi-select. Optional in the schema (omitted when
