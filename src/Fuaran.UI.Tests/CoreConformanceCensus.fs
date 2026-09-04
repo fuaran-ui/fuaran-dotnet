@@ -111,6 +111,25 @@ let private concurrencyWithTest =
 let private arbitrationTest =
     "proposal arbitration partitions totally and confluently (arbitrationLaws)"
 
+/// The incremental / propagation families (fuaran#1479), enrolled from a THIRD test project —
+/// `Fuaran.UI.ServerDriven.Tests`, where the live-Transform seam they are about lives. All four are
+/// SELF-CONTAINED: each takes a `(seed, iterations)` pair and draws Core's own tables, pipelines and
+/// edit streams, so a green row is evidence that the PINNED KIT's contract holds here, and says
+/// nothing on its own about the tier. Each row's port therefore also names the tier-shaped test that
+/// states the same property over the real live path — the two are read together or neither is worth
+/// much.
+let private incrementalDeltaTest =
+    "IncrementalDelta.laws certifies the incremental seam at the kit's shipped row bound"
+
+let private incrementalDeltaWithTest =
+    "IncrementalDelta.lawsWith certifies at the tier's own live-grid row bound"
+
+let private incrementalTest =
+    "incrementalLaws certifies change-driven and op-driven equivalence at this pin"
+
+let private dirtyPropagationTest =
+    "dirtyPropagationLaws certifies the propagation seam's cone at this pin"
+
 /// The artifact-function families adopted by fuaran#1478, which run in
 /// `Fuaran.UI.FastPath.Tests/CoreFunctionLawTests.fs`. Named once each for the same reason the
 /// rows above are: a row and the test it enrols must not drift apart by a typo.
@@ -263,14 +282,46 @@ let census: (string * Adoption) list =
       // ---- fuaran#1479 — footprint and delta laws over the live-transform seam ----
       // `Conformance.footprintLaws` was listed here and is adopted by 1476 instead — see the
       // note beside it in that block.
-      "IncrementalDelta.laws", CarriedBy "fuaran#1479"
-      "IncrementalDelta.lawsWith", CarriedBy "fuaran#1479"
-      "Conformance.dirtyPropagationLaws", CarriedBy "fuaran#1479"
+      //
+      // All four run in `Fuaran.UI.ServerDriven.Tests/CoreIncrementalLawsTests.fs`, beside the
+      // live-Transform seam they are about. Read what these rows claim and what they do NOT.
+      // Unlike 1476's and 1477's, these families are SELF-CONTAINED — `(seed, iterations)` and
+      // nothing else, over Core's own tables and edit streams — so the green run certifies the
+      // PINNED KIT on this machine, not this tier's wiring. That is why each port names a
+      // tier-shaped test beside the family: those state the same three properties over the real
+      // `LiveTransformStore` path (`Incremental.primeOn` / `refreshOn`), where a defect in the
+      // tier is what turns them red. A row that named only the family would be honest about what
+      // ran and misleading about what it proved.
+      "IncrementalDelta.laws",
+      Adopted(
+          incrementalDeltaTest,
+          "IncrementalDelta.laws — beside the tier-shaped 'the refresh answers what a full evaluation over the changed source answers'"
+      )
+      // Adopted on its own terms rather than as a second spelling: its parameter is the table-WIDTH
+      // bound, run at 12 to span this tier's generated grids (1..12 rows) and the seven recorded
+      // corpus vectors (6 rows each), where the shipped bound of 9 spans neither's top end. Its
+      // go-red proof is in the same file and is the one the kit's own doc comment names — narrowing
+      // the bound to 1, measured red on 30/30 seeds.
+      "IncrementalDelta.lawsWith",
+      Adopted(
+          incrementalDeltaWithTest,
+          "IncrementalDelta.lawsWith — beside the tier-shaped 'the refresh evaluates no more rows than a full evaluation, on one scale'"
+      )
+      "Conformance.dirtyPropagationLaws",
+      Adopted(
+          dirtyPropagationTest,
+          "Conformance.dirtyPropagationLaws — beside the tier-shaped 'the dirty cone over the binding walk is sound and minimal on generated binding sets'"
+      )
       // Not named by 1479's task list. The tier does incremental dataframe evaluation through
       // `Incremental.primeOn` / `refreshOn` (`ServerDriven/LiveTransform.fs`), which is the seam
       // 1479 certifies; this family is the equivalence claim over that evaluation, so it belongs
-      // with the phase that owns the seam rather than being called unused.
-      "Conformance.incrementalLaws", CarriedBy "fuaran#1479"
+      // with the phase that owns the seam rather than being called unused. Adopted on that reading
+      // rather than reclassified.
+      "Conformance.incrementalLaws",
+      Adopted(
+          incrementalTest,
+          "Conformance.incrementalLaws — beside the tier-shaped 'the seven corpus vectors obey the one-scale bound, declined ones included'"
+      )
 
       // ---- fuaran#1480 — attributed and attestation laws over the attributed op-stream ----
       // All three run in `Fuaran.UI.OpStream.Tests`, over the witness fuaran#1477 built. Read what

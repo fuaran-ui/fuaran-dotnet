@@ -340,6 +340,15 @@ let private vectors () : Vector list =
     |> List.sort
     |> List.map readVector
 
+/// Phase 1479 — the recorded vectors as fixed cases for the footprint laws beside this file,
+/// flattened to plain tuples rather than the `Vector` record. The reader's own shapes stay private
+/// deliberately: they model §12.7's document and nothing else, and a second file depending on them
+/// would make every future change to the reader a change to two files. What a law list needs from a
+/// vector is only what it drives the seam with.
+let corpusCases () : (string * Transform list * Table * Table * string) list =
+    vectors ()
+    |> List.map (fun v -> v.Name, v.Pipeline, v.Source, v.Changed, v.Edits.Key |> Option.defaultValue "id")
+
 // ─── the assertions ───────────────────────────────────────────────────────────
 
 /// The site key a live grid would use. One key throughout: each vector gets a
