@@ -349,6 +349,18 @@ let private encodeLocaleSource (l: LocaleSource) : Appender =
         | LocaleSource.Ambient -> appendObject sb (case "Ambient" [])
         | LocaleSource.Explicit tag -> appendObject sb (case "Explicit" [ "tag", str tag ])
 
+// Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
+// annotation, which renders as `[<Obsolete(…, false)>]`: FS0044 at every
+// mention, and an error here under `TreatWarningsAsErrors`. The scope is this
+// whole mutually-recursive group rather than the one member that mentions the
+// case (`encodeAction`), because a directive between two `and` continuations
+// would split the group. It is reopened immediately after the group, so the
+// node appenders below still see a genuine deprecation. `encodeAction`'s
+// `Dispatch` arm IS the wire behaviour the annotation names — it emits
+// `{"$type":"Dispatch"}` and nothing else — so warning here would warn the
+// authority on the fact about the fact.
+#nowarn "44"
+
 let rec private isAbsentPayload<'T> (v: 'T) : bool = isNull (box v)
 
 and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) : Appender =
@@ -684,6 +696,8 @@ and private encodeAction<'Msg> (a: Action<'Msg>) : Appender =
 // already-canonical `Wire` JVal; `Binding` and `Action` resolve to values and
 // messages. Adding a Node-bearing payload to any of them means adding the
 // projection in the same change.
+
+#warnon "44"
 
 let private nodeAppender<'Msg> (n: Node<'Msg>) : Appender =
     fun sb ->

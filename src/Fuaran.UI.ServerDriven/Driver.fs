@@ -218,6 +218,15 @@ let init
       View = view
       Services = services }
 
+// Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
+// annotation, which renders as `[<Obsolete(…, false)>]`: FS0044 at every
+// mention, and an error here under `TreatWarningsAsErrors`. Scoped off for the
+// one declaration below and reopened after it. `interpret` is the SERVER-SIDE
+// in-process host: the tree it interprets was built in this process and never
+// serialised, so `| Action.Dispatch m -> [ m ], []` is the case working exactly
+// as declared. What crosses the wire from here is a patch, not the action.
+#nowarn "44"
+
 /// Interpret a resolved `Action` into the messages to fold through `update` and
 /// the client effects to ship. `nodeId` is the originating event's node (for the
 /// node-addressed client effects, `Focus` / `ReadFileBody`). `submitBody` is
@@ -305,6 +314,8 @@ let rec private interpret
     // Invoke (Phase 283) — a host-coupled capability dispatch; routes through the injected host
     // interpreter, like AiTool / Call.
     | Action.Invoke _ -> (services.InterpretHostEffect action |> Option.toList), []
+
+#warnon "44"
 
 /// Apply a list of already-resolved, already-gated `Action`s to the session in
 /// one step, each paired with the Phase 820 submit body to thread to any

@@ -1,4 +1,4 @@
-# Fuaran language-tier stability policy
+﻿# Fuaran language-tier stability policy
 
 This document declares which Fuaran *language-tier* surfaces are stable, what counts as a breaking change in each, and the semver rules that govern the `Fuaran.UI.*` NuGet packages shipped from this repo. It is the contract that downstream consumers (runtime tiers, demo applications, third-party adopters) can rely on when pinning a Fuaran version.
 
@@ -2253,6 +2253,10 @@ would weaken the gate to carry a marker that would then mean nothing. The hazard
 legible where it can be without a false accusation: a doc comment on `Action.dispatch` naming the
 constraint and the two remedies, the FUARAN112 rule, and the transport encoder's refusal.
 
+> **Closed in 0.75.0 (fuaran#1152)** — by a different mechanism than the one measured here. See the
+> entry at the end of this document; the measurement above is what ruled the hand-authored
+> `[<Obsolete>]` out, and it still does.
+
 ## Recorded change — 0.50.0, the node-level `Tooltip` trait (fuaran#1112)
 
 **BREAKING for record-literal construction of `Node`, additive on the wire.** `Node<'Msg>` gains
@@ -4473,12 +4477,6 @@ schema's expression of it, not of the vocabulary.
 
 ## Recorded BREAKING change — 0.74.0, the two-sided merge-conflict envelope and the shared-children merge (fuaran#1497)
 
-**0.74.0 is an unreleased slot and carries more than one change.** §1–§3 are fuaran#1497; §4 and §5
-are later changes of the same class, recorded here rather than minting a number of their own —
-`<Version>` does not move, because a slot already saying "breaking" says nothing new when another
-breaking change of the same class rides it. Each section names its own subject, and the closing note
-under §3 scopes its claims to §1–§3.
-
 **BREAKING for a consumer that constructs or exhaustively reads `MergeConflict`.** The record gains
 two fields, so every full-literal construction of it stops compiling (FS0764); and two fields it
 already had change WHEN they are populated, so a consumer that read them without consulting
@@ -4580,21 +4578,109 @@ refusal set by `(NodeId, Facet)` so the encoding is stable regardless of the fol
     style sub-field is enum-shaped; a host must not generalise it to a compound cell. The manifest's
     `refusalDescription` says so.
 
-**§1–§3: no wire-format change, no `WIRE_FORMAT.md` §11 event, no validator code, no `NodeKind` /
-`TreeOp` / `Spec` case.** Nothing about a `Node` or its encoding moves, so
-`Theme.vocabularyFingerprint` and
+**No wire-format change, no `WIRE_FORMAT.md` §11 event, no validator code, no `NodeKind` / `TreeOp`
+/ `Spec` case.** Nothing about a `Node` or its encoding moves, so `Theme.vocabularyFingerprint` and
 the reference stylesheet are untouched and no `nodes/` / `ops/` / `reject/` / `lenient/` fixture is
 regenerated. The `MergeChoice` menu is likewise unchanged: with two secondary sides `KeepSecondary`
 still names neither side in particular, which the two-sided envelope makes visible without resolving
 — a `MergeChoice` widening is a host-facing vocabulary change and is left to a phase that can carry
 the hosts with it.
 
-### 4. `PreEmitDefect.ChartFieldUngrounded` carries the produced columns (FUARAN086)
+## Recorded change — 0.75.0, `Action.Dispatch` marked in-process-only (fuaran#1152)
+
+**A compile-visible surface change with NO wire change, no type change and no member change.** The
+generated `Action<'Msg>` case `Dispatch` now carries a doc block and a single
+`[<System.Obsolete(…, isError = false)>]` attribute, emitted by the generator from a declared
+annotation. Mentioning the case raises **FS0044** in F# and **CS0618** in C# — a WARNING, which a
+consumer escalates or scopes on its own schedule.
+
+```fsharp
+// Fuaran.UI.Generated — Action<'Msg>
+/// **In-process only** — this member has no wire projection: a value here
+/// is carried inside one host process and is LOST across any wire boundary.
+| [<System.Obsolete("in-process only — no wire projection; a value here is lost across a wire boundary", false)>] Dispatch of msg: ('Msg)
+```
+
+**What it is for.** `Action.Dispatch of 'Msg` carries a host closure with no wire projection:
+`{"$type":"Dispatch"}` is the whole encoding, and the decoder restores the payload as the
+`"<closure>"` sentinel, so a host fed canonical wire JSON observes THAT an affordance fired and can
+never receive the message. 0.47.0 made that legible in prose — a doc comment on `Action.dispatch`,
+`PreEmitValidate.validateForTransport`'s **FUARAN112**, and `CanonicalJson.encodeNodeForTransport`'s
+refusal — and deliberately stopped short of an attribute. This is the attribute, arrived at from the
+other side.
+
+**Why it is DECLARED rather than written.** The `Action` DU lives in `Generated.fs`, a byte-pinned
+projection of `src/Fuaran.UI.Idl/`; an attribute hand-added there is erased by the next
+regeneration. The marking is therefore `Annotations.InProcessOnly = true` on the `Dispatch` case in
+`Vocabulary.fs`, which the IDL engine renders into three artefacts at once: the F# declaration
+above, the `"inProcessOnly": true` key in `idl.json` (which is how a non-.NET host learns the fact),
+and the doc block. Removing it is a source edit that a test names.
+
+**Why `isError = false` is the whole design.** Every in-process construction of `Dispatch` in this
+repo, in every sample, and in every downstream Fable host is CORRECT — a full-Fable tree is never
+serialised, so nothing is lost. An unconditional error would be the compiler making a claim about
+those sites that is not true, which is exactly why 0.47.0 declined a hand-written `[<Obsolete>]`
+under this repo's `TreatWarningsAsErrors`. A warning states the fact and leaves the judgement with
+the host: escalate with `--warnaserror:44` where trees are serialised, scope it where they are not.
+
+**How this repo scopes it, and the three shapes it takes.** `TreatWarningsAsErrors` is on here, so
+every mention had to be addressed rather than tolerated — and the shape differs by what the site
+actually is:
+
+  * **A total analysis of the union** — `NodeMap.mapAction`, `BindingWalk`'s three action walks and
+    its state walk, `AffordanceInertness.actionFindings`, `StructuralQuery.carriedOf`,
+    `ActionInvocation.describe` / `payloadFor`, `JsonDecode.decodeAction`,
+    `CanonicalJson.encodeAction`, `Render.containsUnwiredAction` / `runActionCore`,
+    `Resume.disposition` / `encodeAction`, `Driver.interpret` — carries a `#nowarn "44"` /
+    `#warnon "44"` pair around the ONE declaration, with a comment saying why. These must name every
+    case that exists; naming one is not authoring one. It is the same reason the generated module
+    carries its own `#nowarn "44"`, which the engine emits for any vocabulary that marks anything.
+  * **A test file** carries a file-scoped `#nowarn "44"` and a comment. Tighter is not available:
+    the mentions sit inside `testList` expressions, where a lexical directive cannot be placed. A
+    suite is not an authoring surface — those uses exist to PIN the marked case's behaviour.
+  * **An authoring site takes the route with the paragraph attached, and suppresses nothing.**
+    `samples/catalog/Tabs69.fs`, `samples/server-driven/{App,Form}.fs` and `samples/resume/gen` now
+    call `Action.dispatch`, whose doc comment states the constraint and both remedies. The C#
+    PoC's `Act.Dispatch` keeps the one suppression it needs and gains an XML doc saying the same
+    thing, so the C# authoring surface is legible too.
+
+`Action.dispatch` itself is deliberately NOT marked. Marking the helper would push FS0044 back onto
+every correct in-process call site — the estate-wide acceptance 0.47.0 measured and declined — and
+what a caller of the helper gets instead is a doc comment the compiler shows on hover, which says
+more than a one-line attribute can.
+
+**No wire-format change and no `WIRE_FORMAT.md` §11 event.** The discriminator `"Dispatch"` is
+unchanged, the encoding is unchanged, the resume-boot marker is unchanged, and every fixture in the
+conformance corpus is byte-identical. `idl.json` gains one key, which the corpus's copy carries too.
+An annotation never changes bytes: the engine's artifact omits an empty annotation set entirely, so
+no other member's projection moves either.
+
+**Breaking-change classification: NOT breaking.** No signature changed, no DU gained a case, no
+record gained a field. A consumer that neither escalates FS0044 nor already treats warnings as
+errors sees a new warning and nothing else. A consumer that DOES treat warnings as errors and
+constructs `Dispatch` will see a build failure and can scope it in one line — which is the
+`isError = false` contract working as intended, not a break. Consumers on the .NET tier that author
+in-process trees are the ones affected; a wire consumer never had the payload.
+
+**No render-fidelity obligation and no host-adoption roster row.** The marking is a statement about
+a .NET/C# DECLARATION; the fact it states is already normative in the wire format, and a sibling
+host's own declaration is its own business. What the corpus's `idl.json` carries is the fact, not an
+obligation to render it.
+
+### The 0.75.0 slot also carries a validator-case widening and a FastPath signature narrowing
+
+Both land on the SAME unreleased slot as the marking above (newest tag `v0.71.0`), so they ride it
+rather than minting numbers of their own. Neither is a wire change and neither touches the marking;
+the classification the section above records is its own, and the two below are theirs.
+
+#### `PreEmitDefect.ChartFieldUngrounded` carries the produced columns (FUARAN086)
 
 **BREAKING for a consumer that constructs or exhaustively reads
 `PreEmitValidate.PreEmitDefect.ChartFieldUngrounded`.** The case gains a third field,
 `schemaColumns: string list`, so every construction and every positional pattern over it stops
-compiling — the same class §1 carries, on a different type.
+compiling (the FS0764-shaped break, on a DU case rather than a record). Every minor may break
+pre-1.0, and this is one of them; the `Action.Dispatch` marking above is separately, and correctly,
+classified as not breaking.
 
 Phase 1486 widened FUARAN086's and FUARAN114's window from the EMPTY pipeline to the whole one, via
 the shared `producedSchema` helper. It gave FUARAN114's case the produced column set at the same
@@ -4610,7 +4696,7 @@ restraint and every stand-down are exactly as Phase 1486 left them. The shared c
 metadata only; the hosts' coverage gates read the `code` set, and `message-parity.json`'s
 `mustConvey` groups for FUARAN086 are all still conveyed.
 
-### 5. A FastPath registered signature no longer advertises a slot hole (narrowing)
+#### A FastPath registered signature no longer advertises a slot hole (narrowing)
 
 **BREAKING for a caller relying on `FastPath.bank` registering a `SlotHole` as a required signature
 entry.** `Pattern.Build : Map<string, string> -> Node<unit>` takes scalars, so a `SlotHole` — whose

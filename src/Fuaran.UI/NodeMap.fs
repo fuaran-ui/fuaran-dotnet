@@ -44,6 +44,18 @@
 
 open Fuaran.UI.Types
 
+// Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
+// annotation, which the generator renders as `[<Obsolete(…, false)>]`: FS0044 at
+// every mention, and an error here under `TreatWarningsAsErrors`. Scoped off for
+// this ONE declaration, for the same reason the generated layer carries its own
+// `#nowarn "44"` — this is not an authoring site. `mapAction` is the library's
+// total relabelling of the union, so it must name every case that exists; the
+// marking is addressed to code that PUTS a `Dispatch` on a tree it means to
+// serialise, and this function neither creates nor serialises one. `#warnon`
+// immediately below, so a genuine deprecation anywhere else in this file is
+// still seen.
+#nowarn "44"
+
 /// Relabel an `Action<'a>` to `Action<'b>`, rewriting every `'a` payload and
 /// every function that returns an `'a` / `Action<'a>` by composition.
 let rec mapAction (f: 'a -> 'b) (action: Action<'a>) : Action<'b> =
@@ -65,6 +77,8 @@ let rec mapAction (f: 'a -> 'b) (action: Action<'a>) : Action<'b> =
     | Action.Invoke(capabilityId, args) -> Action.Invoke(capabilityId, args)
     // Phase 1124 — payload-free, so the relabel is a re-tag at the new 'Msg.
     | Action.Print -> Action.Print
+
+#warnon "44"
 
 /// Relabel a whole `Node<'a>` to `Node<'b>`. The `'Msg`-free traits (`Style`,
 /// `Accessibility`, `Motion`, `ExtraAttributes`) pass through; `Kind` + `State`

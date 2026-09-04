@@ -175,6 +175,17 @@ module ActionInvocation =
 
         route |> cutAt '?' |> cutAt '#'
 
+    // Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
+    // annotation, which renders as `[<Obsolete(…, false)>]`: FS0044 at every
+    // mention, and an error here under `TreatWarningsAsErrors`. Scoped off for
+    // the two declarations below and reopened immediately after them. Both are
+    // total classifications of the union for the ACTION LOG — `describe` names
+    // every constructor, `payloadFor` decides what each one may disclose — so
+    // each must name the marked case; neither constructs one and neither is an
+    // authoring surface. Note `payloadFor`'s `Dispatch` arm already yields
+    // `None` for exactly the reason the annotation states.
+    #nowarn "44"
+
     /// A short, LOG-SAFE description of an `Action`: the constructor, and the
     /// author-declared name that identifies it (endpoint / channel / state key
     /// / tool / capability / node id), never a payload VALUE.
@@ -240,6 +251,8 @@ module ActionInvocation =
             // all, so there is no payload to decode. `Some JNull` would record
             // an absent value as a present one.
             | Action.Print -> None
+
+    #warnon "44"
 
     /// Where a gesture was observed. Grouped so the emission points pass one
     /// value rather than five positional arguments that are trivial to

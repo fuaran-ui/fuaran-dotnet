@@ -558,8 +558,21 @@
          branched at 0.71.0 and main had reached 0.73.0 by the integrate, so it
          advances from what main declares. 0.72.0 is unclaimed here. See
          STABILITY.md "Recorded BREAKING change - 0.74.0, the two-sided
-         merge-conflict envelope and the shared-children merge". -->
-    <Version>0.74.0</Version>
+         merge-conflict envelope and the shared-children merge".
+
+         fuaran#1152 (0.75.0) - the generated `Action.Dispatch` case carries the
+         IDL's `inProcessOnly` annotation, so it is declared with a doc block and
+         one `[<System.Obsolete(..., isError = false)>]`. Mentioning the case
+         raises FS0044 in F# and CS0618 in C# - a WARNING, deliberately not an
+         error, because every in-process construction is correct and an error
+         would be a claim about those sites that is not true. Not source-breaking:
+         no signature moved, no DU gained a case, no record gained a field, and
+         no wire byte moves. A minor bump all the same, because the declaration a
+         consumer compiles against changed. Cut as 0.75.0: the phase branched at
+         0.71.0 and main reached 0.74.0 during the integrate, so it advances from
+         what main declares. See STABILITY.md "Recorded change - 0.75.0,
+         `Action.Dispatch` marked in-process-only". -->
+    <Version>0.75.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

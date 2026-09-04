@@ -49,6 +49,16 @@ type ResumeDisposition =
     | Boot
     | Fallback
 
+// Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
+// annotation, which renders as `[<Obsolete(…, false)>]`: FS0044 at every
+// mention, and an error here under `TreatWarningsAsErrors`. Scoped off for the
+// one declaration below and reopened after it. Both walks in this file are
+// total classifications of the union for the RESUME path, and each already
+// states the annotation's own fact: `disposition` answers `Boot` for a
+// `Dispatch` precisely because the closure did not survive, and `encodeAction`
+// writes the `"<closure>"` sentinel in its place.
+#nowarn "44"
+
 /// Classify a (possibly nested) `Action` by its laziest safe client handling.
 /// A `Chain` is only `Interpret` if every member interprets; a `Dispatch`
 /// anywhere forces `Boot`; a `Call` / `ReadFileBody` anywhere forces `Fallback`
@@ -92,6 +102,8 @@ let rec disposition (action: Action<'Msg>) : ResumeDisposition =
         |> List.sortByDescending rank
         |> List.tryHead
         |> Option.defaultValue ResumeDisposition.Interpret
+
+#warnon "44"
 
 // ─── Bounded JSON helpers (spike-local; script-injection-safe) ──────────────
 
@@ -137,6 +149,9 @@ let rec private jsonValueLite (v: Fuaran.Core.JVal) : string =
            |> List.map (fun (k, v) -> jsonString k + ":" + jsonValueLite v)
            |> String.concat ",")
         + "}"
+
+// Phase 1152 — see the note above `disposition`.
+#nowarn "44"
 
 /// Encode one data-shaped `Action` to the wire `$type`-discriminated shape.
 /// `Dispatch` / `Call` / `ReadFileBody` carry the same closure sentinel the
@@ -219,6 +234,8 @@ let rec encodeAction (action: Action<'Msg>) : string =
 
 // ─── Event-bearing action collection ────────────────────────────────────────
 //
+#warnon "44"
+
 // The directly-`Action`-bearing event handlers on the typed tree are
 // `ButtonSpec.OnClick` and `FormSpec.OnSubmit` (the canonical click / submit
 // cases §2 emphasises). The function-shaped handlers — `Select.OnChange : _ ->

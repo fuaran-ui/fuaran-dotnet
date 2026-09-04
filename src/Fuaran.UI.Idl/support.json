@@ -21,6 +21,36 @@
   "docs": [
     {
       "lines": [
+        "/// Carry a typed host message. **IN-PROCESS ONLY.**",
+        "///",
+        "/// Phase 1152 — the declaration says this now, so it no longer depends on",
+        "/// the reader having found `Action.dispatch`'s doc comment first. `msg` is",
+        "/// a host value with no wire projection: `{\"$type\":\"Dispatch\"}` is the",
+        "/// whole encoding, and the canonical decoder restores the payload as the",
+        "/// `\"<closure>\"` sentinel. A browser fed canonical wire JSON therefore",
+        "/// observes THAT the affordance fired and can never receive the message —",
+        "/// documented behaviour, not a defect. Full Fable is the one tier where",
+        "/// this survives, because there the tree is never serialised.",
+        "///",
+        "/// **The two wire-representable remedies.** `Action.Notify` carries a",
+        "/// channel and a JSON payload; `Action.Call` with an `into:` target writes",
+        "/// its result into state or a query (`onResult` is itself a closure and",
+        "/// does not survive either). Typed dispatch is then recovered host-side by",
+        "/// binding a handler table to the artifact's declared action holes, which",
+        "/// is uniform across hosts and needs no per-language mechanism.",
+        "///",
+        "/// **Two shipped surfaces make this checkable rather than remembered:**",
+        "/// `CanonicalJson.encodeNodeForTransport` REFUSES a tree carrying one, and",
+        "/// `PreEmitValidate.validateForTransport` reports it as **FUARAN112**.",
+        "/// Neither fires on the plain in-process paths, because there is nothing",
+        "/// wrong with them — which is also why the `Obsolete` attribute below is",
+        "/// a warning (FS0044) and not an error.",
+        "///"
+      ],
+      "path": "case:Action.Dispatch"
+    },
+    {
+      "lines": [
         "/// Phase 1124 — open the reader's own print dialogue. The first",
         "/// PAYLOAD-FREE `Action` case, and the emptiness is the ruling: the",
         "/// paged MEDIUM is Host chrome, so a document may say *print now* and",

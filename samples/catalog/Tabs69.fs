@@ -129,7 +129,15 @@ let private tabsNode (model: Model) : Node<Msg> =
                           Disabled = Some(Binding.Static(Some true)) } ]
             TabTags = Some [ "overview"; "detail"; "audit" ]
             ActiveTag = Some(Binding.Static(Some(tagOf model.Active)))
-            OnSelectTag = Some(fun tag -> Action.Dispatch(SetActive(tabOf tag))) }
+            // Phase 1152 — through the documented `Action.dispatch` helper
+            // rather than the generated case. The case now carries the IDL's
+            // `inProcessOnly` marking, and this sample IS an authoring site, so
+            // the honest answer to the warning is to take the route whose doc
+            // comment states the constraint — not to suppress it. Behaviour is
+            // identical: `dispatch` is `Action.Dispatch` with the paragraph
+            // attached, and this catalog page is a full-Fable in-process host
+            // where the case is correct.
+            OnSelectTag = Some(fun tag -> Action.dispatch (SetActive(tabOf tag))) }
 
 // ─── Runtime wiring — register the Custom renderer ─────────────────────────
 //

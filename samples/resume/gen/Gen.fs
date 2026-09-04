@@ -26,7 +26,7 @@ let main _ =
     // ── Resume page ──────────────────────────────────────────────────────────
     // The Dispatch handler is opaque on the wire (boot disposition); the model +
     // one classified live-subscription init effect ride along in the envelope.
-    let resumeTree = Tree.build<obj> 0 (Action.Dispatch(box "boot"))
+    let resumeTree = Tree.build<obj> 0 (Action.dispatch (box "boot"))
 
     let resumeBody =
         Resume.renderResumable

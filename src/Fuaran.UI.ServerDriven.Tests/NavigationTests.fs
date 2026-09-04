@@ -1,5 +1,14 @@
 module Fuaran.UI.ServerDriven.Tests.NavigationTests
 
+// Phase 1152 — `Action.Dispatch` carries the IDL's `inProcessOnly` marking, which
+// the generator renders as `[<Obsolete(…, false)>]`: FS0044 at every mention, and
+// an error under this repo's `TreatWarningsAsErrors`. File-scoped rather than
+// per-declaration because the mentions sit INSIDE `testList` expressions, where a
+// lexical directive cannot be placed — this is the tightest form the file can
+// express. A suite is not an authoring surface: these uses exist to PIN the marked
+// case's behaviour, which is the one use the marking is not addressed to.
+#nowarn "44"
+
 // ─── Phase 157 (Wave 18): server-driven navigation + routing ──────────────────
 //
 // Two modes, selected by the host route table (`RouteResolver`): a known route

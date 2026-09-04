@@ -436,7 +436,23 @@ module Action =
     /// carrying one, and `PreEmitValidate.validateForTransport` reports it as
     /// **FUARAN112**. Neither fires on the plain in-process paths, because
     /// there is nothing wrong with them.
+    ///
+    /// Phase 1152 — the generated `Action.Dispatch` case now carries the IDL's
+    /// `inProcessOnly` annotation, so a caller who reaches for the CASE gets
+    /// `FS0044` naming the same constraint. This helper is deliberately NOT
+    /// marked: marking it is the phase's option 2, an estate-wide acceptance of
+    /// warning-as-error at every correct in-process site, and it needs an
+    /// operator's call rather than a session's. What a caller of `dispatch` gets
+    /// instead is this doc comment, which the compiler shows on hover and which
+    /// says more than a one-line attribute can.
+    // The scope below is this one binding. It exists because the helper's whole
+    // job is to construct the marked case; suppressing here does not suppress
+    // anything at the call sites, which read the paragraph above.
+    #nowarn "44"
+
     let dispatch (msg: 'Msg) : Action<'Msg> = Action.Dispatch msg
+
+    #warnon "44"
 
     /// Per Defect (2) resolution: typed `'a -> 'Msg` is boxed to
     /// `obj -> 'Msg` at the tree level. The builder keeps the `ApiEndpoint`

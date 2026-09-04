@@ -1,5 +1,6 @@
 // AUTO-GENERATED from the IDL by Fuaran.Core.Idl.Gen (Phase 317 increment 3). Do not edit by hand.
 module Fuaran.UI.Generated
+#nowarn "44" // this layer implements every declared member, including deprecated ones
 
 open Fuaran.Core
 
@@ -388,7 +389,34 @@ type Action<'Msg> =
     /// clipboard without a paste gesture is a keylogger-adjacent capability.
     /// Paste is user-initiated by construction, and that is the boundary.
     | WriteToClipboard of text: TextSource
-    | Dispatch of msg: ('Msg)
+    /// Carry a typed host message. **IN-PROCESS ONLY.**
+    ///
+    /// Phase 1152 — the declaration says this now, so it no longer depends on
+    /// the reader having found `Action.dispatch`'s doc comment first. `msg` is
+    /// a host value with no wire projection: `{"$type":"Dispatch"}` is the
+    /// whole encoding, and the canonical decoder restores the payload as the
+    /// `"<closure>"` sentinel. A browser fed canonical wire JSON therefore
+    /// observes THAT the affordance fired and can never receive the message —
+    /// documented behaviour, not a defect. Full Fable is the one tier where
+    /// this survives, because there the tree is never serialised.
+    ///
+    /// **The two wire-representable remedies.** `Action.Notify` carries a
+    /// channel and a JSON payload; `Action.Call` with an `into:` target writes
+    /// its result into state or a query (`onResult` is itself a closure and
+    /// does not survive either). Typed dispatch is then recovered host-side by
+    /// binding a handler table to the artifact's declared action holes, which
+    /// is uniform across hosts and needs no per-language mechanism.
+    ///
+    /// **Two shipped surfaces make this checkable rather than remembered:**
+    /// `CanonicalJson.encodeNodeForTransport` REFUSES a tree carrying one, and
+    /// `PreEmitValidate.validateForTransport` reports it as **FUARAN112**.
+    /// Neither fires on the plain in-process paths, because there is nothing
+    /// wrong with them — which is also why the `Obsolete` attribute below is
+    /// a warning (FS0044) and not an error.
+    ///
+    /// **In-process only** — this member has no wire projection: a value here
+    /// is carried inside one host process and is LOST across any wire boundary.
+    | [<System.Obsolete("in-process only — no wire projection; a value here is lost across a wire boundary", false)>] Dispatch of msg: ('Msg)
     | Invoke of capabilityId: string * args: InvokeArg list
     | ReadFileBody of fileRef: string * fileHandle: (obj option) * encoding: FileReadEncoding * onRead: (string -> 'Msg) option
     | Call of endpoint: string * onResult: (obj -> 'Msg) option * into: CallResultTarget option
