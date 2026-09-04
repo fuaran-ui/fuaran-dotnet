@@ -265,7 +265,7 @@ InputKind =
 | Filters { items:FilterSpec[] }
 | Button { label:TextSource; onClick:Action; variant:"Primary"|"Secondary"|"Tertiary"|"Destructive"; disabled?:Binding_bool; icon?:str }
 | FileUpload { accept:str[]; label:TextSource; multiple:bool; onSelect:closure; acceptPaste?:bool; capture?:"Camera"|"Microphone"; destination?:str; disabled?:Binding_bool; dropTarget?:bool }
-| Select { label:TextSource; source:Binding_list_SelectOption; value:Binding_str; disabled?:Binding_bool; multiple?:bool; placeholder?:TextSource; values?:Binding_list_str }
+| Select { label:TextSource; source:Binding_list_SelectOption; value:Binding_str_choice; disabled?:Binding_bool; multiple?:bool; placeholder?:TextSource; values?:Binding_list_str }
 VisKind =
 | DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; exportable?:bool; keepRowsTogether?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; repeatHeader?:bool; rowKeyField?:str; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool }; transferInKey?:str; transferOutKey?:str }
 | Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding_hosted; xField:str; yFields:str[]; dataLabels?:"Off"|"Ends"; legendPosition?:"Top"|"Right"|"Bottom"|"None"; stacked?:bool; subtitle?:TextSource; title?:TextSource; valueFormat?:Format; xScale?:"Category"|"Temporal"; xTitle?:TextSource; yTitle?:TextSource }
@@ -296,7 +296,7 @@ Action =
 | Invoke { args:object[]; capabilityId:str }
 | Print
 Binding_bool =
-| Static { value?:bool }
+| Static { value:bool }
 | Query { name:str; dependsOn?:str[] }
 | Filter { name:str; defaultValue?:bool }
 | Selection { nodeId:str; defaultValue?:bool; field?:str }
@@ -309,7 +309,7 @@ Binding_bool =
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_float =
-| Static { value?:any }
+| Static { value:any }
 | Query { name:str; dependsOn?:str[] }
 | Filter { name:str; defaultValue?:any }
 | Selection { nodeId:str; defaultValue?:any; field?:str }
@@ -335,7 +335,7 @@ Binding_hosted =
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_int =
-| Static { value?:int }
+| Static { value:int }
 | Query { name:str; dependsOn?:str[] }
 | Filter { name:str; defaultValue?:int }
 | Selection { nodeId:str; defaultValue?:int; field?:str }
@@ -413,7 +413,7 @@ Binding_list_str =
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_str =
-| Static { value?:str }
+| Static { value:str }
 | Query { name:str; dependsOn?:str[] }
 | Filter { name:str; defaultValue?:str }
 | Selection { nodeId:str; defaultValue?:str; field?:str }
@@ -422,6 +422,19 @@ Binding_str =
 | Now
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str; onCommit:closure; parse:closure }
+| Format { format:Format; locale:LocaleSource; source:Binding_float }
+| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Invoke { args:object[]; capabilityId:str }
+Binding_str_choice =
+| Static { value?:str }
+| Query { name:str; dependsOn?:str[] }
+| Filter { name:str; defaultValue?:str }
+| Selection { nodeId:str; defaultValue?:str; field?:str }
+| State { key:str; defaultValue?:str }
+| Computed { fn:closure }
+| Now
+| I18n { key:str; args?:{ [key]:Binding_json } }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str_choice; onCommit:closure; parse:closure }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
@@ -472,13 +485,13 @@ FormFieldKind =
 | Range { max?:any; min?:any; step?:any; value?:any }
 | Checkbox { value?:Binding_bool }
 | Toggle { value?:Binding_bool }
-| Choice { options:Binding_list_SelectOption; value?:Binding_str }
+| Choice { options:Binding_list_SelectOption; value?:Binding_str_choice }
 | RangedNumber { max?:any; min?:any; step?:any; value?:Binding_float }
-| SegmentedChoice { options:Binding_list_SelectOption; orientation:Orientation; value?:Binding_str }
+| SegmentedChoice { options:Binding_list_SelectOption; orientation:Orientation; value?:Binding_str_choice }
 | TextArea { rows:int; value?:Binding_str }
 | Date { variant:DateVariant; max?:str; min?:str; step?:any; value?:Binding_str }
 | DateRange { variant:DateVariant; max?:str; min?:str; step?:any; value?:any }
-| Combobox { options:Binding_list_SelectOption; allowFreeText?:bool; value?:Binding_str }
+| Combobox { options:Binding_list_SelectOption; allowFreeText?:bool; value?:Binding_str_choice }
 | Rating { max:int; allowHalf?:bool; value?:Binding_float }
 | Color { value?:Binding_str }
 | Tokens { allowFreeText?:bool; suggestions?:Binding_list_SelectOption; value?:Binding_list_str }
