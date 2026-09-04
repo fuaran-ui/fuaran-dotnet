@@ -1543,6 +1543,15 @@
             "$type": "enum",
             "name": "CaptureSource"
           }
+        },
+        {
+          "name": "destination",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "str"
+          }
         }
       ],
       "tag": "FileUpload"

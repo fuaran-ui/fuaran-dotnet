@@ -632,6 +632,21 @@ let private action =
           { Tag = "Invoke"
             Fields = [ req "capabilityId" TStr; req "args" (TList(TRecord "InvokeArg")) ]
             Annotations = Annotations.Empty }
+          // Phase 1117 — `ReadFileBody` is the SMALL-PAYLOAD path, and this is
+          // the statement of that rather than an aside. It reads a selected
+          // file's whole body into a string and hands it to a closure, so the
+          // body travels the message loop and lands in whatever durable record
+          // the host keeps of it; under `Base64` / `DataUrl` it is inflated by a
+          // third on the way. That is exactly right for a small text file, a
+          // configuration blob, a signature capture — and structurally wrong for
+          // a video, an archive or a photograph. Above roughly a few hundred
+          // kilobytes the answer is `FileUploadSpec.destination` and the host's
+          // upload sink, which streams the bytes to a registered destination and
+          // returns a REFERENCE the op stream can carry.
+          //
+          // Neither replaces the other and this member is not deprecated: one
+          // ingests a body a handler needs in hand, the other moves bytes to a
+          // place and names them. What is deprecated is using this one for size.
           { Tag = "ReadFileBody"
             Fields =
               [ req "fileRef" TStr
@@ -2286,7 +2301,26 @@ let inputKinds: IdlKind list =
             // default. Appended, so no generated constructor position moves, and
             // absent-at-`None`, so every upload document written before this
             // release encodes to the bytes it always did.
-            opt "capture" (TEnum "CaptureSource") ] }
+            opt "capture" (TEnum "CaptureSource")
+            // Phase 1117 — the HOST-REGISTERED destination this upload streams
+            // to. A NAME, never a URL: the string is an id the host has
+            // registered with its own upload sink, and a host resolves it
+            // against that sink's declared set. An id the sink does not name
+            // refuses; there is no fallback, and nothing on this member could
+            // ever be fetched. That is the whole point of a name — a URL here
+            // would let a decoded tree from an arbitrary emitter choose where a
+            // reader's file goes, which is the one thing this member exists to
+            // make impossible.
+            //
+            // Absent — the default — is the pre-1117 control exactly: the
+            // selection reaches `onSelect` and nothing leaves the client. The
+            // member is an OPTION rather than an omit-at-default string for the
+            // reason `capture` is: "say nothing" is a real state (no upload
+            // destination at all), not a default value of the same kind, and an
+            // empty string is refused at decode rather than read as absence.
+            //
+            // Appended, so no generated constructor position moves.
+            opt "destination" TStr ] }
       { Tag = "Form"
         Category = "Input"
         Annotations = Annotations.Empty

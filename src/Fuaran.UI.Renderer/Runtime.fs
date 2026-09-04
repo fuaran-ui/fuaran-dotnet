@@ -315,6 +315,28 @@ type ActionDescriptor =
     /// Nothing is read back: the export writes a file and returns unit, so the
     /// tree learns nothing about the reader, not even whether they kept it.
     | Export of nodeId: string
+    /// A large-binary upload (Phase 1117) — a reader has selected a file into
+    /// an upload that declares a host-registered `destination`, and the file's
+    /// BYTES are about to leave the client for that destination.
+    ///
+    /// This is the largest effect in the set and the one whose gating is least
+    /// optional. `Export` writes a file the reader is already looking at onto
+    /// their own disk; this SENDS the reader's own file somewhere else. Carries
+    /// the destination id, so a host policy can be per-destination rather than
+    /// all-or-nothing — exactly as `Export` carries its node and `SetState` its
+    /// key.
+    ///
+    /// Two refusals stand behind an upload and they are a GATE and a
+    /// RESOLUTION, not two gates. This descriptor is the gate: *may this tree
+    /// cause an upload to `destination` at all* — policy about the tree, and
+    /// denied by every shipped runtime. Whether `destination` is registered is
+    /// a fact about the host, answered by `IFuaranUploadSink.Destinations`
+    /// with no fallback of any kind. A host that allows this descriptor and
+    /// wires no sink still uploads nothing.
+    ///
+    /// The destination is an author-declared NAME, never a URL, so it is safe
+    /// in a diagnostic line — there is nothing here of the reader's.
+    | Upload of destination: string
 
 [<RequireQualifiedAccess>]
 module ActionDescriptor =
@@ -338,6 +360,10 @@ module ActionDescriptor =
         | ActionDescriptor.CommitLocal nodeId -> sprintf "CommitLocal(%s)" nodeId
         | ActionDescriptor.Print -> "Print"
         | ActionDescriptor.Export nodeId -> sprintf "Export(%s)" nodeId
+        // The destination is an author-declared name (grade B), so it is
+        // carried in full; nothing the reader chose — not the file's name, not
+        // its size — reaches this line.
+        | ActionDescriptor.Upload destination -> sprintf "Upload(%s)" destination
 
 /// The five Action substrates the renderer dispatches to. Consumers
 /// implement once at the app shell; the renderer treats it as a black box.

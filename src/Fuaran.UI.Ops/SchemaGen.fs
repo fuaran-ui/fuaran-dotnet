@@ -1163,7 +1163,15 @@ let private defs: (string * J) list =
             "acceptPaste", boolean
             // Phase 1116 — likewise out of `required`: an absent member is the
             // ordinary picker, not a device the emitter forgot to name.
-            "capture", ref "CaptureSource" ]
+            "capture", ref "CaptureSource"
+            // Phase 1117 — the host-registered destination id. Out of
+            // `required`: an absent member is an upload whose selection never
+            // leaves the client, which is what every pre-1117 document says.
+            // `minLength: 1` is the schema's half of the decoder's one
+            // judgement — `""` names an upload that can never stream, so it is
+            // refused rather than read as absence. Whether a NON-EMPTY id is
+            // registered is a fact about the host and no schema can state it.
+            "destination", JObj [ "type", JStr "string"; "minLength", JInt 1 ] ]
 
       "InputKind",
       union

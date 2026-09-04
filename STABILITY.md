@@ -4263,3 +4263,77 @@ defaulting to `true`, matching the wire), the VB `kind="tokens"` mapping on both
 `<Option>` children — and NO new analyzer vocabulary row, because the dialect attributes it needs
 (`allowFreeText`, `initial`, `<Option>`) all already mean the right thing and a dialect attribute
 that already exists is not duplicated under a second name.
+
+
+## Recorded change — 0.70.0, the large-binary upload seam (fuaran#1117)
+
+**ADDITIVE to the wire, source-breaking at a full-literal construction and at two exhaustive matches,
+and a `WIRE_FORMAT.md` §11 forward-coupling event.** `FileUploadSpec` gains
+`Destination: string option` — a HOST-REGISTERED destination id, never a URL — and a new portability
+seam, `Fuaran.UI.Ops.UploadSink.IFuaranUploadSink`, arrives in `Fuaran.UI.Ops.Abstractions` beside
+`IActionInvocationSink`.
+
+  * **Every document written before 0.70.0 encodes and decodes to byte-identical bytes.** The member
+    is absent-at-`None`, `Defaults.fileUpload` sets it to `None`, and `nodes/upload-1.json` is
+    unchanged in the corpus. The field is APPENDED to the generated record, so no existing
+    constructor position moves.
+
+  * **Three source breaks, all pre-1.0 minor and each in a different place.** FS0764 at a
+    full-literal `FileUploadSpec` construction (a consumer building through
+    `{ Defaults.fileUpload with … }` is unaffected). FS0025 in a consumer's own exhaustive match over
+    `Runtime.ActionDescriptor`, which gains `Upload of destination: string`. And FS0025 in an
+    exhaustive match over `ServerDriven.Validation.RejectReason`, which gains
+    `BodyReadRefused of nodeId: string * destination: string`. `IFuaranRuntime` gains no member, so a
+    direct implementer of that interface is untouched.
+
+  * **The member is a NAME the host registered, and the distinction from a URL is the whole design.**
+    A wire document comes from an arbitrary emitter; an address here would let that emitter choose
+    where a reader's file goes. A host resolves the id against its own sink's declared `Destinations`
+    set and refuses an id the set does not contain — **with no fallback of any kind**: it is not
+    tried as a path, as a URL, or against a default destination, because a fallback makes
+    registration advisory. The empty string is refused at DECODE (`WRONG_TYPE` at
+    `$.…destination`); an unregistered non-empty id is refused at DISPATCH, because whether an id is
+    registered is a fact about the host and the same bytes must not be valid for one reader and
+    invalid for another.
+
+  * **Two refusals stand in front of a transfer and they are a gate and a resolution, not two
+    gates.** `ActionDescriptor.Upload` is the gate — *may this tree cause an upload to this
+    destination at all* — refused by every shipped runtime by default, exactly as `Call` / `Navigate`
+    / `Export` are, and reached back by name through `Runtime.permissive`. The sink's `Destinations`
+    set is the resolution. A host that allows the descriptor and wires no sink still uploads nothing.
+
+  * **What reaches the document is a REFERENCE and never the bytes.** `UploadedRef` carries a
+    sink-assigned id, a content digest, the accepted size and the recorded type — no URL, no local
+    path — and the renderer writes it to the control's HOST-RESERVED state slot
+    (`host.upload.<nodeId>`, under the Phase 782 prefix), so a tree-originated `SetState` can never
+    forge an upload result. `onSelect` is UNCHANGED and fires from the input's own change exactly as
+    it always did: the transfer is a second fact about one gesture, not a second spelling of it.
+
+  * **`Action.ReadFileBody` is now documented as the SMALL-PAYLOAD path, and the two are mutually
+    exclusive at the server-driven boundary.** A `file-read` event against an upload that declares a
+    destination is refused (`RejectReason.BodyReadRefused`) — on both sides of the policy gate, since
+    a discipline a permissive host can opt out of is a preference. `ReadFileBody` is not deprecated:
+    it remains correct for a body a handler needs in hand, and wrong for size.
+
+**The seam's chunking is the SINK's, not the wire's.** `IFuaranUploadSink.Upload` takes a whole
+`FileSelection` and a progress callback; framing, resumption, retry and hashing are the transport's,
+and a framing declared on this surface would be one every host inherits and none can change.
+`UploadSink.InMemorySink` chunks observably (one progress report per declared chunk size) so the
+claim is testable rather than asserted.
+
+**No new validator code.** 1116 minted FUARAN134 because `capture` and `accept` form an incoherent
+pair an author can write; this member has no such pair — the one judgement it carries (the empty
+string) is a decode refusal, which is where a document that names a control that cannot exist
+belongs.
+
+**One class-vocabulary change**, so `Theme.vocabularyFingerprint` moves to `fv1:31d200d72663a91a` and
+the reference stylesheet plus its four tier copies are regenerated: `fuaran-upload-stream` and its
+three `role="status"` state classes (`-progress` / `-done` / `-refused`).
+
+**No render-fidelity obligation is added**, on the 0.67.0 and 0.68.0 precedent: a new claim puts every
+roster host into "unchecked", which is a separate deliberate act. The §11.0 roster gains a
+streamed-upload adoption table instead, with `fuaran` adopted and every other host pending.
+
+**§11 step 6 authoring surfaces:** C# `FileUploadOptions.Destination` (a nullable `string`); the VB
+`destination` attribute on `<FileUpload>`, read through the plain `Attr` so absence stays the
+client-only control; and the analyzer vocabulary row.

@@ -611,6 +611,31 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a FileUpload `capture` of `\"Screen\"` — outside the closed pair `Camera | Microphone`. The HTML capture attribute cannot ask for a display at all, and a screen capture is a standing grant reaching every window the reader has open rather than a third device behind the same picker permission, so it is refused exactly like a name nobody has proposed: a later admission would be an ADDITION, never a re-meaning of shipped bytes" }
+      // Phase 1117 — an EMPTY upload destination. The member names a slot the
+      // host registered, and `""` is a name no host registers, so the document
+      // describes an upload that can never stream: a control that cannot exist,
+      // which is the `Rating.max < 1` and closed-`Tokens`-without-suggestions
+      // line at a third slot.
+      //
+      // The refusal matters most for what it is NOT. Reading `""` as absence
+      // would be the tempting coercion and is exactly wrong: it silently
+      // converts an upload the author meant to stream into a client-only one,
+      // which is a failure with no symptom anywhere — the control renders, the
+      // picker works, the handler fires, and nothing is ever uploaded.
+      //
+      // An UNREGISTERED non-empty id is deliberately not refused here. That is a
+      // fact about the host, not about the document — the same id is registered
+      // on one deployment and not another — so it is refused at dispatch, where
+      // the registry is. A decoder that judged it would make the same bytes
+      // valid or invalid depending on who read them.
+      { Id = "reject-upload-destination-empty"
+        Json =
+          """{"id":"up","kind":{"$type":"FileUpload","accept":["video/*"],"destination":"","label":"Upload","multiple":true,"onSelect":"<closure>"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.destination"
+        IsOp = false
+        Description =
+          "a FileUpload `destination` of `\"\"` — refused rather than read as absence. The member names a host-registered destination and the empty string names none, so the document describes an upload that can never stream; reading it as \"no destination\" would silently turn a streaming upload into a client-only one, which is the one failure mode with no visible symptom" }
       { Id = "reject-tokens-value-not-list"
         Json =
           """{"id":"f","kind":{"$type":"Form","fields":[{"id":"labels","kind":{"$type":"Tokens","value":{"$type":"Static","value":"urgent"}},"label":"Labels","required":false}],"onSubmit":"<closure>","submitLabel":"Save"}}"""

@@ -458,7 +458,12 @@ let fileUpload<'Msg> : FileUploadSpec<'Msg> =
       // Deliberately not a "no device" case of the enum — an upload that names
       // no capture device is asking for the picker, which is a different
       // statement from asking for a device and being unable to say which.
-      Capture = Option.None }
+      Capture = Option.None
+      // Phase 1117 — `None`, which is the pre-1117 control and the wire
+      // identity: a default upload still encodes to exactly the bytes it always
+      // did, and the shortest document is the one whose selection never leaves
+      // the client. Naming a destination is the thing an emitter has to ask for.
+      Destination = Option.None }
 
 // ─── Visualisation defaults ─────────────────────────────────────────────────
 

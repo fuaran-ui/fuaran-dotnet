@@ -100,7 +100,8 @@ public static partial class Fuaran
         new(FsFactory.fileUpload<object>(
             options.Id,
             // Generated FileUploadSpec ctor is Generated.fs declaration order (Accept,
-            // Label, Multiple, OnSelect, Disabled, AcceptPaste, DropTarget, Capture);
+            // Label, Multiple, OnSelect, Disabled, AcceptPaste, DropTarget, Capture,
+            // Destination);
             // OnSelect is optional now and FileSelection lives in HostPrelude — the
             // facade keeps its no-op handler (Some-wrapped) so the wire shape is
             // unchanged.
@@ -120,7 +121,12 @@ public static partial class Fuaran
                 // the wire identity; a device is asked for by name.
                 options.Capture is { } capture
                     ? Fs.Some(capture.ToFs())
-                    : Fs.None<global::Fuaran.UI.Generated.CaptureSource>())));
+                    : Fs.None<global::Fuaran.UI.Generated.CaptureSource>(),
+                // Phase 1117 — absent by default: the shortest C# call is the
+                // client-only upload, and a destination is asked for by name.
+                options.Destination is { } destination
+                    ? Fs.Some(destination)
+                    : Fs.None<string>())));
 }
 
 /// <summary>A form field — build with the static factories (<see cref="Text"/> / <see cref="Number"/> / …).</summary>
@@ -454,4 +460,12 @@ public sealed record FileUploadOptions
     /// accept list is what chooses which device, and a pair that disagrees is
     /// reported by the validator rather than repaired.</summary>
     public CaptureSource? Capture { get; init; }
+
+    /// <summary>The host-registered destination this upload streams its files to
+    /// (Phase 1117); <c>null</c> — the default — is the client-only control, where
+    /// the selection reaches the handler and nothing leaves the browser. It is a
+    /// NAME the host registered with its upload sink, never a URL: an id the sink
+    /// does not serve is refused, with no fallback of any kind. What comes back is
+    /// a reference (id, hash, size, type) and never the bytes.</summary>
+    public string? Destination { get; init; }
 }

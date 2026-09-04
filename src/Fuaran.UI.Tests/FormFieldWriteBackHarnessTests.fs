@@ -79,7 +79,9 @@ let private makeCtx () : Render.RenderContext<Msg> =
       SessionContext = Map.empty
       ActionSink = None
       CurrentNodeId = None
-      EgressPolicy = Sanitize.permissiveEgress }
+      EgressPolicy = Sanitize.permissiveEgress
+      // Phase 1117 — no upload sink: this surface performs no uploads.
+      UploadSink = None }
 
 // ─── Site classes ──────────────────────────────────────────────────────────
 //

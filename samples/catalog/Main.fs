@@ -170,7 +170,9 @@ let private aiEvalRenderCtx () : Render.RenderContext<obj> =
       // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
       // boundary, so the permissive posture is correct and is reached BY NAME.
       // A host rendering a DECODED tree must not copy this line.
-      EgressPolicy = Sanitize.permissiveEgress }
+      EgressPolicy = Sanitize.permissiveEgress
+      // Phase 1117 — no upload sink: this surface performs no uploads.
+      UploadSink = None }
 
 let private aiEvalView (model: AiEvalModel) (dispatch: AiEvalMsg -> unit) : ReactElement =
     React.Fragment
@@ -240,7 +242,9 @@ let private parityView () : ReactElement =
                     // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
                     // boundary, so the permissive posture is correct and is reached BY NAME.
                     // A host rendering a DECODED tree must not copy this line.
-                    EgressPolicy = Sanitize.permissiveEgress }
+                    EgressPolicy = Sanitize.permissiveEgress
+                    // Phase 1117 — no upload sink: this surface performs no uploads.
+                    UploadSink = None }
 
               Html.div
                   [ prop.id ("parity-fuaran-" + p.Id)

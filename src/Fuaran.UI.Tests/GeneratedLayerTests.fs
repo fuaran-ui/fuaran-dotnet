@@ -666,6 +666,22 @@ let generatedLayerTests =
               //    It is schema-EXPRESSIBLE (`additionalProperties: false` on the
               //    `Print` branch, the only branch of the `Action` union that
               //    closes) and so stays out of `schemaInexpressibleRejects`.
+              //  - an empty `FileUpload.destination` (Phase 1117) is the FIFTH
+              //    instance of the value-bound class, and the first of them over
+              //    a STRING rather than a number. Same mechanism as the four
+              //    above: the IDL declares the member as `TStr` and has no
+              //    refined-string type, so the generated decoder reads a plain
+              //    string and accepts, while the policy decoder applies the
+              //    non-empty floor. The floor is not decoration — the member
+              //    names a host-registered destination, `""` names none, and
+              //    reading it as absence would silently turn a streaming upload
+              //    into a client-only one. The schema states it as
+              //    `minLength: 1`, so it is schema-INVALID and stays out of
+              //    `schemaInexpressibleRejects` exactly like the numeric four.
+              //    Its landing here was predicted rather than discovered: the
+              //    phase chose the `pageSize` precedent deliberately, and this
+              //    guard is what confirms the precedent transferred from a
+              //    numeric bound to a string one.
               Expect.equal
                   policyOwned
                   [ "reject-action-print-with-payload.json"
@@ -686,6 +702,7 @@ let generatedLayerTests =
                     "reject-nearmiss-grid-behaviour-record.json"
                     "reject-nearmiss-grid-current-page.json"
                     "reject-nearmiss-grid-sortable.json"
+                    "reject-upload-destination-empty.json"
                     "reject-wrongtype-grid-default-sort-column.json"
                     "reject-wrongtype-grid-page-size-zero.json"
                     "reject-wrongtype-static-sort-column.json" ]

@@ -65,6 +65,9 @@
     <!-- DispatchGateTests pins Phase 119's IFuaranRuntime.CanDispatch seam
          via Render.applyDispatchGate (allow-by-default + deny path). -->
     <Compile Include="DispatchGateTests.fs" />
+    <!-- Phase 1117: the upload seam, its default-deny refusals, and the
+         op-stream discipline the destination member exists to enforce. -->
+    <Compile Include="UploadSinkTests.fs" />
     <!-- Phase 889: the client-side gate OUTCOMES the user-action record is
          built from, plus the cross-tier correlation-key pin. -->
     <Compile Include="ActionInvocationClientTests.fs" />

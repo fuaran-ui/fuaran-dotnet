@@ -89,6 +89,10 @@
     <Compile Include="RatingControl.fs" />
     <Compile Include="TokensControl.fs" />
     <Compile Include="FileUploadDrop.fs" />
+    <!-- Phase 1117: the upload streaming shell. Beside the drop zone, and for
+         the same reason — one interaction's transient state, wrapped as a React
+         function component around children `Render.fs` builds. -->
+    <Compile Include="UploadStream.fs" />
     <Compile Include="PopoverSurface.fs" />
     <Compile Include="SwitchStage.fs" />
     <Compile Include="GridTransfer.fs" />

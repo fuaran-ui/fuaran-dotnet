@@ -72,6 +72,12 @@ type RejectReason =
     | PayloadOutOfBounds of nodeId: string * detail: string
     /// (d) The resolved action was denied by the host dispatch policy gate.
     | DispatchDenied of nodeId: string * action: string
+    /// (c) The event would read an upload's BODY into the message loop on a
+    /// control that declares a streaming `destination` (Phase 1117). The
+    /// destination NAME is carried — it is author-declared vocabulary, grade B,
+    /// and it is what makes the line diagnosable; nothing the reader chose is
+    /// in it.
+    | BodyReadRefused of nodeId: string * destination: string
 
 module RejectReason =
     /// A short, audit-log-shaped description (no payload values — those may be
@@ -100,6 +106,11 @@ module RejectReason =
             sprintf "event '%s' illegitimate for node '%s' (%s)" ev id kind
         | RejectReason.PayloadOutOfBounds(id, detail) -> sprintf "payload out of bounds for node '%s': %s" id detail
         | RejectReason.DispatchDenied(id, act) -> sprintf "dispatch denied by policy for node '%s': %s" id act
+        | RejectReason.BodyReadRefused(id, destination) ->
+            sprintf
+                "body read refused for node '%s': this upload streams to destination '%s', so its bytes may not enter the message loop"
+                id
+                destination
 
 /// The successfully-validated, gated event — the boundary's output. `Action` is
 /// `None` for a legitimate event with no server-resolvable action yet (the
@@ -289,6 +300,36 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
                 | FormFieldKind.Combobox(false, _, options, _) -> checkOptions options
                 | FormFieldKind.Combobox(true, _, _, _) -> Ok()
                 | _ -> Ok()
+    // Phase 1117 — the op-stream discipline, held at the trust boundary rather
+    // than left to convention.
+    //
+    // A `FileUpload` that declares a `destination` has said its bytes go to a
+    // host-registered sink and that only a REFERENCE comes back. The
+    // `file-read` event is the other route: it drives `Action.ReadFileBody`,
+    // which reads the whole body into a string and hands it to the message loop
+    // — where it is dispatched, recorded, and, in a host that persists its
+    // authoring channel, hash-chained into a stream that replays forever. The
+    // two routes are mutually exclusive by design, and this is where saying so
+    // costs nothing and catches everything: a shim asking for the body of a
+    // streaming upload is refused, whether it does so by an emitter's mistake
+    // or by a forged event aimed squarely at the one path that puts a reader's
+    // file into a durable record.
+    //
+    // The `change` event is UNTOUCHED. Selecting a file on a streaming upload
+    // is ordinary and reports nothing about the file's contents; refusing it
+    // would break the control rather than protect it.
+    //
+    // No new EVENT NAME is admitted here, on the standing ruling this file
+    // applies to `dropTarget` / `acceptPaste` / `capture` / `Switch` /
+    // `DataGrid` transfer: the allow-list is keyed by the node that RECEIVES an
+    // event, and a streamed upload's result reaches a server-driven session as
+    // a HOST WRITE to the control's reserved state slot — a state write is not
+    // an event. What this member adds is a REFUSAL on an event already
+    // admitted, not an admission.
+    | NodeKind.FileUpload(spec) when ev.Event = "file-read" ->
+        match spec.Destination with
+        | Some destination -> Error(RejectReason.BodyReadRefused(ev.NodeId, destination))
+        | None -> Ok()
     | _ -> Ok()
 
 // ─── action resolution ──────────────────────────────────────────────────────

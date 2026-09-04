@@ -1601,6 +1601,23 @@ and FileRef = HostPrelude.FileRef
 /// admit that device's output is a question about the two members TOGETHER, and
 /// the renderer answers it by projecting both exactly as declared rather than
 /// repairing either. FUARAN134 reports the incoherent pair.
+///
+/// **`Destination` (Phase 1117) is a NAME the host registered, never a URL.**
+/// `Some id` says this upload streams its selection to the host's own upload
+/// sink under that id; `None` — the default — is the pre-1117 control, where
+/// the selection reaches `OnSelect` and nothing leaves the client. The string
+/// is resolved against `IFuaranUploadSink.Destinations` and refused when the
+/// sink does not name it, with no fallback of any kind: it is not tried as a
+/// path, a URL or a default destination. That is the member's whole purpose — a
+/// URL here would let a decoded tree from an arbitrary emitter choose where a
+/// reader's file goes.
+///
+/// What comes back is an `UploadedRef` (id, content hash, accepted size,
+/// recorded type) and never the bytes, which is what keeps a video out of the
+/// op stream. `Action.ReadFileBody` remains the SMALL-payload path and is the
+/// wrong tool above a few hundred kilobytes: it inflates the body by a third
+/// into a base64 string and puts it through the message loop and into the
+/// durable authoring record.
 and FileUploadSpec<'Msg> = Generated.FileUploadSpec<'Msg>
 
 and FileSelection = HostPrelude.FileSelection

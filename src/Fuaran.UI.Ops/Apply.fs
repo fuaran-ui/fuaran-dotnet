@@ -920,6 +920,18 @@ let private updateFileUpload (field: string) (v: obj) (spec: FileUploadSpec<'Msg
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryCaptureSourceOption v
             |> Result.map (fun x -> { spec with Capture = x }))
+    // Phase 1117 — the upload destination takes the optional-string
+    // disposition: a `null` clears it back to the client-only control, a string
+    // names a destination. The EMPTY STRING is refused here for the same reason
+    // the decoder refuses it — it names an upload that can never stream — so an
+    // `UpdateProp` cannot reach a state a decode could not.
+    | "Destination" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryStringOption v
+            |> Result.bind (fun x ->
+                match x with
+                | Some "" -> Error "expected a non-empty registered upload destination id"
+                | _ -> Ok { spec with Destination = x }))
     | "OnSelect"
     | "Disabled" -> NotSupportedYet
     | _ -> UnknownField

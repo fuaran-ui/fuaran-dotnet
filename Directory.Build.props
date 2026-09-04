@@ -527,7 +527,7 @@
          re-packed slot swaps the contract under a consumer whose NuGet cache
          still serves the old bits. See STABILITY.md "Recorded change - 0.68.0,
          the media-capture upload field". -->
-    <Version>0.69.0</Version>
+    <Version>0.70.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

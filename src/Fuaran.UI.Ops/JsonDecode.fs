@@ -6195,8 +6195,39 @@ let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpe
             | None -> Ok Option.None
             | Some v -> decodeCaptureSource (path + ".capture") v |> Result.map Some
 
-        match acceptR, labelR, multipleR, disabledR, dropTargetR, acceptPasteR, captureR with
-        | Ok accept, Ok label, Ok multiple, Ok disabled, Ok dropTarget, Ok acceptPaste, Ok capture ->
+        // Phase 1117 — the host-registered upload destination. Absent is `None`
+        // (the pre-1117 control: the selection reaches the handler and nothing
+        // leaves the client). Present-and-not-a-string is `WRONG_TYPE`.
+        //
+        // The EMPTY STRING is refused rather than read as absence, and that is
+        // the one judgement in this member. A destination is resolved against
+        // the host sink's registered set, and `""` is a name no host registers,
+        // so the document describes an upload that can never stream — the
+        // `Rating.max < 1` / `Tokens` closed-without-suggestions line: a control
+        // that cannot exist, not a control with a bad value in it. Reading it as
+        // absence would be the dangerous coercion, because it silently converts
+        // an upload the author intended to stream into one that quietly does
+        // not, which is the failure mode with no symptom.
+        //
+        // NOT refused here: an unregistered non-empty id. That is a fact about
+        // the HOST, not about the document — the same id is registered on one
+        // deployment and not another — so it is refused at dispatch, loudly,
+        // where the registry is (`IFuaranUploadSink.Destinations`). A decoder
+        // that refused it would make the same bytes valid or invalid depending
+        // on who was reading them.
+        let destinationR =
+            match tryField fields "destination" with
+            | None -> Ok Option.None
+            | Some v ->
+                requireString (path + ".destination") v
+                |> Result.bind (fun s ->
+                    if s = "" then
+                        wrongType (path + ".destination") "non-empty registered upload destination id"
+                    else
+                        Ok(Some s))
+
+        match acceptR, labelR, multipleR, disabledR, dropTargetR, acceptPasteR, captureR, destinationR with
+        | Ok accept, Ok label, Ok multiple, Ok disabled, Ok dropTarget, Ok acceptPaste, Ok capture, Ok destination ->
             Ok
                 { Label = label
                   Accept = accept
@@ -6208,14 +6239,16 @@ let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpe
                   Disabled = disabled
                   AcceptPaste = acceptPaste
                   DropTarget = dropTarget
-                  Capture = capture }
-        | Error e, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _
-        | _, _, Error e, _, _, _, _
-        | _, _, _, Error e, _, _, _
-        | _, _, _, _, Error e, _, _
-        | _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, Error e -> Error e
+                  Capture = capture
+                  Destination = destination }
+        | Error e, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _
+        | _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeInputKind (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
     match requireObject path j with

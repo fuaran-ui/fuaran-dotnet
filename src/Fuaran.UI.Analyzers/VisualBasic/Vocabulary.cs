@@ -179,7 +179,9 @@ internal static class Vocabulary
         // `dropTarget` / `acceptPaste` ingress declarations.
         // Phase 1116 — `capture` names the recording device the platform opens
         // instead of the file browser. Absent is the ordinary picker.
-        Add("FileUpload", "id", "label", "accept", "multiple", "drop-target", "accept-paste", "capture");
+        // Phase 1117 — `destination` names the host-registered upload sink slot
+        // this control streams to. Absent is the client-only upload.
+        Add("FileUpload", "id", "label", "accept", "multiple", "drop-target", "accept-paste", "capture", "destination");
         // Phase 876 — the value-format-* family carries the value axis's number
         // format (the `Format` vocabulary), the chart-side sibling of `format-*`.
         // Phase 878 — the axis names + the subtitle. Absent x-title / y-title

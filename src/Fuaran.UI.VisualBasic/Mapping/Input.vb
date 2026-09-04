@@ -40,6 +40,12 @@ Friend Module InputMapping
         ' rather than AsEnum: the spec field is itself optional, absence is the
         ' ordinary picker rather than a device, and an unrecognised device name is
         ' an authoring error here exactly as it is a decode refusal on the wire.
+        '
+        ' Phase 1117 — `destination` names the host-registered upload sink slot.
+        ' Read through the plain Attr, whose absent-is-Nothing already matches the
+        ' wire's absent-is-client-only; a name is what the host registered, and a
+        ' URL written here is refused by the host as an unregistered id like any
+        ' other unknown string.
         d("FileUpload") = Function(el) Csharp.Fuaran.FileUpload(
             New Csharp.FileUploadOptions With {
                 .Id = Attr(el, "id"),
@@ -48,7 +54,8 @@ Friend Module InputMapping
                 .Multiple = AttrBool(el, "multiple"),
                 .DropTarget = AttrBool(el, "drop-target"),
                 .AcceptPaste = AttrBool(el, "accept-paste"),
-                .Capture = OptEnum(Of Csharp.CaptureSource)(el, "capture")})
+                .Capture = OptEnum(Of Csharp.CaptureSource)(el, "capture"),
+                .Destination = Attr(el, "destination")})
     End Sub
 
     Private Function ReadFields(el As XElement) As IEnumerable(Of Csharp.FormField)

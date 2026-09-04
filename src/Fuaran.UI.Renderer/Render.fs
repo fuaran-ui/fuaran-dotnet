@@ -355,6 +355,20 @@ type RenderContext<'Msg> =
         /// never as a silent neuter: "nothing happened" and "this was refused"
         /// are different facts, and only one of them is debuggable.
         EgressPolicy: Sanitize.EgressPolicy
+        /// Phase 1117 — the host's large-binary upload sink. `None` — the
+        /// default at every convenience entry point — means this host performs
+        /// no uploads at all: a `FileUpload` declaring a `destination` renders
+        /// exactly as it does today and refuses the transfer loudly rather than
+        /// falling back to any other route. Default-deny by shape (FGP 3): an
+        /// unwired host cannot send a reader's file anywhere, and pays nothing
+        /// for the member it never calls (GP 13).
+        ///
+        /// The sink is the destination REGISTRY as well as the transport — see
+        /// `Fuaran.UI.Ops.UploadSink`. It is consulted only after the dispatch
+        /// gate (`ActionDescriptor.Upload`) has allowed the tree an upload at
+        /// all, so a permissive sink behind a denying runtime still uploads
+        /// nothing.
+        UploadSink: Fuaran.UI.Ops.UploadSink.IFuaranUploadSink option
     }
 
 // ─── Text-source rendering — handles i18n + bound text ─────────────────────
@@ -3948,7 +3962,7 @@ let rec private renderKind
     | NodeKind.Select spec -> renderSelect ctx spec
     | NodeKind.Form spec -> renderForm ctx spec
     | NodeKind.Filters spec -> renderFilters ctx spec.Items
-    | NodeKind.FileUpload spec -> renderFileUpload ctx spec
+    | NodeKind.FileUpload spec -> renderFileUpload ctx parentNodeId spec
     // -- Vis --
     | NodeKind.DataGrid spec ->
         // Phase 393 — a static read-only grid renders the semantic <table> leg (byte-identical to the
@@ -4451,7 +4465,8 @@ let rec private renderKind
                       // renders under would make the ambient default reachable
                       // around. Narrowing for a guest is a host act, available
                       // by constructing the guest context directly.
-                      EgressPolicy = ctx.EgressPolicy }
+                      EgressPolicy = ctx.EgressPolicy
+                      UploadSink = ctx.UploadSink }
 
                 // Route through the late-bound hook (a function *value*), not a
                 // direct call into the recursive `render` group at type obj —
@@ -5930,7 +5945,16 @@ and private renderSegmentedChoiceCore
                   :: [ for index, option in List.indexed opts -> optionRow index option ]
               ) ]
 
-and private renderFileUpload (ctx: RenderContext<'Msg>) (spec: FileUploadSpec<'Msg>) : ReactElement =
+and private renderFileUpload
+    (ctx: RenderContext<'Msg>)
+    // Phase 1117 — the node's own id, taken from the dispatch rather than from
+    // `ctx.CurrentNodeId`: that field is populated only when an action sink is
+    // wired, and the upload's reserved state slot is keyed by the node on every
+    // host. A slot keyed by `""` on an unrecorded host would collide across
+    // every upload in the tree.
+    (nodeId: string)
+    (spec: FileUploadSpec<'Msg>)
+    : ReactElement =
     let acceptStr =
         if List.isEmpty spec.Accept then
             ""
@@ -6004,16 +6028,37 @@ and private renderFileUpload (ctx: RenderContext<'Msg>) (spec: FileUploadSpec<'M
     // here as well as on the wire. Either declared hands the same children to
     // `FileUploadDrop`, which wraps them in the drag / paste affordance without
     // redefining the control — there is one definition of this markup.
-    if spec.DropTarget || spec.AcceptPaste then
-        FileUploadDrop.dropZone
-            {| className = "fuaran-file-upload"
-               dropTarget = spec.DropTarget
-               acceptPaste = spec.AcceptPaste
-               accept = spec.Accept
-               multiple = spec.Multiple
-               children = labelChildren |}
-    else
-        Html.label [ prop.className "fuaran-file-upload"; prop.children labelChildren ]
+    let control =
+        if spec.DropTarget || spec.AcceptPaste then
+            FileUploadDrop.dropZone
+                {| className = "fuaran-file-upload"
+                   dropTarget = spec.DropTarget
+                   acceptPaste = spec.AcceptPaste
+                   accept = spec.Accept
+                   multiple = spec.Multiple
+                   children = labelChildren |}
+        else
+            Html.label [ prop.className "fuaran-file-upload"; prop.children labelChildren ]
+
+    // Phase 1117 — the streaming leg. An upload with no declared destination is
+    // the control above, unchanged, and pays nothing: no wrapper element, no
+    // React state, no sink lookup. A declared destination wraps it in the shell
+    // that owns the transfer and its status line; `OnSelect` above is untouched
+    // and fires from the input's own change exactly as it always has, because
+    // "the reader chose these files" and "those files now exist at a
+    // destination" are two facts about one gesture rather than two spellings of
+    // one fact.
+    match spec.Destination with
+    | None -> control
+    | Some destination ->
+        UploadStream.streamShell
+            {| destination = destination
+               nodeId = nodeId
+               sink = ctx.UploadSink
+               gate = fun () -> ctx.Runtime.CanDispatch(Runtime.ActionDescriptor.Upload destination)
+               warn = ctx.Runtime.Warn
+               setState = fun key value -> ctx.Runtime.SetState(key, value)
+               children = [ control ] |}
 
 // ─── Visualisations ────────────────────────────────────────────────────────
 
@@ -7674,7 +7719,11 @@ let renderWithSources
           // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
           // constructing the `RenderContext` directly), so the opt-out is
           // visible in the host's own source.
-          EgressPolicy = Sanitize.denyNonLocalEgress }
+          EgressPolicy = Sanitize.denyNonLocalEgress
+          // Phase 1117 — no sink at any convenience entry point: an unwired
+          // host uploads nothing, and a declared destination refuses loudly
+          // rather than reaching any other route.
+          UploadSink = None }
         node
 
 /// `renderWithSources` with an EXPLICIT destination policy (Phase 1026) — the
@@ -7723,7 +7772,8 @@ let renderWithSourcesAndEgress
           SessionContext = Map.empty
           ActionSink = None
           CurrentNodeId = None
-          EgressPolicy = egressPolicy }
+          EgressPolicy = egressPolicy
+          UploadSink = None }
         node
 
 /// Convenience entry point that pre-wires the optional
@@ -7757,7 +7807,11 @@ let renderWithSourcesAndSink
           // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
           // constructing the `RenderContext` directly), so the opt-out is
           // visible in the host's own source.
-          EgressPolicy = Sanitize.denyNonLocalEgress }
+          EgressPolicy = Sanitize.denyNonLocalEgress
+          // Phase 1117 — no sink at any convenience entry point: an unwired
+          // host uploads nothing, and a declared destination refuses loudly
+          // rather than reaching any other route.
+          UploadSink = None }
         node
 
 /// Correlation-aware render entry (Phase 330). As `renderWithSourcesAndSink`,
@@ -7800,7 +7854,11 @@ let renderWithSourcesSinkAndContext
           // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
           // constructing the `RenderContext` directly), so the opt-out is
           // visible in the host's own source.
-          EgressPolicy = Sanitize.denyNonLocalEgress }
+          EgressPolicy = Sanitize.denyNonLocalEgress
+          // Phase 1117 — no sink at any convenience entry point: an unwired
+          // host uploads nothing, and a declared destination refuses loudly
+          // rather than reaching any other route.
+          UploadSink = None }
         node
 
 /// User-action-recording render entry (Phase 889). As
@@ -7845,7 +7903,11 @@ let renderWithSourcesSinkContextAndActionSink
           // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
           // constructing the `RenderContext` directly), so the opt-out is
           // visible in the host's own source.
-          EgressPolicy = Sanitize.denyNonLocalEgress }
+          EgressPolicy = Sanitize.denyNonLocalEgress
+          // Phase 1117 — no sink at any convenience entry point: an unwired
+          // host uploads nothing, and a declared destination refuses loudly
+          // rather than reaching any other route.
+          UploadSink = None }
         node
 
 /// Scope-aware render entry (Phase 266, §4o). Renders `node` under an explicit
@@ -7884,7 +7946,11 @@ let renderWithSourcesInScope
           // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
           // constructing the `RenderContext` directly), so the opt-out is
           // visible in the host's own source.
-          EgressPolicy = Sanitize.denyNonLocalEgress }
+          EgressPolicy = Sanitize.denyNonLocalEgress
+          // Phase 1117 — no sink at any convenience entry point: an unwired
+          // host uploads nothing, and a declared destination refuses loudly
+          // rather than reaching any other route.
+          UploadSink = None }
         node
 
 /// Scope-aware render entry WITH a telemetry sink — `renderWithSourcesInScope`
@@ -7937,7 +8003,11 @@ let renderWithSourcesInScopeAndSink
           // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
           // constructing the `RenderContext` directly), so the opt-out is
           // visible in the host's own source.
-          EgressPolicy = Sanitize.denyNonLocalEgress }
+          EgressPolicy = Sanitize.denyNonLocalEgress
+          // Phase 1117 — no sink at any convenience entry point: an unwired
+          // host uploads nothing, and a declared destination refuses loudly
+          // rather than reaching any other route.
+          UploadSink = None }
         node
 
 // ─── State-reactive render (Phase 106) ─────────────────────────────────────

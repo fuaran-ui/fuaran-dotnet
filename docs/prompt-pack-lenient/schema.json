@@ -6386,6 +6386,10 @@
         },
         "capture": {
           "$ref": "#/$defs/CaptureSource"
+        },
+        "destination": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "required": [

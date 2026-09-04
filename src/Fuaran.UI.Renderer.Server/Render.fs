@@ -1867,11 +1867,25 @@ and private renderKind
         // `data-fuaran-combobox-constrained` precedent: it records that the
         // declaration was READ rather than silently dropped, and it is
         // explicitly NOT claimed as coverage — nothing in this tier acts on it.
+        // Phase 1117 — the declared upload DESTINATION takes the read-marker
+        // shape too, and it is worth saying why it is a marker and not the
+        // destination itself. A transfer needs script — there is no streaming
+        // without a change listener and a sink — so this tier's floor is the
+        // plain picker, exactly as it is for the two gestures above.
+        //
+        // The marker deliberately records only THAT a destination was declared,
+        // never WHICH. The id is the host's registry key, and a static document
+        // is a thing anybody can read: putting the key in the markup would
+        // publish the host's registry to every reader for no gain, since
+        // nothing on this path can act on it. A host that hydrates has the
+        // decoded tree and reads the destination from there.
         let gestureAttrs =
             [ if spec.DropTarget then
                   prop.custom ("data-fuaran-upload-drop", "declared")
               if spec.AcceptPaste then
-                  prop.custom ("data-fuaran-upload-paste", "declared") ]
+                  prop.custom ("data-fuaran-upload-paste", "declared")
+              if spec.Destination.IsSome then
+                  prop.custom ("data-fuaran-upload-destination", "declared") ]
 
         // Phase 1116 — `capture` is the one declaration on this control whose
         // floor FULLY holds, and it is emitted as the attribute rather than as a

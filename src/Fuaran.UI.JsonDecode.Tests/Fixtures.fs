@@ -2553,6 +2553,32 @@ let fileUploadCaptureMicrophone: Node<obj> =
         ))
         None
 
+/// Phase 1117 — the streaming upload: a `destination` naming the host-registered
+/// sink slot the selected files are sent to.
+///
+/// The vector deliberately carries a LARGE-FILE shape rather than a token one —
+/// `accept:["video/*"]` and `multiple:true` — because the member exists for the
+/// case where reading the body into the message loop is the wrong answer, and a
+/// vector modelling a small single upload would pin the bytes while saying
+/// nothing about why they are there.
+///
+/// It is also deliberately carried WITHOUT `capture`, next to the two vectors
+/// above that carry `capture` without a destination. The two members are
+/// independent and a corpus that only ever paired them would leave a host free
+/// to read either as implying the other.
+let fileUploadDestination: Node<obj> =
+    node
+        "upload-destination-1"
+        (NodeKind.FileUpload(
+            { Defaults.fileUpload with
+                Label = TextSource.Literal "Upload your recordings"
+                Accept = [ "video/*" ]
+                Multiple = true
+                OnSelect = Some(fun _ -> placeholderChain)
+                Destination = Some "session-recordings" }
+        ))
+        None
+
 let select: Node<obj> =
     node
         "select-1"
@@ -6293,6 +6319,7 @@ let allNodes: (string * Node<obj>) list =
       "Input/FileUpload (Phase 1115 — paste ingestion, image/* filtered; dropTarget OMITTED)", fileUploadPaste
       "Input/FileUpload (Phase 1116 — camera capture, image/* filtered)", fileUploadCaptureCamera
       "Input/FileUpload (Phase 1116 — microphone capture, audio/* filtered)", fileUploadCaptureMicrophone
+      "Input/FileUpload (Phase 1117 — streamed to a registered destination)", fileUploadDestination
       "Input/Select", select
       "Input/Select (multi-select — list value)", multiSelect
       "Input/Form (Phase 426 — handler-free write-back fields, State-bound)", formDeclarative

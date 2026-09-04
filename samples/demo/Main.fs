@@ -484,7 +484,9 @@ let view (model: Model) (dispatch: Msg -> unit) =
           // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
           // boundary, so the permissive posture is correct and is reached BY NAME.
           // A host rendering a DECODED tree must not copy this line.
-          EgressPolicy = Sanitize.permissiveEgress }
+          EgressPolicy = Sanitize.permissiveEgress
+          // Phase 1117 — no upload sink: this surface performs no uploads.
+          UploadSink = None }
 
     // Phase 90 — register the in-page introspection REPL over the live tree.
     // `debug = true` here means "opt in"; `DebugGlobal.shouldRegister` still

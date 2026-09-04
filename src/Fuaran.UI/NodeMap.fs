@@ -323,7 +323,11 @@ and mapFileUploadSpec (f: 'a -> 'b) (spec: FileUploadSpec<'a>) : FileUploadSpec<
       AcceptPaste = spec.AcceptPaste
       DropTarget = spec.DropTarget
       // Phase 1116 — the capture declaration carries no `'Msg` either.
-      Capture = spec.Capture }
+      Capture = spec.Capture
+      // Phase 1117 — nor does the destination: it is a host-registered NAME,
+      // and the reference the upload returns reaches the tree through the
+      // host's own write path rather than through a handler this map rewrites.
+      Destination = spec.Destination }
 
 // ─── Visualisations — data-bound; the tree stores the erased grid shapes ────
 

@@ -118,7 +118,7 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // control is the ONLY way a keyboard reader takes a token back, so an unstyled
 // one is not merely plain but keyboard-invisible, which is exactly the
 // unstyled-control skew this fingerprint exists to catch.
-let vocabularyFingerprint = "fv1:609b5d83ca7fc9d3"
+let vocabularyFingerprint = "fv1:31d200d72663a91a"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;

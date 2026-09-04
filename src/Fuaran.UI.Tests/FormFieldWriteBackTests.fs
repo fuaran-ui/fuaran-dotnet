@@ -47,7 +47,9 @@ let private makeCtx () : Render.RenderContext<Msg> =
       CurrentNodeId = None
       // Phase 1026 — hand-built test tree; the scheme floor is what these
       // cases exercise, so the policy is deliberately not the variable.
-      EgressPolicy = Sanitize.permissiveEgress }
+      EgressPolicy = Sanitize.permissiveEgress
+      // Phase 1117 — no upload sink: this surface performs no uploads.
+      UploadSink = None }
 
 // Annotated constructors, not bare record literals: `{ Min = _; Max = _ }`
 // otherwise infers as `NumberFieldConstraints` (same labels, `float option`

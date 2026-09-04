@@ -94,7 +94,9 @@ let view (model: Model) (dispatch: Msg -> unit) =
           // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
           // boundary, so the permissive posture is correct and is reached BY NAME.
           // A host rendering a DECODED tree must not copy this line.
-          EgressPolicy = Sanitize.permissiveEgress }
+          EgressPolicy = Sanitize.permissiveEgress
+          // Phase 1117 — no upload sink: this surface performs no uploads.
+          UploadSink = None }
 
     // The host-supplied apply handler: decode the wire TreeOp, apply it to the
     // live Node<obj> tree, and dispatch ReplaceTree to re-render. Phase 90's

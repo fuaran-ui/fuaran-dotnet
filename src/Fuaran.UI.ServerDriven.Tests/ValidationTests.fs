@@ -93,6 +93,18 @@ let private tree: Node<Msg> =
                           Label = TextSource.Literal "Attach"
                           DropTarget = true
                           AcceptPaste = true }
+                  // Phase 1117 — the STREAMING upload, beside the client-only
+                  // one above. Two uploads rather than one flag on the existing
+                  // one, deliberately: the refusal this phase adds is keyed on
+                  // the declaration, so a single fixture could only ever prove
+                  // one side of it, and the pair is what makes the assertion and
+                  // its go-red twin the same event on two nodes that differ in
+                  // exactly the member under test.
+                  Fuaran.fileUpload
+                      "up-stream"
+                      { Defaults.fileUpload<Msg> with
+                          Label = TextSource.Literal "Upload recordings"
+                          Destination = Some "session-recordings" }
                   Fuaran.markdown "md" "just text" ] }
 
 let private ev nodeId event payload =
@@ -158,6 +170,76 @@ let tests =
               match validate deny tree (ev "btn" "click" []) with
               | Error(RejectReason.DispatchDenied("btn", _)) -> ()
               | other -> failtestf "expected DispatchDenied, got %A" other
+          }
+
+          // ── (c) Phase 1117 — the op-stream discipline at the boundary ──
+          test "a body read on a STREAMING upload is refused" {
+              // `file-read` drives `Action.ReadFileBody`, which puts the whole
+              // body into the message loop and, on a host that persists its
+              // authoring channel, into a hash-chained record that replays
+              // forever. An upload that declares a destination has said its
+              // bytes go to a sink and only a reference comes back, so the two
+              // routes are mutually exclusive — and this is where saying so
+              // catches a forged event aimed at exactly the path that puts a
+              // reader's file into a durable record.
+              match validate allow tree (ev "up-stream" "file-read" []) with
+              | Error(RejectReason.BodyReadRefused("up-stream", "session-recordings")) -> ()
+              | other -> failtestf "expected BodyReadRefused, got %A" other
+
+              // The refusal is DENY-side of the gate too: it is a bounds check,
+              // so it fires before the policy gate is consulted and a permissive
+              // host is refused exactly as a denying one is. A rule that a
+              // permissive host could opt out of would not be a discipline.
+              match validate deny tree (ev "up-stream" "file-read" []) with
+              | Error(RejectReason.BodyReadRefused("up-stream", _)) -> ()
+              | other -> failtestf "expected BodyReadRefused under deny too, got %A" other
+          }
+
+          test "GO-RED TWIN: the same event on a CLIENT-ONLY upload is admitted" {
+              // Without this the test above passes on a boundary that refuses
+              // `file-read` outright, which would break every existing upload
+              // rather than protect the streaming ones. The two nodes differ in
+              // exactly one member.
+              match validate allow tree (ev "up" "file-read" []) with
+              | Ok { Action = None } -> ()
+              | other -> failtestf "expected an admitted file-read on the client-only upload, got %A" other
+          }
+
+          test "a CHANGE on a streaming upload is untouched" {
+              // Selecting a file on a streaming upload is ordinary and reports
+              // nothing about the file's contents. Refusing it would break the
+              // control rather than protect it — the refusal is scoped to the
+              // route that carries a body, and this pins the scope.
+              match validate allow tree (ev "up-stream" "change" []) with
+              | Ok { Action = None } -> ()
+              | other -> failtestf "expected an admitted change, got %A" other
+          }
+
+          test "no new EVENT NAME is admitted by the destination declaration" {
+              // The standing ruling this file applies to `dropTarget` /
+              // `acceptPaste` / `capture` / `Switch` / grid transfer: the
+              // allow-list is keyed by the node that RECEIVES an event, and a
+              // streamed upload's result reaches a session as a HOST WRITE to
+              // the control's reserved state slot. A state write is not an
+              // event, so there is nothing here to admit.
+              for attempted in [ "upload"; "progress"; "uploaded" ] do
+                  match validate allow tree (ev "up-stream" attempted []) with
+                  | Error(RejectReason.IllegitimateEvent("up-stream", e, _)) ->
+                      Expect.equal e attempted "the refusal names the event attempted"
+                  | other -> failtestf "expected IllegitimateEvent for '%s', got %A" attempted other
+          }
+
+          test "the refusal's log line names the destination and withholds everything else" {
+              let line =
+                  RejectReason.describe (RejectReason.BodyReadRefused("up-stream", "session-recordings"))
+
+              Expect.stringContains line "session-recordings" "the author-declared destination is named"
+              Expect.stringContains line "up-stream" "and the node"
+              // The Phase 787 rule: an author-declared name is grade B and stays;
+              // anything the reader supplied is grade C and never enters. There
+              // is nothing of the reader's in this reason by construction — the
+              // payload is not read at all on this path.
+              Expect.isFalse (line.Contains "\"") "no quoted client payload in the reason"
           }
 
           // ── happy paths per interactive kind ──

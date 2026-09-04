@@ -80,7 +80,16 @@ let tests =
                     ActionDescriptor.Notify "channel"
                     ActionDescriptor.SetState "k"
                     ActionDescriptor.WriteToClipboard
-                    ActionDescriptor.CommitLocal "n" ]
+                    ActionDescriptor.CommitLocal "n"
+                    // Phase 1117 added `Upload` and found the list two cases
+                    // SHORT of the closed set it claims to enumerate: `Print`
+                    // (1124) and `Export` (1125) were minted without joining it,
+                    // so the "a descriptor added later without a deny default
+                    // should fail here" promise had not held twice. All three are
+                    // here now, which is what makes the promise true again.
+                    ActionDescriptor.Print
+                    ActionDescriptor.Export "grid-1"
+                    ActionDescriptor.Upload "session-recordings" ]
 
               // Enumerated, not sampled: a descriptor added later without a
               // deny default should fail here, which is the whole point of
@@ -105,7 +114,16 @@ let tests =
                     ActionDescriptor.Notify "channel"
                     ActionDescriptor.SetState "k"
                     ActionDescriptor.WriteToClipboard
-                    ActionDescriptor.CommitLocal "n" ]
+                    ActionDescriptor.CommitLocal "n"
+                    // Phase 1117 added `Upload` and found the list two cases
+                    // SHORT of the closed set it claims to enumerate: `Print`
+                    // (1124) and `Export` (1125) were minted without joining it,
+                    // so the "a descriptor added later without a deny default
+                    // should fail here" promise had not held twice. All three are
+                    // here now, which is what makes the promise true again.
+                    ActionDescriptor.Print
+                    ActionDescriptor.Export "grid-1"
+                    ActionDescriptor.Upload "session-recordings" ]
 
               for d in everyDescriptor do
                   Expect.isTrue
@@ -139,6 +157,17 @@ let tests =
                   (ActionDescriptor.describe (ActionDescriptor.CommitLocal "n7"))
                   "CommitLocal(n7)"
                   "CommitLocal label"
+
+              // Phase 1117. The destination is author-declared vocabulary, so it
+              // is carried in full — that is what makes a denied upload
+              // diagnosable at all. Nothing the reader chose (the file's name,
+              // its size, its type) is anywhere in this label, and there is no
+              // route by which it could be: the descriptor carries one string
+              // and the string came off the wire.
+              Expect.equal
+                  (ActionDescriptor.describe (ActionDescriptor.Upload "session-recordings"))
+                  "Upload(session-recordings)"
+                  "Upload label carries the destination and nothing of the reader's"
           }
 
           test "the four newly-gated actions: unconfigured refuses, configured allow permits" {

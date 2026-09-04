@@ -22,6 +22,11 @@
          Q2), so it can ride neither IOpStreamSink nor a seventh
          IFuaranTelemetrySink member. Fable-clean: no IO, no clock. -->
     <Compile Include="ActionInvocation.fs" />
+    <!-- Phase 1117: the large-binary upload seam. Here for the same reason
+         ActionInvocation is: it names host types the renderer and the
+         server-driven tier both need, takes no transport dependency, and is
+         Fable-clean (no IO, no clock, no Browser.*). -->
+    <Compile Include="UploadSink.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
