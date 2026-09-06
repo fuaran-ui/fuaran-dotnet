@@ -8729,24 +8729,16 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
                                             "match"
                                             "a literal string under 'match' (compared against the switch's `on` selector), or a Binding<bool> under 'when' (a predicate evaluated at render time)"
                                     | Some mJ, None ->
-                                        requireString (casePath + ".match") mJ
-                                        |> Result.map (fun m -> Some m, None)
+                                        requireString (casePath + ".match") mJ |> Result.map (fun m -> Some m, None)
                                     | None, Some wJ ->
-                                        decodeBindingBool (casePath + ".when") wJ
-                                        |> Result.map (fun b -> None, Some b)
+                                        decodeBindingBool (casePath + ".when") wJ |> Result.map (fun b -> None, Some b)
 
                                 let childR =
                                     requireField casePath caseFields "child" "Switch case child Node"
                                     |> Result.bind (decodeNodeAst (descend w) (casePath + ".child"))
 
                                 match selectorR, childR with
-                                | Ok(m, w'), Ok child ->
-                                    Ok(
-                                        { Match = m
-                                          When = w'
-                                          Child = child }
-                                        : SwitchCase<obj>
-                                    )
+                                | Ok(m, w'), Ok child -> Ok({ Match = m; When = w'; Child = child }: SwitchCase<obj>)
                                 | Error e, _
                                 | _, Error e -> Error e)
 

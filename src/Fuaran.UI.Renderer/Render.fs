@@ -4226,8 +4226,7 @@ let rec private renderKind
         // literal `match` against the selector, a `when` predicate evaluated
         // here), through the one shared definition in `Renderer.Core` so this
         // renderer and the server renderer cannot drift on the order.
-        let matched =
-            BindingResolver.selectSwitchCase ctx.Sources currentValue spec.Cases
+        let matched = BindingResolver.selectSwitchCase ctx.Sources currentValue spec.Cases
 
         let selected =
             match matched with
