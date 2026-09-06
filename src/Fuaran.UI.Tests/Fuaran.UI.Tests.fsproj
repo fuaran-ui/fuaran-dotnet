@@ -70,6 +70,10 @@
     <!-- Phase 1117: the upload seam, its default-deny refusals, and the
          op-stream discipline the destination member exists to enforce. -->
     <Compile Include="UploadSinkTests.fs" />
+    <!-- The ORDERING contract of a multi-file transfer, driven against a sink
+         that completes LATER — the only shape that can tell a chained caller
+         from an eager one. -->
+    <Compile Include="UploadChainTests.fs" />
     <!-- Phase 889: the client-side gate OUTCOMES the user-action record is
          built from, plus the cross-tier correlation-key pin. -->
     <Compile Include="ActionInvocationClientTests.fs" />

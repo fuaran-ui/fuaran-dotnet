@@ -108,6 +108,83 @@ let private refJson (r: UploadedRef) : JVal =
           "size", JStr(string r.Size)
           "contentType", JStr r.ContentType ]
 
+/// Stream a selection set to one destination, one file at a time, CHAINED: the
+/// next `sink.Upload` is started FROM the previous file's completion callback,
+/// and the completed set is reported only from the LAST one.
+///
+/// ── Why this is not a `for` loop ──────────────────────────────────────────
+/// `IFuaranUploadSink.Upload` returns `unit` and reports through `onComplete`,
+/// so a real sink — anything that touches a network — returns before a byte has
+/// moved. A loop therefore starts every transfer at once, and every statement
+/// after the loop runs while all of them are still in flight: the running total
+/// is read before any callback has added to it, a `stopped` flag is tested
+/// before any refusal can have set it, and the completed set is empty. The
+/// control then writes its reserved slot as `[]` and tells the reader "0 files
+/// uploaded" while the transfers are still running, and a refusal arriving
+/// afterwards cannot retract either statement. Chaining from the callback is
+/// what makes the reported state the OBSERVED state.
+///
+/// ── The callbacks, and why the component does not pass its own `setStatus` ──
+/// Extracted out of the function component on purpose: this is the part with
+/// the ordering contract, and a React hook cannot be exercised off a browser.
+/// The three callbacks are the whole of the component's involvement, so the
+/// suite drives the same code the browser does against a sink that completes
+/// LATER — which is the only shape that can tell a chained transfer from an
+/// eager one. `onCompleted` fires at most once and never after `onRefused`.
+///
+/// Sequential rather than concurrent, and that is the honest default: a
+/// progress figure over concurrent transfers is either a lie or a sum that
+/// jumps backwards when one retries, and a sink that wants concurrency owns its
+/// own scheduling behind this seam. A refusal stops the chain where it stands —
+/// the files after it are never started, and reporting one refusal rather than
+/// four for the same cause tells the reader everything the four would.
+let streamSelections
+    (sink: IFuaranUploadSink)
+    (destination: string)
+    (selections: FileSelection array)
+    (onProgress: int64 -> int64 -> unit)
+    (onRefused: UploadRefusal -> unit)
+    (onCompleted: UploadedRef list -> unit)
+    : unit =
+    let total = selections |> Array.sumBy (fun s -> s.Size)
+    let completed = ResizeArray<UploadedRef>()
+    let mutable priorBytes = 0L
+    // A sink is contracted to complete exactly once. This flag does not trust
+    // that: a second completion for the same file would otherwise fork the
+    // chain and could report the whole set twice, which is the class of defect
+    // this function exists to remove rather than one to reintroduce here.
+    let mutable settled = false
+
+    onProgress 0L total
+
+    let rec step (index: int) =
+        if index >= selections.Length then
+            if not settled then
+                settled <- true
+                onCompleted (List.ofSeq completed)
+        else
+            let carried = priorBytes
+
+            sink.Upload(
+                destination,
+                selections[index],
+                (fun p ->
+                    if not settled then
+                        onProgress (carried + p.BytesSent) total),
+                (fun result ->
+                    if not settled then
+                        match result with
+                        | Ok reference ->
+                            completed.Add reference
+                            priorBytes <- carried + reference.Size
+                            step (index + 1)
+                        | Error r ->
+                            settled <- true
+                            onRefused r)
+            )
+
+    step 0
+
 /// What the control is doing right now. Never part of the document.
 [<RequireQualifiedAccess>]
 type private Status =
@@ -162,48 +239,26 @@ let private renderStreamShell (props: UploadStreamProps) : ReactElement =
                     //     it.
                     refuse (UploadRefusal.UnregisteredDestination props.destination)
                 | Some sink ->
-                    let selections = files |> Array.mapi selectionOf
-                    let total = selections |> Array.sumBy (fun s -> s.Size)
-                    let completed = ResizeArray<UploadedRef>()
-                    let mutable priorBytes = 0L
-                    let mutable stopped = false
+                    // 3. THE TRANSFER — chained in `streamSelections`, so the
+                    //    slot below is written from the LAST file's completion
+                    //    callback and not before any of them has run. A refusal
+                    //    mid-chain reaches `refuse` and the slot is never
+                    //    written at all: the reader is never told that files
+                    //    exist at a destination that does not hold them.
+                    streamSelections
+                        sink
+                        props.destination
+                        (files |> Array.mapi selectionOf)
+                        (fun sent total -> setStatus (Status.Sending(sent, total)))
+                        refuse
+                        (fun completed ->
+                            // The references, and only the references, reach the
+                            // tree — through the host's own write to its own
+                            // reserved slot, which is the existing declarative
+                            // write path and the one a tree cannot forge.
+                            props.setState (stateKeyFor props.nodeId) (JArr(completed |> List.map refJson))
 
-                    setStatus (Status.Sending(0L, total))
-
-                    // Sequential, not concurrent, and that is the honest
-                    // default: a progress figure over concurrent transfers is
-                    // either a lie or a sum that jumps backwards when one
-                    // retries, and a sink that wants concurrency owns its own
-                    // scheduling behind this seam. `stopped` short-circuits the
-                    // remaining files after the first refusal — reporting one
-                    // refusal and then three more for the same cause tells the
-                    // reader nothing new.
-                    for selection in selections do
-                        if not stopped then
-                            let carried = priorBytes
-
-                            sink.Upload(
-                                props.destination,
-                                selection,
-                                (fun p -> setStatus (Status.Sending(carried + p.BytesSent, total))),
-                                (fun result ->
-                                    match result with
-                                    | Ok reference ->
-                                        completed.Add reference
-                                        priorBytes <- carried + reference.Size
-                                    | Error r ->
-                                        stopped <- true
-                                        refuse r)
-                            )
-
-                    if not stopped then
-                        // The references, and only the references, reach the
-                        // tree — through the host's own write to its own
-                        // reserved slot, which is the existing declarative
-                        // write path and the one a tree cannot forge.
-                        props.setState (stateKeyFor props.nodeId) (JArr(completed |> Seq.map refJson |> List.ofSeq))
-
-                        setStatus (Status.Done completed.Count)
+                            setStatus (Status.Done completed.Length))
 
     let statusLine =
         match status with
