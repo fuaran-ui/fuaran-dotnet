@@ -65,7 +65,10 @@ type ResumeDisposition =
 /// (the strictest disposition wins, since the subtree must honour all of them).
 let rec disposition (action: Action<'Msg>) : ResumeDisposition =
     match action with
-    | Action.Navigate _
+    // Phase 1536 — a LITERAL route still interprets, whatever its target: the
+    // resumed client hands the runtime (or `window.open`) a string it already
+    // holds.
+    | Action.Navigate(TextSource.Literal _, _)
     | Action.Notify _
     | Action.SetState _
     | Action.AiTool _
@@ -84,6 +87,15 @@ let rec disposition (action: Action<'Msg>) : ResumeDisposition =
     // with the wrong content, which is worse than one that hydrates first.
     // Falling back costs that one subtree its zero-JS load and nothing else.
     | Action.WriteToClipboard _ -> ResumeDisposition.Fallback
+    // Phase 1536 — a BOUND or i18n ROUTE falls back on the same reasoning, and
+    // the stake is higher than the clipboard's. The zero-JS path holds no
+    // binding sources, so it cannot say where the declaration points; a host
+    // that interpreted it anyway would coerce a declaration into a destination
+    // and NAVIGATE there — a real, irreversible act on the reader's behalf,
+    // where a wrong clipboard write is at least inert until they paste. The
+    // interpreter refuses such a route outright if one ever reaches it; this is
+    // the line that keeps one from being sent.
+    | Action.Navigate _ -> ResumeDisposition.Fallback
     | Action.Dispatch _ -> ResumeDisposition.Boot
     | Action.Call _
     | Action.ReadFileBody _

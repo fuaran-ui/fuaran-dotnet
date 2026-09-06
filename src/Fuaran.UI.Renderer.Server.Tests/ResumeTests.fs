@@ -103,6 +103,24 @@ let resumeTests =
 
               Expect.equal (disposition (Action.Dispatch(box "m"))) ResumeDisposition.Boot "Dispatch"
 
+              // Phase 1536 — a BOUND route falls back rather than interpreting.
+              // The zero-JS interpreter holds no binding sources, so it cannot
+              // say where the declaration points; coercing one into a
+              // destination and navigating there is a real, irreversible act on
+              // the reader's behalf, where a wrong clipboard write is at least
+              // inert until they paste. A LITERAL route still interprets,
+              // whatever its target — the client hands `window` a string it
+              // already holds.
+              Expect.equal
+                  (disposition (Action.Navigate(TextSource.Bound(Binding.State("route", None)), NavigateTarget.Self)))
+                  ResumeDisposition.Fallback
+                  "Navigate with a bound route"
+
+              Expect.equal
+                  (disposition (Action.Navigate(TextSource.Literal "/x", NavigateTarget.Blank)))
+                  ResumeDisposition.Interpret
+                  "Navigate with a literal route and a Blank target"
+
               Expect.equal (disposition (Action.Call("/api", Some id, None))) ResumeDisposition.Fallback "Call"
 
               Expect.equal

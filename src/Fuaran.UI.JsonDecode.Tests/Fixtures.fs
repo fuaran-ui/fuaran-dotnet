@@ -2321,6 +2321,51 @@ let buttonClipboardBound: Node<obj> =
         ))
         None
 
+// Phase 1536 — the BOUND route: the shape the widening exists for.
+//
+// This is the wire spelling of "open the selected order". The route is
+// `Bound(Selection(gridId, field = "id"))`, so it names the grid's current
+// selection and resolves at DISPATCH time, through the same binding resolver
+// the surrounding tree renders through. Every shipped `Navigate` fixture is
+// UNCHANGED and still canonical, because `TextSource.Literal` encodes as the
+// bare JSON string (§3.6): a literal route's bytes did not move when the slot
+// widened, which is why the change is source-breaking and wire-neutral.
+//
+// The composition is named rather than stretched: `OnRowClick` stays a host
+// closure, and a button carrying this action is how a tree says the same thing
+// declaratively.
+let actionNavigateBound: Node<obj> =
+    node
+        "action-navigate-bound"
+        (NodeKind.Button(
+            { Defaults.button with
+                Label = TextSource.Literal "Open the selected order"
+                OnClick =
+                    Action.Navigate(
+                        TextSource.Bound(Binding.Selection("orders-grid", (fun _ -> ""), None, Some "id")),
+                        NavigateTarget.Self
+                    ) }
+        ))
+        None
+
+// Phase 1536 — the non-default TARGET, which is the only thing that puts a
+// `target` member on the wire at all. `Self` is omitted, so this fixture and
+// `btn-nav-1`-shaped documents together pin both halves of the omit-at-default
+// rule: present when it means something, absent when it does not.
+//
+// The route is a literal here on purpose — the two new members are independent,
+// and a fixture exercising both at once would not distinguish a host that
+// implemented one from a host that implemented the other.
+let actionNavigateTarget: Node<obj> =
+    node
+        "action-navigate-target"
+        (NodeKind.Button(
+            { Defaults.button with
+                Label = TextSource.Literal "Read the documentation"
+                OnClick = Action.Navigate(TextSource.Literal "/docs/orders", NavigateTarget.Blank) }
+        ))
+        None
+
 // Phase 676 — the JSON-payload actions, with payloads worth testing.
 //
 // `Notify` / `SetState` / `AiTool` each carry a `JVal` of arbitrary JSON, and
@@ -6901,6 +6946,10 @@ let allNodes: (string * Node<obj>) list =
       "Input/Button (Action.WriteToClipboard chained with Dispatch)", buttonClipboard
       "Phase 1126 — Input/Button whose Action.WriteToClipboard carries a BOUND payload (a TextSource, not a bare string), resolved at dispatch time",
       buttonClipboardBound
+      "Phase 1536 — Input/Button whose Action.Navigate carries a BOUND route (a TextSource over the grid's selection), resolved at dispatch time and gated on the resolved value",
+      actionNavigateBound
+      "Phase 1536 — Input/Button whose Action.Navigate names a Blank target (opened with noopener,noreferrer); `Self` is omitted, so this is the only shape that puts `target` on the wire",
+      actionNavigateTarget
       "Input/Button (Action.ReadFileBody base64)", buttonReadFile
       "Input/Button (Notify / SetState / AiTool — JSON payloads)", buttonJsonPayloads
       "Input/FileUpload", fileUpload
