@@ -4992,7 +4992,12 @@ and private renderForm (ctx: RenderContext<'Msg>) (spec: FormSpec<'Msg>) : React
               // BEFORE the form's typed OnSubmit fires. Order matters
               // because the typed OnSubmit may dispatch a network call
               // that reads the just-committed values.
-              LocalBindings.dispatchFormCommit ()
+              //
+              // Dispatched on THIS form (the event's currentTarget) rather
+              // than on the window, so the broadcast reaches this form's own
+              // inputs and no longer drains every `OnSubmit` Local input on
+              // the page — a search box in a header included.
+              LocalBindings.dispatchFormCommit (unbox<Browser.Types.Element> e.currentTarget)
               // Phase 820 — submit-payload semantics: the form's current
               // field values (read exactly as this renderer's own controls
               // read them — see `SubmitPayload.harvestFields`) ride the

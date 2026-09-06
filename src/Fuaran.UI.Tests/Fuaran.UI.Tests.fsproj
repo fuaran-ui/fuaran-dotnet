@@ -62,6 +62,9 @@
     <Compile Include="CustomContractTests.fs" />
     <Compile Include="CustomRegistryTests.fs" />
     <Compile Include="LocalBindingTests.fs" />
+    <!-- The parse-refusal markers a Local input puts on its own field, and the
+         source-read pin that both components still gate OnDebounce on an edit. -->
+    <Compile Include="LocalBindingErrorTests.fs" />
     <Compile Include="ClipboardActionTests.fs" />
     <Compile Include="ReadFileBodyActionTests.fs" />
     <!-- DispatchGateTests pins Phase 119's IFuaranRuntime.CanDispatch seam
