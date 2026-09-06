@@ -193,6 +193,110 @@ let envelopeOf (baseT: Node<TestMsg>) (a: Node<TestMsg>) (b: Node<TestMsg>) : Me
     | Error conflicts -> conflicts
     | Ok merged -> failwithf "refusal merge-corpus fixture auto-merged: %s" (canonical merged)
 
+// ── totality fixtures (Phase 1526) ──────────────────────────────────────────
+//
+// Merge behaviour a host can silently OMIT and still look conformant, pinned so
+// it cannot. Three pairs:
+//
+//  - `DeleteModify` — one side edits a node the other REMOVES. Declared since
+//    Phase 179 with a documented projection onto `ApplyErrorCode`, constructed
+//    by nothing; the merge auto-merged and the edit went with the node.
+//  - `ConcurrentMove` — a node relocated by one side and moved or edited by the
+//    other. Same story: the mover's subtree was adopted wholesale in silence.
+//  - `tooltip` — the node-level trait the reference merges as a facet of its own
+//    (Phase 1112). No fixture reached it in any family, and at least one host's
+//    merge constructs its nodes with the trait hardcoded empty, so it drops an
+//    uncontested hint and no corpus entry notices.
+//
+// Each is committed as a PAIR: the triad that must refuse, and a corrected twin
+// that must still auto-merge. The twin is not decoration. A host can pass the
+// refusal by refusing everything structural, and can pass an auto-merge suite by
+// never growing the arm at all; only the pair pins the boundary between them.
+// The tooltip pair makes the point most sharply: its twin is where a host that
+// drops the trait fails, because the merged tree it produces is a DIFFERENT tree.
+//
+// Held under a THIRD top-level manifest key for the reason `refusalFixtures` is
+// held under a second one: a host iterating `fixtures` and asserting every entry
+// auto-merges is right to, and a host iterating `refusalFixtures` and asserting
+// every entry refuses is right too. A pair belongs to neither. A new key is
+// invisible to every host that does not read it, so each adopts the wider
+// contract when it ports the arm, and until then its merge leg is exactly as
+// green as it was.
+
+let private container (id: string) (children: Node<TestMsg> list) : Node<TestMsg> =
+    Fuaran.dashboard
+        id
+        { Defaults.dashboard<TestMsg> with
+            Children = children }
+
+/// `dash → [ boxa → [ m ], boxb ]` — the shape a MOVE needs. The flat two-pane
+/// genesis the other families use cannot express one: a node has to have
+/// somewhere else to go.
+let private nestedTree () : Node<TestMsg> =
+    container "dash" [ container "boxa" [ Fuaran.markdown "m" "Movable" ]; container "boxb" [] ]
+
+let private tone (t: ToneVariant) (id: NodeId) : TreeOp<TestMsg> = style (fun s -> { s with Tone = t }) id
+
+/// Set a node's `Tooltip` by id. There is no `TreeOp` that sets the trait — the
+/// vocabulary gap `TreeOpDiff` documents — so a fixture that exercises it has to
+/// build its trees directly rather than by applying ops.
+let private withTooltip (targetId: string) (hint: string) (root: Node<TestMsg>) : Node<TestMsg> =
+    let rec go (n: Node<TestMsg>) : Node<TestMsg> =
+        let self =
+            if n.Id = targetId then
+                { n with
+                    Tooltip = Some(TextSource.Literal hint) }
+            else
+                n
+
+        match Fuaran.UI.Ops.Introspect.getChildren self.Kind with
+        | None -> self
+        | Some kids ->
+            match Fuaran.UI.Ops.Introspect.withChildren self.Kind (kids |> List.map go) with
+            | Some k -> { self with Kind = k }
+            | None -> self
+
+    go root
+
+/// `(refusalId, refusalDescription, twinId, twinDescription, base, refusalA,
+/// refusalB, twinA, twinB)`. The refusal and its twin share a base tree, so the
+/// only thing that differs between "refuses" and "merges" is the one edit the
+/// class is about.
+let totalityPairs
+    : (string * string * string * string * Node<TestMsg> * Node<TestMsg> * Node<TestMsg> * Node<TestMsg> * Node<TestMsg>) list =
+    let flat = buildDashboard ()
+    let nested = nestedTree ()
+
+    [ "merge-totality-delete-modify",
+      "One side restyles the right pane while the other removes it — a DeleteModify refusal naming the removed node, where the pre-1526 merge dropped the edit with the node",
+      "merge-totality-delete-modify-twin",
+      "The same removal with the edit moved to a pane nobody removed — auto-merges, so a host cannot pass the pair by refusing every removal",
+      flat,
+      flat |> applyOk (tone ToneVariant.Success rightChildId),
+      flat |> applyOk (TreeOp.RemoveNode rightChildId),
+      flat |> applyOk (tone ToneVariant.Success leftChildId),
+      flat |> applyOk (TreeOp.RemoveNode rightChildId)
+
+      "merge-totality-concurrent-move",
+      "One side moves a node to another parent while the other restyles it in place — a ConcurrentMove refusal carrying both POSITIONS (the `move` facet) and both SUBTREES (the `node` facet), where the pre-1526 merge adopted the mover's copy and discarded the edit",
+      "merge-totality-concurrent-move-twin",
+      "The same move with the edit moved to the source container itself — auto-merges, so a host cannot pass the pair by refusing every move",
+      nested,
+      nested |> applyOk (TreeOp.MoveNode(NodeId "m", NodeId "boxb")),
+      nested |> applyOk (tone ToneVariant.Brand (NodeId "m")),
+      nested |> applyOk (TreeOp.MoveNode(NodeId "m", NodeId "boxb")),
+      nested |> applyOk (tone ToneVariant.Brand (NodeId "boxa"))
+
+      "merge-totality-tooltip",
+      "Both sides set a different tooltip on the same pane — a ConcurrentEdit refusal on the `tooltip` facet, which the reference merges independently (Phase 1112) and which no fixture in any other family reaches",
+      "merge-totality-tooltip-twin",
+      "One side sets a tooltip while the other restyles a different pane — auto-merges, and the merged tree CARRIES the hint. This is where a host whose merge constructs its nodes with the trait hardcoded empty fails: it produces a different tree, not a different envelope",
+      flat,
+      flat |> withTooltip "left" "A hint",
+      flat |> withTooltip "left" "B hint",
+      flat |> withTooltip "left" "A hint",
+      flat |> applyOk (tone ToneVariant.Success rightChildId) ]
+
 let emit (root: string) : unit =
     let dir = Path.Combine(root, "merge-conformance")
     Directory.CreateDirectory dir |> ignore
@@ -270,11 +374,59 @@ let emit (root: string) : unit =
                 description
         )
 
+    // Totality PAIRS (Phase 1526) — each a refusal entry and the corrected twin
+    // that must still auto-merge, emitted adjacently so a reader sees the
+    // boundary rather than two unrelated fixtures.
+    let totalityEntries = ResizeArray<string>()
+
+    for (rid, rdesc, tid, tdesc, baseT, ra, rb, ta, tb) in totalityPairs do
+        let envelopeJson = envelopeOf baseT ra rb |> MergeConflict.encodeEnvelope
+        let envelopeHash = envelopeJson |> HashChain.sha256Hex
+        File.WriteAllText(Path.Combine(dir, rid + ".base.json"), CanonicalJson.encodeNode baseT)
+        File.WriteAllText(Path.Combine(dir, rid + ".a.json"), CanonicalJson.encodeNode ra)
+        File.WriteAllText(Path.Combine(dir, rid + ".b.json"), CanonicalJson.encodeNode rb)
+        File.WriteAllText(Path.Combine(dir, rid + ".envelope.json"), envelopeJson)
+
+        let twinMerged = mergedOf baseT ta tb
+        let twinHash = CanonicalJson.encodeNode twinMerged |> HashChain.sha256Hex
+        File.WriteAllText(Path.Combine(dir, tid + ".base.json"), CanonicalJson.encodeNode baseT)
+        File.WriteAllText(Path.Combine(dir, tid + ".a.json"), CanonicalJson.encodeNode ta)
+        File.WriteAllText(Path.Combine(dir, tid + ".b.json"), CanonicalJson.encodeNode tb)
+        File.WriteAllText(Path.Combine(dir, tid + ".expected.json"), CanonicalJson.encodeNode twinMerged)
+
+        totalityEntries.Add(
+            sprintf
+                "    {\n      \"id\": \"%s\",\n      \"kind\": \"merge-refusal\",\n      \"baseFile\": \"%s.base.json\",\n      \"aFile\": \"%s.a.json\",\n      \"bFile\": \"%s.b.json\",\n      \"envelopeFile\": \"%s.envelope.json\",\n      \"envelopeHash\": \"%s\",\n      \"twin\": \"%s\",\n      \"description\": \"%s\"\n    }"
+                rid
+                rid
+                rid
+                rid
+                rid
+                envelopeHash
+                tid
+                rdesc
+        )
+
+        totalityEntries.Add(
+            sprintf
+                "    {\n      \"id\": \"%s\",\n      \"kind\": \"merge-3way\",\n      \"baseFile\": \"%s.base.json\",\n      \"aFile\": \"%s.a.json\",\n      \"bFile\": \"%s.b.json\",\n      \"expectedFile\": \"%s.expected.json\",\n      \"outcomeHash\": \"%s\",\n      \"refusal\": \"%s\",\n      \"description\": \"%s\"\n    }"
+                tid
+                tid
+                tid
+                tid
+                tid
+                twinHash
+                rid
+                tdesc
+        )
+
     let manifest =
         "{\n  \"version\": 1,\n  \"description\": \"Fuaran merge-conformance corpus (Phase 179 + 184, additive). merge-3way: decode base/a/b, run the deterministic 3-way tree merge, assert byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-validator-gated (Phase 184): run the documented sample validator over the auto-merge, diff introduced defects vs both parents, assert encodeVerdict(introduced) byte-equal to verdictFile and sha256(verdict) == verdictHash. See fuaran-dotnet/docs/WIRE_FORMAT.md.\",\n  \"fixtures\": [\n"
         + System.String.Join(",\n", entries)
         + "\n  ],\n  \"refusalDescription\": \"merge-refusal (Phase 1497, additive, SEPARATE key): decode base/a/b, run the 3-way merge, assert it REFUSES, and assert the canonically-encoded two-sided conflict envelope is byte-equal to envelopeFile with sha256(envelope) == envelopeHash. Swapping a and b must transpose each entry's 'a' and 'b' and change nothing else. Held under its own key because a host that iterates 'fixtures' expecting every entry to auto-merge is correct to do so. A side's 'value' is the contended cell's canonical encoding, EXCEPT for the style.* sub-facets, whose value is the sub-field's case name — that coincides with its wire spelling because every style sub-field is enum-shaped, and a host must not generalise it to a compound cell.\",\n  \"refusalFixtures\": [\n"
         + System.String.Join(",\n", refusalEntries)
+        + "\n  ],\n  \"totalityDescription\": \"merge-totality (Phase 1526, additive, SEPARATE key): each PAIR is a triad that must REFUSE, immediately followed by a corrected twin that must AUTO-MERGE. The refusal entry carries an envelopeFile + envelopeHash and is checked exactly as a `merge-refusal` entry is; the twin carries an expectedFile + outcomeHash and is checked exactly as a `merge-3way` entry is; `twin` and `refusal` cross-reference the two. The pair is the point: a host can pass the refusal by refusing every structural merge, and can pass an auto-merge suite by never growing the arm, and only the pair pins the boundary between them. Three cases are covered, each one merge behaviour a host can silently OMIT and still look conformant: DeleteModify (one side edits a node the other REMOVES) and ConcurrentMove (a node relocated by one side and moved or edited by the other), both declared since Phase 179 and constructed by nothing until 1526 — so a host that reproduced the reference exactly reproduced a silent loss; and the node-level `tooltip` trait, which the reference merges as a facet of its own since Phase 1112 and which no fixture in any other family reaches, so a host whose merge constructs its nodes with the trait hardcoded empty drops an uncontested hint and nothing notices. The tooltip pair fails on its TWIN rather than its refusal, because a dropped trait is a different TREE and not a different envelope. Two envelope spellings are specific to these classes and a host must not generalise either: a side that holds NO value for the cell — the removing side of a DeleteModify — carries the EMPTY STRING, which no node canonical-encodes to and which `base` already uses for a same-id insert; and a ConcurrentMove is TWO entries on one node, `move` whose side value is the parent id that side holds the node under (empty string at the root) and `node` whose side value is that side's canonical subtree, never one entry compounding position and content. Held under its own key for the reason refusalFixtures is: a host that iterates `fixtures` expecting every entry to auto-merge is correct to do so, and one that iterates `refusalFixtures` expecting every entry to refuse is correct too.\",\n  \"totalityFixtures\": [\n"
+        + System.String.Join(",\n", totalityEntries)
         + "\n  ]\n}\n"
 
     File.WriteAllText(Path.Combine(dir, "manifest.json"), manifest)

@@ -56,6 +56,24 @@ let private success =
 
 let private removeRight = TreeOp.RemoveNode rightChildId
 
+/// A style edit to the LEFT pane — the pane `removeRight` does NOT touch.
+///
+/// Phase 1526: `success` retones the RIGHT pane, so pairing it with
+/// `removeRight` is one side editing a node the other side deletes. That pair
+/// used to auto-merge, silently discarding the edit, and it is now the
+/// `DeleteModify` refusal Phase 179 declared and nothing raised. The merge
+/// fixtures below need SOME auto-merging branch pair and are about checkpoints,
+/// attribution and tombstones rather than about conflict classes, so they take a
+/// genuinely disjoint pair instead of one that only merged because a conflict
+/// was being dropped. (`MergeTotalityTests` is where the refusal itself is
+/// asserted, in both directions and with its corrected twin.)
+let private criticalLeft =
+    TreeOp.UpdateStyle(
+        leftChildId,
+        { Defaults.style with
+            Tone = ToneVariant.Critical }
+    )
+
 let private freshDbPath () : string =
     Path.Combine(Path.GetTempPath(), sprintf "fuaran-dag-write-%s.db" (Guid.NewGuid().ToString("N")))
 
@@ -327,7 +345,7 @@ let tests =
               let initial = buildDashboard ()
               let a = stepRecord "s" None brand 1L
               add sink a
-              let branchA = stepRecord "s" (Some a) success 2L
+              let branchA = stepRecord "s" (Some a) criticalLeft 2L
               let branchB = stepRecord "s" (Some a) removeRight 3L
               add sink branchA
               add sink branchB
@@ -511,7 +529,7 @@ VALUES
               let initial = buildDashboard ()
               let a = stepRecord "s" None brand 1L
               add sink a
-              let branchA = stepRecord "s" (Some a) success 2L
+              let branchA = stepRecord "s" (Some a) criticalLeft 2L
               let branchB = stepRecord "s" (Some a) removeRight 3L
               add sink branchA
               add sink branchB
@@ -626,7 +644,7 @@ VALUES
               let initial = buildDashboard ()
               let a = stepRecord "s" None brand 1L
               add sink a
-              let branchA = stepRecord "s" (Some a) success 2L
+              let branchA = stepRecord "s" (Some a) criticalLeft 2L
               let branchB = stepRecord "s" (Some a) removeRight 3L
               add sink branchA
               add sink branchB
@@ -671,7 +689,7 @@ VALUES
               let initial = buildDashboard ()
               let a = stepRecord "s" None brand 1L
               add sink a
-              let branchA = stepRecord "s" (Some a) success 2L
+              let branchA = stepRecord "s" (Some a) criticalLeft 2L
               let branchB = stepRecord "s" (Some a) removeRight 3L
               add sink branchA
               add sink branchB

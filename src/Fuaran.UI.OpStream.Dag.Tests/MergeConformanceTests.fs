@@ -88,4 +88,53 @@ let tests =
 
                           Expect.equal fc.A rc.B (sprintf "%s: forward A == swapped B" id)
                           Expect.equal fc.B rc.A (sprintf "%s: forward B == swapped A" id)
+          }
+
+          // Leg A for the Phase 1526 totality PAIRS. Both halves are asserted in
+          // ONE test, deliberately: a refusal that stopped refusing and a twin
+          // that started refusing are the two ways the arm can be wrong, and
+          // splitting them lets a suite report half the pair green while the
+          // boundary it pins has moved.
+          test "committed totality pairs refuse and auto-merge on the reference host" {
+              if not (Directory.Exists corpusDir) then
+                  skiptest "wire-format-fixtures/merge-conformance corpus absent (single-repo checkout)"
+              else
+                  for (rid, _rdesc, tid, _tdesc, baseT, ra, rb, ta, tb) in MergeCorpus.totalityPairs do
+                      let envelope = MergeCorpus.envelopeOf baseT ra rb
+                      Expect.isNonEmpty envelope (sprintf "%s: the fixture refuses" rid)
+                      let envelopeJson = MergeConflict.encodeEnvelope envelope
+                      let envelopePath = Path.Combine(corpusDir, rid + ".envelope.json")
+                      Expect.isTrue (File.Exists envelopePath) (sprintf "%s envelope fixture present" rid)
+
+                      Expect.equal
+                          envelopeJson
+                          (File.ReadAllText(envelopePath).TrimEnd('\n', '\r'))
+                          (sprintf "%s: F# envelope == committed envelope" rid)
+
+                      // The swap transposes the envelope and changes nothing else
+                      // — the Phase 1497 property, asserted for the two classes
+                      // 1526 added rather than assumed to carry over. The
+                      // `DeleteModify` side values in particular are ASYMMETRIC
+                      // (one is the empty string), so a transposition defect here
+                      // would be silent in a class where both sides are populated.
+                      let swapped = MergeCorpus.envelopeOf baseT rb ra |> MergeConflict.sortCanonical
+
+                      for (fc, rc) in List.zip (MergeConflict.sortCanonical envelope) swapped do
+                          Expect.equal
+                              (fc.NodeId, fc.Facet, fc.Class)
+                              (rc.NodeId, rc.Facet, rc.Class)
+                              (sprintf "%s: same cell" rid)
+
+                          Expect.equal fc.A rc.B (sprintf "%s: forward A == swapped B" rid)
+                          Expect.equal fc.B rc.A (sprintf "%s: forward B == swapped A" rid)
+
+                      // The corrected twin still auto-merges to the committed tree.
+                      let merged = MergeCorpus.mergedOf baseT ta tb
+                      let expectedPath = Path.Combine(corpusDir, tid + ".expected.json")
+                      Expect.isTrue (File.Exists expectedPath) (sprintf "%s expected fixture present" tid)
+
+                      Expect.equal
+                          (canonical merged)
+                          (File.ReadAllText(expectedPath).TrimEnd('\n', '\r'))
+                          (sprintf "%s: F# merge == committed expected tree" tid)
           } ]
