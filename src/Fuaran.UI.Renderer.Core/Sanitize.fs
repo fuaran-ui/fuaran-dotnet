@@ -906,6 +906,36 @@ let sanitizeMarkdownHtml (html: string) : string =
         let dangerousElements =
             [ "script"; "iframe"; "object"; "embed"; "form"; "link"; "meta" ]
 
+        // An HTML tag name ends at whitespace, `/` or `>`, so a match on the bare
+        // prefix is a match on a DIFFERENT element: `<metadata>` is not `<meta>`,
+        // and `<linearGradient>` is not `<link>`. Both are real SVG elements the
+        // drawing builder emits, and before Phase 1546 the first of them lost its
+        // opening tag to this sweep, leaving the provenance document's text loose
+        // in the figure. Requiring the boundary narrows only false positives: no
+        // spelling of a real `<meta>` element survives it, because the name has to
+        // be delimited for a parser to read it as that element in the first place.
+        // End of input counts as a boundary, so a truncated `…<script` is still
+        // stripped.
+        let isTagNameBoundary (s: string) (index: int) =
+            index >= s.Length
+            || (let c = s[index] in c = ' ' || c = '\t' || c = '\n' || c = '\r' || c = '/' || c = '>')
+
+        let indexOfElementOpen (s: string) (openTag: string) =
+            let mutable from = 0
+            let mutable found = -1
+
+            while found < 0 && from <= s.Length - openTag.Length do
+                let i = s.IndexOf(openTag, from, StringComparison.OrdinalIgnoreCase)
+
+                if i < 0 then
+                    from <- s.Length
+                elif isTagNameBoundary s (i + openTag.Length) then
+                    found <- i
+                else
+                    from <- i + 1
+
+            found
+
         for tag in dangerousElements do
             let openTag = "<" + tag
             let closeTag = "</" + tag + ">"
@@ -913,7 +943,7 @@ let sanitizeMarkdownHtml (html: string) : string =
             let mutable keepGoing = true
 
             while keepGoing do
-                let i = result.IndexOf(openTag, StringComparison.OrdinalIgnoreCase)
+                let i = indexOfElementOpen result openTag
 
                 if i < 0 then
                     keepGoing <- false

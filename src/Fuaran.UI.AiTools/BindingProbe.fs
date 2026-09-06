@@ -79,6 +79,26 @@ let identify<'T> (binding: Binding<'T>) : BindingSource * string =
         // distinctly ($invoke) so the orchestrator knows the field is a compute invocation.
         BindingSource.Computed, "$invoke"
 
+// ─── Text provenance (Phase 1547) ───────────────────────────────────────────
+
+/// Classify a `TextSource` into its `TextProvenance`. It sits beside
+/// `identify` because it IS `identify` for the bound case: reusing that
+/// classification is what keeps the text mark and the binding-slot token
+/// from drifting into two vocabularies for one fact.
+///
+/// Note what it does NOT do: it never resolves the text. A bound heading's
+/// resolved string stays where it was, behind the renderer, and the honest
+/// reason is that surfacing it here would ADD the reading surface this mark
+/// exists to warn about. The mark says where the bytes come from; the
+/// consumer decides whether it wants them.
+let textProvenance (text: TextSource) : TextProvenance =
+    match text with
+    | TextSource.Literal _ -> TextProvenance.Literal
+    | TextSource.I18n(key, _) -> TextProvenance.I18n key
+    | TextSource.Bound binding ->
+        let source, expression = identify binding
+        TextProvenance.Bound(source, expression)
+
 // ─── Mirror of BindingResolver.Resolution<'T> against introspection sources ─
 
 /// Resolve a typed `Binding<'T>` against the probe's sources and return

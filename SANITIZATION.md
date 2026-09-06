@@ -18,9 +18,8 @@ Threats in scope:
 
 Threats out of scope (consumer responsibility):
 
-- **Content Security Policy** — Fuaran's renderer does not set CSP headers; the host application does.
+- **Content Security Policy** — Fuaran's renderer does not set CSP headers; the host application does. Since Phase 1546 the renderer meets one directive halfway by creating a named Trusted Types policy, so a host sending `require-trusted-types-for 'script'` has a policy to pin; sending the header remains the host's act. See "Trusted Types" below.
 - **DOM-clobbering** via author-supplied IDs that match global JavaScript names — author trust boundary.
-- **Trusted Types** — opt-in browser surface; consumers wire it via React's runtime if required.
 
 ## Posture per seam
 
@@ -42,6 +41,60 @@ Every place a string makes it to the DOM through `Fuaran.UI.Renderer`:
 | `prop.id` (NodeId) | Smart-ctor first positional arg | **Author-trusted** — NodeId is consumer-emitted (in the AI scenario, the AI; in the wire-decode scenario, the JSON decoder); React's attribute encoder applies | `Render.render` |
 | `NodeKind.Embed.Src` → `prop.src` on an `<iframe>` (Phase 1111) | AI emission / wire decode | **Sanitized at render-time, through a SEPARATE and STRICTER floor than every other URL slot.** The `embed` egress class admits **`https` and nothing else** — not `http`, and not a schemeless reference either. Both exclusions are deliberate and neither is shared with §19: an embed is fetched and then EXECUTED, so a document delivered over a rewritable channel is an intermediary’s script running in a frame this page created; and a relative reference names a same-origin document, which is precisely the shape where `AllowSameOrigin` together with `AllowScripts` lets the framed document reach its own frame element and remove the `sandbox` attribute. One accepted scheme and no positional test, so this class cannot inherit §19 rule 5’s protocol-relative evasion surface. A refusal **omits the `src` attribute entirely** rather than substituting `about:blank#…`: a frame pointed at a refusal URL renders that page, where a frame with no source is a well-defined empty context that fetches nothing. The destination policy then runs under `EgressClass.Embed`, never `Media` — a composition that declared a CDN for image egress has said nothing about which documents it will run | `Renderer.Core` `Sanitize.sanitizeEmbedSrc` → `Sanitize.sanitizeEmbedSrcForEgress`, at both renderers’ `Embed` arm |
 | `NodeKind.Custom` via `IFuaranRuntime.TryRenderCustom` | Host-registered closure | **Host trust boundary** — see below | `Render.renderKind` |
+
+## Trusted Types (Phase 1546)
+
+Trusted Types was listed above as out of scope, a consumer concern. It is a posture now. The rows of
+the table above that end in `prop.dangerouslySetInnerHTML` are exactly the inventory a Trusted Types
+policy needs, so the client renderer creates one and every raw-HTML sink mints through it. A host
+that sends the two directives below has the browser refuse any string reaching those sinks without
+passing the renderer's own sanitiser, which turns a declared posture into an enforced one.
+
+```
+Content-Security-Policy: require-trusted-types-for 'script'; trusted-types fuaran-renderer
+```
+
+| | |
+|---|---|
+| Policy name | `fuaran-renderer`. A stable public surface: a host writes this exact string into its `trusted-types` directive, so changing it breaks every such host and is a breaking change under [`STABILITY.md`](STABILITY.md). |
+| What it wraps | Every raw-HTML DOM sink in the client renderer: the markdown body, the `Drawing` SVG, the `Sparkline` SVG, the chart SVG, the MathML container, the theme `<style>` element, and the KaTeX enhancement's own `innerHTML` assignment. |
+| What `createHTML` does | Applies `Sanitize.sanitizeMarkdownHtml`, and nothing else. That is the same defence-in-depth floor the markdown seam always applied, now applied at every raw-HTML seam. |
+| What it refuses | Everything but HTML. The policy declares no `createScript` and no `createScriptURL`, so a caller reaching for either through it gets a `TypeError` from the browser. The renderer mints markup and never script. |
+| What it does NOT cover | A host-registered custom renderer's output. `NodeKind.Custom` remains the host trust boundary described below, and a registered closure reaching a raw-HTML sink of its own mints its own trusted value, through this policy or another. Trusted Types does not move that boundary; it makes the boundaries the renderer already declared enforceable at the browser instead of by review. |
+| Server renderer | Not covered, and not applicable. Trusted Types guards DOM sinks; `Fuaran.UI.Renderer.Server` emits an HTML string, so there is no sink to guard. Its seams keep the postures the table above gives them. |
+
+Three properties are worth stating precisely, because each is easy to over-read.
+
+**The floor runs whether or not the browser enforces anything.** `TrustedTypes.html` applies
+`createHtml` on every path, so a browser without the API, a host that sends no directive, the server
+renderer and the .NET build all produce the same bytes as a browser that does enforce. This is not
+tidiness. The server renderer emits these payloads into the SSR document and the client renderer
+hydrates over them, so a floor applied on one side only would surface as a React hydration mismatch
+at every seam whose bytes it changed. What the missing API costs is the trusted wrapper, which is
+inert where nothing enforces it, and that is the whole of the no-op fallback.
+
+**The floor is invariant over the renderer's own payloads, and that is a tested claim.** The sweep
+was written for markdown and now runs over SVG, MathML and CSS as well. It is safe there because
+each of those emitters escapes by construction, so the sweep finds nothing to remove.
+`Fuaran.UI.Tests/TrustedTypesTests.fs` pins the invariance against payloads built by the real
+emitters, paired with assertions that the sweep still refuses what it always refused. One live
+defect was found by that test and fixed in the same change: the sweep matched a dangerous element
+name as a bare prefix, so the drawing builder's `<metadata>` provenance element (Phase 643) read as
+`<meta>` and lost its opening tag. `Sanitize.sanitizeMarkdownHtml` now requires a tag-name boundary,
+which narrows only false positives, because a real element's name has to be delimited for a parser
+to read it as that element at all.
+
+**A missing directive entry is reported, not swallowed.** If the host enforces Trusted Types but its
+`trusted-types` directive does not name `fuaran-renderer`, the browser refuses to create the policy.
+The renderer warns once on the console, naming the policy and the directive, and falls back to the
+sanitiser alone; the sinks are then refused by the browser, which is the host's own configuration
+speaking. Throwing there would break a host that is merely misconfigured, and failing silently would
+leave a blank page with no cause.
+
+The seam inventory is enforced rather than remembered: a source-reading test enumerates the raw-HTML
+sinks in `src/Fuaran.UI.Renderer/` and fails when one takes a value the policy did not mint. A new
+sink is therefore red on the commit that adds it, and the fix is to route it and add its row to the
+table above.
 
 ## `Action.Navigate` and the State-key namespace (Phase 782)
 
@@ -300,10 +353,25 @@ The validator does NOT walk the typed tree's record-with bypass (`{ node with Ex
   schemes, slash-separated attributes) at their actual uncaught behaviour — see "Adversarial floor
   corpus (Phase 214)" above.
 
+`Fuaran.UI.Tests/TrustedTypesTests.fs` (Phase 1546) pins the policy:
+
+- Every raw-HTML sink in `src/Fuaran.UI.Renderer/` takes its value from the policy, read from the
+  sources rather than from a list kept beside them, with a non-vacuity assertion so a scan that
+  stopped matching cannot pass quietly.
+- `SANITIZATION.md` names the policy and the directive, so the contract and the code cannot drift.
+- The floor rewrites none of the renderer's own payloads (rendered markdown, chart SVG with and
+  without the provenance document, MathML, the theme stylesheet), each built by the real emitter.
+- The floor still strips a script element, a meta refresh, an inline handler and a `javascript:` URL.
+- A dangerous element name matches only at a tag-name boundary: `<metadata>` and `<linearGradient>`
+  survive intact, while every real spelling of `<meta>` / `<link>` / `<script>` / `<iframe>`, and a
+  truncated open tag at end of input, are still refused.
+
 ## Reference
 
 - [`src/Fuaran.UI.Renderer.Core/Sanitize.fs`](src/Fuaran.UI.Renderer.Core/Sanitize.fs) — implementation (shared by the client and server renderers).
+- [`src/Fuaran.UI.Renderer/TrustedTypes.fs`](src/Fuaran.UI.Renderer/TrustedTypes.fs) — the `fuaran-renderer` Trusted Types policy every client raw-HTML sink mints through.
 - [`src/Fuaran.UI.Tests/SanitizeTests.fs`](src/Fuaran.UI.Tests/SanitizeTests.fs) — XSS-payload corpus.
+- [`src/Fuaran.UI.Tests/TrustedTypesTests.fs`](src/Fuaran.UI.Tests/TrustedTypesTests.fs) — the sink-inventory scan, the floor's invariance over the renderer's own payloads, and the tag-name-boundary cases.
 - [`src/Fuaran.UI.Renderer.Server.Tests/ServerRenderTests.fs`](src/Fuaran.UI.Renderer.Server.Tests/ServerRenderTests.fs) — SSR attribute-name-injection assertions on the emitted HTML string.
 - [`STABILITY.md`](STABILITY.md) — language-tier stability policy (which surfaces are stable).
 - [`docs/VALIDATOR-MANIFEST.md`](docs/VALIDATOR-MANIFEST.md) — validator codes including FUARAN060.

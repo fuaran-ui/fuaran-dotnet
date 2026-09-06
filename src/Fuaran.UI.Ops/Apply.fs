@@ -2402,10 +2402,100 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
             // the structured failure so the AI can recover.
             Error err
 
+// ─── Apply-time §21 limits ─────────────────────────────────────────────────
+//
+// The decoder bounds what ARRIVES; nothing bounded what an apply PRODUCES. A
+// tree assembled op by op — a `Progressive` stream of small frames, a replay, a
+// driven session — grows past `WireLimits.MaxDepth` or `MaxNodes` without any
+// single op looking unusual, and the result is a tree this host holds happily
+// and no host can decode, including this one on the next round trip.
+//
+// Checking here is what makes the refusal ATTRIBUTABLE. The pre-emit validator
+// already reports `MaxDepthExceeded`, but it walks a finished tree and names
+// whichever node it reached — a node that is not at fault, in an operation long
+// since finished. As an apply outcome the failure names the op that crossed the
+// line, at the moment it crossed it, and travels to the op-stream and telemetry
+// sinks by the same route as every other `ApplyError` (FGP 5): the op-stream
+// witness's `Apply` IS this function, and `Streaming.applyFold` folds through it,
+// so the `Progressive` path is covered by the same guard rather than a second one.
+
+/// The tree's depth and node count in ONE walk — two walks would pay twice for
+/// the same traversal.
+///
+/// Over `Introspect.descendantNodes`, deliberately, rather than the structural
+/// `getChildren`: a node held in a `Switch` case, an `ErrorBoundary` slot or a
+/// `State` alternative is a node the decoder counts and this bound must too.
+/// `descendantNodes` is the same surface the §4g duplicate-id pre-check walks,
+/// for the same reason.
+let rec private treeMetrics (node: Node<'Msg>) : int * int =
+    Introspect.descendantNodes node
+    |> List.fold
+        (fun (depth, count) child ->
+            let childDepth, childCount = treeMetrics child
+            (max depth (childDepth + 1), count + childCount))
+        (1, 1)
+
+/// True when an op can increase the tree's depth or node count, and therefore
+/// when its result needs checking.
+///
+/// ONLY THE THREE GROWING OPS. `UpdateProp` / `ReplaceBinding` / `UpdateStyle` /
+/// `UpdateState` / `EditNode` rewrite a node in place and `RemoveNode` /
+/// `ReorderChildren` shrink or permute, so charging them a whole-tree walk would
+/// establish what their own semantics already guarantee. `MoveNode` is the one
+/// worth naming: it relocates a subtree and so CAN deepen the tree — but within
+/// a total count that cannot change, and to a depth bounded by the tree that
+/// already passed. A tree over the limit got there through an insert.
+let rec private opCanGrow (op: TreeOp<'Msg>) : bool =
+    match op with
+    | TreeOp.InsertChild _
+    | TreeOp.ReplaceRoot _ -> true
+    | TreeOp.Batch inner -> inner |> List.exists opCanGrow
+    | _ -> false
+
+let private limitExceeded (message: string) : ApplyError =
+    { Code = ApplyErrorCode.LimitExceeded
+      Message = message
+      Hint =
+        { ApplyHint.empty with
+            Suggestion =
+                Some
+                    "Flatten the nesting, or split the emission across trees — the resulting tree would not decode on any host, including this one." } }
+
+/// Refuse a result breaching `WireLimits.MaxDepth` / `MaxNodes`. Run on the
+/// RESULT, because the op alone determines neither figure: the same
+/// `InsertChild` is fine under a shallow parent and over the line under a deep
+/// one.
+let private checkTreeLimits (tree: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
+    let depth, count = treeMetrics tree
+
+    if depth > Fuaran.UI.WireLimits.MaxDepth then
+        Error(
+            limitExceeded (
+                sprintf
+                    "Applying this op would nest nodes %d levels deep, past the wire limit MaxDepth = %d (WIRE_FORMAT §21)."
+                    depth
+                    Fuaran.UI.WireLimits.MaxDepth
+            )
+        )
+    elif count > Fuaran.UI.WireLimits.MaxNodes then
+        Error(
+            limitExceeded (
+                sprintf
+                    "Applying this op would produce a tree of %d nodes, past the wire limit MaxNodes = %d (WIRE_FORMAT §21)."
+                    count
+                    Fuaran.UI.WireLimits.MaxNodes
+            )
+        )
+    else
+        Ok tree
+
 // ─── Public entry ──────────────────────────────────────────────────────────
 
 /// Apply a single tree-op against `root`, returning either the updated tree
 /// or a structured §4d AI-recovery error. Callers fold this themselves to
 /// apply an ordered op list; for atomic application of multiple ops, wrap
 /// in `TreeOp.Batch`.
-let apply (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> = applyOne op root
+let apply (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
+    match applyOne op root with
+    | Error err -> Error err
+    | Ok updated -> if opCanGrow op then checkTreeLimits updated else Ok updated

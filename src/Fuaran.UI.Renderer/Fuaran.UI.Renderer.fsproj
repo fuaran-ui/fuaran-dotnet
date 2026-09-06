@@ -98,6 +98,11 @@
     <Compile Include="GridTransfer.fs" />
     <Compile Include="GridExport.fs" />
     <Compile Include="GridPaste.fs" />
+    <!-- Phase 1546: the `fuaran-renderer` Trusted Types policy. Every raw-HTML
+         sink in this project mints through it, so it compiles before the two
+         files that hold one (Render.fs and MathEnhance.fs). Depends on
+         Renderer.Core's Sanitize and nothing else in this project. -->
+    <Compile Include="TrustedTypes.fs" />
     <Compile Include="Render.fs" />
     <Compile Include="Hydration.fs" />
     <Compile Include="MathEnhance.fs" />

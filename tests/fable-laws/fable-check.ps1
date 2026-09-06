@@ -116,10 +116,10 @@ if (-not $SkipPortability) {
 # ── 2. The laws ─────────────────────────────────────────────────────────────
 
 $lawsOut = Join-Path $PSScriptRoot 'output'
-$lineShape = '^(MERGE|MERGELAW|MERGEFINDING|MERGEFAIL|ADEQUACY|KIT|KITFAIL|TOTAL) '
+$lineShape = '^(MERGE|MERGELAW|MERGEFINDING|MERGEFAIL|ADEQUACY|KIT|KITFAIL|DEFLATE|DEFLATEFAIL|TOTAL) '
 
 if (-not $SkipLaws) {
-    Write-Stage 'laws — TreeMerge.merge3Way + FoldConfluence.laneFoldLaws, .NET vs Node'
+    Write-Stage 'laws — TreeMerge.merge3Way + FoldConfluence.laneFoldLaws + Deflate.inflate, .NET vs Node'
 
     if (-not (Get-Command node -CommandType Application -ErrorAction SilentlyContinue)) {
         # A NAMED skip, never a silent one — the posture `test-suites.json`'s corpus gate takes.
