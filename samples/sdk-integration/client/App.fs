@@ -25,11 +25,14 @@ open Fuaran.Sample.SdkIntegration.Client.Turn
 /// token + BYOK key server-side, so nothing secret is present here.
 let private runTurn (request: TurnRequest) : JS.Promise<Msg> =
     promise {
+        // The endpoint's OWN body shape, which the proxy passes through: the
+        // browser and the endpoint speak one wire, so a page written against
+        // the proxy needs no change to talk to a deployment directly.
         let body =
             createObj
-                [ "Prompt" ==> request.Prompt
+                [ "prompt" ==> request.Prompt
                   match request.CurrentTreeJson with
-                  | Some tree -> "CurrentTreeJson" ==> tree
+                  | Some tree -> "currentTree" ==> tree
                   | None -> () ]
 
         let! response =
@@ -43,8 +46,18 @@ let private runTurn (request: TurnRequest) : JS.Promise<Msg> =
 
         if response.Ok then
             let parsed = JS.JSON.parse text
-            return Produced(parsed?TreeJson |> string)
+            let tree = parsed?tree
+
+            // `tree` is an OBJECT on the wire; the renderer wants its canonical
+            // bytes, and re-stringifying the object is what preserves them. A
+            // 200 with no tree is a FAILURE, not an empty tree: holding "" here
+            // would silently repair nothing on every later turn.
+            if isNull (box tree) then
+                return TurnFailed "the endpoint replied 200 with no tree"
+            else
+                return Produced(JS.JSON.stringify tree)
         else
+            // One envelope at every status: `{error:{code,message,stage?}}`.
             return TurnFailed(sprintf "generation failed (HTTP %d): %s" response.Status text)
     }
 

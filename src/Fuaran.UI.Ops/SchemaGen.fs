@@ -340,10 +340,11 @@ let private bindingDef (self: string) (payload: StaticPayload) (elem: J) : J =
           // Phase 677 — `defaultValue` is OPTIONAL for the same reason as `Static.value`.
           duCase "State" [ "key" ] [ "defaultValue", elem; "key", str ]
           duCase "Computed" [ "fn" ] [ "fn", closure ]
-          // Phase 765 — `Now` carries NO wire fields: the instant is furnished
-          // by the host at resolve time, never serialised. `{"$type":"Now"}`
-          // is the whole form.
-          duCase "Now" [] []
+          // Phase 765 — the INSTANT is never serialised: it is furnished by the
+          // host at resolve time. Phase 1533 — the declared `grain` is the one
+          // wire field, optional, and omitted at its `Second` default, so
+          // `{"$type":"Now"}` is still the whole form of a grain-less `Now`.
+          duCase "Now" [] [ "grain", ref "TimeGrain" ]
           duCase
               "I18n"
               [ "key" ]
@@ -455,6 +456,10 @@ let private defs: (string * J) list =
       // Locale-aware formatting enums (Phase 102).
       "DateStyle", enumDef [ "Short"; "Medium"; "Long"; "Full" ]
       "RelativeTimeUnit", enumDef [ "Second"; "Minute"; "Hour"; "Day"; "Week"; "Month"; "Year" ]
+      // The `Binding.Now` grain (Phase 1533) — a strict subset of
+      // `RelativeTimeUnit`: a calendar instant has no truncation to a week, a
+      // month or a year that five hosts agree on.
+      "TimeGrain", enumDef [ "Second"; "Minute"; "Hour"; "Day" ]
       // Duration formatting enums (Phase 819).
       "DurationUnit", enumDef [ "Seconds"; "Minutes"; "Hours" ]
       "DurationStyle", enumDef [ "Compact"; "Clock"; "Long" ]
@@ -648,7 +653,11 @@ let private defs: (string * J) list =
             duCase "Date" [ "dateStyle" ] [ "dateStyle", ref "DateStyle" ]
             duCase "RelativeTime" [ "unit" ] [ "unit", ref "RelativeTimeUnit" ]
             // Phase 819 — locale-independent duration formatting.
-            duCase "Duration" [ "style"; "unit" ] [ "style", ref "DurationStyle"; "unit", ref "DurationUnit" ] ]
+            duCase "Duration" [ "style"; "unit" ] [ "style", ref "DurationStyle"; "unit", ref "DurationUnit" ]
+            // Phase 1533 — the instant-reading twin of `RelativeTime`. `unit` is
+            // OPTIONAL and its absence is the auto-selection request, not a
+            // default, so it is not in the required list.
+            duCase "Since" [] [ "unit", ref "RelativeTimeUnit" ] ]
 
       "LocaleSource", union [ duCase "Ambient" [] []; duCase "Explicit" [ "tag" ] [ "tag", str ] ]
 

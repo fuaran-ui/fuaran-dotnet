@@ -298,6 +298,18 @@ let private encodeRelativeTimeUnit (u: RelativeTimeUnit) : Appender =
         | RelativeTimeUnit.Month -> appendRawString sb "Month"
         | RelativeTimeUnit.Year -> appendRawString sb "Year"
 
+/// Phase 1533 — the grain a `Binding.Now` declares; a bare string like every
+/// other variant DU in this file. A strict subset of `RelativeTimeUnit`: a
+/// calendar instant has no truncation to a week, a month or a year that five
+/// hosts agree on.
+let private encodeTimeGrain (g: TimeGrain) : Appender =
+    fun sb ->
+        match g with
+        | TimeGrain.Second -> appendRawString sb "Second"
+        | TimeGrain.Minute -> appendRawString sb "Minute"
+        | TimeGrain.Hour -> appendRawString sb "Hour"
+        | TimeGrain.Day -> appendRawString sb "Day"
+
 // Phase 819 — Duration format enums; bare strings like every other variant
 // DU in this file.
 let private encodeDurationUnit (u: DurationUnit) : Appender =
@@ -342,6 +354,16 @@ let private encodeFormat (f: Format) : Appender =
             // Phase 819 — alphabetical field order (style before unit), the
             // canonical ordering rule.
             appendObject sb (case "Duration" [ "style", encodeDurationStyle style; "unit", encodeDurationUnit unit ])
+        // Phase 1533 — the instant-reading twin of `RelativeTime`. `unit` is
+        // optional and omitted when absent (algorithm rule 4): its absence is
+        // the auto-selection request, not a default that could be spelled out.
+        | Format.Since unit ->
+            let fields =
+                match unit with
+                | Some u -> [ "unit", encodeRelativeTimeUnit u ]
+                | None -> []
+
+            appendObject sb (case "Since" fields)
 
 let private encodeLocaleSource (l: LocaleSource) : Appender =
     fun sb ->
@@ -436,10 +458,18 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
 
             appendObject sb (case "State" (defaultField @ [ "key", str key ]))
         | Binding.Computed _ -> appendObject sb (case "Computed" [ "fn", sentinel closureSentinel ])
-        // Phase 765 — no wire fields: the instant is furnished by the host at
-        // resolve time, never carried on the wire. Byte-identical to the
-        // generated encoder's `Canon.typed "Now" []`.
-        | Binding.Now _ -> appendObject sb (case "Now" [])
+        // Phase 765 — the instant itself is furnished by the host at resolve
+        // time, never carried on the wire. Phase 1533 — the declared GRAIN is
+        // carried, and only when it is not the `Second` default, so a
+        // grain-less `Now` is the same bytes it has always been. Byte-identical
+        // to the generated encoder's `Canon.typed "Now" [...]`.
+        | Binding.Now(_, grain) ->
+            let grainField =
+                match grain with
+                | Some g -> [ "grain", encodeTimeGrain g ]
+                | None -> []
+
+            appendObject sb (case "Now" grainField)
         | Binding.I18n(key, args) ->
             // i18n binding. Args are `Map<string, Binding<JVal>> option` (the
             // swap's typed verbatim carrier); each renders via the JVal-typed

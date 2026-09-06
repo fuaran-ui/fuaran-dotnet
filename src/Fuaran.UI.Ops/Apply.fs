@@ -265,7 +265,7 @@ let rec private mapBinding<'T> (conv: obj -> 'T) (b: Binding<obj>) : Binding<'T>
     | Binding.Computed f -> Binding.Computed(f >> conv)
     // Phase 765 — the host furnishes the instant; the accessor composes like
     // any other obj-erased source.
-    | Binding.Now accessor -> Binding.Now(accessor >> conv)
+    | Binding.Now(accessor, grain) -> Binding.Now(accessor >> conv, grain)
     // i18n bindings carry only string key + JVal-typed args, no
     // 'T payload to cast. Pass through; the resolver enforces 'T = string at
     // resolution time.

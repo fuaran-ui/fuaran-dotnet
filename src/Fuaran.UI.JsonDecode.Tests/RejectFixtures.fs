@@ -1594,6 +1594,22 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "Action.WriteToClipboard's payload is a TextSource, so it is a string (the Literal shorthand) or a $type-tagged object — never a number. The refusal matters more here than at an ordinary text slot: the slot WIDENED in 1126 from a bare string, and a host that read the widening as \"anything goes\" would put a JSON literal on the reader's clipboard rather than refusing the document (Phase 1126)" }
+      // Phase 1533 — the `Binding.Now` grain is a CLOSED four-member vocabulary
+      // and a strict subset of `RelativeTimeUnit`'s seven. `Week` is the member
+      // most likely to be reached for by an emitter that has met `RelativeTime`
+      // first, and it is refused: this is a TRUNCATION of a calendar instant,
+      // and a week has no truncation five hosts agree on (which weekday starts
+      // it). Rejecting rather than clamping to `Day` is the point — a document
+      // that asked for a resolution the language does not have must be told so,
+      // not rendered at a neighbouring one in silence.
+      { Id = "reject-now-grain-invalid"
+        Json =
+          """{"id":"x","kind":{"$type":"Fact","label":"As of","value":{"$type":"Bound","binding":{"$type":"Now","grain":"Week"}}}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.value.binding.grain"
+        IsOp = false
+        Description =
+          "Binding.Now's grain is Second | Minute | Hour | Day — `Week` is a RelativeTimeUnit member and not a TimeGrain one. The two vocabularies are deliberately different sizes: a grain truncates a calendar instant, and a week, a month and a year have no truncation every host agrees on. A host that accepted this and rendered at day grain would be answering a question the document did not ask (Phase 1533)" }
       { Id = "reject-limit-json-depth-at-max"
         Json =
           String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "["

@@ -1,4 +1,4 @@
-﻿# Fuaran language-tier stability policy
+# Fuaran language-tier stability policy
 
 This document declares which Fuaran *language-tier* surfaces are stable, what counts as a breaking change in each, and the semver rules that govern the `Fuaran.UI.*` NuGet packages shipped from this repo. It is the contract that downstream consumers (runtime tiers, demo applications, third-party adopters) can rely on when pinning a Fuaran version.
 
@@ -5228,9 +5228,157 @@ surfaces: the F# tier marks the text fields its prop table already reports, and 
 reports every top-level `TextSource` field on the spec, which is the wider set. The provenance
 VOCABULARY is identical; the slot SET is each tier's own.
 
+
+## Recorded change — 0.77.0, `Fuaran.UI.Client` speaks the deployed generation wire
+
+**A BREAKING change to `Fuaran.UI.Client`, and it RIDES the 0.77.0 draft rather than advancing it.**
+`Wire.toWireBody` loses a parameter and `FuaranClientConfig` gains four fields, and a consumer on the
+released baseline (v0.75.0 is the newest tag) can call and construct both — so this is breaking, not
+additive. It rides all the same, because the draft-slot rule advances a number only for a class
+HIGHER than the slot already carries, and 0.77.0 is untagged and already carries the `PropEntry`
+record widening recorded directly above: both cost a consumer a recompile against a changed
+declaration, and both are enumerated in this file under the one slot. **0.76.0 and 0.76.1 were never
+tagged either, so everything recorded against them ships in 0.77.0 as well.**
+
+### The defect: the client spoke a protocol the endpoint does not serve
+
+`Wire.fs` wrote `{Prompt, CurrentTreeJson, ByokKey, AccessToken, …}` and read
+`{TreeJson, Ops, Version}` across a 200 / 401 / 422 status map. That was faithful to the generation
+endpoint's published OpenAPI document — and refused by the endpoint itself, which reads `prompt` /
+`currentTree`, takes secrets from HEADERS ONLY, replies
+`{version, tree, opsApplied, provider, servedModel?, snapshot}`, and refuses with
+`{error:{code,message,stage?}}` at 400 / 401 / 405 / 422 / 500 / 503. A client built from the
+document got `400 BAD_REQUEST: request body has no 'prompt' string`; correcting the prompt's case
+then got `MISSING_PROVIDER_KEY`, because the body's key was never read. The document has been
+corrected to describe the deployed surface, and this package follows it.
+
+### What moved
+
+```fsharp
+// BEFORE                                        // AFTER
+Wire.toWireBody args secrets                      Wire.toWireBody args
+```
+
+The secrets parameter is gone because there is no secret MEMBER. `FuaranClient` sends the access
+token as `Authorization: Bearer` and the BYOK key as `X-Fuaran-Provider-Key`, and the endpoint
+refuses a body carrying either — detected by presence, never read — with `SECRETS_IN_BODY`. The old
+signature could not be kept as a deprecated overload without leaving a function whose output the
+endpoint now rejects, which is worse than removing it.
+
+`FuaranClientConfig` gains `Provider`, `Timeout`, `AllowInsecureEndpoint` (and `SendBearerHeader`
+keeps its name with a corrected meaning: it gates the endpoint's ONLY auth channel, not a
+belt-and-braces duplicate of a body field). `GenerateArgs` gains `InteractionId` and
+`SessionTurnOptions` follows. Both are record widenings, so a full-literal construction needs the new
+field; `GenerateArgs.prompt` / `.repair` and `SessionTurnOptions.none` are unaffected.
+
+**`TurnResult.Produced` keeps its arity.** The deployment facts the wire now carries —
+`opsApplied` as a COUNT, `provider`, the optional `servedModel`, the `snapshot` state — hang off a
+new `ProducedDetail` returned by `FuaranClient.GenerateDetailed`, not off the case. Widening the
+case would break every `match` in every consumer in order to carry information most of them ignore,
+and `Session.fs` matches `Produced(treeJson, _, _)` exactly as before. `ops` is still populated when
+a reply carries a full op list — a proxy, the offline mock, or an in-process host sends one — and is
+empty when only the count is on the wire, which is what `ProducedDetail.OpsApplied` is for.
+
+New additive surface: `ClientCode`, `SnapshotState`, `ProducedDetail`, `EndpointPolicy.isSecure`,
+`Wire.parseProducedDetail`, `FuaranClient.GenerateDetailed`, and a
+`Generate(args, cancellationToken)` overload.
+
+### Three refusals a caller can now branch on
+
+- **`MALFORMED_RESPONSE`** — a 200 with no tree is a failure, not `Produced("")`. The old behaviour
+  poisoned the session: `FuaranSession` holds the produced tree, so an empty one made every LATER
+  repair a no-op, and the fault surfaced one turn after the reply that caused it.
+- **`INSECURE_ENDPOINT`** — a plaintext, non-loopback endpoint is refused before the request is
+  built, since both credentials ride headers. Loopback, `https` and a relative same-origin path are
+  admitted; `AllowInsecureEndpoint` is the written-down opt-out.
+- **`NETWORK`** now carries a FIXED message. It used to be `ex.Message` verbatim, and a `TurnResult`
+  is routinely rendered straight into a browser — an exception string can quote a URL, a header name
+  or a proxy's internal hostname. The detail belongs in the host's log, which is why the transport is
+  a seam the host owns.
+
+`IFuaranTransport` is UNCHANGED: the `Timeout` is a race in the client, so it applies to every
+transport including an injected one, and no implementor has to adopt anything.
+
+### Not a wire-format change
+
+No `Node` / `TreeOp` byte moves, and no shared-corpus fixture changes. What moved is the generation
+endpoint's HTTP envelope, which the wire-format corpus does not govern.
+
 ---
 
-## Recorded change — 0.78.0, WIRE_FORMAT §20 ratification, §7.1 integer slots and §21.6/§21.7 (fuaran#1521)
+## Recorded change — 0.77.0, `Binding.Now` gains a grain, and `Format.Since` (fuaran#1533)
+
+**A field on an existing union case plus a case on a closed union (`FS0725` at construction sites,
+`FS0025` at exhaustive matches) — recorded as the additive class relative to the released baseline,
+on the reading the four `PreEmitDefect` entries above take.** v0.76.0 is now the newest tag, so this
+RIDES the untagged, publicly-unpinned 0.77.0 draft rather than moving a number: that slot already
+carries a record widening (fuaran#1547 above), which is not a lower class than this, so a second
+advance would say something about the cost of adoption that is not true. Against the released
+surface the wire is unchanged for every document that existed before it.
+
+```fsharp
+// Fuaran.UI.Generated — Binding<'T> (field added to an existing case)
+| Now of accessor: (obj -> 'T) * grain: TimeGrain option
+
+// Fuaran.UI.Generated — TimeGrain (new), aliased as Fuaran.UI.Types.TimeGrain
+| Second | Minute | Hour | Day
+
+// Fuaran.UI.Generated — Format (case added)
+| Since of unit: RelativeTimeUnit option
+
+// Fuaran.UI (smart constructors)
+binding.nowAt   : TimeGrain -> Binding<string>
+binding.nowAsAt : TimeGrain -> (string -> 'T) -> Binding<'T>
+
+// Fuaran.UI.Renderer.Formatting (new public functions, shared above the #if)
+truncateToGrain      : TimeGrain -> string -> string
+epochSecondsOfInstant: string -> float option
+sinceUnitAndCount    : RelativeTimeUnit option -> float -> RelativeTimeUnit * float
+```
+
+**THE WIRE DOES NOT MOVE FOR ANY EXISTING DOCUMENT, and that is checkable rather than asserted.**
+`grain` is omitted at its `Second` default and `Since` is a new discriminator, so
+`nodes/now-environment-binding.json` and `nodes/format-bindings.json` are byte-identical before and
+after — which the corpus regeneration in this change-set demonstrates by leaving them untouched in
+the diff. `binding.nowAt TimeGrain.Second` collapses to `None` in the smart constructor for the same
+reason: a document that spelled out the default would round-trip differently from every pre-1533
+tree, and the constructor is where that becomes impossible rather than merely discouraged.
+
+**`TimeGrain` is a strict SUBSET of `RelativeTimeUnit`, and the four missing members are the
+decision.** A grain truncates a calendar instant; `Week`, `Month` and `Year` have no truncation five
+hosts agree on (which weekday starts a week; which calendar), so they are REFUSED at decode —
+`UNKNOWN_DU_CASE` at the `…grain` path — rather than clamped to `Day`. Clamping would answer a
+question the document did not ask, silently. The same rule governs a `grain` that is present and
+unreadable: a refusal, never a fallback to the default.
+
+**`Format.Since` is a SEPARATE case and not a widening of `RelativeTime`, which is the whole point.**
+`RelativeTime`'s numeric source is a signed COUNT of its unit; `Since`'s is an INSTANT in whole
+Unix-epoch seconds (`Date`'s convention), and the count is the delta the host takes against
+`BindingSources.Now`. Widening `RelativeTime` to mean either would have re-interpreted every shipped
+document that uses it, with no version and no diff to point at. The two cases now read their source
+differently on purpose, and `format-bindings.json` is untouched.
+
+**What is normative is the REDUCTION, not the wording** (`WIRE_FORMAT.md` §3.3.1). The auto-selection
+ladder and the truncate-toward-zero count are fixed and identical on every host; turning the
+resulting `(unit, count)` into words is locale-aware rendering, so `Since` inherits `RelativeTime`'s
+§13 fidelity tier exactly — `Intl.RelativeTimeFormat` in the browser, the documented invariant
+fallback elsewhere. Two hosts differing in wording is not a conformance failure; two hosts computing
+a different pair from the same delta is.
+
+**The clock did not move, and the phase's real content is that this is now WRITTEN DOWN.**
+`Binding.Now` shipped in 0.66.0 (fuaran#765) with its determinism properties stated only in source
+comments; §3.3.1 states them normatively — no clock at decode, no instant on the wire, one instant
+per render pass, nothing captured by the op-stream, the SSR instant handed to the client's first
+render, and an absent instant left unresolved rather than substituted. `Fuaran.UI.Tests`'
+`NowGrainTests` pins them, including the go-red twin that a re-render under a *different* furnished
+instant does move — without which the determinism assertions would pass vacuously on a host that
+ignored `sources.Now` altogether.
+
+---
+
+---
+
+## Recorded change — 0.77.0, WIRE_FORMAT §20 ratification, §7.1 integer slots and §21.6/§21.7 (fuaran#1521)
 
 **Additive on the API surface; NARROWING on the decoder's accept set.** Three new public members —
 `WireLimits.MaxDocumentBytes`, the `fuaran refusal-report` CLI verb, and nothing else — and a set of
@@ -5279,13 +5427,19 @@ were always the wire spelling. A stored refusal hash over a `style.direction` co
 survive; `StyleFacetTokenTests` pins every facet against the generated encoder so the class cannot
 recur.
 
-**Version — 0.78.0, an ADVANCE rather than a ride, and the reason is one paragraph up.** The API
-additions are additive and the decoder narrowing refuses only inputs no conformant emitter produces,
-so on those two axes this would have ridden the 0.77.0 draft. The refusal envelope is the axis that
-decides it: its bytes are a documented cross-host artefact whose SHA-256 is the refusal hash, and a
-stored hash over a `style.direction` conflict does not survive this change. A version number is what
-tells a consumer what adopting costs, and a slot whose entry reads "additive" over an invalidated
-hash would say the wrong thing. 0.76.0 is tagged, so it was never available to ride in any case.
+**Version — it RIDES 0.77.0, and the reason is the draft's own contents.** The heaviest thing here
+is not the API surface, which is two additive members; it is that the decoder REFUSES inputs it
+accepted, and that `MergeConflict.encodeEnvelope`'s bytes move for a style conflict — the envelope
+is a documented cross-host artefact whose SHA-256 is the refusal hash, so a stored hash over a
+`style.direction` conflict does not survive. Against an ADDITIVE draft that would have advanced the
+number, because a slot reading "additive" over an invalidated hash says the wrong thing about what
+adopting costs.
+
+The 0.77.0 draft is not additive. It already carries `FuaranClientConfig`'s widening and
+`Wire.toWireBody`'s lost parameter — source-breaking against the released v0.75.0 — so a consumer
+adopting this slot is already recompiling and re-reading its entry. The draft-slot rule advances
+only for a HIGHER class, and this is not higher than breaking; v0.76.0 is tagged, so 0.76.x was
+never available to ride in any case.
 
 Consumers that DECODE third-party or model-emitted JSON should expect previously-accepted malformed
 documents to be refused — which is the point. Consumers that store refusal hashes over style

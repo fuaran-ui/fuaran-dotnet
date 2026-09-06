@@ -2750,6 +2750,20 @@ let private decodeRelativeTimeUnit (path: string) (j: Json) : Result<RelativeTim
     | JString s -> unknownEnumCase path s "Second | Minute | Hour | Day | Week | Month | Year"
     | _ -> wrongType path "JSON string (RelativeTimeUnit)"
 
+/// Phase 1533 — the resolution a `Binding.Now` declares for the host instant.
+/// FOUR members, a strict subset of `RelativeTimeUnit`'s seven: `Week` /
+/// `Month` / `Year` are REFUSED here rather than quietly accepted, because this
+/// is a truncation of a calendar instant and those three have no truncation
+/// five hosts agree on (which weekday starts a week; which calendar).
+let private decodeTimeGrain (path: string) (j: Json) : Result<TimeGrain, DecodeError> =
+    match j with
+    | JString "Second" -> Ok TimeGrain.Second
+    | JString "Minute" -> Ok TimeGrain.Minute
+    | JString "Hour" -> Ok TimeGrain.Hour
+    | JString "Day" -> Ok TimeGrain.Day
+    | JString s -> unknownEnumCase path s "Second | Minute | Hour | Day"
+    | _ -> wrongType path "JSON string (TimeGrain)"
+
 let private decodeCellFormat (path: string) (j: Json) : Result<CellFormat, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -2892,7 +2906,17 @@ let private decodeFormat (path: string) (j: Json) : Result<Format, DecodeError> 
                     | Ok styleJ ->
                         decodeDurationStyle (path + ".style") styleJ
                         |> Result.map (fun style -> Format.Duration(unit, style))
-        | Ok s -> unknownDuCase path s "Number | Currency | Percent | Date | RelativeTime | Duration"
+        | Ok "Since" ->
+            // Phase 1533 — the INSTANT-reading twin of `RelativeTime`. `unit` is
+            // OPTIONAL, and its absence is not a default: it is the
+            // auto-selection request, resolved from the fixed threshold table in
+            // WIRE_FORMAT 4b. Present-but-unreadable is still a refusal.
+            match tryField fields "unit" with
+            | None -> Ok(Format.Since None)
+            | Some j ->
+                decodeRelativeTimeUnit (path + ".unit") j
+                |> Result.map (fun u -> Format.Since(Some u))
+        | Ok s -> unknownDuCase path s "Number | Currency | Percent | Date | RelativeTime | Duration | Since"
 
 let private decodeLocaleSource (path: string) (j: Json) : Result<LocaleSource, DecodeError> =
     match requireObject path j with
@@ -3161,15 +3185,26 @@ and private bindingGeneric<'T>
                 // Encoder writes the fn as `<closure>`; decode to a placeholder.
                 Ok(Binding.Computed(fun _ -> placeholder))
             | Ok "Now" ->
-                // Phase 765 — the host-furnished current instant. No wire fields:
-                // the VALUE is supplied by the runtime at resolve time (the `Query`
+                // Phase 765 — the host-furnished current instant. The VALUE is
+                // supplied by the runtime at resolve time (the `Query`
                 // precedent), never carried on the wire, so a tree stays a pure
                 // value and a replayed op-stream re-supplies the recorded instant
-                // rather than re-reading a clock. The accessor decodes to a
-                // placeholder exactly as `Computed`'s does.
-                // Identity, not a placeholder (the 427 Selection fix replayed):
-                // the instant is already the wire-shaped string.
-                Ok(Binding.Now(fun (raw: obj) -> unbox raw))
+                // rather than re-reading a clock.
+                //
+                // Identity accessor, not a placeholder (the 427 Selection fix
+                // replayed): the instant is already the wire-shaped string.
+                //
+                // Phase 1533 — `grain` is the ONE wire field, optional, and
+                // absent means `Second`. Absence is the default; PRESENT and
+                // unreadable is a refusal, never a silent fallback to the
+                // default, because a document that names a grain the host cannot
+                // honour would otherwise render at a resolution it did not ask
+                // for and say nothing about it.
+                match tryField fields "grain" with
+                | None -> Ok(Binding.Now((fun (raw: obj) -> unbox raw), None))
+                | Some j ->
+                    decodeTimeGrain (path + ".grain") j
+                    |> Result.map (fun g -> Binding.Now((fun (raw: obj) -> unbox raw), Some g))
             | Ok "I18n" ->
                 match requireField path fields "key" "i18n key string" with
                 | Error e -> Error e
