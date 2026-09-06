@@ -5121,3 +5121,64 @@ two runs' output is compared byte for byte. A companion assertion pins the fixtu
 `BFINAL=1, BTYPE=2`, so a regenerated fixture that stopped being a dynamic block fails rather than
 quietly covering nothing. The refutation was observed before the fix: the Fable leg reported
 `DEFLATE cases=3 failed=2` while .NET reported `failed=0`.
+
+---
+
+## Recorded change — 0.77.0, text provenance on the agent snapshot (fuaran#1547)
+
+**A record widening in `Fuaran.UI.AiTools` (minor pre-1.0, `FS0764` for a full-literal
+constructor), plus a strictly additive block in the rendered response.** `PropEntry` gains
+`Provenance: TextProvenance option`, and `TextProvenance` is a new type in that package's `Types`
+module. It advances rather than riding the 0.76.1 draft because that slot carries a patch and this
+is a higher class; a number that says "patch" over a record widening is false.
+
+```fsharp
+// Fuaran.UI.AiTools.Types
+type TextProvenance =
+    | Literal
+    | I18n of key: string
+    | Bound of source: BindingSource * expression: string
+
+module TextProvenance =
+    val isUntrusted: TextProvenance -> bool
+
+// PropEntry (field added)
+Provenance: TextProvenance option
+```
+
+**What it is for.** The tool surface already tokenised a BINDING's source, so an agent could tell a
+declared value from a resolved one. Text carried no such mark: a heading authored as a literal and
+a heading resolved out of a query result reached the response the same way. Text bound to data is
+attacker-influenced content, and an agent that drives an interface also reads it, which is prompt
+injection's entry into the agent seam. The mark says what the value is; the consumer decides how
+far to trust it. That is the same move the closure sentinel makes for functions.
+
+**`untrusted` is derived, not stored.** `TextProvenance.isUntrusted` is true for `Bound` text whose
+source is `Query`, `Selection`, `State` or `Computed`, and false for literal text, catalogue text,
+and text bound from `Static` or `Filter`. Deriving it is what lets a consumer act on one boolean
+rather than carry a table, and it cannot fall out of step with the source token because there is
+only one fact.
+
+**No second vocabulary was minted.** `Bound` carries the very `BindingSource` and wire expression
+`BindingProbe.identify` already produces for the binding slots, so an agent reading a response
+reads one vocabulary across both blocks.
+
+**The JSON is additive, deliberately.** `ResponseRender.renderNodeState` writes a `textProvenance`
+object as a SIBLING of `props`, present whenever `props` is (an empty object when the node carries
+no text, because "looked and found none" is not the same statement as a missing key). Nothing
+inside `props` moves: a text prop's value and type hint are the bytes it produced before the mark
+existed, because `textEntry` is defined as `valueEntry` plus the mark. A consumer that ignores the
+new key sees the response it saw before.
+
+**What it does NOT do, stated because the limit is the design.** It classifies text; it never
+resolves it. A bound heading's resolved string stays behind the renderer, since surfacing it here
+would ADD the reading surface the mark exists to warn about. And it derives `untrusted` for text
+only: binding slots already carry `source`, which a consumer classifies for itself.
+
+**`fuaran-ts` moves in the same change-set.** `@fuaran-ui/ai-tools` gains the same three provenance
+tokens and the same four untrusting sources on its `NodeIntrospection.text` array, and
+`@fuaran-ui/mcp` exposes them through `fuaran_inspect`, so an agent driving the interface over the
+protocol sees the tokens an in-process one sees. The two tiers enumerate the text slots each
+surfaces: the F# tier marks the text fields its prop table already reports, and the TypeScript tier
+reports every top-level `TextSource` field on the spec, which is the wider set. The provenance
+VOCABULARY is identical; the slot SET is each tier's own.
