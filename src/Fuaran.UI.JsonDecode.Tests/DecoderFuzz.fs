@@ -385,8 +385,15 @@ let loadSeeds () : string[] =
                 let dir = Path.Combine(root, family)
 
                 if Directory.Exists dir then
+                    // Ordinal by file name, deliberately: `GetFiles` returns
+                    // NTFS's alphabetical order on Windows and readdir's hash
+                    // order on Linux, and the seed pool's ORDER is an input to
+                    // the stream. Unsorted, one seed replayed a CI counterexample
+                    // on the machine that found it and nowhere else (run
+                    // 34038639982, iteration 130134, reproduced nowhere).
                     Directory.GetFiles(dir, "*.json")
                     |> Array.filter (fun f -> not (f.EndsWith(".expected.json", StringComparison.Ordinal)))
+                    |> Array.sortWith (fun a b -> String.CompareOrdinal(Path.GetFileName a, Path.GetFileName b))
                     |> Array.toList
                 else
                     [])

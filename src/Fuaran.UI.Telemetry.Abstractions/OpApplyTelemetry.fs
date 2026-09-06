@@ -25,7 +25,15 @@ open Fuaran.UI.Ops.Types
 //                            SlotNotFound, KindMismatch, ChildlessKind,
 //                            PositionOutOfRange, OrderingMismatch,
 //                            DuplicateNodeId, PathInvalid,
-//                            PathNotSupportedYet, BatchAborted).
+//                            PathNotSupportedYet, BatchAborted,
+//                            LimitExceeded).
+//
+//  `LimitExceeded` is the apply-time §21 refusal, and it reaches BOTH sinks by
+//  this one mapping — which is the point of siting the check in the apply
+//  engine rather than leaving it to the pre-emit validator. A validator finding
+//  is attributed to whichever node its walk reached; an apply outcome is
+//  attributed to the op that crossed the line, correlated by
+//  `(StreamId, Sequence)` to the durable op record (FGP 5).
 //
 //  `(StreamId, Sequence)` correlates with `Fuaran.UI.OpStream.OpRecord` —
 //  hosts that wire both sinks can join telemetry to the durable op record
@@ -79,6 +87,7 @@ module OpOutcome =
         | ApplyErrorCode.PathInvalid -> "PathInvalid"
         | ApplyErrorCode.PathNotSupportedYet -> "PathNotSupportedYet"
         | ApplyErrorCode.BatchAborted innerIndex -> sprintf "BatchAborted(%d)" innerIndex
+        | ApplyErrorCode.LimitExceeded -> "LimitExceeded"
 
     /// Derive the closed, `'Msg`-free `OpOutcome` from a typed apply result.
     /// This is the single source of truth for the apply-result → outcome

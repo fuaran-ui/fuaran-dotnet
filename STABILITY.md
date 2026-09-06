@@ -5025,12 +5025,73 @@ authored string whole, so the clamp is a difference between two bytes the fixtur
 assertion about one. A host whose chart-lowering leg walks the corpus directory sees all eleven before
 its own clauses exist; the four lowering hosts move in this same change-set.
 
+---
+
+## Recorded change — 0.76.0, `ApplyErrorCode.LimitExceeded` (fuaran#1527)
+
+**A case on a closed union (minor — `FS0025` only), riding the draft slot exactly as 1491/1492 do.**
+`ApplyErrorCode` gains `LimitExceeded`, the apply-time §21 refusal. No record widens, so the
+`FS0764` class the 0.76.0 draft already paid once is not paid again; v0.75.0 remains the newest tag,
+and no released consumer can match on a case that did not exist when it was published.
+
+```fsharp
+// Fuaran.UI.Ops.Abstractions — ApplyErrorCode (case added)
+| LimitExceeded
+```
+
+Two exhaustive matches over the union were extended in the same change-set —
+`ErrorRender.codeToken` and `OpApplyTelemetry.errorCodeName` — and both render the bare token
+`"LimitExceeded"`. A downstream consumer with its own exhaustive match gets `FS0025` and adds one
+arm.
+
+**What it means, and why the case is not redundant with the pre-emit validator.** The decoder bounds
+what ARRIVES; nothing bounded what an apply PRODUCES. A tree assembled op by op — a `Progressive`
+stream of small frames, a replay, a driven session — grows past `WireLimits.MaxDepth` or `MaxNodes`
+without any single op looking unusual, and the result is a tree this host holds happily and no host
+can decode, including this one on the next round trip. `PreEmitValidate` already reports
+`MaxDepthExceeded`, but it walks a FINISHED tree and names whichever node its walk reached — a node
+that is not at fault, in an operation long since concluded. As an apply outcome the refusal is
+attributed to the op that crossed the line, at the moment it crossed it.
+
+**It reaches both sinks by the paths that already existed, which is why no sink contract moved.**
+`OpOutcome.ofApplyResult` maps it through its existing catch-all to `ApplyEngineError`, so the
+telemetry sink and the op-stream persist wrapper both receive it, correlated to the durable
+`OpRecord` by `(StreamId, Sequence)` (FGP 5). `Streaming.applyFold` folds through `Apply.apply`, so
+the `Progressive` path is covered by the same guard rather than by a second one — pinned by a test
+rather than left as an inference.
+
+**Only the three growing ops are checked** — `InsertChild`, `ReplaceRoot`, and a `Batch` containing
+either. The other seven rewrite in place or shrink, so charging them a whole-tree walk would
+establish what their own semantics already guarantee. `MoveNode` is the one worth naming: it
+relocates a subtree and so CAN deepen the tree, but only within a total node count that cannot change
+and to a depth the tree already passed. The check runs on the RESULT, because the op alone determines
+neither figure — the same `InsertChild` is fine under a shallow parent and over the line under a deep
+one — and one walk over `Introspect.descendantNodes` yields both axes. `descendantNodes` rather than
+the structural `getChildren`, deliberately: a node held in a `Switch` case, an `ErrorBoundary` slot
+or a `State` alternative is one the decoder counts, so this bound must count it too.
+
+**A tree that is ALREADY over the limit still accepts a non-growing op.** Refusing one would strand a
+tree the op did not create, with no way back; the ops that can reduce it are exactly the ones left
+unchecked.
+
+**`Fuaran.UI.Ops`, `fuaran-go`'s `ops` and `fuaran-rs`'s `ops` emit the same `LimitExceeded` token**,
+so a client recovering from the refusal need not know which engine refused.
+
+---
+
 ## Recorded fix — 0.76.1, `Deflate.inflate` on dynamic-Huffman blocks under Fable
 
 **No surface moved and no `.NET` behaviour changed.** `Deflate.inflate`'s signature, its
 `InflateError` cases, its error messages and every byte it decodes on this pipeline are exactly what
 0.76.0 shipped. By the [Semver](#semver) section's own definitions that is a **patch**, and it takes
 0.76.1 rather than riding 0.76.0 because `v0.76.0` is tagged — the slot is released, not a draft.
+
+**The 0.76.1 slot also carries the `ApplyErrorCode.LimitExceeded` addition recorded directly above.**
+That entry was authored against the 0.76.0 draft and states, correctly at the time, that `v0.75.0`
+was the newest tag; `v0.76.0` was cut while it was in flight, and the two landed in the same
+integration. Nothing about the change itself moves — it is still one case on a closed union — but the
+slot it ships in is 0.76.1, because 0.76.0 is now released and a released slot does not gain a DU
+case. Read the heading above as the change's authored slot and this line as where it actually shipped.
 
 **Why a released-package version at all, for a change with no contract in it.** `Fuaran.UI` ships its
 `.fs` **sources** in the package, for Fable consumers to transpile. The delivered content of the
