@@ -5293,3 +5293,123 @@ that was previously accepted wrongly.
   moved. `DagMerge` no longer calls `sink.Lca` at all — it computes the LCA from
   the records it has already loaded, over the same stream-scoped parent relation,
   removing a second full-stream read per merge.
+# STABILITY.md entry text — Phase 1525, Abstractions-and-Memo slice
+
+`STABILITY.md` is a shared nexus file another session is also appending to, so this slice did not
+edit it. Below is the exact text it would have appended, with the section each block belongs under.
+
+---
+
+## Append under `### Fuaran.UI.OpStream.Abstractions`
+
+```markdown
+- **Segment attestation: `SignedAt` is bound at the STORED resolution — whole seconds (Phase 1525,
+  behavioural).** The claim payload has always bound `signedAt` as unix seconds, but the
+  `SegmentAttestation` record kept the signer's full-precision clock reading, so the two disagreed
+  by up to a second: the field the type documented as "bound inside the signed claim, so a
+  store-writer cannot alter it" was in fact unfixed at sub-second granularity, and every consumer of
+  it — the revocation boundary above all — read a value the signature did not cover. New public
+  surface: `SegmentAttestation.signedInstant : DateTimeOffset -> DateTimeOffset` (additive), the
+  instant a signature actually covers. Both shipped signers (`EcdsaP256.signerWith`,
+  `AttestationSigner.ofCoreSink`) normalise through it before they bind AND before they store, so
+  pre-image and record agree by construction and a store round trip returns the same record;
+  `Evidence.verify` reads it rather than the raw field for revocation, expiry and validity-start, so
+  a sub-second edit changes no verdict even on an attestation minted by an older signer. **No wire
+  change** — the claim bytes, the descriptor encoding and the `wire-format-fixtures/attestation/`
+  goldens are byte-identical either side of this. What changes is the value a consumer reads back
+  from `SignedAt` after signing: a signer whose clock carries milliseconds now records the floored
+  second. A consumer that compared a stored `SignedAt` against its own full-precision clock reading
+  for equality sees that difference; one that compares instants (every comparison in this package
+  does) does not. `CRYPTO.md`'s attestation section states the resolution normatively.
+- **Segment attestation: the algorithm id is enforced by CURVE, not by key size (Phase 1525,
+  behavioural).** `ecdsa-p256-sha256-v1` names exactly one curve, and `KeySize = 256` does not
+  identify it — secp256k1, Brainpool P256r1 and any explicit-parameters 256-bit curve satisfy the
+  old size gate. `EcdsaP256.signerWith` / `.signer` now refuse at construction any key not on NIST
+  P-256, naming the curve the key is actually on; `EcdsaP256.verifier` answers `false` for one,
+  which `Evidence.verify` renders as `SignatureInvalid`. **Breaking for a host that was signing or
+  verifying under a differently-curved 256-bit key** — which was never a conforming use of the id,
+  and produced artefacts the registered algorithm did not describe. P-256 keys are unaffected;
+  P-521 and other sizes were already refused and still are.
+- **`FileKeyDirectory` timestamps parse machine-independently (Phase 1525, behavioural).** The three
+  lifecycle fields (`notBefore` / `expires` / `revokedFrom`) parsed with default
+  `DateTimeOffset.Parse` styles, so a string carrying no offset was interpreted in the READING
+  machine's local time zone — the same directory meant different instants on different machines, and
+  the same attestation could verify in one place and be void in another. They now parse with
+  `DateTimeStyles.AssumeUniversal ||| DateTimeStyles.AdjustToUniversal` under
+  `CultureInfo.InvariantCulture`: an offset-less string reads as UTC, and one carrying an offset
+  normalises to the same instant in UTC. A directory whose timestamps all carry explicit offsets is
+  unaffected in VALUE; the `Offset` property of the returned `DateTimeOffset` is now always
+  `00:00`. A host on a non-UTC machine reading an offset-less directory sees the instant move by its
+  local offset — to the value the document meant.
+- **`StreamEntry.decode` is TOTAL on truncated and malformed input (Phase 1525).** The decoder
+  promised a `Result` and could throw: `scanValue` indexed without a bounds check, `scanString`
+  stepped two characters past a trailing backslash, and the field walk read a `:` it had never
+  confirmed. Worse than the throw, a prefix cut immediately after a nested object still ended in `}`
+  and carried every required field, so it decoded to a plausible record nobody had written — and a
+  `StreamEntry` is the chain PRE-IMAGE, so such a record re-hashes to something no other host can
+  reproduce and surfaces later as a chain break nowhere near its cause. Every truncation is now a
+  named `Error`, as is a field that is not a string where a string is required (a numeric
+  `promptId` decoded to a one-character string before this). **No wire change and no format change**
+  — a well-formed envelope decodes exactly as it did, byte-for-byte, and `chainFormatVersion` stays
+  `2`. Additive on the error channel only: refusal messages are new, `Ok` results are unchanged.
+- **Identifier comparisons are ORDINAL (Phase 1525).** `GuestStream.isGuestStream` /
+  `GuestStream.tryScopeOf`, `StreamEntry.formatVersion` and `Teleport.decodeWith`'s format-prefix
+  test used culture-sensitive `StartsWith` overloads. Under ICU collation a zero-width formatting
+  character is ignorable, so a stream id that does NOT begin with the reserved `guest-` prefix
+  byte-for-byte reported that it did — and the answer could differ with the reading machine's
+  culture, while the `Substring` beside it always sliced at a fixed byte count. All four sites pass
+  `StringComparison.Ordinal`. Behaviourally this only changes inputs that were never conforming;
+  the `Teleport` case changes which error a non-conforming input gets (the prefix check now refuses
+  it by name instead of the base64url decoder blaming the payload).
+- **Doc corrections, no behavioural change (Phase 1525).** `OpRecord.fs`'s header stated the
+  PRE-406 raw-concatenation hash formula, hundreds of phases after Phase 406/411 replaced it with
+  the delimited Core-canonical payload; a reader implementing a host from it would have produced a
+  chain no other host could verify. `Checkpoint.fs` stated the PRE-412 `SnapshotHash` rule
+  (`sha256(canonicalTree)` alone) rather than the position-bound `HashChain.snapshotHash`, and
+  claimed a package dependency set (`FSharp.Core` + `Fuaran.UI` only) the package has not had since
+  Phase 406/465. Both corrected in place.
+```
+
+## Append under `### Fuaran.UI.Memo`
+
+```markdown
+- **A fragment application whose canonical encoding is INCOMPLETE is never keyed or stored (Phase
+  1525, BREAKING on `Derivation<'Msg>`).** `CanonicalJson` stands a sentinel in for what it cannot
+  represent — `"<closure>"` for a function-typed payload (an `Action` callback, a `Column.Value`
+  projection, an accessibility `Binding.Computed`), `"<opaque>"` for an unrecognised CLR value — so
+  two fragment bodies differing ONLY there encode identically, hash identically, and key
+  identically. The store then SERVES one where the other was asked for, closures included: a button
+  dispatches the wrong message, a column formats with the wrong projection. Persisted or shared
+  (`MemoCacheStore.Snapshot`), the wrong fragment outlives the process that mis-keyed it.
+  New public surface, all additive: the `StoreReach` DU (`ProcessLocal` / `SharedOrPersisted`),
+  `Engine.Reach`, the `Engine(store, reach, sink, ?cacheName)` constructor, and in `FragmentKey` the
+  `Unrepresentable` record plus `unrepresentableIn` / `describeUnrepresentable` / `tryBodyDigest` /
+  `tryStructuralOf` / `tryStructural`. The existing total `bodyDigest` / `structuralOf` /
+  `structural` / `value` / `full` are unchanged in signature AND in key value — this adds an
+  admission test, never a different key, so no store snapshot is invalidated.
+  **`Derivation<'Msg>.StructuralKey` changes from `string` to `string option`** — the breaking half,
+  and deliberately a type rather than a sentinel string: `None` is a derivation that could not be
+  content-addressed, it never equals a key, and `Reapply` therefore declines to reuse a tree it
+  cannot prove is the same tree. A consumer reading the field adds one `Option` unwrap; the two
+  in-repo readers compare keys for equality and needed no change.
+  **Reach decides what happens, and it is DECLARED, not inferred.** `Engine(capacity, sink)` builds
+  its own store and declares `ProcessLocal`: an un-keyable application still derives, bypassing the
+  store exactly as an effecting fragment does (`CacheOutcome.Bypass`), so the optimisation is
+  declined and the work is not refused. `Engine(store, sink)` reads as `SharedOrPersisted` —
+  injection exists so a store CAN escape the process — and refuses with a message naming the
+  sentinel and its site (`body`, or `slot '<name>'`). That default is a behavioural change for a
+  host injecting a process-local store and applying closure-bearing fragments: it says so with
+  `Engine(store, StoreReach.ProcessLocal, sink)`. Neither reach ever consults or populates the store
+  under such a key. The detection is deliberately conservative — it looks for the sentinel as a
+  whole JSON string token, so a fragment whose own text content is literally `<closure>` is treated
+  as unrepresentable; that direction of error costs a cache entry, the other costs correctness.
+```
+
+---
+
+## Version note
+
+Both `Fuaran.UI.OpStream.Abstractions` and `Fuaran.UI.Memo` take a public-surface change here, and
+`Fuaran.UI.Memo`'s is breaking (`Derivation.StructuralKey`). `Directory.Build.props` is outside this
+slice's file set, so `<Version>` was NOT advanced — see the report's "changes needed outside my file
+set".
