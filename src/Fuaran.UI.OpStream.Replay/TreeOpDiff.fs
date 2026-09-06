@@ -189,6 +189,9 @@ module TreeOpDiff =
             )
         | Binding.Format(source, format, locale) -> Binding.Format(source, format, locale)
         | Binding.Transform(source, pipeline, parameters) -> Binding.Transform(source, pipeline, parameters)
+        // Fuaran-UI Phase 1534 — no 'T payload of its own (the evaluator produces the cell), so the
+        // case erases unchanged, as `Transform` does above.
+        | Binding.Expr(expr, parameters) -> Binding.Expr(expr, parameters)
         | Binding.Invoke(capabilityId, args) -> Binding.Invoke(capabilityId, args)
 
     // ── Per-field `UpdateProp` payloads (task 17) ───────────────────────────

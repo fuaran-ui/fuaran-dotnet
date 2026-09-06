@@ -211,14 +211,27 @@ let all: Classification list =
       // Selection's do. The VALUE is host-furnished at resolve time by design,
       // not something the wire was supposed to carry.
       pt "Binding.Now" None
+      // Fuaran-UI Phase 1534 — the alternative now NAMES `Binding.Expr`, and
+      // that is the point of minting it. The remedy used to send an author
+      // deriving a SCALAR (`a && b`, `first + " " + last`, `price * qty`, "is it
+      // empty?") to `Binding.Transform`, which needs a source, a pipeline and a
+      // 1×1 projection to say what one expression says — so the honest reading
+      // of the old text was "there is no declarative spelling of this; here is
+      // the nearest detour". `Expr` is the spelling. `Transform` keeps its place
+      // in the list for the derivation that genuinely has rows.
       ho
           "Binding.Computed"
           (Some
-              "Binding.State / Binding.Filter(for, None) reactive values; Binding.Transform for derivation; Binding.Format for formatting")
+              "Binding.Expr for scalar logic over bound values (AND/OR/NOT, concat, arithmetic, null tests, membership); Binding.State / Binding.Filter(for, None) reactive values; Binding.Transform for row derivation; Binding.Format for formatting")
       sv "Binding.I18n"
       pt "Binding.Local" (Some "Binding.Format is the declarative twin of the Local format/parse closures") // the Phase 62 buffered-commit closures erase
       sv "Binding.Format"
       sv "Binding.Transform" // serialised as data via Fuaran.Core codecs — no closure on the wire
+      // Fuaran-UI Phase 1534 — the expression and its params are data through
+      // Fuaran.Core's own `ColExpr` codec; nothing about the case is a closure,
+      // so there is nothing for the wire to lose. Survivable for the same reason
+      // `Transform` is, and it is `Computed`'s declarative replacement.
+      sv "Binding.Expr"
       sv "Binding.Invoke"
 
       // ── Action ───────────────────────────────────────────────────────────

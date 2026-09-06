@@ -1610,6 +1610,37 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "Binding.Now's grain is Second | Minute | Hour | Day — `Week` is a RelativeTimeUnit member and not a TimeGrain one. The two vocabularies are deliberately different sizes: a grain truncates a calendar instant, and a week, a month and a year have no truncation every host agrees on. A host that accepted this and rendered at day grain would be answering a question the document did not ask (Phase 1533)" }
+      // Fuaran-UI Phase 1534 — the two refusals `Binding.Expr` carries, both of
+      // which exist because an `Expr` has no ROW.
+      //
+      // A `col` reference names a column of a frame the case does not have. The
+      // remedy is not a spelling correction — it is a different binding
+      // (`Transform`, which has a source), and the message says so, because an
+      // author who wrote `col` here has picked the wrong case rather than
+      // mistyped a name. Left admitted, it would decode to an expression whose
+      // evaluation could only ever fail, once per render, on every host.
+      { Id = "reject-expr-col-reference"
+        Json =
+          """{"id":"x","kind":{"$type":"Markdown","text":{"$type":"Bound","binding":{"$type":"Expr","expr":{"$type":"col","name":"total"}}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.text.binding.expr"
+        IsOp = false
+        Description =
+          "a `col` reference inside a Binding.Expr — an Expr evaluates against its params alone and has no row for a column name to read, so the reference can never resolve. The remedy is a different BINDING, not a different spelling: Binding.Transform supplies the frame `col` reads from. Refused at decode rather than left to fail once per render on every host (Phase 1534)" }
+      // The second refusal: a `param` the binding's own `params` list does not
+      // bind. Decidable statically HERE where it is not for `Transform`, whose
+      // unbound filter params are PRUNED under the deliberate "unset chip ⇒ no
+      // constraint" leniency — an `Expr` has no step to prune, so an unbound
+      // param is only ever an error. Saying so at decode is what makes it one
+      // refusal with a path rather than a per-render evaluator failure.
+      { Id = "reject-expr-unbound-param"
+        Json =
+          """{"id":"x","kind":{"$type":"Markdown","text":{"$type":"Bound","binding":{"$type":"Expr","expr":{"$type":"param","name":"quantity"},"params":[{"from":{"$type":"State","key":"form.unitPrice"},"name":"unitPrice"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.text.binding.expr"
+        IsOp = false
+        Description =
+          "a Binding.Expr whose expression reads `param quantity` while its own `params` binds only `unitPrice`. Unlike Binding.Transform — where an unbound filter param prunes its step, the deliberate unset-chip leniency — an Expr has no step to prune and no rows to fall back on, so the reference has no value it could ever take. Refused at decode, where the missing name can be named (Phase 1534)" }
       { Id = "reject-limit-json-depth-at-max"
         Json =
           String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "["

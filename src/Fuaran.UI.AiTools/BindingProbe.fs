@@ -74,6 +74,13 @@ let identify<'T> (binding: Binding<'T>) : BindingSource * string =
         // client-side as data. Like Format/Local, the probe labels it distinctly ($transform) so
         // the orchestrator knows the field is a computed dataframe, not a standard query path.
         BindingSource.Computed, "$transform"
+    | Binding.Expr _ ->
+        // Fuaran-UI Phase 1534 — a scalar expression over the binding's own params. Labelled
+        // distinctly ($expr) on the same reasoning as $transform: the orchestrator needs to know the
+        // field is a derived scalar, not a standard query path. `BindingSource.Computed` is reused
+        // rather than widening that DU, exactly as `Now` / `Local` / `Format` / `Transform` do —
+        // the wire expression carries the distinction.
+        BindingSource.Computed, "$expr"
     | Binding.Invoke _ ->
         // Invoke binding (Phase 283) — a host-registered capability dispatched for a value. Labelled
         // distinctly ($invoke) so the orchestrator knows the field is a compute invocation.
@@ -305,6 +312,15 @@ let rec tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>)
             "Transform bindings evaluate a dataframe pipeline in the renderer's resolver, not the probe."
             (Some
                 "The transformed rows (or, in a scalar slot, the 1×1 result cell — Phase 632) are renderer-side; introspect the declared source schema + pipeline directly.")
+    | Binding.Expr _ ->
+        // Fuaran-UI Phase 1534 — an `Expr` evaluates through the SAME renderer-side machinery a
+        // scalar `Transform` does (one frame, Core's evaluator, the resolver's param environment),
+        // so it gets the same answer for the same reason: the evaluator is not the probe's, and a
+        // second implementation of it here is the drift class this file's header warns about.
+        failed
+            BindingErrorCode.NotResolvedYet
+            "Expr bindings evaluate a scalar expression in the renderer's resolver, not the probe."
+            (Some "The result cell is renderer-side; introspect the declared expression and its param sources directly.")
     | Binding.Invoke(capabilityId, _) ->
         // Invoke bindings (Phase 283) dispatch a host-registered capability in the renderer's
         // resolver/registry, not the probe. v1 surfaces as NotResolvedYet with a hint.

@@ -200,6 +200,10 @@ let rec private objOfJValBinding (b: Binding<JVal>) : Binding<obj> =
         )
     | Binding.Format(source, format, locale) -> Binding.Format(source, format, locale)
     | Binding.Transform(source, pipeline, parameters) -> Binding.Transform(source, pipeline, parameters)
+    // Fuaran-UI Phase 1534 — the expression and its params carry no 'T payload of
+    // their own (the params are themselves `Binding<JVal>` sources, like I18n's
+    // args), so the case passes through the erasure unchanged.
+    | Binding.Expr(expr, parameters) -> Binding.Expr(expr, parameters)
     | Binding.Invoke(capabilityId, args) -> Binding.Invoke(capabilityId, args)
 
 /// Coerce a param source's resolved `obj` to a `Cell`: a genuine `JVal`
@@ -382,6 +386,28 @@ let private liveValueToTable (v: obj) : Result<Fuaran.Core.Table, string> =
     | None ->
         Error
             "Transform live source resolved to a value that cannot be read as data — expected rows (an array of row objects) or canonical columnar data"
+    // Fuaran-UI Phase 1534 — a SCALAR store value stays LOUD, and the message
+    // now names where a scalar belongs.
+    //
+    // This phase was written to LIFT a scalar live source to a 1×1 frame, so a
+    // `State`-sourced number could feed a pipeline without an array wrapper.
+    // Implementing that falsified Phase 818's own guarantee — "a live source
+    // resolving to a NON-tabular value errors loudly (never a silent wrong
+    // value)" — because a lifted scalar makes a trailing `groupBy [] [count]`
+    // answer 1 where it used to refuse, and a count of 1 over a slot holding a
+    // scalar is precisely the silently-wrong answer that rule exists to prevent.
+    //
+    // The lift was dropped rather than the rule weakened, and the reason is this
+    // phase's own subject: a scalar bound value belongs in `Binding.Expr`, whose
+    // params take any binding and are scalar by construction. Lifting a scalar
+    // into a frame so a DATAFRAME pipeline can consume it is the detour `Expr`
+    // exists to remove — building it here would have added the detour in the
+    // same change that replaced it. What survives of the intent is the remedy
+    // text: an author who reached for `Transform` holding a scalar is told which
+    // case to reach for instead.
+    | Some(JStr _ | JInt _ | JFloat _ | JBool _) ->
+        Error
+            "Transform live source resolved to a SCALAR value, and a Transform reads rows — use Binding.Expr, whose params bind a scalar source (State / Selection / Query / Filter) directly; or, if this really is a one-row feed, store it as an array of row objects"
     | Some jv ->
         match Fuaran.UI.HostPrelude.TransformLive.initialSource jv with
         | Ok(Fuaran.Core.Embedded t) -> Ok t
@@ -655,6 +681,36 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
                         "Transform binding produced rows that did not unbox to the expected type (Binding.Transform is constrained to Binding<Row seq>): %s"
                         ex.Message
                 )
+    // Fuaran-UI Phase 1534 — the scalar expression. This is the GENERIC arm, for
+    // a slot that reached the resolver without a coercion (`Binding<string>`
+    // read directly, a `Query`'s accessor path): the cell is unboxed to `'T` the
+    // way `Binding.Transform`'s rows are, and a mismatch is loud. A slot that
+    // has a coercion — every text and numeric slot — goes through
+    // `resolveScalarWith` below and gets `cellToText` / `cellToFloat` /
+    // `cellToBool` instead, which is where the string/float/bool conversions
+    // live. A NULL result is `NotResolved`, matching what the scalar Transform
+    // path already does with a null cell: the slot's empty state, not an error.
+    | Binding.Expr(expr, parameters) ->
+        match evalExprCell sources expr (defaultArg parameters []) with
+        | Error m -> Errored m
+        | Ok Fuaran.Core.Null -> NotResolved
+        | Ok cell ->
+            try
+                Resolved(unbox<'T> (cellToObj cell))
+            with ex ->
+                Errored(
+                    sprintf
+                        "Expr binding produced a %s cell that did not unbox to this slot's type — an Expr resolves through the slot's own coercion in a text or numeric slot; here the value is taken as-is: %s"
+                        (match cell with
+                         | Fuaran.Core.Int _ -> "int"
+                         | Fuaran.Core.Float _ -> "float"
+                         | Fuaran.Core.Bool _ -> "bool"
+                         | Fuaran.Core.Str _ -> "string"
+                         | Fuaran.Core.Date _ -> "date"
+                         | Fuaran.Core.Timestamp _ -> "timestamp"
+                         | Fuaran.Core.Null -> "null")
+                        ex.Message
+                )
     | Binding.Invoke(capabilityId, args) ->
         // Phase 283 — dispatch a host-registered capability for a value. The host invoker resolves
         // (capabilityId, args) to a `Deferred<obj>`; map `Pending` → `NotResolved` (the node's
@@ -819,6 +875,56 @@ and private evalTransformFrame
 
             tableR |> Result.bind evalTable
 
+/// Fuaran-UI Phase 1534 — evaluate a `Binding.Expr` to ONE cell.
+///
+/// It is `evalTransformFrame` over a one-row frame and a two-step pipeline, and
+/// that is the whole implementation on purpose: param resolution, the list-param
+/// substitution, the unbound-name handling and the evaluator are then literally
+/// the same code the pipeline runs, so an expression cannot mean one thing
+/// inside a `derive` and another inside an `Expr`. A second evaluator here would
+/// be a second thing to specify, certify on five hosts, and keep in step.
+///
+/// The frame carries one column of one row so `derive` has a row to produce; the
+/// expression never reads it (a `Col` reference is refused at decode), and the
+/// trailing `project` drops it so what comes back is 1×1 by construction rather
+/// than by inspection.
+and private evalExprCell
+    (sources: BindingSources)
+    (expr: Fuaran.Core.ColExpr)
+    (parameters: TransformParam list)
+    : Result<Fuaran.Core.Cell, string> =
+    let unitFrame: Fuaran.Core.Table =
+        { Schema = [ "__unit", Fuaran.Core.BoolType ]
+          Columns =
+            [ { Name = "__unit"
+                Type = Fuaran.Core.BoolType
+                Cells = [ Fuaran.Core.Bool true ] } ] }
+
+    let pipeline =
+        [ Fuaran.Core.Derive("__value", expr)
+          Fuaran.Core.Project [ "__value", "__value" ] ]
+
+    match evalTransformFrame sources (TransformSource.Data(Fuaran.Core.Embedded unitFrame)) pipeline parameters with
+    | Error m ->
+        // `evalTransformFrame`'s messages say "Transform"; an author looking at
+        // an `Expr` binding has no Transform to look for.
+        Error(m.Replace("Transform ", "Expr ").Replace("Transform evaluation", "Expr evaluation"))
+    | Ok result ->
+        // The column is there by construction — `derive` writes it and `project`
+        // keeps only it — so its ABSENCE is a broken invariant in this function,
+        // never a null result. Defaulting to `Null` here would render the
+        // invariant break as the slot's ordinary empty state and hide it
+        // completely; it is exactly the kind of quiet default that surfaces
+        // months later as a different bug.
+        match Fuaran.Core.Table.tryColumn "__value" result with
+        | Some col -> Ok(Fuaran.Core.Column.cell 0 col)
+        | None ->
+            Error(
+                sprintf
+                    "Expr evaluation produced no result column (columns present: %s) — a host defect, not a document one"
+                    (Fuaran.Core.Table.columnNames result |> String.concat ", ")
+            )
+
 /// Phase 818 — resolve a `Binding<JVal>` (a `SetState.valueFrom` source) against
 /// the stores at `obj` through the store-reading erasure, lifting the resolved
 /// raw store value back to `JVal`. An unliftable value is `Errored` — loud, the
@@ -896,6 +1002,32 @@ let cellToFloat (c: Fuaran.Core.Cell) : Result<float, string> =
         )
     | Fuaran.Core.Null -> Error "Transform yielded a null cell in a numeric slot"
 
+/// Fuaran-UI Phase 1534 — the BOOLEAN coercion, the third of the trio beside
+/// `cellToText` / `cellToFloat`. Strict: only a `Bool` cell is a boolean.
+///
+/// No truthiness. `0`, `""` and `"false"` are all refused rather than read as
+/// `false`, because every language that has guessed at this has guessed
+/// differently, and five hosts agreeing on a rendering is the whole point of the
+/// corpus. The vocabulary already has the total spellings — `isNull` for
+/// presence, a `=` comparison for a value, `not` for negation — so refusing here
+/// costs an author nothing but the explicit operator.
+let cellToBool (c: Fuaran.Core.Cell) : Result<bool, string> =
+    match c with
+    | Fuaran.Core.Bool b -> Ok b
+    | Fuaran.Core.Int _
+    | Fuaran.Core.Float _ ->
+        Error
+            "a numeric cell is not a boolean — compare it (`=`, `>`, `isNull`) rather than relying on a truthiness rule the hosts do not share"
+    | Fuaran.Core.Str s ->
+        Error(
+            sprintf
+                "a text cell ('%s') is not a boolean — compare it (`=`, `isNull`) rather than relying on a truthiness rule the hosts do not share"
+                s
+        )
+    | Fuaran.Core.Date s
+    | Fuaran.Core.Timestamp s -> Error(sprintf "a date cell ('%s') is not a boolean" s)
+    | Fuaran.Core.Null -> Error "a null cell is not a boolean — test presence with `isNull`"
+
 /// Resolve a binding in a SCALAR slot: `Binding.Transform` evaluates through the
 /// shared frame machinery and interprets the result as one cell (see the section
 /// note above); every other binding case resolves exactly as `resolve` does.
@@ -905,6 +1037,19 @@ let resolveScalarWith<'T>
     (binding: Binding<'T>)
     : Resolution<'T> =
     match binding with
+    // Fuaran-UI Phase 1534 — the scalar expression in a slot that has a
+    // coercion. `Null` is `NotResolved` (the slot's empty state, exactly as a
+    // null cell out of a scalar `Transform` is); an unbound param or a type
+    // error is `Errored`, never a substituted default — a wrong number rendered
+    // confidently is worse than a slot that says it could not be computed.
+    | Binding.Expr(expr, parameters) ->
+        match evalExprCell sources expr (defaultArg parameters []) with
+        | Error m -> Errored m
+        | Ok Fuaran.Core.Null -> NotResolved
+        | Ok cell ->
+            match coerce cell with
+            | Ok v -> Resolved v
+            | Error m -> Errored m
     | Binding.Transform(source, pipeline, parameters) ->
         match evalTransformFrame sources source pipeline (defaultArg parameters []) with
         | Error m -> Errored m
@@ -952,6 +1097,12 @@ let resolveScalarText (sources: BindingSources) (binding: Binding<string>) : Res
 /// Scalar-slot resolution for a numeric slot (Metric / LabelValueRow values).
 let resolveScalarFloat (sources: BindingSources) (binding: Binding<float>) : Resolution<float> =
     resolveScalarWith cellToFloat sources binding
+
+/// Fuaran-UI Phase 1534 — scalar-slot resolution for a BOOLEAN slot. Completes
+/// the trio so an `Expr` reaches a boolean slot through the same coercion seam a
+/// text or numeric one does, rather than through the generic unbox.
+let resolveScalarBool (sources: BindingSources) (binding: Binding<bool>) : Resolution<bool> =
+    resolveScalarWith cellToBool sources binding
 
 /// Best-effort scalar text resolution — the `tryResolve` twin for text slots.
 let tryResolveScalarText (sources: BindingSources) (binding: Binding<string>) : string option =

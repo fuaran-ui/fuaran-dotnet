@@ -5838,3 +5838,45 @@ never available to ride in any case.
 Consumers that DECODE third-party or model-emitted JSON should expect previously-accepted malformed
 documents to be refused — which is the point. Consumers that store refusal hashes over style
 conflicts recompute them once.
+
+---
+
+## Recorded change — 0.77.0, `Binding.Expr` — scalar logic over bound values (fuaran#1534)
+
+**A case on a closed union (minor — `FS0025` only), riding the standing 0.77.0 draft.** `Binding<'T>`
+gains `Expr of expr: Fuaran.Core.ColExpr * params: TransformParam list option`, wire
+`{"$type":"Expr","expr":…,"params":[…]}` (WIRE_FORMAT §3.3.2). No record widens and no field narrows,
+so this is a strictly lower class than the two changes 0.77.0 already carries — `FS0764` for a
+full-literal constructor, and `Derivation<'Msg>.StructuralKey`'s narrowing — and the draft-slot rule
+therefore has it RIDE rather than advance. `v0.76.0` remains the newest tag; no released consumer can
+match on a case that did not exist when it was published.
+
+**What it is.** `Binding.Transform`'s sibling with the ROW removed: one `ColExpr` evaluated against
+the param environment alone, yielding one cell. It mints NO operator — `Binary` / `Not` / `Coalesce`
+/ `Case` / `Cast` / `ApplyFn` / `InList` / `InParam` / `IsNull` are `Fuaran.Core`'s existing
+vocabulary, reused in Core's own encoding — so an expression means here exactly what it means inside
+a `derive`, and the specification carries one algebra rather than two that drift.
+
+**Two decode refusals**, both because an `Expr` has no row: a `col` reference (`WRONG_TYPE`, remedy
+names `Binding.Transform`), and a `param` the binding's own `params` list does not bind
+(`WRONG_TYPE`). The second is decidable statically here where it is not for `Transform`, whose
+unbound filter params are pruned under the "unset chip ⇒ no constraint" leniency. A new §21 limit,
+`WireLimits.MaxExprNodes` (512), bounds one expression at decode with `LIMIT_EXCEEDED`.
+
+**Resolution.** `BindingResolver.resolveScalarText` / `resolveScalarFloat` and the new
+`resolveScalarBool` (with its `cellToBool`, both additive) evaluate it through the SAME shared frame
+machinery a scalar `Transform` uses. Two resolution outcomes are deliberately distinguished and a
+host must not collapse them: a param whose source produces no value at all is UNBOUND and errors,
+while a param whose source resolves to an absent value (the `Binding.State` rule for a key nothing
+has written) binds a null cell and the slot renders its empty state.
+
+**Two consumer-visible surfaces beyond the union.** `WireSurvivability`'s `Binding.Computed`
+alternative — and therefore FUARAN084's remedy text — now names `Binding.Expr` first: the old text
+sent an author deriving a scalar to `Binding.Transform`, which needs a source, a pipeline and a 1×1
+projection to say what one expression says. And `Binding.Expr` is classified `survivable`, so a
+consumer switching exhaustively over `WireSurvivability.byCase` gains a row.
+
+**What did NOT change.** No existing fixture moves; every pre-1534 corpus byte is unchanged.
+`Binding.Computed` stays, as a clearly-marked host-only escape. `param` at `limit.n` / `offset` /
+`SortKey.col` is NOT part of this change — those slots are `Fuaran.Core.Transform`'s own DU, which
+this repo consumes as a pinned package.

@@ -1450,6 +1450,13 @@ let rec keysOfBinding<'T> (channel: KeyChannel) (binding: Binding<'T>) : string 
         | QueryChannel -> [ name ]
         | StateChannel
         | SelectionChannel -> []
+    // Fuaran-UI Phase 1534 — an `Expr` has no source slot, so its params ARE its
+    // whole reactive edge: a chip or state write on any param source
+    // re-evaluates the expression and re-renders every reader. The `Transform`
+    // param walk above with the source half removed.
+    | Binding.Expr(_, parameters) ->
+        defaultArg parameters []
+        |> List.collect (fun (p: TransformParam) -> keysOfBinding channel p.From)
     | Binding.Invoke _
     | Binding.Static _
     | Binding.Computed _ -> []

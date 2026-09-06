@@ -4800,6 +4800,175 @@ let formatSince: Node<obj> =
         ))
         None
 
+// ─── Fuaran-UI Phase 1534 — `Binding.Expr`, scalar logic over bound values ──
+//
+// The intents the demand log records against the closure detour, each in the
+// slot a document would actually put it in: string building (`061/c3,c4,c6` — a
+// badge composed live from form fields), arithmetic (`044/c6` — a total over
+// current selections), a boolean combination, and a presence test. Every
+// operator here is already `ColExpr`'s — the case mints none — so what this
+// fixture pins is the SLOT and the wire shape, not a new algebra.
+//
+// It carries NO params, deliberately: this is the constant-fold form, and
+// keeping it apart from the params fixture below means a host that decodes the
+// expression but never resolves a param fails exactly one of the two.
+let exprScalar: Node<obj> =
+    let lit (s: string) = Fuaran.Core.Lit(Fuaran.Core.Str s)
+
+    let md (id: string) (b: Binding<string>) : Node<obj> =
+        node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
+
+    node
+        "expr-scalar"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+              Role = BoxRole.Group
+              Heading = None
+              Children =
+                [ md
+                      "expr-concat"
+                      (Binding.Expr(
+                          Fuaran.Core.ApplyFn(Fuaran.Core.Concat, [ lit "Ada"; lit " "; lit "Lovelace" ]),
+                          None
+                      ))
+                  node
+                      "expr-arithmetic"
+                      (NodeKind.Metric(
+                          { Defaults.metric with
+                              Label = TextSource.Literal "Line total"
+                              Value =
+                                  Binding.Expr(
+                                      Fuaran.Core.Binary(
+                                          Fuaran.Core.Mul,
+                                          Fuaran.Core.Lit(Fuaran.Core.Float 12.5),
+                                          Fuaran.Core.Lit(Fuaran.Core.Float 4.0)
+                                      ),
+                                      None
+                                  ) }
+                      ))
+                      None
+                  md
+                      "expr-boolean"
+                      (Binding.Expr(
+                          Fuaran.Core.Case(
+                              [ Fuaran.Core.Binary(
+                                    Fuaran.Core.And,
+                                    Fuaran.Core.Lit(Fuaran.Core.Bool true),
+                                    Fuaran.Core.Not(Fuaran.Core.Lit(Fuaran.Core.Bool false))
+                                ),
+                                lit "ready" ],
+                              lit "blocked"
+                          ),
+                          None
+                      ))
+                  md
+                      "expr-null-test"
+                      (Binding.Expr(
+                          Fuaran.Core.Case(
+                              [ Fuaran.Core.IsNull(Fuaran.Core.Lit Fuaran.Core.Null), lit "empty" ],
+                              lit "has a value"
+                          ),
+                          None
+                      )) ]
+              KeepTogether = false
+              BreakBefore = false }
+        ))
+        None
+
+// The PARAMS half — the same `params` shape `Binding.Transform` carries, over
+// the binding sources a scalar expression reads in practice: a `State` key (a
+// form field), a `Selection` field (the clicked row), a `Query` result, and a
+// `Filter` chip. The `Now` param is deliberately here too, at a declared grain,
+// so Phase 1533's grain and this case are pinned together in ONE document: an
+// `Expr` that reads `now` reads it at the resolution the document declares, not
+// at whatever the host's clock happens to carry.
+//
+// `InParam` is included because it is the one param kind that resolves by
+// SUBSTITUTION rather than through the scalar environment, so a host that wires
+// only the scalar path passes every other vector here and fails that one.
+let exprParamsStateSelection: Node<obj> =
+    let lit (s: string) = Fuaran.Core.Lit(Fuaran.Core.Str s)
+
+    let md (id: string) (b: Binding<string>) : Node<obj> =
+        node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
+
+    node
+        "expr-params-state-selection"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+              Role = BoxRole.Group
+              Heading = None
+              Children =
+                [ md
+                      "badge-preview"
+                      (Binding.Expr(
+                          Fuaran.Core.ApplyFn(
+                              Fuaran.Core.Concat,
+                              [ Fuaran.Core.Param "firstName"
+                                lit " "
+                                Fuaran.Core.Param "lastName"
+                                lit " - "
+                                Fuaran.Core.Param "track" ]
+                          ),
+                          Some
+                              [ { From = Binding.State("form.firstName", None)
+                                  Name = "firstName" }
+                                { From = Binding.State("form.lastName", None)
+                                  Name = "lastName" }
+                                { From = Binding.Selection("tracks", (fun (o: obj) -> unbox<JVal> o), None, Some "name")
+                                  Name = "track" } ]
+                      ))
+                  node
+                      "order-total"
+                      (NodeKind.Metric(
+                          { Defaults.metric with
+                              Label = TextSource.Literal "Order total"
+                              Value =
+                                  Binding.Expr(
+                                      Fuaran.Core.Binary(
+                                          Fuaran.Core.Mul,
+                                          Fuaran.Core.Param "unitPrice",
+                                          Fuaran.Core.Param "quantity"
+                                      ),
+                                      Some
+                                          [ { From =
+                                                Binding.Query(
+                                                    "catalogue.unitPrice",
+                                                    (fun (o: obj) -> unbox<JVal> o),
+                                                    None
+                                                )
+                                              Name = "unitPrice" }
+                                            { From = Binding.State("form.quantity", None)
+                                              Name = "quantity" } ]
+                                  ) }
+                      ))
+                      None
+                  md
+                      "asof-day"
+                      (Binding.Expr(
+                          Fuaran.Core.ApplyFn(Fuaran.Core.Concat, [ lit "As of "; Fuaran.Core.Param "today" ]),
+                          Some
+                              [ { From = Binding.Now((fun (o: obj) -> JStr(unbox<string> o)), Some TimeGrain.Day)
+                                  Name = "today" } ]
+                      ))
+                  md
+                      "membership"
+                      (Binding.Expr(
+                          Fuaran.Core.Case(
+                              [ Fuaran.Core.InParam(Fuaran.Core.Param "status", "openStatuses"), lit "open" ],
+                              lit "closed"
+                          ),
+                          Some
+                              [ { From = Binding.State("row.status", None)
+                                  Name = "status" }
+                                { From = Binding.Filter("statuses", None)
+                                  Name = "openStatuses" } ]
+                      )) ]
+              KeepTogether = false
+              BreakBefore = false }
+        ))
+        None
+
 let scalarTransformComposition: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -6780,6 +6949,9 @@ let allNodes: (string * Node<obj>) list =
       nowGrain
       "Binding.Format (Phase 1533 — Since: the instant-reading twin of RelativeTime, declared unit and auto)",
       formatSince
+      "Binding/Expr (Phase 1534 — scalar logic with no params: concat, arithmetic, AND/NOT, a null test)", exprScalar
+      "Binding/Expr (Phase 1534 — params from State / Selection / Query / Filter / Now, including an InParam membership test)",
+      exprParamsStateSelection
       "Display/Metric (Phase 283 — Binding.Invoke capability source)", metricInvoke
       "Input/Button (Phase 283 — Action.Invoke capability effect)", buttonInvoke
       "Visualisation/Chart", chart

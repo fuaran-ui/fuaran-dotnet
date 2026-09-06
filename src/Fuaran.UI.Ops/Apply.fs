@@ -292,6 +292,10 @@ let rec private mapBinding<'T> (conv: obj -> 'T) (b: Binding<obj>) : Binding<'T>
     // `parameters` are `Binding<obj>` sources (no outer 'T payload — like I18n args), so they pass
     // through unchanged alongside the source + pipeline.
     | Binding.Transform(source, pipeline, parameters) -> Binding.Transform(source, pipeline, parameters)
+    // Fuaran-UI Phase 1534 — the expression yields a CELL, boxed by the evaluator,
+    // so there is no 'T payload to cast here either. Pass through; the resolver
+    // evaluates it at resolution time (the `Binding.Transform` posture above).
+    | Binding.Expr(expr, parameters) -> Binding.Expr(expr, parameters)
     // Invoke bindings carry a capability id + scalar args (no 'T payload — the resolved value is a
     // host-produced `Deferred`). Pass through; the resolver dispatches at resolution time.
     | Binding.Invoke(capabilityId, args) -> Binding.Invoke(capabilityId, args)

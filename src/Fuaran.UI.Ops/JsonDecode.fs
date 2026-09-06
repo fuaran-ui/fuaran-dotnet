@@ -2998,8 +2998,119 @@ let private decodeIconSource (path: string) (j: Json) : Result<IconSource, Decod
 // and `Binding.I18n` args; the typed flavours dispatch to a parametric
 // generator below.
 
+/// Fuaran-UI Phase 1534 — the two structural rules a `Binding.Expr`'s
+/// expression must satisfy, checked once at decode over the whole tree.
+///
+/// The walk is written here rather than taken from `Fuaran.Core` because Core
+/// has no reason to hold either rule: `Col` is perfectly ordinary in a pipeline
+/// expression, and the node ceiling is this WIRE's limit, not the algebra's.
+/// One traversal answers both, so a pathological expression is counted while it
+/// is being scanned rather than twice.
+let private exprAdmissible (path: string) (expr: Fuaran.Core.ColExpr) : Result<unit, DecodeError> =
+    let mutable count = 0
+    let mutable sawCol = false
+
+    let rec walk (e: Fuaran.Core.ColExpr) =
+        count <- count + 1
+
+        // Stop as soon as either verdict is settled: a hostile expression is
+        // exactly the input that must not be walked to the end.
+        if not sawCol && count <= Fuaran.UI.WireLimits.MaxExprNodes then
+            match e with
+            | Fuaran.Core.Col _ -> sawCol <- true
+            | Fuaran.Core.Lit _
+            | Fuaran.Core.Param _ -> ()
+            | Fuaran.Core.Binary(_, l, r) ->
+                walk l
+                walk r
+            | Fuaran.Core.Not x
+            | Fuaran.Core.Cast(_, x)
+            | Fuaran.Core.IsNull x -> walk x
+            | Fuaran.Core.Coalesce xs
+            | Fuaran.Core.ApplyFn(_, xs) -> List.iter walk xs
+            | Fuaran.Core.Case(cases, elseExpr) ->
+                cases
+                |> List.iter (fun (w, t) ->
+                    walk w
+                    walk t)
+
+                walk elseExpr
+            | Fuaran.Core.InList(x, items) ->
+                walk x
+                List.iter walk items
+            | Fuaran.Core.InParam(x, _) -> walk x
+
+    walk expr
+
+    if sawCol then
+        Error(
+            DecodeError.create
+                DecodeErrorCode.WRONG_TYPE
+                path
+                "a `col` reference is not admitted inside an Expr binding — an Expr evaluates against its params alone and has no row for a column name to read. Use `Binding.Transform`, whose source supplies the frame, and put the column expression in a `derive` step"
+                (Some "a ColExpr over `param` / `lit` / operators only (no `col`)")
+        )
+    elif count > Fuaran.UI.WireLimits.MaxExprNodes then
+        Error(
+            DecodeError.create
+                DecodeErrorCode.LIMIT_EXCEEDED
+                path
+                (sprintf
+                    "expression exceeds the maximum of %d expression nodes (WIRE_FORMAT 21)"
+                    Fuaran.UI.WireLimits.MaxExprNodes)
+                (Some(sprintf "at most %d ColExpr nodes in one Expr binding" Fuaran.UI.WireLimits.MaxExprNodes))
+        )
+    else
+        Ok()
+
 let rec private decodeBindingObj (path: string) (j: Json) : Result<Binding<obj>, DecodeError> =
     bindingGeneric<obj> path (fun _ v -> Ok(decodeObj v)) (box closureSentinel) j
+
+/// Fuaran-UI Phase 1534 — the optional `params` slot, shared by `Transform`
+/// (Phase 424, where it started) and `Expr`. Absent → `[]`, which is
+/// byte-identical to the Phase-282 shape; the §3.6 name→binding MAP coercion
+/// rides along, so the leniency an author gets on one case they get on the
+/// other.
+and private decodeExprParams (path: string) (fields: Map<string, Json>) : Result<TransformParam list, DecodeError> =
+    let decodeParam (el: Json) : Result<string * Binding<JVal>, DecodeError> =
+        match requireObject (path + ".params[]") el with
+        | Error e -> Error e
+        | Ok pf ->
+            match
+                requireField (path + ".params[]") pf "name" "param name string"
+                |> Result.bind (requireString (path + ".params[].name"))
+            with
+            | Error e -> Error e
+            | Ok name ->
+                // Field alias: value — the observed repair-attempt shape
+                // ({name, value}); only two fields exist, so the concept is
+                // unambiguous.
+                requireFieldAliased (path + ".params[]") pf "from" [ "value" ] "param source Binding"
+                |> Result.bind (decodeBindingJVal (path + ".params." + name + ".from"))
+                |> Result.map (fun fromB -> name, fromB)
+
+    let paramsR =
+        match tryField fields "params" with
+        | None -> Ok []
+        // Lenient AI-ingest shape coercion (WIRE_FORMAT.md §3.6, 2026-07-17):
+        // the name→binding MAP form (`"params": {"status": <Binding>}`) coerces
+        // to the canonical `[{name, from}]` array. Params are a NAME-KEYED SET
+        // (ColExpr.Param lookup), so object key order carries no meaning —
+        // unlike the options map, which is refused. Observed as every
+        // provider's first guess (21/31 launch-eval failures repair-proof).
+        | Some(JObject _ as pJ) ->
+            match requireObject (path + ".params") pJ with
+            | Error e -> Error e
+            | Ok pf ->
+                pf
+                |> Map.toList
+                |> traverse (fun (name, v) ->
+                    decodeBindingJVal (path + ".params." + name + ".from") v
+                    |> Result.map (fun b -> name, b))
+        | Some pJ -> requireArray (path + ".params") pJ |> Result.bind (traverse decodeParam)
+
+    paramsR
+    |> Result.map (List.map (fun (name, fromB) -> ({ From = fromB; Name = name }: TransformParam)))
 
 /// The `Binding<JVal>` flavour (the swap's typed verbatim carrier, D3) —
 /// `Binding.I18n` args and `Binding.Transform` param sources since the swap.
@@ -3395,64 +3506,68 @@ and private bindingGeneric<'T>
                             match pipelineR with
                             | Error e -> Error e
                             | Ok pipeline ->
-                                // Phase 424 — optional `params`: [{ "from": <Binding>, "name": <string> }, …]
-                                // binding each `ColExpr.Param` name to a scalar `Binding<obj>` source.
-                                // Absent → `[]` (byte-identical to the Phase 282 shape).
-                                let decodeParam (el: Json) : Result<string * Binding<JVal>, DecodeError> =
-                                    match requireObject (path + ".params[]") el with
-                                    | Error e -> Error e
-                                    | Ok pf ->
-                                        match
-                                            requireField (path + ".params[]") pf "name" "param name string"
-                                            |> Result.bind (requireString (path + ".params[].name"))
-                                        with
-                                        | Error e -> Error e
-                                        | Ok name ->
-                                            // Field alias: value — the observed repair-attempt
-                                            // shape ({name, value}); only two fields exist, so
-                                            // the concept is unambiguous.
-                                            requireFieldAliased
-                                                (path + ".params[]")
-                                                pf
-                                                "from"
-                                                [ "value" ]
-                                                "param source Binding"
-                                            |> Result.bind (decodeBindingJVal (path + ".params." + name + ".from"))
-                                            |> Result.map (fun fromB -> name, fromB)
-
-                                let paramsR =
-                                    match tryField fields "params" with
-                                    | None -> Ok []
-                                    // Lenient AI-ingest shape coercion (WIRE_FORMAT.md §3.6,
-                                    // 2026-07-17): the name→binding MAP form
-                                    // (`"params": {"status": <Binding>}`) coerces to the
-                                    // canonical `[{name, from}]` array. Params are a
-                                    // NAME-KEYED SET (ColExpr.Param lookup), so object key
-                                    // order carries no meaning — unlike the options map,
-                                    // which is refused. Observed as every provider's first
-                                    // guess (21/31 launch-eval failures repair-proof).
-                                    | Some(JObject _ as pJ) ->
-                                        match requireObject (path + ".params") pJ with
-                                        | Error e -> Error e
-                                        | Ok pf ->
-                                            pf
-                                            |> Map.toList
-                                            |> traverse (fun (name, v) ->
-                                                decodeBindingJVal (path + ".params." + name + ".from") v
-                                                |> Result.map (fun b -> name, b))
-                                    | Some pJ ->
-                                        requireArray (path + ".params") pJ |> Result.bind (traverse decodeParam)
-
-                                paramsR
-                                |> Result.map (fun parameters ->
-                                    // Since the swap: `TransformParam` records, omitted-when-empty
-                                    // as the typed outer `None`.
-                                    let ps =
-                                        parameters
-                                        |> List.map (fun (name, fromB) ->
-                                            ({ From = fromB; Name = name }: TransformParam))
-
+                                decodeExprParams path fields
+                                |> Result.map (fun ps ->
                                     Binding.Transform(source, pipeline, (if List.isEmpty ps then None else Some ps)))
+            // Fuaran-UI Phase 1534 — the scalar expression binding. `expr` is one
+            // `Fuaran.Core.ColExpr` in Core's own encoding, `params` the same
+            // name→binding list `Transform` carries and in the same shape (the
+            // §3.6 map coercion included), so an author who knows one knows the
+            // other and there is one param concept rather than two.
+            //
+            // Three refusals, all here rather than in the structural decoder
+            // because each wants a `$`-rooted path and a code:
+            //
+            //  1. a `Col` reference — an `Expr` has no row, so `col` names
+            //     nothing. The message names `Binding.Transform` as the remedy,
+            //     because that IS the case with a frame to read from, and an
+            //     author reaching for `col` here has picked the wrong binding
+            //     rather than made a typo.
+            //  2. a `Param` this binding's own `params` does not bind. Decidable
+            //     here where it is NOT for `Transform`, whose unbound filter
+            //     params are pruned under the deliberate "unset chip ⇒ no
+            //     constraint" leniency; an `Expr` has no step to prune, so an
+            //     unbound param is only ever an error and the decode is the
+            //     cheapest place to say so.
+            //  3. more than `WireLimits.MaxExprNodes` expression nodes —
+            //     `LIMIT_EXCEEDED`, so a pathological expression is refused
+            //     identically on every host instead of being a budget each
+            //     host's evaluator discovers differently.
+            | Ok "Expr" ->
+                match requireField path fields "expr" "ColExpr object" with
+                | Error e -> Error e
+                | Ok exprJ ->
+                    match
+                        jsonToJVal 1 (path + ".expr") exprJ
+                        |> Result.bind (fun v ->
+                            Fuaran.Core.DataFrameCodec.decodeExpr v
+                            |> Result.mapError (coreError (path + ".expr")))
+                    with
+                    | Error e -> Error e
+                    | Ok expr ->
+                        match exprAdmissible (path + ".expr") expr with
+                        | Error e -> Error e
+                        | Ok() ->
+                            decodeExprParams path fields
+                            |> Result.bind (fun ps ->
+                                let bound = ps |> List.map (fun p -> p.Name) |> Set.ofList
+
+                                match
+                                    Fuaran.Core.ColExpr.paramsOf expr
+                                    |> List.filter (fun n -> not (Set.contains n bound))
+                                with
+                                | [] -> Ok(Binding.Expr(expr, (if List.isEmpty ps then None else Some ps)))
+                                | missing ->
+                                    Error(
+                                        DecodeError.create
+                                            DecodeErrorCode.WRONG_TYPE
+                                            (path + ".expr")
+                                            (sprintf
+                                                "the expression reads param(s) %s that this binding's `params` does not bind — an Expr has no rows and no filter to prune, so an unbound param has no value to take; add a params entry naming each, or drop the reference"
+                                                (missing |> List.map (sprintf "'%s'") |> String.concat ", "))
+                                            (Some
+                                                "{\"$type\":\"Expr\",\"expr\":{…},\"params\":[{\"name\":\"<name>\",\"from\":<Binding>}]}")
+                                    ))
             | Ok "Invoke" ->
                 // Phase 283 — invoke a host-registered capability for a value. `capabilityId` + scalar
                 // `(addr, value)` args; the body is never on the wire. Types as `Binding<'T>` for any
@@ -3496,7 +3611,7 @@ and private bindingGeneric<'T>
                 unknownDuCase
                     path
                     s
-                    "Static | Query | Filter | Selection | State | Now | Computed | I18n | Local | Format | Transform | Invoke | Bound"
+                    "Static | Query | Filter | Selection | State | Now | Computed | I18n | Local | Format | Transform | Expr | Invoke | Bound"
 
 and private decodeBindingObjArgs (path: string) (j: Json) : Result<Map<string, Binding<JVal>>, DecodeError> =
     match requireObject path j with

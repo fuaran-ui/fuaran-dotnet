@@ -183,7 +183,29 @@ let private schemaInexpressibleRejects: Set<string> =
           // the moment `SchemaGen` emits those bounds, which is when this entry
           // should go. Its sibling `reject-int-slot-fractional` needs no entry:
           // `"type":"integer"` already refuses `2.5`.
-          "reject-int-slot-out-of-range" ]
+          "reject-int-slot-out-of-range"
+
+          // ─── Fuaran-UI Phase 1534 — `Binding.Expr`'s two refusals ─────────
+          //
+          // Both are decoder-only by construction, not a modelling gap a better
+          // `SchemaGen` would close.
+          //
+          // The `col` one asks whether a `{"$type":"col"}` object appears
+          // ANYWHERE inside a recursive expression whose every operator arm can
+          // nest further — an unbounded existential over a recursive structure,
+          // for which JSON Schema has no operator.
+          //
+          // The unbound-param one is harder still: it is a CROSS-FIELD
+          // constraint — every `param` name reachable in `expr` must appear in
+          // this binding's own `params` array — with the two sides at different
+          // depths of one object. Neither `$ref` nor `if`/`then` can carry a
+          // value out of one member into a predicate over another.
+          //
+          // Filed here with the reason rather than left silently passing;
+          // §3.3.2 of the specification is the enforcement point, and every
+          // host's decoder is where it is enforced.
+          "reject-expr-col-reference"
+          "reject-expr-unbound-param" ]
 
 // Phase 1068 — `schemaTypeErasedBindingRejects` is GONE, and its deletion is the
 // point rather than a tidy-up. Phase 1064 found four reject fixtures the emitted

@@ -145,3 +145,30 @@ let MaxArrayLength = 100000
 /// ceiling and defaults far below it; this is the absolute protocol bound.
 [<Literal>]
 let MaxNodes = 100000
+
+/// Maximum number of `ColExpr` nodes in ONE `Binding.Expr` expression
+/// (Fuaran-UI Phase 1534; WIRE_FORMAT §21). Counted per expression, not per
+/// document: a tree may carry many `Expr` bindings, each bounded here, with the
+/// document as a whole still bounded by `MaxDocumentBytes`.
+///
+/// Its SCOPE is `Binding.Expr` and nothing else. A `ColExpr` inside a
+/// `Binding.Transform` pipeline — a `derive`'s expression, a `filter`'s
+/// predicate — is NOT bounded by this, and was not bounded before it either;
+/// that surface predates this limit and widening the limit onto it would change
+/// what an already-shipped decoder accepts. Stated rather than left to be
+/// inferred, because a limit whose scope is guessed at is worse than none.
+///
+/// ONE count, not a count and a depth, because depth ≤ node count for every
+/// expression: an expression 600 deep is at least 600 nodes and is already
+/// refused, so a second limit would add a number to keep in step across five
+/// hosts and refuse nothing the first does not.
+///
+/// The figure is a protocol bound rather than a budget the evaluator discovers.
+/// An expression a person writes is single digits of nodes; the widest thing in
+/// the corpus is an `InList` over a literal set, and 512 admits a membership
+/// test over ~500 values. What it refuses is the blow-up: a nested `Case` chain
+/// deep enough to make evaluation the attack. Changing it is a protocol change
+/// — it moves in `WIRE_FORMAT.md` §21 and across the conformant hosts, not here
+/// alone.
+[<Literal>]
+let MaxExprNodes = 512

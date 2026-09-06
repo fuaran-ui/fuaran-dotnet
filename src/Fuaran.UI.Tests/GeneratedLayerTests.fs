@@ -758,6 +758,17 @@ let generatedLayerTests =
                     "reject-chart-annotation-range-unordered.json"
                     "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"
+                    // Fuaran-UI Phase 1534 — `Binding.Expr`'s two refusals. Both
+                    // are shapes structure cannot judge, for a sharper reason
+                    // than most entries here: the `col` rule is an unbounded
+                    // existential over a recursive expression, and the
+                    // unbound-param rule is a cross-field constraint relating
+                    // `expr` to this binding's own `params`. No refinement to the
+                    // IDL's type language reaches either — `expr` is a `THosted`
+                    // slot whose content the generated layer hands to
+                    // `Fuaran.Core`'s codec and never decomposes.
+                    "reject-expr-col-reference.json"
+                    "reject-expr-unbound-param.json"
                     "reject-fieldrule-empty.json"
                     "reject-fieldrule-length-unordered.json"
                     "reject-formfield-near-miss-validation.json"
