@@ -155,7 +155,35 @@ let private schemaInexpressibleRejects: Set<string> =
           "reject-fieldrule-length-unordered"
           "reject-limit-node-depth"
           "reject-limit-op-depth"
-          "reject-limit-tree-item-depth" ]
+          "reject-limit-tree-item-depth"
+
+          // ─── Phase 1521 — the §20 rows a JSON Schema validator cannot see ──
+          //
+          // These four are not a modelling gap a better `SchemaGen` would close:
+          // they are refusals at the JSON SYNTAX layer, and a schema validator by
+          // construction runs over an ALREADY-PARSED document. By the time it
+          // looks, the parser has resolved the duplicate member to whichever one
+          // it kept, and a lone surrogate is simply a string. §20 exists precisely
+          // because that layer was unconstrained, and the decoder — not the schema
+          // — is its enforcement point.
+          //
+          // The remaining §20 vectors are NOT here, and the discriminator is worth
+          // keeping: `+1`, `01`, `.5`, `1.`, `3e`, a bare `NaN`, a raw C0 and
+          // trailing content are all UNPARSEABLE, so the ordinary path's `None`
+          // arm covers them.
+          "reject-json-duplicate-key"
+          "reject-json-lone-high-surrogate"
+          "reject-json-lone-low-surrogate"
+          "reject-json-surrogate-pair-split"
+
+          // §7.1's range half. Unlike the four above this one IS expressible in
+          // principle — `minimum` / `maximum` on the integer slots — and simply is
+          // not expressed today; filed here rather than left silently passing so
+          // the exemption carries its reason. The inverse assertion means it fails
+          // the moment `SchemaGen` emits those bounds, which is when this entry
+          // should go. Its sibling `reject-int-slot-fractional` needs no entry:
+          // `"type":"integer"` already refuses `2.5`.
+          "reject-int-slot-out-of-range" ]
 
 // Phase 1068 — `schemaTypeErasedBindingRejects` is GONE, and its deletion is the
 // point rather than a tidy-up. Phase 1064 found four reject fixtures the emitted

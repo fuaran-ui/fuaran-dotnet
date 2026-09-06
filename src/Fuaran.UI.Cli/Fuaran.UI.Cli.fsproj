@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -12,6 +12,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Scaffold.fs" />
+    <Compile Include="RefusalReport.fs" />
     <Compile Include="Commands.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
@@ -21,6 +22,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI.Client\Fuaran.UI.Client.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <!-- The elicitation reject families decode through `Elicitation`, which lives here. -->
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

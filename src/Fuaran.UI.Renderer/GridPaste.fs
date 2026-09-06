@@ -1,4 +1,4 @@
-module Fuaran.UI.Renderer.GridPaste
+﻿module Fuaran.UI.Renderer.GridPaste
 
 // ============================================================================
 //  Fuaran — structured paste into an editable grid (Phase 1126)
@@ -218,7 +218,26 @@ let plan
                     | None -> skipped <- skipped + 1
                     | Some target ->
                         if target.Numeric then
-                            match System.Double.TryParse field with
+                            // Invariant on the .NET leg: a pasted cell becomes a
+                            // `CellValue.Numeric` that is canonically encoded onto
+                            // the wire, so the same clipboard text must yield the
+                            // same double under Fable and under .NET. The
+                            // single-argument BCL overload reads CurrentCulture and
+                            // would read `1.5` as `15` under a comma-decimal
+                            // locale. (Fable's form ignores the extra arguments and
+                            // is invariant by construction.)
+                            let parsed =
+#if FABLE_COMPILER
+                                System.Double.TryParse field
+#else
+                                System.Double.TryParse(
+                                    field,
+                                    System.Globalization.NumberStyles.Float,
+                                    System.Globalization.CultureInfo.InvariantCulture
+                                )
+#endif
+
+                            match parsed with
                             | true, f ->
                                 writes.Add
                                     { RowIndex = rowIndex

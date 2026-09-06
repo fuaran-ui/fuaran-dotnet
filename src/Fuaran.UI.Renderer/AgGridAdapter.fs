@@ -1,4 +1,4 @@
-module Fuaran.UI.Renderer.AgGridAdapter
+﻿module Fuaran.UI.Renderer.AgGridAdapter
 
 // ============================================================================
 //  Fuaran — AG Grid adapter
@@ -200,7 +200,22 @@ let private buildColumnDef<'Msg>
                         | _ ->
                             let s = string newVal
 
-                            match System.Double.TryParse(s) with
+                            // Invariant on the .NET leg — see `GridPaste`: an
+                            // edited cell is canonically encoded, so the pipelines
+                            // must agree, and the single-argument BCL overload
+                            // reads CurrentCulture.
+                            let parsed =
+#if FABLE_COMPILER
+                                System.Double.TryParse s
+#else
+                                System.Double.TryParse(
+                                    s,
+                                    System.Globalization.NumberStyles.Float,
+                                    System.Globalization.CultureInfo.InvariantCulture
+                                )
+#endif
+
+                            match parsed with
                             | true, f -> CellValue.Numeric f
                             | _ -> CellValue.Text s
                     | CellValue.Bool _ ->

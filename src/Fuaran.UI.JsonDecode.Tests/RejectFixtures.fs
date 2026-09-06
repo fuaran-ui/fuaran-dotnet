@@ -1602,4 +1602,119 @@ let all: RejectFixture list =
         ExpectedPath = "$"
         IsOp = false
         Description =
-          "§21 max JSON depth — 256 levels, EXACTLY at the limit. Not a valid node, so it must fail; the point is that it fails on SHAPE and not as a limit breach. Rule 1 in the one form the reject machinery can express for a syntactic bound: a host whose guard sits one level too tight answers LIMIT_EXCEEDED here and fails" } ]
+          "§21 max JSON depth — 256 levels, EXACTLY at the limit. Not a valid node, so it must fail; the point is that it fails on SHAPE and not as a limit breach. Rule 1 in the one form the reject machinery can express for a syntactic bound: a host whose guard sits one level too tight answers LIMIT_EXCEEDED here and fails" }
+      // ─── WIRE_FORMAT §20.2 — decode determinism (ratified) ────────
+      //
+      // Every vector below is a one-character corruption of a fixture the corpus
+      // ALREADY certifies as canonical — `nodes/markdown-1.json` or
+      // `nodes/skel-1.json` — so each one's "corrected twin decodes" is pinned
+      // by an existing round-trip fixture rather than by a near-duplicate added
+      // beside it. The twin is named in each description; repairing the named
+      // defect reproduces those bytes exactly.
+      //
+      // None of these inputs can be produced by a conformant ENCODER, which is
+      // §20.2's admission test for a row: ratifying them costs no legitimate
+      // document.
+      { Id = "reject-json-duplicate-key"
+        Json = """{"id":"markdown-1","id":"smuggled","kind":{"$type":"Markdown","text":"Updated hourly."}}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§20.2 row 1 — a repeated object member. THE row that changes what a document MEANS rather than whether it is accepted: this host kept the first occurrence and every other host the last, so a vetting host and a rendering host saw different trees from identical bytes with no error anywhere. Twin: the `markdown-1` node fixture (drop the second `id`)" }
+      { Id = "reject-json-trailing-content"
+        Json = """{"id":"markdown-1","kind":{"$type":"Markdown","text":"Updated hourly."}} {"id":"second"}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§20.2 row 2 — content after the root value. §1 makes a wire artefact a single JSON document; two hosts refused this and three accepted it, which is a framing ambiguity rather than a tolerance. Twin: the `markdown-1` node fixture (drop everything after the root object)" }
+      { Id = "reject-json-number-leading-plus"
+        Json = """{"id":"skel-1","kind":{"$type":"Skeleton","rows":+3}}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§20.2 row 3 — a leading `+` on a number. RFC 8259 does not permit it; three hosts accepted it because they reached a platform number parser without checking the grammar first. Twin: the `skel-1` node fixture (drop the `+`)" }
+      { Id = "reject-json-number-leading-zero"
+        Json = """{"id":"skel-1","kind":{"$type":"Skeleton","rows":03}}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§20.2 row 3 — a leading zero. RFC 8259's `int` production is `0` or a non-zero digit followed by digits. Twin: the `skel-1` node fixture (drop the leading zero)" }
+      { Id = "reject-json-number-no-integer-part"
+        Json = """{"id":"markdown-1","kind":{"$type":"Markdown","text":"Updated hourly."},"tooltip":.5}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§20.2 row 3 — a number with no integer part. Refused as a GRAMMAR violation before the slot's type is ever consulted, which is why the vector sits at a slot that would refuse a number anyway: the point is that `.5` is not a number at all. Twin: the `markdown-1` node fixture (drop the trailing member)" }
+      { Id = "reject-json-number-trailing-point"
+        Json = """{"id":"skel-1","kind":{"$type":"Skeleton","rows":3.}}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§20.2 row 3 — a decimal point with no fractional digits. Twin: the `skel-1` node fixture (drop the point)" }
+      { Id = "reject-json-number-empty-exponent"
+        Json = """{"id":"skel-1","kind":{"$type":"Skeleton","rows":3e}}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description = "§20.2 row 3 — an exponent marker with no digits. Twin: the `skel-1` node fixture (drop the `e`)" }
+      { Id = "reject-json-bare-nan"
+        Json = """{"id":"markdown-1","kind":{"$type":"Markdown","text":"Updated hourly."},"tooltip":NaN}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§20.2 row 4 — a bare `NaN` literal. RFC 8259 forbids it as a bare token and §7's QUOTED sentinels are the specified representation, which row 8 accepts unchanged; one host accepted the bare form and re-emitted it. Twin: the `markdown-1` node fixture (drop the trailing member)" }
+      { Id = "reject-json-raw-control-char"
+        Json = "{\"id\":\"markdown-1\",\"kind\":{\"$type\":\"Markdown\",\"text\":\"Updated\thourly.\"}}"
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§20.2 row 5 — a RAW U+0009 inside a string. RFC 8259 requires a C0 control character to be escaped and §2 rule 6 requires a conformant encoder to escape it, so accepting the raw byte admits input this host's own encoder cannot produce. The escaped spelling stays legal. Twin: the `markdown-1` node fixture (the tab escaped, or a space)" }
+      { Id = "reject-json-lone-high-surrogate"
+        Json = """{"id":"markdown-1","kind":{"$type":"Markdown","text":"Updated \ud83d hourly."}}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§20.2 row 6 — an unpaired HIGH surrogate. The second row that changes MEANING silently: two hosts lowered it to U+FFFD, two kept it in a UTF-16 string, and one kept it and then raised an uncatchable encoding error at the first canonical-bytes boundary rather than at decode. Twin: the `markdown-1` node fixture (drop the escape)" }
+      { Id = "reject-json-lone-low-surrogate"
+        Json = """{"id":"markdown-1","kind":{"$type":"Markdown","text":"Updated \ude00 hourly."}}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§20.2 row 6 — an unpaired LOW surrogate. Pinned separately from its high twin because a pairing check written as \"a high must be followed by a low\" passes this vector while leaving the class open. Twin: the `markdown-1` node fixture (drop the escape)" }
+      { Id = "reject-json-surrogate-pair-split"
+        Json = """{"id":"markdown-1","kind":{"$type":"Markdown","text":"\ud83d Updated \ude00 hourly."}}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§20.2 row 6 — both halves of a pair present but separated. A host that counts surrogates rather than pairing them adjacently accepts this and reassembles a scalar the author never wrote. Twin: the `markdown-1` node fixture" }
+
+      // ─── WIRE_FORMAT §7.1 — integer slots (ratified with §20) ────────
+      //
+      // These two are WRONG_TYPE rather than INVALID_JSON: the document is
+      // well-formed JSON and the value is one the slot cannot hold, which is a
+      // different repair from a syntax error and §6 keeps the two apart.
+      { Id = "reject-int-slot-fractional"
+        Json = """{"id":"skel-1","kind":{"$type":"Skeleton","rows":2.5}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.rows"
+        IsOp = false
+        Description =
+          "§7.1 — a fractional value at an integer slot. Three hosts TRUNCATED it to 2, discarding the author's value at a slot the author typed; two refused it. §7.1 refuses, and accepts `2.0` (see the lenient twin). Twin: the `skel-1` node fixture" }
+      { Id = "reject-int-slot-out-of-range"
+        Json = """{"id":"skel-1","kind":{"$type":"Skeleton","rows":1e10}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.rows"
+        IsOp = false
+        Description =
+          "§7.1 — a value outside the 32-bit range an integer slot can hold. The cast was implementation-defined: the same bytes became Int32.MinValue on one runtime and 1410065408 on another, which is §20's defect one layer above the syntax. Twin: the `skel-1` node fixture" } ]

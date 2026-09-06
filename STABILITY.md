@@ -5024,3 +5024,59 @@ double-escape), and the 32-character clamp bites — with the DRAWN label in the
 authored string whole, so the clamp is a difference between two bytes the fixture holds rather than an
 assertion about one. A host whose chart-lowering leg walks the corpus directory sees all eleven before
 its own clauses exist; the four lowering hosts move in this same change-set.
+
+---
+
+## Recorded change — 0.76.0, WIRE_FORMAT §20 ratification, §7.1 integer slots and §21.6/§21.7 (fuaran#1521)
+
+**Additive on the API surface; NARROWING on the decoder's accept set.** Three new public members —
+`WireLimits.MaxDocumentBytes`, the `fuaran refusal-report` CLI verb, and nothing else — and a set of
+inputs the decoder now REFUSES that it previously accepted. The second half is the substance, and it
+is not a breaking change in the sense this document means: every input newly refused is one a
+conformant **encoder** cannot produce, so no document any part of this tier ever emitted is affected.
+The specification's own admission test for a §20 row is exactly that property.
+
+**What is refused now** (WIRE_FORMAT §20.2, each with a `reject/` corpus fixture): a repeated object
+member; content after the root value; a number token outside the RFC 8259 grammar (`+1`, `01`, `.5`,
+`1.`, `1e`); a bare `NaN` / `Infinity` literal; a raw C0 control character inside a string; an
+unpaired surrogate. And at a typed INTEGER slot (§7.1): a fractional value, a non-finite one, and any
+magnitude outside the signed 32-bit range.
+
+**The integer-slot change is the one a consumer is most likely to feel**, because it retires a silent
+behaviour rather than adding a refusal to an already-refusing path. `requireInt` truncated: `2.5` at
+an integer slot decoded as `2`, discarding the author's value at a slot the author had typed; and
+`int n` on an out-of-range double is implementation-defined, so `1e10` became `Int32.MinValue` on
+.NET and `1410065408` under Fable — two trees from one document on one host in two build
+configurations. `2.0` still decodes as `2` (the accept side is pinned by `lenient-1521-int-slot-integral-float`);
+`2.5` is now a `WRONG_TYPE`. There is no lenient profile under which truncation returns.
+
+**One defect fixed here is invisible from the API and changes decoded VALUES.** `parseNumberRaw` used
+`Double.TryParse`'s single-argument overload, which on .NET honours the ambient culture and permits
+group separators — so on a de-DE or fr-FR host `1.5` decoded as `15`, silently, with a green decode,
+while the Fable build read `1.5`. The .NET leg now pins `NumberStyles.Float` +
+`CultureInfo.InvariantCulture`. The same fix lands in `FastPath.SeedCatalogue.numOf` (under its
+"byte-for-byte parity" header), `Renderer/GridPaste.fs` and `Renderer/AgGridAdapter.fs`. A consumer
+running under an invariant or dot-decimal culture sees no change; one running under a comma-decimal
+culture was getting wrong numbers and now gets right ones.
+
+**§21 gains a sixth limit and one of the five changes UNIT.** `MaxDocumentBytes` (32 MiB of UTF-8,
+checked before the parse) bounds the total, which the five structural limits could not: they compose
+multiplicatively, and a document satisfying every one of them can be a hundred gigabytes. And
+`MaxStringLength` is measured in **Unicode code points**, not the UTF-16 units it counted before —
+the row said "characters", which is not a unit, and measured across the hosts it was three. An astral
+document that was inside the limit here and outside it on a code-point-counting host is now inside it
+on both. The figure did not move; what it counts did.
+
+**`MergeConflict.encodeEnvelope`'s bytes may move for a style conflict.** The envelope is documented
+byte-stable across hosts — its SHA-256 is the cross-host refusal hash — and the style facets reached
+it through a runtime formatter, whose output is a property of the runtime rather than of the format.
+They render through canonical wire tokens now. On .NET the tokens are unchanged for five of the six
+facets; `style.direction` moves from `Auto`/`Ltr`/`Rtl` to the canonical `auto`/`ltr`/`rtl`, which
+were always the wire spelling. A stored refusal hash over a `style.direction` conflict does not
+survive; `StyleFacetTokenTests` pins every facet against the generated encoder so the class cannot
+recur.
+
+**Version.** It rides the 0.76.0 draft: the API additions are additive, and the decoder narrowing
+refuses only inputs no conformant emitter produces, so no consumer's *emissions* change class.
+Consumers that DECODE third-party or model-emitted JSON should expect previously-accepted malformed
+documents to be refused — which is the point.

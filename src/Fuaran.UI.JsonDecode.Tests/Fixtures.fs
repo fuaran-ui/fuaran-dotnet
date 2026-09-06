@@ -113,6 +113,18 @@ let metricFloat17Sig: Node<obj> =
 let metricFloatBigInt: Node<obj> =
     metricFloat "metric-float-bigint" 123456789012345680.0
 
+/// §2 rule 5 — the exact boundary of the fixed-point window at a FLOAT slot.
+/// `1e17` has base-10 exponent 17, one past the window that ends at 16, so it
+/// canonicalises to `1E+17` and not to the seventeen digits an integer layout
+/// would give it. Two hosts emitted the digits, because they had kept the token's
+/// integer identity through a slot that declares a float.
+///
+/// Its neighbour `metric-float-bigint` sits in the same zone but at 18 significant
+/// digits, so it never distinguished the two layouts from a rounding difference.
+/// This one has a single-digit mantissa, which is also the layout case rule 5
+/// spells out separately (no decimal point when the mantissa is one digit).
+let metricFloat1e17: Node<obj> = metricFloat "metric-float-1e17" 1e17
+
 let heading: Node<obj> =
     node
         "heading-1"
@@ -5020,6 +5032,36 @@ let mapVis: Node<obj> =
 
 // ─── Custom + composite ─────────────────────────────────────────────────
 
+/// §2 rule 2 — canonical key order is UTF-16 CODE-UNIT order, and this is the
+/// only place the choice is observable.
+///
+/// Three orderings agree on every key up to U+FFFF, and code point and UTF-8 byte
+/// agree everywhere; UTF-16 disagrees with both above the BMP, because a surrogate
+/// pair begins at U+D800–U+DBFF and therefore sorts BELOW a key starting in
+/// U+E000–U+FFFF that it sorts above under the other two. So the three keys here
+/// canonicalise as `z` → U+1D11E → U+E000` under this rule and as
+/// `z` → U+E000 → U+1D11E` under either of the others — different bytes,
+/// different hash-chain and teleport digests, from one document.
+///
+/// A rule-12 payload position, because that is where a non-BMP key actually
+/// arrives: spec-minted keys are ASCII by construction, so a corpus of them could
+/// never have caught this.
+let customNonAsciiKeys: Node<obj> =
+    node
+        "custom-nonascii-keys"
+        (NodeKind.Custom(
+            { ModuleId = "analytics"
+              ComponentId = "trend-card"
+              Props =
+                Map.ofList
+                    [ "z", JStr "ascii"
+                      "\uD834\uDD1E", JStr "astral (U+1D11E, a surrogate pair)"
+                      "\uE000", JStr "private use (U+E000, one code unit)" ]
+              ContentHash = None
+              ExposedNodeIds = None }
+        ))
+        None
+
 let custom: Node<obj> =
     node
         "custom-1"
@@ -6454,6 +6496,7 @@ let allNodes: (string * Node<obj>) list =
       "Display/Metric (float divergence-zone — 1e-7 scientific)", metricFloatExpNeg
       "Display/Metric (float divergence-zone — 17 significant digits)", metricFloat17Sig
       "Display/Metric (float divergence-zone — integer > 2^53)", metricFloatBigInt
+      "Display/Metric (§2 rule 5 — 1e17, one past the fixed-point window)", metricFloat1e17
       "Display/Badge", badge
       "Display/Link", link
       "Display/Link (protected email — Phase 812 protection field)", linkProtected
@@ -6636,6 +6679,7 @@ let allNodes: (string * Node<obj>) list =
       "Input/Button (Phase 1124 — Action.Print: the payload-free action, inside a Chain)", buttonPrint
       "Visualisation/Map", mapVis
       "Custom", custom
+      "Custom (§2 rule 2 — astral vs BMP payload keys, the UTF-16-order discriminator)", customNonAsciiKeys
       "Custom (bounded escape, StrictReplay hash + exposed-ids)", customBounded
       "Custom (bounded escape, AdvisoryWarning hash + no exposed-ids)", customBoundedAdvisory
       "ErrorBoundary (Markdown child + Callout fallback)", errorBoundary

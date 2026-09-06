@@ -1,4 +1,4 @@
-namespace Fuaran.UI
+﻿namespace Fuaran.UI
 
 open Fuaran.Core
 open Fuaran.UI.Types
@@ -25,7 +25,25 @@ module SeedCatalogue =
     let private numOf (values: Map<string, string>) (addr: string) (dflt: float) : float =
         match Map.tryFind addr values with
         | Some s ->
-            match System.Double.TryParse s with
+            // Fable's `Double.TryParse` is JS `+str` — culture-invariant by
+            // construction, and it ignores the `NumberStyles` / `IFormatProvider`
+            // arguments loudly enough to fail the transpile. The .NET leg needs
+            // the explicit overload: the single-argument BCL form reads
+            // CurrentCulture, so under a comma-decimal locale a hole value of
+            // `1.5` parsed as `15` — in the module whose header claims
+            // byte-for-byte parity with the TypeScript bank.
+            let parsed =
+#if FABLE_COMPILER
+                System.Double.TryParse s
+#else
+                System.Double.TryParse(
+                    s,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture
+                )
+#endif
+
+            match parsed with
             | true, v -> v
             | _ -> dflt
         | None -> dflt

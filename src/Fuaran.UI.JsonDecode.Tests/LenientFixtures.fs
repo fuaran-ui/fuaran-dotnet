@@ -1,4 +1,4 @@
-module Fuaran.UI.JsonDecode.Tests.LenientFixtures
+﻿module Fuaran.UI.JsonDecode.Tests.LenientFixtures
 
 // ============================================================================
 //  Lenient-ingest fixture corpus (data form) — WIRE_FORMAT §16.
@@ -707,4 +707,22 @@ let all: LenientFixture list =
         VerboseJson =
           """{"id":"btn-copy","kind":{"$type":"Button","label":"Copy","onClick":{"$type":"WriteToClipboard","text":"https://example.com/s/1"},"variant":"Primary"}}"""
         Description =
-          "Phase 1126 — the clipboard payload is a TextSource, so §16's transparent-Literal rule reaches it: the explicit {\"$type\":\"Literal\",\"text\":…} envelope normalises to the bare string, which is also the pre-1126 spelling and still the canonical one" } ]
+          "Phase 1126 — the clipboard payload is a TextSource, so §16's transparent-Literal rule reaches it: the explicit {\"$type\":\"Literal\",\"text\":…} envelope normalises to the bare string, which is also the pre-1126 spelling and still the canonical one" }
+      // ─── Phase 1521 — §7.1 / §2 rule 5, the two numeric normalisations ──
+      //
+      // Both are ACCEPT-and-canonicalise rather than refusals, and both were
+      // decided rather than discovered: the hosts disagreed, and §7.1 and §2
+      // rule 5 name one answer each. Their refusing counterparts are
+      // `reject-int-slot-fractional` and `reject-int-slot-out-of-range`.
+      { Id = "lenient-1521-int-slot-integral-float"
+        LenientJson = """{"id":"skel-1","kind":{"$type":"Skeleton","rows":3.0}}"""
+        VerboseJson = """{"id":"skel-1","kind":{"$type":"Skeleton","rows":3}}"""
+        Description =
+          "§7.1 — an integer-VALUED number written with a fractional part decodes at an integer slot and canonicalises to the integer spelling. Two hosts refused `3.0` outright, which refuses a document whose intent is unambiguous for its spelling; `2.5` at the same slot stays a WRONG_TYPE, so the accept set widens by exactly the values an integer slot can hold" }
+      { Id = "lenient-1521-payload-integer-beyond-int53"
+        LenientJson =
+          """{"id":"custom-int53","kind":{"$type":"Custom","componentId":"trend-card","moduleId":"analytics","props":{"beyond":9007199254740993,"boundary":9007199254740991}}}"""
+        VerboseJson =
+          """{"id":"custom-int53","kind":{"$type":"Custom","componentId":"trend-card","moduleId":"analytics","props":{"beyond":9007199254740992,"boundary":9007199254740991}}}"""
+        Description =
+          "§2 rule 5 — integer identity in a rule-12 payload stops at ±(2⁵³−1). `boundary` is at the limit and survives verbatim; `beyond` is one past it, has no representation every host holds exactly, and decodes to the nearest double. Pinned as a lenient NORMALISATION rather than left implicit, because three hosts silently rounded it, one kept an int64 and one an arbitrary-precision integer — the same document, five canonical byte sequences, five hash-chain digests" } ]

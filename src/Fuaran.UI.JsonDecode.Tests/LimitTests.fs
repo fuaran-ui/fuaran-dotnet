@@ -1,4 +1,4 @@
-module Fuaran.UI.JsonDecode.Tests.Limits
+﻿module Fuaran.UI.JsonDecode.Tests.Limits
 
 // Phase 781 — the decode-side resource limits (`Fuaran.UI.WireLimits`,
 // WIRE_FORMAT §21) that make the totality claim true on SHAPE as well as on
@@ -144,6 +144,86 @@ let tests =
                   + "\",\"variant\":\"Standard\"}}"
 
               expectLimit "oversize string" (JsonDecode.decodeNodeObj huge)
+          }
+
+          // §21.6 — the string bound is measured in CODE POINTS, and the four
+          // cases below are the only ones that distinguish that from the two
+          // units hosts were actually using. The BMP pair passes under every
+          // reading; the ASTRAL pair is the discriminator, and a host counting
+          // UTF-16 units (as this one did) or UTF-8 bytes fails the accept half
+          // of it while passing everything else.
+          //
+          // Host-local rather than corpus fixtures, per §21.5: a megabyte of
+          // padding committed to a shared repository to assert one integer
+          // comparison is a poor trade, and this is not a recursion hazard.
+          test "a BMP string of exactly MaxStringLength code points still decodes" {
+              let doc =
+                  "{\"id\":\"a\",\"kind\":{\"$type\":\"Heading\",\"level\":1,\"text\":\""
+                  + String.replicate WireLimits.MaxStringLength "x"
+                  + "\",\"variant\":\"Standard\"}}"
+
+              match JsonDecode.decodeNodeObj doc with
+              | Ok _ -> ()
+              | Error e -> failtestf "a string exactly at MaxStringLength was refused: %s — %s" e.Code e.Message
+          }
+
+          test "an ASTRAL string of exactly MaxStringLength code points still decodes" {
+              // U+1D11E is one code point and TWO UTF-16 units, so a host counting
+              // units sees twice the limit here and refuses a conformant document.
+              let doc =
+                  "{\"id\":\"a\",\"kind\":{\"$type\":\"Heading\",\"level\":1,\"text\":\""
+                  + String.replicate WireLimits.MaxStringLength "\uD834\uDD1E"
+                  + "\",\"variant\":\"Standard\"}}"
+
+              match JsonDecode.decodeNodeObj doc with
+              | Ok _ -> ()
+              | Error e ->
+                  failtestf
+                      "a string of exactly MaxStringLength ASTRAL code points was refused (%s) — the bound is counting UTF-16 units, not code points: %s"
+                      e.Code
+                      e.Message
+          }
+
+          test "an ASTRAL string past MaxStringLength is refused with a typed error" {
+              let doc =
+                  "{\"id\":\"a\",\"kind\":{\"$type\":\"Heading\",\"level\":1,\"text\":\""
+                  + String.replicate (WireLimits.MaxStringLength + 1) "\uD834\uDD1E"
+                  + "\",\"variant\":\"Standard\"}}"
+
+              expectLimit "oversize astral string" (JsonDecode.decodeNodeObj doc)
+          }
+
+          // ─── §21.7 — the total-payload ceiling ──────────────────────
+          //
+          // The five structural limits compose multiplicatively, so a document
+          // satisfying every one of them can still be arbitrarily large. Each
+          // individual check refuses nothing, because each individual check is
+          // satisfied.
+          test "a document past MaxDocumentBytes is refused with a typed error" {
+              let padding = WireLimits.MaxDocumentBytes // ASCII, so 1 byte per char
+
+              let doc =
+                  "{\"id\":\"" + String.replicate padding "a" + "\",\"kind\":{\"$type\":\"Box\"}}"
+
+              expectLimit "oversize document" (JsonDecode.decodeNodeObj doc)
+          }
+
+          test "MaxDocumentBytes admits a document at exactly MaxNodes" {
+              // The constraint that SET this figure: an 8 MiB ceiling would have
+              // refused this document, which §21.2 rule 1 requires every host to
+              // accept — quietly lowering MaxNodes while leaving its stated value
+              // in the table. A ceiling below the node bound's own cost is not a
+              // sixth limit, it is a silent redefinition of the fifth.
+              let doc = flatBox (WireLimits.MaxNodes - 1)
+
+              Expect.isLessThanOrEqual
+                  doc.Length
+                  WireLimits.MaxDocumentBytes
+                  "a document at exactly MaxNodes must fit inside MaxDocumentBytes"
+
+              match JsonDecode.decodeNodeObj doc with
+              | Ok _ -> ()
+              | Error e -> failtestf "a document at exactly MaxNodes was refused: %s — %s" e.Code e.Message
           }
 
           test "an array past MaxArrayLength is refused with a typed error" {
