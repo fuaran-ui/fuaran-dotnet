@@ -90,6 +90,9 @@ internal static class StructuralElementPin
             ["ReferenceLine"] = (
                 "Chart.annotations",
                 "one ChartAnnotation of the annotations list, named for its UNION ARM rather than for the field (Phase 1490) — the first element here to do so, because the field is a list over a closed union and each arm is a different thing to author; <EventMarker> and <RangeBand> join it as their arms land"),
+            ["EventMarker"] = (
+                "Chart.annotations",
+                "the second ChartAnnotation arm (Phase 1491), named for its arm on 1490's precedent. Its x address is spelled as two attributes rather than a nested element — the dialect has no union spelling, and a child of a child would read as a third structural level where there is one address"),
             ["Prop"] = ("Custom.props", "rename — one entry of the props map, authored as name/value"),
 
             // Node-valued slots — the child element names the slot rather than a

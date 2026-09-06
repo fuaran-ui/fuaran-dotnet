@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.Renderer.BindingResolver
+module Fuaran.UI.Renderer.BindingResolver
 
 // ============================================================================
 //  Fuaran — binding resolution (§4b Binding<'T>, §4c idioms lines 591–602)
@@ -987,16 +987,14 @@ let tryResolveScalarFloat (sources: BindingSources) (binding: Binding<float>) : 
 
 /// Coerce a boxed row-cell value to a `CellValue`. Numeric int/float both map to
 /// `Numeric` (cross-host-deterministic — JS erases the int/float distinction).
+///
+/// Phase 1491 — the body moved to `Fuaran.UI.HostPrelude.RowProjection`, which compiles
+/// ahead of the pre-emit validator; this stays as the name every caller here
+/// already uses. One definition, two readers: a validator rule that grounds an
+/// authored key against the labels a chart will draw must classify a cell
+/// exactly as the renderer does, or it refuses keys the picture goes on to draw.
 let objToCellValue (v: obj) : CellValue =
-    match v with
-    | null -> CellValue.Empty
-    | :? string as s -> CellValue.Text s
-    | :? bool as b -> CellValue.Bool b
-    | :? float as f -> CellValue.Numeric f
-    | :? int as i -> CellValue.Numeric(float i)
-    | :? int64 as i -> CellValue.Numeric(float i)
-    | :? System.DateTimeOffset as d -> CellValue.Date d
-    | _ -> CellValue.Empty
+    Fuaran.UI.HostPrelude.RowProjection.ofObj v
 
 /// Project a named field off a `Row` to a `CellValue`; a missing key is
 /// `CellValue.Empty`. The row-field display floor for a decoded grid column.
@@ -1007,19 +1005,12 @@ let objToCellValue (v: obj) : CellValue =
 /// `:? Map<string,obj>` type-test evaluated false under Fable — is gone: no
 /// runtime test exists to get wrong.
 let projectRowFieldValue (row: Row) (field: string) : CellValue =
-    match Map.tryFind field row with
-    | Some v -> objToCellValue v
-    | None -> CellValue.Empty
+    Fuaran.UI.HostPrelude.RowProjection.value row field
 
 /// Project a named field off a `Row` to a string (the row-key floor). Empty
 /// string when the field is missing (the caller may fall back to the row index).
 let projectRowFieldString (row: Row) (field: string) : string =
-    match projectRowFieldValue row field with
-    | CellValue.Text s -> s
-    | CellValue.Numeric f -> string f
-    | CellValue.Bool b -> (if b then "true" else "false")
-    | CellValue.Date d -> d.ToString("o")
-    | CellValue.Empty -> ""
+    Fuaran.UI.HostPrelude.RowProjection.string_ row field
 
 // ─── Data-bound grid sort (Phase 818 — `sortStateKey`) ───────────────────────
 //

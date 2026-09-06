@@ -1379,6 +1379,77 @@ type PreEmitDefect =
     /// on the wire.
     | ChartAnnotationNonFinite of nodeId: string * index: int * value: string
 
+    /// **FUARAN138 (Error)**. An event marker whose CATEGORY key is not among
+    /// the chart's rows, or is among them more than once (Phase 1491, §4l).
+    ///
+    /// §4l rule 3 states the asymmetry this rule implements, and the asymmetry
+    /// has a reason rather than being an inconsistency: a band axis's domain
+    /// **is** the set of keys in the rows, so a key outside that set is not a
+    /// wider axis, it is a reference to a band that does not exist. A temporal
+    /// address widens the extent; a category address cannot, and a marker at a
+    /// missing key has nowhere to be drawn.
+    ///
+    /// **More than once is refused for a different reason, and it is the sharper
+    /// one.** The lowering places a category address at the band CENTRE, and
+    /// with a duplicated key there are two centres — so the marker would be
+    /// drawn at whichever one the implementation happened to find first. That is
+    /// a picture that depends on a traversal order, which is exactly what the
+    /// corpus cannot pin and what §4l's data-addressing rule exists to prevent.
+    ///
+    /// **The window is the STATIC row set and nothing else.** A chart whose rows
+    /// come from a `Ref`, a `Query` or a pipeline has no key set the language
+    /// can read here, so the rule stands down rather than guessing — the
+    /// FUARAN086 posture, refuse under a closed window and stay silent under an
+    /// open one.
+    ///
+    /// Carries the chart node's id, the marker's document-order index within its
+    /// own case (the same `<n>` its `annotation|event|<n>` mark id carries), the
+    /// key as authored, and how many rows carried it — `0` and `2` being the two
+    /// shapes, with different repairs.
+    | ChartAnnotationKeyUngrounded of nodeId: string * index: int * key: string * occurrences: int
+
+    /// **FUARAN139 (Error)**. An event marker addressing the x axis in the form
+    /// the axis does not use — a `Category` key on a CONTINUOUS x, or a `Date`
+    /// under a BAND x (Phase 1491, §4l rule 1).
+    ///
+    /// §4h's posture one level down: the author states which the column is, and
+    /// the language refuses what is provably wrong rather than coercing. The
+    /// coercion is what makes this worth a code — a date read as a category key
+    /// grounds against no band and vanishes; a category key read as a date parses
+    /// as nothing and lands on 1970-01-01. Neither failure announces itself, and
+    /// both look like an ordinary chart with one marker in a surprising place.
+    ///
+    /// Sniffing the address for an ISO-8601 shape was the alternative and is the
+    /// guess-dressed-as-a-rule §4e and §4h both declined.
+    ///
+    /// Carries the chart node's id, the marker's per-case index, the address
+    /// form as authored, and the axis form the chart declares.
+    | ChartAnnotationAxisMismatch of nodeId: string * index: int * addressForm: string * axisForm: string
+
+    /// **FUARAN140 (Error)**. An event marker whose `Date` address is not a
+    /// readable ISO-8601 date (Phase 1491, §4l).
+    ///
+    /// **The lowering's calendar is deliberately TOTAL and this is not a
+    /// disagreement with it.** An unparseable x CELL reads as 1970-01-01, because
+    /// FUARAN097 makes a non-date COLUMN loud upstream and refusing per-cell
+    /// would refuse a whole chart over one row. An annotation has no column to be
+    /// loud about: the string is authored directly, so nothing upstream can catch
+    /// it.
+    ///
+    /// And the damage is not local, which is what puts it in FUARAN137's class
+    /// rather than being a tidiness rule: §4l rule 3 has a temporal address ENTER
+    /// the axis extent before the ticks are chosen, so a typo does not misplace
+    /// one marker — it drags the domain back to the epoch and rescales every
+    /// mark, gridline and tick on the picture.
+    ///
+    /// **This is the AUTHORING path's gate and the decoder's is not redundant
+    /// with it**, on FUARAN137's two-populations argument: a decoded tree can
+    /// never carry one, and a tree built in F#, C# or VB never meets a decoder.
+    ///
+    /// Carries the chart node's id, the marker's per-case index, and the string
+    /// as authored.
+    | ChartAnnotationDateUnparseable of nodeId: string * index: int * iso: string
+
 /// Which `FieldRule` slot a control cannot honour (FUARAN100, Phase 864).
 /// Typed rather than a string so the honourable set stays enumerable: a slot
 /// added to `FieldRule` without a decision here will not compile.
@@ -1630,6 +1701,39 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             nodeId
             index
             value
+    | PreEmitDefect.ChartAnnotationKeyUngrounded(nodeId, index, key, occurrences) ->
+        "FUARAN138",
+        DefectSeverity.Error,
+        (if occurrences = 0 then
+             sprintf
+                 "chart '%s' event marker %d addresses the category '%s', which none of the rows carries — a band axis's domain IS the set of keys in its rows, so a key outside that set names no band to draw at. Use a key the x column carries, or declare xScale 'Temporal' and address a date (Phase 1491)"
+                 nodeId
+                 index
+                 key
+         else
+             sprintf
+                 "chart '%s' event marker %d addresses the category '%s', which %d rows carry — a marker is drawn at the band's CENTRE, and a duplicated key has two, so which one it lands on would depend on traversal order rather than on the data. Aggregate the rows to one per key, or address a key that appears once (Phase 1491)"
+                 nodeId
+                 index
+                 key
+                 occurrences)
+    | PreEmitDefect.ChartAnnotationAxisMismatch(nodeId, index, addressForm, axisForm) ->
+        "FUARAN139",
+        DefectSeverity.Error,
+        sprintf
+            "chart '%s' event marker %d carries a %s address on a %s x axis — an annotation addresses the axis in the axis's own form, and the language refuses the mismatch rather than coercing it (a date read as a category grounds against no band; a category read as a date lands on 1970-01-01). Give the address in the axis's form, or change the axis (Phase 1491)"
+            nodeId
+            index
+            addressForm
+            axisForm
+    | PreEmitDefect.ChartAnnotationDateUnparseable(nodeId, index, iso) ->
+        "FUARAN140",
+        DefectSeverity.Error,
+        sprintf
+            "chart '%s' event marker %d carries the date '%s', which is not a readable ISO-8601 day — a temporal address enters the axis extent before the ticks are chosen, so an unreadable one would place the marker at 1970-01-01 and drag the whole axis back with it. Give a canonical YYYY-MM-DD date naming a real calendar day (Phase 1491)"
+            nodeId
+            index
+            iso
     | PreEmitDefect.ChartPieSeriesShape(nodeId, seriesCount) ->
         "FUARAN088",
         DefectSeverity.Error,
@@ -3317,18 +3421,99 @@ let private validateCore
             // identities.
             spec.Annotations
             |> Option.defaultValue []
-            |> List.filter (fun a ->
+            |> List.choose (fun a ->
                 match a with
-                | ChartAnnotation.ReferenceLine _ -> true)
-            |> List.iteri (fun i a ->
-                match a with
-                | ChartAnnotation.ReferenceLine(v, _) ->
-                    if System.Double.IsNaN v then
-                        defects.Add(PreEmitDefect.ChartAnnotationNonFinite(nodeIdStr, i, "NaN"))
-                    elif System.Double.IsPositiveInfinity v then
-                        defects.Add(PreEmitDefect.ChartAnnotationNonFinite(nodeIdStr, i, "Infinity"))
-                    elif System.Double.IsNegativeInfinity v then
-                        defects.Add(PreEmitDefect.ChartAnnotationNonFinite(nodeIdStr, i, "-Infinity")))
+                | ChartAnnotation.ReferenceLine(v, _) -> Some v
+                | _ -> None)
+            |> List.iteri (fun i v ->
+                if System.Double.IsNaN v then
+                    defects.Add(PreEmitDefect.ChartAnnotationNonFinite(nodeIdStr, i, "NaN"))
+                elif System.Double.IsPositiveInfinity v then
+                    defects.Add(PreEmitDefect.ChartAnnotationNonFinite(nodeIdStr, i, "Infinity"))
+                elif System.Double.IsNegativeInfinity v then
+                    defects.Add(PreEmitDefect.ChartAnnotationNonFinite(nodeIdStr, i, "-Infinity")))
+
+            // FUARAN138/139/140 (Phase 1491) — the event marker's X ADDRESS,
+            // §4l rule 1's declared-not-sniffed posture made a refusal.
+            //
+            // PIE IS SILENT, matching the lowering, which neutralises the whole
+            // annotation family there (Phase 1490's treatment, itself Phase
+            // 882's for `xScale`): the polar arm HAS no x axis, so there is no
+            // axis form for an address to match or mismatch, and a code that
+            // fired on one would be reporting the absence of a space rather than
+            // a defect in the document.
+            (match spec.Kind with
+             | ChartKind.Pie -> ()
+             | _ ->
+                 let temporalX =
+                     match spec.XScale with
+                     | Some ChartXScale.Temporal -> true
+                     | _ -> false
+
+                 // The x is a BAND axis on exactly the arms the lowering draws
+                 // bands on (Phase 903's split): not Scatter, whose x is a
+                 // continuous numeric measure, and not a temporal declaration,
+                 // whose x is a continuous calendar. The two forms are named for
+                 // the reader here rather than derived at each use, because the
+                 // message quotes them.
+                 let bandX =
+                     not temporalX
+                     && (match spec.Kind with
+                         | ChartKind.Scatter -> false
+                         | _ -> true)
+
+                 let axisForm =
+                     if temporalX then "temporal"
+                     elif bandX then "band (category)"
+                     else "continuous numeric"
+
+                 /// The x labels the lowering will draw, when — and ONLY when —
+                 /// the rows are literally in the tree. `Binding.Static(Some …)`
+                 /// is the closed window; a `Ref`, a `Query` or a pipeline is an
+                 /// open one and the grounding stands down rather than guessing
+                 /// (the FUARAN086 posture). The projection is
+                 /// `HostPrelude.RowProjection`, which is the SAME function the
+                 /// lowering labels bands with — a second one would refuse keys
+                 /// the picture goes on to draw.
+                 let staticKeys: string list option =
+                     match spec.Source with
+                     | Binding.Static(Some rows) ->
+                         Some(
+                             rows
+                             |> Seq.map (fun r -> HostPrelude.RowProjection.string_ r spec.XField)
+                             |> List.ofSeq
+                         )
+                     | _ -> Option.None
+
+                 spec.Annotations
+                 |> Option.defaultValue []
+                 |> List.choose (fun a ->
+                     match a with
+                     | ChartAnnotation.EventMarker(at, _) -> Some at
+                     | _ -> Option.None)
+                 |> List.iteri (fun i at ->
+                     match at with
+                     | ChartAnnotationX.Category key ->
+                         if not bandX then
+                             defects.Add(PreEmitDefect.ChartAnnotationAxisMismatch(nodeIdStr, i, "category", axisForm))
+                         else
+                             match staticKeys with
+                             | Option.None -> ()
+                             | Some keys ->
+                                 let hits = keys |> List.filter (fun k -> k = key) |> List.length
+
+                                 if hits <> 1 then
+                                     defects.Add(PreEmitDefect.ChartAnnotationKeyUngrounded(nodeIdStr, i, key, hits))
+                     | ChartAnnotationX.Date iso ->
+                         // Both facts are reported when both hold: a date that
+                         // does not parse AND sits under a band axis has two
+                         // separate repairs, and naming one would leave the
+                         // author fixing it twice.
+                         if not (HostPrelude.IsoDate.isValid iso) then
+                             defects.Add(PreEmitDefect.ChartAnnotationDateUnparseable(nodeIdStr, i, iso))
+
+                         if not temporalX then
+                             defects.Add(PreEmitDefect.ChartAnnotationAxisMismatch(nodeIdStr, i, "date", axisForm))))
 
             // FUARAN086/087 — grounding over the schema the source PRODUCES
             // (Phase 1486), which since `Fuaran.Core.DataFrame` 0.18.0 shipped

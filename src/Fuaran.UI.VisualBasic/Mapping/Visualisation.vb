@@ -108,14 +108,44 @@ Friend Module VisualisationMapping
     ''' doing. The XML dialect has no way to spell "an empty list of annotations" and
     ''' does not need one — a chart with no annotations is written by not writing any.
     ''' </remarks>
+    ''' <remarks>
+    ''' Phase 1491 — &lt;EventMarker category="Q3" label="Repricing"/&gt; and
+    ''' &lt;EventMarker date="2026-02-14"/&gt; join it. TWO ATTRIBUTES rather than a
+    ''' nested address element, because the XML dialect has no spelling for a union
+    ''' and a child of a child would read as a third structural level where there is
+    ''' one address; declaring both, or neither, is refused HERE rather than reaching
+    ''' the tree, since a silently-dropped marker is the failure this dialect makes
+    ''' easiest to write.
+    ''' </remarks>
     Private Function ReadAnnotations(el As XElement) As IEnumerable(Of Csharp.ChartAnnotation)
-        Dim lines = ChildElements(el, "ReferenceLine").ToList()
-        If lines.Count = 0 Then Return Nothing
+        Dim annotations = New List(Of Csharp.ChartAnnotation)
 
-        Return lines.
-            Select(Function(r) Csharp.ChartAnnotation.ReferenceLine(
-                AttrDouble(r, "value", 0.0), OptText(r, "label"))).
-            ToList()
+        For Each r In ChildElements(el, "ReferenceLine")
+            annotations.Add(Csharp.ChartAnnotation.ReferenceLine(
+                AttrDouble(r, "value", 0.0), OptText(r, "label")))
+        Next
+
+        For Each m In ChildElements(el, "EventMarker")
+            Dim category = Attr(m, "category")
+            Dim isoDate = Attr(m, "date")
+
+            If Not String.IsNullOrEmpty(category) AndAlso Not String.IsNullOrEmpty(isoDate) Then
+                Throw New ArgumentException(
+                    "<EventMarker> carries both 'category' and 'date' — an event marker has ONE x address, in the form its axis uses.")
+            ElseIf Not String.IsNullOrEmpty(category) Then
+                annotations.Add(Csharp.ChartAnnotation.EventMarker(
+                    Csharp.ChartAnnotationX.Category(category), OptText(m, "label")))
+            ElseIf Not String.IsNullOrEmpty(isoDate) Then
+                annotations.Add(Csharp.ChartAnnotation.EventMarker(
+                    Csharp.ChartAnnotationX.Date(isoDate), OptText(m, "label")))
+            Else
+                Throw New ArgumentException(
+                    "<EventMarker> carries neither 'category' nor 'date' — an event marker is drawn AT an address, so it must name one.")
+            End If
+        Next
+
+        If annotations.Count = 0 Then Return Nothing
+        Return annotations
     End Function
 
     Private Function ReadMarkers(el As XElement) As IEnumerable(Of (Latitude As Double, Longitude As Double, Label As String))

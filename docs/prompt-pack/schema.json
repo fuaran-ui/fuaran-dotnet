@@ -7057,6 +7057,58 @@
             "$type",
             "value"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "EventMarker"
+            },
+            "at": {
+              "$ref": "#/$defs/ChartAnnotationX"
+            },
+            "label": {
+              "$ref": "#/$defs/TextSource"
+            }
+          },
+          "required": [
+            "$type",
+            "at"
+          ]
+        }
+      ]
+    },
+    "ChartAnnotationX": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Category"
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Date"
+            },
+            "iso": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "iso"
+          ]
         }
       ]
     },

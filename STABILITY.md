@@ -4831,3 +4831,66 @@ names no place on the value axis and, since an address participates in the domai
 take every gridline, tick and mark to NaN with it. And an annotation label is emitted `Emphasis.Quiet`,
 the only label in a lowered chart that is: it is the most subordinate text on the picture, and it is
 what makes the family identifiable in an emitted drawing at all.
+
+## Recorded change — 0.76.0, `ChartAnnotation.EventMarker` and `ChartAnnotationX` (fuaran#1491)
+
+**A case on a closed union plus a new closed union (minor — `FS0025` only, which is exactly the
+shape 1490 chose the union for).** `ChartAnnotation` gains
+`EventMarker of at: ChartAnnotationX * label: TextSource option`; `ChartAnnotationX` is a new closed
+union with `Category of key: string` and `Date of iso: string`. `ChartStyle` gains two constants.
+Nothing widens a record, so the FS0764 break 1490 paid for the family is not paid again — which is
+the version consequence the list-over-a-union decision was made for, arriving one phase later
+exactly as that entry said it would.
+
+```fsharp
+// Fuaran.UI.Generated — ChartAnnotation (case added)
+| EventMarker of at: ChartAnnotationX * label: TextSource option
+
+// Fuaran.UI.Generated — ChartAnnotationX (new), aliased as Fuaran.UI.Types.ChartAnnotationX
+| Category of key: string
+| Date of iso: string
+
+// Fuaran.UI.Charts — ChartStyle
+EventStrokeWidth: float            // 1.5
+EventOpacity: float                // 0.55
+```
+
+**Two shared predicates were PROMOTED to `Fuaran.UI.HostPrelude`, and that is the only structural
+move in the change.** `IsoDate` (the strict, calendar-aware ISO-8601 day recogniser) and
+`RowProjection` (the row-field-to-string projection) are now declared once and delegated to:
+`Charts.Temporal.tryParseDay` / `.isLeapYear` / `.daysInMonth` read the first, and
+`Renderer.BindingResolver.objToCellValue` / `.projectRowFieldValue` / `.projectRowFieldString` the
+second. Both are pure relocations — every value is identical and no golden moves — and both were
+forced by the same fact: a rule that REFUSES an authored address has to ask the same question the
+lowering asks, and the lowering's answers lived downstream of every refusing surface.
+
+**Three new pre-emit codes, and the sharpest of them is FUARAN140.** `FUARAN138` refuses a category
+key the rows do not carry, or carry twice (a marker sits at the band CENTRE, and a duplicated key has
+two). `FUARAN139` refuses an address in the form the axis does not use — a category key on a
+continuous x, a date on a band x — because §4l rule 1 declares the form rather than sniffing it.
+`FUARAN140` refuses a `Date` that names no calendar day, and it is not a tidiness rule: §4l rule 3
+has a temporal address ENTER the axis extent before the ticks are chosen, so a typo does not misplace
+one marker, it drags the domain back to 1970-01-01 and rescales every mark, gridline and tick. The
+wire decoder refuses the same string at the boundary (`reject-chart-annotation-date-unparseable`),
+on FUARAN137's two-populations argument: a decoded tree can never carry one, and a tree built in F#,
+C# or VB never meets a decoder.
+
+**The published schema deliberately says LESS than the decoder at one slot.**
+`ChartAnnotationX.Date.iso` is a bare `type: string` rather than a pattern, because Draft 2020-12 can
+express `YYYY-MM-DD` and cannot express that February has 28 days — so a pattern would admit
+`2026-02-30` where the decoder refuses it, and a schema that says something DIFFERENT from the
+decoder is worse than one that says less. It is the first entry of
+`schemaInexpressibleRejects` that is there by modelling choice rather than by a limit of the dialect.
+
+**A CORPUS EVENT on the same two counts as 1490.** The two `ChartStyle` defaults move the shipped
+style record every conformant host reproduces exactly; and three new goldens —
+`bar-event-single`, `line-temporal-events-five`, `line-temporal-events-collide` — plus one node
+fixture and one reject vector are in the shared corpus, so a host whose chart-lowering leg walks the
+directory sees them before its own arm exists. Porting the arms is fuaran#1493's whole job.
+
+**Label collision is resolved ALONG X, which is what the member added over 1490's.** An event
+marker's label budget runs to the NEXT marker's line rather than to the plot edge, so a label with no
+room is SUPPRESSED — never clipped, never overlapped, never nudged across a neighbour — and a
+suppressed label never suppresses its marker. `line-temporal-events-five` shows it biting on the
+surveyed article's own spacing rather than only on a case built to break it: three of five labels
+survive, and all five markers draw.

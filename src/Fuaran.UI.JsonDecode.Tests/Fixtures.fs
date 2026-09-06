@@ -3566,6 +3566,87 @@ let chartAnnotations: Node<obj> =
         ))
         None
 
+/// Phase 1491 (§4l) — the EVENT MARKER, in both x-address forms.
+///
+/// A SECOND fixture rather than two more members on `chartAnnotations` above,
+/// because that one's bytes are what pins 1490's "absent omits" claim from the
+/// other side: a corpus reader comparing the two commits sees one file added and
+/// none rewritten, which is the property, stated in the only place a byte
+/// comparison can read it.
+///
+/// The `Category` arm rides a BAND chart and the `Date` arm a TEMPORAL one,
+/// because a chart cannot carry both: §4l rule 1 makes the pairing a mismatch
+/// the validator refuses, so a single fixture holding both would be a document
+/// the language does not admit. Two charts under one `Box` is the shape that
+/// carries both codec arms without asserting an invalid tree.
+let chartAnnotationEvents: Node<obj> =
+    node
+        "chart-annotation-events"
+        (NodeKind.Box
+            { Layout = BoxLayout.Auto
+              Role = BoxRole.Dashboard
+              Heading = None
+              KeepTogether = false
+              BreakBefore = false
+              Children =
+                [ node
+                      "events-band"
+                      (NodeKind.Chart(
+                          { Defaults.chart with
+                              Source =
+                                  Binding.Static(
+                                      Some(
+                                          Seq.ofList
+                                              [ (Map.ofList [ "quarter", box "Q1"; "revenue", box 120 ]: Row)
+                                                Map.ofList [ "quarter", box "Q2"; "revenue", box 150 ]
+                                                Map.ofList [ "quarter", box "Q3"; "revenue", box 90 ]
+                                                Map.ofList [ "quarter", box "Q4"; "revenue", box 175 ] ]
+                                      )
+                                  )
+                              Kind = ChartKind.Bar
+                              XField = "quarter"
+                              YFields = [ "revenue" ]
+                              Title = Some(TextSource.Literal "Revenue by quarter")
+                              Annotations =
+                                  Some
+                                      [ ChartAnnotation.EventMarker(
+                                            ChartAnnotationX.Category "Q3",
+                                            Some(TextSource.Literal "Repricing")
+                                        ) ] }
+                      ))
+                      None
+                  node
+                      "events-temporal"
+                      (NodeKind.Chart(
+                          { Defaults.chart with
+                              Source =
+                                  Binding.Static(
+                                      Some(
+                                          Seq.ofList
+                                              [ (Map.ofList [ "day", box "2026-01-05"; "sessions", box 40 ]: Row)
+                                                Map.ofList [ "day", box "2026-02-05"; "sessions", box 65 ]
+                                                Map.ofList [ "day", box "2026-03-05"; "sessions", box 55 ] ]
+                                      )
+                                  )
+                              Kind = ChartKind.Line
+                              XField = "day"
+                              YFields = [ "sessions" ]
+                              XScale = Some ChartXScale.Temporal
+                              Title = Some(TextSource.Literal "Sessions by day")
+                              // The bare arm too: an event marker with no label
+                              // still draws its line, so the codec has to carry
+                              // the absence as an absence.
+                              Annotations =
+                                  Some
+                                      [ ChartAnnotation.EventMarker(
+                                            ChartAnnotationX.Date "2026-02-14",
+                                            Some(TextSource.Literal "Launch")
+                                        )
+                                        ChartAnnotation.EventMarker(ChartAnnotationX.Date "2026-03-01", None) ] }
+                      ))
+                      None ] })
+        None
+
 // ─── fuaran#665 — the Phase 663 editable-grid anchor (grid + chart on ONE state key) ──
 //
 // The corpus carried NO `editable: true` fixture at all, so the cross-host
@@ -6417,6 +6498,8 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Chart (Phase 882 — xScale: a temporal x-axis over ISO-8601 date cells)", chartTemporalX
       "Visualisation/Chart (Phase 1490 — annotations: two data-addressed reference lines, one labelled)",
       chartAnnotations
+      "Visualisation/Chart (Phase 1491 — annotations: event markers in both x-address forms, category and date)",
+      chartAnnotationEvents
       "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
       "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)", tableSortable
       "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)", gridSortStateKey

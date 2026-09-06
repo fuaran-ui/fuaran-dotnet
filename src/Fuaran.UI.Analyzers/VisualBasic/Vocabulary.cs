@@ -47,7 +47,10 @@ internal static class Vocabulary
         // annotation union. A repeated STRUCTURED slot again — a union case with
         // its own payload has no attribute spelling, so it takes the same
         // child-element shape as everything else on this line.
-        "Item", "TreeItem", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default", "Source", "Tone", "Track", "ReferenceLine");
+        //
+        // `EventMarker` is `ReferenceLine`'s sibling — the second arm of the same
+        // Phase 1491 annotation union, and a `<Chart>` child on the same terms.
+        "Item", "TreeItem", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default", "Source", "Tone", "Track", "ReferenceLine", "EventMarker");
 
     public static bool IsKnownElement(string name) => Kinds.Contains(name) || Structural.Contains(name);
 
@@ -286,6 +289,13 @@ internal static class Vocabulary
         // no attribute for a colour, an opacity, a dash, a side or an offset,
         // because §4l gives an annotation an address and a label and nothing else.
         Add("ReferenceLine", "value", "label");
+        // Phase 1491 — the event marker's x address, spelled as TWO attributes
+        // because the XML dialect has no spelling for a union. Exactly one of them
+        // is given: `category` names a band on a band axis, `date` an ISO-8601 day
+        // under a temporal one, and the mapping refuses both-or-neither rather than
+        // dropping a marker the author wrote. No side, no offset, no colour — §4l
+        // gives an annotation an address and a label and nothing else.
+        Add("EventMarker", "category", "date", "label");
         Add("Prop", "name", "value");
         return b.ToImmutable();
     }

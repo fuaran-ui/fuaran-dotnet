@@ -924,6 +924,35 @@ let all: RejectFixture list =
         Description =
           "chart annotation carrying the §7 NaN sentinel — the value slot is narrowed to the finite numbers (Phase 1490)" }
 
+      // ─── Chart annotation, unreadable event date (Phase 1491, §4l) ───────
+      //
+      // The TWIN of the non-finite narrowing above, one axis over, and it exists
+      // for the same reason rather than for tidiness. The lowering's calendar is
+      // deliberately TOTAL — an unparseable x CELL reads as 1970-01-01, because
+      // FUARAN097 makes a non-date COLUMN loud upstream and refusing per-cell
+      // would refuse a whole chart over one row. An event marker has no column to
+      // be loud about: the string is authored directly, so nothing upstream can
+      // catch it.
+      //
+      // And §4l rule 3 has a temporal address ENTER the axis extent before the
+      // ticks are chosen, so the damage is not local: a typo does not misplace
+      // one marker, it drags the domain back to the epoch and rescales every
+      // mark, gridline and tick. Wrong everywhere rather than at one line, which
+      // is the argument the `value` slot already makes.
+      //
+      // `WRONG_TYPE` at the address's own slot, naming the canonical spelling.
+      // Note `2026-13-05` is refused for the CALENDAR reason and not merely the
+      // shape — the predicate knows how many months a year has, which is what
+      // separates this from a regex a published schema could carry.
+      { Id = "reject-chart-annotation-date-unparseable"
+        Json =
+          """{"id":"c1","kind":{"$type":"Chart","annotations":[{"$type":"EventMarker","at":{"$type":"Date","iso":"2026-13-05"}}],"kind":"Line","source":{"$type":"Static","value":[]},"stacked":false,"xField":"day","xScale":"Temporal","yFields":["sessions"]}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.annotations[0].at.iso"
+        IsOp = false
+        Description =
+          "chart event marker addressing a date that names no calendar day — the address is what the marker is drawn at, and an unreadable one would place it at 1970-01-01 and drag the axis back with it (Phase 1491)" }
+
       // ─── TonedPill tone-map values (Phase 750) ───────────────────────────
       //
       // The declarative pill's `map` VALUES are `ToneVariant`s, and a tone name

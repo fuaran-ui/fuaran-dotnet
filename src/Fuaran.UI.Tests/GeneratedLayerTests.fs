@@ -699,10 +699,25 @@ let generatedLayerTests =
               //    schema gives this slot a bare `type: number` where every
               //    other float slot gets the sentinel-widened `anyOf` — so like
               //    the near misses it stays out of `schemaInexpressibleRejects`.
+              //  - an event marker's unreadable DATE (Phase 1491) is the SIXTH
+              //    instance of the value-bound class and the second over a
+              //    string, after the empty upload destination. Same mechanism:
+              //    the IDL declares `iso` as `TStr` and has no refined-string
+              //    type, so the generated decoder reads a plain string and
+              //    accepts, while the policy decoder applies the calendar. It is
+              //    the first of the class whose floor is not expressible as a
+              //    LENGTH or a RANGE, and that is why it joins
+              //    `schemaInexpressibleRejects` where the other five do not: the
+              //    published schema gives the slot a bare `type: string`
+              //    deliberately, because a `pattern` that admitted `2026-02-30`
+              //    would make the schema disagree with the decoder, and a schema
+              //    that says LESS than the decoder is honest where one that says
+              //    something DIFFERENT is not.
               Expect.equal
                   policyOwned
                   [ "reject-action-print-with-payload.json"
                     "reject-box-masonry-nonpositive-cols.json"
+                    "reject-chart-annotation-date-unparseable.json"
                     "reject-chart-annotation-nonfinite.json"
                     "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"

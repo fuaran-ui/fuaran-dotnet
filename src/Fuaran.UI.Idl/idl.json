@@ -6108,9 +6108,70 @@
             }
           ],
           "tag": "ReferenceLine"
+        },
+        {
+          "fields": [
+            {
+              "name": "at",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "union",
+                "args": [],
+                "name": "ChartAnnotationX"
+              }
+            },
+            {
+              "name": "label",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "union",
+                "args": [],
+                "name": "TextSource"
+              }
+            }
+          ],
+          "tag": "EventMarker"
         }
       ],
       "name": "ChartAnnotation",
+      "params": []
+    },
+    {
+      "cases": [
+        {
+          "fields": [
+            {
+              "name": "key",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "str"
+              }
+            }
+          ],
+          "tag": "Category"
+        },
+        {
+          "fields": [
+            {
+              "name": "iso",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "str"
+              }
+            }
+          ],
+          "tag": "Date"
+        }
+      ],
+      "name": "ChartAnnotationX",
       "params": []
     },
     {

@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.Vocabulary
+module Fuaran.UI.Vocabulary
 
 open Fuaran.Core.Idl
 
@@ -2704,12 +2704,42 @@ let private shape =
 /// VALUE axis's own units, with an optional `TextSource` label carried
 /// unresolved (the Phase 1143 text contract).
 /// [Phase 1491](event marker) and [Phase 1492](range band) add a case each.
+/// Phase 1491 — an annotation's X ADDRESS: the two forms the x axis already
+/// distinguishes (§4l "The three addressing forms", taking §4h's split
+/// wholesale). A `Category` key names a band on a band axis; a `Date` names an
+/// instant under `XScale = Temporal`. DECLARED, never sniffed — a `Category`
+/// address under a temporal scale, or a `Date` under a band axis, is a mismatch
+/// the validator refuses rather than a coercion.
+///
+/// Its own type rather than two inline fields on `EventMarker`, because
+/// [Phase 1492](the range band) addresses an x-axis band with a PAIR of exactly
+/// these, and a pair of an inline shape has nothing to be a pair of.
+let private chartAnnotationX =
+    { Name = "ChartAnnotationX"
+      Params = []
+      Cases =
+        [ { Tag = "Category"
+            Fields = [ req "key" TStr ]
+            Annotations = Annotations.Empty }
+          { Tag = "Date"
+            Fields = [ req "iso" TStr ]
+            Annotations = Annotations.Empty } ] }
+
 let private chartAnnotation =
     { Name = "ChartAnnotation"
       Params = []
       Cases =
         [ { Tag = "ReferenceLine"
             Fields = [ req "value" TFloat; opt "label" TS ]
+            Annotations = Annotations.Empty }
+          // Phase 1491 — the EVENT MARKER: a vertical line at an x address,
+          // with an optional label. The mirror of `ReferenceLine` across the
+          // axes, and §4l rule 2 is why there is exactly one of each: a vertical
+          // line at a date has ONE spelling, so the near-synonym pair that would
+          // be this family's worst confusion risk does not exist to be taught
+          // against.
+          { Tag = "EventMarker"
+            Fields = [ req "at" (TUnion("ChartAnnotationX", [])); opt "label" TS ]
             Annotations = Annotations.Empty } ] }
 
 /// Phase 679 — a `Switch` case: the match string plus the node it selects. The
@@ -2907,6 +2937,7 @@ let uiIdl: Idl =
           fragmentArg
           curveCommand
           shape
+          chartAnnotationX
           chartAnnotation ]
       Enums =
         [ headingVariant

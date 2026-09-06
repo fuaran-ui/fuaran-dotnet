@@ -1432,7 +1432,25 @@ let private defs: (string * J) list =
       // to NaN with it. The schema and the decoder therefore agree, which is the
       // property that makes a published schema worth having.
       "ChartAnnotation",
-      union [ duCase "ReferenceLine" [ "value" ] [ "value", finiteNumber; "label", ref "TextSource" ] ]
+      union
+          [ duCase "ReferenceLine" [ "value" ] [ "value", finiteNumber; "label", ref "TextSource" ]
+            // Phase 1491 — the event marker. Its address is the separate
+            // `ChartAnnotationX` union rather than two inline members, because
+            // the range band addresses an x-axis band with a PAIR of exactly
+            // these and a pair of an inline shape has nothing to be a pair of.
+            duCase "EventMarker" [ "at" ] [ "at", ref "ChartAnnotationX"; "label", ref "TextSource" ] ]
+
+      // Phase 1491 (§4l) — the x address, in the two forms the axis already
+      // distinguishes. The `iso` slot is a bare `type: string` here and NOT a
+      // pattern: the decoder's refusal is calendar-aware (it rejects
+      // `2026-02-30`), and a regex that admitted it would make the published
+      // schema disagree with the decoder — which is exactly the property the
+      // `finiteNumber` slot above exists to preserve. A schema that says LESS
+      // than the decoder is honest; one that says something DIFFERENT is not.
+      "ChartAnnotationX",
+      union
+          [ duCase "Category" [ "key" ] [ "key", str ]
+            duCase "Date" [ "iso" ] [ "iso", str ] ]
 
       "MapMarker",
       record [ "label"; "latitude"; "longitude" ] [ "label", ref "TextSource"; "latitude", number; "longitude", number ]

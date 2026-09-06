@@ -1202,7 +1202,84 @@ let private cases: Case list =
                         250.0,
                         Some(TextSource.Bound(Binding.Static(Some "the SLO, from the live binding")))
                     ) ]
-          Rows = [ "W1", [ 180.0 ]; "W2", [ 240.0 ]; "W3", [ 210.0 ]; "W4", [ 300.0 ] ] } ]
+          Rows = [ "W1", [ 180.0 ]; "W2", [ 240.0 ]; "W3", [ 210.0 ]; "W4", [ 300.0 ] ] }
+      // ── Phase 1491 (§4l) — the event marker, the family's second member ──
+      //
+      // Three cases, one per fact the others cannot carry: the BAND address, the
+      // TEMPORAL address at the shape the member was demanded for, and the
+      // COLLISION rule that is why this member earned its own phase.
+      { plain with
+          // THE BAND ADDRESS, and Phase 903's split applied to an address rather
+          // than to a datum. The marker sits at Q3's band CENTRE — the same place
+          // Q3's own label sits — because a band has an extent and not a
+          // position, so its centre is the only x that means "Q3" rather than
+          // "the edge between Q2 and Q3".
+          //
+          // One marker, labelled, on the plainest chart in the corpus: this
+          // golden's job is the placement, the full-height line, the mark id and
+          // the draw order, and a second marker would put the collision gate's
+          // outcome into the same bytes.
+          Name = "bar-event-single"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields = [ "revenue" ]
+          Title = Some(lit "Revenue by quarter")
+          Annotations = Some [ ChartAnnotation.EventMarker(ChartAnnotationX.Category "Q3", Some(lit "Repricing")) ]
+          Rows = [ "Q1", [ 120.0 ]; "Q2", [ 150.0 ]; "Q3", [ 90.0 ]; "Q4", [ 175.0 ] ] }
+      { plain with
+          // THE SHAPE THE MEMBER WAS DEMANDED FOR — five shocks over a
+          // thirty-year series, which is the surveyed article's chart and the
+          // recorded demand behind this phase. It is also where §4l rule 3 shows
+          // on the X axis: every marker's date joins the extent BEFORE the
+          // calendar rung is chosen, so the axis is the axis of the picture that
+          // is drawn rather than of the data alone.
+          //
+          // THREE OF THE FIVE LABELS SURVIVE, and that was measured rather than
+          // intended: the first three events are years apart and their labels
+          // fit, while 2020 and 2022 are thirty months apart on a thirty-year
+          // axis — about sixty pixels — and "Pandemic" and "Mini-budget" do not.
+          // Left as it fell, because it is the more useful fixture: the gate
+          // bites at DECADE scale on real spacing, not only at the day scale the
+          // case below exercises deliberately, and all five markers still draw.
+          // `bar-event-single` above is the control where a label fits.
+          Name = "line-temporal-events-five"
+          Kind = ChartKind.Line
+          XField = "year"
+          YFields = [ "output" ]
+          Title = Some(lit "Output, 1996–2025")
+          XScale = Some "Temporal"
+          Annotations =
+              Some
+                  [ ChartAnnotation.EventMarker(ChartAnnotationX.Date "2000-03-10", Some(lit "Dot-com"))
+                    ChartAnnotation.EventMarker(ChartAnnotationX.Date "2008-09-15", Some(lit "GFC"))
+                    ChartAnnotation.EventMarker(ChartAnnotationX.Date "2016-06-23", Some(lit "Brexit"))
+                    ChartAnnotation.EventMarker(ChartAnnotationX.Date "2020-03-11", Some(lit "Pandemic"))
+                    ChartAnnotation.EventMarker(ChartAnnotationX.Date "2022-09-23", Some(lit "Mini-budget")) ]
+          Rows = seriesOver (isoYears 1996 30) }
+      { plain with
+          // THE COLLISION RULE, which is why the event marker is its own phase
+          // rather than a second case on 1490's. Three markers within four days
+          // of a thirty-day span: each label's width budget runs to its
+          // NEIGHBOUR's line, so the first two have a few pixels and are
+          // SUPPRESSED, and the last runs to the plot edge and is drawn.
+          //
+          // What that pins is the half of Phase 881's rule the reference line
+          // could not exercise: never clipped, never overlapped, never nudged
+          // across another marker — and a suppressed label does not suppress its
+          // marker, so all three lines are in the bytes with one label among
+          // them.
+          Name = "line-temporal-events-collide"
+          Kind = ChartKind.Line
+          XField = "day"
+          YFields = [ "sessions" ]
+          Title = Some(lit "Sessions by day")
+          XScale = Some "Temporal"
+          Annotations =
+              Some
+                  [ ChartAnnotation.EventMarker(ChartAnnotationX.Date "2026-01-10", Some(lit "First review window"))
+                    ChartAnnotation.EventMarker(ChartAnnotationX.Date "2026-01-12", Some(lit "Second review window"))
+                    ChartAnnotation.EventMarker(ChartAnnotationX.Date "2026-01-14", Some(lit "Sign-off")) ]
+          Rows = seriesOver (isoRun "2026-01-05" 1 30) } ]
 
 /// Build the typed `Row` rows (the canonical embedded-data shape; fuaran#665
 /// named the slot — the representation is the same `Map<string,obj>`).
@@ -1569,15 +1646,33 @@ let private inputJson (case: Case) : string =
         + (match case.Annotations with
            | None -> ""
            | Some anns ->
+               let labelPart (label: TextSource option) =
+                   match label with
+                   | None -> ""
+                   | Some t -> ",\"label\":" + textSourceJson t
+
+               // Phase 1491 — the x address is its own union, so it is its own
+               // canonical object: `$type` then the one payload member.
+               let addressJson (at: ChartAnnotationX) =
+                   match at with
+                   | ChartAnnotationX.Category key -> "{\"$type\":\"Category\",\"key\":\"" + esc key + "\"}"
+                   | ChartAnnotationX.Date iso -> "{\"$type\":\"Date\",\"iso\":\"" + esc iso + "\"}"
+
                let one (a: ChartAnnotation) =
                    match a with
                    | ChartAnnotation.ReferenceLine(v, label) ->
-                       let labelPart =
+                       let l =
                            match label with
                            | None -> ""
                            | Some t -> "\"label\":" + textSourceJson t + ","
 
-                       "{\"$type\":\"ReferenceLine\"," + labelPart + "\"value\":" + num v + "}"
+                       "{\"$type\":\"ReferenceLine\"," + l + "\"value\":" + num v + "}"
+                   | ChartAnnotation.EventMarker(at, label) ->
+                       // `at` sorts before `label` (Ordinal), so the label rides
+                       // AFTER the address here where a reference line's rides
+                       // before its value — the canonical order is the members'
+                       // own, not a per-case convention.
+                       "{\"$type\":\"EventMarker\",\"at\":" + addressJson at + labelPart label + "}"
 
                ",\"annotations\":[" + (anns |> List.map one |> String.concat ",") + "]")
 
@@ -4098,4 +4193,240 @@ let chartLoweringTests =
                           (CanonicalJson.encodeNode (Fuaran.drawingSpec "c" ds))
                           (CanonicalJson.encodeNode (Fuaran.drawingSpec "c" clean))
                           (sprintf "a %f annotation is dropped and the rest of the chart is unmoved" bad)
+              }
+
+              // ── Phase 1491 (§4l) — the event marker's own rules. Same posture
+              //    as the 1490 block above: the goldens pin the bytes, these say
+              //    why those bytes are the right ones.
+
+              test "a category address sits at the BAND CENTRE — the same x its own label does" {
+                  // Phase 903's split applied to an ADDRESS. A band has an extent
+                  // and not a position, so the only x that means "Q3" rather than
+                  // "the edge between Q2 and Q3" is the band's centre — which is
+                  // where the band's own label already sits, and comparing the two
+                  // is what makes this a statement about the axis rather than
+                  // about an arithmetic the test would be repeating.
+                  let ds = loweredCase "bar-event-single"
+
+                  let markerX =
+                      ds.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Line(x1, _, _, _, s) when s.MarkId = Some "annotation|event|0" -> Some x1
+                          | _ -> None)
+
+                  let labelX =
+                      ds.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Label(x, _, TextSource.Literal "Q3", _) -> Some x
+                          | _ -> None)
+
+                  Expect.equal markerX labelX "the marker stands where the band it names is labelled"
+
+                  // Full height, not a stub: the marker crosses the whole plot,
+                  // which is what lets a reader line every series up against it.
+                  let y1, y2 =
+                      ds.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Line(_, a, _, b, s) when s.MarkId = Some "annotation|event|0" -> Some(a, b)
+                          | _ -> None)
+
+                  let plotTop =
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Line(_, a, _, b, _) when a = b -> Some a
+                          | _ -> None)
+                      |> List.min
+
+                  Expect.equal y1 plotTop "the marker starts at the top of the plot"
+                  Expect.isTrue (y2 > y1) "…and runs down it"
+              }
+
+              test "a temporal address WIDENS the extent — a marker past the last datum is drawn, not clamped" {
+                  // §4l rule 3 on the X axis, and the mirror of the value-axis
+                  // test above. Without the widening a later date maps past the
+                  // plot's right edge and is drawn off the picture; clamping it
+                  // instead would draw the event at a date that is not the date
+                  // declared, which is the same defect the 260 target measures on
+                  // the other axis.
+                  let case = cases |> List.find (fun c -> c.Name = "line-temporal-events-collide")
+
+                  let lastPointX (ds: DrawingSpec) =
+                      ds.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Polyline(points, _) -> Some (points |> List.last).X
+                          | _ -> None)
+
+                  let plotRight (ds: DrawingSpec) =
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Line(_, a, x2, b, _) when a = b -> Some x2
+                          | _ -> None)
+                      |> List.max
+
+                  let bare =
+                      Charts.lower { specOf case with Annotations = None } (Seq.ofList (buildRows case))
+
+                  // The control: with no annotation the domain IS the data's own
+                  // extent (§4h rule 2, unexpanded), so the last datum sits ON the
+                  // right edge — which is exactly why a LATER marker has nowhere
+                  // to go unless the extent moves.
+                  Expect.equal (lastPointX bare) (plotRight bare) "the unannotated chart ends at its last datum"
+
+                  let beyond =
+                      { specOf case with
+                          Annotations =
+                              Some [ ChartAnnotation.EventMarker(ChartAnnotationX.Date "2026-06-01", Option.None) ] }
+
+                  let widened = Charts.lower beyond (Seq.ofList (buildRows case))
+
+                  let markerX =
+                      widened.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Line(x1, _, _, _, s) when s.MarkId = Some "annotation|event|0" -> Some x1
+                          | _ -> None)
+
+                  Expect.isTrue
+                      (lastPointX widened < markerX)
+                      "the marker sits after the last datum, which has moved off the edge to make room"
+
+                  Expect.isTrue (markerX <= plotRight widened + 0.01) "…and is still on the picture rather than past it"
+              }
+
+              test "mark identity is PER CASE — a reference line and an event marker never renumber each other" {
+                  // §4l's "per-case, not whole-list" clause, which is the property
+                  // that lets a later member be added without moving an existing
+                  // annotation's identity. Interleaved deliberately: a whole-list
+                  // ordinal would number these 0, 1, 2 in document order and the
+                  // event ids would depend on where the reference line was written.
+                  let case = cases |> List.find (fun c -> c.Name = "bar-event-single")
+
+                  let mixed =
+                      { specOf case with
+                          Annotations =
+                              Some
+                                  [ ChartAnnotation.EventMarker(ChartAnnotationX.Category "Q2", Option.None)
+                                    ChartAnnotation.ReferenceLine(140.0, Option.None)
+                                    ChartAnnotation.EventMarker(ChartAnnotationX.Category "Q4", Option.None) ] }
+
+                  let ids =
+                      (Charts.lower mixed (Seq.ofList (buildRows case))).Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Line(_, _, _, _, s) -> s.MarkId
+                          | _ -> None)
+                      |> List.filter (fun id -> id.StartsWith "annotation|")
+
+                  Expect.equal
+                      (List.sort ids)
+                      [ "annotation|event|0"; "annotation|event|1"; "annotation|reference|0" ]
+                      "each case counts its own subsequence from zero"
+              }
+
+              test "colliding labels are SUPPRESSED one by one, and every marker still draws its line" {
+                  // Phase 881's rule along X — the half a horizontal reference
+                  // line structurally cannot exercise, and the reason this member
+                  // earned its own phase. Each label's budget runs to its
+                  // NEIGHBOUR's line, so the two crowded ones go and the last,
+                  // whose budget runs to the plot edge, stays. Suppression is
+                  // per-label rather than all-or-nothing, and it never takes the
+                  // marker with it.
+                  let ds = loweredCase "line-temporal-events-collide"
+
+                  let markerIds =
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Line(_, _, _, _, s) -> s.MarkId
+                          | _ -> None)
+                      |> List.filter (fun id -> id.StartsWith "annotation|event|")
+
+                  Expect.equal
+                      markerIds
+                      [ "annotation|event|0"; "annotation|event|1"; "annotation|event|2" ]
+                      "all three markers draw, however little room their labels have"
+
+                  let texts = literalTexts ds
+
+                  Expect.isFalse (List.contains "First review window" texts) "the first label had no room and is gone"
+                  Expect.isFalse (List.contains "Second review window" texts) "…and so had the second"
+                  Expect.isTrue (List.contains "Sign-off" texts) "the last one runs to the plot edge and is drawn"
+
+                  // The same rule at DECADE scale, which is not a repetition: the
+                  // day-scale case above is contrived to collide, and this one is
+                  // the surveyed article's own spacing. Thirty years across the
+                  // plot leaves the first three events room and the last two —
+                  // thirty months apart — without it, so the gate is shown biting
+                  // on real data rather than only on a case built to break it.
+                  let decade = literalTexts (loweredCase "line-temporal-events-five")
+
+                  Expect.equal
+                      (decade
+                       |> List.filter (fun t -> t = "Dot-com" || t = "GFC" || t = "Brexit")
+                       |> List.length)
+                      3
+                      "the three well-spaced events keep their labels"
+
+                  Expect.isFalse
+                      (List.contains "Pandemic" decade || List.contains "Mini-budget" decade)
+                      "…and the two crowded ones do not"
+              }
+
+              test "an address in the WRONG FORM reaches no geometry — the lowering stays total" {
+                  // The third gate, exactly as the non-finite filter is. §4l rule
+                  // 1's mismatch is refused pre-emit (FUARAN139) and a category
+                  // address names no band on a temporal axis anyway; what this
+                  // pins is that a lowering handed one through a construction site
+                  // neither gate sits on draws the chart it can, rather than
+                  // placing a marker at a coordinate the axis does not have.
+                  let band = cases |> List.find (fun c -> c.Name = "bar-event-single")
+                  let temporal = cases |> List.find (fun c -> c.Name = "line-temporal-events-five")
+
+                  let unchangedBy (case: Case) (bad: ChartAnnotation) (why: string) =
+                      let node (spec: ChartSpec<obj>) : Node<obj> =
+                          Fuaran.drawingSpec "c" (Charts.lower spec (Seq.ofList (buildRows case)))
+
+                      Expect.equal
+                          (CanonicalJson.encodeNode (
+                              node
+                                  { specOf case with
+                                      Annotations = Some [ bad ] }
+                          ))
+                          (CanonicalJson.encodeNode (
+                              node
+                                  { specOf case with
+                                      Annotations = Option.None }
+                          ))
+                          why
+
+                  unchangedBy
+                      band
+                      (ChartAnnotation.EventMarker(ChartAnnotationX.Date "2026-02-14", Some(lit "Launch")))
+                      "a DATE address on a band axis draws nothing"
+
+                  unchangedBy
+                      temporal
+                      (ChartAnnotation.EventMarker(ChartAnnotationX.Category "Q3", Some(lit "Repricing")))
+                      "a CATEGORY address on a temporal axis draws nothing"
+
+                  unchangedBy
+                      band
+                      (ChartAnnotation.EventMarker(ChartAnnotationX.Category "Q9", Some(lit "Nowhere")))
+                      "a category key no row carries draws nothing"
+
+                  // And the polar arm is NEUTRALISED for this member exactly as it
+                  // is for the reference line: a pie has no x axis, so an address
+                  // on it names nothing at all.
+                  let pie = cases |> List.find (fun c -> c.Name = "pie-single")
+
+                  unchangedBy
+                      pie
+                      (ChartAnnotation.EventMarker(ChartAnnotationX.Category "North", Some(lit "Anything")))
+                      "a pie lowers identically with and without an event marker"
               } ]

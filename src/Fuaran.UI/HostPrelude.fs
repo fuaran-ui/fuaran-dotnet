@@ -223,3 +223,120 @@ module HexColor =
     /// is the auto-bind placeholder for a `Color` field (`Defaults`), so decode,
     /// encode and the resolver all name the same literal once.
     let unset: string = "#000000"
+
+// ─── Canonical ISO-8601 DATE recognition (Phase 1491 — the event marker's date
+//     address). Promoted here, ahead of `Generated.fs`, so the wire decoder, the
+//     pre-emit validator and the chart lowering's temporal calendar read ONE
+//     definition of "is this string a date". Before this, only the lowering
+//     could answer — and the lowering is TOTAL by design (an unparseable cell
+//     reads as the epoch), so a decoder or a validator that wanted to REFUSE one
+//     had nowhere to ask. ────────────────────────────────────────────────────
+
+[<RequireQualifiedAccess>]
+module IsoDate =
+
+    /// Gregorian leap year (proleptic — the rule applies to every year admitted
+    /// below, with no historical exception).
+    let isLeapYear (y: int) : bool =
+        (y % 4 = 0 && y % 100 <> 0) || y % 400 = 0
+
+    /// Days in a month — the one place the calendar's irregularity is written
+    /// down, so `2026-02-30` is refused for the calendar reason rather than
+    /// admitted on shape alone.
+    let daysInMonth (y: int) (m: int) : int =
+        if m = 2 then (if isLeapYear y then 29 else 28)
+        elif m = 4 || m = 6 || m = 9 || m = 11 then 30
+        else 31
+
+    /// `(year, month, day)` for a canonical ISO-8601 date — `YYYY-MM-DD`,
+    /// optionally followed by `T…`, whose time-of-day is DISCARDED. `None` for
+    /// everything else.
+    ///
+    /// STRICT by shape AND by calendar: four digits, two, two, both hyphens, a
+    /// month in 1–12 and a day the month actually has. A locale spelling
+    /// (`15/01/2026`) and a bare year are both refused — admitting either would
+    /// be the string-sniffing the temporal axis exists to avoid, and a date
+    /// address that quietly read as something else would move a whole axis.
+    let tryParts (text: string) : (int * int * int) option =
+        let digits (start: int) (len: int) : int option =
+            let mutable ok = start + len <= text.Length
+            let mutable acc = 0
+
+            if ok then
+                for k in start .. start + len - 1 do
+                    let c = text[k]
+
+                    if c >= '0' && c <= '9' then
+                        acc <- acc * 10 + (int c - int '0')
+                    else
+                        ok <- false
+
+            if ok then Some acc else None
+
+        if text.Length < 10 then
+            None
+        elif text[4] <> '-' || text[7] <> '-' then
+            None
+        elif text.Length > 10 && text[10] <> 'T' then
+            None
+        else
+            match digits 0 4, digits 5 2, digits 8 2 with
+            | Some y, Some m, Some d when m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth y m -> Some(y, m, d)
+            | _ -> None
+
+    /// `true` when `text` is a canonical ISO-8601 date the temporal axis can
+    /// place. The predicate half of `tryParts`, for the callers that only refuse.
+    let isValid (text: string) : bool = (tryParts text).IsSome
+
+// ─── Row-field projection (promoted by Phase 1491). The row-key / band-label
+//     floor: what STRING a named field of a `Row` presents as. It lived in the
+//     renderer's binding resolver, which is downstream of the pre-emit
+//     validator — so a validator rule that has to ground an authored key against
+//     the labels the lowering will draw could not reach it. Promoted rather than
+//     re-derived, on `MediaCapture`'s reasoning: two definitions of "what does
+//     this cell read as" is exactly how a grounding rule ends up refusing a key
+//     the picture goes on to draw. The resolver now delegates here. ───────────
+
+[<RequireQualifiedAccess>]
+module RowProjection =
+
+    /// Classify a boxed row cell. An unrecognised type is `Empty` rather than a
+    /// failure: the projection is TOTAL, and the language's grounding rules —
+    /// not this function — are what make a wrong column loud.
+    ///
+    /// `int` / `int64` / `float` all collapse to `Numeric`
+    /// (cross-host-deterministic — JS erases the int/float distinction).
+    /// A null cell is `Empty`, and it is spelled with `ReferenceEquals` rather
+    /// than a `| null ->` arm: this file compiles under F# 10 nullness, where
+    /// `obj` does not admit `null` (FS3261), and the alternative is a file-wide
+    /// `#nowarn` on a SHIPPED source file to state something one call can say.
+    let ofObj (v: obj) : CellValue =
+        if System.Object.ReferenceEquals(v, null) then
+            CellValue.Empty
+        else
+
+            match v with
+            | :? string as s -> CellValue.Text s
+            | :? bool as b -> CellValue.Bool b
+            | :? float as f -> CellValue.Numeric f
+            | :? int as i -> CellValue.Numeric(float i)
+            | :? int64 as i -> CellValue.Numeric(float i)
+            | :? System.DateTimeOffset as d -> CellValue.Date d
+            | _ -> CellValue.Empty
+
+    /// Project a named field off a `Row` to a `CellValue`; a missing key is
+    /// `CellValue.Empty`.
+    let value (row: Row) (field: string) : CellValue =
+        match Map.tryFind field row with
+        | Some v -> ofObj v
+        | None -> CellValue.Empty
+
+    /// Project a named field off a `Row` to a string. Empty string when the
+    /// field is missing (the caller may fall back to the row index).
+    let string_ (row: Row) (field: string) : string =
+        match value row field with
+        | CellValue.Text s -> s
+        | CellValue.Numeric f -> string f
+        | CellValue.Bool b -> (if b then "true" else "false")
+        | CellValue.Date d -> d.ToString("o")
+        | CellValue.Empty -> ""

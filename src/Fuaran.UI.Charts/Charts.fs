@@ -186,6 +186,11 @@ type ChartDataLabels = Fuaran.UI.Types.ChartDataLabels
 /// emits nothing, so a pre-1490 spec draws a pre-1490 picture byte-for-byte.
 type ChartAnnotation = Fuaran.UI.Types.ChartAnnotation
 
+/// An annotation's x address (Phase 1491 — §4l). A WIRE vocabulary
+/// (`ChartAnnotation.EventMarker`'s `at`), re-exported here on the same terms as
+/// the four above.
+type ChartAnnotationX = Fuaran.UI.Types.ChartAnnotationX
+
 /// How a value axis states its DISPLAY UNIT once a large magnitude has been
 /// scaled by a power of ten (Phase 876).
 ///
@@ -525,6 +530,12 @@ type ChartStyle =
         /// Well above `GridOpacity` — a threshold a reader is meant to see —
         /// and below `AxisOpacity`, because it is not a boundary of the space.
         ReferenceOpacity: float
+        /// Stroke width of an event marker's vertical line (Phase 1491). Only
+        /// the INK is new: the marker's LABEL takes the family constants below,
+        /// which is what Phase 1490 named them for the family to buy.
+        EventStrokeWidth: float
+        /// Per-role opacity for an event marker's ink (`ChartStyle.Ink`, D8).
+        EventOpacity: float
         /// Font size of an annotation's label. One step below `TickFontSize`,
         /// on `DataLabelFontSize`'s reasoning: a tick sits outside the plot in
         /// a column of its own, an annotation label sits INSIDE it beside the
@@ -674,6 +685,16 @@ module ChartStyle =
           // restyle the other.
           ReferenceStrokeWidth = 1.5
           ReferenceOpacity = 0.55
+          // Phase 1491 — the event marker's ink, matching the reference line's
+          // by VALUE rather than by reference. The two are the same weight of
+          // statement across the two axes, so they should read alike; separate
+          // constants because a host that wanted to distinguish them (a dashed
+          // event line, say, once a dash vocabulary exists) must be able to
+          // without moving the horizontal one. Adding these two moves the
+          // shipped style record, which is a CORPUS EVENT for every conformant
+          // host even though no pre-1491 golden's bytes change.
+          EventStrokeWidth = 1.5
+          EventOpacity = 0.55
           AnnotationLabelFontSize = 12.0
           AnnotationLabelOffsetX = 6.0
           AnnotationLabelNudgeY = 5.0
@@ -1371,15 +1392,18 @@ module Temporal =
 
     /// Gregorian leap year (proleptic — the rule applies to every year the
     /// parser admits, with no historical exception).
-    let isLeapYear (y: int) : bool =
-        (y % 4 = 0 && y % 100 <> 0) || y % 400 = 0
+    ///
+    /// Phase 1491 — the body moved to `HostPrelude.IsoDate`, which compiles
+    /// ahead of the decoder and the pre-emit validator. Both of those now REFUSE
+    /// an unparseable annotation date, and this lowering reads one as the epoch
+    /// (below); those are two answers to one question, so they must be asked of
+    /// one calendar. The rule stated in §4h is unchanged, and the values are
+    /// identical — only the home moved.
+    let isLeapYear (y: int) : bool = HostPrelude.IsoDate.isLeapYear y
 
     /// Days in a month — the one place the calendar's irregularity is written
     /// down, used by the PARSER only (the conversions below need no table).
-    let daysInMonth (y: int) (m: int) : int =
-        if m = 2 then (if isLeapYear y then 29 else 28)
-        elif m = 4 || m = 6 || m = 9 || m = 11 then 30
-        else 31
+    let daysInMonth (y: int) (m: int) : int = HostPrelude.IsoDate.daysInMonth y m
 
     /// `(y, m, d)` → days since 1970-01-01. Hinnant's `days_from_civil`: exact
     /// for every proleptic-Gregorian date, no leap table, integer-only.
@@ -1415,32 +1439,8 @@ module Temporal =
     /// else, including a locale spelling ("15/01/2026") and a bare year —
     /// admitting either would be the string-sniffing this axis exists to avoid.
     let tryParseDay (text: string) : int option =
-        let digits (start: int) (len: int) : int option =
-            let mutable ok = start + len <= text.Length
-            let mutable acc = 0
-
-            if ok then
-                for k in start .. start + len - 1 do
-                    let c = text.[k]
-
-                    if c >= '0' && c <= '9' then
-                        acc <- acc * 10 + (int c - int '0')
-                    else
-                        ok <- false
-
-            if ok then Some acc else None
-
-        if text.Length < 10 then
-            None
-        elif text.[4] <> '-' || text.[7] <> '-' then
-            None
-        elif text.Length > 10 && text.[10] <> 'T' then
-            None
-        else
-            match digits 0 4, digits 5 2, digits 8 2 with
-            | Some y, Some m, Some d when m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth y m ->
-                Some(daysFromCivil y m d)
-            | _ -> None
+        HostPrelude.IsoDate.tryParts text
+        |> Option.map (fun (y, m, d) -> daysFromCivil y m d)
 
     /// The day number a row's x cell carries, with an UNPARSEABLE cell reading
     /// as the epoch. That mirrors `numericOf`'s posture for a non-numeric value
@@ -2189,6 +2189,76 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         else
             [||]
 
+    // ── Event markers (Phase 1491 — §4l) ─────────────────────────────────────
+    //
+    // The vertical half of the annotation family, in DOCUMENT ORDER within its
+    // own case — which is what `<n>` in the mark id `annotation|event|<n>`
+    // indexes, and why a reference line landing between two of these never
+    // renumbers them.
+    //
+    // ONE FORM PER CHART, which is what lets the resolved address be a single
+    // `int`. §4l rule 1 admits a `Category` key on a BAND axis and a `Date`
+    // under a TEMPORAL one, and those two axes are mutually exclusive — so every
+    // marker this lowering admits carries the chart's one form, and the int is a
+    // BAND INDEX under `bandX` and a DAY NUMBER under `isTemporal`.
+    //
+    // PIE IS NEUTRALISED and Scatter's numeric x admits neither form, on Phase
+    // 1490's treatment of the value-axis address and Phase 882's of `xScale`
+    // before it: a polar arm has no x axis at all, and a continuous NUMERIC x
+    // has neither bands to name nor a calendar to name a day in. Drawing at a
+    // position the axis does not have would be an assertion about a space the
+    // picture lacks.
+    //
+    // THE DROPS HERE ARE THE THIRD GATE, not the first. A mismatched form is
+    // refused pre-emit (FUARAN139) and an unparseable date at the wire boundary
+    // and pre-emit both (FUARAN140); an ungrounded or duplicated key is
+    // FUARAN138. What the filtering buys is that a lowering handed one anyway —
+    // through a construction site none of those sits on — stays TOTAL and draws
+    // the chart it can. A DUPLICATED key resolves to the FIRST matching band,
+    // deterministically: the picture is then well-defined even though the
+    // validator is right to refuse it, which is exactly the division of labour
+    // the non-finite filter above already draws.
+    let bandX =
+        not isTemporal
+        && not isScatter
+        && (match spec.Kind with
+            | ChartKind.Pie -> false
+            | _ -> true)
+
+    let eventMarkers: (int * TextSource option)[] =
+        spec.Annotations
+        |> Option.defaultValue []
+        |> List.choose (fun a ->
+            match a with
+            | ChartAnnotation.EventMarker(ChartAnnotationX.Category key, label) when bandX ->
+                categories
+                |> Array.tryFindIndex (fun c -> c = key)
+                |> Option.map (fun i -> i, label)
+            | ChartAnnotation.EventMarker(ChartAnnotationX.Date iso, label) when isTemporal ->
+                Temporal.tryParseDay iso |> Option.map (fun d -> d, label)
+            | _ -> Option.None)
+        |> List.toArray
+
+    /// §4l rule 3 on the X axis — A TEMPORAL ADDRESS ENTERS THE EXTENT, before
+    /// the ticks are chosen, on the same terms the row dates do. A launch marked
+    /// a month after the last datum is still drawn, and the axis says so; the
+    /// alternative would clamp it to the data's own last day, drawing the event
+    /// at a date that is not the date declared.
+    ///
+    /// A CATEGORY ADDRESS WIDENS NOTHING, and the asymmetry is §4l's rather than
+    /// an inconsistency: a band axis's domain IS the set of keys in the rows, so
+    /// a key outside it is not a wider axis but an ungrounded reference — which
+    /// is why that form is grounded (FUARAN138) and this one is not.
+    ///
+    /// This does NOT reopen §4h's no-nicing rule: the marker's day joins the
+    /// data whose extent the domain is, and the domain is still not snapped
+    /// outward to a calendar boundary.
+    let domainDays: int[] =
+        if isTemporal then
+            Array.append dayValues (eventMarkers |> Array.map fst)
+        else
+            [||]
+
     /// The x axis is CONTINUOUS (Phase 903's split) on exactly two arms: the
     /// Scatter arm's numeric x and a temporal x. Everything keyed off this —
     /// tick marks AT the value, vertical gridlines, marks placed by value rather
@@ -2209,7 +2279,10 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     /// the axis's granularity.
     let temporalStep: Temporal.Step option =
         if isTemporal then
-            let lo, hi = Temporal.domain dayValues
+            // `domainDays`, not `dayValues` — the extent the ticks are chosen
+            // for includes any event marker's own date (§4l rule 3), so a rung
+            // is picked for the axis the reader will actually see.
+            let lo, hi = Temporal.domain domainDays
             Some(Temporal.chooseStep (int style.TargetTickCount + 1) lo hi)
         else
             None
@@ -2221,7 +2294,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             // nice-d outward — and the ticks are the calendar-aligned instants
             // inside it. `xStep` carries the rung's NOMINAL length, which is
             // what the label format reads.
-            let lo, hi = Temporal.domain dayValues
+            let lo, hi = Temporal.domain domainDays
 
             float lo, float hi, Temporal.nominalDays step, (Temporal.ticks step lo hi |> List.map float)
         | None ->
@@ -3436,6 +3509,58 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                           MarkId = Some("annotation|reference|" + string i) }
                   ) ]
 
+    let eventStyle = styleStrokeInk style style.EventOpacity style.EventStrokeWidth
+
+    /// The x an event marker's line stands at (Phase 1491). PHASE 903'S SPLIT,
+    /// applied to an address rather than to a datum: a BAND axis has no
+    /// positions, only extents, so the marker sits at the band's CENTRE — the
+    /// same place the band's own label sits, which is what makes "the event
+    /// happened in Q3" read as being about Q3 rather than about its edge. A
+    /// CONTINUOUS axis has positions, so the marker sits at the mapped value.
+    let eventMarkerX (i: int) : float =
+        let at, _ = eventMarkers[i]
+        if isTemporal then xScale (float at) else centreX at
+
+    let eventMarkerShapes: Shape list =
+        [ for i in 0 .. eventMarkers.Length - 1 do
+              let x = eventMarkerX i
+
+              yield
+                  Shape.Line(
+                      x,
+                      r2 plotY0,
+                      x,
+                      r2 plotY1,
+                      { eventStyle with
+                          MarkId = Some("annotation|event|" + string i) }
+                  ) ]
+
+    /// The x each event marker's label must not reach — Phase 881's rule applied
+    /// ALONG X, which is where this member earns its own phase.
+    ///
+    /// Markers close together are the normal case (five shocks in a decade land
+    /// within a few pixels of each other), and the rule is: never overlapped,
+    /// never nudged across another marker, SUPPRESSED on no fit. So a label's
+    /// width budget runs to its NEIGHBOUR's line rather than to the plot edge,
+    /// and the neighbour is the successor in `(x, document index)` order — total
+    /// and stable, so the goldens pin one answer.
+    ///
+    /// Two markers on ONE position are legitimate (§4l says so explicitly, which
+    /// is why identity is an ordinal rather than the address). They fall out of
+    /// the same rule rather than needing one of their own: the earlier gets a
+    /// budget of zero and is suppressed, the later runs to the next distinct
+    /// position — one label at that x, never two overlaid, and the picture still
+    /// shows both lines.
+    let eventLabelRight: float[] =
+        let xs = Array.init eventMarkers.Length eventMarkerX
+        let order = Array.init xs.Length id |> Array.sortBy (fun i -> xs[i], i)
+        let right = Array.create xs.Length plotX1
+
+        for r in 0 .. order.Length - 2 do
+            right[order[r]] <- xs[order[r + 1]]
+
+        right
+
     let annotationLabelShapes: Shape list =
         [ for v, label in referenceLines do
               match label with
@@ -3454,6 +3579,35 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                           // either is the collision the gate exists to refuse.
                           (max 0.0 (plotX1 - x - style.AnnotationLabelPadding))
                           (max 0.0 (baseline - plotY0 - style.AnnotationLabelPadding))
+                          t
+
+          // Phase 1491 — the event markers' labels, after the reference lines'
+          // and in document order within their own case. Both families are rung
+          // 4, so this is a tie inside a rung; ordering by case keeps every
+          // pre-1491 golden byte-identical, and §4l's tiebreak (document order
+          // within the case) is honoured inside each run.
+          for i in 0 .. eventMarkers.Length - 1 do
+              match snd eventMarkers[i] with
+              | None -> ()
+              | Some t ->
+                  // AT THE TOP OF THE PLOT, beside the line. Top rather than
+                  // beside the mark it names, because a vertical marker names no
+                  // single datum — it names the whole column of the picture — and
+                  // the top is the one place on that column no series occupies by
+                  // construction.
+                  let x = eventMarkerX i + style.AnnotationLabelOffsetX
+                  let baseline = plotY0 + style.AnnotationLabelFontSize + style.AnnotationLabelNudgeY
+
+                  yield!
+                      annotationLabel
+                          x
+                          baseline
+                          (max 0.0 (eventLabelRight[i] - x - style.AnnotationLabelPadding))
+                          // The vertical budget is the plot's own height: one
+                          // line always fits it, which is the honest statement —
+                          // markers collide along X, and that is the axis the
+                          // gate is really measuring.
+                          (max 0.0 (plotY1 - plotY0 - style.AnnotationLabelPadding))
                           t ]
 
     // ── Legend (Phase 880) — one entry list, four placements ──
@@ -3710,6 +3864,10 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             // A threshold drawn under the bars it measures is a threshold the
             // reader cannot check the bars against.
             @ referenceLineShapes
+            // Phase 1491 (§4l rung 3, beside the reference lines) — the event
+            // markers, also in FRONT of the series. A shock drawn under the line
+            // it explains is a shock the reader cannot line the data up against.
+            @ eventMarkerShapes
             @ legend
             @ titleShapes
             @ subtitleShapes

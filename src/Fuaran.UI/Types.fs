@@ -1665,7 +1665,29 @@ and ChartXScale = Generated.ChartXScale
 /// axis's own units; the value ENTERS the value domain before `niceDomain`
 /// runs, so a threshold above every bar is still drawn and the axis says so.
 /// The label rides the Phase 1143 text contract — carried, never resolved.
+/// `EventMarker(at, label)` is a VERTICAL line at an x address — a policy
+/// change, a launch, a shock — and it is the mirror of `ReferenceLine` across
+/// the axes. §4l rule 2 is why there is exactly one of each: a vertical line at
+/// a date has ONE spelling, so the near-synonym pair that would otherwise be
+/// this family's worst confusion risk does not exist to be taught against.
 and ChartAnnotation = Generated.ChartAnnotation
+
+/// Phase 1491 — an annotation's X ADDRESS (§4l "The three addressing forms"),
+/// in the two forms the x axis already distinguishes: a `Category` key naming a
+/// band on a band axis, or an ISO-8601 `Date` naming an instant under
+/// `XScale = Temporal`.
+///
+/// DECLARED, never sniffed — §4h's posture one level down. A `Category` address
+/// under a temporal scale, and a `Date` address under a band axis, are
+/// MISMATCHES the pre-emit validator refuses (FUARAN139) rather than coercions;
+/// a category key not among the rows, or among them twice, is ungrounded
+/// (FUARAN138); an unparseable date is refused outright (FUARAN140), because a
+/// lowering reads one as 1970-01-01 and — since an address participates in the
+/// domain it addresses — a typo would silently rescale the whole axis.
+///
+/// Its own type rather than two inline fields, because
+/// [Phase 1492](the range band) addresses an x-axis band with a PAIR of these.
+and ChartAnnotationX = Generated.ChartAnnotationX
 
 /// Author-facing carrier for a **static read-only table** (Phase 393). No longer a
 /// `VisKind` case of its own — `Fuaran.table` lowers it into the read-only mode of

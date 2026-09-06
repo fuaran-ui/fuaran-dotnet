@@ -49,4 +49,63 @@ public readonly struct ChartAnnotation
         new(FsGen.ChartAnnotation.NewReferenceLine(
             value,
             label is { } l ? Fs.Some(l.Inner) : Fs.None<FsGen.TextSource>()));
+
+    /// <summary>
+    /// A vertical line at an x address (Phase 1491) — a policy change, a launch,
+    /// a shock. The mirror of <see cref="ReferenceLine"/> across the axes.
+    /// </summary>
+    /// <param name="at">
+    /// Where on the x axis, in the axis's OWN address form: a
+    /// <see cref="ChartAnnotationX.Category"/> key on a band axis, or a
+    /// <see cref="ChartAnnotationX.Date"/> under a temporal one. The mismatch is
+    /// refused rather than coerced (FUARAN139), and a category key must name
+    /// exactly one row (FUARAN138).
+    /// </param>
+    /// <param name="label">
+    /// An optional label, drawn at the top of the plot beside the line and
+    /// carried unresolved into the drawing. Markers close together are the normal
+    /// case, so its width budget runs to the NEXT marker's line: a label with no
+    /// room is suppressed, never clipped and never moved across a neighbour — and
+    /// a suppressed label never suppresses its marker.
+    /// </param>
+    public static ChartAnnotation EventMarker(ChartAnnotationX at, Text? label = null) =>
+        new(FsGen.ChartAnnotation.NewEventMarker(
+            at.Inner,
+            label is { } l ? Fs.Some(l.Inner) : Fs.None<FsGen.TextSource>()));
+}
+
+/// <summary>
+/// Where on the x axis an annotation sits (Phase 1491) — the authoring facade
+/// over the F# <c>ChartAnnotationX</c>.
+/// </summary>
+/// <remarks>
+/// Two forms, and they are the two the x axis already distinguishes: a category
+/// key names a BAND on a band axis, an ISO-8601 date names an INSTANT under a
+/// temporal one. Which applies is DECLARED by the chart's own x scale and never
+/// sniffed from the address — a category key on a temporal axis, or a date on a
+/// band axis, is refused rather than guessed at.
+/// </remarks>
+public readonly struct ChartAnnotationX
+{
+    internal FsGen.ChartAnnotationX Inner { get; }
+
+    private ChartAnnotationX(FsGen.ChartAnnotationX fs) => Inner = fs;
+
+    /// <summary>
+    /// A band on a CATEGORY x axis, named by its key — the x cell as it is
+    /// labelled. The key must appear in exactly one row: none names no band, and
+    /// two give the band two centres to be drawn at.
+    /// </summary>
+    public static ChartAnnotationX Category(string key) =>
+        new(FsGen.ChartAnnotationX.NewCategory(key));
+
+    /// <summary>
+    /// An instant on a TEMPORAL x axis, as a canonical ISO-8601 date
+    /// (<c>YYYY-MM-DD</c>). It enters the axis extent before the ticks are
+    /// chosen, so a marker beyond the last datum still draws and the axis says
+    /// so — which is also why an unreadable date is refused outright (FUARAN140)
+    /// rather than read as 1970-01-01.
+    /// </summary>
+    public static ChartAnnotationX Date(string iso) =>
+        new(FsGen.ChartAnnotationX.NewDate(iso));
 }

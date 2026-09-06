@@ -496,6 +496,11 @@ and [<RequireQualifiedAccess>] CellKindErased<'Msg> =
 
 and [<RequireQualifiedAccess>] ChartAnnotation =
     | ReferenceLine of value: float * label: TextSource option
+    | EventMarker of at: ChartAnnotationX * label: TextSource option
+
+and [<RequireQualifiedAccess>] ChartAnnotationX =
+    | Category of key: string
+    | Date of iso: string
 
 and [<RequireQualifiedAccess>] ColumnWidth =
     | Auto
@@ -1952,6 +1957,12 @@ and private encCellKindErased<'Msg> (v: CellKindErased<'Msg>) : JVal =
 and private encChartAnnotation (v: ChartAnnotation) : JVal =
     match v with
     | ChartAnnotation.ReferenceLine (value, label) -> Canon.typed "ReferenceLine" ([ Some("value", encFloat value); (label |> Option.map (fun v -> "label", encTextSource v)) ] |> List.choose id)
+    | ChartAnnotation.EventMarker (at, label) -> Canon.typed "EventMarker" ([ Some("at", encChartAnnotationX at); (label |> Option.map (fun v -> "label", encTextSource v)) ] |> List.choose id)
+
+and private encChartAnnotationX (v: ChartAnnotationX) : JVal =
+    match v with
+    | ChartAnnotationX.Category key -> Canon.typed "Category" [ "key", JStr key ]
+    | ChartAnnotationX.Date iso -> Canon.typed "Date" [ "iso", JStr iso ]
 
 and private encColumnWidth (v: ColumnWidth) : JVal =
     match v with
@@ -3031,8 +3042,26 @@ and private decChartAnnotation (j: JVal) : Result<ChartAnnotation, string> =
             dReq "value" __fs dFloat |> Result.bind (fun value ->
             dOpt "label" __fs decTextSource |> Result.bind (fun label ->
             Ok(ChartAnnotation.ReferenceLine(value, label))))
+        | "EventMarker" ->
+            dReq "at" __fs decChartAnnotationX |> Result.bind (fun at ->
+            dOpt "label" __fs decTextSource |> Result.bind (fun label ->
+            Ok(ChartAnnotation.EventMarker(at, label))))
         | __other -> Error ("unknown ChartAnnotation case: " + __other))
     | _ -> Error "expected a ChartAnnotation object"
+
+and private decChartAnnotationX (j: JVal) : Result<ChartAnnotationX, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "Category" ->
+            dReq "key" __fs dStr |> Result.bind (fun key ->
+            Ok(ChartAnnotationX.Category(key)))
+        | "Date" ->
+            dReq "iso" __fs dStr |> Result.bind (fun iso ->
+            Ok(ChartAnnotationX.Date(iso)))
+        | __other -> Error ("unknown ChartAnnotationX case: " + __other))
+    | _ -> Error "expected a ChartAnnotationX object"
 
 and private decColumnWidth (j: JVal) : Result<ColumnWidth, string> =
     match j with

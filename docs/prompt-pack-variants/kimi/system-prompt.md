@@ -471,6 +471,10 @@ CellKindErased =
 | Custom { fn:closure }
 ChartAnnotation =
 | ReferenceLine { value:num; label?:TextSource }
+| EventMarker { at:ChartAnnotationX; label?:TextSource }
+ChartAnnotationX =
+| Category { key:str }
+| Date { iso:str }
 ColumnWidth =
 | Auto
 | Fixed { pixels:int }

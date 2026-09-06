@@ -6962,12 +6962,64 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
 /// codec already takes for a non-finite `Float` cell, and the same shape
 /// `reject-daterange-unordered` takes for the ordered-pair rule: `WRONG_TYPE` at
 /// the offending slot, with the message naming the rule and the fix.
+/// An annotation's X ADDRESS (Phase 1491, §4l "The three addressing forms").
+/// Two cases, matching the two forms the x axis already distinguishes: a
+/// `Category` key on a band axis, an ISO-8601 `Date` under `XScale = Temporal`.
+///
+/// THE DATE MUST BE A DATE, and this refusal is the twin of `ReferenceLine`'s
+/// finite-value narrowing rather than a new posture. The lowering's calendar is
+/// deliberately TOTAL — an unparseable x CELL reads as 1970-01-01, because
+/// FUARAN097 makes a non-date COLUMN loud upstream and refusing per-cell would
+/// be worse. An annotation has no column to be loud about: the string is
+/// authored directly, so nothing upstream can catch it. And because §4l rule 3
+/// has a temporal address ENTER the axis extent before the ticks are chosen, a
+/// typo does not misplace one marker — it drags the domain back to the epoch and
+/// rescales the whole picture. `WRONG_TYPE` at the address's own slot, on
+/// `reject-daterange-unordered`'s shape, with the canonical spelling named.
+let private decodeChartAnnotationX (path: string) (j: Json) : Result<ChartAnnotationX, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        match requireDiscriminator path fields with
+        | Error e -> Error e
+        | Ok "Category" ->
+            match requireField path fields "key" "category key (the band's own label)" with
+            | Error e -> Error e
+            | Ok v -> requireString (path + ".key") v |> Result.map ChartAnnotationX.Category
+        | Ok "Date" ->
+            match requireField path fields "iso" "ISO-8601 date (YYYY-MM-DD)" with
+            | Error e -> Error e
+            | Ok v ->
+                match requireString (path + ".iso") v with
+                | Error e -> Error e
+                | Ok s when not (Fuaran.UI.HostPrelude.IsoDate.isValid s) ->
+                    wrongType
+                        (path + ".iso")
+                        "a canonical ISO-8601 date (YYYY-MM-DD, optionally followed by a time) naming a real calendar day — an event marker's date is the address it is drawn at, and an unreadable one would place the marker at 1970-01-01 and drag the axis back with it"
+                | Ok s -> Ok(ChartAnnotationX.Date s)
+        | Ok s -> unknownDuCase path s "Category, Date"
+
 let private decodeChartAnnotation (path: string) (j: Json) : Result<ChartAnnotation, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
         match requireDiscriminator path fields with
         | Error e -> Error e
+        | Ok "EventMarker" ->
+            let atR =
+                match requireField path fields "at" "event-marker x address (a ChartAnnotationX)" with
+                | Error e -> Error e
+                | Ok v -> decodeChartAnnotationX (path + ".at") v
+
+            let labelR =
+                match tryField fields "label" with
+                | None -> Ok None
+                | Some v -> decodeTextSource (path + ".label") v |> Result.map Some
+
+            match atR, labelR with
+            | Ok at, Ok label -> Ok(ChartAnnotation.EventMarker(at, label))
+            | Error e, _
+            | _, Error e -> Error e
         | Ok "ReferenceLine" ->
             let valueR =
                 match requireField path fields "value" "reference-line value (a finite JSON number)" with
@@ -6990,7 +7042,7 @@ let private decodeChartAnnotation (path: string) (j: Json) : Result<ChartAnnotat
             | Ok value, Ok label -> Ok(ChartAnnotation.ReferenceLine(value, label))
             | Error e, _
             | _, Error e -> Error e
-        | Ok s -> unknownDuCase path s "ReferenceLine"
+        | Ok s -> unknownDuCase path s "ReferenceLine, EventMarker"
 
 let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, DecodeError> =
     match requireObject path j with

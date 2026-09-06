@@ -891,12 +891,38 @@ let private genGridSpec: Gen<GridSpec<obj>> =
 /// Phase 1490 — one data-addressed annotation. It sits here rather than beside
 /// the other chart vocabularies because it reaches `genTextSource`, which is
 /// declared further down the file than they are.
+/// Phase 1491 — an annotation's x address. The `Date` arm generates a REAL
+/// calendar day rather than an arbitrary string, and that is not fastidiousness:
+/// the decoder REFUSES an unreadable one, so a generated `"xyz"` would make the
+/// round-trip property fail on a document the codec is correct to reject —
+/// exactly the reason `genFiniteFloat` sits below rather than `genFloat`.
+let private genChartAnnotationX: Gen<ChartAnnotationX> =
+    Gen.oneof
+        [ gen {
+              let! key = genString
+              return ChartAnnotationX.Category key
+          }
+          gen {
+              let! y = Gen.choose (1970, 2099)
+              let! m = Gen.choose (1, 12)
+              // 28 is the day every month of every year has, so no generated
+              // date can be refused for the calendar reason.
+              let! d = Gen.choose (1, 28)
+              return ChartAnnotationX.Date(sprintf "%04d-%02d-%02d" y m d)
+          } ]
+
 let private genChartAnnotation: Gen<ChartAnnotation> =
-    gen {
-        let! value = genFiniteFloat
-        let! label = genOption genTextSource
-        return ChartAnnotation.ReferenceLine(value, label)
-    }
+    Gen.oneof
+        [ gen {
+              let! value = genFiniteFloat
+              let! label = genOption genTextSource
+              return ChartAnnotation.ReferenceLine(value, label)
+          }
+          gen {
+              let! at = genChartAnnotationX
+              let! label = genOption genTextSource
+              return ChartAnnotation.EventMarker(at, label)
+          } ]
 
 let private genChartSpec: Gen<ChartSpec<obj>> =
     gen {

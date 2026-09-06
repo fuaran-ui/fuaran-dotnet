@@ -120,12 +120,26 @@ let private acceptTest (e: Corpus.FixtureEntry) : Test =
 ///   is one node), so it is schema-valid AND node-depth-valid, and only the
 ///   item-axis counter refuses it.
 ///
+/// - `reject-chart-annotation-date-unparseable` (Phase 1491, §4l): an event
+///   marker's `Date` address naming no calendar day. This one is here by a
+///   DELIBERATE MODELLING CHOICE rather than by a limit of the dialect, and it is
+///   the first entry of which that is true — so it is worth stating plainly.
+///   Draft 2020-12 has `pattern`, and a regex over `YYYY-MM-DD` is writable; what
+///   it cannot do is know that February has 28 days. A pattern would therefore
+///   admit `2026-02-30` while the decoder refuses it, and the schema would then
+///   say something DIFFERENT from the decoder rather than something LESS —
+///   which is the property the whole schema leg exists to preserve, and the same
+///   reason `ChartAnnotation.value` takes a bare `type: number`. If a future
+///   dialect can state the calendar, the slot gains the constraint and this
+///   entry goes, exactly as the inverse pin below intends.
+///
 /// Each entry is asserted schema-VALID below — the INVERSE pin. If the schema
 /// ever gains the power to refuse one of these, this test fails and the list
 /// shrinks deliberately rather than the exemption quietly outliving its reason.
 let private schemaInexpressibleRejects: Set<string> =
     set
-        [ "reject-daterange-unordered"
+        [ "reject-chart-annotation-date-unparseable"
+          "reject-daterange-unordered"
           // fuaran#1085 retired `reject-transform-source-empty-wrapper` from
           // this list with the fixture itself: the shape the schema could not
           // refuse is one the DECODER no longer refuses either.
