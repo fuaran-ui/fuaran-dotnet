@@ -690,6 +690,50 @@ let treeNavigate
     : unit =
     treeNavigateOutcome runtime policy route navigate |> ignore
 
+/// Perform a TREE-DECLARED API call (Phase 1523): resolve the endpoint against
+/// the ambient destination policy under `EgressClass.Call`, then gate it, then
+/// hand the SANITISED endpoint to the host runtime.
+///
+/// The `Call` class did not exist before this, so `Action.Call` was the one
+/// outbound effect the Phase 1026 destination policy could not speak about: a
+/// rendered tree plus one click reached `fetch()` at any origin, gated only by
+/// whatever `CanDispatch` the host had wired — and with `into: State k` the
+/// response was written straight into the store the rest of the tree renders
+/// from. That is an exfiltration channel and an injection channel in one
+/// gesture, which is precisely why the class is scoped separately from `Media`
+/// rather than folded into it.
+///
+/// The ORDER is destination-then-gate, matching `treeNavigateOutcome` exactly:
+/// a host's `CanDispatch` is a policy about intent, the destination check is a
+/// policy about reach, and asking the host to adjudicate an endpoint the
+/// composition never declared would put the wrong question to the wrong layer.
+///
+/// A refusal performs NO call at all — the same posture as `Navigate` and for
+/// the same reason: a request to a substitute destination is not an improvement
+/// on a refused one. The declarative `into` target therefore stays unwritten,
+/// so readers keep their `OnLoading` surface rather than showing a wrong value.
+/// The RECORDED reason carries the scrubbed description, never the endpoint's
+/// query string, because a Phase 889 record is durable and a query string is
+/// where an exfiltrated payload sits.
+let treeCallOutcome
+    (runtime: Runtime.IFuaranRuntime)
+    (policy: Sanitize.EgressPolicy)
+    (endpoint: string)
+    (call: string -> unit)
+    : Result<unit, string> =
+    match Sanitize.checkDestination policy Sanitize.EgressClass.Call endpoint with
+    | Sanitize.EgressVerdict.Allowed safeEndpoint ->
+        applyDispatchGateOutcome runtime (Runtime.ActionDescriptor.Call safeEndpoint) (fun () -> call safeEndpoint)
+    | refused ->
+        runtime.Warn(sprintf "[Fuaran] Action.Call refused — %s: %s" (Sanitize.describeEgressVerdict refused) endpoint)
+
+        Error(
+            sprintf
+                "Action.Call refused — %s: %s"
+                (Sanitize.describeEgressVerdict refused)
+                (ActionInvocation.routePath endpoint)
+        )
+
 /// The recursive action interpreter. NOT the emission point — see
 /// `runActionAs` below and the `Chain` note there.
 ///
@@ -726,10 +770,6 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
         for a in actions do
             runActionCore ctx denied a
     | Action.Call(ep, onResult, into) ->
-        // Bare endpoint string since the swap; the `IFuaranRuntime` seam keeps
-        // its `ApiEndpoint` wrapper, so re-wrap at the boundary.
-        let endpoint = ApiEndpoint ep
-
         // Phase 428: a `Some` closure wins (exactly the pre-428 behaviour); the
         // declarative `into` target writes the response to its store slot and
         // the reactive subscriptions re-render readers. Both `None` is a
@@ -738,25 +778,33 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
         // `Call` implementation surfaces it (the default BrowserRuntime warns)
         // and the target slot stays unwritten, so readers keep their
         // `OnLoading` surface rather than showing a silent wrong value.
-        gate (Runtime.ActionDescriptor.Call ep) (fun () ->
-            match onResult, into with
-            | Some f, _ -> ctx.Runtime.Call(endpoint, (fun raw -> ctx.Dispatch(f raw)))
-            | None, Some target ->
-                ctx.Runtime.Call(
-                    endpoint,
-                    fun raw ->
-                        match target with
-                        | CallResultTarget.State key ->
-                            // Scope-aware routing mirrors `Action.SetState` (Phase 266);
-                            // host-reserved keys are refused (Phase 782) — the response
-                            // target is as tree-declared as an `Action.SetState` key is.
-                            stateWrite key (fun () ->
-                                match ctx.Scope with
-                                | Some scopeId -> (StateStore.forScope scopeId).Set(key, raw)
-                                | None -> StateStore.set key raw)
-                        | CallResultTarget.Query name -> QueryStore.set name raw
-                )
-            | None, None -> ctx.Runtime.Call(endpoint, ignore))
+        // Phase 1523 — destination-then-gate, exactly as `Action.Navigate` has
+        // run since 782/1026. `endpoint` above re-wraps the bare string for the
+        // seam; the SANITISED string is what reaches the runtime, so a call
+        // never leaves through a spelling the policy did not see.
+        note (
+            treeCallOutcome ctx.Runtime ctx.EgressPolicy ep (fun safeEp ->
+                let endpoint = ApiEndpoint safeEp
+
+                match onResult, into with
+                | Some f, _ -> ctx.Runtime.Call(endpoint, (fun raw -> ctx.Dispatch(f raw)))
+                | None, Some target ->
+                    ctx.Runtime.Call(
+                        endpoint,
+                        fun raw ->
+                            match target with
+                            | CallResultTarget.State key ->
+                                // Scope-aware routing mirrors `Action.SetState` (Phase 266);
+                                // host-reserved keys are refused (Phase 782) — the response
+                                // target is as tree-declared as an `Action.SetState` key is.
+                                stateWrite key (fun () ->
+                                    match ctx.Scope with
+                                    | Some scopeId -> (StateStore.forScope scopeId).Set(key, raw)
+                                    | None -> StateStore.set key raw)
+                            | CallResultTarget.Query name -> QueryStore.set name raw
+                    )
+                | None, None -> ctx.Runtime.Call(endpoint, ignore))
+        )
     | Action.Notify(channel, payload) ->
         // Phase 782 — `Notify` publishes onto a host-addressable channel, so it
         // is gated like every other outbound effect. Before 782 it reached the
@@ -2670,10 +2718,22 @@ let rec private renderKind
             // string is emitted so irregular-column grids can be authored
             // without escaping to Feliz. `None` preserves the prior emission
             // shape byte-identical.
-            let templateColumns =
+            // Phase 1523 — the SAME grammar the server arm applies, applied here
+            // for a reason that is easy to get backwards. The client is not the
+            // vulnerable tier: React assigns a style OBJECT, and the browser
+            // drops an invalid value, so a hostile `templateColumns` was inert
+            // here and live in SSR. That DISAGREEMENT is the defect. A tree is
+            // supposed to render the same on every conformant host, so a value
+            // one host refuses and another silently ignores must be refused by
+            // both, visibly, in the same way — otherwise the refusal marker is
+            // absent from exactly the document a reader is looking at.
+            let declaredTemplateColumns =
                 match gridTemplateColumns with
                 | Some custom -> custom
                 | None -> sprintf "repeat(%d, 1fr)" cols
+
+            let templateColumns, cssRefusalAttrs =
+                Sanitize.sanitizeCssValueForSlot "grid-template-columns" declaredTemplateColumns
 
             // `gap` (Phase 459 — the Spacer replacement) emits only when set, so
             // gap-free grids stay byte-identical to the pre-459 emission.
@@ -2683,10 +2743,12 @@ let rec private renderKind
                    | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
                    | None -> [])
 
-            Html.div
+            Html.div (
                 [ prop.className ("fuaran-layout-grid" + brk)
                   prop.style gridStyle
                   prop.children (spec.Children |> List.map (render ctx)) ]
+                @ (cssRefusalAttrs |> List.map (fun (k, v) -> prop.custom (k, v)))
+            )
         | BoxRole.Group, BoxLayout.Masonry(cols, masonryGap) ->
             // Phase 1082 — column-FILL, realised through the CSS MULTI-COLUMN
             // property family per WIRE_FORMAT §3.6.7. Note the property name
@@ -3320,11 +3382,23 @@ let rec private renderKind
         let safeHref, egressAttrs =
             Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Hyperlink resolvedHref
 
+        // Phase 1523 — `rel` and `target` were emitted VERBATIM, so a decoded
+        // tree could write `rel="opener"` on a `_blank` link and re-enable
+        // `window.opener` (handing the opened document a live reference to this
+        // one), or name an arbitrary browsing context in `target`. Both are
+        // closed token sets now, resolved TOGETHER because the `rel` rule
+        // depends on the sanitised target: `noopener noreferrer` is FORCED on
+        // `_blank` whether or not the document asked. Browsers imply `noopener`
+        // there, which is exactly why the omission mattered — it is a user-agent
+        // DEFAULT that an explicit `rel="opener"` overrides, and no document can
+        // know its reader's version floor.
+        let safeTarget, safeRel = Sanitize.sanitizeLinkAnchor spec.Target spec.Rel
+
         let optionalAttrs: IReactProperty list =
-            [ match spec.Rel with
+            [ match safeRel with
               | Some rel -> prop.rel rel
               | None -> ()
-              match spec.Target with
+              match safeTarget with
               | Some target -> prop.custom ("target", target)
               | None -> ()
               if spec.Download then
@@ -6195,7 +6269,8 @@ and private renderGrid
           State = state
           RecurseRender = render ctx
           RunAction = runAction ctx
-          NodeId = parentNodeId }
+          NodeId = parentNodeId
+          EgressPolicy = ctx.EgressPolicy }
 
     match ctx.VisAdapter.RenderGrid(spec, visCtx) with
     | Some rendered -> rendered
@@ -7287,7 +7362,8 @@ and private renderChart
           State = state
           RecurseRender = render ctx
           RunAction = runAction ctx
-          NodeId = parentNodeId }
+          NodeId = parentNodeId
+          EgressPolicy = ctx.EgressPolicy }
 
     match ctx.VisAdapter.RenderChart(spec, visCtx) with
     | Some rendered -> rendered

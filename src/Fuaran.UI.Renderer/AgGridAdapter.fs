@@ -127,6 +127,10 @@ let private correlationId (seed: string) : string = Ids.deterministicCorrelation
 let private buildColumnDef<'Msg>
     (runAction: Action<'Msg> -> unit)
     (recurseRender: Node<'Msg> -> ReactElement)
+    // Phase 1523 — the composition's ambient destination policy, threaded from
+    // `VisualisationContext` so this adapter's `Link` cell gates identically to
+    // the first-party simple table's.
+    (egressPolicy: Sanitize.EgressPolicy)
     (col: ColumnErased<'Msg>)
     : obj =
     // Phase 425 — the closure wins; else the declarative `Field` projects the row property; else empty.
@@ -293,10 +297,21 @@ let private buildColumnDef<'Msg>
             let cellRenderer (p: obj) : ReactElement =
                 let row: Row = p?data
 
-                Html.a
+                // Phase 1523 — the same two gates the simple-table `Link` cell
+                // runs, in the same order: the scheme floor says what the URL
+                // may BE, the destination policy says where it may GO. Before
+                // this the href was emitted raw here, so an adapter-backed grid
+                // rendered `javascript:` and off-origin destinations that the
+                // first-party table refused in the same document.
+                let safeHref, egressAttrs =
+                    Sanitize.sanitizeUrlForEgress egressPolicy Sanitize.EgressClass.Hyperlink (hrefFn row)
+
+                Html.a (
                     [ prop.className "fuaran-grid-cell-link"
-                      prop.href (hrefFn row)
+                      prop.href safeHref
                       prop.text (textOf (labelFn row)) ]
+                    @ (egressAttrs |> List.map (fun (k, v) -> prop.custom (k, v)))
+                )
 
             [ "cellRenderer", box cellRenderer ]
 
@@ -390,7 +405,7 @@ let renderGrid<'Msg> (spec: GridSpec<'Msg>) (context: VisAdapter.VisualisationCo
         | _ ->
             let columnDefs =
                 spec.Columns
-                |> List.map (buildColumnDef context.RunAction context.RecurseRender)
+                |> List.map (buildColumnDef context.RunAction context.RecurseRender context.EgressPolicy)
                 |> List.toArray
 
             // Phase 425 — the row-key closure wins; else the declarative `RowKeyField` projects the

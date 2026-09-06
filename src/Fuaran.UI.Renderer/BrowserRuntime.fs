@@ -36,13 +36,40 @@ open Browser.Types
 
 let private jsonValueToObj (j: Fuaran.Core.JVal) : obj = Runtime.JsonBridge.jvalToJs j
 
-// ─── fetch wrapper — minimal viable for the demo ──────────────────────────
+// ─── fetch wrapper — the shipped default for `Action.Call` ────────────────
 //
-// Real consumer apps will swap in Fable.Remoting / Fetch.fetchAs. The
-// demo just needs a GET that decodes JSON into an obj so callbacks fire.
+// Real consumer apps will swap in Fable.Remoting / Fetch.fetchAs. This one is
+// the default a host gets for free, so it carries the three properties a
+// default has to have and previously did not (Phase 1523).
+//
+//   TIMEOUT. There was none, so a `Call` to an endpoint that accepts the
+//   connection and never answers held a pending promise for the lifetime of the
+//   page. That is a tree-declared resource the host cannot reclaim, and on a
+//   grid it is one per row. An `AbortController` bounds it; the abort surfaces
+//   through the same `onError` path as any other failure, so no call site
+//   changes.
+//
+//   `Accept`. The wrapper calls `r.json()` unconditionally, so it always
+//   intended JSON — it simply never said so. Declaring it lets a content-
+//   negotiating server answer correctly instead of guessing from the absent
+//   header, and makes the parse failure that follows a wrong content type a
+//   server-side fact rather than a client-side surprise.
+//
+//   The DIAGNOSTIC ROUTE. Failures reached `console.warn` directly, which is
+//   the one channel FGP 4 says a renderer must not use on its own account: it
+//   is invisible to a host that wired a diagnostic sink, invisible under Node,
+//   and unobservable by any test. Routing through `IFuaranRuntime.Warn` puts
+//   the failure where every other renderer diagnostic already goes.
+//
+// The timeout is a CONSTRUCTOR knob rather than a constant, because "how long
+// is too long" is a host's judgement about its own endpoints; the default is a
+// figure a human waits through rather than one an SLA implies.
+[<Literal>]
+let private defaultCallTimeoutMs = 30000
 
-[<Emit("fetch($0).then(r => r.ok ? r.json() : r.text().then(t => { throw new Error(t || r.statusText) })).then($1).catch(e => $2(String(e)))")>]
-let private fetchJsonInto (url: string) (onResult: obj -> unit) (onError: string -> unit) : unit = jsNative
+[<Emit("(function(url, ms, onResult, onError){ var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null; var timer = (ctl && ms > 0) ? setTimeout(function(){ ctl.abort(); }, ms) : null; var opts = { headers: { 'Accept': 'application/json' } }; if (ctl) { opts.signal = ctl.signal; } fetch(url, opts).then(function(r){ if (timer) { clearTimeout(timer); timer = null; } return r.ok ? r.json() : r.text().then(function(t){ throw new Error(t || r.statusText); }); }).then(onResult).catch(function(e){ if (timer) { clearTimeout(timer); timer = null; } onError(String(e)); }); })($0, $1, $2, $3)")>]
+let private fetchJsonInto (url: string) (timeoutMs: int) (onResult: obj -> unit) (onError: string -> unit) : unit =
+    jsNative
 
 // ─── window globals via Emit (avoids leaning on Browser.Dom's typed
 //     surface, some of which is null-attributed and trips F# 10 nullness
@@ -99,15 +126,24 @@ let private writeClipboard (text: string) : obj = jsNative
 [<Emit("(function(file, mode, cb, onFail){ try { var r = new FileReader(); r.onload = function(){ var res = String(r.result == null ? '' : r.result); if (mode === 'base64') { var i = res.indexOf(','); cb(i >= 0 ? res.slice(i + 1) : res); } else { cb(res); } }; r.onerror = function(){ onFail(String((r.error && r.error.name) ? r.error.name : 'FileReader error')); }; if (mode === 'text') { r.readAsText(file); } else { r.readAsDataURL(file); } } catch (e) { onFail(String(e)); } })($0, $1, $2, $3)")>]
 let private readFileBlob (file: obj) (mode: string) (cb: string -> unit) (onFail: string -> unit) : unit = jsNative
 
-type BrowserRuntime(layoutObserver: ILayoutObserver option, allowAll: bool) =
+type BrowserRuntime(layoutObserver: ILayoutObserver option, allowAll: bool, callTimeoutMs: int) =
     let customRegistry = CustomRendererRegistry()
 
     /// Default constructor — no layout observer wired, DENY-by-default dispatch
-    /// (Phase 782).
-    new() = BrowserRuntime(None, false)
+    /// (Phase 782), the default `Action.Call` timeout (Phase 1523).
+    new() = BrowserRuntime(None, false, defaultCallTimeoutMs)
 
     /// Layout-observer constructor, DENY-by-default dispatch (Phase 782).
-    new(layoutObserver: ILayoutObserver option) = BrowserRuntime(layoutObserver, false)
+    new(layoutObserver: ILayoutObserver option) = BrowserRuntime(layoutObserver, false, defaultCallTimeoutMs)
+
+    /// The pre-1523 two-argument shape, kept so every existing construction
+    /// site compiles unchanged; it takes the default timeout.
+    new(layoutObserver: ILayoutObserver option, allowAll: bool) =
+        BrowserRuntime(layoutObserver, allowAll, defaultCallTimeoutMs)
+
+    /// The `Action.Call` timeout in milliseconds; `0` or less disables it.
+    /// Exposed so a host can state its own judgement about its own endpoints.
+    member _.CallTimeoutMs: int = callTimeoutMs
 
     /// Register a renderer for `NodeKind.Custom(moduleId,
     /// componentId, props, ...)`. Subsequent renders consult the registry
@@ -127,9 +163,12 @@ type BrowserRuntime(layoutObserver: ILayoutObserver option, allowAll: bool) =
     member _.CustomRendererRegistry: CustomRendererRegistry = customRegistry
 
     interface IFuaranRuntime with
-        member _.Call(ApiEndpoint endpoint, onResult) =
-            fetchJsonInto endpoint onResult (fun err ->
-                consoleWarn (sprintf "[Fuaran] Action.Call(%s) failed: %s" endpoint err))
+        member this.Call(ApiEndpoint endpoint, onResult) =
+            fetchJsonInto endpoint callTimeoutMs onResult (fun err ->
+                // Phase 1523 — through the runtime's own `Warn`, not
+                // `console.warn`: a host that wired a diagnostic sink was not
+                // seeing these at all, and neither was any test.
+                (this :> IFuaranRuntime).Warn(sprintf "[Fuaran] Action.Call(%s) failed: %s" endpoint err))
 
         member _.Notify(channel, payload) =
             let raw = jsonValueToObj payload

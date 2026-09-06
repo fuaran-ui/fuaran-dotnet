@@ -302,7 +302,7 @@ Binding_bool =
 | Selection { nodeId:str; defaultValue?:bool; field?:str }
 | State { key:str; defaultValue?:bool }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_bool; onCommit:closure; parse:closure }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
@@ -315,7 +315,7 @@ Binding_float =
 | Selection { nodeId:str; defaultValue?:any; field?:str }
 | State { key:str; defaultValue?:any }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_float; onCommit:closure; parse:closure }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
@@ -328,7 +328,7 @@ Binding_hosted =
 | Selection { nodeId:str; defaultValue?:any; field?:str }
 | State { key:str; defaultValue?:any }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_hosted; onCommit:closure; parse:closure }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
@@ -341,7 +341,7 @@ Binding_int =
 | Selection { nodeId:str; defaultValue?:int; field?:str }
 | State { key:str; defaultValue?:int }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_int; onCommit:closure; parse:closure }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
@@ -354,7 +354,7 @@ Binding_json =
 | Selection { nodeId:str; defaultValue?:any; field?:str }
 | State { key:str; defaultValue?:any }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_json; onCommit:closure; parse:closure }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
@@ -367,7 +367,7 @@ Binding_list_MapMarker =
 | Selection { nodeId:str; defaultValue?:MapMarker[]; field?:str }
 | State { key:str; defaultValue?:MapMarker[] }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_MapMarker; onCommit:closure; parse:closure }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
@@ -380,7 +380,7 @@ Binding_list_SelectOption =
 | Selection { nodeId:str; defaultValue?:SelectOption[]; field?:str }
 | State { key:str; defaultValue?:SelectOption[] }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_SelectOption; onCommit:closure; parse:closure }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
@@ -393,7 +393,7 @@ Binding_list_float =
 | Selection { nodeId:str; defaultValue?:any[]; field?:str }
 | State { key:str; defaultValue?:any[] }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_float; onCommit:closure; parse:closure }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
@@ -406,7 +406,7 @@ Binding_list_str =
 | Selection { nodeId:str; defaultValue?:str[]; field?:str }
 | State { key:str; defaultValue?:str[] }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_str; onCommit:closure; parse:closure }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
@@ -419,7 +419,7 @@ Binding_str =
 | Selection { nodeId:str; defaultValue?:str; field?:str }
 | State { key:str; defaultValue?:str }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str; onCommit:closure; parse:closure }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
@@ -432,7 +432,7 @@ Binding_str_choice =
 | Selection { nodeId:str; defaultValue?:str; field?:str }
 | State { key:str; defaultValue?:str }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str_choice; onCommit:closure; parse:closure }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
@@ -512,6 +512,7 @@ Format =
 | Date { dateStyle:"Short"|"Medium"|"Long"|"Full" }
 | RelativeTime { unit:RelativeTimeUnit }
 | Duration { style:DurationStyle; unit:DurationUnit }
+| Since { unit?:RelativeTimeUnit }
 FragmentArg =
 | Int { value:int }
 | Float { value:any }
@@ -587,6 +588,7 @@ ImageAspect = "Natural"|"Square"|"FourThree"|"ThreeTwo"|"SixteenNine"
 Orientation = "Vertical"|"Horizontal"
 RelativeTimeUnit = "Second"|"Minute"|"Hour"|"Day"|"Week"|"Month"|"Year"
 StyleWeight = "Compact"|"Standard"|"Spacious"
+TimeGrain = "Second"|"Minute"|"Hour"|"Day"
 ToneVariant = "Default"|"Subdued"|"Brand"|"Success"|"Warning"|"Critical"|"Info"
 ```
 <!-- /fuaran:signature-catalogue -->

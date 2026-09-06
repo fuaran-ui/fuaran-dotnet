@@ -31,11 +31,39 @@ open Fuaran.UI.Renderer
 
 /// A `<script>` reference for the document head. `Module` emits
 /// `type="module"`; `Defer` / `Async` emit the matching boolean attributes.
+///
+/// Phase 1523 — `Nonce`, `Integrity` and `CrossOrigin` join them, and the
+/// omission they close was not cosmetic: a host serving a nonce-based CSP
+/// (`script-src 'nonce-…'`) could not use `Scripts` AT ALL, because every
+/// `<script>` this shell emitted lacked the nonce and was therefore blocked by
+/// the very policy the host had adopted to be safe. So the shell's script slot
+/// was unusable in exactly the deployments that had done the most work to
+/// secure themselves, and `Renderer.Web`'s `Snippet.mount` already modelled a
+/// nonce — meaning the estate had the concept and only this surface lacked it.
+///
+/// All three are `option`, so every existing record literal keeps compiling by
+/// adding `None` (the `FS0764` cost the draft slot already carries) and every
+/// existing emission is byte-identical when they are `None`.
 type ScriptRef =
-    { Src: string
-      Module: bool
-      Defer: bool
-      Async: bool }
+    {
+        Src: string
+        Module: bool
+        Defer: bool
+        Async: bool
+        /// The CSP nonce for this script — emitted as `nonce="…"`. The host
+        /// mints it per response and puts the same value in its
+        /// `Content-Security-Policy` header; nothing here generates one, because
+        /// a nonce the document could derive is a nonce an attacker can derive.
+        Nonce: string option
+        /// A Subresource Integrity digest (`sha384-…`) — emitted as
+        /// `integrity="…"`. Meaningful on a cross-origin script, which is why
+        /// `CrossOrigin` sits beside it: browsers require CORS for SRI on a
+        /// cross-origin fetch, so an `Integrity` without a `CrossOrigin` on a
+        /// third-party URL fails closed and the script does not load.
+        Integrity: string option
+        /// The `crossorigin` mode — `"anonymous"` or `"use-credentials"`.
+        CrossOrigin: string option
+    }
 
 /// The host-authored document shell composed around the Fuaran body fragment.
 /// Build with `DocumentShell.create "<title>"` then record-`with` the fields the
@@ -91,13 +119,36 @@ module ScriptRef =
         { Src = src
           Module = false
           Defer = false
-          Async = false }
+          Async = false
+          Nonce = None
+          Integrity = None
+          CrossOrigin = None }
 
     /// A `<script type="module" src=…>`.
     let moduleScript (src: string) : ScriptRef = { create src with Module = true }
 
     /// A deferred `<script defer src=…>`.
     let deferred (src: string) : ScriptRef = { create src with Defer = true }
+
+    /// Carry the host's per-response CSP nonce (Phase 1523). The host mints the
+    /// value and puts the SAME one in its `Content-Security-Policy` header;
+    /// nothing here generates one, because a nonce the document could derive is
+    /// a nonce an attacker can derive.
+    let withNonce (nonce: string) (script: ScriptRef) : ScriptRef = { script with Nonce = Some nonce }
+
+    /// Carry a Subresource Integrity digest and the CORS mode it needs
+    /// (Phase 1523).
+    ///
+    /// The two are set TOGETHER rather than by two functions, because a browser
+    /// requires CORS for SRI on a cross-origin fetch: an `integrity` without a
+    /// `crossorigin` on a third-party URL fails closed and the script silently
+    /// does not load. Pairing them makes the working combination the easy one to
+    /// write. `"anonymous"` is the mode a public CDN wants; a host needing
+    /// `"use-credentials"` passes it.
+    let withIntegrity (digest: string) (crossOrigin: string) (script: ScriptRef) : ScriptRef =
+        { script with
+            Integrity = Some digest
+            CrossOrigin = Some crossOrigin }
 
 [<RequireQualifiedAccess>]
 module DocumentShell =
@@ -139,8 +190,27 @@ module Document =
     let private attrEscape (s: string) : string =
         s.Replace("&", "&amp;").Replace("\"", "&quot;").Replace("<", "&lt;").Replace(">", "&gt;")
 
+    /// Render an attribute list into the hand-emitted `<html>` / `<body>` open
+    /// tags, DROPPING any entry whose NAME is not a safe attribute name
+    /// (Phase 1523, the Phase 788 class ported here).
+    ///
+    /// The value is escaped above; the NAME was written verbatim, and HTML has
+    /// no escape for an illegal character in an attribute name — a space inside
+    /// one simply starts a NEW attribute and an `=` starts its value. So a
+    /// `HtmlAttributes` / `BodyAttributes` key of `data-x=1 onload=alert(1) z`
+    /// was not a mangled name; it was three attributes, one of them a live event
+    /// handler, on the document's own `<html>` element. These two tags are
+    /// concatenated as strings rather than built through ViewEngine, which is
+    /// precisely why the gate the rest of the renderer gets for free had to be
+    /// applied by hand — and was not.
+    ///
+    /// Dropping rather than escaping is the only correct response, for the
+    /// reason `Sanitize.isSafeAttributeName` gives: there is nothing to escape
+    /// to. A dropped attribute is a missing attribute, which is visible; a
+    /// mangled one would be a different attribute, which is not.
     let private renderAttrs (attrs: (string * string) list) : string =
         attrs
+        |> List.filter (fun (k, _) -> Sanitize.isSafeAttributeName k)
         |> List.map (fun (k, v) -> sprintf " %s=\"%s\"" k (attrEscape v))
         |> String.concat ""
 
@@ -171,6 +241,20 @@ module Document =
                       @ (if s.Module then [ prop.custom ("type", "module") ] else [])
                       @ (if s.Defer then [ prop.custom ("defer", "") ] else [])
                       @ (if s.Async then [ prop.custom ("async", "") ] else [])
+                      // Phase 1523 — emitted only when set, so a shell that
+                      // declares none is byte-identical to the pre-1523
+                      // emission. ViewEngine escapes these attribute VALUES, so
+                      // the host's own nonce / digest strings need no handling
+                      // here beyond being placed.
+                      @ (match s.Nonce with
+                         | Some n -> [ prop.custom ("nonce", n) ]
+                         | None -> [])
+                      @ (match s.Integrity with
+                         | Some i -> [ prop.custom ("integrity", i) ]
+                         | None -> [])
+                      @ (match s.CrossOrigin with
+                         | Some c -> [ prop.custom ("crossorigin", c) ]
+                         | None -> [])
                   )
               for jsonLd in shell.JsonLd do
                   Html.script
