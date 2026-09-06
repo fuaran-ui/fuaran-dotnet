@@ -185,8 +185,13 @@ let emitRenderFailureWithContext
                   PromptId = Map.tryFind promptIdKey sessionContext
                   UserId = Map.tryFind userIdKey sessionContext
                   Timestamp = System.DateTimeOffset.UtcNow }
-        with _ ->
-            ()
+        with ex ->
+            // The isolation is right: a telemetry sink must not be able to turn
+            // a render failure into a render CRASH. But this is the emission of
+            // a failure report, so swallowing it loses the one record anybody
+            // was going to read — a sink that throws here produces a render that
+            // failed and a telemetry stream that says it did not.
+            Diagnostics.warn ("the telemetry sink threw while recording a render failure for '" + nodeId + "'") (box ex)
     | None -> ()
 
     corrId

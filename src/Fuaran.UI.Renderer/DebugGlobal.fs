@@ -642,8 +642,12 @@ let applyResult (runtime: Runtime.IFuaranRuntime) (options: DebugOptions) (opJso
             |> Option.iter (fun sink ->
                 try
                     sink.RecordDeny(denyTelemetry options.Sinks.UserId System.DateTimeOffset.UtcNow reason)
-                with _ ->
-                    ())
+                with ex ->
+                    // The deny still stands — the refusal is the return value,
+                    // not the telemetry. Reported because a deny that was
+                    // refused AND unrecorded is the one shape an operator
+                    // reading the journal cannot see at all.
+                    Diagnostics.warn "the deny journal threw; the refusal still stands" (box ex))
 
             ApplyResult.Denied reason
         | Ok() ->
@@ -655,8 +659,11 @@ let applyResult (runtime: Runtime.IFuaranRuntime) (options: DebugOptions) (opJso
                 |> Option.iter (fun journal ->
                     try
                         journal opJson
-                    with _ ->
-                        ())
+                    with ex ->
+                        // The op APPLIED; only its journal entry was lost. That
+                        // is the worst kind of silence — a durable record with
+                        // a hole in it and nothing saying so.
+                        Diagnostics.warn "the applied-op journal threw; the op still applied" (box ex))
 
             match outcome with
             | ApplyOutcome.Applied ->
