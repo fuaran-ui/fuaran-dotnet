@@ -5218,6 +5218,58 @@
         {
           "fields": [],
           "tag": "Print"
+        },
+        {
+          "fields": [
+            {
+              "name": "prompt",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "union",
+                "args": [],
+                "name": "TextSource"
+              }
+            },
+            {
+              "name": "onConfirm",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "union",
+                "args": [],
+                "name": "Action"
+              }
+            },
+            {
+              "name": "onCancel",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "union",
+                "args": [],
+                "name": "Action"
+              }
+            }
+          ],
+          "tag": "Confirm"
+        },
+        {
+          "fields": [
+            {
+              "name": "nodeId",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "str"
+              }
+            }
+          ],
+          "tag": "Focus"
         }
       ],
       "name": "Action",

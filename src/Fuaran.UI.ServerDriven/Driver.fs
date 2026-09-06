@@ -237,6 +237,7 @@ let rec private interpret
     (nodeId: string)
     (services: DriverServices<'Msg>)
     (submitBody: JVal option)
+    (confirmPath: string)
     (action: Action<'Msg>)
     : 'Msg list * ClientEffect list =
     match action with
@@ -297,6 +298,38 @@ let rec private interpret
     // question is the host policy gate, which has already been asked by
     // `Validation.validate` before this function is reached.
     | Action.Print -> [], [ ClientEffect.Print ]
+    // Phase 1537 — the reader is on the client, so the question lowers exactly
+    // as the print dialogue above does. What is DIFFERENT, and is the whole
+    // design of this arm, is that the CONTINUATIONS DO NOT GO WITH IT. The shim
+    // is told what to ask and nothing about what a yes will do; it answers, the
+    // answer comes back as the originating event re-delivered, and the server —
+    // which holds the tree, the gate and the egress policy — decides what that
+    // answer means. Shipping the branches would move the decision to the least
+    // trusted party in the system, and a hostile shim could then perform the
+    // confirmed action by simply reading its own instruction.
+    //
+    // The token is the confirm's STRUCTURAL PATH inside the resolved action, so
+    // the ask and the answer agree by construction rather than by a server-side
+    // pending map with a lifetime, an eviction policy and a memory bound. That
+    // is the `PushState` / `popstate` shape: the tree is the state.
+    //
+    // An UNRESOLVED prompt lowers to no effect at all, on the `Navigate` arm's
+    // reasoning above: the empty string is what an absent bound source renders
+    // to, and a dialogue with no question is one the reader cannot answer
+    // meaningfully — a blank confirm is a yes/no with no subject, which is
+    // worse than no dialogue.
+    | Action.Confirm(prompt, _, _) ->
+        let resolved = services.ResolveText prompt
+
+        if System.String.IsNullOrWhiteSpace resolved then
+            [], []
+        else
+            [], [ ClientEffect.Confirm(resolved, ConfirmPath.token nodeId confirmPath) ]
+    // Phase 1537 — the `Action` counterpart of an effect this channel has
+    // carried since Phase 152. It addresses a node in the document the shim is
+    // already displaying, so there is nothing to resolve and nothing to check:
+    // a node id is not a destination.
+    | Action.Focus targetNodeId -> [], [ ClientEffect.Focus targetNodeId ]
     | Action.ReadFileBody(_, _, encoding, _) ->
         let enc =
             match encoding with
@@ -306,11 +339,16 @@ let rec private interpret
 
         [], [ ClientEffect.ReadFileBody(nodeId, enc) ]
     | Action.Chain actions ->
-        // Concatenate the interpretations in order.
+        // Concatenate the interpretations in order. Phase 1537 — each member
+        // carries its own POSITION in the confirm path, so a chain raising two
+        // dialogues mints two distinguishable tokens.
         actions
+        |> List.mapi (fun i a -> i, a)
         |> List.fold
-            (fun (ms, es) a ->
-                let m2, e2 = interpret nodeId services submitBody a
+            (fun (ms, es) (i, a) ->
+                let m2, e2 =
+                    interpret nodeId services submitBody (ConfirmPath.child confirmPath i) a
+
                 ms @ m2, es @ e2)
             ([], [])
     // Phase 820 — a `Call` executing with a submit body (a form-submit's
@@ -356,7 +394,7 @@ let applyResolvedActionsWithSubmitBody
         actions
         |> List.fold
             (fun (ms, es) (a, submitBody) ->
-                let m2, e2 = interpret nodeId session.Services submitBody a
+                let m2, e2 = interpret nodeId session.Services submitBody ConfirmPath.root a
                 ms @ m2, es @ e2)
             ([], [])
 
@@ -453,14 +491,64 @@ let step (session: LiveSession<'Model, 'Msg>) (ev: LiveEvent) : LiveSession<'Mod
           Effects = []
           Rejected = None }
     | Ok { Action = Some action } ->
-        // Emit AFTER the fold, so the record carries the outcome that actually
-        // happened rather than the one we expected. A throwing host closure is
-        // recorded as `Failed` and RE-RAISED — recording must not change what
-        // the transport sees.
-        try
-            let result = applyResolvedActions session ev.NodeId [ action ]
-            recordInvocation session.Services ev ActionOutcome.Dispatched action
-            result
-        with ex ->
-            recordInvocation session.Services ev (ActionOutcome.Failed ex.Message) action
-            reraise ()
+        // Phase 1537 — a confirm ANSWER is the originating event re-delivered
+        // with two extra payload members, so it has already passed the whole G1
+        // boundary above (node exists, event legitimate, payload in bounds, and
+        // the resolved action — the one CONTAINING the confirm — gated). That
+        // first gate answers "may this tree raise a dialogue at all", which is
+        // the same question it answered on the ask.
+        //
+        // What follows is the SECOND gate, and it is the reason a confirm
+        // cannot smuggle an action a host refuses: the continuation is put to
+        // `CanDispatch` on its own, so a runtime that allows `Confirm` and
+        // denies `Navigate` accepts the dialogue and still refuses the
+        // navigation behind it.
+        //
+        // A token addressing no confirm in this node's CURRENT action is
+        // refused rather than ignored. It means the tree moved under the reader
+        // or the token was forged, and in both cases running nothing silently
+        // would leave a gesture that reports success and did nothing.
+        let confirmAnswer =
+            match Map.tryFind ConfirmAnswer.TokenKey ev.Payload, Map.tryFind ConfirmAnswer.AcceptedKey ev.Payload with
+            | Some(LiveValue.Str token), Some(LiveValue.Bool accepted) -> Some(token, accepted)
+            | _ -> None
+
+        let dispatched =
+            match confirmAnswer with
+            | None -> Ok action
+            | Some(token, accepted) ->
+                match ConfirmAnswer.resolve ev.NodeId token accepted action with
+                | ConfirmResolution.Unaddressed ->
+                    Error(
+                        RejectReason.PayloadOutOfBounds(
+                            ev.NodeId,
+                            "confirm answer addresses no Confirm in this node's action"
+                        )
+                    )
+                | ConfirmResolution.Nothing -> Ok(Action.Chain [])
+                | ConfirmResolution.Branch branch ->
+                    if session.Services.CanDispatch branch then
+                        Ok branch
+                    else
+                        Error(RejectReason.DispatchDenied(ev.NodeId, Validation.describeAction branch))
+
+        match dispatched with
+        | Error reason ->
+            recordRejection session.Services ev reason
+
+            session,
+            { Patches = []
+              Effects = []
+              Rejected = Some reason }
+        | Ok action ->
+            // Emit AFTER the fold, so the record carries the outcome that actually
+            // happened rather than the one we expected. A throwing host closure is
+            // recorded as `Failed` and RE-RAISED — recording must not change what
+            // the transport sees.
+            try
+                let result = applyResolvedActions session ev.NodeId [ action ]
+                recordInvocation session.Services ev ActionOutcome.Dispatched action
+                result
+            with ex ->
+                recordInvocation session.Services ev (ActionOutcome.Failed ex.Message) action
+                reraise ()

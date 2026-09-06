@@ -226,18 +226,29 @@ module ActionInvocation =
         | Action.CommitLocal id -> sprintf "CommitLocal(%s)" id
         | Action.WriteToClipboard _ -> "WriteToClipboard"
         | Action.Print -> "Print"
+        // Phase 1537 — `Confirm` prints as `Confirm` with NO contents, on the
+        // `Chain` rule one arm up and for a sharper reason: enumerating the
+        // continuation here would put every nested payload position back into
+        // the default-mode string, and the prompt itself is authored text that
+        // may name what the reader selected. A dialogue is one gesture.
+        | Action.Confirm _ -> "Confirm"
+        // The addressed node id is author-declared vocabulary (grade B in
+        // `docs/ACTION-LOG-PRIVACY.md`), so it is carried in full — the
+        // `CommitLocal` arm above exactly.
+        | Action.Focus nodeId -> sprintf "Focus(%s)" nodeId
         | Action.ReadFileBody(_, _, _, _) -> "ReadFileBody"
         | Action.Invoke(c, _) -> sprintf "Invoke(%s)" c
 
     /// The decoded payload for `mode`. `Redacted` yields `None` for every one
-    /// of the twelve cases — that is the invariant the poison test pins.
+    /// of the fourteen cases — that is the invariant the poison test pins.
     ///
-    /// Under `PayloadBearing`, four cases still yield `None` and each for a
+    /// Under `PayloadBearing`, five cases still yield `None` and each for a
     /// structural reason rather than a policy one: `Dispatch` carries a closure
     /// with no wire payload; `Call` has no payload slot on the wire at all
     /// (Phase 820 routes a submit body through a host seam, not the action);
-    /// `Chain` is one gesture whose constituents are not enumerated here; and
-    /// `Print` (Phase 1124) is payload-free on the wire.
+    /// `Chain` is one gesture whose constituents are not enumerated here;
+    /// `Print` (Phase 1124) is payload-free on the wire; and `Confirm`
+    /// (Phase 1537) carries two nested actions, which is `Chain`'s reason.
     let payloadFor (mode: ActionCaptureMode) (a: Action<'Msg>) : JVal option =
         match mode with
         | ActionCaptureMode.Redacted -> None
@@ -275,6 +286,17 @@ module ActionInvocation =
             // all, so there is no payload to decode. `Some JNull` would record
             // an absent value as a present one.
             | Action.Print -> None
+            // Phase 1537 — a FIFTH structural `None`, on `Chain`'s reason
+            // rather than `Print`'s: a `Confirm` DOES have wire slots, but two
+            // of the three are whole nested actions, so recording them here
+            // would enumerate a gesture's constituents in the one projection
+            // that deliberately does not. The prompt alone would be a partial
+            // record of a case, which is worse than none — it reads as the
+            // whole of what the action carries.
+            | Action.Confirm _ -> None
+            // The addressed node id is author-declared vocabulary, exactly as
+            // `CommitLocal`'s is.
+            | Action.Focus nodeId -> Some(JStr nodeId)
 
     #warnon "44"
 

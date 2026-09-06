@@ -524,6 +524,15 @@ let rec private containsUnwiredAction (action: Action<'Msg>) : bool =
     // cancels the dialogue) is intrinsic to the host, which is the clipboard
     // arm's reasoning exactly — treat as wired, never as an unwired stub.
     | Action.Print -> false
+    // Phase 1537 — `window.confirm()` and `.focus()` are the browser's own on
+    // the same reasoning. A `Confirm` is "unwired" exactly when its own
+    // CONTINUATIONS are: the dialogue always works, so what the reader would be
+    // asking for is whatever the yes branch would do. `onCancel` counts too —
+    // a cancel branch that reaches no substrate is as inert as a confirm one.
+    | Action.Confirm(_, onConfirm, onCancel) ->
+        containsUnwiredAction onConfirm
+        || (onCancel |> Option.map containsUnwiredAction |> Option.defaultValue false)
+    | Action.Focus _ -> false
 
 #warnon "44"
 
@@ -934,6 +943,70 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
         // nor what they chose; the tree therefore learns nothing about the reader,
         // which is what keeps this the least-disclosing effect in the gated set.
         gate Runtime.ActionDescriptor.Print (fun () -> Browser.Dom.window.print ())
+    | Action.Confirm(prompt, onConfirm, onCancel) ->
+        // Phase 1537 — ONE dispatch path, gated twice, and the ordering is the
+        // whole of the security argument.
+        //
+        // The FIRST gate is this one: `ActionDescriptor.Confirm` asks whether
+        // this tree may raise a dialogue at all. `window.confirm()` is modal,
+        // steals focus and blocks the page, so a host rendering untrusted trees
+        // must be able to refuse it — the `Print` reasoning exactly, and for the
+        // same reason it is renderer-native with no `IFuaranRuntime` member
+        // behind it.
+        //
+        // The SECOND gate is not written here, and that is the point. On
+        // acceptance the continuation re-enters `runActionCore` — this same
+        // function, from the top — so a `Navigate` inside it meets
+        // `treeNavigateOutcome`'s egress check and its own descriptor, a
+        // `SetState` meets the host-reserved-key guard, a `Call` meets
+        // `treeCallOutcome`. There is no branch here that performs an effect
+        // directly, so there is no way for a confirm to carry an action past a
+        // gate that would have refused it standing alone.
+        //
+        // A refusal of the confirm itself performs NEITHER branch. The reader
+        // was never asked, so neither answer happened; running `onCancel` would
+        // report a refusal the reader did not make.
+        //
+        // The prompt resolves at DISPATCH time through the same `renderText` the
+        // surrounding tree renders its labels through (the `WriteToClipboard`
+        // precedent), so a question may name what the reader is looking at.
+        gate (Runtime.ActionDescriptor.Confirm(renderText ctx prompt)) (fun () ->
+            if Browser.Dom.window.confirm (renderText ctx prompt) then
+                runActionCore ctx denied onConfirm
+            else
+                onCancel |> Option.iter (runActionCore ctx denied))
+    | Action.Focus nodeId ->
+        // Phase 1537 — move focus to the addressed node. Renderer-native for
+        // the `Print` / `CommitLocal` reason: `.focus()` is the browser's own
+        // and takes nothing a host could configure.
+        //
+        // GATED all the same. Focus theft is host-observable — it moves the
+        // reader's caret and, on most engines, scrolls the element into view —
+        // so a default-deny host refuses it through the same `CanDispatch` seam
+        // it refuses `Call` / `Navigate` / `AiTool`.
+        //
+        // A node id that addresses nothing WARNS and moves nothing. It is not
+        // an error: a document may address a node that a `Switch` branch or a
+        // `Visible` predicate has legitimately removed from the flow, and
+        // throwing there would take the whole gesture down. It is not silent
+        // either — an author whose focus target never resolves has a defect,
+        // and the warning is where they find it.
+        gate (Runtime.ActionDescriptor.Focus nodeId) (fun () ->
+            let selector =
+                "[data-fuaran-node-id=\""
+                + nodeId.Replace("\\", "\\\\").Replace("\"", "\\\"")
+                + "\"]"
+
+            let el = Browser.Dom.document.querySelector selector
+
+            if isNull el then
+                ctx.Runtime.Warn(
+                    sprintf
+                        "[Fuaran] Action.Focus('%s') addressed no rendered node — focus unchanged. The node may be absent from the tree, or removed from the flow by a Switch branch."
+                        nodeId
+                )
+            else
+                (el :?> Browser.Types.HTMLElement).focus ())
     | Action.ReadFileBody(fileRef, fileHandle, encoding, onRead) ->
         // Default-deny by shape (FGP 3): consult the policy gate before the
         // host reads the file. On allow, the runtime reads the blob (async at

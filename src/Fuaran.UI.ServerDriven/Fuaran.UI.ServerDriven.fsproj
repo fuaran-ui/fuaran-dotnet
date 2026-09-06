@@ -24,6 +24,7 @@
   <ItemGroup>
     <Compile Include="DomPatch.fs" />
     <Compile Include="ClientEffect.fs" />
+    <Compile Include="ConfirmAnswer.fs" />
     <Compile Include="Lowering.fs" />
     <Compile Include="LiveLimits.fs" />
     <Compile Include="ConnToken.fs" />

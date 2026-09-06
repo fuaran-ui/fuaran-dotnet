@@ -626,6 +626,13 @@ let rec callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse 
             HasOnResult = onResult.IsSome
             Into = into } ]
     | Action.Chain actions -> actions |> List.collect (callsOfAction readerId)
+    // Phase 1537 — a `Confirm` is the SECOND recursive arm on this union, so it
+    // recurses here exactly as `Chain` does. A `Call` inside a continuation is
+    // a fetch this tree can reach; a walk that stopped at the dialogue would
+    // report a reader as fetch-free while it fetches on the reader's yes.
+    | Action.Confirm(_, onConfirm, onCancel) ->
+        callsOfAction readerId onConfirm
+        @ (onCancel |> Option.map (callsOfAction readerId) |> Option.defaultValue [])
     | Action.Dispatch _
     | Action.Notify _
     | Action.Navigate _
@@ -636,6 +643,8 @@ let rec callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse 
     | Action.ReadFileBody _
     // Phase 1124 — payload-free; no endpoint, so no fetch.
     | Action.Print
+    // Phase 1537 — a node id, and no endpoint.
+    | Action.Focus _
     | Action.Invoke _ -> []
 
 /// Closure-carrying slots held by an ACTION value, recursing `Chain` — the
@@ -660,6 +669,15 @@ let rec closuresOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : Closu
         else
             []
     | Action.Chain actions -> actions |> List.collect (closuresOfAction readerId)
+    // Phase 1537 — the second recursive arm, and the one where recursing is
+    // load-bearing rather than tidy: `Dispatch` inside a continuation is the
+    // FUARAN112 case, and a walk that stopped at the dialogue would let a
+    // closure-bearing action cross the transport refusal by hiding one level
+    // down. The `Confirm` itself holds no closure — its prompt is a
+    // `TextSource` and its branches are values.
+    | Action.Confirm(_, onConfirm, onCancel) ->
+        closuresOfAction readerId onConfirm
+        @ (onCancel |> Option.map (closuresOfAction readerId) |> Option.defaultValue [])
     // The closure-free arms. `Invoke` reaches a host capability by ID with
     // wire-encoded args, and `AiTool` by tool name — neither holds host code.
     | Action.Notify _
@@ -670,14 +688,17 @@ let rec closuresOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : Closu
     | Action.WriteToClipboard _
     // Phase 1124 — payload-free; there is no slot at all, so no closure.
     | Action.Print
+    // Phase 1537 — a node id, and no closure.
+    | Action.Focus _
     | Action.Invoke _ -> []
 
 /// Binding usages carried by an ACTION value, recursing `Chain` — the sibling
 /// of `callsOfAction`, and the arm of the walk that was missing.
 ///
-/// THREE action slots are binding-bearing: `SetState`'s `valueFrom` (Phase
-/// 818), `WriteToClipboard`'s `text` and `Navigate`'s `route` — the last two
-/// because a `TextSource` may be `Bound` (Phases 1126 and 1536). Every other arm
+/// FOUR action slots are binding-bearing: `SetState`'s `valueFrom` (Phase
+/// 818), `WriteToClipboard`'s `text`, `Navigate`'s `route` and `Confirm`'s
+/// `prompt` — the last three because a `TextSource` may be `Bound` (Phases
+/// 1126, 1536 and 1537). Every other arm
 /// carries strings, a `JVal` literal, an `InvokeArg` pair of strings, or a
 /// closure the wire cannot see, so this still reads as a few arms and a long
 /// tail of empties — which is exactly why it is written as an EXHAUSTIVE match
@@ -710,6 +731,15 @@ let rec usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
     // because the tree does read that key.
     | Action.WriteToClipboard text -> usesOfText text
     | Action.Navigate(route, _) -> usesOfText route
+    // Phase 1537 — a FOURTH binding-bearing slot (the prompt's `TextSource`,
+    // which may be `Bound`, so the question can name what the reader selected),
+    // plus the two continuations, which recurse exactly as `Chain` does. Both
+    // resolve at DISPATCH time, so the recorded asymmetry above applies to them
+    // unchanged.
+    | Action.Confirm(prompt, onConfirm, onCancel) ->
+        usesOfText prompt
+        @ usesOfAction onConfirm
+        @ (onCancel |> Option.map usesOfAction |> Option.defaultValue [])
     | Action.Call _
     | Action.Dispatch _
     | Action.Notify _
@@ -718,6 +748,8 @@ let rec usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
     | Action.ReadFileBody _
     // Phase 1124 — payload-free; nothing to read a binding from.
     | Action.Print
+    // Phase 1537 — a node id the author wrote, never a binding.
+    | Action.Focus _
     | Action.Invoke _ -> []
 
 #warnon "44"
@@ -923,6 +955,13 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             stateWrites.Add(readerId, key)
             stateWriteKeys.Add key |> ignore
         | Action.Chain actions -> actions |> List.iter (recordStateAction readerId)
+        // Phase 1537 — the second recursive arm. A `SetState` inside a
+        // continuation is a write this slot performs on the reader's yes, and a
+        // walk that stopped at the dialogue would report the key as unwritten —
+        // which is what FUARAN105/106/107 reason from.
+        | Action.Confirm(_, onConfirm, onCancel) ->
+            recordStateAction readerId onConfirm
+            onCancel |> Option.iter (recordStateAction readerId)
         // A declared result target names its destination; an `onResult` closure
         // does not, and may write anything at all.
         | Action.Call(_, onResult, into) ->
@@ -943,6 +982,9 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         // Phase 1124 — opens the reader's print dialogue and returns nothing;
         // it reaches no host code, so it is NOT an opaque writer.
         | Action.Print
+        // Phase 1537 — moves focus inside the document already rendered; it
+        // reaches no host code and writes no state.
+        | Action.Focus _
         | Action.WriteToClipboard _ -> ()
 
     let recordCalls (inUses: bool) (readerId: string) (action: Action<'Msg>) =
