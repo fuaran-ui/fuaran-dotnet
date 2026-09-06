@@ -842,8 +842,8 @@ let private genGridColumns: Gen<ColumnErased<obj> list> =
                     Accessibility = None
                     Motion = None
                     ExtraAttributes = None
-                    Tooltip = None })
-                    Visible = None ]
+                    Tooltip = None
+                    Visible = None }) ]
 
         return
             cellKinds

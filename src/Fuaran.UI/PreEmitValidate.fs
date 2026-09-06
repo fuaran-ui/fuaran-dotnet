@@ -196,6 +196,31 @@ type PreEmitDefect =
     /// is reachable by construction. Carries the switch node's id and the
     /// zero-based case index.
     | SwitchCaseSelectorShape of nodeId: string * caseIndex: int * bothPresent: bool
+    /// **FUARAN143 (Warning)**. A node's `visible` predicate is a default-less
+    /// `Binding.State` on a key nothing in the tree writes (Fuaran-UI Phase
+    /// 1535) — the silent HIDE, and the Phase-865 silent-zero shape on a new
+    /// slot.
+    ///
+    /// `visible` is an ordinary `Binding<bool>` and follows the shared
+    /// `Binding.State` rule: a key nothing has written resolves to the slot
+    /// default, which at `bool` is `false`. So a default-less predicate on an
+    /// unwritten key does not fail to resolve — it resolves `false`, and the
+    /// node is removed from the output with nothing anywhere saying why. That is
+    /// exactly the failure the slot's own rule (an unresolved predicate RENDERS)
+    /// was written to prevent, reached by a route that rule cannot see.
+    ///
+    /// The remedy is one character of authoring: declare the default.
+    /// `State(key, Some true)` is "visible unless something says otherwise";
+    /// `State(key, Some false)` is a deliberate start-hidden. A predicate
+    /// carrying either is not reported.
+    ///
+    /// **WARNING, and it stands down under any opaque writer**, for the reason
+    /// FUARAN103 and FUARAN105 do: a closure produces an arbitrary action at
+    /// dispatch time and may write anything, and a host may populate the key
+    /// directly. Host-reserved keys (the Phase 782 prefix) are exempt.
+    ///
+    /// Carries the node's id and the key.
+    | VisibleStateNoWriter of nodeId: string * key: string
     /// **FUARAN083 (Warning)**. A `NodeKind.Switch` carries an empty `stateKey`
     /// (Phase 392) — the ungrounded-state-key defect. A switch reads its state
     /// key to select a case; an empty key can never resolve, so the switch is
@@ -1734,6 +1759,13 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "Switch '%s' has two or more cases matching '%s' — first-match-wins makes the later case dead; give each case a distinct match value (Phase 392)"
             nodeId
             matchValue
+    | PreEmitDefect.VisibleStateNoWriter(nodeId, key) ->
+        "FUARAN143",
+        DefectSeverity.Warning,
+        sprintf
+            "node '%s' is visible only while state key '%s' is true, and nothing in this tree writes it — a default-less State binding resolves to false at a bool slot, so the node is removed with nothing saying why; declare the default (true = visible unless something says otherwise) or add the writer (Phase 1535)"
+            nodeId
+            key
     | PreEmitDefect.SwitchCaseSelectorShape(nodeId, caseIndex, bothPresent) ->
         "FUARAN142",
         DefectSeverity.Error,
@@ -4092,6 +4124,26 @@ let private validateCore
                 && reportedSwitch.Add(switchNodeId + " " + key)
             then
                 defects.Add(PreEmitDefect.SwitchKeyNoWriter(switchNodeId, key))
+
+    // ── FUARAN143 — a visibility predicate nothing can make true (Phase 1535) ──
+    //
+    // The silent HIDE. Same mechanism as FUARAN105 below and the same standing
+    // down: it reasons from the ABSENCE of a write, so any opacity in the tree
+    // silences it. What makes it worth its own code rather than a note on 105 is
+    // the CONSEQUENCE — a Transform over an unfillable source renders a wrong
+    // number, which a reader can at least see and doubt; a visibility predicate
+    // that cannot be made true renders nothing at all.
+    if not facts.StateKeys.OpaqueWriter then
+        let reportedVisible = System.Collections.Generic.HashSet<string>()
+
+        for (nodeId, key) in facts.StateKeys.VisibleStateSources do
+            if
+                key <> ""
+                && not (Set.contains key facts.StateKeys.WriteKeys)
+                && not (StateKeyPolicy.isHostReserved key)
+                && reportedVisible.Add(nodeId + " " + key)
+            then
+                defects.Add(PreEmitDefect.VisibleStateNoWriter(nodeId, key))
 
     // ── FUARAN105 — a Transform over an unfillable State source (Phase 865) ──
     //
