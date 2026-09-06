@@ -46,11 +46,15 @@ open Fuaran.UI.Renderer
 /// repair diff) to the proxy; return the produced tree JSON or an error.
 let private generate (prompt: string) (currentTreeJson: string option) : JS.Promise<Result<string, string>> =
     promise {
+        // The endpoint's own body shape, which your proxy passes through, so
+        // nothing here changes if you later point at a deployment directly. No
+        // secret is present: the proxy adds the access token and the BYOK key
+        // server-side, and the endpoint REFUSES a body that carries either.
         let body =
             createObj
-                [ "Prompt" ==> prompt
+                [ "prompt" ==> prompt
                   match currentTreeJson with
-                  | Some t -> "CurrentTreeJson" ==> t
+                  | Some t -> "currentTree" ==> t
                   | None -> () ]
 
         let! response =
@@ -64,7 +68,14 @@ let private generate (prompt: string) (currentTreeJson: string option) : JS.Prom
 
         if response.Ok then
             let parsed = JS.JSON.parse text
-            return Ok(parsed?TreeJson |> string)
+            let tree = parsed?tree
+
+            // A 200 with no tree is a FAILURE, not an empty tree: holding "" as
+            // the current tree would silently repair nothing on every later turn.
+            if isNull (box tree) then
+                return Error "the endpoint replied 200 with no tree"
+            else
+                return Ok(JS.JSON.stringify tree)
         else
             return Error(sprintf "generation failed (HTTP %d): %s" response.Status text)
     }

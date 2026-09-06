@@ -62,7 +62,8 @@ type ScriptedTransport(replies: HttpResult list) =
                 | [] ->
                     return
                         { Status = 200
-                          Body = """{"TreeJson":"t","Ops":[],"Version":"1.2.0"}""" }
+                          Body =
+                            """{"version":"1.6.0","tree":{"id":"t","kind":{"$type":"Badge","label":"x","variant":"Info"}},"opsApplied":0,"provider":"scripted","snapshot":{"state":"warm"}}""" }
             }
 
 [<RequireQualifiedAccess>]

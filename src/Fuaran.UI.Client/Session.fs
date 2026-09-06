@@ -20,7 +20,8 @@ type SessionTurnOptions =
     { ProviderKey: string option
       AccessToken: string option
       DisableCorpusRead: bool option
-      ContributeCorpus: bool option }
+      ContributeCorpus: bool option
+      InteractionId: string option }
 
 [<RequireQualifiedAccess>]
 module SessionTurnOptions =
@@ -30,7 +31,8 @@ module SessionTurnOptions =
         { ProviderKey = None
           AccessToken = None
           DisableCorpusRead = None
-          ContributeCorpus = None }
+          ContributeCorpus = None
+          InteractionId = None }
 
 /// A turn loop over a `FuaranClient` that carries the current tree forward.
 /// Seed with an existing tree's canonical wire JSON so the first turn is already
@@ -54,7 +56,8 @@ type FuaranSession(client: FuaranClient, ?initialTreeJson: string) =
                   ProviderKey = options.ProviderKey
                   AccessToken = options.AccessToken
                   DisableCorpusRead = options.DisableCorpusRead
-                  ContributeCorpus = options.ContributeCorpus }
+                  ContributeCorpus = options.ContributeCorpus
+                  InteractionId = options.InteractionId }
 
             let! result = client.Generate args
 

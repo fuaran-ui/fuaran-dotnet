@@ -598,7 +598,16 @@
          higher class, and the version is what tells a consumer what adopting it
          costs. The rendered response is additive: nothing inside `props` moves,
          and the mark is a sibling block. See STABILITY.md "Recorded change -
-         0.77.0, text provenance on the agent snapshot". -->
+         0.77.0, text provenance on the agent snapshot".
+
+         (0.77.0, riding) - `Fuaran.UI.Client` is rewritten onto the generation
+         wire the endpoint actually serves: `Wire.toWireBody` loses its secrets
+         parameter and `FuaranClientConfig` gains four fields, which is BREAKING
+         against the released v0.75.0. It RIDES 0.77.0 rather than advancing
+         because that slot is untagged and already carries a record widening of
+         the same class, and the draft-slot rule advances only for a HIGHER
+         class. See STABILITY.md "Recorded change - 0.77.0, `Fuaran.UI.Client`
+         speaks the deployed generation wire". -->
     <Version>0.77.0</Version>
   </PropertyGroup>
 
