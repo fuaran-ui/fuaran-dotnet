@@ -159,7 +159,15 @@ let rec private jsonValueLite (v: Fuaran.Core.JVal) : string =
 /// node's disposition, never the sentinel, so it boots / falls back instead.
 let rec encodeAction (action: Action<'Msg>) : string =
     match action with
-    | Action.Navigate route -> sprintf "{\"$type\":\"Navigate\",\"route\":%s}" (jsonString route)
+    // Phase 1536 — the route is a `TextSource`. A LITERAL route keeps the lite
+    // shape byte-identical (its canonical form IS the bare string, §3.6); any
+    // other route re-encodes wholesale through the canonical encoder, on the
+    // `SetState valueFrom` precedent below — a second hand-rolled `TextSource`
+    // encoder here would only drift. `target` rides through the canonical
+    // encoder too, so it is omitted at `Self` and the pre-1536 bytes stand.
+    | Action.Navigate(TextSource.Literal route, NavigateTarget.Self) ->
+        sprintf "{\"$type\":\"Navigate\",\"route\":%s}" (jsonString route)
+    | Action.Navigate _ -> (Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeActionJson action))
     | Action.Notify(channel, payload) ->
         sprintf "{\"$type\":\"Notify\",\"channel\":%s,\"payload\":%s}" (jsonString channel) (jsonValueLite payload)
     // Phase 818 — the literal `value` keeps the existing lite shape

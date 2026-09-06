@@ -7,6 +7,7 @@ module Fuaran.UI.ServerDriven.Tests.WireTests
 // so a shim parser / host transport can rely on it.
 
 open Expecto
+open Fuaran.UI.Types
 open Fuaran.UI.ServerDriven
 
 [<Tests>]
@@ -84,7 +85,7 @@ let clientEffectTests =
                   "clipboard"
 
               Expect.equal
-                  (ClientEffect.encode (ClientEffect.Navigate "/reports/2026"))
+                  (ClientEffect.encode (ClientEffect.Navigate("/reports/2026", NavigateTarget.Self)))
                   """{"kind":"Navigate","route":"/reports/2026"}"""
                   "navigate"
 
@@ -122,7 +123,7 @@ let clientEffectTests =
 
           test "encodeList wraps a JSON array; kind discriminators are stable" {
               Expect.equal
-                  (ClientEffect.encodeList [ ClientEffect.Focus "a"; ClientEffect.Navigate "/x" ])
+                  (ClientEffect.encodeList [ ClientEffect.Focus "a"; ClientEffect.Navigate("/x", NavigateTarget.Self) ])
                   """[{"kind":"Focus","nodeId":"a"},{"kind":"Navigate","route":"/x"}]"""
                   "array of effects"
 

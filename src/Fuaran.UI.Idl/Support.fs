@@ -127,6 +127,46 @@ let support: Gen.GenSupport =
                     // lines directly after this block; the blank `///` keeps them
                     // reading as their own paragraph rather than as a continuation.
                     "///" ]
+                  "case:Action.Navigate",
+                  [ "/// Navigate the reader to `route`, in the browsing context `target` names."
+                    "///"
+                    "/// Phase 1536 — the route is a `TextSource`, so \"open the selected"
+                    "/// order\" (`/orders/{selection.id}`) has a spelling. The case was WIDENED"
+                    "/// rather than joined by a `NavigateBound` sibling, on exactly the"
+                    "/// reasoning Phase 1126 applied to `WriteToClipboard`: two cases for one"
+                    "/// intent is the permanent near-synonym pair the vocabulary charter exists"
+                    "/// to forbid."
+                    "///"
+                    "/// **The wire does not move for a literal route.** `TextSource.Literal` is"
+                    "/// canonically the bare JSON string, so"
+                    "/// `{\"$type\":\"Navigate\",\"route\":\"/x\"}` is emitted and accepted exactly"
+                    "/// as it was before this release, and the §16 `href` / `url` / `to`"
+                    "/// aliases still normalise onto this one field. Construction sites are"
+                    "/// what break, and they break at compile time: wrap the old argument in"
+                    "/// `TextSource.Literal`."
+                    "///"
+                    "/// **Resolve, then gate — in that order.** A bound route resolves at"
+                    "/// DISPATCH time through the surrounding tree's binding sources, and the"
+                    "/// egress check and the dispatch gate then judge the RESOLVED string. A"
+                    "/// template is not a destination: gating `/orders/{id}` would consult the"
+                    "/// policy about a URL nobody navigates to. A route that does not resolve"
+                    "/// warns and navigates nowhere."
+                    "///"
+                    "/// `target = Blank` opens a fresh browsing context with"
+                    "/// `noopener,noreferrer` — the renderer's obligation on every host, never"
+                    "/// a host seam's." ]
+                  "type:NavigateTarget",
+                  [ "/// Phase 1536 — which browsing context an `Action.Navigate` lands in."
+                    "/// Omitted at `Self` on the wire, so documents written before this release"
+                    "/// keep their bytes."
+                    "///"
+                    "/// A closed enum, and NOT the free string `LinkSpec.target` is: that field"
+                    "/// takes any `_blank` / `_parent` / `_top` / named-frame token a web author"
+                    "/// might type, which is a vocabulary a decoded tree gets to invent. The"
+                    "/// axis here has two answers — this context, or a fresh one. `_parent` and"
+                    "/// `_top` are frame-busting gestures a hosted tree must not be able to ask"
+                    "/// for, and a named frame is an addressing scheme this language does not"
+                    "/// have." ]
                   "case:Action.Print",
                   [ "/// Phase 1124 — open the reader's own print dialogue. The first"
                     "/// PAYLOAD-FREE `Action` case, and the emptiness is the ruling: the"

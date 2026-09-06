@@ -9,6 +9,7 @@ module Fuaran.UI.ServerDriven.WebSocket.Tests.WsTests
 // accept + send/receive loops are thin ASP.NET glue, browser-verified.
 
 open Expecto
+open Fuaran.UI.Types
 open Fuaran.UI.ServerDriven
 open Fuaran.UI.ServerDriven.Validation
 open Fuaran.UI.ServerDriven.WebSocket
@@ -61,7 +62,7 @@ let channelTests =
               let f2 =
                   { Seq = 2
                     Patches = []
-                    Effects = [ ClientEffect.Navigate "/x" ] }
+                    Effects = [ ClientEffect.Navigate("/x", NavigateTarget.Self) ] }
 
               iface.Push f1
               iface.Push f2

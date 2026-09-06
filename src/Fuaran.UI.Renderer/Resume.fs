@@ -70,7 +70,34 @@ let private isJsString (v: obj) : bool = jsNative
 /// routed before interpretation).
 let rec private interpret (runtime: Runtime.IFuaranRuntime) (action: obj) : unit =
     match (action?``$type``: string) with
-    | "Navigate" -> runtime.Navigate(action?route)
+    // Phase 1536 — the route is a `TextSource`, whose canonical LITERAL form is
+    // the bare JSON string this path has always read. A non-string `route` is a
+    // bound or i18n payload, and THIS PATH HOLDS NO RESOLVER — the server's
+    // `disposition` routes such a node to `fallback` for exactly that reason, so
+    // reaching here with one means the envelope and the interpreter disagree.
+    //
+    // The honest response is to refuse, and refusing matters more here than it
+    // did for the clipboard: a resumed navigation with an unresolved route would
+    // either navigate to `[object Object]` or, worse, to whatever a coercion
+    // happened to produce. Nothing is guessed and nothing is navigated.
+    //
+    // `target` rides only when it is `"Blank"` (omitted at `Self`), and it is
+    // read with the same `noopener,noreferrer` the hydrated path uses — a
+    // resumed navigation and a hydrated one must be the same act.
+    | "Navigate" ->
+        let route: obj = action?route
+
+        if isJsString route then
+            let target: obj = action?target
+
+            if isJsString target && unbox<string> target = "Blank" then
+                Browser.Dom.window.``open`` (unbox<string> route, "_blank", "noopener,noreferrer")
+                |> ignore
+            else
+                runtime.Navigate(unbox<string> route)
+        else
+            runtime.Warn
+                "[Fuaran:resume] Navigate carries a bound route; this node should have been dispositioned 'fallback' and hydrated. Nothing was navigated."
     | "Notify" -> runtime.Notify(action?channel, Runtime.JsonBridge.jsToJVal action?payload)
     | "SetState" -> runtime.SetState(action?key, Runtime.JsonBridge.jsToJVal action?value)
     | "AiTool" -> runtime.InvokeAiTool(action?toolName, Runtime.JsonBridge.jsToJVal action?args)

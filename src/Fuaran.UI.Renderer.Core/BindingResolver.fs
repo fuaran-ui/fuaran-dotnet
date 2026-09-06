@@ -1156,6 +1156,33 @@ let resolveTextSource (sources: BindingSources) (text: TextSource) : string =
                 template
         | None -> sprintf "[i18n:%s]" key
 
+/// Phase 1536 — resolve a `TextSource` for a slot where an UNRESOLVED source
+/// must not degrade into a value.
+///
+/// `resolveTextSource` above is the RENDERING dispatch, and its degradations are
+/// right for rendering: a bound source that does not resolve renders as the
+/// empty string (an empty label, not a broken page), and a missing translation
+/// renders as the loud `[i18n:<key>]` sentinel so it is visible in the UI rather
+/// than silently blank. Both are the wrong answer for a DESTINATION. Navigating
+/// to `""` is navigating to the current document with its query and fragment
+/// stripped — a real navigation the author never asked for — and `[i18n:route]`
+/// is a relative path that would resolve against the host's origin and, on a
+/// permissive policy, actually be fetched.
+///
+/// So this returns `None` for exactly those two cases and `Some` otherwise,
+/// leaving the caller to warn and do nothing. It deliberately does NOT judge the
+/// resolved string: whether a destination is permitted is `Sanitize.checkDestination`'s
+/// question, asked after this one and never instead of it.
+let tryResolveTextSource (sources: BindingSources) (text: TextSource) : string option =
+    match text with
+    | TextSource.Literal s -> Some s
+    | TextSource.Bound binding -> tryResolveScalarText sources binding
+    | TextSource.I18n(key, _) ->
+        if Map.containsKey key sources.I18n then
+            Some(resolveTextSource sources text)
+        else
+            None
+
 /// Best-effort scalar float resolution — the `tryResolve` twin for numeric slots.
 let tryResolveScalarFloat (sources: BindingSources) (binding: Binding<float>) : float option =
     match resolveScalarFloat sources binding with

@@ -2372,6 +2372,22 @@ let private decodeModalityKind (path: string) (j: Json) : Result<ModalityKind, D
     | JString s -> unknownEnumCase path s "Modal | Popover"
     | _ -> wrongType path "JSON string (ModalityKind)"
 
+/// Phase 1536 — `Action.Navigate.target`. A BARE enum (§3.5), so an unrecognised
+/// token reports at the field's own path with no `.$type` suffix (§6). Two
+/// cases, closed, and no lenient spelling: the HTML tokens a web author reaches
+/// for — `_self` / `_blank` / `_parent` / `_top` / a named frame — are NOT
+/// accepted as aliases. Two of them (`_parent`, `_top`) are frame-busting
+/// gestures a hosted tree must not be able to ask for at all, and accepting the
+/// two harmless ones would teach an emitter that the HTML vocabulary is the one
+/// in force here. Absence is `Self`, which is the pre-1536 behaviour and the
+/// safe answer, so an unknown token is `UNKNOWN_DU_CASE` and never a fallback.
+let private decodeNavigateTarget (path: string) (j: Json) : Result<NavigateTarget, DecodeError> =
+    match j with
+    | JString "Self" -> Ok NavigateTarget.Self
+    | JString "Blank" -> Ok NavigateTarget.Blank
+    | JString s -> unknownEnumCase path s "Self | Blank"
+    | _ -> wrongType path "JSON string (NavigateTarget)"
+
 /// Phase 1116 — `FileUploadSpec.capture`. A BARE enum, so an unrecognised token
 /// reports at the field's own path with no `.$type` suffix (§6). The set is
 /// closed at the two devices a file picker can stand in front of; a screen, a
@@ -4071,9 +4087,33 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
             | Ok "Navigate" ->
                 // Field aliases: href/url/to — the HTML / React-Router prior for the
                 // same concept (observed 2/2 in the 2026-07-16 Kimi smokes).
-                match requireFieldAliased path fields "route" [ "href"; "url"; "to" ] "route string" with
+                //
+                // Phase 1536 — the route is a `TextSource`, so a route may be
+                // computed from what the reader is looking at rather than only
+                // typed by the author. `decodeTextSource` is the whole
+                // decode-upgrade and it needs no lenient special case: it
+                // ALREADY accepts a bare JSON string as `TextSource.Literal`
+                // (the §16 shorthand every text slot in the language shares),
+                // so every document written against the pre-1536 spelling —
+                // including one using an alias — decodes here unchanged and
+                // re-encodes to the same bytes. The aliases keep working
+                // because they are resolved BEFORE the value is decoded, so
+                // there is still exactly one canonical field a router can be
+                // reached through.
+                //
+                // `target` is omitted at `Self`, so absence is the pre-1536
+                // behaviour.
+                match requireFieldAliased path fields "route" [ "href"; "url"; "to" ] "route TextSource" with
                 | Error e -> Error e
-                | Ok v -> requireString (path + ".route") v |> Result.map Action.Navigate
+                | Ok v ->
+                    match decodeTextSource (path + ".route") v with
+                    | Error e -> Error e
+                    | Ok route ->
+                        match tryField fields "target" with
+                        | None -> Ok(Action.Navigate(route, NavigateTarget.Self))
+                        | Some t ->
+                            decodeNavigateTarget (path + ".target") t
+                            |> Result.map (fun target -> Action.Navigate(route, target))
             | Ok "SetState" ->
                 // Phase 818 — `value` (a literal JSON value) XOR `valueFrom`
                 // (a Binding evaluated at dispatch time inside the existing

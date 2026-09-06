@@ -44,7 +44,7 @@ let private tree: Node<obj> =
                       "btn"
                       { Defaults.button<obj> with
                           Label = TextSource.Literal "Go"
-                          OnClick = Action.Navigate "/about" }
+                          OnClick = Action.Navigate(TextSource.Literal "/about", NavigateTarget.Self) }
                   : Node<obj>)
                   Fuaran.form
                       "frm"
@@ -96,23 +96,39 @@ let resumeTests =
           }
 
           test "disposition classifier — strictest member wins in a Chain" {
-              Expect.equal (disposition (Action.Navigate "/x")) ResumeDisposition.Interpret "Navigate"
+              Expect.equal
+                  (disposition (Action.Navigate(TextSource.Literal "/x", NavigateTarget.Self)))
+                  ResumeDisposition.Interpret
+                  "Navigate"
+
               Expect.equal (disposition (Action.Dispatch(box "m"))) ResumeDisposition.Boot "Dispatch"
 
               Expect.equal (disposition (Action.Call("/api", Some id, None))) ResumeDisposition.Fallback "Call"
 
               Expect.equal
-                  (disposition (Action.Chain [ Action.Navigate "/x"; Action.Notify("c", JStr "p") ]))
+                  (disposition (
+                      Action.Chain
+                          [ Action.Navigate(TextSource.Literal "/x", NavigateTarget.Self)
+                            Action.Notify("c", JStr "p") ]
+                  ))
                   ResumeDisposition.Interpret
                   "all-data Chain interprets"
 
               Expect.equal
-                  (disposition (Action.Chain [ Action.Navigate "/x"; Action.Dispatch(box "m") ]))
+                  (disposition (
+                      Action.Chain
+                          [ Action.Navigate(TextSource.Literal "/x", NavigateTarget.Self)
+                            Action.Dispatch(box "m") ]
+                  ))
                   ResumeDisposition.Boot
                   "a Dispatch in the Chain forces boot"
 
               Expect.equal
-                  (disposition (Action.Chain [ Action.Navigate "/x"; Action.Call("/api", Some id, None) ]))
+                  (disposition (
+                      Action.Chain
+                          [ Action.Navigate(TextSource.Literal "/x", NavigateTarget.Self)
+                            Action.Call("/api", Some id, None) ]
+                  ))
                   ResumeDisposition.Fallback
                   "a Call in the Chain forces fallback"
           }
@@ -144,7 +160,7 @@ let resumeTests =
                               [ Fuaran.button
                                     "btn"
                                     { Defaults.button<obj> with
-                                        OnClick = Action.Navigate "/CHANGED" } ] }
+                                        OnClick = Action.Navigate(TextSource.Literal "/CHANGED", NavigateTarget.Self) } ] }
 
               Expect.notEqual (treeHash tree) (treeHash altered) "a changed tree → a changed hash"
           }
@@ -169,7 +185,11 @@ let resumeTests =
                   Fuaran.button
                       "btn"
                       { Defaults.button<obj> with
-                          OnClick = Action.Navigate "/x</script><script>alert(1)</script>" }
+                          OnClick =
+                              Action.Navigate(
+                                  TextSource.Literal "/x</script><script>alert(1)</script>",
+                                  NavigateTarget.Self
+                              ) }
 
               let html = Resume.renderResumable BindingResolver.empty "m" "" [] evil
               Expect.isFalse (contains "</script><script>alert" html) "no literal break-out sequence"
@@ -191,7 +211,11 @@ let resumeTests =
                                         (sprintf "btn%d" i)
                                         { Defaults.button<obj> with
                                             Label = TextSource.Literal(sprintf "Action %d" i)
-                                            OnClick = Action.Navigate(sprintf "/go/%d" i) } ] }
+                                            OnClick =
+                                                Action.Navigate(
+                                                    TextSource.Literal(sprintf "/go/%d" i),
+                                                    NavigateTarget.Self
+                                                ) } ] }
 
               let envBytes =
                   System.Text.Encoding.UTF8.GetByteCount(Resume.encodeEnvelope "m" "{}" [] page)

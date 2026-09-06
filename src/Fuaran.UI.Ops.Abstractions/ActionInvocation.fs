@@ -203,7 +203,23 @@ module ActionInvocation =
         | Action.Dispatch _ -> "Dispatch"
         | Action.Call(ep, _, _) -> sprintf "Call(%s)" ep
         | Action.Notify(ch, _) -> sprintf "Notify(%s)" ch
-        | Action.Navigate r -> sprintf "Navigate(%s)" (routePath r)
+        // Phase 1536 — the route is a `TextSource`, and NO RESOLVER IS IN SCOPE
+        // here: this projection describes the action as DECLARED. A literal
+        // route is scrubbed to its path exactly as before (byte-identical
+        // description for every document written before this release); a bound
+        // route prints `<bound>` rather than the binding's own spelling,
+        // because the description is the default-mode string and a binding is
+        // an addressing expression whose arguments can carry user data.
+        //
+        // The RESOLVED destination is not lost — it is scrubbed and recorded on
+        // the other path, where a resolver does exist: the renderer gates on
+        // `ActionDescriptor.Navigate safeRoute`, whose description
+        // (`Runtime.ActionDescriptor.describe`) applies the same `routePath` to
+        // the resolved, egress-checked value.
+        | Action.Navigate(route, _) ->
+            match route with
+            | TextSource.Literal r -> sprintf "Navigate(%s)" (routePath r)
+            | _ -> "Navigate(<bound>)"
         | Action.SetState(k, _, _) -> sprintf "SetState(%s)" k
         | Action.AiTool(t, _) -> sprintf "AiTool(%s)" t
         | Action.Chain _ -> "Chain"
@@ -233,7 +249,15 @@ module ActionInvocation =
             | Action.Notify(_, payload) -> Some payload
             | Action.AiTool(_, args) -> Some args
             | Action.SetState(_, value, _) -> value
-            | Action.Navigate route -> Some(JStr route)
+            // Phase 1536 — the DECLARED source through the canonical encoder,
+            // exactly as the clipboard arm below does and for the same reason.
+            // For the literal route every earlier release wrote this is
+            // byte-identical (`TextSource.Literal` IS the bare string), so the
+            // opt-in's "keeps the WHOLE route" contract is unchanged; for a
+            // bound route it is the binding as declared, which is the honest
+            // record — writing a resolved value here would claim knowledge this
+            // projection does not have.
+            | Action.Navigate(route, _) -> Some(Fuaran.UI.Generated.encodeTextSourceJson route)
             // Phase 1126 — the payload is a `TextSource`, so the record carries
             // the DECLARED source through the canonical encoder rather than a
             // hand-rolled `JStr`. For the literal payload every earlier release

@@ -60,7 +60,8 @@ let private view (m: Model) : Node<Msg> =
                   Fuaran.button
                       "nav"
                       { Defaults.button<Msg> with
-                          OnClick = Action.Navigate "/next?email=user@example.com" } ] }
+                          OnClick =
+                              Action.Navigate(TextSource.Literal "/next?email=user@example.com", NavigateTarget.Self) } ] }
 
 let private stubRender (n: Node<Msg>) : string = $"<f id='{n.Id}'/>"
 
