@@ -579,8 +579,17 @@
          section above (FS0025 exhaustiveness warnings are not breaking), and it
          ADVANCES rather than riding 0.75.0 because v0.75.0 is tagged - the slot
          is released, not a draft. See STABILITY.md "Recorded change - 0.76.0,
-         `MergeChoice.KeepA` / `KeepB`". -->
-    <Version>0.76.0</Version>
+         `MergeChoice.KeepA` / `KeepB`".
+
+         (0.76.1) - `Deflate.inflate` decodes a DYNAMIC-Huffman block correctly
+         under Fable. No surface moved and no .NET behaviour changed, so this is a
+         PATCH by the "Semver" section's own definition; it ADVANCES rather than
+         riding 0.76.0 because v0.76.0 is tagged. It is versioned at all, rather
+         than treated as a no-contract fix, because `Fuaran.UI` ships its `.fs`
+         SOURCES for Fable consumers - the delivered content of the package moved,
+         and a consumer restoring 0.76.0 gets a browser build that cannot read a
+         foreign deflate stream. See STABILITY.md "Recorded fix - 0.76.1". -->
+    <Version>0.76.1</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

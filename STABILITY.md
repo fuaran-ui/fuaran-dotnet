@@ -5024,3 +5024,39 @@ double-escape), and the 32-character clamp bites — with the DRAWN label in the
 authored string whole, so the clamp is a difference between two bytes the fixture holds rather than an
 assertion about one. A host whose chart-lowering leg walks the corpus directory sees all eleven before
 its own clauses exist; the four lowering hosts move in this same change-set.
+
+## Recorded fix — 0.76.1, `Deflate.inflate` on dynamic-Huffman blocks under Fable
+
+**No surface moved and no `.NET` behaviour changed.** `Deflate.inflate`'s signature, its
+`InflateError` cases, its error messages and every byte it decodes on this pipeline are exactly what
+0.76.0 shipped. By the [Semver](#semver) section's own definitions that is a **patch**, and it takes
+0.76.1 rather than riding 0.76.0 because `v0.76.0` is tagged — the slot is released, not a draft.
+
+**Why a released-package version at all, for a change with no contract in it.** `Fuaran.UI` ships its
+`.fs` **sources** in the package, for Fable consumers to transpile. The delivered content of the
+package therefore moved, and the consequence for a consumer is not cosmetic: a browser build restored
+from 0.76.0 cannot read a raw-DEFLATE stream produced by any standard deflate library, which is every
+stream it will ever receive from another host.
+
+**What was wrong.** `readDynamicTables` bound HCLEN — the count of code-length code lengths — with a
+`let` consumed exactly once, by a `for i in 0 .. hclen - 1` loop. Fable inlines a single-use `let` at
+its use site, and the emitted JavaScript `for` re-evaluates its bound on **every** iteration, so the
+inlined `br.ReadBits 4` ran once per code length and ate four further stream bits each time. Every
+table read after it decoded from the wrong bit offset, and the block died as
+`Malformed "over-subscribed Huffman code"`.
+
+**Why it survived to a release.** The defect is reachable only through the DYNAMIC block type, and
+this module's own `compress` emits fixed-Huffman blocks exclusively (deliberately — determinism
+outranks a few percent of ratio). So a round trip through our own deflater never touched it, on either
+pipeline. The one test that did — `CompressionTests.fs`'s BCL conformance cross-check — reaches the
+dynamic path through `System.IO.Compression`, which does not transpile, so it sits behind
+`#if !FABLE_COMPILER`. The block type every foreign producer always emits was certified on the one
+pipeline that never receives foreign bundles.
+
+**What now certifies it.** A raw-DEFLATE stream emitted by a foreign deflater is committed as **data**
+— which needs no compression library on either pipeline — and inflated on both: by
+`Fuaran.UI.Tests/CompressionTests.fs` on .NET, and by `tests/fable-laws/Laws.fs` under Node, where the
+two runs' output is compared byte for byte. A companion assertion pins the fixture's first byte to
+`BFINAL=1, BTYPE=2`, so a regenerated fixture that stopped being a dynamic block fails rather than
+quietly covering nothing. The refutation was observed before the fix: the Fable leg reported
+`DEFLATE cases=3 failed=2` while .NET reported `failed=0`.

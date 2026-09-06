@@ -85,15 +85,18 @@ does two things, and they answer different questions:
    on both pipelines and its output is compared byte for byte, so two pipelines that are each
    internally lawful and disagree about a result still fail. Its `.NET` leg is also a rostered suite
    in `test-suites.json`. It currently states `TreeMerge.merge3Way`'s order-independence over
-   generated three-way edits and runs `FoldConfluence.laneFoldLaws` over this tier's reducer, op
-   codec and footprint projection.
+   generated three-way edits, runs `FoldConfluence.laneFoldLaws` over this tier's reducer, op
+   codec and footprint projection, and inflates a committed foreign **dynamic-Huffman** DEFLATE
+   stream — the block type `Deflate.compress` never emits and every standard deflate library
+   always does, whose .NET conformance check goes through `System.IO.Compression` and therefore
+   could never run on the pipeline that actually receives foreign bundles.
 
 Add a law by adding it to `tests/fable-laws/Laws.fs`; nothing there may use a construct Fable cannot
 lower (no Expecto, no `System.IO`, no reflection).
 
 ### Fable method traps
 
-Three, each of which cost real time and none of which announces itself:
+Four, each of which cost real time and none of which announces itself:
 
 - **A transpile is not a run.** `dotnet fable` can finish green on JavaScript that dies at its first
   `import`. With nullness ON at the entry project, the canonical wire encoder emits
@@ -110,6 +113,15 @@ Three, each of which cost real time and none of which announces itself:
 - **Never Fable-output into `obj/`.** Fable writes beside the project's own build intermediates
   there, re-parses part of the project, and reports errors against files the change never touched.
   Use a fresh directory — `output/` (gitignored) or a temp path.
+- **A `let` used exactly ONCE is inlined at its use site — including into a `for` loop's bound,
+  which JavaScript re-evaluates every iteration.** So `let n = reader.Read()` followed by
+  `for i in 0 .. n - 1` calls `reader.Read()` once per iteration under Fable and once here. Any
+  `let` bound to a SIDE-EFFECTING expression and consumed once by a loop bound is this bug; it is
+  silent, and the arithmetic downstream of it looks like a data defect rather than a control-flow
+  one. `Deflate.readDynamicTables` hit it on HCLEN (`Compression.fs`) and every foreign
+  dynamic-Huffman bundle was undecodable in a browser while the .NET suite stayed green. The fix
+  is a `mutable` the loop mutates — a mutated binding cannot be inlined. To check: read the
+  emitted JavaScript for a `for (...; i <= (...(...));` whose bound contains a call.
 
 `Fuaran.UI.Renderer.Web` embeds a **built artefact from `fuaran-ts`** — the standalone
 `@fuaran-ui/renderer` browser bundle — so a .NET consumer needs no Node toolchain. The copy is

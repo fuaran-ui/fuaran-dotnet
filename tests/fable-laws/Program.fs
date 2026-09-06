@@ -60,8 +60,21 @@ let main _ =
 
     let laneFailures = laneResults |> List.filter (fun r -> not r.Passed) |> List.length
 
+    // ---- law 3: the raw-DEFLATE inflater over a foreign dynamic-Huffman stream ----
+    // The block type no host of ours emits and every standard deflater does. Its .NET
+    // conformance cross-check sits behind `#if !FABLE_COMPILER` (`System.IO.Compression`
+    // does not transpile), so until this line the browser's inflater was uncertified on
+    // exactly the input every foreign share link carries.
+    let deflateCases = Laws.deflateCases ()
+
+    for line in Laws.deflateLines deflateCases do
+        printfn "%s" line
+
     let violations =
-        Laws.mergeViolations mergeVerdict + laneFailures + List.length mergeAdequacy
+        Laws.mergeViolations mergeVerdict
+        + laneFailures
+        + List.length mergeAdequacy
+        + Laws.deflateViolations deflateCases
 
     printfn "TOTAL violations=%d" violations
 
