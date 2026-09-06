@@ -657,3 +657,108 @@ let deflateLines (cases: DeflateCase list) : string list =
 
 let deflateViolations (cases: DeflateCase list) : int =
     cases |> List.filter (fun c -> not c.Passed) |> List.length
+
+// ---------------------------------------------------------------------------
+//  Law 4 — the selection-field projection answers the same on both pipelines.
+// ---------------------------------------------------------------------------
+//
+//  `Binding.projectSelectionField` reads a named cell off the clicked row and
+//  hands it to a slot of a declared type. The two legs got there differently:
+//  .NET type-tests and, where the boxed representation differs from the slot's
+//  type, coerces through an invariant `Convert.ChangeType`; Fable's `unbox` is a
+//  NO-OP, so it used to hand whatever was in the cell straight through. A text
+//  cell in a `Binding<float>` therefore raised on .NET — the resolver's loud
+//  `Errored` — and rendered `NaN` in the browser. Same tree, same data, one host
+//  refusing and the other showing a nonsense number.
+//
+//  This is the only place that claim can be certified, because it is a claim
+//  about TWO RUNTIMES and neither pipeline's own suite can see the other. Each
+//  case declares its expected outcome, so a leg that drifts fails locally; and
+//  the lines are byte-compared across the two runs, so a leg that drifts in a
+//  way both would accept fails the diff.
+//
+//  The rows are `Map<string, obj>` — the Transform-produced shape a real click
+//  puts in the SelectionStore.
+
+type SelectionCase =
+    { Name: string
+      Passed: bool
+      Outcome: string }
+
+let private row () : Map<string, obj> =
+    Map.ofList
+        [ "amount", (box 42.0 |> Unchecked.nonNull)
+          "amountText", (box "42" |> Unchecked.nonNull)
+          "label", (box "abc" |> Unchecked.nonNull)
+          "flagText", (box "true" |> Unchecked.nonNull) ]
+
+/// Run one projection and reduce it to a two-valued outcome. Deliberately
+/// `ok` / `refused` and nothing else: the exception TEXT is a host's own and
+/// the two runtimes do not word it alike, so comparing it would report a
+/// message difference as an algebra divergence.
+let private outcomeOf (project: unit -> unit) : string =
+    try
+        project ()
+        "ok"
+    with _ ->
+        "refused"
+
+let private selectionCase (name: string) (expected: string) (project: unit -> unit) : SelectionCase =
+    let actual = outcomeOf project
+
+    { Name = name
+      Passed = actual = expected
+      Outcome = actual }
+
+let selectionFieldCases () : SelectionCase list =
+    let r: obj = box (row ()) |> Unchecked.nonNull
+
+    [ // A number in a numeric slot: the ordinary case, and the one that must
+      // stay untouched by any coercion added for the others.
+      selectionCase "float-from-number" "ok" (fun () -> Binding.projectSelectionField<float> "amount" r |> ignore)
+
+      // The finding, in one line: a TEXT cell in a numeric slot. .NET coerces
+      // it; Fable used to pass the string through and render NaN.
+      selectionCase "float-from-numeric-text" "ok" (fun () ->
+          Binding.projectSelectionField<float> "amountText" r |> ignore)
+
+      // And its refusal twin. `Number("abc")` is NaN, which is a value, not an
+      // error — so a leg that merely converts and does not CHECK passes this
+      // string through as a number and renders NaN.
+      selectionCase "float-from-non-numeric-text" "refused" (fun () ->
+          Binding.projectSelectionField<float> "label" r |> ignore)
+
+      // The other direction: a number in a text slot renders as its own
+      // decimal spelling rather than as an unconverted number object.
+      selectionCase "string-from-number" "ok" (fun () -> Binding.projectSelectionField<string> "amount" r |> ignore)
+
+      selectionCase "bool-from-text" "ok" (fun () -> Binding.projectSelectionField<bool> "flagText" r |> ignore)
+
+      // `obj` is what every DECODED path asks for, and it must coerce nothing
+      // at all — the wire path's behaviour is unchanged by any of the above.
+      selectionCase "obj-passthrough" "ok" (fun () -> Binding.projectSelectionField<obj> "label" r |> ignore)
+
+      // The two structural refusals, which both legs already agreed on and
+      // which are here so a change to the coercion cannot quietly swallow them.
+      selectionCase "missing-field" "refused" (fun () -> Binding.projectSelectionField<obj> "nope" r |> ignore)
+
+      // `Unchecked.defaultof<obj>` rather than a `null` literal: the F# 10
+      // nullness checker refuses `null` at a non-nullable `obj`, and
+      // `Unchecked.unbox` is outside Fable's supported subset.
+      selectionCase "null-row" "refused" (fun () ->
+          Binding.projectSelectionField<obj> "amount" Unchecked.defaultof<obj> |> ignore) ]
+
+let selectionFieldLines (cases: SelectionCase list) : string list =
+    let failures = cases |> List.filter (fun c -> not c.Passed)
+
+    // Every case's OUTCOME is printed, not just the failures: the two runs are
+    // byte-compared, so a divergence both legs individually accept is caught
+    // only if the per-case answer is in the output.
+    ("SELECTIONFIELD cases="
+     + string (List.length cases)
+     + " failed="
+     + string (List.length failures))
+    :: (cases |> List.map (fun c -> "SELECTIONFIELD " + c.Name + " " + c.Outcome))
+
+let selectionFieldViolations (cases: SelectionCase list) : int =
+    cases |> List.filter (fun c -> not c.Passed) |> List.length
