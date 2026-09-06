@@ -79,12 +79,19 @@ let main _ =
     for line in Laws.selectionFieldLines selectionCases do
         printfn "%s" line
 
+    // ---- law 5: a Format.Date slot never throws, on either pipeline ----
+    let dateCases = Laws.dateSentinelCases ()
+
+    for line in Laws.dateSentinelLines dateCases do
+        printfn "%s" line
+
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
         + List.length mergeAdequacy
         + Laws.deflateViolations deflateCases
         + Laws.selectionFieldViolations selectionCases
+        + Laws.dateSentinelViolations dateCases
 
     printfn "TOTAL violations=%d" violations
 

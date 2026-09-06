@@ -48,6 +48,7 @@ open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Merge
+open Fuaran.UI.Renderer
 open FableLaws.TestSupport
 
 module FoldConfluence = Fuaran.Core.FoldConfluence
@@ -761,4 +762,84 @@ let selectionFieldLines (cases: SelectionCase list) : string list =
     :: (cases |> List.map (fun c -> "SELECTIONFIELD " + c.Name + " " + c.Outcome))
 
 let selectionFieldViolations (cases: SelectionCase list) : int =
+    cases |> List.filter (fun c -> not c.Passed) |> List.length
+
+
+// ---------------------------------------------------------------------------
+//  Law 5 -- a `Format.Date` slot never throws, on either pipeline.
+// ---------------------------------------------------------------------------
+//
+//  The wire admits every double a JSON number can spell, `NaN` and the
+//  infinities included, and a `Format.Date` slot then receives one. The two
+//  hosts failed differently and both failed badly: `FromUnixTimeSeconds` THREW
+//  out of an SSR render pass, so one bad cell took the whole page down with a
+//  500, and `Intl.DateTimeFormat` raised on an invalid time value in the
+//  browser. Neither is a rendering.
+//
+//  Certified here rather than in either tier's own suite for the same reason
+//  law 4 is: the claim is that TWO RUNTIMES answer alike, and each pipeline's
+//  suite can only see its own. The bounds are the narrower, .NET pair, so a
+//  value JavaScript could have drawn and .NET could not is refused on both --
+//  which is the divergence, not a limitation.
+
+type DateSentinelCase =
+    { Name: string
+      Passed: bool
+      Outcome: string }
+
+/// Format one value and reduce it to a three-valued outcome. `threw` is a
+/// failure however it is spelt: the point of the guard is that neither runtime
+/// is ever asked a question it answers with an exception.
+let private dateOutcome (value: float) : string =
+    try
+        let rendered = Formatting.format "en-GB" (Format.Date DateStyle.Short) value
+
+        if rendered = Formatting.unrepresentableInstant then
+            "refused"
+        else
+            "rendered"
+    with _ ->
+        "threw"
+
+let private dateCase (name: string) (expected: string) (value: float) : DateSentinelCase =
+    let actual = dateOutcome value
+
+    { Name = name
+      Passed = actual = expected
+      Outcome = actual }
+
+let dateSentinelCases () : DateSentinelCase list =
+    [ // The three float sentinels the wire admits and no calendar can hold.
+      dateCase "nan" "refused" nan
+      dateCase "positive-infinity" "refused" infinity
+      dateCase "negative-infinity" "refused" (-infinity)
+
+      // Outside `DateTimeOffset`'s span in both directions. The second is the
+      // value from the finding: a large positive double that reads as a
+      // plausible timestamp and is not one.
+      dateCase "far-future" "refused" 1e15
+      dateCase "far-past" "refused" -1e15
+
+      // The bounds themselves, which must be INSIDE. A guard that is off by one
+      // second at either end silently refuses a date that is representable.
+      dateCase "min-bound" "rendered" Formatting.minInstantSeconds
+      dateCase "max-bound" "rendered" Formatting.maxInstantSeconds
+      dateCase "just-past-max" "refused" (Formatting.maxInstantSeconds + 1.0)
+      dateCase "just-before-min" "refused" (Formatting.minInstantSeconds - 1.0)
+
+      // And the ordinary case, which the guard must leave completely alone --
+      // 2026-09-06T00:00:00Z.
+      dateCase "an-ordinary-instant" "rendered" 1788652800.0
+      dateCase "the-epoch" "rendered" 0.0 ]
+
+let dateSentinelLines (cases: DateSentinelCase list) : string list =
+    let failures = cases |> List.filter (fun c -> not c.Passed)
+
+    ("DATESENTINEL cases="
+     + string (List.length cases)
+     + " failed="
+     + string (List.length failures))
+    :: (cases |> List.map (fun c -> "DATESENTINEL " + c.Name + " " + c.Outcome))
+
+let dateSentinelViolations (cases: DateSentinelCase list) : int =
     cases |> List.filter (fun c -> not c.Passed) |> List.length
