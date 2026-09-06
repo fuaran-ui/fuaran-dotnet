@@ -133,9 +133,16 @@ because the boundaries below are structural:
   accepted these records". A browser never signs — any script on the origin can *use* a
   non-extractable key, so a browser cannot hold an issued identity.
 - **It does not prove completeness.** An op never appended leaves no trace.
-- **`signedAt` is asserted by the signer.** It is bound inside the signed claim (a store-writer
-  cannot alter it), but a hostile *signer* can backdate — so revocation boundaries are a
-  co-operative-failure mechanism.
+- **`signedAt` is asserted by the signer, at WHOLE-SECOND resolution.** It is bound inside the
+  signed claim (a store-writer cannot alter it), but a hostile *signer* can backdate — so
+  revocation boundaries are a co-operative-failure mechanism. The resolution is normative, not
+  incidental: the claim payload binds `signedAt` as unix seconds, matching the chain pre-image's
+  timestamp resolution, so **every signer binds and stores the same value** —
+  `SegmentAttestation.signedInstant` normalises the clock reading before both — and every
+  verification comparison (revocation, expiry, validity start) reads that bound value rather than
+  the raw stored field. Before this the record kept the signer's full-precision reading while the
+  pre-image floored it, so the two disagreed by up to a second and the "a store-writer cannot alter
+  it" clause was false at sub-second granularity for exactly this field.
 - **The required-or-not policy lives with the verifier, never the store** — a store that could
   declare "attestation required" could have that declaration stripped by the same adversary.
 - **Vouching for pre-attestation history is a permanently distinct claim tier** (`Adopted = true`,
@@ -155,6 +162,14 @@ with the platform. The canonical descriptor/claim encodings are pinned cross-hos
 golden vectors in `wire-format-fixtures/attestation/descriptor-corpus.json`; the algorithm id is a
 field, so a future primitive (`ed25519-v1` is reserved) is a new registered id, never a format
 change.
+
+An algorithm id names a **curve**, and both ends check the curve rather than the key size. A key size
+does not identify a curve — `KeySize = 256` is satisfied by secp256k1, Brainpool P256r1 and any
+explicit-parameters 256-bit curve as well as by NIST P-256 — so a size gate would let a signer mint,
+and a verifier accept, signatures under a key `ecdsa-p256-sha256-v1` does not describe, which is
+precisely the property the whole algorithm-agility story rests on. The signer refuses at
+construction, naming the curve the key is actually on; the verifier answers `false`, which
+`Evidence.verify` renders as `SignatureInvalid`.
 
 ## Why one pure-F# implementation, not the BCL on .NET
 

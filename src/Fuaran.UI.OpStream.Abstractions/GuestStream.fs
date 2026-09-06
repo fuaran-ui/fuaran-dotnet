@@ -17,6 +17,16 @@ namespace Fuaran.UI.OpStream.Abstractions
 //  causal-anchor + convergence machinery that makes the guest fork reconcilable
 //  with the host lives in the DAG packages (`GuestFork`, `GuestConvergence`,
 //  `GuestReplay`), which build on this convention.
+//
+//  ORDINAL, always (Phase 1525). Every comparison here is an IDENTIFIER
+//  comparison, never a human-text one: a stream id is a key, and "does this key
+//  carry the reserved prefix" must be the same answer on every machine. The
+//  parameterless `StartsWith` overload is CULTURE-SENSITIVE — under a culture
+//  whose collation ignores or reorders characters it can report a prefix that is
+//  not there byte-for-byte, or miss one that is, so the same record would resolve
+//  as a guest stream on one operator's machine and a host stream on another's.
+//  Both sites below pass `System.StringComparison.Ordinal` for that reason, and
+//  a new keying site must do the same.
 // ============================================================================
 
 /// The `guest-<scopeId>` stream-id convention (Phase 267, §4o). A guest scope's
@@ -33,13 +43,15 @@ module GuestStream =
     let streamId (scopeId: string) : string = Prefix + scopeId
 
     /// `true` when `streamId` names a guest stream (i.e. was produced by
-    /// `streamId`). Host streams answer `false`.
-    let isGuestStream (streamId: string) : bool = streamId.StartsWith Prefix
+    /// `streamId`). Host streams answer `false`. Ordinal — see the header.
+    let isGuestStream (streamId: string) : bool =
+        streamId.StartsWith(Prefix, System.StringComparison.Ordinal)
 
     /// The guest scope id carried by a guest stream id, or `None` for a host
     /// stream. `tryScopeOf (streamId s) = Some s` for every scope id `s`.
+    /// Ordinal — see the header.
     let tryScopeOf (streamId: string) : string option =
-        if streamId.StartsWith Prefix then
+        if streamId.StartsWith(Prefix, System.StringComparison.Ordinal) then
             Some(streamId.Substring Prefix.Length)
         else
             None
