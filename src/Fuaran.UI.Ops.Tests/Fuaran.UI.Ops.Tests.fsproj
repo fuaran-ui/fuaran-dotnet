@@ -7,6 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="OpsApplyTests.fs" />
+    <!-- Phase 1527 - the apply-time §21 guard (WireLimits.MaxDepth / MaxNodes). -->
+    <Compile Include="ApplyLimitTests.fs" />
     <Compile Include="InputAndWireSpellingTests.fs" />
     <Compile Include="HintHonestyTests.fs" />
     <Compile Include="SubtreeTraversalTests.fs" />

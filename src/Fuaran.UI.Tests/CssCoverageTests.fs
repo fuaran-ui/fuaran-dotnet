@@ -373,7 +373,11 @@ let private declaredAbsences: (string * Absence) list =
 let private declaredNonClassTokens: (string * string) list =
     [ "fuaran-form-commit",
       "a window-level DOM EVENT name (the LocalBindings.fs OnSubmit flush), dispatched and listened for — \
-       never written into a className" ]
+       never written into a className"
+      "fuaran-renderer",
+      "the TRUSTED TYPES POLICY name (TrustedTypes.fs, Phase 1546): passed to `createPolicy` and \
+       written by a host into its `Content-Security-Policy: trusted-types` directive — never written \
+       into a className" ]
 
 let private absenceMap = Map.ofList declaredAbsences
 
