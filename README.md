@@ -35,8 +35,17 @@ in `SANITIZATION.md`); Content Security Policy belongs to the application; and `
 is a floor over the renderer's own escaped-by-construction output, not a general-purpose HTML
 sanitiser.
 
+What this buys is narrow and worth stating exactly. Cross-site scripting has headed MITRE's CWE Top
+25 for two consecutive years, and it is the class generative UI multiplies, because a model emitting
+markup is an author whose output nobody reads before it runs. This package removes that class at
+the language rather than at each sink: the payload cannot be written down. It removes nothing else.
+Stolen credentials, mis-scoped roles and poisoned dependencies cause most breaches and belong to the
+host, so a `Fuaran.UI` tree secures an interface, not a site.
+
 Reporting a suspected vulnerability: [`SECURITY.md`](SECURITY.md). The reasoning behind the posture:
-[default-deny by shape](https://fuaran-ui.io/discussion/default-deny-by-shape).
+[default-deny by shape](https://fuaran-ui.io/discussion/default-deny-by-shape); the proportion of
+real attacks it removes, with sources:
+[inexpressible, not sanitised](https://fuaran-ui.io/discussion/inexpressible-not-sanitised).
 
 ## Versions a consumer pins against
 
