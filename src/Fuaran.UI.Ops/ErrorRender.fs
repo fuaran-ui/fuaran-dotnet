@@ -54,6 +54,7 @@ let private codeToken (code: ApplyErrorCode) : string =
     | ApplyErrorCode.PathInvalid -> "PathInvalid"
     | ApplyErrorCode.PathNotSupportedYet -> "PathNotSupportedYet"
     | ApplyErrorCode.BatchAborted _ -> "BatchAborted"
+    | ApplyErrorCode.LimitExceeded -> "LimitExceeded"
 
 let private opKindToken (op: TreeOp<'Msg>) : string =
     match op with
