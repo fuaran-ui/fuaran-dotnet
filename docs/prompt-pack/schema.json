@@ -7021,6 +7021,12 @@
         "xScale": {
           "$ref": "#/$defs/ChartXScale"
         },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChartAnnotation"
+          }
+        },
         "onPointClick": {
           "const": "<closure>"
         }
@@ -7030,6 +7036,28 @@
         "source",
         "xField",
         "yFields"
+      ]
+    },
+    "ChartAnnotation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "ReferenceLine"
+            },
+            "value": {
+              "type": "number"
+            },
+            "label": {
+              "$ref": "#/$defs/TextSource"
+            }
+          },
+          "required": [
+            "$type",
+            "value"
+          ]
+        }
       ]
     },
     "MapMarker": {

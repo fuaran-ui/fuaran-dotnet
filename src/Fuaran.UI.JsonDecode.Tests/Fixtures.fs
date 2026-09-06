@@ -3526,6 +3526,46 @@ let chartTemporalX: Node<obj> =
         ))
         None
 
+/// Phase 1490 (§4l) — the ANNOTATIONS slot: a chart carrying two reference
+/// lines, one labelled and one bare.
+///
+/// Two, not one, because the corpus has to carry the list's own shape as well
+/// as its member's: the mark id `annotation|reference|<n>` counts document order
+/// within the case, and a one-element list can never show that it does. The
+/// labelled one carries a `Literal`, which is the arm the goldens fit-gate; the
+/// `Bound` and `I18n` arms are pinned on the lowering side (a
+/// `-bound-label` golden), where what they prove — carried unresolved, and
+/// admitted on PRESENCE because their glyphs are unknowable — is a lowering fact
+/// rather than a codec one.
+///
+/// Every other chart fixture pins the ABSENT half, which omits the key entirely,
+/// so every pre-1490 fixture is byte-unchanged.
+let chartAnnotations: Node<obj> =
+    node
+        "chart-annotations"
+        (NodeKind.Chart(
+            { Defaults.chart with
+                Source =
+                    Binding.Static(
+                        Some(
+                            Seq.ofList
+                                [ (Map.ofList [ "quarter", box "Q1"; "revenue", box 120 ]: Row)
+                                  Map.ofList [ "quarter", box "Q2"; "revenue", box 150 ]
+                                  Map.ofList [ "quarter", box "Q3"; "revenue", box 90 ]
+                                  Map.ofList [ "quarter", box "Q4"; "revenue", box 175 ] ]
+                        )
+                    )
+                Kind = ChartKind.Bar
+                XField = "quarter"
+                YFields = [ "revenue" ]
+                Title = Some(TextSource.Literal "Revenue by quarter")
+                Annotations =
+                    Some
+                        [ ChartAnnotation.ReferenceLine(140.0, Some(TextSource.Literal "Target"))
+                          ChartAnnotation.ReferenceLine(0.0, None) ] }
+        ))
+        None
+
 // ─── fuaran#665 — the Phase 663 editable-grid anchor (grid + chart on ONE state key) ──
 //
 // The corpus carried NO `editable: true` fixture at all, so the cross-host
@@ -6375,6 +6415,8 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Chart (Phase 880 — legendPosition: the legend's declared edge)", chartLegendPosition
       "Visualisation/Chart (Phase 881 — dataLabels: values written onto the picture)", chartDataLabels
       "Visualisation/Chart (Phase 882 — xScale: a temporal x-axis over ISO-8601 date cells)", chartTemporalX
+      "Visualisation/Chart (Phase 1490 — annotations: two data-addressed reference lines, one labelled)",
+      chartAnnotations
       "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
       "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)", tableSortable
       "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)", gridSortStateKey

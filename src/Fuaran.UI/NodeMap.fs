@@ -418,6 +418,7 @@ and mapChartSpec (f: 'a -> 'b) (spec: ChartSpec<'a>) : ChartSpec<'b> =
       LegendPosition = spec.LegendPosition
       DataLabels = spec.DataLabels
       XScale = spec.XScale
+      Annotations = spec.Annotations
       OnPointClick = spec.OnPointClick |> Option.map (fun g -> g >> mapAction f)
       Stacked = spec.Stacked }
 

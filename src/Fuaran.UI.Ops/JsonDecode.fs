@@ -6946,6 +6946,52 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
         | _, _, _, _, _, _, _, _, _, _, Error e, _
         | _, _, _, _, _, _, _, _, _, _, _, Error e -> Error e
 
+/// A chart's data-addressed annotation (Phase 1490, §4l of
+/// `docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md`). One closed `$type`-discriminated
+/// union: `ReferenceLine` today, further members as further cases.
+///
+/// THE VALUE MUST BE FINITE, and that is a slot-specific NARROWING of §7 rather
+/// than a disagreement with it. §7 admits the quoted `"NaN"` / `"Infinity"` /
+/// `"-Infinity"` sentinels at every float slot, and `requireFloat` reads them —
+/// the widening is deliberate and stays. But a reference line addresses a place
+/// on the VALUE AXIS, and a non-finite value names no such place: it would enter
+/// the domain computation, take `niceDomain` to NaN, and put every gridline,
+/// tick and mark on the chart at a NaN coordinate. So the picture is not merely
+/// wrong at the annotation, it is wrong everywhere, and nothing downstream can
+/// recover it. Refusing at the wire boundary is the same posture Core's columnar
+/// codec already takes for a non-finite `Float` cell, and the same shape
+/// `reject-daterange-unordered` takes for the ordered-pair rule: `WRONG_TYPE` at
+/// the offending slot, with the message naming the rule and the fix.
+let private decodeChartAnnotation (path: string) (j: Json) : Result<ChartAnnotation, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        match requireDiscriminator path fields with
+        | Error e -> Error e
+        | Ok "ReferenceLine" ->
+            let valueR =
+                match requireField path fields "value" "reference-line value (a finite JSON number)" with
+                | Error e -> Error e
+                | Ok v ->
+                    match requireFloat (path + ".value") v with
+                    | Error e -> Error e
+                    | Ok f when Double.IsNaN f || Double.IsInfinity f ->
+                        wrongType
+                            (path + ".value")
+                            "a FINITE JSON number — a reference line names a place on the value axis, and NaN / Infinity names none; give the value in the axis's own units, or drop the annotation"
+                    | Ok f -> Ok f
+
+            let labelR =
+                match tryField fields "label" with
+                | None -> Ok None
+                | Some v -> decodeTextSource (path + ".label") v |> Result.map Some
+
+            match valueR, labelR with
+            | Ok value, Ok label -> Ok(ChartAnnotation.ReferenceLine(value, label))
+            | Error e, _
+            | _, Error e -> Error e
+        | Ok s -> unknownDuCase path s "ReferenceLine"
+
 let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -7042,6 +7088,23 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             | None -> Ok None
             | Some v -> decodeChartXScale (path + ".xScale") v |> Result.map Some
 
+        // `annotations` (Phase 1490, §4l): the data-addressed attachments —
+        // reference lines today, one closed union so a further member is a case
+        // rather than a fourth widening of this record. Absent OMITS on the
+        // wire, so every pre-1490 document decodes and lowers byte-for-byte as
+        // it did. An EMPTY list is a different document from an absent field and
+        // is carried as such: it round-trips to `"annotations":[]`, which is what
+        // an author who declared a list and then removed its last member wrote.
+        let annotationsR: Result<ChartAnnotation list option, DecodeError> =
+            match tryField fields "annotations" with
+            | None -> Ok None
+            | Some v ->
+                match requireArray (path + ".annotations") v with
+                | Error e -> Error e
+                | Ok xs ->
+                    traverseIndexed (fun i item -> decodeChartAnnotation (sprintf "%s.annotations[%d]" path i) item) xs
+                    |> Result.map Some
+
         // `stacked` (Phase 126): now carried on the wire. Absent (legacy wire
         // predating the field) decodes to the default `false`.
         let stackedR: Result<bool, DecodeError> =
@@ -7061,7 +7124,8 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             titlesR,
             legendPositionR,
             dataLabelsR,
-            xScaleR
+            xScaleR,
+            annotationsR
         with
         | Ok kind,
           Ok source,
@@ -7074,7 +7138,8 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
           Ok(xTitle, yTitle, subtitle),
           Ok legendPosition,
           Ok dataLabels,
-          Ok xScale ->
+          Ok xScale,
+          Ok annotations ->
             Ok
                 { Source = source
                   Kind = kind
@@ -7088,20 +7153,22 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
                   LegendPosition = legendPosition
                   DataLabels = dataLabels
                   XScale = xScale
+                  Annotations = annotations
                   OnPointClick = onPointClick
                   Stacked = stacked }
-        | Error e, _, _, _, _, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _, _, _, _, _
-        | _, _, _, _, Error e, _, _, _, _, _, _, _
-        | _, _, _, _, _, Error e, _, _, _, _, _, _
-        | _, _, _, _, _, _, Error e, _, _, _, _, _
-        | _, _, _, _, _, _, _, Error e, _, _, _, _
-        | _, _, _, _, _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _, _, _, _, _
+        | _, _, _, _, _, _, Error e, _, _, _, _, _, _
+        | _, _, _, _, _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeMapSpec (path: string) (j: Json) : Result<MapSpec<obj>, DecodeError> =
     match requireObject path j with

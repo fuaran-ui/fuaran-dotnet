@@ -2522,6 +2522,11 @@ let visKinds: IdlKind list =
             opt "dataLabels" (TEnum "ChartDataLabels")
             // Phase 882 — what the x column MEANS. Absent means `Category`.
             opt "xScale" (TEnum "ChartXScale")
+            // Phase 1490 (§4l) — the data-addressed annotations: reference
+            // lines today, event markers and range bands as further cases on
+            // the same closed union. Absent OMITS on the wire, so every
+            // pre-1490 fixture is byte-unchanged.
+            opt "annotations" (TList(TUnion("ChartAnnotation", [])))
             opt "onPointClick" (handlerOf "Fuaran.Core.Row" "unknown") ] }
       { Tag = "Map"
         Category = "Visualisation"
@@ -2678,6 +2683,33 @@ let private shape =
                 req "y" TFloat
                 req "text" TS
                 req "style" (TRecord "DrawStyle") ]
+            Annotations = Annotations.Empty } ] }
+
+/// Phase 1490 — a chart's data-addressed annotations, §4l of
+/// `docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md`. ONE closed union rather than one
+/// optional `ChartSpec` field per member: a fourth member is then a case on a
+/// union whose `$type` dispatch already exists, where three fields would be a
+/// fourth widening of `ChartSpec` and a fourth FS0764 break for every consumer
+/// building the record without the smart constructors. The list pays the
+/// record-widening cost ONCE, for the family.
+///
+/// An annotation carries an ADDRESS and, optionally, a LABEL — never geometry
+/// and never ink (§4l "Never geometry, never style"): the plot rectangle, the
+/// value mapping and the band pitch are the lowering's, and the ink is
+/// `ChartStyle`'s at a per-role opacity. That is what makes an annotation
+/// survive a data change, a theme flip, a restyle and a resize, where a
+/// pixel-placed overlay is correct for exactly one dataset on one canvas.
+///
+/// `ReferenceLine` is the first case: a horizontal line at a `value` in the
+/// VALUE axis's own units, with an optional `TextSource` label carried
+/// unresolved (the Phase 1143 text contract).
+/// [Phase 1491](event marker) and [Phase 1492](range band) add a case each.
+let private chartAnnotation =
+    { Name = "ChartAnnotation"
+      Params = []
+      Cases =
+        [ { Tag = "ReferenceLine"
+            Fields = [ req "value" TFloat; opt "label" TS ]
             Annotations = Annotations.Empty } ] }
 
 /// Phase 679 — a `Switch` case: the match string plus the node it selects. The
@@ -2874,7 +2906,8 @@ let uiIdl: Idl =
           holeDecl
           fragmentArg
           curveCommand
-          shape ]
+          shape
+          chartAnnotation ]
       Enums =
         [ headingVariant
           linkProtection

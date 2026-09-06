@@ -153,6 +153,16 @@ let private number =
               [ typed "number"
                 JObj [ "enum", JArr [ JStr "NaN"; JStr "Infinity"; JStr "-Infinity" ] ] ] ]
 
+/// A float slot NARROWED to the finite numbers — the bare JSON number, with
+/// §7's three quoted sentinels refused (Phase 1490). Distinct from `number`
+/// above, and the distinction is the point: §7's widening is right in general
+/// and wrong at a slot whose value must name a place in a coordinate space,
+/// where NaN and the infinities name none and would take the geometry derived
+/// from them to NaN as well. `ChartAnnotation.ReferenceLine.value` is the first
+/// such slot, and the decoder refuses the sentinels there for the same reason —
+/// which is what keeps this schema an honest mirror of it.
+let private finiteNumber = typed "number"
+
 let private boolean = typed "boolean"
 let private object_ = typed "object"
 
@@ -1407,7 +1417,22 @@ let private defs: (string * J) list =
             // `Category` bands or `Temporal` dates on a continuous day-scale.
             // Optional: absent means `Category`, which is also the default.
             "xScale", ref "ChartXScale"
+            // `annotations` (Phase 1490, §4l) — the data-addressed attachments,
+            // one closed union so a further member is a case rather than a
+            // fourth widening of this record. Optional: absent omits, and an
+            // absent slot draws exactly the pre-1490 picture.
+            "annotations", arrayOf (ref "ChartAnnotation")
             "onPointClick", closure ]
+
+      // Phase 1490 (§4l) — the closed annotation union. `value` takes
+      // `finiteNumber`, NOT the sentinel-widened `number` every other float slot
+      // takes: §7's quoted `"NaN"` / `"Infinity"` sentinels are legal at a float
+      // slot in general and are refused HERE, because a non-finite value names
+      // no place on the value axis and would take the whole lowering's geometry
+      // to NaN with it. The schema and the decoder therefore agree, which is the
+      // property that makes a published schema worth having.
+      "ChartAnnotation",
+      union [ duCase "ReferenceLine" [ "value" ] [ "value", finiteNumber; "label", ref "TextSource" ] ]
 
       "MapMarker",
       record [ "label"; "latitude"; "longitude" ] [ "label", ref "TextSource"; "latitude", number; "longitude", number ]

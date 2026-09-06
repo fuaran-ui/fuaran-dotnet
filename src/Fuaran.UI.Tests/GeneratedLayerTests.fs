@@ -682,10 +682,28 @@ let generatedLayerTests =
               //    phase chose the `pageSize` precedent deliberately, and this
               //    guard is what confirms the precedent transferred from a
               //    numeric bound to a string one.
+              //  - a chart annotation carrying a §7 non-finite sentinel
+              //    (Phase 1490) is a class of its own, and the only entry here
+              //    where structure accepts because the IDL's float slot has a
+              //    SPECIFIED WIDER accept set rather than because it lacks a
+              //    refinement. §7 admits `"NaN"` / `"Infinity"` / `"-Infinity"`
+              //    at every float slot and three accept fixtures pin that, so
+              //    the generated `dFloat` reads the sentinel and succeeds —
+              //    correctly, for a float slot in general. The policy decoder
+              //    NARROWS this one slot, because an annotation's value
+              //    addresses a place on the value axis and a non-finite number
+              //    names none. So the split here is not structure-cannot-judge
+              //    but two different accept sets over the same JSON, which is
+              //    why it reads as a fifth class rather than a sixth instance of
+              //    the value bound. It is schema-EXPRESSIBLE — the published
+              //    schema gives this slot a bare `type: number` where every
+              //    other float slot gets the sentinel-widened `anyOf` — so like
+              //    the near misses it stays out of `schemaInexpressibleRejects`.
               Expect.equal
                   policyOwned
                   [ "reject-action-print-with-payload.json"
                     "reject-box-masonry-nonpositive-cols.json"
+                    "reject-chart-annotation-nonfinite.json"
                     "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"
                     "reject-fieldrule-empty.json"

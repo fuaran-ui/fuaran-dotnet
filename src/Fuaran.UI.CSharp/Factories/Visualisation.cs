@@ -31,7 +31,7 @@ public static partial class Fuaran
             // Generated ChartSpec ctor is Generated.fs declaration order (Kind,
             // Source, Stacked, XField, YFields, Title, ValueFormat, XTitle,
             // YTitle, Subtitle, LegendPosition, DataLabels, XScale,
-            // OnPointClick), not the old Source-first hand order.
+            // Annotations, OnPointClick), not the old Source-first hand order.
             new FsGen.ChartSpec<object>(
                 options.Kind.ToFs(),
                 (options.Source ?? Binding.Static(Enumerable.Empty<FsRow>())).Inner,
@@ -52,6 +52,14 @@ public static partial class Fuaran
                 options.XScale is { } xs
                     ? Fs.Some(xs.ToFs())
                     : Fs.None<FsGen.ChartXScale>(),
+                // Phase 1490 — ABSENT and EMPTY are different documents, and the
+                // veneer keeps them apart: a null `Annotations` omits the slot
+                // (the pre-1490 wire, byte for byte), an empty enumerable emits
+                // `"annotations":[]`, which is what an author who declared a list
+                // and then removed its last member wrote.
+                options.Annotations is { } anns
+                    ? Fs.Some(Fs.List(anns.Select(a => a.Inner)))
+                    : Fs.None<Microsoft.FSharp.Collections.FSharpList<FsGen.ChartAnnotation>>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsRow, FsAction>>())));
 
     /// <summary>A static (non-data-bound) HTML table.</summary>
@@ -287,6 +295,16 @@ public sealed record ChartOptions
     /// <see cref="ChartXScale.Category"/>, which is also the default.
     /// </summary>
     public ChartXScale? XScale { get; init; }
+
+    /// <summary>
+    /// The chart's data-addressed annotations (Phase 1490) — reference lines
+    /// today, further members on the same closed union. Each names a place in
+    /// the data's own coordinates and, optionally, a label; none of them carries
+    /// geometry or ink, both of which belong to the lowering and the host style.
+    /// Unset omits the slot entirely, which draws the picture a chart with no
+    /// annotations has always drawn.
+    /// </summary>
+    public IEnumerable<ChartAnnotation>? Annotations { get; init; }
 
     /// <summary>Whether bar/area series stack.</summary>
     public bool Stacked { get; init; }

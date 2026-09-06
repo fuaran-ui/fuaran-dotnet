@@ -480,6 +480,7 @@ let chart<'Msg> : ChartSpec<'Msg> =
       LegendPosition = Option.None
       DataLabels = Option.None
       XScale = Option.None
+      Annotations = Option.None
       OnPointClick = Option.None
       Stacked = false }
 

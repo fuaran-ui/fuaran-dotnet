@@ -27,6 +27,7 @@ Friend Module VisualisationMapping
                 .LegendPosition = OptEnum(Of Csharp.ChartLegendPosition)(el, "legend-position"),
                 .DataLabels = OptEnum(Of Csharp.ChartDataLabels)(el, "data-labels"),
                 .XScale = OptEnum(Of Csharp.ChartXScale)(el, "x-scale"),
+                .Annotations = ReadAnnotations(el),
                 .Stacked = AttrBool(el, "stacked")})
 
         d("Table") = Function(el) Csharp.Fuaran.Table(
@@ -94,6 +95,27 @@ Friend Module VisualisationMapping
 
     Private Function ReadRows(el As XElement) As IEnumerable(Of IEnumerable(Of Csharp.Text))
         Return ChildElements(el, "Row").Select(Function(r) ChildTexts(r, "Cell")).ToList()
+    End Function
+
+    ''' <summary>
+    ''' Phase 1490 — the chart's data-addressed annotations, authored as
+    ''' &lt;ReferenceLine value="0" label="Break-even"/&gt; children.
+    ''' </summary>
+    ''' <remarks>
+    ''' NO children means an ABSENT slot, not an empty list, and the distinction is
+    ''' load-bearing rather than pedantic: an absent slot omits the key and produces
+    ''' the pre-1490 wire byte for byte, which is what every existing chart must keep
+    ''' doing. The XML dialect has no way to spell "an empty list of annotations" and
+    ''' does not need one — a chart with no annotations is written by not writing any.
+    ''' </remarks>
+    Private Function ReadAnnotations(el As XElement) As IEnumerable(Of Csharp.ChartAnnotation)
+        Dim lines = ChildElements(el, "ReferenceLine").ToList()
+        If lines.Count = 0 Then Return Nothing
+
+        Return lines.
+            Select(Function(r) Csharp.ChartAnnotation.ReferenceLine(
+                AttrDouble(r, "value", 0.0), OptText(r, "label"))).
+            ToList()
     End Function
 
     Private Function ReadMarkers(el As XElement) As IEnumerable(Of (Latitude As Double, Longitude As Double, Label As String))

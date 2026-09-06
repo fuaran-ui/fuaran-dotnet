@@ -506,6 +506,7 @@ internal sealed class ChartBuilder : NodeBuilder
                 Fs.None<Generated.ChartLegendPosition>(),
                 Fs.None<Generated.ChartDataLabels>(),
                 Fs.None<Generated.ChartXScale>(),
+                Fs.None<FSharpList<Generated.ChartAnnotation>>(),
                 Fs.None<FSharpFunc<FSharpMap<string, object>, FsAction>>()));
     }
 }

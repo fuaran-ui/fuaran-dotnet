@@ -268,7 +268,7 @@ InputKind =
 | Select { label:TextSource; source:Binding_list_SelectOption; value:Binding_str_choice; disabled?:Binding_bool; multiple?:bool; placeholder?:TextSource; values?:Binding_list_str }
 VisKind =
 | DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; exportable?:bool; keepRowsTogether?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; repeatHeader?:bool; rowKeyField?:str; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool }; transferInKey?:str; transferOutKey?:str }
-| Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding_hosted; xField:str; yFields:str[]; dataLabels?:"Off"|"Ends"; legendPosition?:"Top"|"Right"|"Bottom"|"None"; stacked?:bool; subtitle?:TextSource; title?:TextSource; valueFormat?:Format; xScale?:"Category"|"Temporal"; xTitle?:TextSource; yTitle?:TextSource }
+| Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding_hosted; xField:str; yFields:str[]; annotations?:ChartAnnotation[]; dataLabels?:"Off"|"Ends"; legendPosition?:"Top"|"Right"|"Bottom"|"None"; stacked?:bool; subtitle?:TextSource; title?:TextSource; valueFormat?:Format; xScale?:"Category"|"Temporal"; xTitle?:TextSource; yTitle?:TextSource }
 | Map { centreLatitude:any; centreLongitude:any; source:Binding_list_MapMarker; zoom:int }
 TreeOp =
 | EditNode { newKind:NodeKind; target:str }
@@ -469,6 +469,8 @@ CellKindErased =
 | TonedPill { field:str; map:{ [key]:ToneVariant }; default?:ToneVariant }
 | Progress { fractionFn:closure; labelFn:closure }
 | Custom { fn:closure }
+ChartAnnotation =
+| ReferenceLine { value:num; label?:TextSource }
 ColumnWidth =
 | Auto
 | Fixed { pixels:int }

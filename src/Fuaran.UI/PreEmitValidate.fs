@@ -1349,6 +1349,36 @@ type PreEmitDefect =
     /// readable off the tree.
     | GridFieldUngrounded of nodeId: string * field: string * schemaColumns: string list
 
+    /// **FUARAN137 (Error)**. A chart annotation whose value is NON-FINITE —
+    /// NaN, or either infinity (Phase 1490, §4l).
+    ///
+    /// A reference line addresses a place on the VALUE AXIS, in the axis's own
+    /// units. NaN and the infinities name no such place, and the damage is not
+    /// local to the annotation: §4l rule 3 has an address PARTICIPATE in the
+    /// domain it addresses, so the value reaches `niceDomain` and takes the
+    /// domain, the step, every gridline, every tick and every mark's coordinate
+    /// to NaN with it. The chart is then wrong everywhere rather than wrong at
+    /// one line, and no downstream stage can recover it.
+    ///
+    /// **This is the AUTHORING path's gate, and it is not redundant with the
+    /// decoder's.** A decoded tree can never carry one — the wire decoder
+    /// refuses the value outright, as the published schema does — but a tree
+    /// built in F#, C# or VB never meets a decoder, and `0.0 / 0.0` in an
+    /// author's own arithmetic is exactly how one arrives. Two populations, two
+    /// gates, one rule; the lowering's own filter is the third and is a
+    /// totality guard rather than a check (it draws the chart it can).
+    ///
+    /// Error rather than Warning, on FUARAN108's argument: there is no
+    /// legitimate shape it refuses. An author who wants no line writes no
+    /// annotation.
+    ///
+    /// Carries the chart node's id, the annotation's document-order index within
+    /// its own case — the same `<n>` its `annotation|reference|<n>` mark id
+    /// carries, so the finding and the picture name the mark the same way — and
+    /// the value's §7 sentinel spelling, which is the form the author will see
+    /// on the wire.
+    | ChartAnnotationNonFinite of nodeId: string * index: int * value: string
+
 /// Which `FieldRule` slot a control cannot honour (FUARAN100, Phase 864).
 /// Typed rather than a string so the honourable set stays enumerable: a slot
 /// added to `FieldRule` without a decision here will not compile.
@@ -1592,6 +1622,14 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             nodeId
             field
             columnType
+    | PreEmitDefect.ChartAnnotationNonFinite(nodeId, index, value) ->
+        "FUARAN137",
+        DefectSeverity.Error,
+        sprintf
+            "chart '%s' annotation %d carries the value %s — an annotation addresses a place on the value axis, and NaN / Infinity names none; it would also enter the axis domain and take every gridline, tick and mark to NaN with it. Give a finite value in the axis's own units, or drop the annotation (Phase 1490)"
+            nodeId
+            index
+            value
     | PreEmitDefect.ChartPieSeriesShape(nodeId, seriesCount) ->
         "FUARAN088",
         DefectSeverity.Error,
@@ -3266,6 +3304,31 @@ let private validateCore
              | ChartKind.Pie when spec.Stacked ->
                  defects.Add(PreEmitDefect.ChartStackedMeaningless(nodeIdStr, kindName))
              | _ -> ())
+
+            // FUARAN137 (Phase 1490) — a non-finite annotation value, read off
+            // the SPEC's own literal rather than off the data, which is why it
+            // needs no schema window and is total over every source shape.
+            //
+            // The index is per CASE, matching the `<n>` in the mark id, so the
+            // finding names the mark the picture would have drawn. It is counted
+            // over ALL the case's annotations rather than over the surviving
+            // ones: a non-finite value is a defect to repair, not a member to
+            // renumber around, and a fix must not silently move its neighbours'
+            // identities.
+            spec.Annotations
+            |> Option.defaultValue []
+            |> List.filter (fun a ->
+                match a with
+                | ChartAnnotation.ReferenceLine _ -> true)
+            |> List.iteri (fun i a ->
+                match a with
+                | ChartAnnotation.ReferenceLine(v, _) ->
+                    if System.Double.IsNaN v then
+                        defects.Add(PreEmitDefect.ChartAnnotationNonFinite(nodeIdStr, i, "NaN"))
+                    elif System.Double.IsPositiveInfinity v then
+                        defects.Add(PreEmitDefect.ChartAnnotationNonFinite(nodeIdStr, i, "Infinity"))
+                    elif System.Double.IsNegativeInfinity v then
+                        defects.Add(PreEmitDefect.ChartAnnotationNonFinite(nodeIdStr, i, "-Infinity")))
 
             // FUARAN086/087 — grounding over the schema the source PRODUCES
             // (Phase 1486), which since `Fuaran.Core.DataFrame` 0.18.0 shipped

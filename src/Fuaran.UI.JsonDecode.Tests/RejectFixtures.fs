@@ -898,6 +898,32 @@ let all: RejectFixture list =
         IsOp = false
         Description = "DateRange literal pair with start after end — the ordered-pair rule (Phase 725)" }
 
+      // ─── Chart annotation, non-finite value (Phase 1490, §4l) ────────────
+      //
+      // §7 admits the quoted `"NaN"` / `"Infinity"` / `"-Infinity"` sentinels at
+      // EVERY float slot, and three accept fixtures pin exactly that. This is a
+      // slot-specific NARROWING of that rule, not a disagreement with it: an
+      // annotation's value addresses a place on the value axis, and a non-finite
+      // number names none — and because §4l has an address participate in the
+      // domain it addresses, the value would reach `niceDomain` and take the
+      // domain, every gridline, every tick and every mark's coordinate to NaN
+      // with it. The picture would then be wrong everywhere rather than at one
+      // line, and no later stage could recover it.
+      //
+      // `WRONG_TYPE` at the value's own slot, on `reject-daterange-unordered`'s
+      // shape: a semantic pair-rule refusal reported where the author can repair
+      // it. The message names the rule and the fix for that fixture's reason —
+      // an author who reached a NaN through their own arithmetic has no way to
+      // guess which of the two rules about float slots applies here.
+      { Id = "reject-chart-annotation-nonfinite"
+        Json =
+          """{"id":"c1","kind":{"$type":"Chart","annotations":[{"$type":"ReferenceLine","value":"NaN"}],"kind":"Bar","source":{"$type":"Static","value":[]},"stacked":false,"xField":"quarter","yFields":["revenue"]}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.annotations[0].value"
+        IsOp = false
+        Description =
+          "chart annotation carrying the §7 NaN sentinel — the value slot is narrowed to the finite numbers (Phase 1490)" }
+
       // ─── TonedPill tone-map values (Phase 750) ───────────────────────────
       //
       // The declarative pill's `map` VALUES are `ToneVariant`s, and a tone name
@@ -1256,6 +1282,33 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "Binding<int> Static payload is a §7 non-finite sentinel — the sentinels are FLOAT-slot only; an integer slot has no non-finite form (Phase 1064)" }
+
+      // (6) and (7) — the SEQUENCE twins, Phase 1099. A typed float sequence
+      // types its ELEMENTS, not merely the binding around them, so a host that
+      // routes elements through a looser reader than its scalar slots passes
+      // every vector above and fails these.
+      //
+      // ADOPTED HERE BY PHASE 1490, because they were authored straight into the
+      // corpus and never declared on this side — the class the LIMIT_EXCEEDED
+      // note below records for fuaran#1094, recurring. Every `--emit-corpus`
+      // rewrites the payload directories wholesale, so both files were deleted
+      // by the first regen after they landed; this phase's regen was that one.
+      // Declared here they are regenerated like every other reject fixture, and
+      // the manifest entries they carried at HEAD are reproduced exactly.
+      { Id = "reject-binding-floatseq-sentinel-case"
+        Json = """{"id":"n1","kind":{"$type":"Sparkline","source":{"$type":"Static","value":[1,"nan",3]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source"
+        IsOp = false
+        Description =
+          "Binding<float seq> ELEMENT is a MIS-CASED sentinel (\"nan\") — the sequence twin of reject-binding-float-sentinel-case: §7's three tokens are exact at an element too, so a host that routes elements through a looser reader than its scalar slots is caught (Phase 1099)" }
+      { Id = "reject-spark-element-nonnumeric"
+        Json = """{"id":"s","kind":{"$type":"Sparkline","source":{"$type":"Static","value":[1,"lots",3]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source"
+        IsOp = false
+        Description =
+          "A Sparkline series element of \"lots\" — a typed float SEQUENCE slot types its ELEMENTS, not just the binding. spark-nonfinite-sentinel proves the §7 sentinels are accepted, which an entirely untyped slot also does by never reading an element, so this is the vector that separates the two (Phase 1099)" }
 
       // ─── LIMIT_EXCEEDED — the §21 shape bounds ───────────────────────
       //

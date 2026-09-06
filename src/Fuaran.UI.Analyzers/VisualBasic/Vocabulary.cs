@@ -42,7 +42,12 @@ internal static class Vocabulary
         // (Phase 750). It was read by the translator and admitted by the attribute
         // table below from the day it landed, but omitted HERE — so `<Tone>` raised
         // FUARAN060 on every valid use until `StructuralElementPin` measured the set.
-        "Item", "TreeItem", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default", "Source", "Tone", "Track");
+        //
+        // `ReferenceLine` is a `<Chart>` child carrying one arm of the Phase 1490
+        // annotation union. A repeated STRUCTURED slot again — a union case with
+        // its own payload has no attribute spelling, so it takes the same
+        // child-element shape as everything else on this line.
+        "Item", "TreeItem", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default", "Source", "Tone", "Track", "ReferenceLine");
 
     public static bool IsKnownElement(string name) => Kinds.Contains(name) || Structural.Contains(name);
 
@@ -276,6 +281,11 @@ internal static class Vocabulary
         // camelCase `srcLang`: this dialect is authored by people who know the element.
         Add("Track", "kind", "src", "srclang", "label", "default");
         Add("Marker", "lat", "lng", "label");
+        // Phase 1490 — one `<Chart>` annotation, the ReferenceLine arm. `value` is
+        // in the VALUE axis's own units and must be finite; there is deliberately
+        // no attribute for a colour, an opacity, a dash, a side or an offset,
+        // because §4l gives an annotation an address and a label and nothing else.
+        Add("ReferenceLine", "value", "label");
         Add("Prop", "name", "value");
         return b.ToImmutable();
     }

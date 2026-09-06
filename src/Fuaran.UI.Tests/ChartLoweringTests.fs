@@ -87,6 +87,14 @@ type private Case =
         /// the same slot a category label uses, because that is exactly what a
         /// `Cell.Date` presents to the lowering.
         XScale: string option
+        /// Phase 1490 (§4l) — the chart's data-addressed annotations (a WIRE
+        /// field: `ChartSpec.Annotations`), carried in the neutral input
+        /// contract as canonical `ChartAnnotation` wire JSON beside `title`.
+        /// Absent OMITS the key, so every pre-1490 input AND golden is
+        /// byte-identical. Typed as the real union rather than as a string
+        /// because an annotation carries a payload — `valueFormat`'s treatment,
+        /// not `xScale`'s.
+        Annotations: ChartAnnotation list option
         Rows: (string * float list) list
     }
 
@@ -111,6 +119,7 @@ let private plain: Case =
       LegendPosition = None
       DataLabels = None
       XScale = None
+      Annotations = None
       Rows = [] }
 
 /// The case's x cell values, boxed — numeric when `XNums` is set, else the
@@ -1109,7 +1118,91 @@ let private cases: Case list =
                   )
               )
           Subtitle = Some(TextSource.I18n("chart.subtitle.rolling_twelve_months", Map.empty))
-          Rows = [ "North", [ 80.0 ]; "South", [ 130.0 ]; "East", [ 60.0 ] ] } ]
+          Rows = [ "North", [ 80.0 ]; "South", [ 130.0 ]; "East", [ 60.0 ] ] }
+      // ── Phase 1490 (§4l) — the data-addressed annotations, first member ──
+      //
+      // Four cases, each pinning ONE fact the others cannot, which is why the
+      // family needs four fixtures rather than one chart carrying everything.
+      { plain with
+          // The BARE line, and the DOMAIN-NEUTRAL case: a zero line over
+          // mixed-sign data. The value 0.0 is already inside every chart's
+          // zero-anchored domain, so this golden shows the line, the mark id and
+          // the draw order with the domain held still — the control the two
+          // below are read against.
+          //
+          // No label, so it also pins that an annotation with no label emits ONE
+          // shape and no empty `Shape.Label` — the absence is a shape that is
+          // not there, which is the only form of it a byte comparison can see.
+          Name = "line-reference-zero"
+          Kind = ChartKind.Line
+          XField = "month"
+          YFields = [ "netFlow" ]
+          Title = Some(lit "Net flow")
+          Annotations = Some [ ChartAnnotation.ReferenceLine(0.0, None) ]
+          Rows =
+              [ "Jan", [ 40.0 ]
+                "Feb", [ -25.0 ]
+                "Mar", [ 15.0 ]
+                "Apr", [ -60.0 ]
+                "May", [ 35.0 ] ] }
+      { plain with
+          // DOMAIN WIDENING, and the reason §4l rule 3 is a rule. Every bar is
+          // below 200 and the target is 260, so a lowering that clamped the line
+          // to the data's own domain would draw it ON the top gridline — a
+          // picture that says the target has been met. The golden's y ticks run
+          // past the tallest bar, which is exactly the difference: the axis says
+          // so, and the reader can see the gap.
+          //
+          // Unlabelled, deliberately: this fixture's job is the domain, and a
+          // label would put the fit gate's outcome into the same bytes.
+          Name = "bar-reference-target-above-data"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields = [ "revenue" ]
+          Title = Some(lit "Revenue against target")
+          Annotations = Some [ ChartAnnotation.ReferenceLine(260.0, None) ]
+          Rows = [ "Q1", [ 120.0 ]; "Q2", [ 150.0 ]; "Q3", [ 90.0 ]; "Q4", [ 175.0 ] ] }
+      { plain with
+          // THE LABEL, on the `Literal` arm — the one arm whose glyphs the
+          // lowering can measure, so the one arm the fit gate can refuse. Two
+          // annotations, so the golden also pins the per-case ordinal in the
+          // mark ids (`annotation|reference|0` and `|1`) and the rule that every
+          // label is painted LAST, after both lines rather than each after its
+          // own.
+          Name = "line-reference-labelled"
+          Kind = ChartKind.Line
+          XField = "week"
+          YFields = [ "latencyMs" ]
+          Title = Some(lit "p95 latency")
+          Annotations =
+              Some
+                  [ ChartAnnotation.ReferenceLine(250.0, Some(lit "SLO"))
+                    ChartAnnotation.ReferenceLine(350.0, Some(lit "Breach")) ]
+          Rows = [ "W1", [ 180.0 ]; "W2", [ 240.0 ]; "W3", [ 210.0 ]; "W4", [ 300.0 ] ] }
+      { plain with
+          // THE NON-LITERAL ARM, and the boundary the text contract draws. The
+          // label is `Bound`, so its glyphs are unknowable at lowering time: it
+          // is carried through UNRESOLVED (contract clause 1) and admitted on
+          // PRESENCE (clause 3) rather than fit-gated, because measuring text
+          // that is not the text drawn is silently wrong — the same honest
+          // boundary clause 4 draws for truncation.
+          //
+          // It is the twin of `bar-bound-i18n-titles` at a new slot, and it
+          // exists for that fixture's recorded reason: the failure mode is a
+          // host resolving or dropping the arm, and both look like an ordinary
+          // chart until two hosts compare bytes.
+          Name = "line-reference-labelled-bound-label"
+          Kind = ChartKind.Line
+          XField = "week"
+          YFields = [ "latencyMs" ]
+          Title = Some(lit "p95 latency")
+          Annotations =
+              Some
+                  [ ChartAnnotation.ReferenceLine(
+                        250.0,
+                        Some(TextSource.Bound(Binding.Static(Some "the SLO, from the live binding")))
+                    ) ]
+          Rows = [ "W1", [ 180.0 ]; "W2", [ 240.0 ]; "W3", [ 210.0 ]; "W4", [ 300.0 ] ] } ]
 
 /// Build the typed `Row` rows (the canonical embedded-data shape; fuaran#665
 /// named the slot — the representation is the same `Map<string,obj>`).
@@ -1163,6 +1256,7 @@ let private specOf (case: Case) : ChartSpec<obj> =
         LegendPosition = case.LegendPosition |> Option.map legendPositionOf
         DataLabels = case.DataLabels |> Option.map dataLabelsOf
         XScale = case.XScale |> Option.map xScaleOf
+        Annotations = case.Annotations
         Stacked = case.Stacked }
 
 /// The neutral input contract's `axisUnitMode` string → the mode. The one place
@@ -1282,11 +1376,19 @@ let private yAxisTitleRotation (ds: DrawingSpec) : float option =
 /// other shape the lowering emits — ticks, categories, legend rows and axis
 /// titles are all `TickFontSize` (13), the subtitle 13, the visible title 18 —
 /// so this reader cannot drift onto chrome. Order is emission order.
+/// Phase 1490 narrowed this reader. `DataLabelFontSize` was the whole
+/// discriminator while it was the only 12px label in a lowered chart; an
+/// annotation label is 12px too — deliberately, since both sit INSIDE the plot
+/// and are the same size of thing — so size alone would now find annotation
+/// labels as well. `Emphasis` separates them: a data label is `Normal` and an
+/// annotation label is `Quiet`, which is the emitted difference the lowering
+/// makes for exactly this reason.
 let private dataLabelsOfDrawing (ds: DrawingSpec) : (float * float * string) list =
     ds.Shapes
     |> List.choose (fun sh ->
         match sh with
-        | Shape.Label(x, y, TextSource.Literal t, s) when s.FontSize = Some 12.0 -> Some(x, y, t)
+        | Shape.Label(x, y, TextSource.Literal t, s) when s.FontSize = Some 12.0 && s.Emphasis = Some Emphasis.Normal ->
+            Some(x, y, t)
         | _ -> None)
 
 let private dataLabelTextsOf (name: string) : string list =
@@ -1303,6 +1405,13 @@ let private legendSwatches (ds: DrawingSpec) : (float * float) list =
 /// unrotated — which separates them from tick labels (`End`), category labels
 /// (rotated), and the axis titles (full strength). The display-unit slot is the
 /// one other `Start`-anchored label and carries NO opacity, so it is excluded.
+///
+/// Phase 1490 adds the `Emphasis` clause, which excludes an annotation label
+/// (`Quiet`). It does NOT make the reader exact: a Phase-881 endpoint data label
+/// is `Start`-anchored, muted, unrotated and `Normal` too, so a case declaring
+/// `Ends` would still be over-collected here. No caller does, and closing that
+/// is Phase 881's gap rather than this one's — recorded so the next reader knows
+/// the boundary rather than rediscovering it.
 let private legendTextsOf (ds: DrawingSpec) : string list =
     ds.Shapes
     |> List.choose (fun sh ->
@@ -1311,6 +1420,7 @@ let private legendTextsOf (ds: DrawingSpec) : string list =
             s.TextAnchor = Some TextAnchor.Start
             && Option.isSome s.Opacity
             && Option.isNone s.Rotation
+            && s.Emphasis = Some Emphasis.Normal
             ->
             Some t
         | _ -> None)
@@ -1449,6 +1559,27 @@ let private inputJson (case: Case) : string =
         + optText "dataLabels" case.DataLabels
         // Phase 882 — likewise; the canonical `ChartXScale` enum string.
         + optText "xScale" case.XScale
+        // Phase 1490 — likewise, and the value is canonical `ChartAnnotation`
+        // wire JSON: `$type` first (0x24 sorts before every lower-case key) and
+        // the payload members Ordinal-ordered after it, which is what
+        // `Canon.typed` + `Canon.render` produce. Spelled by hand here for the
+        // reason `valueFormat` is: the neutral input contract is the OTHER
+        // hosts' input, so it has to be canonical bytes rather than whatever an
+        // encoder happened to emit.
+        + (match case.Annotations with
+           | None -> ""
+           | Some anns ->
+               let one (a: ChartAnnotation) =
+                   match a with
+                   | ChartAnnotation.ReferenceLine(v, label) ->
+                       let labelPart =
+                           match label with
+                           | None -> ""
+                           | Some t -> "\"label\":" + textSourceJson t + ","
+
+                       "{\"$type\":\"ReferenceLine\"," + labelPart + "\"value\":" + num v + "}"
+
+               ",\"annotations\":[" + (anns |> List.map one |> String.concat ",") + "]")
 
     sprintf
         "{\"kind\":\"%s\",\"xField\":\"%s\",\"yFields\":[%s],\"title\":%s,\"stacked\":%s%s%s%s,\"data\":[%s]}"
@@ -3694,4 +3825,277 @@ let chartLoweringTests =
                       | None
                       | Some(TextSource.Literal _) -> ()
                       | Some other -> failtestf "%s: the summary is not a literal (%A)" case.Name other
+              }
+
+              // ── Phase 1490 (§4l) — the annotation rules the goldens carry but
+              //    cannot STATE. Each of these is a property a byte comparison
+              //    would satisfy for the wrong reason: the goldens pin the bytes
+              //    that hold today, these say why those bytes are the right ones.
+
+              test "an ABSENT annotations slot is byte-identical to the pre-1490 lowering" {
+                  // The claim the corpus diff makes on its own — not one
+                  // pre-1490 `.expected.json` was rewritten — stated in the
+                  // stronger form the corpus cannot: for EVERY case declaring no
+                  // annotation, clearing the (already absent) slot changes
+                  // nothing. It is what makes this phase additive rather than a
+                  // restyle, and it is the assertion that would fail first if a
+                  // later member started reserving space by presence.
+                  for case in cases |> List.filter (fun c -> Option.isNone c.Annotations) do
+                      let cleared =
+                          Fuaran.drawingSpec
+                              (sprintf "chart-%s" case.Name)
+                              (Charts.lowerWithStyle
+                                  Charts.ChartLimits.defaults
+                                  (styleOf case)
+                                  { specOf case with Annotations = None }
+                                  (Seq.ofList (buildRows case)))
+
+                      Expect.equal
+                          (CanonicalJson.encodeNode cleared)
+                          (loweredJson case)
+                          (sprintf "%s: an absent annotations slot moved the picture" case.Name)
+              }
+
+              test "an annotation WIDENS the value domain — a target above every bar is drawn, and the axis says so" {
+                  // §4l rule 3, and the reason it is a rule rather than a
+                  // preference. Clamping the line to the data's own domain would
+                  // draw the 260 target ON the top gridline of a chart whose
+                  // tallest bar is 175 — a picture asserting the target had been
+                  // met. The axis must move instead.
+                  let withTarget = loweredCase "bar-reference-target-above-data"
+                  let case = cases |> List.find (fun c -> c.Name = "bar-reference-target-above-data")
+
+                  let without =
+                      Charts.lower { specOf case with Annotations = None } (Seq.ofList (buildRows case))
+
+                  let topTick (ds: DrawingSpec) =
+                      yTickTexts ds |> List.map float |> List.max
+
+                  Expect.isTrue
+                      (topTick withTarget > topTick without)
+                      "the annotated chart's axis reaches further than the unannotated one's"
+
+                  Expect.isTrue (topTick withTarget >= 260.0) "…far enough to contain the target it draws"
+
+                  // And the line is INSIDE the plot rather than on its edge:
+                  // a target the axis merely touches is the clamped picture by
+                  // another route.
+                  let lineY =
+                      withTarget.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Line(_, y, _, _, s) when s.MarkId = Some "annotation|reference|0" -> Some y
+                          | _ -> None)
+
+                  let plotTop =
+                      withTarget.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Line(_, y1, _, y2, _) when y1 = y2 -> Some y1
+                          | _ -> None)
+                      |> List.min
+
+                  Expect.isTrue (lineY > plotTop) "the reference line sits below the topmost gridline"
+              }
+
+              test "mark identity is per-CASE document order, and no data change moves it" {
+                  // Phase 642's stability property at the new slot. The ordinal
+                  // indexes the DOCUMENT, so growing the data — the change that
+                  // moves every datum's own mark id — leaves an annotation's
+                  // alone. §4l's answer to the "an ordinal in a mark id is an
+                  // ordinal address" objection is exactly this test.
+                  let ids (ds: DrawingSpec) =
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Line(_, _, _, _, s) -> s.MarkId
+                          | _ -> None)
+                      |> List.filter (fun id -> id.StartsWith "annotation|")
+
+                  let case = cases |> List.find (fun c -> c.Name = "line-reference-labelled")
+
+                  Expect.equal
+                      (ids (loweredCase case.Name))
+                      [ "annotation|reference|0"; "annotation|reference|1" ]
+                      "document order within the case, counted from zero"
+
+                  let grown =
+                      { case with
+                          Rows = case.Rows @ [ "W5", [ 275.0 ] ] }
+
+                  Expect.equal
+                      (ids (Charts.lower (specOf grown) (Seq.ofList (buildRows grown))))
+                      (ids (loweredCase case.Name))
+                      "a data change leaves an annotation's identity where it was"
+              }
+
+              test "draw order — lines in FRONT of the series, every label LAST" {
+                  // §4l's z-order rung 3 and rung 4. In inline SVG z-order IS
+                  // emission order, so a host that painted these in a different
+                  // sequence would emit a valid document showing a different
+                  // picture, and neither a schema nor a validator could see it.
+                  // That is the class this test and the goldens exist to catch.
+                  let ds = loweredCase "line-reference-labelled"
+
+                  let isAnnotationLine (sh: Shape) =
+                      match sh with
+                      | Shape.Line(_, _, _, _, s) ->
+                          s.MarkId
+                          |> Option.map (fun id -> id.StartsWith "annotation|")
+                          |> Option.defaultValue false
+                      | _ -> false
+
+                  let isSeries (sh: Shape) =
+                      match sh with
+                      | Shape.Polyline _ -> true
+                      | _ -> false
+
+                  let indexed = ds.Shapes |> List.indexed
+
+                  let lastSeries =
+                      indexed |> List.filter (snd >> isSeries) |> List.map fst |> List.max
+
+                  let firstAnnotationLine =
+                      indexed |> List.filter (snd >> isAnnotationLine) |> List.map fst |> List.min
+
+                  Expect.isTrue (firstAnnotationLine > lastSeries) "the reference lines are painted after the series"
+
+                  // Rung 4 — LAST, literally. Both labels are the final two
+                  // shapes in the drawing, after the legend and the title.
+                  let tail = ds.Shapes |> List.rev |> List.truncate 2
+
+                  let labelTexts =
+                      tail
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Label(_, _, TextSource.Literal t, _) -> Some t
+                          | _ -> None)
+
+                  Expect.equal (List.length labelTexts) 2 "the last two shapes are the annotation labels"
+                  Expect.isTrue (List.contains "SLO" labelTexts) "…the first annotation's"
+                  Expect.isTrue (List.contains "Breach" labelTexts) "…and the second's"
+              }
+
+              test "a label with no room is SUPPRESSED, and its line still draws" {
+                  // Phase 881's rule, unchanged at a new slot: never clipped,
+                  // never overlapped, never moved onto a mark. The half that
+                  // matters is the second clause — a suppressed label must not
+                  // take its annotation with it, or a layout decision becomes a
+                  // silent loss of the reader's threshold.
+                  let case = cases |> List.find (fun c -> c.Name = "line-reference-labelled")
+
+                  let overlong =
+                      { specOf case with
+                          Annotations =
+                              Some
+                                  [ ChartAnnotation.ReferenceLine(
+                                        250.0,
+                                        Some(lit (String.replicate 40 "an unreasonably long threshold name "))
+                                    ) ] }
+
+                  let ds = Charts.lower overlong (Seq.ofList (buildRows case))
+
+                  let annotationLines =
+                      ds.Shapes
+                      |> List.filter (fun sh ->
+                          match sh with
+                          | Shape.Line(_, _, _, _, s) -> s.MarkId = Some "annotation|reference|0"
+                          | _ -> false)
+
+                  Expect.equal (List.length annotationLines) 1 "the line draws"
+
+                  Expect.isFalse
+                      (literalTexts ds |> List.exists (fun t -> t.Contains "unreasonably long"))
+                      "…and the label that could not fit is not written anywhere"
+              }
+
+              test "a NON-LITERAL label is admitted on PRESENCE — carried, never measured, never dropped" {
+                  // The text contract's clauses 1 and 3 at this slot. A `Bound`
+                  // arm's glyphs are unknowable here, so it cannot be fit-gated:
+                  // it is carried through unresolved and may overrun, which is
+                  // the same honest boundary clause 4 draws for truncation. The
+                  // failure this pins is a host that resolves it (baking live
+                  // state into a shared golden) or drops it (losing authored
+                  // content silently).
+                  let ds = loweredCase "line-reference-labelled-bound-label"
+
+                  let bound =
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Label(_, _, TextSource.Bound b, _) -> Some b
+                          | _ -> None)
+
+                  Expect.equal (List.length bound) 1 "the bound label reaches the drawing as a Bound arm"
+
+                  // A `Literal` of the SAME text is refused, which is what makes
+                  // "admitted on presence" a measurable difference rather than
+                  // an assertion about a case that happened to fit.
+                  let case =
+                      cases |> List.find (fun c -> c.Name = "line-reference-labelled-bound-label")
+
+                  let asLiteral =
+                      { specOf case with
+                          Annotations =
+                              Some
+                                  [ ChartAnnotation.ReferenceLine(
+                                        250.0,
+                                        Some(lit (String.replicate 40 "the SLO, from the live binding "))
+                                    ) ] }
+
+                  let literalDs = Charts.lower asLiteral (Seq.ofList (buildRows case))
+
+                  Expect.isEmpty
+                      (literalDs.Shapes
+                       |> List.filter (fun sh ->
+                           match sh with
+                           | Shape.Label(_, _, TextSource.Literal t, _) -> t.Contains "live binding"
+                           | _ -> false))
+                      "a literal too long for the plot is suppressed at the same slot"
+              }
+
+              test "the polar arm is NEUTRALISED, not half-applied — a pie is byte-unchanged by an annotation" {
+                  // Phase 882's treatment of `xScale`, and for the same reason:
+                  // a pie has no value axis, so a value-axis address names
+                  // nothing there. Drawing a horizontal rule across a pie would
+                  // be an assertion about a space the picture does not have.
+                  let case = cases |> List.find (fun c -> c.Name = "pie-single")
+
+                  let annotated =
+                      { specOf case with
+                          Annotations = Some [ ChartAnnotation.ReferenceLine(25.0, Some(lit "Quarter")) ] }
+
+                  let node (spec: ChartSpec<obj>) : Node<obj> =
+                      Fuaran.drawingSpec "c" (Charts.lower spec (Seq.ofList (buildRows case)))
+
+                  Expect.equal
+                      (CanonicalJson.encodeNode (node annotated))
+                      (CanonicalJson.encodeNode (node (specOf case)))
+                      "the pie lowers identically with and without an annotation"
+              }
+
+              test "a NON-FINITE value cannot reach the geometry — the lowering stays total" {
+                  // The third gate, and the only one that is not a check: the
+                  // decoder refuses a non-finite value at the wire boundary and
+                  // FUARAN137 refuses it on the authoring path, so this filter
+                  // exists for the construction site neither of them sits on.
+                  // What it buys is that a lowering handed one anyway draws the
+                  // chart it can, rather than taking the domain, every gridline
+                  // and every mark's coordinate to NaN.
+                  let case = cases |> List.find (fun c -> c.Name = "line-reference-zero")
+
+                  for bad in [ nan; infinity; -infinity ] do
+                      let poisoned =
+                          { specOf case with
+                              Annotations = Some [ ChartAnnotation.ReferenceLine(bad, None) ] }
+
+                      let ds = Charts.lower poisoned (Seq.ofList (buildRows case))
+
+                      let clean =
+                          Charts.lower { specOf case with Annotations = None } (Seq.ofList (buildRows case))
+
+                      Expect.equal
+                          (CanonicalJson.encodeNode (Fuaran.drawingSpec "c" ds))
+                          (CanonicalJson.encodeNode (Fuaran.drawingSpec "c" clean))
+                          (sprintf "a %f annotation is dropped and the rest of the chart is unmoved" bad)
               } ]

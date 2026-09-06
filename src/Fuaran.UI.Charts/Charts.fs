@@ -179,6 +179,13 @@ type ChartLegendPosition = Fuaran.UI.Types.ChartLegendPosition
 /// a pre-881 picture byte-for-byte.
 type ChartDataLabels = Fuaran.UI.Types.ChartDataLabels
 
+/// A chart's data-addressed annotations (Phase 1490 — §4l).
+///
+/// A WIRE vocabulary (`ChartSpec.Annotations`), re-exported here on the same
+/// terms as the two above: this module draws them and owns neither. Absent
+/// emits nothing, so a pre-1490 spec draws a pre-1490 picture byte-for-byte.
+type ChartAnnotation = Fuaran.UI.Types.ChartAnnotation
+
 /// How a value axis states its DISPLAY UNIT once a large magnitude has been
 /// scaled by a power of ten (Phase 876).
 ///
@@ -496,6 +503,46 @@ type ChartStyle =
         /// that takes the text off the line it belongs to.
         DataLabelEndNudgeY: float
 
+        // ── Annotation ink + geometry (Phase 1490 — §4l) ──
+        //
+        // §4l's "never geometry, never style" prohibition has two halves with
+        // two owners, and this is the second: an annotation carries an ADDRESS
+        // and a LABEL, and every pixel and every drop of ink it draws with comes
+        // from here. That is what makes a data-addressed annotation survive a
+        // theme flip and a restyle where a placed overlay does not — and it is
+        // why these constants are corpus-pinned like every other default.
+        //
+        // The LABEL constants are named for the FAMILY, not for the reference
+        // line, deliberately: the event marker and the range band label under
+        // exactly the same rule (carried `TextSource`, fit-gated, suppressed on
+        // no-fit), so one set of constants serves all three and a later member
+        // adds only its own INK.
+        /// Stroke width of a reference line. Between `GridStrokeWidth` and
+        /// `SeriesStrokeWidth`: an annotation is more than chrome and less than
+        /// data, and its weight says so.
+        ReferenceStrokeWidth: float
+        /// Per-role opacity for a reference line's ink (`ChartStyle.Ink`, D8).
+        /// Well above `GridOpacity` — a threshold a reader is meant to see —
+        /// and below `AxisOpacity`, because it is not a boundary of the space.
+        ReferenceOpacity: float
+        /// Font size of an annotation's label. One step below `TickFontSize`,
+        /// on `DataLabelFontSize`'s reasoning: a tick sits outside the plot in
+        /// a column of its own, an annotation label sits INSIDE it beside the
+        /// mark it names.
+        AnnotationLabelFontSize: float
+        /// Inset from the plot's LEFT edge to an annotation label's left edge.
+        /// Left, not right: the right edge is where Phase 881's series-endpoint
+        /// labels live, and two label families sharing one corner would collide
+        /// on exactly the charts that carry both.
+        AnnotationLabelOffsetX: float
+        /// Rise from an annotation's line to its label's baseline — the nudge
+        /// that takes the text off the line it belongs to.
+        AnnotationLabelNudgeY: float
+        /// Clearance an annotation label must keep from the plot edge. Feeds
+        /// the fit gate only; a label that cannot hold it is SUPPRESSED, never
+        /// moved and never clipped (Phase 881's rule).
+        AnnotationLabelPadding: float
+
         // ── Pie geometry (the polar arm) ──
         /// Wedge radius.
         PieRadius: float
@@ -615,6 +662,22 @@ module ChartStyle =
           DataLabelPadding = 2.0
           DataLabelEndOffsetX = 6.0
           DataLabelEndNudgeY = 5.0
+          // Phase 1490 — the annotation family's ink and label geometry. None
+          // of it is corpus-visible until a spec declares an annotation, because
+          // an absent slot emits nothing at all; the six defaults nonetheless
+          // move the shipped style record, which is a CORPUS EVENT for every
+          // conformant host (each reproduces this record exactly) even though no
+          // pre-1490 golden's bytes change. The four label constants match their
+          // Phase-881 data-label counterparts by VALUE rather than by reference:
+          // an annotation label and a data label are the same size of thing in
+          // the same space, and a host that restyles one should not be forced to
+          // restyle the other.
+          ReferenceStrokeWidth = 1.5
+          ReferenceOpacity = 0.55
+          AnnotationLabelFontSize = 12.0
+          AnnotationLabelOffsetX = 6.0
+          AnnotationLabelNudgeY = 5.0
+          AnnotationLabelPadding = 2.0
           PieRadius = 130.0
           // Refreshed by Phase 875 alongside the palette: these three were the
           // only survivors of the retired 2008 set, and leaving unvalidated
@@ -1948,6 +2011,46 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     let cumsFor (i: int) : float[] =
         Array.init m (fun j -> series.[j].[i]) |> Array.scan (+) 0.0
 
+    // Hoisted here from the legend section (Phase 1490): the annotation slot
+    // below is neutralised on the polar arm, so the answer is needed before the
+    // value domain rather than after it.
+    let isPie =
+        match spec.Kind with
+        | ChartKind.Pie -> true
+        | _ -> false
+
+    // ── Data-addressed annotations (Phase 1490 — §4l) ────────────────────────
+    //
+    // The reference lines, in DOCUMENT ORDER, which is what `<n>` in the mark id
+    // `annotation|reference|<n>` indexes. The index is per CASE, so a later
+    // member of a different case never renumbers one of these.
+    //
+    // PIE IS EXCLUDED, and neutralised rather than half-applied — the Phase 882
+    // treatment of `xScale`. The polar arm has no value axis, so a value-axis
+    // address names nothing there; drawing a horizontal line across a pie would
+    // be an assertion about a space the picture does not have.
+    //
+    // A NON-FINITE VALUE IS DROPPED HERE, and the lowering stays TOTAL. It
+    // cannot arrive from the wire (the decoder refuses it) and it is refused
+    // pre-emit on the authoring path (FUARAN137), so this filter is the third
+    // gate and not the first: what it buys is that a lowering handed one anyway
+    // — through a construction site neither gate sits on — draws the chart it
+    // can rather than taking `niceDomain`, every gridline and every mark to NaN.
+    let referenceLines: (float * TextSource option)[] =
+        if isPie then
+            [||]
+        else
+            spec.Annotations
+            |> Option.defaultValue []
+            |> List.choose (fun a ->
+                match a with
+                | ChartAnnotation.ReferenceLine(v, label) when
+                    not (System.Double.IsNaN v || System.Double.IsInfinity v)
+                    ->
+                    Some(v, label)
+                | _ -> None)
+            |> List.toArray
+
     let allValues =
         let vs =
             if stacked then
@@ -1956,6 +2059,14 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             else
                 [ for s in series do
                       yield! s ]
+
+        // §4l rule 3 — AN ADDRESS PARTICIPATES IN THE DOMAIN IT ADDRESSES, on
+        // the same terms the series data does, and BEFORE `niceDomain` runs. A
+        // threshold above every bar is still drawn, and the axis says so; the
+        // alternative (clamping the line to the data's own domain) would draw a
+        // line at a value that is not the value declared, which is worse than
+        // not drawing it at all.
+        let vs = vs @ [ for v, _ in referenceLines -> v ]
 
         match vs with
         | [] -> [ 0.0 ]
@@ -2268,11 +2379,8 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     //
     // The pie arm's shares are resolved here for the same reason: its legend
     // labels carry them ("name (NN%)"), so they are layout input, not output.
-    let isPie =
-        match spec.Kind with
-        | ChartKind.Pie -> true
-        | _ -> false
-
+    // (`isPie` itself moved UP to the value-domain block in Phase 1490, which
+    // needs the same answer earlier; nothing else about this block changed.)
     let pieValues = if isPie && m = 1 then series.[0] else [||]
 
     let pieTotal = Array.sum pieValues
@@ -3258,6 +3366,96 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             | ChartKind.Area -> endpointLabels (fun j -> series.[j].[n - 1])
             | _ -> []
 
+    // ── Annotations (Phase 1490 — §4l) — the marks, then the labels ──────────
+    //
+    // TWO lists, not one, because §4l's draw order separates them: the lines
+    // sit in front of the series (rung 3) and EVERY annotation label is last,
+    // above all marks (rung 4). Within each rung the tie is document order
+    // inside the case, which is the same order `<n>` counts in — so the mark id
+    // and the paint order are read off one list and cannot disagree.
+    //
+    // The order is stated in the design doc, pinned by these goldens, and left
+    // to no stylesheet on purpose: in inline SVG z-order IS emission order, so a
+    // host that painted these in a different sequence would still produce a
+    // valid document showing a different picture, and no schema or validator
+    // could see it. [Phase 1492](the range band) is where the other half of the
+    // rule — behind the series — is first exercised.
+    let referenceStyle =
+        styleStrokeInk style style.ReferenceOpacity style.ReferenceStrokeWidth
+
+    // `Quiet` — the vocabulary's own word for subordinate text, and the only
+    // label in this lowering that takes it (the visible title is `Loud`, every
+    // other label `Normal`). It is a design statement first: an annotation label
+    // is the most subordinate text on the chart, because it NAMES a line the
+    // picture has already drawn, so it should not compete with the values and
+    // the axis names that carry the data. It is also what makes an annotation
+    // label identifiable in a lowered drawing at all — without it, a
+    // `Start`-anchored muted 12px label is exactly what a Phase-881 endpoint
+    // data label is, and no reader of the emitted tree could tell the families
+    // apart.
+    let annotationLabelStyle =
+        textStyle style (Some style.LabelOpacity) TextAnchor.Start style.AnnotationLabelFontSize Emphasis.Quiet
+
+    /// An annotation label, under Phase 881's rule and the Phase 1143 text
+    /// contract at once. `fitsBox` is the single predicate and a no-fit is a
+    /// SUPPRESSION — never a clip, never an overlap, never a nudge onto a mark
+    /// — but it can only be asked of a `Literal`: the text behind a `Bound` or
+    /// an `I18n` arm is not known here, and measuring text that is not the text
+    /// drawn is silently wrong. So a non-`Literal` label is admitted on
+    /// PRESENCE and may overrun, which is the same honest boundary `boundText`
+    /// draws for truncation (text-contract clauses 3 and 4). A suppressed label
+    /// never suppresses its annotation: the line still draws.
+    let annotationLabel (x: float) (baseline: float) (maxWidth: float) (maxHeight: float) (t: TextSource) : Shape list =
+        let fits =
+            match t with
+            | TextSource.Literal s ->
+                TextMetrics.fitsBox style.AnnotationLabelFontSize style.TextLineHeightFactor maxWidth maxHeight s
+            | _ -> true
+
+        if fits then
+            [ Shape.Label(r2 x, r2 baseline, t, annotationLabelStyle) ]
+        else
+            []
+
+    let referenceLineShapes: Shape list =
+        [ for i in 0 .. referenceLines.Length - 1 do
+              let v, _ = referenceLines.[i]
+              let y = yScale v
+
+              // Phase 642 identity: `annotation|<case>|<n>`, with `<n>` the
+              // document-order index within this case. NOT the value itself — a
+              // float has no canonical string form the wire defines, and an
+              // ordinal is unique by construction and moved by no data change.
+              yield
+                  Shape.Line(
+                      r2 plotX0,
+                      y,
+                      r2 plotX1,
+                      y,
+                      { referenceStyle with
+                          MarkId = Some("annotation|reference|" + string i) }
+                  ) ]
+
+    let annotationLabelShapes: Shape list =
+        [ for v, label in referenceLines do
+              match label with
+              | None -> ()
+              | Some t ->
+                  let baseline = yScale v - style.AnnotationLabelNudgeY
+                  let x = plotX0 + style.AnnotationLabelOffsetX
+
+                  yield!
+                      annotationLabel
+                          x
+                          baseline
+                          // The width budget runs to the PLOT's right edge, for
+                          // Phase 881's reason: beyond it lies the legend column
+                          // or the right margin, and a label that ran into
+                          // either is the collision the gate exists to refuse.
+                          (max 0.0 (plotX1 - x - style.AnnotationLabelPadding))
+                          (max 0.0 (baseline - plotY0 - style.AnnotationLabelPadding))
+                          t ]
+
     // ── Legend (Phase 880) — one entry list, four placements ──
     //
     // COLUMN (`Right`, the shipped default): one row per entry, each a swatch
@@ -3508,9 +3706,19 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             // straight after it and before the legend: over their own marks,
             // under nothing that would obscure them.
             @ dataLabelShapes
+            // Phase 1490 (§4l rung 3) — reference lines in FRONT of the series.
+            // A threshold drawn under the bars it measures is a threshold the
+            // reader cannot check the bars against.
+            @ referenceLineShapes
             @ legend
             @ titleShapes
             @ subtitleShapes
+            // Phase 1490 (§4l rung 4) — every annotation label LAST, above all
+            // marks. Last literally, and not merely after the series: the label
+            // is the only part of an annotation that carries authored words, and
+            // a rung that put it under the legend column would suppress it on
+            // exactly the charts that are busiest.
+            @ annotationLabelShapes
 
     // ── The accessible summary (Phase 921) ───────────────────────────────────
     //

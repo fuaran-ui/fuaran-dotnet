@@ -5,15 +5,21 @@
 > what one implementation happens to do. Pairs with `CHARTS-DRAWING-PRIMITIVE-DESIGN.md` (the
 > `Drawing` primitive's own design) and the `chart-lowering/*` fixture family, which pins it.
 
-`ChartSpec` declares four fields whose type is `TextSource`, and therefore whose value may be a
+`ChartSpec` declares five `TextSource`-typed slots, and therefore five whose value may be a
 `Literal`, a `Bound` binding, or an `I18n` key:
 
-| Field | What it names |
+| Slot | What it names |
 |---|---|
 | `Title` | the chart's own name — drawn as the emphasised heading, and carried as the drawing's accessible `<title>` |
 | `Subtitle` | the muted qualifier under it (Phase 878) |
 | `XTitle` | the category-axis name (Phase 878) |
 | `YTitle` | the value-axis name (Phase 878) |
+| `Annotations[i]`'s `label` | the optional name on a data-addressed annotation (Phase 1490 — §4l) |
+
+The fifth is the first that is not a FIELD of `ChartSpec`: it rides a member of the annotations
+list, so a chart carries as many of them as it declares annotations. Nothing else about it is
+special, which is the point — the clauses below are stated over slots rather than over fields
+precisely so a new one inherits them rather than re-deciding them.
 
 The lowering is a **pure, total function from a spec and rows to a canonical `Drawing`**, run on
 every host, headless included. Text is the one part of a chart whose value may not be known at that
@@ -21,7 +27,7 @@ moment. This document says what happens to it.
 
 ## The contract
 
-**1. Carry, do not resolve.** All four fields cross the lowering as `TextSource` and reach the
+**1. Carry, do not resolve.** All five slots cross the lowering as `TextSource` and reach the
 emitted `Shape.Label` (and the drawing's `Title`) as `TextSource`. The lowering never asks what a
 `Bound` arm currently reads or what an `I18n` key expands to. Resolution is the renderer's, at
 render time, where every arm resolves and where the host holds the binding sources and the
@@ -38,12 +44,20 @@ drawing's geometry is a function of the spec's *shape*, so it is identical on ev
 under a binding that changes, and two hosts with different live state lower the same wire tree to
 the same bytes.
 
-**4. Truncation applies to the `Literal` arm alone.** The subtitle and both axis titles are bounded
-to the extent they run along — `truncateToWidth` over the drawn glyphs. The text behind a `Bound`
-or `I18n` arm is not known at lowering time, so it passes through untruncated and may overrun. That
-is the honest boundary: a visible overrun is a fact the reader can see, where a measurement taken
+**4. Measuring applies to the `Literal` arm alone**, and it has two forms — TRUNCATION and the FIT
+GATE. The subtitle and both axis titles are bounded to the extent they run along
+(`truncateToWidth` over the drawn glyphs); an annotation label is instead admitted or SUPPRESSED
+whole by `fitsBox`, on Phase 881's rule — never clipped, never overlapped, never moved onto a mark.
+Both forms stop at the same boundary: the text behind a `Bound` or `I18n` arm is not known at
+lowering time, so it passes through untruncated and UNGATED, and may overrun. That is the honest
+answer either way — a visible overrun is a fact the reader can see, where a measurement taken
 against text that is not the text drawn is silently wrong. (The visible `Title` is not bounded on
 any arm — it has the canvas width and its own line.)
+
+**A suppressed label never suppresses what it labels.** The annotation still draws, and it still
+reaches the accessible summary. That is what keeps suppression a LAYOUT decision rather than a
+silent loss of authored content, and it is the reason clause 2 survives a gate that can refuse to
+draw something: nothing was dropped, one rendering of it was declined.
 
 **5. The axis-title fallback is a `Literal` the lowering mints, and it applies to ABSENCE only.**
 An axis with no declared title falls back to its capitalised field name, so an axis is never
@@ -87,3 +101,9 @@ title, an `I18n` subtitle, a `Bound` x-title and an `I18n` y-title, with the exp
 carrying all four arms through unresolved and untruncated. Every host certifies against it. Until
 that fixture existed, the divergence this document settles survived unseen on a lowering surface
 that was otherwise at byte parity.
+
+`chart-lowering/line-reference-labelled-bound-label` pins the fifth slot, and it is that fixture's
+twin rather than a repetition of it: the annotation label is `Bound`, so the golden shows it carried
+through unresolved AND admitted without being measured. The two halves are separable — a host could
+carry the arm and still fit-gate it against text it cannot read — so the fixture that pins clause 1
+here is also the one that pins clause 4's boundary.

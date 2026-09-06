@@ -4777,3 +4777,57 @@ twice. So the `merge-conformance/` refusal fixtures carry no choice tokens, rege
 this change reproduces the committed bytes and hashes exactly (verified), and no host has a token to
 decode. The one host that mirrors the menu internally is the Go port, whose `resolveAuthor` is a
 line-for-line mirror of this one and moves with it.
+
+## Recorded change — 0.76.0, `ChartSpec.Annotations` and the `ChartAnnotation` union (fuaran#1490)
+
+**An additive record widening plus a new closed union (minor, under the 2026-08-04 record-widening
+dispensation).** `ChartSpec` gains one optional member, `Annotations: ChartAnnotation list option`;
+`ChartAnnotation` is a new closed union whose first and only case is
+`ReferenceLine of value: float * label: TextSource option`. `ChartStyle` gains six constants. Absent
+omits on the wire, so every pre-1490 fixture — all 126 `chart-lowering` goldens and every node
+fixture — is BYTE-UNCHANGED, which the corpus diff shows directly.
+
+```fsharp
+// Fuaran.UI.Generated — ChartAnnotation (new), aliased as Fuaran.UI.Types.ChartAnnotation
+| ReferenceLine of value: float * label: TextSource option
+
+// Fuaran.UI.Generated — ChartSpec<'Msg>
+Annotations: ChartAnnotation list option
+
+// Fuaran.UI.Charts — ChartStyle
+ReferenceStrokeWidth: float        // 1.5
+ReferenceOpacity: float            // 0.55
+AnnotationLabelFontSize: float     // 12.0
+AnnotationLabelOffsetX: float      // 6.0
+AnnotationLabelNudgeY: float       // 5.0
+AnnotationLabelPadding: float      // 2.0
+```
+
+**A record gaining a field breaks FULL-LITERAL construction (FS0764)** in any consumer that builds
+`ChartSpec` without `Defaults.chart`. In this repo that is `Defaults.fs`, `NodeMap.fs`, the hand
+decoder, the JsonDecode fixtures and generators, and the two C# positional-constructor sites — the
+Phase 305 spec-construction tripwire doing its job. A consumer using `{ Defaults.chart with … }` is
+unaffected. Adding a CASE to `ChartAnnotation` (Phases 1491 and 1492) is `FS0025` only and therefore
+minor by [Semver](#semver) above — which is the shape the union was chosen for.
+
+**ONE list over a closed union rather than three optional fields**, decided in §4l of
+`docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md` and recorded here because the version consequence is the
+deciding count: three fields would be a fourth widening of `ChartSpec`, and a fourth FS0764 break,
+for each further member. The list pays that cost once, for the family.
+
+**A CORPUS EVENT on two counts, both of which move other hosts.** The six `ChartStyle` defaults are
+part of the shipped style record every conformant host reproduces exactly, so they move with this
+release even though no existing golden's bytes change (nothing draws an annotation yet). And the four
+new goldens — `line-reference-zero`, `bar-reference-target-above-data`, `line-reference-labelled`,
+`line-reference-labelled-bound-label` — are in the shared corpus now, so a host whose chart-lowering
+conformance leg walks the directory sees them before its own arm exists. Porting the arms is
+fuaran#1493's whole job; this entry records the window rather than closing it.
+
+**Two slot-specific narrowings ship with it, and both are deliberate.** The annotation's `value` is
+narrowed to the FINITE numbers: §7's quoted `"NaN"` / `"Infinity"` / `"-Infinity"` sentinels stay
+legal at every other float slot and are refused here, by the decoder, by the published
+`schema.json`, and by the new pre-emit `FUARAN137` on the authoring path — because a non-finite value
+names no place on the value axis and, since an address participates in the domain it addresses, would
+take every gridline, tick and mark to NaN with it. And an annotation label is emitted `Emphasis.Quiet`,
+the only label in a lowered chart that is: it is the most subordinate text on the picture, and it is
+what makes the family identifiable in an emitted drawing at all.

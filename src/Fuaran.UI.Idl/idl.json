@@ -804,6 +804,20 @@
           }
         },
         {
+          "name": "annotations",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "list",
+            "of": {
+              "$type": "union",
+              "args": [],
+              "name": "ChartAnnotation"
+            }
+          }
+        },
+        {
           "name": "onPointClick",
           "optionality": {
             "$type": "optional"
@@ -6066,6 +6080,37 @@
         }
       ],
       "name": "CellKindErased",
+      "params": []
+    },
+    {
+      "cases": [
+        {
+          "fields": [
+            {
+              "name": "value",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "float"
+              }
+            },
+            {
+              "name": "label",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "union",
+                "args": [],
+                "name": "TextSource"
+              }
+            }
+          ],
+          "tag": "ReferenceLine"
+        }
+      ],
+      "name": "ChartAnnotation",
       "params": []
     },
     {

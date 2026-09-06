@@ -1649,6 +1649,24 @@ and ChartDataLabels = Generated.ChartDataLabels
 /// type (FUARAN097) instead of the lowering guessing from cell strings.
 and ChartXScale = Generated.ChartXScale
 
+/// Phase 1490 — a chart's data-addressed annotations (§4l of
+/// `docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md`): one closed union carried in
+/// `ChartSpec.Annotations`, so a further member is a case rather than a fourth
+/// widening of `ChartSpec`.
+///
+/// An annotation names a place in the DATA's coordinates and, optionally, a
+/// label. It carries no geometry and no ink — no pixel, no offset, no anchor,
+/// no colour, no opacity, no font: the geometry is the lowering's (derived from
+/// the plot rectangle, the text metrics and `niceDomain`) and the ink is
+/// `ChartStyle`'s at a per-role opacity. That is what makes it survive a data
+/// change, a theme flip, a restyle and a resize.
+///
+/// `ReferenceLine(value, label)` is a horizontal line at `value` in the VALUE
+/// axis's own units; the value ENTERS the value domain before `niceDomain`
+/// runs, so a threshold above every bar is still drawn and the axis says so.
+/// The label rides the Phase 1143 text contract — carried, never resolved.
+and ChartAnnotation = Generated.ChartAnnotation
+
 /// Author-facing carrier for a **static read-only table** (Phase 393). No longer a
 /// `VisKind` case of its own — `Fuaran.table` lowers it into the read-only mode of
 /// `NodeKind.DataGrid` (`GridSpec.StaticRows`), so one tabular kind owns both the

@@ -888,6 +888,16 @@ let private genGridSpec: Gen<GridSpec<obj>> =
               Exportable = false }
     }
 
+/// Phase 1490 — one data-addressed annotation. It sits here rather than beside
+/// the other chart vocabularies because it reaches `genTextSource`, which is
+/// declared further down the file than they are.
+let private genChartAnnotation: Gen<ChartAnnotation> =
+    gen {
+        let! value = genFiniteFloat
+        let! label = genOption genTextSource
+        return ChartAnnotation.ReferenceLine(value, label)
+    }
+
 let private genChartSpec: Gen<ChartSpec<obj>> =
     gen {
         let! kind = genChartKind
@@ -909,6 +919,12 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         // Phase 882 — what the x column means (absent = `Category`, which is
         // also the default, so the option arm matters here too).
         let! xScale = genOption genChartXScale
+        // Phase 1490 — the data-addressed annotations. `genFiniteFloat`, NOT
+        // `genFloat`: the sentinel-widened generator is right at every ordinary
+        // float slot and wrong here, because the decoder REFUSES a non-finite
+        // annotation value, so a generated NaN would make the round-trip
+        // property fail on a document the codec is correct to reject.
+        let! annotations = genOption (genSmallList genChartAnnotation)
         let! stacked = genBool
 
         return
@@ -925,6 +941,7 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
                 LegendPosition = legendPosition
                 DataLabels = dataLabels
                 XScale = xScale
+                Annotations = annotations
                 Stacked = stacked }
     }
 

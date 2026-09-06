@@ -76,6 +76,7 @@ internal static class AuthoringSurfacePin
         ["Prop"] = "structural child of <Custom>",
         ["Track"] = "structural child of <Media>",
         ["TreeItem"] = "structural child of <Tree> — and of another <TreeItem>, the only element in this table that nests inside itself",
+        ["ReferenceLine"] = "structural child of <Chart> — one arm of the annotations union (Phase 1490)",
     };
 
     /// <summary>Attribute-eligible wire fields the VB surface does NOT spell, with

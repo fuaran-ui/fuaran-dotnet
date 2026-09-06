@@ -87,6 +87,9 @@ internal static class StructuralElementPin
             ["Track"] = ("Media.tracks", "singular-of-the-field — one TrackEntry of the tracks list (Phase 1110)"),
             ["Option"] = ("Select.source", "rename — one SelectOption; the literal children build the Binding the `source` field carries"),
             ["Marker"] = ("Map.source", "rename — one MapMarker; the literal children build the Binding the `source` field carries"),
+            ["ReferenceLine"] = (
+                "Chart.annotations",
+                "one ChartAnnotation of the annotations list, named for its UNION ARM rather than for the field (Phase 1490) — the first element here to do so, because the field is a list over a closed union and each arm is a different thing to author; <EventMarker> and <RangeBand> join it as their arms land"),
             ["Prop"] = ("Custom.props", "rename — one entry of the props map, authored as name/value"),
 
             // Node-valued slots — the child element names the slot rather than a
