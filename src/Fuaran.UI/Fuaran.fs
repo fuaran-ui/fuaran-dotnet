@@ -275,12 +275,32 @@ module binding =
     /// The ISO-8601 form composes with `Fuaran.Core`'s `dateDiffDays`, which
     /// reads the leading `YYYY-MM-DD` — so "days overdue" is
     /// `dateDiffDays(col "due", now)` with no Core change.
-    let now: Binding<string> = Binding.Now(fun (o: obj) -> unbox<string> o)
+    let now: Binding<string> = Binding.Now((fun (o: obj) -> unbox<string> o), None)
+
+    /// `now` truncated to a declared grain (Phase 1533). The host truncates its
+    /// furnished instant BEFORE the accessor sees it, so `nowAt TimeGrain.Day`
+    /// is the `YYYY-MM-DD` that `Fuaran.Core`'s `dateDiffDays` accepts, and two
+    /// hosts rendering the document within the same day agree.
+    ///
+    /// `TimeGrain.Second` is the default and encodes as the bare
+    /// `{"$type":"Now"}` — `now` above and `nowAt TimeGrain.Second` are the same
+    /// bytes.
+    let nowAt (grain: TimeGrain) : Binding<string> =
+        Binding.Now((fun (o: obj) -> unbox<string> o), (if grain = TimeGrain.Second then None else Some grain))
 
     /// `now` at an arbitrary slot type, for a `Transform` param or a
     /// `JVal`-typed position where the host value is projected by the caller.
     let nowAs (accessor: string -> 'T) : Binding<'T> =
-        Binding.Now(fun (o: obj) -> accessor (unbox<string> o))
+        Binding.Now((fun (o: obj) -> accessor (unbox<string> o)), None)
+
+    /// `nowAs` at a declared grain — the projection of [[nowAt]] onto an
+    /// arbitrary slot type. The truncation happens host-side, so the accessor
+    /// receives the ALREADY-truncated string.
+    let nowAsAt (grain: TimeGrain) (accessor: string -> 'T) : Binding<'T> =
+        Binding.Now(
+            (fun (o: obj) -> accessor (unbox<string> o)),
+            (if grain = TimeGrain.Second then None else Some grain)
+        )
 
     let selection (nodeId: string) (accessor: 'row -> 'T) : Binding<'T> =
         Binding.Selection(nodeId, (fun (o: obj) -> accessor (unbox<'row> o)), None, None)
@@ -1740,7 +1760,7 @@ module Fuaran =
                 // parameterised on 'T so the typechecker permits it here; map
                 // the accessor through `toRow` for uniformity and let resolution
                 // surface the cast, exactly as `I18n` does below.
-                | Binding.Now acc -> Binding.Now(fun ctx -> acc ctx |> Seq.map toRow)
+                | Binding.Now(acc, grain) -> Binding.Now((fun ctx -> acc ctx |> Seq.map toRow), grain)
                 // `Binding.I18n` is semantically for `Binding<string>`
                 // bindings, but the DU is parameterised on 'T so the typechecker
                 // allows it on a grid's `Binding<'row seq>` Source. Pass through —

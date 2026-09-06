@@ -5024,3 +5024,69 @@ double-escape), and the 32-character clamp bites — with the DRAWN label in the
 authored string whole, so the clamp is a difference between two bytes the fixture holds rather than an
 assertion about one. A host whose chart-lowering leg walks the corpus directory sees all eleven before
 its own clauses exist; the four lowering hosts move in this same change-set.
+
+## Recorded change — 0.76.0, `Binding.Now` gains a grain, and `Format.Since` (fuaran#1533)
+
+**A field on an existing union case plus a case on a closed union (`FS0725` at construction sites,
+`FS0025` at exhaustive matches) — recorded as the additive class relative to the released baseline,
+on the reading the four `PreEmitDefect` entries above take.** v0.75.0 is the newest tag; this rides
+the same untagged, publicly-unpinned 0.76.0 draft, and against the released surface the wire is
+unchanged for every document that existed before it.
+
+```fsharp
+// Fuaran.UI.Generated — Binding<'T> (field added to an existing case)
+| Now of accessor: (obj -> 'T) * grain: TimeGrain option
+
+// Fuaran.UI.Generated — TimeGrain (new), aliased as Fuaran.UI.Types.TimeGrain
+| Second | Minute | Hour | Day
+
+// Fuaran.UI.Generated — Format (case added)
+| Since of unit: RelativeTimeUnit option
+
+// Fuaran.UI (smart constructors)
+binding.nowAt   : TimeGrain -> Binding<string>
+binding.nowAsAt : TimeGrain -> (string -> 'T) -> Binding<'T>
+
+// Fuaran.UI.Renderer.Formatting (new public functions, shared above the #if)
+truncateToGrain      : TimeGrain -> string -> string
+epochSecondsOfInstant: string -> float option
+sinceUnitAndCount    : RelativeTimeUnit option -> float -> RelativeTimeUnit * float
+```
+
+**THE WIRE DOES NOT MOVE FOR ANY EXISTING DOCUMENT, and that is checkable rather than asserted.**
+`grain` is omitted at its `Second` default and `Since` is a new discriminator, so
+`nodes/now-environment-binding.json` and `nodes/format-bindings.json` are byte-identical before and
+after — which the corpus regeneration in this change-set demonstrates by leaving them untouched in
+the diff. `binding.nowAt TimeGrain.Second` collapses to `None` in the smart constructor for the same
+reason: a document that spelled out the default would round-trip differently from every pre-1533
+tree, and the constructor is where that becomes impossible rather than merely discouraged.
+
+**`TimeGrain` is a strict SUBSET of `RelativeTimeUnit`, and the four missing members are the
+decision.** A grain truncates a calendar instant; `Week`, `Month` and `Year` have no truncation five
+hosts agree on (which weekday starts a week; which calendar), so they are REFUSED at decode —
+`UNKNOWN_DU_CASE` at the `…grain` path — rather than clamped to `Day`. Clamping would answer a
+question the document did not ask, silently. The same rule governs a `grain` that is present and
+unreadable: a refusal, never a fallback to the default.
+
+**`Format.Since` is a SEPARATE case and not a widening of `RelativeTime`, which is the whole point.**
+`RelativeTime`'s numeric source is a signed COUNT of its unit; `Since`'s is an INSTANT in whole
+Unix-epoch seconds (`Date`'s convention), and the count is the delta the host takes against
+`BindingSources.Now`. Widening `RelativeTime` to mean either would have re-interpreted every shipped
+document that uses it, with no version and no diff to point at. The two cases now read their source
+differently on purpose, and `format-bindings.json` is untouched.
+
+**What is normative is the REDUCTION, not the wording** (`WIRE_FORMAT.md` §3.3.1). The auto-selection
+ladder and the truncate-toward-zero count are fixed and identical on every host; turning the
+resulting `(unit, count)` into words is locale-aware rendering, so `Since` inherits `RelativeTime`'s
+§13 fidelity tier exactly — `Intl.RelativeTimeFormat` in the browser, the documented invariant
+fallback elsewhere. Two hosts differing in wording is not a conformance failure; two hosts computing
+a different pair from the same delta is.
+
+**The clock did not move, and the phase's real content is that this is now WRITTEN DOWN.**
+`Binding.Now` shipped in 0.66.0 (fuaran#765) with its determinism properties stated only in source
+comments; §3.3.1 states them normatively — no clock at decode, no instant on the wire, one instant
+per render pass, nothing captured by the op-stream, the SSR instant handed to the client's first
+render, and an absent instant left unresolved rather than substituted. `Fuaran.UI.Tests`'
+`NowGrainTests` pins them, including the go-red twin that a re-render under a *different* furnished
+instant does move — without which the determinism assertions would pass vacuously on a host that
+ignored `sources.Now` altogether.

@@ -382,6 +382,15 @@
     },
     {
       "cases": [
+        "Second",
+        "Minute",
+        "Hour",
+        "Day"
+      ],
+      "name": "TimeGrain"
+    },
+    {
+      "cases": [
         "Default",
         "Subdued",
         "Brand",
@@ -5361,6 +5370,16 @@
                 },
                 "wire": "<closure>"
               }
+            },
+            {
+              "name": "grain",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "enum",
+                "name": "TimeGrain"
+              }
             }
           ],
           "tag": "Now"
@@ -7298,6 +7317,21 @@
             }
           ],
           "tag": "Duration"
+        },
+        {
+          "fields": [
+            {
+              "name": "unit",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "enum",
+                "name": "RelativeTimeUnit"
+              }
+            }
+          ],
+          "tag": "Since"
         }
       ],
       "name": "Format",

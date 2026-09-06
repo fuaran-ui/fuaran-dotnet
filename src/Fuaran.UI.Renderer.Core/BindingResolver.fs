@@ -184,7 +184,11 @@ let rec private objOfJValBinding (b: Binding<JVal>) : Binding<obj> =
     // reason `Selection`'s is: the host furnishes a RAW string, not a
     // `JVal`, so resolving at `JVal` would unbox-cast a primitive to a
     // union (a throw on .NET, a silent mismatch under Fable erasure).
-    | Binding.Now _ -> Binding.Now id
+    // Phase 1533 — the GRAIN is carried through: it is a property of the
+    // document, not of the slot type it is being erased to, and dropping it here
+    // would make the same `Now` resolve at two resolutions depending on which
+    // slot read it.
+    | Binding.Now(_, grain) -> Binding.Now(id, grain)
     | Binding.I18n(key, args) -> Binding.I18n(key, args)
     | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
         Binding.Local(
@@ -464,7 +468,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
             match defaultValue with
             | Some d -> Resolved d
             | None -> Resolved Unchecked.defaultof<'T>
-    | Binding.Now accessor ->
+    | Binding.Now(accessor, grain) ->
         // Phase 765 — the host-furnished instant. The clock is NOT read here:
         // `sources.Now` was resolved once, host-side, for the whole render pass,
         // which is what makes a replayed op-stream reproduce its original render
@@ -475,10 +479,23 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
         // that forgets to furnish the clock must not silently render a
         // plausible wrong date, which is exactly the failure the models were
         // producing by hardcoding one.
+        //
+        // Phase 1533 — the declared GRAIN truncates the instant BEFORE the
+        // accessor sees it. Before, not after: the accessor is the document's
+        // projection onto its slot type, and a `Transform` param projecting to
+        // `JStr` would otherwise carry a full datetime into `DateDiffDays`,
+        // which reads only the leading `YYYY-MM-DD` — so the truncation has to
+        // be upstream of every projection or it is not the document's
+        // declaration at all. Absent grain is `Second`, which is the identity.
         if System.String.IsNullOrEmpty sources.Now then
             NotResolved
         else
-            Resolved(accessor (box sources.Now))
+            let instant =
+                match grain with
+                | Some g -> Formatting.truncateToGrain g sources.Now
+                | None -> sources.Now
+
+            Resolved(accessor (box instant))
     | Binding.Computed f ->
         // Phase 137: hand the closure a context with typed read access to the
         // live module-state bag. `sources.State` is authoritative (the same map
@@ -568,16 +585,37 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
                 | LocaleSource.Explicit tag -> tag
                 | LocaleSource.Ambient -> sources.Locale
 
-            let formatted = Formatting.format localeTag fmt n
+            // Phase 1533 — `Since` is the one `Format` case whose rendering is a
+            // function of the HOST instant as well as of its source, so the
+            // delta is taken here, where the instant lives, and `Formatting`
+            // stays a pure projection of its arguments. The source is read as an
+            // instant in whole Unix-epoch seconds (`Date`'s convention) and the
+            // sign follows `Intl.RelativeTimeFormat`'s: negative is the past.
+            //
+            // An unset or unreadable host instant is `NotResolved`, for exactly
+            // the reason `Binding.Now` gives above: a relative time computed
+            // against an invented "now" is a plausible wrong answer, which is
+            // worse than a visible placeholder.
+            let projected =
+                match fmt with
+                | Format.Since _ ->
+                    match Formatting.epochSecondsOfInstant sources.Now with
+                    | Some nowEpoch -> Ok(Formatting.format localeTag fmt (n - nowEpoch))
+                    | None -> Error()
+                | _ -> Ok(Formatting.format localeTag fmt n)
 
-            try
-                Resolved(unbox<'T> (box formatted))
-            with ex ->
-                Errored(
-                    sprintf
-                        "Format binding produced a string that did not unbox to the expected type (Binding.Format is constrained to Binding<string>): %s"
-                        ex.Message
-                )
+            match projected with
+            | Error() -> NotResolved
+            | Ok formatted ->
+
+                try
+                    Resolved(unbox<'T> (box formatted))
+                with ex ->
+                    Errored(
+                        sprintf
+                            "Format binding produced a string that did not unbox to the expected type (Binding.Format is constrained to Binding<string>): %s"
+                            ex.Message
+                    )
         | NotResolved -> NotResolved
         | Errored m -> Errored m
         | I18nUnresolved k -> I18nUnresolved k

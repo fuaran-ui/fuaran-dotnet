@@ -4603,7 +4603,7 @@ let nowEnvironmentBinding: Node<obj> =
                       (NodeKind.Fact(
                           { Defaults.fact with
                               Label = TextSource.Literal "Today"
-                              Value = TextSource.Bound(Binding.Now(fun (o: obj) -> unbox<string> o)) }
+                              Value = TextSource.Bound(Binding.Now((fun (o: obj) -> unbox<string> o), None)) }
                       ))
                       None
                   node
@@ -4627,7 +4627,7 @@ let nowEnvironmentBinding: Node<obj> =
                                         )
                                     ) ],
                                   Some
-                                      [ { From = Binding.Now(fun (o: obj) -> JStr(unbox<string> o))
+                                      [ { From = Binding.Now((fun (o: obj) -> JStr(unbox<string> o)), None)
                                           Name = "today" } ]
                               )
                             RowKey = None
@@ -4647,6 +4647,142 @@ let nowEnvironmentBinding: Node<obj> =
                             Exportable = false }
                       ))
                       None ]
+              KeepTogether = false
+              BreakBefore = false }
+        ))
+        None
+
+// ─── Phase 1533 — the instant gains a declared GRAIN ──────────────────────
+//
+// `now-environment-binding` above pins the bare `{"$type":"Now"}` Phase 765
+// shipped; this fixture pins what the wire carries when a document declares the
+// RESOLUTION it wants. Three text slots at Minute / Hour / Day grain, plus the
+// leg that motivated the field: a `Transform` param at DAY grain, which is the
+// `YYYY-MM-DD` that Core's `DateDiffDays` reads — so "days overdue" no longer
+// depends on an unspecified host-side truncation of a full ISO-8601 datetime.
+//
+// The `Second` grain is deliberately ABSENT from this fixture: it is the
+// default, it is omitted on the wire, and its bytes are exactly
+// `now-environment-binding`'s. A fixture for it would assert nothing that
+// fixture does not already assert, and would invite a host to emit
+// `"grain":"Second"` to make it pass.
+let nowGrain: Node<obj> =
+    let source =
+        Fuaran.Core.Embedded
+            { Schema = [ "id", Fuaran.Core.StringType; "due", Fuaran.Core.StringType ]
+              Columns =
+                [ Fuaran.Core.Column.create "id" Fuaran.Core.StringType [ Fuaran.Core.Str "INV-2001" ]
+                  Fuaran.Core.Column.create "due" Fuaran.Core.StringType [ Fuaran.Core.Str "2026-07-01" ] ] }
+
+    let fieldCol (label: string) (field: string) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    let grainFact (id: string) (label: string) (grain: TimeGrain) : Node<obj> =
+        node
+            id
+            (NodeKind.Fact(
+                { Defaults.fact with
+                    Label = TextSource.Literal label
+                    Value = TextSource.Bound(Binding.Now((fun (o: obj) -> unbox<string> o), Some grain)) }
+            ))
+            None
+
+    node
+        "now-grain"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Auto
+              Role = BoxRole.Dashboard
+              Heading = None
+              Children =
+                [ grainFact "asof-minute" "As of (minute)" TimeGrain.Minute
+                  grainFact "asof-hour" "As of (hour)" TimeGrain.Hour
+                  grainFact "asof-day" "Today" TimeGrain.Day
+                  node
+                      "overdue-grid-day-grain"
+                      (NodeKind.DataGrid(
+                          { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
+                            EditStateKey = None
+                            DefaultSort = None
+                            Source =
+                              Binding.Transform(
+                                  TransformSource.Data(source),
+                                  [ Fuaran.Core.Derive(
+                                        "daysOverdue",
+                                        Fuaran.Core.ApplyFn(
+                                            Fuaran.Core.DateDiffDays,
+                                            [ Fuaran.Core.Param "today"; Fuaran.Core.Col "due" ]
+                                        )
+                                    ) ],
+                                  Some
+                                      [ { From =
+                                            Binding.Now((fun (o: obj) -> JStr(unbox<string> o)), Some TimeGrain.Day)
+                                          Name = "today" } ]
+                              )
+                            RowKey = None
+                            RowKeyField = Some "id"
+                            Columns =
+                              [ fieldCol "Invoice" "id"
+                                fieldCol "Due" "due"
+                                fieldCol "Days overdue" "daysOverdue" ]
+                            OnRowClick = None
+                            Editable = false
+                            Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false
+                            Exportable = false }
+                      ))
+                      None ]
+              KeepTogether = false
+              BreakBefore = false }
+        ))
+        None
+
+// ─── Phase 1533 — `Format.Since`, the instant-reading twin of RelativeTime ──
+//
+// `format-bindings` above carries `Format.RelativeTime`, whose numeric source
+// is a signed COUNT of its unit — already computed by whoever produced it. This
+// fixture carries the case whose source is an INSTANT in whole Unix-epoch
+// seconds (`Format.Date`'s convention): the count is the delta the HOST takes
+// against its own furnished instant, so a timestamp column can say "3 hours
+// ago" with no Transform and no arithmetic on the wire.
+//
+// Both spellings of `unit` are pinned, because the difference between them is
+// not a default: DECLARED fixes the unit, and ABSENT is the auto-selection
+// request resolved from the fixed threshold ladder. Nothing about the SOURCE
+// distinguishes them, so only a fixture can.
+let formatSince: Node<obj> =
+    let md (id: string) (b: Binding<string>) : Node<obj> =
+        node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
+
+    node
+        "format-since"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+              Role = BoxRole.Group
+              Heading = None
+              Children =
+                [ md
+                      "since-auto"
+                      (Binding.Format(Binding.Static(Some 1700000000.0), Format.Since None, LocaleSource.Ambient))
+                  md
+                      "since-declared-hour"
+                      (Binding.Format(
+                          Binding.Static(Some 1700000000.0),
+                          Format.Since(Some RelativeTimeUnit.Hour),
+                          LocaleSource.Explicit "en-GB"
+                      )) ]
               KeepTogether = false
               BreakBefore = false }
         ))
@@ -6597,6 +6733,10 @@ let allNodes: (string * Node<obj>) list =
       scalarTransformComposition
       "Binding/Now (Phase 765 — the host-furnished instant: a text slot + a Transform param feeding dateDiffDays)",
       nowEnvironmentBinding
+      "Binding/Now (Phase 1533 — the declared grain: minute/hour/day text slots + a Day-grain Transform param)",
+      nowGrain
+      "Binding.Format (Phase 1533 — Since: the instant-reading twin of RelativeTime, declared unit and auto)",
+      formatSince
       "Display/Metric (Phase 283 — Binding.Invoke capability source)", metricInvoke
       "Input/Button (Phase 283 — Action.Invoke capability effect)", buttonInvoke
       "Visualisation/Chart", chart

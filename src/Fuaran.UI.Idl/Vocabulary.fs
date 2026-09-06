@@ -287,6 +287,18 @@ let private dateStyle =
 let private relativeTimeUnit =
     Declare.enumOf "RelativeTimeUnit" [ "Second"; "Minute"; "Hour"; "Day"; "Week"; "Month"; "Year" ]
 
+/// Fuaran-UI Phase 1533 — the resolution a `Binding.Now` declares for the
+/// host-furnished instant.
+///
+/// FOUR members, not `RelativeTimeUnit`'s seven, and the omission is the
+/// declaration: this is a TRUNCATION of a calendar instant, and a "week" or a
+/// "month" has no truncation every host agrees on (which weekday starts a week;
+/// which calendar). The four here truncate the canonical ISO-8601 instant by
+/// prefix and nothing else, so five hosts reach the same string by the same
+/// arithmetic-free route.
+let private timeGrain =
+    Declare.enumOf "TimeGrain" [ "Second"; "Minute"; "Hour"; "Day" ]
+
 /// Phase 819 — the unit a `Format.Duration` / `CellFormat.Duration` numeric
 /// source counts.
 let private durationUnit =
@@ -483,8 +495,17 @@ let private binding =
           // decode (the Phase 427 Selection fix replayed — the host-furnished
           // instant is already the wire-shaped string, so a value-discarding
           // placeholder would make every decoded `Now` resolve to nothing).
+          // Fuaran-UI Phase 1533 — `grain` is the one thing the wire DOES carry
+          // beside the tag, and only when it is not `Second`: the resolution the
+          // document declares for the host's instant. Omitted at its default, so
+          // every 0.66.0-era `{"$type":"Now"}` is byte-identical before and
+          // after, and the host truncates BEFORE the accessor sees the value —
+          // a `Day`-grain `Now` is the `YYYY-MM-DD` that Core's `DateDiffDays`
+          // accepts, with no host-side truncation left unspecified.
           { Tag = "Now"
-            Fields = [ hostOnly "accessor" "obj -> 'T" "(fun (raw: obj) -> unbox raw)" ]
+            Fields =
+              [ hostOnly "accessor" "obj -> 'T" "(fun (raw: obj) -> unbox raw)"
+                opt "grain" (TEnum "TimeGrain") ]
             Annotations = Annotations.Empty }
           { Tag = "Computed"
             // `BindingContext -> 'T`. `BindingContext` is a HOST type (it carries a
@@ -770,6 +791,21 @@ let private formatUnion =
           // counts `unit`s, rendered per `style`.
           { Tag = "Duration"
             Fields = [ req "unit" (TEnum "DurationUnit"); req "style" (TEnum "DurationStyle") ]
+            Annotations = Annotations.Empty }
+          // Fuaran-UI Phase 1533 — the INSTANT-reading twin of `RelativeTime`.
+          // `RelativeTime`'s source is a signed COUNT of its unit, already
+          // computed by whoever produced it; `Since`'s source is an INSTANT in
+          // whole Unix-epoch seconds (`Date`'s convention), and the count is the
+          // delta the host takes against its own furnished instant. The two are
+          // deliberately separate cases: widening `RelativeTime` to mean either
+          // would silently re-read every shipped document that uses it.
+          //
+          // `unit` is OPTIONAL and its absence is not a default — it is the
+          // auto-selection request, resolved from the fixed threshold table in
+          // the spec (§4b), so "3 hours ago" and "2 days ago" come from one
+          // authored slot.
+          { Tag = "Since"
+            Fields = [ opt "unit" (TEnum "RelativeTimeUnit") ]
             Annotations = Annotations.Empty } ] }
 
 let private localeSource =
@@ -3001,6 +3037,7 @@ let uiIdl: Idl =
           compareOp
           dateStyle
           relativeTimeUnit
+          timeGrain
           durationUnit
           durationStyle
           iconSize

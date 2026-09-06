@@ -2694,7 +2694,7 @@ let tests =
               // The shipped remedy. A `Now` binding carries no literal at all, so
               // the rule cannot reach it — which is the whole reason the check is
               // lexical rather than semantic.
-              let nowValue = TextSource.Bound(Binding.Now(fun _ -> ""))
+              let nowValue = TextSource.Bound(Binding.Now((fun _ -> ""), None))
 
               let tree = dashboard "root" [ fact "asof" (TextSource.Literal "Today") nowValue ]
               Expect.isEmpty (staleDateDefects tree) "the host furnishes the instant — nothing to warn about"
