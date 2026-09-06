@@ -5179,3 +5179,117 @@ mapping is a total match the compiler checks — which this repo cannot make, an
 [`docs/CORE-API-ASKS.md`](docs/CORE-API-ASKS.md) beside the workaround that needs it rather than left
 implied. `Verify.segment` / `Verify.chain` still project an unrecognised reason onto `HashMismatch`,
 because `VerificationError` is a shipped closed DU; a caller needing the distinction calls `classify`.
+# STABILITY.md entry — Phase 1525, DAG tier (write-path integrity)
+
+Append to the `### Fuaran.UI.OpStream.Dag.*` section of `fuaran-dotnet/STABILITY.md`
+(after the existing bullet list, before `### Fuaran.UI.OpStream.Dag.Inspect`).
+Rides the standing **0.76.0** draft — every item is additive or a refusal of input
+that was previously accepted wrongly.
+
+---
+
+- **Phase 1525 — the DAG sinks VERIFY ON WRITE, and two shapes that used to be
+  accepted are now refused by name.** Both are additive in surface and
+  behavioural in effect, and both refuse input the sinks previously admitted
+  quietly, so a host that was relying on either was relying on a defect.
+  - **A content-address collision is no longer mistaken for a duplicate.**
+    `IDagOpStreamSink.Add` compared `Parents` and `OutcomeHash` and nothing else,
+    so a record carrying the SAME hash and a DIFFERENT `Op` matched, was
+    classified as an idempotent re-append, and was dropped without trace. The
+    comparison is now over the record's **full canonical wire form** —
+    `DagWire.contentFingerprint` (new stable surface: the SHA-256 of
+    `DagWire.encodeRecord` with the retention-mutable `Tombstoned` flag
+    normalised to `false`) — so any difference at all is caught. A genuinely
+    identical re-append is still the no-op it always was.
+  - **A record naming a parent the store does not hold is refused at the write
+    choke point.** It used to be admitted, leaving a dangling edge that surfaced
+    at some later `Records` read or replay, long after the write that made it and
+    with nothing to attribute it to. Parent presence is resolved **store-wide**,
+    not per stream, so the guest-fork shape (a guest branch's genesis anchored on
+    a record in the HOST stream) is unaffected. **Consumers that append out of
+    topological order — a replication or sync path that can deliver a child
+    before its parent — must order their appends parent-first.** The read-path
+    `DagVerify` check is unchanged: it still catches a store that LOST a record
+    after the link was made, which no write-time check can see.
+  - **Retention keeps `outcome_hash` on a tombstone.** `Tombstone` used to clear
+    it along with the payload, which cost the store the only field distinguishing
+    a pruned merge node from a pruned ordinary one and bought no retention (it is
+    a 64-hex address, not payload) — and destroyed idempotence, since an
+    identical re-add of a swept record no longer matched what the store held. A
+    tombstoned record now reads back with its `OutcomeHash` intact.
+  - **`SqliteDagSink` schema, additive.** `dag_op_record` gains a nullable
+    `content_fingerprint TEXT` column and an `idx_dag_op_record_hash` index. An
+    existing database is migrated in place on open (`ALTER TABLE ADD COLUMN`);
+    pre-1525 rows read back with a NULL fingerprint and fall back to the old
+    parents/outcome comparison, which is stated in the refusal message when it
+    fires. No read path can retroactively give an old row a fingerprint it was
+    never written with.
+  - **`SqliteDagSink` concurrency posture.** The database is opened in `WAL`
+    journal mode with a 5 s `busy_timeout`, and `Add`'s read-then-write runs in a
+    `BEGIN IMMEDIATE` transaction so its parent-presence and collision checks and
+    its insert see one state. `SQLITE_BUSY` / `SQLITE_LOCKED` out of
+    `TryAdvanceHead` — the tier's only concurrency primitive — is now reported as
+    the CAS's existing contention outcome (`false`, on which every caller
+    re-reads and retries) rather than escaping as a raw `SqliteException` into a
+    caller's retry loop. A busy `Add` has no such channel and is refused by name.
+
+- **`Fuaran.UI.OpStream.Dag.Merge` — merge nodes carry the caller's attribution
+  (additive).** New stable surface: `MergeAttribution` (`Actor` / `Prompt` /
+  `ResultEnvelope`) with `MergeAttribution.anonymous` and `.ofActor`;
+  `MergeContext<'Msg>` (`Attribution` / `Checkpoint`) with `MergeContext.defaults`;
+  the entry points `DagMerge.mergeGatedWith` and `DagMerge.mergeIntoTrunkWith`;
+  and the `TrunkMergeOutcome<'Msg>` DU. The engine used to stamp every merge node
+  `Actor.ofLegacyString "merge"` with no prompt id and a bare `Success`, so no
+  merge in any stream could be traced to the session that ran it — the provenance
+  hole the content address closed for ordinary nodes at Phase 1144, left open on
+  the one node kind the engine mints itself. **`merge` / `mergeGated` /
+  `mergeIntoTrunk` are unchanged in signature AND in bytes**:
+  `MergeAttribution.anonymous` reproduces the pre-1525 stamping exactly, so the
+  merge-conformance corpus does not move. Attribution is folded into the merge
+  node's content address (Phase 1144), so an attributed merge is a different node
+  from an anonymous one — which is the point of threading it rather than
+  recording it beside the record.
+  - **`mergeIntoTrunkWith` returns what happened.** `mergeIntoTrunk` answers
+    `string option`, folding a refused merge, a missing common base, a replay
+    failure and an exhausted retry budget into one `None` — and discarding the
+    `MergeConflict` envelopes the merge had already built (the LCA value, both
+    sides with their provenance tags, the enumerated resolution choices, the
+    `ApplyHint`). `TrunkMergeOutcome` keeps them apart and hands the envelopes
+    back. The old entry point is retained as the lossy projection.
+  - **Checkpoint-bounded merge replay.** `MergeContext.Checkpoint` lets a merge
+    fold its three trees from a `DagCheckpoint` rather than from genesis, so its
+    cost tracks the divergence rather than the whole history. A checkpoint that
+    does not bound a head falls back to a full replay for that head; a checkpoint
+    whose snapshot fails its own position-bound hash does **not** fall back — that
+    is tamper evidence and it propagates as
+    `DagReplayError.SnapshotHashMismatch`.
+
+- **`DagWire.decodeRecord` reads the op-result envelope BY FIELD (behavioural
+  fix).** It decided the case by testing whether the raw envelope text contained
+  the substring `"Success"`, so a genuine `Failure` whose message mentioned the
+  word — an apply error quoting the op or field it refused, say — decoded as a
+  success, indistinguishably from a real one. The `$type` discriminator is now
+  read through the same top-level scanner the record envelope uses. An
+  **absent** `resultEnvelope` still defaults to `Success`; a **present** one with
+  an unrecognised `$type` is a typed `Error` rather than a silent coercion.
+
+- **`Fuaran.UI.OpStream.Dag.Inspect` — the depth pass is a Kahn sweep, and a
+  cyclic input is reported (additive surface, behavioural in one case).** New
+  stable surface: `DagGraphCycle` (`StreamId` / `Unresolved`),
+  `DagGraphCycle.describe`, and `DagGraphModel.tryBuild :
+  Result<DagGraph, DagGraphCycle>`. `DagGraphModel.build` is unchanged for every
+  well-formed input — the computed `Depth` values are identical — and now refuses
+  a cyclic record set by name (`invalidOp`) instead of recursing until the stack
+  ran out. That case previously ended the process with a
+  `StackOverflowException` .NET does not let anyone catch, so the refusal
+  replaces a crash rather than a working behaviour. A caller that wants to handle
+  a cycle rather than be told about it calls `tryBuild`.
+
+- **`SqliteDagSink.Parents` is a primary-key lookup.** It used to answer one
+  hash's parents by loading, decoding and discarding the whole stream's parent
+  map. The traversal path (`Reachable` / `Lca`) still loads that map once per
+  call, deliberately: the store is a file another process may be writing under
+  WAL, so a map cached across calls would answer from a topology that has since
+  moved. `DagMerge` no longer calls `sink.Lca` at all — it computes the LCA from
+  the records it has already loaded, over the same stream-scoped parent relation,
+  removing a second full-stream read per merge.
