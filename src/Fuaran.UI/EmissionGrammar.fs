@@ -244,14 +244,26 @@ let private isHexDigit (c: char) =
 /// punctuation this test refuses. So the ident rule makes the same SAFETY
 /// statement as a keyword list while making a far weaker COMPATIBILITY claim,
 /// which is the honest way round.
+///
+/// The character tests are written as explicit ASCII RANGE comparisons rather
+/// than as `Char.IsAsciiLetter` / `Char.IsAsciiLetterOrDigit`, for the reason
+/// the module header gives for avoiding regular expressions: neither helper is
+/// supported by Fable, and this file's whole purpose is that the hosts agree,
+/// so it has to compile on every pipeline that renders a tree.
 let private isCssIdent (value: string) : bool =
+    let isAsciiLetter (c: char) =
+        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+
+    let isAsciiDigit (c: char) = c >= '0' && c <= '9'
+
     if value = "" then
         false
     else
         let head = value[0]
 
-        (Char.IsAsciiLetter head || head = '-')
-        && value |> Seq.forall (fun c -> Char.IsAsciiLetterOrDigit c || c = '-' || c = '_')
+        (isAsciiLetter head || head = '-')
+        && value
+           |> Seq.forall (fun c -> isAsciiLetter c || isAsciiDigit c || c = '-' || c = '_')
 
 /// The colour FUNCTIONS a paint slot may call. Closed, and closed for the
 /// reason the module header gives for allowlists: a function nobody named is a
