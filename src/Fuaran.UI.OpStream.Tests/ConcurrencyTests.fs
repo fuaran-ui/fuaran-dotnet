@@ -41,7 +41,14 @@ let tests =
           }
 
           test "Parallel appends to the same stream with distinct sequences both land" {
-              let sink: IOpStreamSink<TestMsg> = InMemorySink.create ()
+              // This test measures the sink's thread safety under two concurrent appends,
+              // not the write-admission gate (Phase 1525), which has its own tests. Under
+              // `WriteAdmission.Full` the gate refuses whichever of the two records arrives
+              // out of order, so the race intermittently errored (about one run in five on
+              // 2026-09-06). Admission is named off here so the property under test is the
+              // one the test asserts.
+              let sink: IOpStreamSink<TestMsg> =
+                  InMemorySink.createWithModes LoadVerification.Full WriteAdmission.Off
 
               let op1 = TreeOp.RemoveNode(NodeId "x"): TreeOp<TestMsg>
               let op2 = TreeOp.RemoveNode(NodeId "y"): TreeOp<TestMsg>

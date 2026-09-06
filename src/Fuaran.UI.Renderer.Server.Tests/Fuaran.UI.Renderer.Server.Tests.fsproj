@@ -16,6 +16,12 @@
     <Compile Include="SparklineSsrTests.fs" />
     <Compile Include="SsrParityTests.fs" />
     <Compile Include="EgressRenderTests.fs" />
+    <!-- EmissionGrammarRenderTests is Phase 1523's render-seam corpus: the CSS
+         track-list, SVG paint and anchor-token grammars asserted in EMITTED
+         BYTES through the ordinary entry point, each refusal paired with the
+         allow twin that fails if the grammar is tightened past a legitimate
+         document. -->
+    <Compile Include="EmissionGrammarRenderTests.fs" />
     <!-- ScalarSsrParityTests certifies the Phase 629/632 scalar-resolution path
          on SSR against the wire-format corpus fixtures that exercise it. -->
     <Compile Include="ScalarSsrParityTests.fs" />

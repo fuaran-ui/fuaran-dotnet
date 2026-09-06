@@ -363,12 +363,32 @@ let encodeEnvelope
         "{\"moduleId\":%s,\"treeHash\":%s,\"model\":%s,\"actions\":{%s},\"initEffects\":{%s}}"
         (jsonString moduleId)
         (jsonString (treeHash node))
-        // model is host-supplied JSON; embed verbatim (host owns its escaping +
-        // serialisation allowlist). Falls back to `{}` when the host has no model.
+        // Phase 1523 — the model is host-supplied JSON, and it is escaped with
+        // the module's own `<` / `>` / `&` escape UNCONDITIONALLY, exactly as
+        // every other value the envelope embeds already is (`:174-178`).
+        //
+        // It used to be embedded verbatim, on the reasoning that "the host owns
+        // its escaping". A host serialising its own model does own its JSON —
+        // but nothing about correct JSON keeps a string value from containing
+        // `</script`, and this string is being spliced inside a `<script>`
+        // element, where the HTML parser looks for that sequence BEFORE any JSON
+        // parser sees the content. So a model carrying a `</script>` in any
+        // string field terminated the block and put the remainder of the
+        // envelope into the document as markup: an injection whose source is
+        // whatever data the host happened to serialise, which on a
+        // user-content-bearing model is user input.
+        //
+        // The escape is sound for the same reason it is sound everywhere else in
+        // this module: `<`, `>` and `&` occur in JSON only inside string
+        // literals, and `<` / `>` / `&` are read back by every
+        // JSON parser as the characters they name. So the structured data is
+        // unchanged and the payload is inert inside a `<script>`.
+        //
+        // Falls back to `{}` when the host has no model.
         (if System.String.IsNullOrWhiteSpace modelJson then
              "{}"
          else
-             modelJson)
+             modelJson.Replace("<", "\\u003c").Replace(">", "\\u003e").Replace("&", "\\u0026"))
         actions
         effects
 
