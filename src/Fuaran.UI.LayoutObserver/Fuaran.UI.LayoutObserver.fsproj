@@ -18,6 +18,10 @@
     <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The three-way meaning of registering one node id: fresh, unchanged,
+         or a REMOUNT under the same id. Outside the observer's
+         `#if FABLE_COMPILER` branch so the rule is assertable on .NET. -->
+    <Compile Include="ElementRegistration.fs" />
     <Compile Include="InMemoryLayoutObserver.fs" />
     <Compile Include="BrowserLayoutObserver.fs" />
   </ItemGroup>
