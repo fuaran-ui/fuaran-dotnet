@@ -1,4 +1,4 @@
-namespace Fuaran.UI.OpStream.Replay
+﻿namespace Fuaran.UI.OpStream.Replay
 
 open System
 open System.Globalization
@@ -545,12 +545,15 @@ module GuestImport =
                     // retry stays available. A sink without it keeps the
                     // per-record loop, and the partial state is REPORTED rather
                     // than left for the guard to mis-diagnose on the next
-                    // attempt.
-                    match sink with
-                    | :? IOpStreamBatchSink<obj> as batch ->
+                    // attempt. (Under Fable the probe always answers `None` — it
+                    // is a type test, which Fable cannot express — so a Fable
+                    // host always takes the per-record loop and always gets the
+                    // report. See `SinkCapabilities`.)
+                    match SinkCapabilities.tryBatch sink with
+                    | Some batch ->
                         do! batch.AppendAll b.Records
                         return Ok tree
-                    | _ ->
+                    | None ->
                         let mutable written = 0
                         let mutable failure = None
 

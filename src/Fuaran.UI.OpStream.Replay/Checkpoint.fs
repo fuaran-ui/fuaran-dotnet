@@ -1,4 +1,4 @@
-namespace Fuaran.UI.OpStream.Replay
+﻿namespace Fuaran.UI.OpStream.Replay
 
 open System
 open Fuaran.UI.Types
@@ -317,12 +317,15 @@ module Compaction =
                     // state permanently. A sink that implements
                     // `IOpStreamCompactSink` does both atomically; one that does
                     // not keeps the two-call path, which is what it always had.
-                    match sink with
-                    | :? IOpStreamCompactSink<'Msg> as compactable ->
+                    // (Under Fable the probe always answers `None` — it is a type
+                    // test, which Fable cannot express — so a Fable host always
+                    // takes the two-call path. See `SinkCapabilities`.)
+                    match SinkCapabilities.tryCompact (sink :> IOpStreamSink<'Msg>) with
+                    | Some compactable ->
                         let! truncatedOps, _droppedCheckpoints = compactable.Compact(streamId, oldestRetained.Sequence)
 
                         return truncatedOps
-                    | _ ->
+                    | None ->
                         let! truncatedOps = sink.TruncateOpsThrough(streamId, oldestRetained.Sequence)
                         // Drop the older checkpoints in the same pass so a future
                         // `ListCheckpoints` reflects the retention policy. The

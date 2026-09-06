@@ -204,3 +204,58 @@ type IOpStreamCompactSink<'Msg> =
     /// record is gone cannot answer a later lookup with a receipt naming
     /// nothing.
     abstract member Compact: streamId: string * throughSequence: int -> Async<int * int>
+
+// ============================================================================
+//  SinkCapabilities — the ONE place a sink is asked what it can do.
+//
+//  Every extension interface above is optional, so a consumer that wants one
+//  has to ask a concrete sink whether it implements it. On .NET that is a type
+//  test. **Under Fable it is not**: `:? ISomeInterface` does not compile —
+//  `error FABLE: Cannot type test (evals to false)` — because the JS runtime
+//  carries no interface identity to test against.
+//
+//  So the probe lives here, fenced ONCE, rather than at each of the three call
+//  sites that need it. Under Fable every probe answers `None`, and the callers
+//  take their non-extension path. That is a real reduction in what a Fable host
+//  gets from the convenience wrappers, and it is stated rather than hidden:
+//  a Fable host that HOLDS a capable sink reaches the contract by naming it —
+//  the `*With` entry points take the extension interface directly and work
+//  identically on both pipelines, because passing a value of an interface type
+//  is not a type test.
+// ============================================================================
+
+module SinkCapabilities =
+
+    /// The sink's compare-and-append, if it has one. `None` under Fable —
+    /// always, whatever the sink is. See the note above.
+    let tryCas<'Msg> (sink: IOpStreamSink<'Msg>) : IOpStreamCasSink<'Msg> option =
+#if FABLE_COMPILER
+        ignore sink
+        None
+#else
+        match sink with
+        | :? IOpStreamCasSink<'Msg> as cas -> Some cas
+        | _ -> None
+#endif
+
+    /// The sink's atomic batch append, if it has one. `None` under Fable.
+    let tryBatch<'Msg> (sink: IOpStreamSink<'Msg>) : IOpStreamBatchSink<'Msg> option =
+#if FABLE_COMPILER
+        ignore sink
+        None
+#else
+        match sink with
+        | :? IOpStreamBatchSink<'Msg> as batch -> Some batch
+        | _ -> None
+#endif
+
+    /// The sink's atomic retention step, if it has one. `None` under Fable.
+    let tryCompact<'Msg> (sink: IOpStreamSink<'Msg>) : IOpStreamCompactSink<'Msg> option =
+#if FABLE_COMPILER
+        ignore sink
+        None
+#else
+        match sink with
+        | :? IOpStreamCompactSink<'Msg> as compactable -> Some compactable
+        | _ -> None
+#endif

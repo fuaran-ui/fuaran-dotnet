@@ -1,4 +1,4 @@
-namespace Fuaran.UI.OpStream.Replay
+﻿namespace Fuaran.UI.OpStream.Replay
 
 open System
 open Fuaran.UI.Types
@@ -290,68 +290,88 @@ module ApplyPersist =
             return previousHash |> Result.map (fun h -> buildRecordWith ctx sequence h op)
         }
 
-    /// Persist `op` — through the sink's compare-and-append when it has one.
+    /// The compare-and-append loop, against a sink whose capability is already
+    /// established. Split out of `persistOp` (Phase 1525) so the same loop serves
+    /// both the probe path and the explicitly-typed entry point below — under
+    /// Fable the probe cannot answer, and a Fable host reaching this loop by
+    /// naming its sink must reach the SAME loop, not a second copy of it.
     ///
-    /// **The loop, and why it is shaped this way.** Each attempt reads the HEAD
-    /// FIRST and the latest sequence SECOND, then builds against both and calls
-    /// `AppendIf` with the head it read. The ORDER IS LOAD-BEARING: a write that
-    /// lands between the two reads moves the head *and* the sequence, and taking
-    /// the head first means the record is built against a head the store has
-    /// already left — which `AppendIf` reports as `StaleHead`, the value this
-    /// loop knows how to handle. Taking the sequence first would produce the
-    /// opposite pairing (a current head with a stale sequence), which passes the
-    /// head comparison and is then refused by the sink's admission check as a
-    /// throw — a race reported as corruption.
+    /// **The read order is load-bearing.** Each attempt reads the HEAD FIRST and
+    /// the latest sequence SECOND, then builds against both and calls `AppendIf`
+    /// with the head it read. A write that lands between the two reads moves the
+    /// head *and* the sequence; taking the head first means the record is built
+    /// against a head the store has already left — which `AppendIf` reports as
+    /// `StaleHead`, the value this loop knows how to handle. Taking the sequence
+    /// first produces the opposite pairing (a CURRENT head with a STALE
+    /// sequence), which passes the head comparison and is then refused by the
+    /// sink's admission check as a throw: a race reported as corruption.
+    let private persistViaCas<'Msg>
+        (cas: IOpStreamCasSink<'Msg>)
+        (ctx: PersistContext)
+        (op: TreeOp<'Msg>)
+        : Async<PersistAttempt> =
+        async {
+            let sink = cas :> IOpStreamSink<'Msg>
+            let mutable attempt = 0
+            let mutable outcome = ValueNone
+
+            while outcome.IsNone && attempt < MaxCasAttempts do
+                attempt <- attempt + 1
+                let! head = cas.Head ctx.StreamId
+                let! latest = sink.LatestSequence ctx.StreamId
+                let sequence = latest + 1
+                let record = buildRecordWith ctx sequence head op
+
+                let! result =
+                    async {
+                        try
+                            let! r = cas.AppendIf(record, head)
+                            return Choice1Of2 r
+                        with ex ->
+                            return Choice2Of2 ex
+                    }
+
+                match result with
+                | Choice1Of2(CasAppendOutcome.Appended receipt) ->
+                    outcome <- ValueSome(PersistAttempt.Persisted receipt.Sequence)
+                | Choice1Of2(CasAppendOutcome.StaleHead _) ->
+                    // Another writer got there first. Rebuild against what the
+                    // store now holds and try again — that is the whole point of
+                    // a compare-and-append, and it is why the record is built
+                    // INSIDE the loop.
+                    ()
+                | Choice2Of2 ex ->
+                    outcome <- ValueSome(PersistAttempt.Failed(sequence, PersistFailure.SinkRefused ex.Message))
+
+            match outcome with
+            | ValueSome result -> return result
+            | ValueNone ->
+                let! latest = sink.LatestSequence ctx.StreamId
+                return PersistAttempt.Failed(latest + 1, PersistFailure.ContendedOut MaxCasAttempts)
+        }
+
+    /// Persist `op` — through the sink's compare-and-append when it has one.
     ///
     /// A sink with no compare-and-append keeps the read-then-append path. That
     /// path is genuinely racy and always was; what changes is that its loss is
     /// now REPORTED rather than swallowed, so a host on such a sink can see the
     /// cost of the sink it chose.
+    ///
+    /// **Under Fable, EVERY sink takes that path here**, because the capability
+    /// probe is a type test and Fable has no interface identity to test against
+    /// (`SinkCapabilities.tryCas`). A Fable host that holds a capable sink is not
+    /// stuck with the racy path — it names the sink instead, through
+    /// `applyAndPersistThrough` below, which takes the compare-and-append
+    /// interface directly and behaves identically on both pipelines.
     let private persistOp<'Msg>
         (sink: IOpStreamSink<'Msg>)
         (ctx: PersistContext)
         (op: TreeOp<'Msg>)
         : Async<PersistAttempt> =
         async {
-            match sink with
-            | :? IOpStreamCasSink<'Msg> as cas ->
-                let mutable attempt = 0
-                let mutable outcome = ValueNone
-
-                while outcome.IsNone && attempt < MaxCasAttempts do
-                    attempt <- attempt + 1
-                    let! head = cas.Head ctx.StreamId
-                    let! latest = sink.LatestSequence ctx.StreamId
-                    let sequence = latest + 1
-                    let record = buildRecordWith ctx sequence head op
-
-                    let! result =
-                        async {
-                            try
-                                let! r = cas.AppendIf(record, head)
-                                return Choice1Of2 r
-                            with ex ->
-                                return Choice2Of2 ex
-                        }
-
-                    match result with
-                    | Choice1Of2(CasAppendOutcome.Appended receipt) ->
-                        outcome <- ValueSome(PersistAttempt.Persisted receipt.Sequence)
-                    | Choice1Of2(CasAppendOutcome.StaleHead _) ->
-                        // Another writer got there first. Rebuild against what
-                        // the store now holds and try again — that is the whole
-                        // point of a compare-and-append, and it is why the
-                        // record is built INSIDE the loop.
-                        ()
-                    | Choice2Of2 ex ->
-                        outcome <- ValueSome(PersistAttempt.Failed(sequence, PersistFailure.SinkRefused ex.Message))
-
-                match outcome with
-                | ValueSome result -> return result
-                | ValueNone ->
-                    let! latest = sink.LatestSequence ctx.StreamId
-                    return PersistAttempt.Failed(latest + 1, PersistFailure.ContendedOut MaxCasAttempts)
-            | _ ->
+            match SinkCapabilities.tryCas sink with
+            | Some cas -> return! persistViaCas cas ctx op
+            | None ->
                 let! latest = sink.LatestSequence ctx.StreamId
                 let sequence = latest + 1
                 let! built = buildRecordAt sink ctx sequence op
@@ -428,6 +448,35 @@ module ApplyPersist =
             | Error e -> return Error e
             | Ok updated ->
                 let! attempt = persistAndReport sink ctx op
+                return Ok(updated, attempt)
+        }
+
+    /// `applyAndPersist` against a sink whose compare-and-append is NAMED rather
+    /// than probed for (Phase 1525).
+    ///
+    /// This is the entry point a Fable host uses to get the compare-and-append,
+    /// and it is worth having on .NET too: a host that types its sink as
+    /// `IOpStreamCasSink` here cannot silently fall back to the racy path
+    /// because someone swapped in a store that does not implement it — the
+    /// compiler stops that, where the probe would just quietly take the other
+    /// branch. Same behaviour, same bounded retry, same reporting; the only
+    /// difference is who establishes the capability.
+    let applyAndPersistThrough<'Msg>
+        (sink: IOpStreamCasSink<'Msg>)
+        (ctx: PersistContext)
+        (op: TreeOp<'Msg>)
+        (tree: Node<'Msg>)
+        : Async<Result<Node<'Msg> * PersistAttempt, ApplyError>> =
+        async {
+            match Apply.apply op tree with
+            | Error e -> return Error e
+            | Ok updated ->
+                let! attempt = persistViaCas sink ctx op
+
+                match attempt with
+                | PersistAttempt.Failed(sequence, failure) -> reportFailure ctx sequence failure
+                | PersistAttempt.Persisted _ -> ()
+
                 return Ok(updated, attempt)
         }
 
