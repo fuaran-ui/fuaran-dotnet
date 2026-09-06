@@ -193,6 +193,36 @@ public sealed class FuaranAction
     public static FuaranAction WriteToClipboard(Text text) =>
         new(FsAction.NewWriteToClipboard(text.Inner));
 
+    /// <summary>
+    /// Navigate the reader to <paramref name="route"/>, in the browsing context
+    /// <paramref name="target"/> names (Phase 1536).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The route is a <see cref="Text"/> rather than a string, so it may be a value the
+    /// tree computed — the id of the row the reader has selected, say — and not only a
+    /// literal typed at authoring time. A bound route is resolved when the reader raises
+    /// the action, and the host's URL floor and dispatch policy then judge the RESOLVED
+    /// destination; a route that does not resolve navigates nowhere.
+    /// </para>
+    /// <para>
+    /// <see cref="NavigateTarget.Blank"/> opens a fresh browsing context with
+    /// <c>noopener,noreferrer</c>. That is the renderer's obligation on every host, not
+    /// a per-host setting, so it holds wherever this tree is rendered.
+    /// </para>
+    /// </remarks>
+    public static FuaranAction Navigate(Text route, NavigateTarget target) =>
+        new(FsAction.NewNavigate(route.Inner, target.ToFs()));
+
+    /// <summary>
+    /// Navigate the reader to <paramref name="route"/> in the current browsing context —
+    /// the shortest spelling of the commonest intent. The general form, including a
+    /// bound route and a target, is
+    /// <see cref="Navigate(Text, NavigateTarget)"/>.
+    /// </summary>
+    public static FuaranAction Navigate(string route) =>
+        new(FsAction.NewNavigate(Text.Literal(route).Inner, FsGen.NavigateTarget.Self));
+
     /// <summary>Raise several actions in order.</summary>
     public static FuaranAction Chain(params FuaranAction[] actions) =>
         new(FsAction.NewChain(Fs.List(actions.Select(a => a.Inner))));

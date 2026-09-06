@@ -292,6 +292,13 @@
     },
     {
       "cases": [
+        "Self",
+        "Blank"
+      ],
+      "name": "NavigateTarget"
+    },
+    {
+      "cases": [
         "Vertical",
         "Horizontal"
       ],
@@ -5088,7 +5095,23 @@
                 "$type": "required"
               },
               "type": {
-                "$type": "str"
+                "$type": "union",
+                "args": [],
+                "name": "TextSource"
+              }
+            },
+            {
+              "name": "target",
+              "optionality": {
+                "$type": "omitDefault",
+                "default": {
+                  "$type": "enum",
+                  "case": "Self"
+                }
+              },
+              "type": {
+                "$type": "enum",
+                "name": "NavigateTarget"
               }
             }
           ],

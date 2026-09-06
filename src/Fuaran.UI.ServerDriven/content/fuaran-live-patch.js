@@ -198,7 +198,17 @@
         if (global.navigator && navigator.clipboard) navigator.clipboard.writeText(fx.text);
         break;
       case "Navigate":
-        global.location.href = fx.route;
+        // Phase 1536 — `target` rides only when it is "Blank" (omitted at
+        // "Self"), so a pre-1536 instruction takes the first branch unchanged.
+        //
+        // `noopener,noreferrer` is not decoration. Without noopener the opened
+        // document holds a live handle back into this page through
+        // window.opener; without noreferrer the destination is told where the
+        // reader came from. The server has already resolved and floor-checked
+        // the route — this side performs, it does not judge — but this pair is
+        // a property of the OPENING, so it can only be discharged here.
+        if (fx.target === "Blank") global.open(fx.route, "_blank", "noopener,noreferrer");
+        else global.location.href = fx.route;
         break;
       case "PushState":
         // In-place navigation (Phase 157): update the URL bar + history WITHOUT

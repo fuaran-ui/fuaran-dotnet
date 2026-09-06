@@ -36,7 +36,7 @@ let private navButton id route =
     Fuaran.button
         id
         { Defaults.button<Msg> with
-            OnClick = Action.Navigate route }
+            OnClick = Action.Navigate(TextSource.Literal route, NavigateTarget.Self) }
 
 let private homeTree: Node<Msg> =
     Fuaran.dashboard
@@ -142,7 +142,11 @@ let tests =
                   stepWithRouting resolver noFallback (session ()) (clickEv "go-missing")
 
               Expect.equal (canon s2.Tree) (canon homeTree) "session tree unchanged on a full reload"
-              Expect.equal out.Effects [ ClientEffect.Navigate "/missing" ] "full-reload navigate emitted"
+
+              Expect.equal
+                  out.Effects
+                  [ ClientEffect.Navigate("/missing", NavigateTarget.Self) ]
+                  "full-reload navigate emitted"
           }
 
           test "stepWithRouting swaps on a popstate without pushing state" {

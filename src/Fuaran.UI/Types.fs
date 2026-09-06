@@ -1569,6 +1569,18 @@ and FilterSpec<'Msg> = Generated.FilterSpec<'Msg>
 /// `data:<mime>;base64,…` string. Encodes as a bare-string enum on the wire (§3.5).
 and FileReadEncoding = Generated.FileReadEncoding
 
+/// Which browsing context an `Action.Navigate` lands in (Phase 1536;
+/// generated). `Self` is the default and is omitted on the wire, so every
+/// document written before this release keeps its bytes. `Blank` opens a fresh
+/// context, and the renderer — not a host seam — is what guarantees it carries
+/// `noopener,noreferrer`.
+///
+/// A closed enum where `LinkSpec.Target` is a free string, and the difference is
+/// deliberate: `_parent` / `_top` are frame-busting gestures a hosted tree must
+/// not be able to ask for, and a named frame is an addressing scheme this
+/// language does not have. Encodes as a bare-string enum on the wire (§3.5).
+and NavigateTarget = Generated.NavigateTarget
+
 /// An opaque, host-held reference to a user-selected file's blob (Phase 136).
 /// `Id` is a renderer-assigned stable token — the **only** part that
 /// serialises (a blob cannot cross the wire). `Handle` carries the actual

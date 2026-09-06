@@ -281,6 +281,22 @@ type Motion =
     | CrossFade
     | SlideBetween
 
+/// Phase 1536 — which browsing context an `Action.Navigate` lands in.
+/// Omitted at `Self` on the wire, so documents written before this release
+/// keep their bytes.
+///
+/// A closed enum, and NOT the free string `LinkSpec.target` is: that field
+/// takes any `_blank` / `_parent` / `_top` / named-frame token a web author
+/// might type, which is a vocabulary a decoded tree gets to invent. The
+/// axis here has two answers — this context, or a fresh one. `_parent` and
+/// `_top` are frame-busting gestures a hosted tree must not be able to ask
+/// for, and a named frame is an addressing scheme this language does not
+/// have.
+[<RequireQualifiedAccess>]
+type NavigateTarget =
+    | Self
+    | Blank
+
 [<RequireQualifiedAccess>]
 type Orientation =
     | Vertical
@@ -427,7 +443,34 @@ type Action<'Msg> =
     | Invoke of capabilityId: string * args: InvokeArg list
     | ReadFileBody of fileRef: string * fileHandle: (obj option) * encoding: FileReadEncoding * onRead: (string -> 'Msg) option
     | Call of endpoint: string * onResult: (obj -> 'Msg) option * into: CallResultTarget option
-    | Navigate of route: string
+    /// Navigate the reader to `route`, in the browsing context `target` names.
+    ///
+    /// Phase 1536 — the route is a `TextSource`, so "open the selected
+    /// order" (`/orders/{selection.id}`) has a spelling. The case was WIDENED
+    /// rather than joined by a `NavigateBound` sibling, on exactly the
+    /// reasoning Phase 1126 applied to `WriteToClipboard`: two cases for one
+    /// intent is the permanent near-synonym pair the vocabulary charter exists
+    /// to forbid.
+    ///
+    /// **The wire does not move for a literal route.** `TextSource.Literal` is
+    /// canonically the bare JSON string, so
+    /// `{"$type":"Navigate","route":"/x"}` is emitted and accepted exactly
+    /// as it was before this release, and the §16 `href` / `url` / `to`
+    /// aliases still normalise onto this one field. Construction sites are
+    /// what break, and they break at compile time: wrap the old argument in
+    /// `TextSource.Literal`.
+    ///
+    /// **Resolve, then gate — in that order.** A bound route resolves at
+    /// DISPATCH time through the surrounding tree's binding sources, and the
+    /// egress check and the dispatch gate then judge the RESOLVED string. A
+    /// template is not a destination: gating `/orders/{id}` would consult the
+    /// policy about a URL nobody navigates to. A route that does not resolve
+    /// warns and navigates nowhere.
+    ///
+    /// `target = Blank` opens a fresh browsing context with
+    /// `noopener,noreferrer` — the renderer's obligation on every host, never
+    /// a host seam's.
+    | Navigate of route: TextSource * target: NavigateTarget
     | CommitLocal of nodeId: string
     | Notify of channel: string * payload: JVal
     // Phase 818 — `valueFrom` (a Binding evaluated at dispatch time inside the
@@ -1757,6 +1800,11 @@ let private encMotion (v: Motion) : JVal =
     | Motion.CrossFade -> JStr "CrossFade"
     | Motion.SlideBetween -> JStr "SlideBetween"
 
+let private encNavigateTarget (v: NavigateTarget) : JVal =
+    match v with
+    | NavigateTarget.Self -> JStr "Self"
+    | NavigateTarget.Blank -> JStr "Blank"
+
 let private encOrientation (v: Orientation) : JVal =
     match v with
     | Orientation.Vertical -> JStr "Vertical"
@@ -1919,7 +1967,7 @@ and private encAction<'Msg> (v: Action<'Msg>) : JVal =
     | Action.Invoke (capabilityId, args) -> Canon.typed "Invoke" [ "capabilityId", JStr capabilityId; "args", JArr(List.map encInvokeArg args) ]
     | Action.ReadFileBody (fileRef, fileHandle, encoding, onRead) -> Canon.typed "ReadFileBody" ([ Some("fileRef", JStr fileRef); None; Some("encoding", encFileReadEncoding encoding); (onRead |> Option.map (fun v -> "onRead", JStr "<closure>")) ] |> List.choose id)
     | Action.Call (endpoint, onResult, into) -> Canon.typed "Call" ([ Some("endpoint", JStr endpoint); (onResult |> Option.map (fun v -> "onResult", JStr "<closure>")); (into |> Option.map (fun v -> "into", encCallResultTarget v)) ] |> List.choose id)
-    | Action.Navigate route -> Canon.typed "Navigate" [ "route", JStr route ]
+    | Action.Navigate (route, target) -> Canon.typed "Navigate" ([ Some("route", encTextSource route); (if target = NavigateTarget.Self then None else Some("target", encNavigateTarget target)) ] |> List.choose id)
     | Action.CommitLocal nodeId -> Canon.typed "CommitLocal" [ "nodeId", JStr nodeId ]
     | Action.Notify (channel, payload) -> Canon.typed "Notify" [ "channel", JStr channel; "payload", id payload ]
     // Phase 818 — `value` / `valueFrom` are XOR siblings; each is emitted only
@@ -2687,6 +2735,12 @@ let private decMotion (j: JVal) : Result<Motion, string> =
     | JStr "SlideBetween" -> Ok Motion.SlideBetween
     | _ -> Error "not a Motion"
 
+let private decNavigateTarget (j: JVal) : Result<NavigateTarget, string> =
+    match j with
+    | JStr "Self" -> Ok NavigateTarget.Self
+    | JStr "Blank" -> Ok NavigateTarget.Blank
+    | _ -> Error "not a NavigateTarget"
+
 let private decOrientation (j: JVal) : Result<Orientation, string> =
     match j with
     | JStr "Vertical" -> Ok Orientation.Vertical
@@ -2878,8 +2932,9 @@ and private decAction (j: JVal) : Result<Action<obj>, string> =
             dOpt "into" __fs decCallResultTarget |> Result.bind (fun into ->
             Ok(Action.Call(endpoint, onResult, into)))))
         | "Navigate" ->
-            dReq "route" __fs dStr |> Result.bind (fun route ->
-            Ok(Action.Navigate(route)))
+            dReq "route" __fs decTextSource |> Result.bind (fun route ->
+            dDef "target" __fs decNavigateTarget (NavigateTarget.Self) |> Result.bind (fun target ->
+            Ok(Action.Navigate(route, target))))
         | "CommitLocal" ->
             dReq "nodeId" __fs dStr |> Result.bind (fun nodeId ->
             Ok(Action.CommitLocal(nodeId)))

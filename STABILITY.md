@@ -6104,6 +6104,60 @@ this repo consumes as a pinned package.
 
 ---
 
+## Recorded change — 0.77.0, `Action.Navigate` over a `TextSource`, with a target (fuaran#1536)
+
+**A DU CASE WIDENING (breaking at construction and at every positional match), riding the standing
+0.77.0 draft.** `Action<'Msg>.Navigate` becomes
+`Navigate of route: TextSource * target: NavigateTarget`, wire
+`{"$type":"Navigate","route":…,"target":"Blank"?}` (WIRE_FORMAT §3.6.21). `NavigateTarget` is a new
+closed enum (`Self | Blank`). `ClientEffect.Navigate` widens the same way on the server-driven
+instruction channel.
+
+**Why it RIDES rather than advances.** This is the same class the draft already carries — `FS0764`
+for a full-literal record constructor, plus `Derivation<'Msg>.StructuralKey`'s narrowing — not a
+higher one: a required positional field added to a DU case is the union analogue of a required record
+field, and the draft-slot rule advances only for a higher class. `v0.76.0` remains the newest tag, so
+no released consumer constructs or matches this arity. `Directory.Build.props` was not touched.
+
+**The wire does not move.** `TextSource.Literal`'s canonical form is the bare JSON string (§3.6), so
+`{"$type":"Navigate","route":"/x"}` is emitted and accepted exactly as before, and `target` is
+omitted at `Self`. Every pre-1536 corpus byte is unchanged — the emit diff is five new files plus
+the generated `manifest.json` / `schema.json` / `idl.json` / `WIRE_FORMAT.md`. The §16 `href` /
+`url` / `to` aliases are resolved before the value is decoded and keep working.
+
+**What breaks, and how to fix it.** Construction sites, at compile time:
+`Action.Navigate "/x"` becomes `Action.Navigate(TextSource.Literal "/x", NavigateTarget.Self)`, or
+`Fuaran.navigate "/x"`, whose signature is unchanged and which is the shorter spelling of the
+commonest intent. `Fuaran.navigateTo` is the new general form. Positional matches gain the second
+field; a match that only wants the route reads `Action.Navigate(route, _)`.
+
+**Vocabulary charter (`docs/VOCABULARY.md`).** *Demand*: gap-report finding M-B25 — "open the
+selected order" (`/orders/{selection.id}`) was inexpressible, because the row-click hook is a host
+closure and `Navigate` took a literal. *Irreducibility*: the alternative is a `NavigateBound`
+sibling, which §2.1's 2026-09-03 amendment names as the near-synonym pair the charter exists to
+forbid — the same ruling Phase 1126 took for `WriteToClipboard`, and this phase is that ruling
+applied a second time rather than a new argument. *Cost*: the expensive spelling, acknowledged —
+case arity changes, so every positional match stops compiling; §11 forward coupling across five
+codec hosts, the schema, the corpus and the C# veneer. *Confusion delta*: zero on the kind axis (no
+kind, no variant); `NavigateTarget` adds one enum whose two members are exhaustive on their axis and
+which is NOT `Link.target`'s free string — the two look alike, and the closed set is what stops a
+tree asking for `_parent` or `_top`.
+
+**Resolve, then gate.** A bound route resolves at DISPATCH time and the egress floor, the destination
+policy and the dispatch gate all judge the RESOLVED string. A route that does not resolve navigates
+nowhere rather than degrading to `""`, which is a real navigation. A `Blank` target is opened with
+`noopener,noreferrer` by the renderer on every host, never delegated to a host navigation seam.
+`docs/security/ESCAPE-HATCHES.md` Hatch 1 carries the amended three-part entry.
+
+**What did NOT change.** `IFuaranRuntime` gains no member — a `Blank` reaches
+`window.open` directly, on the `Print` / `CommitLocal` precedent — so direct implementers are
+unaffected. `ActionDescriptor.Navigate` still carries the route alone. `OnRowClick` stays a host
+closure; a per-row action slot is a separate admission. `Action.WriteToClipboard` is untouched apart
+from one correction it should have carried since 1126: `BindingWalk.usesOfAction` now counts the
+bound `TextSource` payloads of BOTH `WriteToClipboard` and `Navigate`, which it counted for neither.
+
+---
+
 ## Recorded change — 0.77.0, renderer correctness: uploads, keys, refusals and two host-parity fixes (fuaran#1531)
 
 **Mostly additive; ONE source-breaking change, riding the standing 0.77.0 draft.**

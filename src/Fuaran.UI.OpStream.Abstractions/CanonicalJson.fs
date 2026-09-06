@@ -654,7 +654,36 @@ and private encodeAction<'Msg> (a: Action<'Msg>) : Appender =
             appendObject sb (case "Call" ([ "endpoint", str endpoint ] @ optionals))
         | Action.Notify(channel, payload) ->
             appendObject sb (case "Notify" [ "channel", str channel; "payload", encodeJVal payload ])
-        | Action.Navigate route -> appendObject sb (case "Navigate" [ "route", str route ])
+        | Action.Navigate(route, target) ->
+            // Phase 1536 — the route is a `TextSource`, encoded through the
+            // GENERATED encoder rather than a second hand-rolled one, for the
+            // reason the clipboard arm below states at length: this encoder
+            // feeds the hash chain, and a duplicate `TextSource` encoder that
+            // eventually forgot the bare-string Literal rule (§3.6) would
+            // present as an unexplained hash mismatch rather than as a
+            // wrong-looking document. Every pre-1536 literal route hashes
+            // identically.
+            //
+            // `target` rides only when it is not `Self`, matching the generated
+            // encoder's omit-at-default (`appendObject` pre-sorts, so field
+            // order stays canonical whether or not it rides).
+            let optionals =
+                if target = NavigateTarget.Self then
+                    []
+                else
+                    [ "target",
+                      str (
+                          match target with
+                          | NavigateTarget.Blank -> "Blank"
+                          | NavigateTarget.Self -> "Self"
+                      ) ]
+
+            appendObject
+                sb
+                (case
+                    "Navigate"
+                    ([ "route", encodeJVal (Fuaran.UI.Generated.encodeTextSourceJson route) ]
+                     @ optionals))
         | Action.SetState(key, value, valueFrom) ->
             // Phase 818 — `value` XOR `valueFrom`; each rides only when present
             // (`appendObject` pre-sorts, so field order stays canonical).

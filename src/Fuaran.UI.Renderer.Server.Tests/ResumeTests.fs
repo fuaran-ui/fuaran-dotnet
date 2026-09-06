@@ -44,7 +44,7 @@ let private tree: Node<obj> =
                       "btn"
                       { Defaults.button<obj> with
                           Label = TextSource.Literal "Go"
-                          OnClick = Action.Navigate "/about" }
+                          OnClick = Action.Navigate(TextSource.Literal "/about", NavigateTarget.Self) }
                   : Node<obj>)
                   Fuaran.form
                       "frm"
@@ -96,23 +96,57 @@ let resumeTests =
           }
 
           test "disposition classifier — strictest member wins in a Chain" {
-              Expect.equal (disposition (Action.Navigate "/x")) ResumeDisposition.Interpret "Navigate"
+              Expect.equal
+                  (disposition (Action.Navigate(TextSource.Literal "/x", NavigateTarget.Self)))
+                  ResumeDisposition.Interpret
+                  "Navigate"
+
               Expect.equal (disposition (Action.Dispatch(box "m"))) ResumeDisposition.Boot "Dispatch"
+
+              // Phase 1536 — a BOUND route falls back rather than interpreting.
+              // The zero-JS interpreter holds no binding sources, so it cannot
+              // say where the declaration points; coercing one into a
+              // destination and navigating there is a real, irreversible act on
+              // the reader's behalf, where a wrong clipboard write is at least
+              // inert until they paste. A LITERAL route still interprets,
+              // whatever its target — the client hands `window` a string it
+              // already holds.
+              Expect.equal
+                  (disposition (Action.Navigate(TextSource.Bound(Binding.State("route", None)), NavigateTarget.Self)))
+                  ResumeDisposition.Fallback
+                  "Navigate with a bound route"
+
+              Expect.equal
+                  (disposition (Action.Navigate(TextSource.Literal "/x", NavigateTarget.Blank)))
+                  ResumeDisposition.Interpret
+                  "Navigate with a literal route and a Blank target"
 
               Expect.equal (disposition (Action.Call("/api", Some id, None))) ResumeDisposition.Fallback "Call"
 
               Expect.equal
-                  (disposition (Action.Chain [ Action.Navigate "/x"; Action.Notify("c", JStr "p") ]))
+                  (disposition (
+                      Action.Chain
+                          [ Action.Navigate(TextSource.Literal "/x", NavigateTarget.Self)
+                            Action.Notify("c", JStr "p") ]
+                  ))
                   ResumeDisposition.Interpret
                   "all-data Chain interprets"
 
               Expect.equal
-                  (disposition (Action.Chain [ Action.Navigate "/x"; Action.Dispatch(box "m") ]))
+                  (disposition (
+                      Action.Chain
+                          [ Action.Navigate(TextSource.Literal "/x", NavigateTarget.Self)
+                            Action.Dispatch(box "m") ]
+                  ))
                   ResumeDisposition.Boot
                   "a Dispatch in the Chain forces boot"
 
               Expect.equal
-                  (disposition (Action.Chain [ Action.Navigate "/x"; Action.Call("/api", Some id, None) ]))
+                  (disposition (
+                      Action.Chain
+                          [ Action.Navigate(TextSource.Literal "/x", NavigateTarget.Self)
+                            Action.Call("/api", Some id, None) ]
+                  ))
                   ResumeDisposition.Fallback
                   "a Call in the Chain forces fallback"
           }
@@ -144,7 +178,7 @@ let resumeTests =
                               [ Fuaran.button
                                     "btn"
                                     { Defaults.button<obj> with
-                                        OnClick = Action.Navigate "/CHANGED" } ] }
+                                        OnClick = Action.Navigate(TextSource.Literal "/CHANGED", NavigateTarget.Self) } ] }
 
               Expect.notEqual (treeHash tree) (treeHash altered) "a changed tree → a changed hash"
           }
@@ -169,7 +203,11 @@ let resumeTests =
                   Fuaran.button
                       "btn"
                       { Defaults.button<obj> with
-                          OnClick = Action.Navigate "/x</script><script>alert(1)</script>" }
+                          OnClick =
+                              Action.Navigate(
+                                  TextSource.Literal "/x</script><script>alert(1)</script>",
+                                  NavigateTarget.Self
+                              ) }
 
               let html = Resume.renderResumable BindingResolver.empty "m" "" [] evil
               Expect.isFalse (contains "</script><script>alert" html) "no literal break-out sequence"
@@ -191,7 +229,11 @@ let resumeTests =
                                         (sprintf "btn%d" i)
                                         { Defaults.button<obj> with
                                             Label = TextSource.Literal(sprintf "Action %d" i)
-                                            OnClick = Action.Navigate(sprintf "/go/%d" i) } ] }
+                                            OnClick =
+                                                Action.Navigate(
+                                                    TextSource.Literal(sprintf "/go/%d" i),
+                                                    NavigateTarget.Self
+                                                ) } ] }
 
               let envBytes =
                   System.Text.Encoding.UTF8.GetByteCount(Resume.encodeEnvelope "m" "{}" [] page)

@@ -1,5 +1,9 @@
 namespace Fuaran.UI.ServerDriven
 
+// Phase 1536 — `ClientEffect.Navigate` carries a `NavigateTarget`, the same
+// closed enum `Action.Navigate` does.
+open Fuaran.UI.Types
+
 // ============================================================================
 //  ClientEffect — the client-only effects the server decides but the shim
 //  performs (Phase 152, Track B).
@@ -27,7 +31,21 @@ type ClientEffect =
     | WriteToClipboard of text: string
     /// Navigate the browser to `route` (`window.location` — a full page load /
     /// real navigation; the full-SSR mode). Crawlable + no-JS via `Display.Link`.
-    | Navigate of route: string
+    ///
+    /// Phase 1536 — `target` names the browsing context, mirroring
+    /// `Action.Navigate`'s own. It is OMITTED from the encoding at `Self`, so
+    /// every `{"kind":"Navigate","route":…}` a shim has ever received is
+    /// byte-identical and the pre-1536 shim keeps working unchanged for the
+    /// case it already handled.
+    ///
+    /// A FIELD rather than a second effect arm, deliberately: `Blank` modifies
+    /// the same act — go here — rather than naming a different one, and a
+    /// sibling `OpenInNewTab` would be the near-synonym pair the vocabulary
+    /// charter forbids one layer down. The shim opens a `Blank` target with
+    /// `noopener,noreferrer`, which is where that security property is
+    /// discharged on this path exactly as the renderer discharges it on the
+    /// client path.
+    | Navigate of route: string * target: NavigateTarget
     /// Update the URL bar to `route` WITHOUT a reload (`history.pushState`) — the
     /// in-place navigation mode's URL sync (Phase 157). The tree swap rides the
     /// accompanying `DomPatch`es; this only keeps the address bar + back/forward
@@ -93,7 +111,12 @@ module ClientEffect =
     let encode (effect: ClientEffect) : string =
         match effect with
         | WriteToClipboard text -> $"""{{"kind":"WriteToClipboard","text":{q text}}}"""
-        | Navigate route -> $"""{{"kind":"Navigate","route":{q route}}}"""
+        | Navigate(route, target) ->
+            // Phase 1536 — `target` rides only when it is not `Self`, so the
+            // pre-1536 bytes are unchanged for the pre-1536 meaning.
+            match target with
+            | NavigateTarget.Self -> $"""{{"kind":"Navigate","route":{q route}}}"""
+            | NavigateTarget.Blank -> $"""{{"kind":"Navigate","route":{q route},"target":"Blank"}}"""
         | PushState route -> $"""{{"kind":"PushState","route":{q route}}}"""
         | Focus nodeId -> $"""{{"kind":"Focus","nodeId":{q nodeId}}}"""
         | Download(url, name) -> $"""{{"kind":"Download","url":{q url},"name":{q name}}}"""

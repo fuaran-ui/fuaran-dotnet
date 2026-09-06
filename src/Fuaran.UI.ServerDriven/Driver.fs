@@ -251,15 +251,35 @@ let rec private interpret
     // scheme. The floor alone left an unconfigured driver shipping a navigation
     // to any well-formed host a decoded tree named, which is an open redirect
     // the host performs on the tree's say-so.
-    | Action.Navigate route ->
-        match
-            Fuaran.UI.Renderer.Sanitize.checkDestination
-                services.EgressPolicy
-                Fuaran.UI.Renderer.Sanitize.EgressClass.Route
-                route
-        with
-        | Fuaran.UI.Renderer.Sanitize.EgressVerdict.Allowed safe -> [], [ ClientEffect.Navigate safe ]
-        | _ -> [], []
+    // Phase 1536 — the route is a `TextSource`, RESOLVED HERE (through the
+    // host's `ResolveText` seam, the same one the clipboard arm below uses)
+    // BEFORE it is egress-checked and before it is lowered. The order is the
+    // point: checking `/orders/{id}` would consult the policy about a URL
+    // nobody navigates to while the string the shim actually receives went
+    // unexamined.
+    //
+    // An UNRESOLVED route lowers to no effect at all. `ResolveText` answers with
+    // a string, so "did it resolve" is read from the answer: the empty string is
+    // what an absent bound source renders to, and it is not a destination —
+    // `location.href = ""` reloads the current document with its query and
+    // fragment stripped, a navigation the author never asked for. The refusal
+    // is silent here rather than warned because this tier has no `Warn`; the
+    // reject sink sees nothing because nothing was rejected — nothing was ever
+    // shipped.
+    | Action.Navigate(route, target) ->
+        let resolved = services.ResolveText route
+
+        if System.String.IsNullOrWhiteSpace resolved then
+            [], []
+        else
+            match
+                Fuaran.UI.Renderer.Sanitize.checkDestination
+                    services.EgressPolicy
+                    Fuaran.UI.Renderer.Sanitize.EgressClass.Route
+                    resolved
+            with
+            | Fuaran.UI.Renderer.Sanitize.EgressVerdict.Allowed safe -> [], [ ClientEffect.Navigate(safe, target) ]
+            | _ -> [], []
     // Phase 1126 — the payload is a `TextSource`, and it is RESOLVED HERE,
     // before it is lowered. `ClientEffect.WriteToClipboard` still carries a
     // plain string, deliberately: the shim performs a write, it does not

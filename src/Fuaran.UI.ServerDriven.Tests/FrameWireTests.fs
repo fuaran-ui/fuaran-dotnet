@@ -7,12 +7,13 @@ module Fuaran.UI.ServerDriven.Tests.FrameWireTests
 // generic shim's sseAdapter consumes.
 
 open Expecto
+open Fuaran.UI.Types
 open Fuaran.UI.ServerDriven
 
 let private frame =
     { Seq = 7
       Patches = [ DomPatch.SetText("count", "42"); DomPatch.RemoveNode "stale" ]
-      Effects = [ ClientEffect.Navigate "/done" ] }
+      Effects = [ ClientEffect.Navigate("/done", NavigateTarget.Self) ] }
 
 [<Tests>]
 let tests =
