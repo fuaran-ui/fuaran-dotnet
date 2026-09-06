@@ -45,14 +45,32 @@ open Fuaran.UI.OpStream.Abstractions
 //  DOM (identical markup); the orchestrator consumer that cares about closure
 //  identity must know this boundary.
 //
-//  **Accessibility vocabulary gap (documented limitation, NEW finding).** The
-//  canonical wire surface is id + kind + state + style + **accessibility**,
-//  but the `TreeOp` vocabulary has **no op for `Accessibility`** (only
-//  EditNode/UpdateState/UpdateStyle + structural ops). So an accessibility-only
-//  change is **not expressible** and would not round-trip. This is acceptable
-//  for the server-driven use case — accessibility is author-structural and
-//  stable across a re-render (it is not `Model`-driven) — but it is a real gap
-//  worth a follow-on `UpdateAccessibility` op if a consumer needs it.
+//  **Node-trait vocabulary gap (documented limitation).** The canonical wire
+//  surface is id + kind + state + style + **accessibility** + **tooltip**, but
+//  the `TreeOp` vocabulary has **no op for either trait** (only
+//  EditNode/UpdateState/UpdateStyle + structural ops, and `EditNode` replaces
+//  `Kind` alone). So a change to either is **not expressible** and does not
+//  round-trip: an accessibility-only edit diffs to NO ops at all, and a
+//  tooltip-only edit falls to the `EditNode` floor, which reinstates the kind
+//  and leaves the trait as it was. This is acceptable for the server-driven use
+//  case — both traits are author-structural and stable across a re-render (they
+//  are not `Model`-driven) — but it is a real gap, and `ReplaceRoot` is the only
+//  op that closes it, wholesale.
+//
+//  **What is NOT acceptable is a caller that cannot tell.** Phase 1526: the DAG
+//  merge takes this diff as the replay delta of a merge node that commits, by
+//  hash, to the merged tree — and `TreeMerge` merges both traits as facets of
+//  their own, so a merge that took the other branch's accessibility minted a
+//  node whose delta reached a different tree, silently, at every layer. The mint
+//  now REPLAYS its own delta and refuses the node
+//  (`Fuaran.UI.OpStream.Dag.Merge.DagMerge.buildMergeRecord`), and `DagReplay`
+//  reports the same mismatch on a node an older engine already wrote. Both live
+//  with the caller, not here: this function's contract is to be honest about
+//  what it can express, and it is a consumer's business whether a gap in that
+//  expressiveness is fatal to what the consumer is doing. Closing the gap
+//  outright means new `TreeOp` cases, which is a wire event under WIRE_FORMAT
+//  §11 (encoder, decoder, corpus and every conformant host in one change-set).
+//
 //  (`Motion` / `ExtraAttributes` are omitted from the canonical surface
 //  entirely, so they are invisible to the round-trip — no gap there.)
 //

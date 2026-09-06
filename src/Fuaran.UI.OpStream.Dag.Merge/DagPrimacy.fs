@@ -35,6 +35,26 @@ module DagPrimacy =
 
     let private rawId (NodeId s) : string = s
 
+    /// The style sub-field cells one `UpdateStyle` establishes a writer for —
+    /// EVERY sub-field `TreeMerge` merges independently, because the op carries
+    /// a whole `SemanticStyle` record and therefore writes all of them.
+    ///
+    /// `style.direction` joined this list in Phase 1526, three phases after
+    /// Phase 1472 made `direction` an independently-merged sub-field. Until
+    /// then a `Primary` edit to a text direction was attributed to whatever the
+    /// branch TIP happened to be, so a pin on it was dropped by any later
+    /// secondary op — the exact defect the per-cell walk exists to prevent,
+    /// reintroduced one facet at a time by growth. The roster test in
+    /// `Fuaran.UI.OpStream.Dag.Tests` is what makes the next one fail loudly
+    /// instead.
+    let private styleCells (i: string) : (string * string) list =
+        [ i, "style.tone"
+          i, "style.weight"
+          i, "style.emphasis"
+          i, "style.role"
+          i, "style.voice"
+          i, "style.direction" ]
+
     /// The `(nodeId, facet)` cells a single op establishes a writer for. `Batch`
     /// unions its members. See the module header for the under-attribution note.
     let rec cellsOf<'Msg> (op: TreeOp<'Msg>) : (string * string) list =
@@ -44,24 +64,36 @@ module DagPrimacy =
         | TreeOp.EditNode(id, _) -> [ rawId id, "kind"; rawId id, "children" ]
         | TreeOp.UpdateProp(id, _, _) -> [ rawId id, "kind" ]
         | TreeOp.ReplaceBinding(id, _, _) -> [ rawId id, "kind" ]
-        | TreeOp.UpdateStyle(id, _) ->
-            let i = rawId id
-
-            [ i, "style.tone"
-              i, "style.weight"
-              i, "style.emphasis"
-              i, "style.role"
-              i, "style.voice" ]
+        | TreeOp.UpdateStyle(id, _) -> styleCells (rawId id)
         | TreeOp.UpdateState(id, _) -> [ rawId id, "state" ]
-        | TreeOp.InsertChild(parentId, _) -> [ rawId parentId, "children" ]
+        // The parent's child list changed, and the inserted node itself is the
+        // subject of the `insert` cell — the one a same-id insert on both sides
+        // contends (Phase 1497). The op carries the child, so unlike the
+        // structural ops below there is nothing to fall back for.
+        | TreeOp.InsertChild(parentId, child) -> [ rawId parentId, "children"; child.Id, "insert" ]
         | TreeOp.ReorderChildren(parentId, _) -> [ rawId parentId, "children" ]
         // The destination parent's child list changed; the SOURCE parent's also
-        // did, but the op does not carry it — fall back for that cell.
-        | TreeOp.MoveNode(_, newParentId) -> [ rawId newParentId, "children" ]
-        // The affected parent is not in the op — fall back to the tip author.
-        | TreeOp.RemoveNode _ -> []
-        // ReplaceRoot swaps the whole tree at the new root — like EditNode on the root.
-        | TreeOp.ReplaceRoot node -> [ node.Id, "kind"; node.Id, "children" ]
+        // did, but the op does not carry it — fall back for that cell. The moved
+        // node's own `move` cell IS carried (Phase 1526).
+        | TreeOp.MoveNode(id, newParentId) -> [ rawId newParentId, "children"; rawId id, "move" ]
+        // The affected PARENT is not in the op — fall back to the tip author for
+        // its `children` cell. The removed node itself is carried, and it is the
+        // subject of the `node` cell a delete/modify contends (Phase 1526).
+        | TreeOp.RemoveNode id -> [ rawId id, "node" ]
+        // ReplaceRoot returns the supplied node outright, so it writes EVERY
+        // facet of the new root — not merely its kind and children. It is the
+        // only op that writes `accessibility` or `tooltip` at all, which is the
+        // `TreeOpDiff` expressiveness gap seen from the attribution side: a
+        // merge of those facets has no op that could have written them, so the
+        // merge node that carries it is refused at mint rather than attributed
+        // to a writer that does not exist (see `DagMerge.buildMergeRecord`).
+        | TreeOp.ReplaceRoot node ->
+            [ node.Id, "kind"
+              node.Id, "children"
+              node.Id, "state"
+              node.Id, "accessibility"
+              node.Id, "tooltip"
+              yield! styleCells node.Id ]
         | TreeOp.Batch ops -> ops |> List.collect cellsOf
 
     /// Walk back from `head` along the PRIMARY-parent spine, stopping at `stopAt`

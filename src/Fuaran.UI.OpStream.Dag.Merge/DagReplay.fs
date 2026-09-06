@@ -3,6 +3,7 @@ namespace Fuaran.UI.OpStream.Dag.Merge
 open Fuaran.UI.Types
 open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
+open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 
 // ============================================================================
@@ -31,8 +32,54 @@ type DagReplayError =
     /// genuine snapshot is being presented at a position it does not hold.
     /// Replay refuses rather than folding the tail over an unverified base.
     | SnapshotHashMismatch of atHash: string * expected: string * actual: string
+    /// A MERGE node's replay delta did not reproduce the `OutcomeHash` it
+    /// committed to (Phase 1526). A merge node commits to the merged TREE by
+    /// hash and carries a delta that is supposed to reach it; when the two
+    /// disagree the node is not a record of the merge it claims, and every tree
+    /// folded past it on this spine is a different tree from the one the merge
+    /// produced.
+    ///
+    /// The mint refuses this shape since Phase 1526 (`DagMerge`), so a node
+    /// reaching this check was written by an older engine, by another host, or
+    /// by hand. Detection on READ is the half a write-time refusal cannot
+    /// cover: the stream outlives the process that wrote it.
+    | MergeOutcomeMismatch of hash: string * expected: string * actual: string
 
 module DagReplay =
+
+    /// Fold one spine record's op over the tree, then — for a MERGE node —
+    /// check that the result is the tree the node committed to.
+    ///
+    /// `OutcomeHash` is populated exactly for a merge node (`Parents.Length ≥
+    /// 2`; see `DagOpRecord`), so an ordinary single-parent step costs nothing:
+    /// no encode, no hash. That is the reason the check lives here rather than
+    /// hashing every folded tree — the invariant is only claimed at merge
+    /// nodes, and only there is there a committed value to compare against.
+    let private foldRecord<'Msg> (tree: Node<'Msg>) (r: DagOpRecord<'Msg>) : Result<Node<'Msg>, DagReplayError> =
+        match Apply.apply r.Op tree with
+        | Error e -> Error(DagReplayError.ApplyFailed(r.Hash, e))
+        | Ok tree' ->
+            match r.OutcomeHash with
+            | None -> Ok tree'
+            | Some expected ->
+                let actual = CanonicalJson.encodeNode tree' |> HashChain.sha256Hex
+
+                if actual = expected then
+                    Ok tree'
+                else
+                    Error(DagReplayError.MergeOutcomeMismatch(r.Hash, expected, actual))
+
+    let private foldSpine<'Msg>
+        (initial: Node<'Msg>)
+        (spine: DagOpRecord<'Msg> list)
+        : Result<Node<'Msg>, DagReplayError> =
+        spine
+        |> List.fold
+            (fun (acc: Result<Node<'Msg>, DagReplayError>) (r: DagOpRecord<'Msg>) ->
+                match acc with
+                | Error _ -> acc
+                | Ok tree -> foldRecord tree r)
+            (Ok initial)
 
     /// Replay `head` to its tree by folding ops along the primary-parent spine.
     /// `getRecord` resolves a hash to its record (typically a pre-loaded map of
@@ -54,17 +101,7 @@ module DagReplay =
 
         match collect head [] with
         | Error e -> Error e
-        | Ok spine ->
-            spine
-            |> List.fold
-                (fun (acc: Result<Node<'Msg>, DagReplayError>) (r: DagOpRecord<'Msg>) ->
-                    match acc with
-                    | Error _ -> acc
-                    | Ok tree ->
-                        match Apply.apply r.Op tree with
-                        | Ok tree' -> Ok tree'
-                        | Error e -> Error(DagReplayError.ApplyFailed(r.Hash, e)))
-                (Ok initial)
+        | Ok spine -> foldSpine initial spine
 
     /// Checkpoint-bounded replay: reconstruct `head`'s tree starting from a
     /// `DagCheckpoint`'s snapshot rather than from genesis. The snapshot IS the
@@ -109,17 +146,7 @@ module DagReplay =
         let foldTail () =
             match collect head [] with
             | Error e -> Error e
-            | Ok tail ->
-                tail
-                |> List.fold
-                    (fun (acc: Result<Node<'Msg>, DagReplayError>) (r: DagOpRecord<'Msg>) ->
-                        match acc with
-                        | Error _ -> acc
-                        | Ok tree ->
-                            match Apply.apply r.Op tree with
-                            | Ok tree' -> Ok tree'
-                            | Error e -> Error(DagReplayError.ApplyFailed(r.Hash, e)))
-                    (Ok checkpoint.Snapshot)
+            | Ok tail -> foldSpine checkpoint.Snapshot tail
 
         // Verify the snapshot BEFORE folding anything over it — an unverified
         // base makes every op applied on top of it meaningless.

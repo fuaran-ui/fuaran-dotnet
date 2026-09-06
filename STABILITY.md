@@ -5839,6 +5839,71 @@ Consumers that DECODE third-party or model-emitted JSON should expect previously
 documents to be refused — which is the point. Consumers that store refusal hashes over style
 conflicts recompute them once.
 
+## Recorded change — 0.77.0, three-way merge totality (fuaran#1526)
+
+**`Fuaran.UI.OpStream.Dag.Merge` grows two conflict PRODUCERS, one merge outcome, one replay error
+and a widened cell roster. It RIDES the untagged, publicly-unpinned 0.77.0 draft.**
+
+Three claims the merge layer made and did not keep, closed together because they are one claim seen
+from three sides: a merge must not lose work it was handed.
+
+**`DeleteModify` and `ConcurrentMove` are raised.** Both classes have been declared since Phase 179,
+with a documented projection onto `ApplyErrorCode`, and nothing in the library constructed either.
+A node one side edited and the other REMOVED vanished with the edit; a node one side MOVED and the
+other edited was adopted from the mover wholesale and the edit discarded. Both returned `Ok`. They
+now refuse, on two whole-node facets: `node` carries each side's canonical subtree, and `move`
+carries the parent id each side holds the node under. Two envelope spellings are specific to these
+classes and a host must not generalise either — a side that holds NO value (the removing side of a
+`DeleteModify`) carries the EMPTY STRING, which no node canonical-encodes to and which `base`
+already uses for a same-id insert; and a `ConcurrentMove` is TWO entries on one node rather than one
+entry compounding a position with a subtree.
+
+Telling a DELETION apart from a MOVE needs a view of each input tree as a whole, so `merge3` now
+carries indexes of its three inputs, built once at the entry point. Without them every relocation
+reads as a deletion from the parent it left, and the floor would fire on ordinary merges. Each
+refusal ships with a CORRECTED TWIN in the corpus that must still auto-merge, because a floor that
+refuses everything passes the first half of that pair and fails the job.
+
+**A merge node's replay delta is verified against the outcome it commits to, before the node is
+minted.** A merge node carries `OutcomeHash` (the canonical hash of the merged tree) and `Op` (the
+replay delta from its primary parent), and M1's whole claim — two hosts agree iff they reach the
+same tree — rests on the two being the same tree. They could differ: `TreeOp` is not total over the
+node record, since no op sets `Accessibility` or `Tooltip` and `TreeMerge` merges both as facets of
+their own, so a merge that took the other branch's accessibility minted a node whose delta reached a
+different tree, accepted in silence at mint, commit, replay and verify. `buildMergeRecord` now
+replays its own delta over the primary parent's tree and REFUSES rather than minting a lossy node;
+`DagReplay` reports the same mismatch on READ, for a node an older engine, another host, or a hand
+edit already wrote.
+
+**Consumer-visible:** `MergeResult<'Msg>` gains `DeltaNotReplayable of tree * mismatch` and
+`TrunkMergeOutcome<'Msg>` gains the same case (additive DU widenings — `FS0025` exhaustiveness
+warnings are not breaking per the Semver section above); `DagReplayError` gains
+`MergeOutcomeMismatch`; `MergeDeltaMismatch` is new. The merged tree rides on the refusal, so a host
+can still show it, diff it, or write it through another path — the refusal is about what the DAG can
+honestly RECORD, not about what the merge computed. A host merging trees that differ only in a node
+trait sees a refusal where it used to see a merge; that merge was already wrong, and it was wrong
+without saying so.
+
+**`DagPrimacy.cellsOf` names every facet `TreeMerge` merges.** `style.direction` was missing since
+Phase 1472 made it an independently-merged sub-field, so a primacy pin on a text direction fell back
+to the branch TIP — the exact mislabelling the per-cell walk exists to prevent, reintroduced one
+facet at a time by growth. `accessibility` and `tooltip` are attributed through `ReplaceRoot`, which
+is the only op that writes either; `insert`, `node` and `move` are attributed through
+`InsertChild` / `RemoveNode` / `MoveNode`. A roster test DERIVES both sets — the facets a merge can
+name, and the facets an op can attribute — and asserts they are equal, so the next facet added to
+one side alone fails rather than silently degrading a pin.
+
+**Corpus.** `wire-format-fixtures/merge-conformance/` gains a `totalityFixtures` family under a
+THIRD top-level key, holding each refusal beside its corrected twin. A new key is invisible to a
+host that does not read it, so `fixtures` and `refusalFixtures` are byte-identical and every host's
+merge leg is exactly as green as it was; each adopts the wider contract when it ports the arm.
+
+**Version — it RIDES 0.77.0 rather than advancing it.** The draft is untagged and pinned by no
+public-path consumer, and it already carries source-breaking changes against the released v0.75.0,
+so a consumer adopting this slot is already recompiling and re-reading its entry. The draft-slot
+rule advances only for a HIGHER class than the slot already carries, and two additive DU widenings
+plus a newly-raised refusal are not higher than breaking.
+
 ## Recorded change — 0.77.0, document attestation (fuaran#1549)
 
 **Additive.** `Fuaran.UI.OpStream.Abstractions` gains an optional envelope that binds an emitted tree
