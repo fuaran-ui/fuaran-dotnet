@@ -1679,13 +1679,19 @@ let private emissionGrammarDefects (n: Node<'Msg>) : PreEmitDefect list =
             | None -> ()
         | None -> ()
 
-    /// One paint slot: the CSS floor first (so a value that both escapes its
-    /// declaration and is not a colour is reported as the escape, which is the
-    /// more serious of the two and names the more specific fix), then the
-    /// closed colour grammar.
+    /// One paint slot: the CLOSED COLOUR GRAMMAR, and only that.
+    ///
+    /// The ordering matters and the obvious one is wrong. Asking the generic
+    /// CSS floor first looks safer — it is the broader rule — but it makes the
+    /// paint code unreachable for the very case that motivated it. `url(…)`
+    /// fails the CSS floor, which refuses `url(` by name, so a paint-server
+    /// reference reported as "this value can leave its declaration" and pointed
+    /// the author at a punctuation problem rather than at the fact that a paint
+    /// must be a COLOUR. Every value the CSS floor would have caught is also
+    /// not a colour, so nothing is lost by asking the narrower question first,
+    /// and what is gained is the message that names the actual remedy.
     let checkPaint (slot: string) (b: Binding<string> option) =
         match b |> Option.bind staticText with
-        | Some v when not (EmissionGrammar.isSafeCssValue v) -> defects.Add(PreEmitDefect.UnsafeCssValue(n.Id, slot, v))
         | Some v when not (EmissionGrammar.isColourValue v) ->
             defects.Add(PreEmitDefect.UnsafePaintValue(n.Id, slot, v))
         | _ -> ()
@@ -2006,7 +2012,7 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         "FUARAN145",
         DefectSeverity.Warning,
         sprintf
-            "node '%s' declares '%s' as its %s paint, which is not a colour. The renderers emit `none` instead: an SVG paint slot accepts `url(...)` as a paint-server reference, which is also how a remote fetch is spelled, so the slot admits only hex (#rgb / #rrggbb / #rrggbbaa), the keywords (none / transparent / currentColor / inherit / initial / unset), and the colour functions (rgb, rgba, hsl, hsla, oklch, oklab, lch, lab, color)"
+            "node '%s' declares '%s' as its %s paint, which is not a colour. The renderers emit `none` instead: an SVG paint slot accepts `url(...)` as a paint-server reference, which is also how a remote fetch is spelled, so the slot admits only hex (#rgb / #rrggbb / #rrggbbaa), a bare ident (every named colour and keyword - red, steelblue, currentColor, none, transparent, inherit), and the colour functions (rgb, rgba, hsl, hsla, oklch, oklab, lch, lab, color)"
             nodeId
             value
             slot

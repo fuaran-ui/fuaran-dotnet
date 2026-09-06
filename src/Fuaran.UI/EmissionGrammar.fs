@@ -225,13 +225,33 @@ let isTrackList (value: string) : bool =
 let private isHexDigit (c: char) =
     (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 
-/// The CSS colour keywords a paint slot may name, beyond the functional and
-/// hex forms. Deliberately the SMALL set — the two universal keywords plus the
-/// inheritance keywords — rather than the 148 named colours: a paint slot is
-/// authored by a model or a designer tool, both of which emit a computed value,
-/// and every named colour has a hex spelling that passes.
-let private colourKeywords =
-    Set.ofList [ "none"; "transparent"; "currentcolor"; "inherit"; "initial"; "unset" ]
+/// `true` when `value` is a bare CSS IDENT — an ASCII letter or `-` followed
+/// by ASCII letters, digits, `-` and `_`.
+///
+/// This is what admits the 148 named colours (`red`, `steelblue`,
+/// `rebeccapurple`), the universal keywords (`none`, `transparent`,
+/// `currentColor`), the inheritance keywords, the SVG2 paint keywords
+/// (`context-fill`, `context-stroke`) and every colour keyword CSS has not
+/// shipped yet — as ONE rule rather than as a list somebody has to keep.
+///
+/// Enumerating the keywords instead was tried first and is wrong, because the
+/// two ways of being wrong here are not symmetric. A missing keyword produces
+/// no error an author can see: the paint is replaced by `none`, so a document
+/// that was correct yesterday silently renders a differently-coloured picture,
+/// and the rule that did it lives in a different repository. Meanwhile an ident
+/// buys an attacker nothing at all — it cannot fetch, cannot leave its
+/// declaration and cannot name a paint server, because every one of those needs
+/// punctuation this test refuses. So the ident rule makes the same SAFETY
+/// statement as a keyword list while making a far weaker COMPATIBILITY claim,
+/// which is the honest way round.
+let private isCssIdent (value: string) : bool =
+    if value = "" then
+        false
+    else
+        let head = value[0]
+
+        (Char.IsAsciiLetter head || head = '-')
+        && value |> Seq.forall (fun c -> Char.IsAsciiLetterOrDigit c || c = '-' || c = '_')
 
 /// The colour FUNCTIONS a paint slot may call. Closed, and closed for the
 /// reason the module header gives for allowlists: a function nobody named is a
@@ -249,8 +269,8 @@ let private colourFunctions =
        "color(" |]
 
 /// `true` when `value` is a CSS colour in one of the closed forms: a `#rgb` /
-/// `#rrggbb` / `#rrggbbaa` hex, one of the keywords, or a call to one of the
-/// named colour functions.
+/// `#rrggbb` / `#rrggbbaa` hex, a bare ident (which is how every named colour
+/// and keyword is spelled), or a call to one of the named colour functions.
 ///
 /// This is the rule the finding asked for on `DrawStyle.fill` / `.stroke`,
 /// where a paint slot accepted `url(…)` and therefore accepted an arbitrary
@@ -276,7 +296,7 @@ let isColourValue (value: string) : bool =
         else
             let lower = t.ToLowerInvariant()
 
-            colourKeywords.Contains lower
+            isCssIdent t
             || ((colourFunctions
                  |> Array.exists (fun f -> lower.StartsWith(f, StringComparison.Ordinal)))
                 && lower.EndsWith(")", StringComparison.Ordinal)

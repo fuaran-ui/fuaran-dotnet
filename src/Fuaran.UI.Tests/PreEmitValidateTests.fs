@@ -5080,3 +5080,213 @@ let tokensValueRuleTests =
                   [ "FUARAN136" ]
                   "the duplicate rule, on a chip"
           } ]
+
+// ─── Phase 1523 — FUARAN142-146, the emission grammar at pre-emit ──────────
+//
+//  Why these codes exist at all, since every renderer now enforces the same
+//  rules in emitted bytes: a rule applied at RENDER time runs after decode,
+//  after `validate`, after the op-stream persisted the tree and after the
+//  AI-tools surface introspected it. So a `javascript:` href decoded clean,
+//  validated clean, persisted and introspected exactly as written, and was
+//  refused SILENTLY at render — the model that emitted it was never told, the
+//  demand loop counted nothing, and a HEADLESS consumer that decodes and
+//  persists without ever constructing a renderer met no floor whatsoever.
+//
+//  These tests therefore assert the CODE, not the behaviour: the behaviour is
+//  the renderers' and is pinned in their own corpora. What is pinned here is
+//  that the refusal is SAYABLE before anything renders.
+
+/// Only the emission-grammar defects. The fixtures below carry unrelated
+/// shapes (a bare link outside a dashboard, a one-shape drawing), so asserting
+/// `Ok()` would couple these tests to rules they are not about.
+let private grammarDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.UnsafeUrlScheme _
+            | PreEmitDefect.UnsafeCssValue _
+            | PreEmitDefect.MalformedTrackList _
+            | PreEmitDefect.UnsafePaintValue _
+            | PreEmitDefect.UnsupportedLinkAnchor _ -> true
+            | _ -> false)
+
+let private grammarCodes (tree: Node<Msg>) =
+    grammarDefects tree
+    |> List.map (fun d ->
+        let c, _, _ = PreEmitValidate.describe d
+        c)
+
+let private linkNode (href: string) (target: string option) (rel: string option) : Node<Msg> =
+    let n = Fuaran.link "lk" href "About"
+
+    match n.Kind with
+    | NodeKind.Link spec ->
+        { n with
+            Kind = NodeKind.Link { spec with Target = target; Rel = rel } }
+    | _ -> n
+
+let private gridNode (template: string) : Node<Msg> =
+    Fuaran.gridLayoutTemplated
+        "g"
+        template
+        { Cols = 2
+          TemplateColumns = Option.None
+          Children = [ markdown "t" "cell" ] }
+
+let private paintNode (fill: string) : Node<Msg> =
+    Fuaran.drawingSpec
+        "d"
+        { Defaults.drawing with
+            Shapes =
+                [ Shape.Circle(
+                      5.0,
+                      5.0,
+                      2.0,
+                      { Defaults.drawStyle with
+                          Fill = Some(Binding.Static(Some fill)) }
+                  ) ] }
+
+[<Tests>]
+let emissionGrammarPreEmitTests =
+    testList
+        "PreEmitValidate — FUARAN142-146, the emission grammar (Phase 1523)"
+        [ test "FUARAN142: a javascript: href is named BEFORE any renderer runs" {
+              Expect.equal (grammarCodes (linkNode "javascript:alert(1)" None None)) [ "FUARAN142" ] "the scheme floor"
+
+              // The message has to name the SCHEME, because that is what a
+              // repair acts on: `javascript:` names an intent the wire has
+              // typed actions for, where "unsafe URL" names nothing.
+              let _, _, msg =
+                  PreEmitValidate.describe (grammarDefects (linkNode "javascript:alert(1)" None None)).Head
+
+              Expect.stringContains msg "javascript" "the advisory names the scheme it refused"
+          }
+
+          test "FUARAN142: a protocol-relative href is caught in all four slash spellings" {
+              for spelling in
+                  [ "//evil.example/x"
+                    "/\\evil.example/x"
+                    "\\\\evil.example/x"
+                    "\\/evil.example/x" ] do
+                  Expect.equal
+                      (grammarCodes (linkNode spelling None None))
+                      [ "FUARAN142" ]
+                      (sprintf "'%s' leaves the origin with no scheme named" spelling)
+          }
+
+          test "ALLOW twin — an ordinary relative path and an https URL raise nothing" {
+              Expect.isEmpty (grammarCodes (linkNode "/reports/42" None None)) "a same-origin path"
+              Expect.isEmpty (grammarCodes (linkNode "https://example.com/x" None None)) "an allowlisted scheme"
+              Expect.isEmpty (grammarCodes (linkNode "mailto:a@b.c" None None)) "and mailto"
+          }
+
+          test "FUARAN143: a templateColumns that leaves its declaration is reported" {
+              Expect.equal
+                  (grammarCodes (gridNode "1fr;background:url(https://collector.example/)"))
+                  [ "FUARAN143" ]
+                  "the CSS escape, not the shape rule — a value that can REACH is the more serious of the two"
+          }
+
+          test "FUARAN144: a SAFE but meaningless templateColumns is reported separately" {
+              // Distinct from FUARAN143 because the remedies differ: 143 is a
+              // refusal the renderer enforces, 144 is a value the renderer
+              // emits faithfully and the BROWSER discards, so the only evidence
+              // at render time is a grid that silently has one column.
+              Expect.equal (grammarCodes (gridNode "not a track list!")) [ "FUARAN144" ] "the shape rule"
+          }
+
+          test "ALLOW twin — real track lists raise neither code" {
+              for t in
+                  [ "1fr 2fr auto"
+                    "repeat(auto-fit, minmax(150px, 1fr))"
+                    "min-content max-content" ] do
+                  Expect.isEmpty (grammarCodes (gridNode t)) (sprintf "'%s' is a track list" t)
+          }
+
+          test "FUARAN145: a url() paint is reported — the case a character denylist cannot see" {
+              Expect.equal
+                  (grammarCodes (paintNode "url(https://collector.example/x)"))
+                  [ "FUARAN145" ]
+                  "a paint server reference and a remote fetch are one syntax"
+          }
+
+          test "ALLOW twin — hex, a NAMED colour and a colour function raise nothing" {
+              // `steelblue` is the load-bearing one. An enumerated keyword list
+              // refuses it, and its failure mode is silent: the shape is
+              // repainted rather than reported.
+              for paint in [ "#39c"; "#336699"; "steelblue"; "currentColor"; "rgb(1 2 3)"; "none" ] do
+                  Expect.isEmpty (grammarCodes (paintNode paint)) (sprintf "'%s' is a colour" paint)
+          }
+
+          test "FUARAN146: rel=opener is reported per TOKEN, and a named frame target with it" {
+              Expect.equal
+                  (grammarCodes (linkNode "/x" None (Some "noopener opener")))
+                  [ "FUARAN146" ]
+                  "only the dropped token is reported — one finding per token, since each has its own remedy"
+
+              Expect.equal
+                  (grammarCodes (linkNode "/x" (Some "victim") None))
+                  [ "FUARAN146" ]
+                  "a named browsing context"
+
+              Expect.equal
+                  (grammarCodes (linkNode "/x" (Some "_top") None))
+                  [ "FUARAN146" ]
+                  "and framing keywords, which navigate a document that framed this one"
+          }
+
+          test "ALLOW twin — the closed sets raise nothing, and the FORCED pair is never a finding" {
+              // The forced `noopener noreferrer` is an ADDITION the renderer
+              // makes, not a refusal of anything the document wrote, so a
+              // `_blank` link declaring no rel at all must be silent here.
+              Expect.isEmpty (grammarCodes (linkNode "/x" (Some "_blank") None)) "a bare _blank"
+              Expect.isEmpty (grammarCodes (linkNode "/x" (Some "_self") (Some "nofollow"))) "_self with a real token"
+
+              Expect.isEmpty
+                  (grammarCodes (linkNode "/x" (Some "_blank") (Some "noopener noreferrer")))
+                  "and the pair written out by hand"
+          }
+
+          test "every rule stands down outside a Binding.Static — a bound URL is not judged here" {
+              // Deliberate, not a gap. A bound URL resolves at runtime against
+              // data this pass cannot see, so reporting it would report the
+              // BINDING rather than the value, and would fire on every
+              // correctly-authored dynamic href in the estate. The renderer
+              // floor covers the runtime case on every host — that is what
+              // makes the two layers a pair rather than a duplicate.
+              let bound =
+                  let n = Fuaran.link "lk" "/x" "About"
+
+                  match n.Kind with
+                  | NodeKind.Link spec ->
+                      { n with
+                          Kind =
+                              NodeKind.Link
+                                  { spec with
+                                      Href = Binding.State("href", None) } }
+                  | _ -> n
+
+              Expect.isEmpty (grammarCodes bound) "nothing to read, so nothing said"
+          }
+
+          test "GO-RED — every code above is reachable, and describe() is total over them" {
+              // Without this, a filter that matched nothing would read as five
+              // clean rules. Each code must have been produced by at least one
+              // fixture in this list.
+              let produced =
+                  [ linkNode "javascript:x" None None
+                    gridNode "1fr;x{}"
+                    gridNode "not a track list!"
+                    paintNode "url(#g)"
+                    linkNode "/x" (Some "victim") None ]
+                  |> List.collect grammarCodes
+                  |> List.distinct
+                  |> List.sort
+
+              Expect.equal
+                  produced
+                  [ "FUARAN142"; "FUARAN143"; "FUARAN144"; "FUARAN145"; "FUARAN146" ]
+                  "all five codes are reachable from a tree"
+          } ]
