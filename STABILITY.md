@@ -6013,11 +6013,11 @@ empty, because an empty paint INHERITS the enclosing group's rather than clearin
 CSS ident (which is how every named colour, keyword and SVG2 paint keyword is spelled) and the named
 colour functions, so `steelblue` and `currentColor` are unaffected; the CSS rule is a character
 denylist, so `var(…)`, `clamp(…)` and `color-mix(…)` all pass. What is refused is a value that could
-close its own declaration or fetch. FUARAN143 / FUARAN145 name either case pre-emit.
+close its own declaration or fetch. FUARAN148 / FUARAN145 name either case pre-emit.
 
 ### The new advisory codes
 
-`FUARAN142` unsafe URL scheme · `FUARAN143` a CSS value that leaves its declaration · `FUARAN144` a
+`FUARAN147` unsafe URL scheme · `FUARAN148` a CSS value that leaves its declaration · `FUARAN144` a
 safe but malformed track-list (the value renders and the BROWSER discards it, so only a shape check
 catches it) · `FUARAN145` a paint outside the colour grammar · `FUARAN146` an anchor token outside
 the closed sets. All Warning, all judged only under a `Binding.Static` — a bound value resolves at
@@ -6150,14 +6150,14 @@ written resolves to the slot default, which at `bool` is `false` — so it HIDES
 `Modal.Open` and `Disclosure.Open` already follow, and carving `visible` out of it would have made one
 slot the exception to a position-independent rule (the 2026-08-25 accessibility-trait ruling's
 reasoning, applied). The spelling for "visible unless something says otherwise" is therefore an
-explicit `Some true`, and the new **FUARAN143** (Warning) reports the omission.
+explicit `Some true`, and the new **FUARAN148** (Warning) reports the omission.
 
 **Three new validator surfaces**, all reached through the existing `PreEmitDefect` union, so a
 consumer matching exhaustively over it gains three cases:
 
-- **FUARAN142** (Error) — `SwitchCaseSelectorShape`: a case carrying both `match` and `when`, or
+- **FUARAN147** (Error) — `SwitchCaseSelectorShape`: a case carrying both `match` and `when`, or
   neither. The pre-emit twin of the decoder's own refusal, which a tree authored in F# never meets.
-- **FUARAN143** (Warning) — `VisibleStateNoWriter`: the silent hide described above. Stands down
+- **FUARAN148** (Warning) — `VisibleStateNoWriter`: the silent hide described above. Stands down
   under a declared default, under a writer anywhere in the tree, and under any opaque writer, exactly
   as FUARAN103 and FUARAN105 do.
 - **FUARAN082** narrows to the `match` cases: two predicate cases are not duplicates of each other.

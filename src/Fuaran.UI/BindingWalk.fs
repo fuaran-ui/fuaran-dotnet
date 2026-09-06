@@ -298,7 +298,7 @@ type StateKeyFacts =
         /// requires; see `PreEmitDefect.TransformSourceInert`.
         TransformInertSources: (string * string) list
         /// Fuaran-UI Phase 1535 — every node whose `visible` predicate is a
-        /// **default-less** `Binding.State`, as (node id, key). FUARAN143's
+        /// **default-less** `Binding.State`, as (node id, key). FUARAN148's
         /// subjects.
         ///
         /// The Phase-865 shape on a new slot, and the same reasoning: the shared
@@ -815,7 +815,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
     // ── The Phase 865 read-side projection FUARAN105 runs on ──
     let transformInertSources = ResizeArray<string * string>()
 
-    // ── The Phase 1535 projection FUARAN143 runs on ──
+    // ── The Phase 1535 projection FUARAN148 runs on ──
     let visibleStateSources = ResizeArray<string * string>()
 
     // ── The Phase 1075 seeding projection (the resolver's seed map, FUARAN106,

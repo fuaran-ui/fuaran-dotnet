@@ -184,7 +184,7 @@ type PreEmitDefect =
     /// always present on an in-memory tree, so there is no pre-emit advisory for
     /// them.)
     | DuplicateSwitchMatch of nodeId: string * matchValue: string
-    /// **FUARAN142 (Error)**. A `SwitchCase` carries BOTH a string `match` and a
+    /// **FUARAN147 (Error)**. A `SwitchCase` carries BOTH a string `match` and a
     /// predicate `when`, or NEITHER (Fuaran-UI Phase 1535) — the shape rule for
     /// the two ways a case can be selected. Exactly one is meaningful: `match`
     /// compares the switch's `on` selector against a literal, `when` evaluates a
@@ -196,7 +196,7 @@ type PreEmitDefect =
     /// is reachable by construction. Carries the switch node's id and the
     /// zero-based case index.
     | SwitchCaseSelectorShape of nodeId: string * caseIndex: int * bothPresent: bool
-    /// **FUARAN143 (Warning)**. A node's `visible` predicate is a default-less
+    /// **FUARAN148 (Warning)**. A node's `visible` predicate is a default-less
     /// `Binding.State` on a key nothing in the tree writes (Fuaran-UI Phase
     /// 1535) — the silent HIDE, and the Phase-865 silent-zero shape on a new
     /// slot.
@@ -1924,14 +1924,14 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             nodeId
             matchValue
     | PreEmitDefect.VisibleStateNoWriter(nodeId, key) ->
-        "FUARAN143",
+        "FUARAN148",
         DefectSeverity.Warning,
         sprintf
             "node '%s' is visible only while state key '%s' is true, and nothing in this tree writes it — a default-less State binding resolves to false at a bool slot, so the node is removed with nothing saying why; declare the default (true = visible unless something says otherwise) or add the writer (Phase 1535)"
             nodeId
             key
     | PreEmitDefect.SwitchCaseSelectorShape(nodeId, caseIndex, bothPresent) ->
-        "FUARAN142",
+        "FUARAN147",
         DefectSeverity.Error,
         (if bothPresent then
              sprintf
@@ -4088,7 +4088,7 @@ let private validateCore
             | Binding.State("", _) -> defects.Add(PreEmitDefect.UngroundedSwitchStateKey nodeIdStr)
             | _ -> ()
 
-            // FUARAN142 (Phase 1535): `match` XOR `when`, per case. The decoder
+            // FUARAN147 (Phase 1535): `match` XOR `when`, per case. The decoder
             // refuses both shapes on the wire; this is the same rule for a tree
             // authored in F#, which never meets the decoder.
             spec.Cases
@@ -4348,7 +4348,7 @@ let private validateCore
             then
                 defects.Add(PreEmitDefect.SwitchKeyNoWriter(switchNodeId, key))
 
-    // ── FUARAN143 — a visibility predicate nothing can make true (Phase 1535) ──
+    // ── FUARAN148 — a visibility predicate nothing can make true (Phase 1535) ──
     //
     // The silent HIDE. Same mechanism as FUARAN105 below and the same standing
     // down: it reasons from the ABSENCE of a write, so any opacity in the tree

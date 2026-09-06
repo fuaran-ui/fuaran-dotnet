@@ -5816,7 +5816,7 @@ let nodeVisible: Node<obj> =
                   // `false` for a bool, which HIDES. An author who means
                   // "visible unless something says otherwise" declares the
                   // default, exactly as `Modal.open` and `Disclosure.open`
-                  // already require. FUARAN143 reports the shape that omits it.
+                  // already require. FUARAN148 reports the shape that omits it.
                   visibleNode
                       "visible-until-dismissed"
                       "Shown until the reader dismisses it"

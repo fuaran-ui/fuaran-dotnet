@@ -25,7 +25,7 @@ module Fuaran.UI.Tests.ConditionalVisibility
 //     ordering test is the one that catches a host evaluating all the
 //     predicates before any of the matches.
 //
-//  4. THE VALIDATOR. FUARAN142's two shapes, and the two rules the phase
+//  4. THE VALIDATOR. FUARAN147's two shapes, and the two rules the phase
 //     changed elsewhere: FUARAN103 stands down on a when-only switch (a
 //     selector no case consults is not an unwritable selector), and FUARAN069
 //     ignores `visible` (deciding whether a control appears is not an
@@ -122,7 +122,7 @@ let private labelInBoolSlot: Binding<bool> =
 /// A query result the host never furnishes — the resolver's `NotResolved`.
 /// `Binding.State` cannot express this: its own rule resolves a default-less
 /// unwritten key to the slot default, which at `bool` is `false`. That is
-/// FUARAN143's subject, asserted at the end of this file.
+/// FUARAN148's subject, asserted at the end of this file.
 let private unfurnishedQuery: Binding<bool> =
     Binding.Query("flags.betaEnabled", (fun (o: obj) -> unbox<bool> o), None)
 
@@ -379,7 +379,7 @@ let tests =
 
           test "a case carrying NEITHER is never selected" {
               // Unreachable from the wire (the decoder refuses it) and reported
-              // pre-emit as FUARAN142, but a tree built in-process can hold one
+              // pre-emit as FUARAN147, but a tree built in-process can hold one
               // and the renderer is total by signature.
               let cases: SwitchCase<obj> list =
                   [ { Match = None
@@ -393,7 +393,7 @@ let tests =
 
           // ── 4. The validator ───────────────────────────────────────────────
 
-          test "FUARAN142 reports a case carrying both match and when" {
+          test "FUARAN147 reports a case carrying both match and when" {
               let n =
                   { leaf "sw" with
                       Kind =
@@ -408,10 +408,10 @@ let tests =
 
               let codes = codesOf n
 
-              Expect.contains codes "FUARAN142" "both is a shape defect"
+              Expect.contains codes "FUARAN147" "both is a shape defect"
           }
 
-          test "FUARAN142 reports a case carrying neither" {
+          test "FUARAN147 reports a case carrying neither" {
               let n =
                   { leaf "sw" with
                       Kind =
@@ -426,10 +426,10 @@ let tests =
 
               let codes = codesOf n
 
-              Expect.contains codes "FUARAN142" "neither is a shape defect"
+              Expect.contains codes "FUARAN147" "neither is a shape defect"
           }
 
-          test "FUARAN142 is silent on a well-formed mixed switch" {
+          test "FUARAN147 is silent on a well-formed mixed switch" {
               let n =
                   { leaf "sw" with
                       Kind =
@@ -447,7 +447,7 @@ let tests =
 
               let codes = codesOf n
 
-              Expect.isFalse (List.contains "FUARAN142" codes) "one of the two per case is the whole rule"
+              Expect.isFalse (List.contains "FUARAN147" codes) "one of the two per case is the whole rule"
           }
 
           test "FUARAN082 does not fold two PREDICATE cases into a duplicate" {
@@ -540,7 +540,7 @@ let tests =
               Expect.contains withVisible "FUARAN069" "and `visible` neither rescues it nor is mistaken for a writer"
           }
 
-          test "FUARAN143 reports a visibility predicate nothing in the tree can make true" {
+          test "FUARAN148 reports a visibility predicate nothing in the tree can make true" {
               // The SILENT HIDE, and the reason this code exists at all.
               // `visible` is an ordinary `Binding<bool>`, so it follows the
               // shared `Binding.State` rule: a default-less key nothing has
@@ -559,10 +559,10 @@ let tests =
                   (Some(BindingResolver.Resolved false))
                   "the hazard: it resolves FALSE rather than failing to resolve"
 
-              Expect.contains (codesOf n) "FUARAN143" "and the author is told"
+              Expect.contains (codesOf n) "FUARAN148" "and the author is told"
           }
 
-          test "…and FUARAN143 is silent once the default is declared" {
+          test "…and FUARAN148 is silent once the default is declared" {
               // One character of authoring is the whole remedy, in both
               // directions: `Some true` is "visible unless something says
               // otherwise", `Some false` a deliberate start-hidden. Neither is a
@@ -573,11 +573,11 @@ let tests =
                           Visible = Some(Binding.State("nobody.writes.this", Some declared)) }
 
                   Expect.isFalse
-                      (List.contains "FUARAN143" (codesOf n))
+                      (List.contains "FUARAN148" (codesOf n))
                       (sprintf "a declared default of %b is an authored decision, not a defect" declared)
           }
 
-          test "…and FUARAN143 is silent when something DOES write the key" {
+          test "…and FUARAN148 is silent when something DOES write the key" {
               let banner =
                   { leaf "banner" with
                       Visible = Some(Binding.State("banner.shown", None)) }
@@ -601,5 +601,5 @@ let tests =
                                 KeepTogether = false
                                 BreakBefore = false } }
 
-              Expect.isFalse (List.contains "FUARAN143" (codesOf tree)) "the key has a writer"
+              Expect.isFalse (List.contains "FUARAN148" (codesOf tree)) "the key has a writer"
           } ]
