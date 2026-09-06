@@ -12,6 +12,12 @@ module Fuaran.UI.Tests.CompressionTests
 //       `DeflateStream` decodes our output, and our inflater decodes the
 //       BCL's — both directions, proving the streams are real RFC 1951 and
 //       exercising the dynamic-Huffman decode path a foreign producer emits.
+//    4. A foreign DYNAMIC-Huffman stream carried as DATA. Property 3 covers the
+//       same block type and cannot cover it everywhere — `System.IO.Compression`
+//       does not transpile, so it is `#if !FABLE_COMPILER` and the browser's
+//       inflater was certified on the dynamic path nowhere. A committed stream
+//       needs no compression library on either pipeline; the same bytes are
+//       asserted under Node by `tests/fable-laws/Laws.fs`.
 // ============================================================================
 
 open System
@@ -42,6 +48,49 @@ let private corpus: (string * byte[]) list =
       )
       "incompressible", rngBytes 1234 2048
       "window spill", rngBytes 99 40000 ]
+
+/// Hex → bytes. Deliberately NOT `Base64Url.decode`, though this module ships one: the
+/// fixture below is the INPUT to the unit under test, and decoding it through another
+/// codec from the same module would let a defect there present as a deflate failure.
+let private ofHex (hex: string) : byte[] =
+    let digit (c: char) : int =
+        if c >= '0' && c <= '9' then int c - int '0'
+        elif c >= 'A' && c <= 'F' then 10 + int c - int 'A'
+        else 10 + int c - int 'a'
+
+    Array.init (hex.Length / 2) (fun i -> byte ((digit hex[i * 2] <<< 4) ||| digit hex[i * 2 + 1]))
+
+/// The bytes the foreign fixture decodes to — a teleport-shaped envelope, chosen because
+/// it is what a real share link carries.
+let private foreignDynamicPayload =
+    Utf8.encode (
+        """{"v":1,"kind":"teleport","tree":{"id":"root","kind":"Stack","""
+        + """"children":[{"id":"c0","kind":"Text","text":"hello teleport"},"""
+        + """{"id":"c1","kind":"Text","text":"dynamic huffman"},"""
+        + """{"id":"c2","kind":"Button","label":"resume"}]},"""
+        + """"state":{"count":42,"tone":"Brand","open":true}}"""
+    )
+
+/// A raw-DEFLATE stream (RFC 1951, no zlib/gzip wrapper) of `foreignDynamicPayload`,
+/// emitted by a foreign deflater as ONE final DYNAMIC-Huffman block.
+///
+/// Regenerate with (Python 3, standard library only):
+///
+///     import zlib
+///     c = zlib.compressobj(9, zlib.DEFLATED, -15)          # -15 = raw, no wrapper
+///     raw = c.compress(payload) + c.flush()
+///     assert (raw[0] >> 1) & 3 == 2                        # dynamic block
+///     print(raw.hex().upper())
+///
+/// The block-type assertion above is also a test here, so a regenerated fixture that
+/// stopped being dynamic fails loudly instead of quietly covering nothing.
+let private foreignDynamicStream =
+    ofHex (
+        "758FB10EC2300C447FA5F29C81564C19F905D81043485D356A6A57A9834055FE9DA42A9485C9BAD3BDD3798107E85AC1"
+        + "E0A8050D821E270E020A2420825EC0153F30176F4B9DC5D8214BDB3BDF0624D0D72D670F7BEA82CFB5A71C0D3D7ACFD5"
+        + "B73FA90F51FF23DA1799D1D9AA8F5D371AFA419A1D394511A6ACBDB9A32F4B718E2342BA2505B318597FB01C29571E9B"
+        + "5CCE84850B26F30A782AF325444CE90D"
+    )
 
 #if !FABLE_COMPILER
 let private bclInflate (data: byte[]) : byte[] =
@@ -157,6 +206,36 @@ let tests =
                         // seed above is pinned to a failing input.
                         failtest "expected Malformed for the pinned garbage input"
                     | Error e -> failtestf "expected Malformed, got %A" e
+                }
+
+                test "inflates a foreign DYNAMIC-Huffman stream carried as data" {
+                    // The BCL conformance test below covers the same block type, and could not
+                    // cover it everywhere: it is `#if !FABLE_COMPILER`, because
+                    // `System.IO.Compression` does not transpile. So the block type this module's
+                    // own `compress` NEVER emits (it is fixed-Huffman by design) and every
+                    // standard deflate library ALWAYS emits was certified on this pipeline only —
+                    // and a Fable-only defect in the dynamic table read made every foreign bundle
+                    // undecodable in a browser while this file stayed green.
+                    //
+                    // Carrying the stream as DATA is what makes the same assertion runnable on a
+                    // pipeline with no compression library at all. `tests/fable-laws/Laws.fs`
+                    // holds the identical bytes and asserts the identical result under Node; test
+                    // projects cannot reference each other, so the fixture is copied rather than
+                    // shared. Keep the two in step.
+                    match Deflate.inflate (foreignDynamicPayload.Length + 64) foreignDynamicStream with
+                    | Ok back -> Expect.equal back foreignDynamicPayload "foreign dynamic-Huffman stream"
+                    | Error e -> failtestf "inflate of the foreign dynamic stream failed: %A" e
+                }
+
+                test "the foreign fixture really is a dynamic-Huffman block" {
+                    // Without this the test above would keep passing if the fixture were ever
+                    // regenerated by a deflater that chose a fixed or stored block — asserting
+                    // nothing about the path it exists to cover. RFC 1951 §3.2.3: the first byte's
+                    // bit 0 is BFINAL and bits 1-2 are BTYPE, LSB-first; BTYPE = 10b = 2 is
+                    // "compressed with dynamic Huffman codes".
+                    let header = int foreignDynamicStream[0]
+                    Expect.equal (header &&& 1) 1 "BFINAL is set — one block for the whole stream"
+                    Expect.equal ((header >>> 1) &&& 3) 2 "BTYPE is 2 (dynamic Huffman)"
                 }
 
 #if !FABLE_COMPILER

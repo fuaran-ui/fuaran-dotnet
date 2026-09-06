@@ -630,15 +630,32 @@ module Deflate =
     let private readDynamicTables (br: BitReader) : Huffman * Huffman =
         let hlit = br.ReadBits 5 + 257
         let hdist = br.ReadBits 5 + 1
-        let hclen = br.ReadBits 4 + 4
+
+        // HCLEN is read into a MUTABLE counter that the loop below counts DOWN,
+        // rather than bound with `let` and consumed once by `for i in 0 .. hclen - 1`.
+        // That reads identically here and is WRONG under Fable: a `let` used exactly
+        // once is inlined at its use site, and the emitted JavaScript `for` loop
+        // re-evaluates its bound on EVERY iteration — so the inlined `br.ReadBits 4`
+        // ran once per code length, eating four more stream bits each time. Every
+        // table after it then decoded from the wrong bit offset and the block died as
+        // an "over-subscribed Huffman code": .NET green, browser broken, on the one
+        // block type this module's own `compress` never emits (it is fixed-Huffman)
+        // and every standard deflate library always does. A mutable that is mutated
+        // cannot be inlined, and a counted-down bound cannot be re-read.
+        // `tests/fable-laws/Laws.fs` carries the foreign dynamic-Huffman stream that
+        // refutes the old shape.
+        let mutable clRemaining = br.ReadBits 4 + 4
 
         if hlit > 286 || hdist > 30 then
             raise (InflateFail(InflateError.Malformed "dynamic block header out of range"))
 
         let clLengths = Array.create 19 0
+        let mutable clIndex = 0
 
-        for i in 0 .. hclen - 1 do
-            clLengths[clOrder[i]] <- br.ReadBits 3
+        while clRemaining > 0 do
+            clLengths[clOrder[clIndex]] <- br.ReadBits 3
+            clIndex <- clIndex + 1
+            clRemaining <- clRemaining - 1
 
         let clHuff = buildHuffman clLengths
         let total = hlit + hdist

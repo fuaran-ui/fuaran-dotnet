@@ -5032,6 +5032,11 @@ field with a `None` default, and a behaviour change on paths that were previousl
 byte moves and no shared-corpus fixture changes. Existing call sites compile unchanged; what changes
 is what the write path DOES with a record it would previously have swallowed or admitted.
 
+**One exception, recorded under "The memo tier" below:** `Fuaran.UI.Memo`'s
+`Derivation<'Msg>.StructuralKey` becomes `string option`, which does require consumer source edits.
+It ships in the standing **0.77.0** draft, not the 0.76.0 this entry was authored against — see
+"Version note" at the end of this entry.
+
 ### What was wrong
 
 The write path was read-then-append on every host. `applyAndPersist` read `LatestSequence`, added
@@ -5179,16 +5184,13 @@ mapping is a total match the compiler checks — which this repo cannot make, an
 [`docs/CORE-API-ASKS.md`](docs/CORE-API-ASKS.md) beside the workaround that needs it rather than left
 implied. `Verify.segment` / `Verify.chain` still project an unrecognised reason onto `HashMismatch`,
 because `VerificationError` is a shipped closed DU; a caller needing the distinction calls `classify`.
-# STABILITY.md entry — Phase 1525, DAG tier (write-path integrity)
 
-Append to the `### Fuaran.UI.OpStream.Dag.*` section of `fuaran-dotnet/STABILITY.md`
-(after the existing bullet list, before `### Fuaran.UI.OpStream.Dag.Inspect`).
-Rides the standing **0.76.0** draft — every item is additive or a refusal of input
-that was previously accepted wrongly.
+### The DAG tier — `Fuaran.UI.OpStream.Dag.*`
 
----
+Every item below is additive in surface, or a refusal of input the sinks previously accepted
+wrongly.
 
-- **Phase 1525 — the DAG sinks VERIFY ON WRITE, and two shapes that used to be
+- **The DAG sinks VERIFY ON WRITE, and two shapes that used to be
   accepted are now refused by name.** Both are additive in surface and
   behavioural in effect, and both refuse input the sinks previously admitted
   quietly, so a host that was relying on either was relying on a defect.
@@ -5293,16 +5295,9 @@ that was previously accepted wrongly.
   moved. `DagMerge` no longer calls `sink.Lca` at all — it computes the LCA from
   the records it has already loaded, over the same stream-scoped parent relation,
   removing a second full-stream read per merge.
-# STABILITY.md entry text — Phase 1525, Abstractions-and-Memo slice
 
-`STABILITY.md` is a shared nexus file another session is also appending to, so this slice did not
-edit it. Below is the exact text it would have appended, with the section each block belongs under.
+### The abstractions tier — `Fuaran.UI.OpStream.Abstractions`
 
----
-
-## Append under `### Fuaran.UI.OpStream.Abstractions`
-
-```markdown
 - **Segment attestation: `SignedAt` is bound at the STORED resolution — whole seconds (Phase 1525,
   behavioural).** The claim payload has always bound `signedAt` as unix seconds, but the
   `SegmentAttestation` record kept the signer's full-precision clock reading, so the two disagreed
@@ -5368,11 +5363,9 @@ edit it. Below is the exact text it would have appended, with the section each b
   (`sha256(canonicalTree)` alone) rather than the position-bound `HashChain.snapshotHash`, and
   claimed a package dependency set (`FSharp.Core` + `Fuaran.UI` only) the package has not had since
   Phase 406/465. Both corrected in place.
-```
 
-## Append under `### Fuaran.UI.Memo`
+### The memo tier — `Fuaran.UI.Memo`
 
-```markdown
 - **A fragment application whose canonical encoding is INCOMPLETE is never keyed or stored (Phase
   1525, BREAKING on `Derivation<'Msg>`).** `CanonicalJson` stands a sentinel in for what it cannot
   represent — `"<closure>"` for a function-typed payload (an `Action` callback, a `Column.Value`
@@ -5403,24 +5396,25 @@ edit it. Below is the exact text it would have appended, with the section each b
   under such a key. The detection is deliberately conservative — it looks for the sentinel as a
   whole JSON string token, so a fragment whose own text content is literally `<closure>` is treated
   as unrepresentable; that direction of error costs a cache entry, the other costs correctness.
-```
 
----
+### Version note — this ships in 0.77.0, not the 0.76.0 it was authored against
 
-## Version note — this ADVANCES the draft to 0.77.0
+**Everything above is additive except one change**, and that one was authored expecting to advance
+the then-standing 0.76.0 draft: `Derivation<'Msg>.StructuralKey` changing from `string` to `string
+option` requires consumer source-code edits to compile.
 
-Everything else fuaran#1525 carries is additive and rode the standing untagged 0.76.0 draft. This
-does not: `Derivation<'Msg>.StructuralKey` changing from `string` to `string option` requires
-consumer source-code edits to compile, which the [Semver](#semver) section above classifies as the
-breaking class. The draft-slot rule is that a change of a HIGHER class than the draft already carries
-advances it rather than riding it — a version number that says "additive" over a breaking change is
-false, and it is the number a consumer reads to decide what adopting it costs.
+**The draft moved twice while this was in flight, and the destination is 0.77.0 either way.** `v0.76.0`
+was tagged, so 0.76.0 is a released slot that gains nothing; a patch took 0.76.1, and a record widening
+(`FS0764` for a full-literal constructor) then advanced the draft to 0.77.0, which is where the
+standing draft sits — untagged, and pinned by no public-path consumer.
 
-So `<Version>` moves `0.76.0` → `0.77.0` in `Directory.Build.props`, and every entry recorded against
-0.76.0 in this document ships on 0.77.0. v0.75.0 remains the newest tag; 0.76.0 was never tagged and
-no public-path consumer pinned it, so nothing is stranded by the move.
-
----
+**It RIDES that draft rather than advancing again.** `FS0764` and a narrowed field type are one class
+by the [Semver](#semver) section above: both are pre-1.0 MINOR, and both say the same thing to a
+consumer — adopting this slot costs source edits. A narrowed type reaches readers as well as
+full-literal constructors, which is a wider blast radius inside the class, not a higher one; and
+0.78.0 would tell a consumer already paying for 0.77.0's widening that there is a second, separate
+price to pay. Read the heading of this entry as the slot it was authored against and this section as
+where it actually shipped, exactly as the `ApplyErrorCode.LimitExceeded` entry below reads.
 
 ---
 
@@ -5474,8 +5468,153 @@ unchecked.
 **`Fuaran.UI.Ops`, `fuaran-go`'s `ops` and `fuaran-rs`'s `ops` emit the same `LimitExceeded` token**,
 so a client recovering from the refusal need not know which engine refused.
 
-> **Slot note (fuaran#1525).** The entry above was authored against the 0.76.0 draft and the draft
-> has since moved: `<Version>` is `0.77.0`, because fuaran#1525 carries one change of a higher class
-> than a DU widening (`Fuaran.UI.Memo`'s `Derivation<'Msg'>.StructuralKey` becomes `string option`,
-> which requires consumer source edits). Nothing about the change recorded above moved — only the
-> number it ships on. See the version note in the fuaran#1525 entry.
+---
+
+## Recorded fix — 0.76.1, `Deflate.inflate` on dynamic-Huffman blocks under Fable
+
+**No surface moved and no `.NET` behaviour changed.** `Deflate.inflate`'s signature, its
+`InflateError` cases, its error messages and every byte it decodes on this pipeline are exactly what
+0.76.0 shipped. By the [Semver](#semver) section's own definitions that is a **patch**, and it takes
+0.76.1 rather than riding 0.76.0 because `v0.76.0` is tagged — the slot is released, not a draft.
+
+**The 0.76.1 slot also carries the `ApplyErrorCode.LimitExceeded` addition recorded directly above.**
+That entry was authored against the 0.76.0 draft and states, correctly at the time, that `v0.75.0`
+was the newest tag; `v0.76.0` was cut while it was in flight, and the two landed in the same
+integration. Nothing about the change itself moves — it is still one case on a closed union — but the
+slot it ships in is 0.76.1, because 0.76.0 is now released and a released slot does not gain a DU
+case. Read the heading above as the change's authored slot and this line as where it actually shipped.
+
+**Why a released-package version at all, for a change with no contract in it.** `Fuaran.UI` ships its
+`.fs` **sources** in the package, for Fable consumers to transpile. The delivered content of the
+package therefore moved, and the consequence for a consumer is not cosmetic: a browser build restored
+from 0.76.0 cannot read a raw-DEFLATE stream produced by any standard deflate library, which is every
+stream it will ever receive from another host.
+
+**What was wrong.** `readDynamicTables` bound HCLEN — the count of code-length code lengths — with a
+`let` consumed exactly once, by a `for i in 0 .. hclen - 1` loop. Fable inlines a single-use `let` at
+its use site, and the emitted JavaScript `for` re-evaluates its bound on **every** iteration, so the
+inlined `br.ReadBits 4` ran once per code length and ate four further stream bits each time. Every
+table read after it decoded from the wrong bit offset, and the block died as
+`Malformed "over-subscribed Huffman code"`.
+
+**Why it survived to a release.** The defect is reachable only through the DYNAMIC block type, and
+this module's own `compress` emits fixed-Huffman blocks exclusively (deliberately — determinism
+outranks a few percent of ratio). So a round trip through our own deflater never touched it, on either
+pipeline. The one test that did — `CompressionTests.fs`'s BCL conformance cross-check — reaches the
+dynamic path through `System.IO.Compression`, which does not transpile, so it sits behind
+`#if !FABLE_COMPILER`. The block type every foreign producer always emits was certified on the one
+pipeline that never receives foreign bundles.
+
+**What now certifies it.** A raw-DEFLATE stream emitted by a foreign deflater is committed as **data**
+— which needs no compression library on either pipeline — and inflated on both: by
+`Fuaran.UI.Tests/CompressionTests.fs` on .NET, and by `tests/fable-laws/Laws.fs` under Node, where the
+two runs' output is compared byte for byte. A companion assertion pins the fixture's first byte to
+`BFINAL=1, BTYPE=2`, so a regenerated fixture that stopped being a dynamic block fails rather than
+quietly covering nothing. The refutation was observed before the fix: the Fable leg reported
+`DEFLATE cases=3 failed=2` while .NET reported `failed=0`.
+
+---
+
+## Recorded change — 0.76.1, the `fuaran-renderer` Trusted Types policy (fuaran#1546)
+
+**Additive, and it rides the standing draft rather than advancing it.** `v0.76.0` is the newest tag,
+so the slot above it is an untagged, publicly-unpinned draft, and it already carries an additive DU
+case (the `ApplyErrorCode.LimitExceeded` entry directly above). This change is of no higher class
+than that, so the number does not move.
+
+**It ships in 0.77.0, not the 0.76.1 it was authored against.** The entry below advanced the draft to
+0.77.0 for a record widening while this was in flight, and the two landed in the same integration.
+Nothing about this change moves: it is still additive, and it rides the standing draft either way.
+Read the heading as the change's authored slot and this line as where it actually shipped, exactly as
+the `ApplyErrorCode.LimitExceeded` entry above reads.
+
+**New public surface, `Fuaran.UI.Renderer`.** The module `Fuaran.UI.Renderer.TrustedTypes`:
+
+- `policyName : string` (`[<Literal>]`, value `"fuaran-renderer"`)
+- `createHtml : string -> string` — the policy's `createHTML` body, which is `Sanitize.sanitizeMarkdownHtml`
+- `html : string -> string` — the value every raw-HTML sink in the client renderer now takes
+
+`policyName` is a **configuration** surface, not merely a code one: a host writes that exact string
+into its `Content-Security-Policy: trusted-types` directive, so changing it stops the host's page
+rendering rather than stopping its build. Treat it as breaking on the same axis as a wire string.
+
+**Behaviour change, `Fuaran.UI.Renderer.Core`.** `Sanitize.sanitizeMarkdownHtml` now matches a
+dangerous element name only at a **tag-name boundary** (end of input, whitespace, `/` or `>`), where
+it previously matched the bare prefix. `<metadata>` and `<linearGradient>` therefore survive, where
+before the first lost its opening tag. This is a narrowing of false positives and admits no real
+element: a tag name has to be delimited for a parser to read it as that element at all, and every
+spelling of `<meta>` / `<link>` / `<script>` / `<iframe>` is still refused. A consumer relying on
+`<metadata>` being stripped would see a change; nothing in this repo did, and the sweep's documented
+job never included it. The TypeScript tier's mirror carries the same fix in the same change-set.
+
+**Why the fix belongs to this change.** The policy's floor now runs over the renderer's SVG payloads
+as well as its markdown, and the drawing builder's provenance `<metadata>` element (Phase 643) was
+the one payload the bare-prefix match rewrote. Routing the seams without it would have shipped a
+figure whose embedded document no longer parses.
+
+**No wire-format impact and no consumer edit required.** No spec record, `NodeKind`, `Binding`,
+`Action` or `TreeOp` moved; the renderer's emitted bytes are unchanged, on both pipelines and on the
+server renderer, which is what keeps SSR output and client hydration byte-identical.
+`Fuaran.UI.Tests/TrustedTypesTests.fs` pins that invariance against payloads built by the real
+emitters, and enumerates the sinks from the sources so a new one is red on the commit that adds it.
+The contract is [`SANITIZATION.md`](SANITIZATION.md) "Trusted Types (Phase 1546)".
+---
+
+## Recorded change — 0.77.0, text provenance on the agent snapshot (fuaran#1547)
+
+**A record widening in `Fuaran.UI.AiTools` (minor pre-1.0, `FS0764` for a full-literal
+constructor), plus a strictly additive block in the rendered response.** `PropEntry` gains
+`Provenance: TextProvenance option`, and `TextProvenance` is a new type in that package's `Types`
+module. It advances rather than riding the 0.76.1 draft because that slot carries a patch and this
+is a higher class; a number that says "patch" over a record widening is false.
+
+```fsharp
+// Fuaran.UI.AiTools.Types
+type TextProvenance =
+    | Literal
+    | I18n of key: string
+    | Bound of source: BindingSource * expression: string
+
+module TextProvenance =
+    val isUntrusted: TextProvenance -> bool
+
+// PropEntry (field added)
+Provenance: TextProvenance option
+```
+
+**What it is for.** The tool surface already tokenised a BINDING's source, so an agent could tell a
+declared value from a resolved one. Text carried no such mark: a heading authored as a literal and
+a heading resolved out of a query result reached the response the same way. Text bound to data is
+attacker-influenced content, and an agent that drives an interface also reads it, which is prompt
+injection's entry into the agent seam. The mark says what the value is; the consumer decides how
+far to trust it. That is the same move the closure sentinel makes for functions.
+
+**`untrusted` is derived, not stored.** `TextProvenance.isUntrusted` is true for `Bound` text whose
+source is `Query`, `Selection`, `State` or `Computed`, and false for literal text, catalogue text,
+and text bound from `Static` or `Filter`. Deriving it is what lets a consumer act on one boolean
+rather than carry a table, and it cannot fall out of step with the source token because there is
+only one fact.
+
+**No second vocabulary was minted.** `Bound` carries the very `BindingSource` and wire expression
+`BindingProbe.identify` already produces for the binding slots, so an agent reading a response
+reads one vocabulary across both blocks.
+
+**The JSON is additive, deliberately.** `ResponseRender.renderNodeState` writes a `textProvenance`
+object as a SIBLING of `props`, present whenever `props` is (an empty object when the node carries
+no text, because "looked and found none" is not the same statement as a missing key). Nothing
+inside `props` moves: a text prop's value and type hint are the bytes it produced before the mark
+existed, because `textEntry` is defined as `valueEntry` plus the mark. A consumer that ignores the
+new key sees the response it saw before.
+
+**What it does NOT do, stated because the limit is the design.** It classifies text; it never
+resolves it. A bound heading's resolved string stays behind the renderer, since surfacing it here
+would ADD the reading surface the mark exists to warn about. And it derives `untrusted` for text
+only: binding slots already carry `source`, which a consumer classifies for itself.
+
+**`fuaran-ts` moves in the same change-set.** `@fuaran-ui/ai-tools` gains the same three provenance
+tokens and the same four untrusting sources on its `NodeIntrospection.text` array, and
+`@fuaran-ui/mcp` exposes them through `fuaran_inspect`, so an agent driving the interface over the
+protocol sees the tokens an in-process one sees. The two tiers enumerate the text slots each
+surfaces: the F# tier marks the text fields its prop table already reports, and the TypeScript tier
+reports every top-level `TextSource` field on the spec, which is the wider set. The provenance
+VOCABULARY is identical; the slot SET is each tier's own.
