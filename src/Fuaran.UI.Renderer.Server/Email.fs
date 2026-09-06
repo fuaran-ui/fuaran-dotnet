@@ -648,16 +648,16 @@ and private renderKind
                     | None -> id
 
                 BindingResolver.tryResolve ctx.Sources (Binding.Selection(nodeId, projector, dv |> Option.map box, fld))
-            | on -> BindingResolver.tryResolve ctx.Sources on |> Option.map box
+            // Phase 1535 — the scalar resolver, matching both renderers.
+            | on -> BindingResolver.tryResolveScalarText ctx.Sources on |> Option.map box
 
+        // Phase 1535 — the one shared case-selection definition, so the email
+        // projection cannot drift from what the page renders.
         let matched =
-            match currentValue with
-            | Some v ->
-                let valueStr = if isNull v then "" else string v
+            let selector =
+                currentValue |> Option.map (fun v -> if isNull v then "" else string v)
 
-                spec.Cases
-                |> List.tryPick (fun c -> if c.Match = valueStr then Some c.Child else None)
-            | None -> None
+            BindingResolver.selectSwitchCase ctx.Sources selector spec.Cases
 
         renderNode opts (depth + 1) ctx (matched |> Option.defaultValue spec.Default)
 

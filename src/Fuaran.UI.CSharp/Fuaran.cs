@@ -52,7 +52,9 @@ public static partial class Fuaran
     // empty-state / default-style shapes since the swap. `Tooltip = None` is
     // the trait's absence (Phase 1112) — attached afterwards, if at all, by
     // `FuaranNode.WithTooltip`, because a hint is a decoration on a built node
-    // rather than a parameter of building one.
+    // rather than a parameter of building one. `Visible = None` (Phase 1535)
+    // follows the same rule and the same reasoning — attached, if at all, by
+    // `FuaranNode.WithVisible`.
     internal static FuaranNode BuildBare(string id, FsGen.NodeKind<object> kind) =>
         new(new FsNode(
             id,
@@ -62,7 +64,8 @@ public static partial class Fuaran
             Fs.None<FsGen.Motion>(),
             Fs.None<FsGen.StateBehaviour<object>>(),
             Fs.None<FsGen.SemanticStyle>(),
-            Fs.None<FsGen.TextSource>()));
+            Fs.None<FsGen.TextSource>(),
+            Fs.None<FsGen.Binding<bool>>()));
 
     // ─── Layout ─────────────────────────────────────────────────────────────
 

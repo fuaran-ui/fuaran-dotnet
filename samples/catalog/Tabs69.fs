@@ -106,7 +106,8 @@ let private detailTab: Node<Msg> =
       Accessibility = Option.None
       Motion = Defaults.Motion.none
       ExtraAttributes = Option.None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 let private auditTab: Node<Msg> =
     Fuaran.markdown "tabs-69-audit-body" "Audit pane content (disabled)."

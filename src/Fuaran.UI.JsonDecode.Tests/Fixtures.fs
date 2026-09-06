@@ -57,7 +57,8 @@ let private node (id: string) (kind: NodeKind<obj>) (accessibility: Accessibilit
       Accessibility = accessibility
       Motion = None
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 /// Phase 695 — a sample child reused in two slots of one composite fixture needs
 /// a distinct id in each: NodeIds are unique WITHIN a tree (`WIRE_FORMAT.md` §8),
@@ -5520,7 +5521,8 @@ let switchOnSelection: Node<obj> =
                                       Some "status"
                                   )
                               Cases =
-                                  [ { Match = "critical"
+                                  [ { Match = Some "critical"
+                                      When = None
                                       Child =
                                         node
                                             "ward-critical"
@@ -5570,19 +5572,22 @@ let switchAutoAdvance: Node<obj> =
                 On = Binding.State("slide", None)
                 AutoAdvanceMs = Some 5000
                 Cases =
-                    [ { Match = "one"
+                    [ { Match = Some "one"
+                        When = None
                         Child =
                           node
                               "switch-carousel-panel-one"
                               (NodeKind.Markdown({ Text = TextSource.Literal "Built for the long term" }))
                               None }
-                      { Match = "two"
+                      { Match = Some "two"
+                        When = None
                         Child =
                           node
                               "switch-carousel-panel-two"
                               (NodeKind.Markdown({ Text = TextSource.Literal "Typed all the way down" }))
                               None }
-                      { Match = "three"
+                      { Match = Some "three"
+                        When = None
                         Child =
                           node
                               "switch-carousel-panel-three"
@@ -5602,10 +5607,12 @@ let switchBasic: Node<obj> =
             { Defaults.switch with
                 On = Binding.State("view", None)
                 Cases =
-                    [ { Match = "details"
+                    [ { Match = Some "details"
+                        When = None
                         Child =
                           node "switch-details" (NodeKind.Markdown({ Text = TextSource.Literal "Details view" })) None }
-                      { Match = "summary"
+                      { Match = Some "summary"
+                        When = None
                         Child =
                           node "switch-summary" (NodeKind.Markdown({ Text = TextSource.Literal "Summary view" })) None } ]
                 Default =

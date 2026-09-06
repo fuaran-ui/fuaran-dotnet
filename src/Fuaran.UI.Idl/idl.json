@@ -3377,6 +3377,21 @@
         "args": [],
         "name": "TextSource"
       }
+    },
+    {
+      "name": "visible",
+      "optionality": {
+        "$type": "optional"
+      },
+      "type": {
+        "$type": "union",
+        "args": [
+          {
+            "$type": "bool"
+          }
+        ],
+        "name": "Binding"
+      }
     }
   ],
   "ops": [
@@ -4664,10 +4679,25 @@
         {
           "name": "match",
           "optionality": {
-            "$type": "required"
+            "$type": "optional"
           },
           "type": {
             "$type": "str"
+          }
+        },
+        {
+          "name": "when",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "union",
+            "args": [
+              {
+                "$type": "bool"
+              }
+            ],
+            "name": "Binding"
           }
         }
       ],

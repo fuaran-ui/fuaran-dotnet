@@ -58,7 +58,8 @@ let private mkNode (id: string) (kind: NodeKind<obj>) : Node<obj> =
       Accessibility = None
       Motion = None
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 let private benignBox (id: string) : Node<obj> =
     mkNode
@@ -202,7 +203,8 @@ let private switchOverScopedKey (stateKey: string) : Node<obj> =
             { Fuaran.UI.Defaults.switch with
                 On = Binding.State(stateKey, None)
                 Cases =
-                    [ { Match = "boom"
+                    [ { Match = Some "boom"
+                        When = None
                         Child = mountNode "res-boom-mount" throwingScope None } ]
                 Default = benignBox "res-default" })
 

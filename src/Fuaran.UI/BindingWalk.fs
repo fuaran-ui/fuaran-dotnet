@@ -966,6 +966,13 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         // that.
         record inUses readerId (usesOfTextOpt n.Tooltip)
 
+        // Fuaran-UI Phase 1535 — the node-level `visible` predicate, for the same
+        // reason the tooltip is walked: the renderer resolves it against the same
+        // sources, so a state key that ONLY a visibility predicate reads would
+        // otherwise look unread. It is recorded as a READ and never as a write —
+        // deciding whether a node appears writes nothing.
+        record inUses readerId (usesOfBindingOpt n.Visible)
+
         // A `StateBehaviour` branch is a wire-encoded child node rendered in
         // place of the body — a real reader the walk never descended into.
         match n.State with
@@ -1245,11 +1252,29 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             | NodeKind.Switch spec ->
                 record inUses readerId (usesOfBinding spec.On)
 
+                // Fuaran-UI Phase 1535 — a PREDICATE case's `when` binding is a
+                // read on exactly the same footing as the selector: it decides
+                // which branch renders, so a state key only a `when` reads is
+                // read.
+                record inUses readerId (spec.Cases |> List.collect (fun c -> usesOfBindingOpt c.When))
+
                 // The selector, recorded EXPLICITLY for FUARAN103: a Switch's
                 // accessibility slots are State-bindable too, so a reader-tagged
                 // State use on this node does not identify the branch selector.
+                //
+                // Fuaran-UI Phase 1535 — and recorded ONLY when some case
+                // actually consults it. A switch whose cases are all predicates
+                // never reads `on` at all, so "nothing writes the key this
+                // switch selects on" is not a defect there: it is a selector
+                // that is simply unused, and FUARAN103 reasons from the absence
+                // of a write to conclude one branch renders forever. That
+                // conclusion is false when the branch is chosen by predicate.
+                // The rule fires on a MIXED switch, which does still consult
+                // `on`.
+                let consultsSelector = spec.Cases |> List.exists (fun c -> c.Match.IsSome)
+
                 match spec.On with
-                | Binding.State(key, _) -> switchSelectors.Add(readerId, key)
+                | Binding.State(key, _) when consultsSelector -> switchSelectors.Add(readerId, key)
                 | _ -> ()
 
                 [], (spec.Cases |> List.map _.Child) @ [ spec.Default ]

@@ -26,7 +26,8 @@ let private cardFragment: ParamFragment<unit> =
                         Accessibility = None
                         Motion = None
                         ExtraAttributes = None
-                        Tooltip = None } ] }
+                        Tooltip = None
+                        Visible = None } ] }
 
     { Defaults.fragmentDecl with
         Name = "card"
@@ -110,7 +111,8 @@ let tests =
                     Accessibility = None
                     Motion = None
                     ExtraAttributes = None
-                    Tooltip = None }
+                    Tooltip = None
+                    Visible = None }
 
               let r =
                   FragmentApply.apply

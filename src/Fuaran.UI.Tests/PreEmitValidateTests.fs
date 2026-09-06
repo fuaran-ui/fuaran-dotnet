@@ -110,7 +110,8 @@ let private switchReader (id: string) (key: string) : Node<Msg> =
         { Defaults.switch<Msg> with
             On = Binding.State(key, None)
             Cases =
-                [ { Match = "on"
+                [ { Match = Some "on"
+                    When = None
                     Child = markdown (id + "-on") "on" } ]
             Default = markdown (id + "-off") "off" }
 
@@ -215,6 +216,7 @@ let private seedingGrid (id: string) (key: string) : Node<Msg> =
       Accessibility = None
       ExtraAttributes = None
       Tooltip = None
+      Visible = None
       Motion = None }
 
 // ─── Phase 1075 fixtures — the seeding rule, FUARAN106 and FUARAN107 ───
@@ -232,6 +234,7 @@ let private gridWithSource (id: string) (source: Binding<Fuaran.Core.Row seq>) :
           Accessibility = None
           ExtraAttributes = None
           Tooltip = None
+          Visible = None
           Motion = None }
     | _ -> failwith "seedingGrid must produce a DataGrid"
 
@@ -371,7 +374,8 @@ let private sortGrid
       Accessibility = None
       Motion = Defaults.Motion.none
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 /// Phase 863 — a bound grid with the edit declarations under test. Columns are
 /// `(label, editable)`.
@@ -418,7 +422,8 @@ let private editGrid
       Accessibility = None
       Motion = Defaults.Motion.none
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 /// Phase 862 — a data-bound grid with the paging declarations under test and
 /// nothing else that could raise a defect (no columns, so no FUARAN077; a
@@ -456,7 +461,8 @@ let private pagedGrid
       Accessibility = None
       Motion = Defaults.Motion.none
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 // ─── Phase 727 fixtures — the accessibility family (FUARAN109/110/111) ───
 //
@@ -659,7 +665,8 @@ let private advancingSwitch
                 Cases =
                     matches
                     |> List.map (fun m ->
-                        { Match = m
+                        { Match = Some m
+                          When = None
                           Child = markdown (id + "-" + m) ("panel " + m) })
                 Default = markdown (id + "-default") "nothing selected"
                 AutoAdvanceMs = autoAdvanceMs }
@@ -668,7 +675,8 @@ let private advancingSwitch
       Motion = None
       State = None
       Style = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 /// A `Box` carrying the two Phase 1473 declarations, over whatever children the
 /// caller supplies — so one fixture puts the SAME declaration on a populated
@@ -696,6 +704,7 @@ let private breakBox
       Accessibility = None
       ExtraAttributes = None
       Tooltip = None
+      Visible = None
       Motion = None }
 
 // ─── Phase 1120 fixtures ─ FUARAN126 / FUARAN127, the tree's two row rules ──
@@ -751,6 +760,7 @@ let private repeatHeaderGrid (id: string) (columns: ColumnErased<Msg> list) : No
           Accessibility = None
           ExtraAttributes = None
           Tooltip = None
+          Visible = None
           Motion = None }
     | _ -> failwith "seedingGrid must produce a DataGrid"
 
@@ -789,6 +799,7 @@ let private exportableGrid (id: string) (source: Binding<Row seq>) (columns: Col
           Accessibility = None
           ExtraAttributes = None
           Tooltip = None
+          Visible = None
           Motion = None }
     | _ -> failwith "seedingGrid must produce a DataGrid"
 
@@ -1146,9 +1157,11 @@ let tests =
                       { Defaults.switch<Msg> with
                           On = Binding.State("view", None)
                           Cases =
-                              [ { Match = "a"
+                              [ { Match = Some "a"
+                                  When = None
                                   Child = markdown "c1" "one" }
-                                { Match = "a"
+                                { Match = Some "a"
+                                  When = None
                                   Child = markdown "c2" "two" } ]
                           Default = markdown "def" "none" }
 
@@ -1169,7 +1182,8 @@ let tests =
                       "sw"
                       { Defaults.switch<Msg> with
                           Cases =
-                              [ { Match = "details"
+                              [ { Match = Some "details"
+                                  When = None
                                   Child = markdown "c1" "one" } ]
                           Default = markdown "def" "none" }
 
@@ -1191,9 +1205,11 @@ let tests =
                       { Defaults.switch<Msg> with
                           On = Binding.State("view", None)
                           Cases =
-                              [ { Match = "details"
+                              [ { Match = Some "details"
+                                  When = None
                                   Child = markdown "c1" "one" }
-                                { Match = "summary"
+                                { Match = Some "summary"
+                                  When = None
                                   Child = markdown "c2" "two" } ]
                           Default = markdown "def" "none" }
 
@@ -1364,7 +1380,8 @@ let tests =
                       { Defaults.switch<Msg> with
                           On = Binding.Selection("no-such-grid", (fun (raw: obj) -> unbox (raw: obj)), None, None)
                           Cases =
-                              [ { Match = "on"
+                              [ { Match = Some "on"
+                                  When = None
                                   Child = markdown "sw-on" "on" } ]
                           Default = markdown "sw-off" "off" }
 
@@ -1584,7 +1601,8 @@ let tests =
                     Accessibility = None
                     Motion = Defaults.Motion.none
                     ExtraAttributes = None
-                    Tooltip = None }
+                    Tooltip = None
+                    Visible = None }
 
               let detail =
                   Fuaran.metric
@@ -4054,6 +4072,7 @@ let tests =
                               Accessibility = None
                               ExtraAttributes = None
                               Tooltip = None
+                              Visible = None
                               Motion = None } ]
                   | _ -> failwith "seedingGrid must produce a DataGrid"
 
@@ -4574,7 +4593,8 @@ let private transferGrid
       Motion = None
       State = None
       Style = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 let private board (grids: Node<Msg> list) : Node<Msg> = dashboard "board" grids
 

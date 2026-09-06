@@ -303,6 +303,20 @@ let private depthExceededElement (id: string) : ReactElement =
 let rec private renderNode (depth: int) (ctx: ServerRenderContext) (node: Node<obj>) : ReactElement =
     if depth > Fuaran.UI.WireLimits.MaxDepth then
         depthExceededElement node.Id
+    // Fuaran-UI Phase 1535 — CONDITIONAL PRESENCE. A resolved `false` on
+    // `node.Visible` emits NOTHING: no element, no placeholder, no comment
+    // marker and no `aria-hidden`. The rule is `BindingResolver.isNodeVisible`,
+    // the same call the client renderer makes against the same seeded sources,
+    // which is what makes hydration agree — the client's first render takes the
+    // identical decision, so the two trees have the same shape and React has
+    // nothing to reconcile.
+    //
+    // Absence, `NotResolved` and `Errored` all render (the rule's own doc
+    // comment carries the reasoning). The server has no `Warn` channel on this
+    // path, so the `Errored` warning is the client's alone; the RENDERING is
+    // identical either way, which is the property hydration depends on.
+    elif not (BindingResolver.isNodeVisible ctx.Sources node) then
+        Html.none
     else
         renderNodeCore depth ctx node
 
@@ -2064,16 +2078,22 @@ and private renderKind
                     | None -> id
 
                 BindingResolver.tryResolve ctx.Sources (Binding.Selection(nodeId, projector, dv |> Option.map box, fld))
-            | on -> BindingResolver.tryResolve ctx.Sources on |> Option.map box
+            // Fuaran-UI Phase 1535 — the SCALAR resolver, matching the client
+            // renderer line for line: `tryResolve`'s `Transform` arm is row-only
+            // and cannot serve a string slot, so a computed selector fell
+            // through to `Default` on both hosts. Every other binding case
+            // resolves exactly as before.
+            | on -> BindingResolver.tryResolveScalarText ctx.Sources on |> Option.map box
 
+        // Fuaran-UI Phase 1535 — first-match-wins over both kinds of case,
+        // through the one shared definition in `Renderer.Core`, so this renderer
+        // and the client renderer cannot drift on the order or on what a
+        // predicate that fails to resolve means.
         let matched =
-            match currentValue with
-            | Some v ->
-                let valueStr = if isNull v then "" else string v
+            let selector =
+                currentValue |> Option.map (fun v -> if isNull v then "" else string v)
 
-                spec.Cases
-                |> List.tryPick (fun c -> if c.Match = valueStr then Some c.Child else None)
-            | None -> None
+            BindingResolver.selectSwitchCase ctx.Sources selector spec.Cases
 
         match matched with
         | Some child -> renderNode (depth + 1) ctx child

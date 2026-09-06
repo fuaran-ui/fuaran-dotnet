@@ -114,7 +114,8 @@ let private mkStack (id: string) (kids: EqNode list) : EqNode =
           Accessibility = Option.None
           Motion = Option.None
           ExtraAttributes = Option.None
-          Tooltip = None }
+          Tooltip = None
+          Visible = None }
 
 let private mkLeaf (id: string) : EqNode =
     wrap
@@ -125,7 +126,8 @@ let private mkLeaf (id: string) : EqNode =
           Accessibility = Option.None
           Motion = Option.None
           ExtraAttributes = Option.None
-          Tooltip = None }
+          Tooltip = None
+          Visible = None }
 
 /// `TreeOp<'Msg>` carries handler closures in its node payloads for exactly the reason `Node<'Msg>`
 /// does, so it is not an equality type either — and `casLaws` / `idempotencyLaws` compare whole

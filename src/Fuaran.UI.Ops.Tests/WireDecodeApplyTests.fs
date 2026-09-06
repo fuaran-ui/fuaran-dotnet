@@ -49,7 +49,8 @@ let private revenueMetric: Node<obj> =
       Accessibility = None
       Motion = None
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 let private metricOf (node: Node<obj>) : MetricSpec =
     match node.Kind with

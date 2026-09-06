@@ -2849,9 +2849,17 @@ let private chartAnnotation =
 /// Phase 679 — a `Switch` case: the match string plus the node it selects. The
 /// tier holds this as a `(string * Node) tuple list`, which the IDL has no type
 /// for; on the wire it is a two-field record, so that is what is modelled.
+///
+/// Fuaran-UI Phase 1535 — `when` (a `Binding<bool>` evaluated at render time) is
+/// a SIBLING of the string `match`, and `match` became optional in the same
+/// change so the when-only wire shape is representable. This is the Phase 818
+/// `value` / `valueFrom` shape exactly: both are declared Optional because that
+/// is what the SHAPE is, and the "exactly one" rule is decoder policy
+/// (`reject-switch-case-match-and-when` / `-neither`), which the IDL states no
+/// more than it states path addressing.
 let private switchCase =
     { Name = "SwitchCase"
-      Fields = [ req "child" TNode; req "match" TStr ] }
+      Fields = [ req "child" TNode; opt "match" TStr; opt "when" (bindingOf TBool) ] }
 
 /// Phase 679 — `Mount`'s guest channel. `messageShape` rides only on `TwoWay`
 /// in practice but is optional in the shape, not conditional on direction.
@@ -3158,7 +3166,29 @@ let uiIdl: Idl =
           // affordance under the affordance→op charter, so no event name and no
           // placement token is minted here: a document says WHAT the hint is and
           // never HOW it appears.
-          opt "tooltip" TS ]
+          opt "tooltip" TS
+          // Fuaran-UI Phase 1535 — CONDITIONAL PRESENCE. A `Binding<bool>` whose
+          // resolved `false` removes this node from the rendered output
+          // entirely: no element, no placeholder, no `aria-hidden`, nothing in
+          // the layout and nothing in the accessibility tree.
+          //
+          // It sits on the envelope, beside `accessibility`, for the reason the
+          // trait tier exists: "should this be here at all" is uniform across
+          // every kind, and 41 per-spec fields would be 41 independently
+          // driftable decisions about one concept.
+          //
+          // It is deliberately NOT `accessibility.hidden`, and the two are not
+          // interchangeable: `hidden` is `aria-hidden` over a node that IS
+          // rendered and DOES occupy layout — the right spelling for decorative
+          // content a screen reader should skip — while `visible` decides
+          // whether the node exists in the output at all. §3.1 states the rule
+          // normatively.
+          //
+          // Absence and failure render the node. A binding that does not resolve
+          // is NOT a false: a missing source silently hiding content is the one
+          // failure mode a reader cannot see, cannot report and cannot work
+          // around, so the unresolved and errored cases both render.
+          opt "visible" (bindingOf TBool) ]
       Ops = treeOps
       Wire = WireShape.Default
       Harden = HardenPolicy.Default }
