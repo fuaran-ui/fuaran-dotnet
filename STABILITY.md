@@ -5407,9 +5407,15 @@ edit it. Below is the exact text it would have appended, with the section each b
 
 ---
 
-## Version note
+## Version note — this ADVANCES the draft to 0.77.0
 
-Both `Fuaran.UI.OpStream.Abstractions` and `Fuaran.UI.Memo` take a public-surface change here, and
-`Fuaran.UI.Memo`'s is breaking (`Derivation.StructuralKey`). `Directory.Build.props` is outside this
-slice's file set, so `<Version>` was NOT advanced — see the report's "changes needed outside my file
-set".
+Everything else fuaran#1525 carries is additive and rode the standing untagged 0.76.0 draft. This
+does not: `Derivation<'Msg>.StructuralKey` changing from `string` to `string option` requires
+consumer source-code edits to compile, which the [Semver](#semver) section above classifies as the
+breaking class. The draft-slot rule is that a change of a HIGHER class than the draft already carries
+advances it rather than riding it — a version number that says "additive" over a breaking change is
+false, and it is the number a consumer reads to decide what adopting it costs.
+
+So `<Version>` moves `0.76.0` → `0.77.0` in `Directory.Build.props`, and every entry recorded against
+0.76.0 in this document ships on 0.77.0. v0.75.0 remains the newest tag; 0.76.0 was never tagged and
+no public-path consumer pinned it, so nothing is stranded by the move.

@@ -580,7 +580,16 @@
          ADVANCES rather than riding 0.75.0 because v0.75.0 is tagged - the slot
          is released, not a draft. See STABILITY.md "Recorded change - 0.76.0,
          `MergeChoice.KeepA` / `KeepB`". -->
-    <Version>0.76.0</Version>
+    <!-- (0.77.0) - fuaran#1525's op-stream write-path work is additive throughout
+         EXCEPT one change: `Fuaran.UI.Memo`'s `Derivation<'Msg>.StructuralKey`
+         becomes `string option`, because a derivation whose canonical encoding
+         carries an unrepresentable-value sentinel has no content address and a
+         magic string would have left that discrimination to a comment. That
+         requires consumer source edits, which is the breaking class - so it
+         ADVANCES the untagged 0.76.0 draft rather than riding it. Every 0.76.0
+         entry in STABILITY.md ships on 0.77.0. See STABILITY.md "Recorded change
+         - 0.76.0, the op-stream write path" and its version note. -->
+    <Version>0.77.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
