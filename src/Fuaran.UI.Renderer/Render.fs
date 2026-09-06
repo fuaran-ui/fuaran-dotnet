@@ -742,12 +742,19 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
     // for. `tryResolveTextSource` is the resolution that reports rather than
     // degrades.
     | Action.Navigate(route, target) ->
-        match BindingResolver.tryResolveTextSource ctx.Sources route with
+        // The EMPTY resolution is refused beside the absent one, and on the
+        // same reasoning rather than as a tidy-up: a `State` binding carrying a
+        // declared default of `""` RESOLVES, to a string that is not a
+        // destination. Both are "there is nothing to navigate to".
+        match
+            BindingResolver.tryResolveTextSource ctx.Sources route
+            |> Option.filter (System.String.IsNullOrWhiteSpace >> not)
+        with
         | None ->
             ctx.Runtime.Warn
-                "[Fuaran] Action.Navigate route did not resolve — no navigation performed. A bound route whose source is absent, or an i18n key with no translation, is not a destination."
+                "[Fuaran] Action.Navigate route did not resolve to a destination — no navigation performed. A bound route whose source is absent or empty, or an i18n key with no translation, is not a destination."
 
-            note (Error "Action.Navigate refused — route did not resolve")
+            note (Error "Action.Navigate refused — route did not resolve to a destination")
         | Some resolved ->
             note (
                 treeNavigateOutcome ctx.Runtime ctx.EgressPolicy resolved (fun safe ->
