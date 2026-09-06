@@ -2,6 +2,7 @@ namespace Fuaran.UI.OpStream.Dag.Merge
 
 open System
 open Fuaran.UI.Types
+open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Replay
@@ -32,6 +33,37 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //  the trunk head under the `TryAdvanceHead` CAS (the transactional boundary).
 // ============================================================================
 
+/// Why a merge node could not be MINTED even though the three-way merge
+/// succeeded (Phase 1526).
+///
+/// A merge node commits to two things that must agree: `OutcomeHash`, the
+/// canonical hash of the merged TREE, and `Op`, the replay delta from the
+/// node's primary parent. `DagReplay` folds the delta; a verifier compares the
+/// hash; M1's whole claim — two hosts agree iff they reach the same tree —
+/// rests on the two being the same tree.
+///
+/// They can differ, because the delta is `TreeOpDiff.diffBatched` and the
+/// `TreeOp` vocabulary is NOT total over the node record: no op sets
+/// `Accessibility` or `Tooltip`, both of which `TreeMerge` merges as facets of
+/// their own. A merge that took the other branch's accessibility produced a
+/// delta that could not carry it, and every layer downstream — mint, commit,
+/// replay, verify — accepted it in silence.
+///
+/// So the mint verifies its own delta and refuses. The refusal is deliberately
+/// not a fallback to a lossy node: what is lost is a facet a human or an agent
+/// deliberately set on the other branch, and a merge node that quietly drops it
+/// is exactly the artefact the content address exists to make impossible.
+type MergeDeltaMismatch =
+    {
+        /// The canonical hash of the merged tree the node would have committed to.
+        OutcomeHash: string
+        /// The canonical hash of the tree the node's own delta actually replays
+        /// to over its primary parent. `None` when the delta did not apply at all.
+        ReplayedHash: string option
+        /// The apply failure, when the delta could not be folded at all.
+        ApplyError: ApplyError option
+    }
+
 /// Outcome of an M1 merge attempt.
 [<RequireQualifiedAccess>]
 type MergeResult<'Msg> =
@@ -45,6 +77,12 @@ type MergeResult<'Msg> =
     | Merged of record: DagOpRecord<'Msg> * tree: Node<'Msg>
     /// Overlapping change — the contended `(NodeId, facet)` cells (M2 / 179).
     | NeedsManualMerge of contended: MergeConflict list
+    /// The three-way merge SUCCEEDED and its result is `tree`, but the replay
+    /// delta a merge node would carry cannot reproduce that tree, so no node was
+    /// minted (Phase 1526). The merged tree is handed back so a host can show
+    /// it, diff it, or write it through another path — the refusal is about what
+    /// the DAG can honestly record, not about what the merge computed.
+    | DeltaNotReplayable of tree: Node<'Msg> * mismatch: MergeDeltaMismatch
     /// Criss-cross history (≥2 LCAs) — recursive-base 3-way merge (Phase 179).
     | NeedsThreeWayMerge of candidates: string list
     /// The two heads share no common ancestor.
@@ -163,6 +201,11 @@ type TrunkMergeOutcome<'Msg> =
     /// The merge refused: these cells could not be auto-merged. The caller
     /// resolves them and re-merges.
     | Conflicted of contended: MergeConflict list
+    /// The merge SUCCEEDED but no node could be minted for it, because the
+    /// replay delta cannot reproduce the merged tree (Phase 1526). Distinct from
+    /// `Conflicted`: nothing is contended and there is nothing to resolve — the
+    /// merged tree is right and the DAG cannot express how it was reached.
+    | DeltaNotReplayable of tree: Node<'Msg> * mismatch: MergeDeltaMismatch
     /// Criss-cross history the recursive-base merge declined to resolve.
     | NeedsThreeWayMerge of candidates: string list
     /// The branch and the trunk share no common ancestor.
@@ -201,7 +244,7 @@ module DagMerge =
         (merged: Node<'Msg>)
         (now: DateTimeOffset)
         (attribution: MergeAttribution)
-        : DagOpRecord<'Msg> =
+        : Result<DagOpRecord<'Msg>, MergeDeltaMismatch> =
         let outcomeHash = CanonicalJson.encodeNode merged |> HashChain.sha256Hex
         let delta = TreeOpDiff.diffBatched treeA merged
 
@@ -211,15 +254,38 @@ module DagMerge =
             | [ single ] -> single
             | many -> TreeOp.Batch many
 
-        DagOpRecord.createMerge
-            streamId
-            [ headA; headB ]
-            deltaOp
-            outcomeHash
-            attribution.Prompt
-            attribution.Actor
-            now
-            attribution.ResultEnvelope
+        // Phase 1526 — replay the delta before minting the node that carries
+        // it. This is the SAME fold `DagReplay.replay` performs on the spine
+        // (`Apply.apply record.Op` over the primary parent's tree), so agreement
+        // here is agreement there, on this host and on every other one. It costs
+        // one apply + one canonical encode per merge, paid once at mint against
+        // a divergence that is otherwise permanent and undetectable.
+        match Apply.apply deltaOp treeA with
+        | Error e ->
+            Error
+                { OutcomeHash = outcomeHash
+                  ReplayedHash = None
+                  ApplyError = Some e }
+        | Ok replayed ->
+            let replayedHash = CanonicalJson.encodeNode replayed |> HashChain.sha256Hex
+
+            if replayedHash <> outcomeHash then
+                Error
+                    { OutcomeHash = outcomeHash
+                      ReplayedHash = Some replayedHash
+                      ApplyError = None }
+            else
+                Ok(
+                    DagOpRecord.createMerge
+                        streamId
+                        [ headA; headB ]
+                        deltaOp
+                        outcomeHash
+                        attribution.Prompt
+                        attribution.Actor
+                        now
+                        attribution.ResultEnvelope
+                )
 
     /// The synthetic virtual-ancestor TREE for a criss-cross (multiple-LCA)
     /// history — git's recursive-base merge. The candidate bases are sorted
@@ -296,21 +362,29 @@ module DagMerge =
         match TreeMerge.merge3WayWithCellAuthor cellAuthor baseTree treeA treeB with
         | Error conflicts -> plain (MergeResult.NeedsManualMerge conflicts)
         | Ok merged ->
-            let record = buildMergeRecord streamId headA headB treeA merged now attribution
+            let defects =
+                match policy.Validator with
+                | None -> []
+                | Some validator -> ValidatorGate.introducedDefects validator treeA treeB merged
 
-            match policy.Validator with
-            | None -> plain (MergeResult.Merged(record, merged))
-            | Some validator ->
-                match ValidatorGate.introducedDefects validator treeA treeB merged with
-                | [] -> plain (MergeResult.Merged(record, merged))
-                | defects when policy.GateOnIntroducedDefect ->
-                    // A merge-introduced defect is a SEMANTIC conflict — refuse,
-                    // naming the offending nodes + enumerated recovery.
-                    { Result = MergeResult.NeedsManualMerge(defects |> List.map ValidatorGate.toConflict)
+            if not (List.isEmpty defects) && policy.GateOnIntroducedDefect then
+                // A merge-introduced defect is a SEMANTIC conflict — refuse,
+                // naming the offending nodes + enumerated recovery. Decided
+                // BEFORE the mint (Phase 1526): a merge the gate refuses needs
+                // no record, and minting first would let a recordability
+                // refusal mask the defect a host would rather hear about.
+                { Result = MergeResult.NeedsManualMerge(defects |> List.map ValidatorGate.toConflict)
+                  Diagnostics = defects }
+            else
+                // Gating off (or nothing introduced) — the clean structural
+                // merge proceeds; any introduced defects ride along as a
+                // post-merge diagnostic, on the refusal below as well as on a
+                // `Merged`, because they are a fact about the tree either way.
+                match buildMergeRecord streamId headA headB treeA merged now attribution with
+                | Error mismatch ->
+                    { Result = MergeResult.DeltaNotReplayable(merged, mismatch)
                       Diagnostics = defects }
-                | defects ->
-                    // Gating off — the clean structural merge proceeds; the
-                    // introduced defects are surfaced as a post-merge diagnostic.
+                | Ok record ->
                     { Result = MergeResult.Merged(record, merged)
                       Diagnostics = defects }
 
@@ -543,6 +617,8 @@ module DagMerge =
                         elif remaining > 0 then return! attempt (remaining - 1)
                         else return TrunkMergeOutcome.Contended
                     | MergeResult.NeedsManualMerge contended -> return TrunkMergeOutcome.Conflicted contended
+                    | MergeResult.DeltaNotReplayable(tree, mismatch) ->
+                        return TrunkMergeOutcome.DeltaNotReplayable(tree, mismatch)
                     | MergeResult.NeedsThreeWayMerge candidates ->
                         return TrunkMergeOutcome.NeedsThreeWayMerge candidates
                     | MergeResult.NoCommonBase -> return TrunkMergeOutcome.NoCommonBase

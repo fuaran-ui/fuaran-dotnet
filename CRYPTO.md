@@ -171,6 +171,77 @@ precisely the property the whole algorithm-agility story rests on. The signer re
 construction, naming the curve the key is actually on; the verifier answers `false`, which
 `Evidence.verify` renders as `SignatureInvalid`.
 
+## Document attestation — a signature over an emitted tree (opt-in)
+
+`Fuaran.UI.OpStream.Abstractions/DocumentAttestation.fs` (Phase 1549) asks the section above's
+question about a different artefact. A segment attestation covers a range of op-stream records at a
+chain position. A standalone tree — the thing a model emits and a host stores, forwards, or mounts as
+a guest — sits in no stream and at no chain position, and until this it carried no author claim at
+all: it said what it contained and nothing about who produced it.
+
+A host may wrap a document in an optional envelope carrying an ECDSA P-256 / SHA-256 signature
+(`ecdsa-p256-sha256-v1`, the same registered id and the same key model) over a canonical claim that
+binds the algorithm, the digest of the document's canonical bytes, the key id, the signing instant,
+and an open map of claims such as a model identity and a prompt digest. The wire shape is
+`WIRE_FORMAT.md` §26; the vectors are `wire-format-fixtures/attestation/document-corpus.json`, beside
+the segment corpus.
+
+**What it proves.** The holder of the named key signed these canonical document bytes together with
+these claims, at the asserted instant. Every field of the claim is inside the signed pre-image, so a
+party who can rewrite the stored envelope can alter none of them — the claims included, which is what
+makes a model identity a claim rather than an annotation.
+
+**What it does not prove**, and the list is structural rather than a list of gaps to close:
+
+- **It does not prove the claims are TRUE.** `model` and `promptDigest` are the signer's assertions,
+  carried intact and bound to the bytes. Nothing here checks that the named model produced the tree,
+  or that the digest is of the prompt that was used. The envelope makes an assertion attributable and
+  tamper-evident; it does not make it correct.
+- **It does not defend against the key holder.** A compromised or dishonest signer signs its own
+  forgery, and the mechanism moves the question to key custody rather than answering it.
+- **It does not prove a user authored anything.** A key is host-held, so the claim is that this host
+  stood behind these bytes. A browser holds no issued identity, for the reason the segment section
+  gives.
+- **It does not defend against a signer backdating `signedAt`.** The field is bound against a
+  store-writer, not against the signer, so a revocation boundary compared against it is a
+  co-operative-failure mechanism. Whole seconds, the resolution the pre-image binds, normalised
+  through the same `signedInstant` the segment claim uses.
+- **It says nothing about an unattested document.** That document is honestly unattested: a true
+  statement about it, not a defect in it. Whether an envelope is required is a policy that belongs
+  with the verifier, because a document that could declare itself exempt could have that declaration
+  written by whoever wrote the rest of it.
+
+**Two digests, over two different byte sequences.** `digest` covers the CANONICAL NODE BYTES of the
+document and never the transmitted envelope, so a verifier recomputes it by decoding the document and
+re-encoding the decoded tree; a document sent in a lenient spelling that canonicalises to the same
+tree still verifies, because what was signed is the tree and not its transport spelling. The SIGNING
+INPUT is a separate pinned-order canonical string that is never the envelope bytes. Conflating the
+two is the most consequential error available here, which is why they are named separately in the
+code, in the specification, and in this paragraph.
+
+**Verification is a host obligation, never a side effect of decoding.** `JsonDecode.decodeNode` is
+untouched and verifies nothing; a host calls `DocumentEnvelope.decodeAttestedDocument` deliberately,
+and one that reads claims without it has read an unauthenticated assertion. The result is a typed
+refusal rather than a boolean — `NotAttested` / `InvalidEnvelope` / `UnsupportedFormat` / `UnknownKey`
+/ `SignatureInvalid` / `DocumentDecode` / `DigestMismatch` — because a caller handed `false` cannot
+tell an unknown key from a forged signature from an edited document, and the remedies differ. The
+claim is authenticated before the untrusted tree is decoded, mirroring `Evidence.verify`'s order.
+Verification is offline: the envelope plus the verifier's own key directory, and nothing else. A key
+travelling with the envelope is never a trust root.
+
+**A `Mount` capability gate can require it.** `MountSpec.Capabilities` is a request, not a grant: it
+arrives on the wire, so a decoded tree names whatever tags it likes.
+`DocumentEnvelope.grantedCapabilities` grants the declared list only for a verified document whose key
+the host admits, and the empty list for every refusal — a valid signature by a stranger is still a
+stranger. That is a host-side narrowing on the footing of the kind-admission policy: it narrows no
+wire, and a document refused a capability is still a valid document.
+
+Signing reuses the Phase-320 `Fuaran.Core.IAttestationSink` seam, which signs an opaque string, so
+the canonical claim payload passes through it with no new signing interface and no key crossing the
+portable surface. The .NET verifier shares one curve check with the segment verifier rather than
+carrying a second copy: an algorithm id names one curve, a key size does not identify a curve, and two
+copies of that test are two places for the ends of an id to drift apart.
+
 ## Why one pure-F# implementation, not the BCL on .NET
 
 `System.Security.Cryptography` does not exist under Fable (the browser/JS target), so the browser host

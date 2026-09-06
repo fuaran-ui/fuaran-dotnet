@@ -14,6 +14,7 @@
     <Compile Include="MergeTests.fs" />
     <!-- Phase 1521 — the refusal envelope carries canonical wire tokens, not a runtime formatting. -->
     <Compile Include="StyleFacetTokenTests.fs" />
+    <Compile Include="MergeTotalityTests.fs" />
     <Compile Include="M2Tests.fs" />
     <Compile Include="BatchAndMultiAgentTests.fs" />
     <Compile Include="RetentionTests.fs" />

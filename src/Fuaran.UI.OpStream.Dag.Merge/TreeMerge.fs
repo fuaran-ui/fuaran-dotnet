@@ -44,6 +44,20 @@ open Fuaran.UI.OpStream.Abstractions
 //  also agree on content — two branches inserting one id with different content
 //  is a refusal naming that id, never an arrival-order-dependent pick.
 //
+//  Two facets are WHOLE-NODE rather than per-field, and both were declared by
+//  Phase 179 and raised by nothing until Phase 1526:
+//
+//   - "node"  — one side removed a node the other had edited (`DeleteModify`),
+//               or the content half of a contended move.
+//   - "move"  — a node relocated by one side and moved or edited by the other
+//               (`ConcurrentMove`); the value is the parent id each side holds
+//               it under.
+//
+//  Neither is visible from inside a single parent's fold, so the merge carries
+//  whole-tree indexes of its three inputs (`MergeIndex`) to tell a DELETION
+//  apart from a MOVE. Without that distinction every relocation reads as a
+//  deletion of the node from the parent it left.
+//
 //  All equality is `CanonicalJson` bytes (closure-safe), never F# structural
 //  equality — except the closure-free `SemanticStyle` sub-fields, compared
 //  directly.
@@ -121,6 +135,52 @@ module TreeMerge =
                 State = None
                 Accessibility = None }
 
+    // ── whole-tree indexes (Phase 1526) ─────────────────────────────────────
+    //
+    // `merge3` recurses one PARENT at a time, so its whole view of a node is
+    // "present in this parent's child list, or not". Two completely different
+    // histories look identical from there: a node one side DELETED, and a node
+    // one side MOVED to a different parent. The first loses the other side's
+    // edit permanently; the second is an ordinary relocation that must not be
+    // reported as anything. Telling them apart needs a view of each tree as a
+    // WHOLE, which is what these indexes are — built once at the entry point,
+    // threaded down the recursion, never rebuilt per node.
+
+    /// One input tree indexed by node id: the node itself, and the id of its
+    /// parent (`None` for the root).
+    type private SideIndex<'Msg> =
+        { Nodes: Map<string, Node<'Msg>>
+          Parents: Map<string, string option> }
+
+    /// The three input trees, indexed.
+    type private MergeIndex<'Msg> =
+        { BaseSide: SideIndex<'Msg>
+          ASide: SideIndex<'Msg>
+          BSide: SideIndex<'Msg> }
+
+    let private indexTree<'Msg> (root: Node<'Msg>) : SideIndex<'Msg> =
+        let rec walk
+            (nodes: Map<string, Node<'Msg>>, parents: Map<string, string option>)
+            (parent: string option)
+            (n: Node<'Msg>)
+            =
+            let acc = Map.add n.Id n nodes, Map.add n.Id parent parents
+            childrenOf n |> List.fold (fun a c -> walk a (Some n.Id) c) acc
+
+        let nodes, parents = walk (Map.empty, Map.empty) None root
+        { Nodes = nodes; Parents = parents }
+
+    let private buildIndex<'Msg> (baseTree: Node<'Msg>) (a: Node<'Msg>) (b: Node<'Msg>) : MergeIndex<'Msg> =
+        { BaseSide = indexTree baseTree
+          ASide = indexTree a
+          BSide = indexTree b }
+
+    /// The parent id a side holds `nodeId` under, or `None` when that side does
+    /// not hold it at all. The root's parent is also `None` — the two are told
+    /// apart by `Nodes` membership, never by this.
+    let private parentIn<'Msg> (side: SideIndex<'Msg>) (nodeId: string) : string option =
+        Map.tryFind nodeId side.Parents |> Option.flatten
+
     /// `true` when `headIds` is `baseIds` with zero removals and zero reorders.
     let private isPureAddition (baseIds: string list) (headIds: string list) : bool =
         let headSet = Set.ofList headIds
@@ -186,6 +246,61 @@ module TreeMerge =
         (bValue: string)
         : MergeSide option * MergeSide option =
         Some { Value = aValue; Tag = tagOf authorA }, Some { Value = bValue; Tag = tagOf authorB }
+
+    /// Record a two-sided refusal for a cell, deriving the sides view and the
+    /// precedence view exactly as every facet merge below already does. The
+    /// facet merges each also compute a PICK from the same authorship, so they
+    /// keep their own copies; the whole-node refusals added in Phase 1526
+    /// (`DeleteModify` / `ConcurrentMove`) pick nothing and share this one.
+    ///
+    /// **The empty string is the "this side holds no value" spelling**, as it
+    /// already is for `Base` on a same-id insert: no node and no parent id
+    /// canonical-encodes to it, so it is unambiguous, and it keeps the envelope
+    /// shape identical for every class rather than growing an optional member
+    /// that every host would then have to model.
+    let private addRefusal
+        (conflicts: ResizeArray<MergeConflict>)
+        (cellAuthor: string -> string -> MergeAuthor * MergeAuthor)
+        (nodeId: string)
+        (facet: string)
+        (cls: MergeConflictClass)
+        (baseValue: string)
+        (aValue: string)
+        (bValue: string)
+        : unit =
+        let authorA, authorB = cellAuthor nodeId facet
+        let aPrimary, pinHeld, choices, secondaryTag = resolveAuthor authorA authorB
+        let sideA, sideB = sidesOf authorA authorB aValue bValue
+
+        conflicts.Add
+            { NodeId = nodeId
+              Facet = facet
+              Class = cls
+              Base = baseValue
+              A = sideA
+              B = sideB
+              Primary =
+                (if pinHeld then
+                     Some(if aPrimary then aValue else bValue)
+                 else
+                     None)
+              Secondary =
+                (if pinHeld then
+                     Some(if aPrimary then bValue else aValue)
+                 else
+                     None)
+              SecondaryTag = secondaryTag
+              PrimacyHeld = pinHeld
+              Choices = choices
+              Hint = ApplyHint.empty }
+
+    /// `true` when a refusal for this cell has already been recorded. A
+    /// concurrent MOVE is reachable from both destination parents when both
+    /// sides moved the node, and the fold visits both; the two visits compute
+    /// the same values from the same indexes, so the first one recorded is the
+    /// one that stands.
+    let private alreadyRecorded (conflicts: ResizeArray<MergeConflict>) (nodeId: string) (facet: string) : bool =
+        conflicts |> Seq.exists (fun c -> c.NodeId = nodeId && c.Facet = facet)
 
     // ── canonical style-facet tokens ───────────────────────────────────
     //
@@ -448,6 +563,7 @@ module TreeMerge =
     let rec private merge3<'Msg>
         (conflicts: ResizeArray<MergeConflict>)
         (cellAuthor: string -> string -> MergeAuthor * MergeAuthor)
+        (idx: MergeIndex<'Msg>)
         (baseN: Node<'Msg>)
         (aOpt: Node<'Msg> option)
         (bOpt: Node<'Msg> option)
@@ -559,9 +675,93 @@ module TreeMerge =
         let aMap = byId (childrenOf a)
         let bMap = byId (childrenOf b)
 
+        // ── Phase 1526: the two whole-node classes 179 declared and nothing
+        //    raised. Both are invisible from inside one parent's fold, which is
+        //    why they need the whole-tree indexes.
+
+        /// One side REMOVED `cid` from this parent and dropped it from its tree
+        /// entirely, while the other side had edited it (anywhere in its
+        /// subtree — a deep child edit is lost with the subtree that carried
+        /// it). Emitted before the surviving side's child list is rebuilt,
+        /// because after that rebuild the edited node is simply gone and there
+        /// is nothing left to name.
+        let noteDeleteModify (removedByA: bool) (survivingIds: string list) : unit =
+            let removingSide = if removedByA then idx.ASide else idx.BSide
+            let editingMap = if removedByA then bMap else aMap
+
+            for cid in baseIds do
+                if
+                    not (List.contains cid survivingIds)
+                    && not (Map.containsKey cid removingSide.Nodes)
+                then
+                    match Map.tryFind cid baseMap, Map.tryFind cid editingMap with
+                    | Some baseChild, Some editedChild ->
+                        let baseC = CanonicalJson.encodeNode baseChild
+                        let editedC = CanonicalJson.encodeNode editedChild
+
+                        if editedC <> baseC && not (alreadyRecorded conflicts cid "node") then
+                            // The removing side holds no value for the cell, so
+                            // its side is the empty string; the edited side's
+                            // subtree is the surviving choice a resolver keeps.
+                            let aValue, bValue = if removedByA then "", editedC else editedC, ""
+
+                            addRefusal
+                                conflicts
+                                cellAuthor
+                                cid
+                                "node"
+                                MergeConflictClass.DeleteModify
+                                baseC
+                                aValue
+                                bValue
+                    | _ -> ()
+
+        /// `cid` reached this parent with no base entry HERE. Two histories do
+        /// that: an insert (the id is new to the whole tree) and a move (the id
+        /// existed elsewhere in the base). Only the move can silently discard
+        /// the other side's work — the mover's subtree is adopted wholesale
+        /// while the other side still holds its own copy where the base left
+        /// it, and the arms below used to return the mover's copy and say
+        /// nothing.
+        ///
+        /// Both POSITIONS and both CELLS reach the envelope, as two entries on
+        /// the same node: `move` carries the parent id each side holds the node
+        /// under, `node` carries each side's subtree. Deliberately not one
+        /// entry with a compound value — the corpus already warns a host not to
+        /// read a side's `value` as a compound cell, and inventing one here
+        /// would be the first place it was true.
+        let noteConcurrentMove (cid: string) : unit =
+            match
+                Map.tryFind cid idx.BaseSide.Nodes, Map.tryFind cid idx.ASide.Nodes, Map.tryFind cid idx.BSide.Nodes
+            with
+            | Some baseChild, Some aNode, Some bNode ->
+                let basePos = parentIn idx.BaseSide cid |> Option.defaultValue ""
+                let aPos = parentIn idx.ASide cid |> Option.defaultValue ""
+                let bPos = parentIn idx.BSide cid |> Option.defaultValue ""
+                let baseC = CanonicalJson.encodeNode baseChild
+                let aC = CanonicalJson.encodeNode aNode
+                let bC = CanonicalJson.encodeNode bNode
+                let aMoved = aPos <> basePos
+                let bMoved = bPos <> basePos
+
+                // A one-sided move with no edit on the other side is an
+                // ordinary relocation and merges clean — the guard is what
+                // keeps this from reporting every move.
+                let contended =
+                    (aMoved && bMoved) || (aMoved && bC <> baseC) || (bMoved && aC <> baseC)
+
+                if contended && not (alreadyRecorded conflicts cid "move") then
+                    addRefusal conflicts cellAuthor cid "move" MergeConflictClass.ConcurrentMove basePos aPos bPos
+
+                    addRefusal conflicts cellAuthor cid "node" MergeConflictClass.ConcurrentMove baseC aC bC
+            // The id is new to the whole tree (a genuine insert), or one side
+            // dropped it outright — that second shape is the delete/modify
+            // axis, named at the parent that lost it.
+            | _ -> ()
+
         let recurseChild (cid: string) : Node<'Msg> =
             match Map.tryFind cid baseMap with
-            | Some bc -> merge3 conflicts cellAuthor bc (Map.tryFind cid aMap) (Map.tryFind cid bMap)
+            | Some bc -> merge3 conflicts cellAuthor idx bc (Map.tryFind cid aMap) (Map.tryFind cid bMap)
             | None ->
                 match Map.tryFind cid aMap, Map.tryFind cid bMap with
                 | Some ac, Some bc ->
@@ -617,15 +817,23 @@ module TreeMerge =
                         // on which branch arrived first. Same doctrine as the
                         // insert tie-break: order by canonical bytes.
                         if String.CompareOrdinal(acC, bcC) <= 0 then ac else bc
-                | Some ac, None -> ac
-                | None, Some bc -> bc
+                | Some ac, None ->
+                    noteConcurrentMove cid
+                    ac
+                | None, Some bc ->
+                    noteConcurrentMove cid
+                    bc
                 | None, None -> failwithf "merge3: child id %s vanished" cid
 
         let mergedChildren: Node<'Msg> list =
             match aStruct, bStruct with
             | false, false -> baseIds |> List.map recurseChild
-            | true, false -> aIds |> List.map recurseChild
-            | false, true -> bIds |> List.map recurseChild
+            | true, false ->
+                noteDeleteModify true aIds
+                aIds |> List.map recurseChild
+            | false, true ->
+                noteDeleteModify false bIds
+                bIds |> List.map recurseChild
             | true, true when aIds = bIds ->
                 // Both sides changed the children to the SAME id list — agreement,
                 // not a conflict, and the guard every other facet already has
@@ -716,7 +924,9 @@ module TreeMerge =
         (b: Node<'Msg>)
         : Result<Node<'Msg>, MergeConflict list> =
         let conflicts = ResizeArray<MergeConflict>()
-        let merged = merge3 conflicts cellAuthor baseTree (Some a) (Some b)
+
+        let merged =
+            merge3 conflicts cellAuthor (buildIndex baseTree a b) baseTree (Some a) (Some b)
 
         if conflicts.Count = 0 then
             Ok merged
@@ -756,6 +966,7 @@ module TreeMerge =
         merge3
             conflicts
             (fun _ _ -> (MergeAuthor.Secondary None, MergeAuthor.Secondary None))
+            (buildIndex baseTree a b)
             baseTree
             (Some a)
             (Some b)

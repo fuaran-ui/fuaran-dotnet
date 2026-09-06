@@ -169,6 +169,35 @@ module EcdsaP256 =
     let signer (now: unit -> DateTimeOffset) (keyId: string) (key: ECDsa) : IAttestationSigner =
         signerWith now false keyId key
 
+    /// The one crypto step both verifiers below take: import the directory
+    /// entry's SPKI public key, check it is on the curve the algorithm id names,
+    /// and verify `signature` over the UTF-8 bytes of `payload`. Answers `false`
+    /// for a key on another curve or for malformed key/signature bytes — the
+    /// callers render that as `SignatureInvalid`, which is where the typed
+    /// verdict belongs.
+    ///
+    /// Shared deliberately (Phase 1549): a second copy of the curve check is a
+    /// second place for the two ends of an algorithm id to drift apart, and the
+    /// curve test is the whole of what keeps the id honest.
+    let private verifyPayloadUnder (key: KeyDirectoryEntry) (payload: string) (signature: string) : bool =
+        try
+            use ecdsa = ECDsa.Create()
+            let mutable bytesRead = 0
+
+            ecdsa.ImportSubjectPublicKeyInfo(ReadOnlySpan<byte>(Convert.FromBase64String key.PublicKeySpki), &bytesRead)
+
+            match checkCurve (ecdsa.ExportParameters(false).Curve) with
+            | Error _ -> false
+            | Ok() ->
+                ecdsa.VerifyData(
+                    Encoding.UTF8.GetBytes payload,
+                    Convert.FromBase64String signature,
+                    HashAlgorithmName.SHA256
+                )
+        with
+        | :? CryptographicException
+        | :? FormatException -> false
+
     /// The crypto verifier: imports the directory entry's SPKI public key and
     /// checks the signature over the canonical claim payload. Dispatches on
     /// the algorithm id — anything other than `ecdsa-p256-sha256-v1` (on the
@@ -193,29 +222,27 @@ module EcdsaP256 =
                     then
                         return false
                     else
-                        try
-                            use ecdsa = ECDsa.Create()
-                            let mutable bytesRead = 0
+                        return
+                            verifyPayloadUnder key (SegmentAttestation.claimPayloadOf attestation) attestation.Signature
+                } }
 
-                            ecdsa.ImportSubjectPublicKeyInfo(
-                                ReadOnlySpan<byte>(Convert.FromBase64String key.PublicKeySpki),
-                                &bytesRead
-                            )
-
-                            match checkCurve (ecdsa.ExportParameters(false).Curve) with
-                            | Error _ -> return false
-                            | Ok() ->
-                                let payload = SegmentAttestation.claimPayloadOf attestation
-
-                                return
-                                    ecdsa.VerifyData(
-                                        Encoding.UTF8.GetBytes payload,
-                                        Convert.FromBase64String attestation.Signature,
-                                        HashAlgorithmName.SHA256
-                                    )
-                        with
-                        | :? CryptographicException
-                        | :? FormatException -> return false
+    /// The document arm of the same crypto (Phase 1549): verify a signature over
+    /// an arbitrary canonical claim payload. `decodeAttestedDocument` builds the
+    /// payload and owns every decision above the crypto, exactly as
+    /// `Evidence.verify` does for a segment, so this seam answers `bool` for the
+    /// same reason its sibling does.
+    ///
+    /// The algorithm dispatch is on the KEY: a document claim's algorithm is
+    /// checked against the resolved key before this is ever reached, so an id
+    /// this provider does not implement is refused there rather than here.
+    let claimVerifier: IClaimSignatureVerifier =
+        { new IClaimSignatureVerifier with
+            member _.VerifyClaim claimPayload signature key =
+                async {
+                    if key.Algorithm <> AttestationAlgorithm.ecdsaP256Sha256V1 then
+                        return false
+                    else
+                        return verifyPayloadUnder key claimPayload signature
                 } }
 
 /// The file-backed reference `IKeyDirectory`: a JSON document of PUBLIC keys
