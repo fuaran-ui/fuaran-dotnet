@@ -148,9 +148,8 @@ let tests =
               // (an i18n arg bag, say) can carry user data.
               Expect.equal
                   (Fuaran.UI.Ops.ActionInvocation.ActionInvocation.describe (
-                      Action.Navigate(TextSource.Literal "/orders/42?email=a@b.c#tok", NavigateTarget.Self)
-                      : Action<Msg>
-                   ))
+                      Action.Navigate(TextSource.Literal "/orders/42?email=a@b.c#tok", NavigateTarget.Self): Action<Msg>
+                  ))
                   "Navigate(/orders/42)"
                   "a literal route keeps its pre-1536 scrubbed description"
 
