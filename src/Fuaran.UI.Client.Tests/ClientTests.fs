@@ -256,7 +256,7 @@ let hardeningTests =
     testList
         "FuaranClient hardening"
         [ test "a 200 with no tree is MALFORMED_RESPONSE, not Produced \"\"" {
-              // Red before Phase 1528: this returned `Produced("")`, and the
+              // Red before 0.77.0: this returned `Produced("")`, and the
               // session then held "" as the current tree and repaired nothing
               // on every subsequent turn — a fault that surfaces one turn later
               // than the reply that caused it.
@@ -399,7 +399,7 @@ let hardeningTests =
           }
 
           testAsync "no upstream exception text reaches the caller" {
-              // Red before Phase 1528: the message was `ex.Message` verbatim,
+              // Red before 0.77.0: the message was `ex.Message` verbatim,
               // and this result is routinely rendered into a browser.
               let transport =
                   MockTransport(
