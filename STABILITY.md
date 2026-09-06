@@ -6158,13 +6158,16 @@ bound `TextSource` payloads of BOTH `WriteToClipboard` and `Navigate`, which it 
 
 ---
 
-## Recorded change — 0.77.0, `Node.Visible` and the predicate `SwitchCase` (fuaran#1535)
+## Recorded change — 0.78.0, `Node.Visible` and the predicate `SwitchCase` (fuaran#1535)
 
-**One record widening and one field narrowed to `option`, riding the standing 0.77.0 draft.** The
-draft already carries both classes — `FS0764` for a full-literal constructor, and
-`Derivation<'Msg>.StructuralKey`'s narrowing from `string` to `string option` — so by the
-[Semver](#semver) section's own definitions this is the same pre-1.0 MINOR class the slot has already
-priced, and the draft-slot rule has it RIDE rather than advance. `v0.76.0` remains the newest tag.
+**One record widening and one field narrowed to `option`, ADVANCING the draft to 0.78.0.** This entry
+was first authored against a then-standing *untagged* 0.77.0 draft, on the draft-slot rule that a
+change of no higher class than the draft already carries RIDES it rather than moving the number.
+**`v0.77.0` was tagged while this phase was in flight**, which makes 0.77.0 a released slot rather
+than a draft — and a released slot is some consumer's contract, so a change that costs them source
+edits cannot be repacked into it. Both classes here are `FS0764`-shaped (a full-literal constructor
+stops compiling), which the [Semver](#semver) section prices as a pre-1.0 MINOR, so the draft advances
+to **0.78.0**. `v0.77.0` is the newest tag.
 
 **What changed on the types.**
 
