@@ -162,7 +162,80 @@ type LoadVerification =
     /// per-process structure it wrote itself and never re-reads from disk.
     | Off
 
+/// How much of an OFFERED record a **write path** checks before admitting it
+/// (Phase 1525) — the mirror of `LoadVerification`, and named the same way for
+/// the same reason.
+///
+/// **Why a write check exists at all when the read path already verifies.** It
+/// does not exist to catch what the read path catches. Before this, every sink
+/// accepted a record without recomputing its `Hash` or looking at its
+/// `PreviousHash`, and then refused the SEGMENT containing it on every
+/// subsequent read — a permanent poison pill: one malformed record written once
+/// makes a whole stream unreadable for the rest of its life, and the refusal
+/// names the record rather than the writer that produced it. Checking at the
+/// choke point turns that into a refusal of the ONE append that was wrong, at
+/// the moment and in the call stack that produced it, leaving the stream intact.
+///
+/// It is emphatically NOT tamper evidence, and nothing here changes what the
+/// unkeyed chain proves — see the boundary note at the head of this file and
+/// `CRYPTO.md`. A writer free to write the store is free to write a
+/// self-consistent record; this stops a BROKEN one.
+[<RequireQualifiedAccess>]
+type WriteAdmission =
+    /// Recompute the offered record's `Hash`, require its `PreviousHash` to be
+    /// the stream's current head, and require its `Sequence` to be the next one.
+    /// The default on every sink.
+    | Full
+    /// Admit whatever is offered. For a caller that is deliberately writing a
+    /// record the checks would refuse — a corruption fixture, a store being
+    /// reconstructed out of order by a migration that verifies afterwards. Like
+    /// `LoadVerification.Off`, it must be named at construction; there is no
+    /// silent fast path.
+    | Off
+
+/// Core's `ChainBreak` carries its reason as an untyped `string` (Phase 1525,
+/// finding L-A8). This DU is the domain's typed classification of the values
+/// Core actually emits, so a reason Core adds LATER is reported as
+/// `Unrecognised` rather than silently taking whichever arm happened to be the
+/// fallback.
+///
+/// **The durable fix is a Core API ask, and it is recorded rather than
+/// implied:** `Fuaran.Core.ChainBreak.Reason` should itself be a closed DU, so
+/// the mapping below is a total match the compiler checks instead of a string
+/// comparison that goes quietly wrong. That change belongs in the substrate
+/// repo — this domain pins a released substrate version and cannot make it — so
+/// the ask lives in `docs/CORE-API-ASKS.md` beside the classifier that needs it.
+[<RequireQualifiedAccess>]
+type ChainBreakReason =
+    /// The record's sequence is not the one the walk expected — a gap, a
+    /// reordering or a truncation.
+    | SequenceMismatch
+    /// The record's `PreviousHash` does not name its predecessor's `Hash`.
+    | PreviousHashLinkBroken
+    /// The record's `Hash` does not recompute from its own fields.
+    | HashMismatch
+    /// A reason string this domain does not know. Reported AS unknown — the
+    /// chain is genuinely broken (Core returns a break only when it is), but
+    /// this domain will not claim to know which check failed.
+    | Unrecognised of reason: string
+
 module Verify =
+
+    /// Core's documented reason strings, classified. Enumerated explicitly, and
+    /// with an honest `Unrecognised` arm, because the pre-1525 form matched two
+    /// of them and swept EVERY other value — including a reason Core might add
+    /// tomorrow — into `HashMismatch`, which is a claim about which check failed
+    /// that nothing had established.
+    let classify (b: Fuaran.Core.ChainBreak) : ChainBreakReason =
+        match b.Reason with
+        | "sequence-number mismatch" -> ChainBreakReason.SequenceMismatch
+        | "prev-hash link broken" -> ChainBreakReason.PreviousHashLinkBroken
+        // Core spells the digest failure differently per walker — the op walk
+        // says "tampered op/actor/seq", the capture walk "tampered capture" —
+        // and both mean the same thing here.
+        | "hash mismatch (tampered op/actor/seq)"
+        | "hash mismatch (tampered capture)" -> ChainBreakReason.HashMismatch
+        | other -> ChainBreakReason.Unrecognised other
 
     /// Map Core's 0-based, segment-relative `ChainBreak` onto the domain's
     /// 1-based absolute `VerificationError`. `offset0` is the Core-basis index
@@ -170,8 +243,8 @@ module Verify =
     let private ofChainBreak (offset0: int) (b: Fuaran.Core.ChainBreak) : VerificationError =
         let seq1 = b.Index + offset0 + 1
 
-        match b.Reason with
-        | "sequence-number mismatch" ->
+        match classify b with
+        | ChainBreakReason.SequenceMismatch ->
             // Expected/Got are Core's stringified 0-based segment-relative seqs.
             let parse (s: string) =
                 match System.Int32.TryParse s with
@@ -179,8 +252,15 @@ module Verify =
                 | false, _ -> seq1
 
             VerificationError.OutOfOrder(parse b.Expected, parse b.Got)
-        | "prev-hash link broken" -> VerificationError.PreviousHashMismatch(seq1, b.Expected, b.Got)
-        | _ -> VerificationError.HashMismatch(seq1, b.Expected, b.Got)
+        | ChainBreakReason.PreviousHashLinkBroken -> VerificationError.PreviousHashMismatch(seq1, b.Expected, b.Got)
+        | ChainBreakReason.HashMismatch
+        // An unrecognised reason still projects onto `HashMismatch`, because
+        // `VerificationError` is a shipped closed DU and a new case would break
+        // every exhaustive consumer match (a major bump this additive phase does
+        // not take). The projection is no longer SILENT: `classify` is public, so
+        // a caller that needs the distinction reads the typed reason directly,
+        // and the Core ask above is what removes the projection entirely.
+        | ChainBreakReason.Unrecognised _ -> VerificationError.HashMismatch(seq1, b.Expected, b.Got)
 
     /// Verify a CONTIGUOUS SEGMENT of a stream against an anchor the caller
     /// already trusts: assert (a) the first record links to
@@ -300,6 +380,52 @@ module Verify =
             else
                 segment (List.skip (length - n) records)
 
+    /// Check ONE record a caller is OFFERING to a sink, against the head that
+    /// sink currently holds for the record's stream (Phase 1525, finding H-16).
+    ///
+    /// Three checks, in the order that gives the most useful refusal first:
+    /// the record extends the stream (`Sequence = latestSequence + 1`), it links
+    /// to the head the store actually holds, and its `Hash` recomputes from its
+    /// own fields. Deliberately the SAME `VerificationError` the read paths
+    /// report, so a refusal at write and the refusal a later read would have
+    /// produced are the same finding named the same way — a second error type
+    /// here is how the two descriptions come to disagree.
+    ///
+    /// `headHash` is the store's head — `HashChain.genesisPreviousHash` for an
+    /// empty stream — and `latestSequence` is `0` for an empty stream, so the
+    /// first record of a stream is checked against genesis at sequence 1 with no
+    /// special case.
+    let admission<'Msg>
+        (mode: WriteAdmission)
+        (headHash: string)
+        (latestSequence: int)
+        (record: OpRecord<'Msg>)
+        : Result<unit, VerificationError> =
+        match mode with
+        | WriteAdmission.Off -> Ok()
+        | WriteAdmission.Full ->
+            let expectedSequence = latestSequence + 1
+
+            if record.Sequence <> expectedSequence then
+                Error(VerificationError.OutOfOrder(expectedSequence, record.Sequence))
+            elif record.PreviousHash <> headHash then
+                Error(VerificationError.PreviousHashMismatch(record.Sequence, headHash, record.PreviousHash))
+            else
+                let recomputed =
+                    HashChain.computeHash
+                        record.PreviousHash
+                        record.Op
+                        record.Sequence
+                        record.Timestamp
+                        record.Actor
+                        record.PromptId
+                        record.ResultEnvelope
+
+                if recomputed <> record.Hash then
+                    Error(VerificationError.HashMismatch(record.Sequence, recomputed, record.Hash))
+                else
+                    Ok()
+
     /// Human-readable rendering of a violation — the shape a read path that has
     /// no `Result` channel (the sink interfaces return a bare list) uses to
     /// refuse BY NAME rather than by an opaque throw.
@@ -325,3 +451,35 @@ module Verify =
                 streamId
                 expectedSequence
                 actualSequence
+
+    /// Human-readable rendering of an ADMISSION refusal (Phase 1525) — the shape
+    /// a sink's write path uses to refuse an offered record by name. Distinct
+    /// wording from `describe` on purpose: this is a refusal to write ONE record
+    /// the caller just built, not a report that a STORED stream is broken, and a
+    /// message that confuses the two sends the reader to the wrong place.
+    let describeAdmission (sinkName: string) (streamId: string) (error: VerificationError) : string =
+        let detail =
+            match error with
+            | VerificationError.PreviousHashMismatch(sequence, expected, actual) ->
+                sprintf
+                    "PreviousHash does not name the stream's head at sequence %d (head %s, record carries %s)"
+                    sequence
+                    expected
+                    actual
+            | VerificationError.HashMismatch(sequence, expected, actual) ->
+                sprintf
+                    "Hash does not recompute from the record's own fields at sequence %d (recomputes to %s, record carries %s)"
+                    sequence
+                    expected
+                    actual
+            | VerificationError.OutOfOrder(expectedSequence, actualSequence) ->
+                sprintf
+                    "Sequence does not extend the stream (expected %d, record carries %d)"
+                    expectedSequence
+                    actualSequence
+
+        sprintf
+            "%s: refused an append to stream '%s' — %s. Nothing was written. (Pass WriteAdmission.Off at construction to write it anyway.)"
+            sinkName
+            streamId
+            detail

@@ -5024,3 +5024,158 @@ double-escape), and the 32-character clamp bites — with the DRAWN label in the
 authored string whole, so the clamp is a difference between two bytes the fixture holds rather than an
 assertion about one. A host whose chart-lowering leg walks the corpus directory sees all eleven before
 its own clauses exist; the four lowering hosts move in this same change-set.
+
+## Recorded change — 0.76.0, the op-stream write path: compare-and-append, admission, retention refusal (fuaran#1525)
+
+**Additive throughout — three DU widenings, two new optional extension interfaces, one new record
+field with a `None` default, and a behaviour change on paths that were previously silent.** No wire
+byte moves and no shared-corpus fixture changes. Existing call sites compile unchanged; what changes
+is what the write path DOES with a record it would previously have swallowed or admitted.
+
+### What was wrong
+
+The write path was read-then-append on every host. `applyAndPersist` read `LatestSequence`, added
+one, and appended; two concurrent writers on one stream both computed the same sequence, one won, and
+the loser's duplicate-sequence refusal went into `PersistContext.OnSinkError` — whose default was
+`None`, and `None` meant nothing at all. The caller was returned `Ok` for an op that is not durable.
+
+Beside it, every sink accepted a record without recomputing its `Hash` or checking that its
+`PreviousHash` named the stream's head, and then refused the whole SEGMENT containing it on every
+subsequent read. One malformed write made a stream permanently unreadable, and the refusal named the
+record rather than the writer that produced it.
+
+And `CheckpointedReplay.applyFromCheckpoint`, asked for the state at a sequence whose ops had been
+compacted away, folded whatever survived over `initialTree` and returned it as the state at the
+target — the initial tree presented as history, `Ok`, and indistinguishable from a correct answer.
+
+### The surface
+
+```fsharp
+// Fuaran.UI.OpStream.Abstractions — new
+type WriteAdmission =
+    | Full   // recompute the offered record's Hash; require PreviousHash = head, Sequence = latest + 1
+    | Off    // admit whatever is offered — for a caller deliberately writing what Full refuses
+
+type ChainBreakReason =
+    | SequenceMismatch | PreviousHashLinkBroken | HashMismatch | Unrecognised of reason: string
+
+Verify.classify        : Fuaran.Core.ChainBreak -> ChainBreakReason
+Verify.admission       : WriteAdmission -> headHash: string -> latestSequence: int
+                         -> OpRecord<'Msg> -> Result<unit, VerificationError>
+Verify.describeAdmission : sinkName: string -> streamId: string -> VerificationError -> string
+
+type IOpStreamBatchSink<'Msg> =
+    inherit IOpStreamSink<'Msg>
+    abstract member AppendAll: records: OpRecord<'Msg> list -> Async<unit>
+
+type IOpStreamCompactSink<'Msg> =
+    inherit IOpStreamSink<'Msg>
+    abstract member Compact: streamId: string * throughSequence: int -> Async<int * int>
+
+// Fuaran.UI.OpStream.Replay — new
+type PersistContext = { …; Actor: Actor option; … }        // added, defaults to None
+type PersistFailure = ContendedOut of attempts: int | SinkRefused of reason: string
+type PersistAttempt = Persisted of sequence: int | Failed of sequence: int * failure: PersistFailure
+exception PersistFailedException of streamId: string * sequence: int * failure: PersistFailure
+
+PersistContext.withActor            : Actor -> PersistContext -> PersistContext
+PersistContext.withSilentSinkErrors : PersistContext -> PersistContext
+ApplyPersist.applyAndPersistWith    : … -> Async<Result<Node<'Msg> * PersistAttempt, ApplyError>>
+
+// Fuaran.UI.OpStream.Replay — widened
+type CheckpointReplayError =
+    | …
+    | BelowRetentionHorizon of targetSequence: int * earliestRetainedSequence: int option
+
+// Fuaran.UI.Telemetry.Abstractions — widened
+type OpOutcome =
+    | …
+    | PersistLost of reason: string
+```
+
+**The two extension interfaces are extensions for the reason fuaran#1485 recorded**: `IOpStreamSink`
+is shipped and implemented outside this repo, so a new abstract member on it breaks every implementor
+at compile time. A sink claims what it can do; nothing is made to claim what it does not. Both sinks
+in this tier implement both.
+
+### The behaviour changes, and what each replaces
+
+  * **Allocation is a compare-and-append.** `applyAndPersist`, `journalApplied` and `applyWithSinks`
+    take the sink's `Head`, build against it, `AppendIf`, and on a stale head REBUILD against the
+    head the refusal named and retry — bounded at `ApplyPersist.MaxCasAttempts` (8). A sink with no
+    compare-and-append keeps the read-then-append path; what changes there is that its loss is
+    reported rather than swallowed.
+
+    **The read ORDER inside the loop is load-bearing**: head FIRST, latest sequence SECOND. A write
+    landing between the two reads moves both, and taking the head first pairs a STALE head with a
+    current sequence — which `AppendIf` reports as `StaleHead`, the value the loop handles. The other
+    order pairs a CURRENT head with a stale sequence, which passes the head comparison and is then
+    refused by the admission check as a throw: a race reported as corruption.
+
+  * **`OnSinkError = None` is no longer silence.** It now means `PersistFailure.defaultReport`, one
+    line on stderr naming the stream, the sequence and the reason. Silence is still available and now
+    has to be asked for by name — `PersistContext.withSilentSinkErrors`. A host that passed a hook
+    already is unaffected; a host that passed none now hears about a lost durable op, which is the
+    whole point.
+
+  * **The telemetry row is emitted AFTER the append settles and names what the append did.** It was
+    emitted BEFORE, with `Outcome = Applied`, so an op the sink then lost left a row claiming success
+    at a `(StreamId, Sequence)` naming no record. `OpOutcome.PersistLost` is what such a row says now.
+    The drift detector counts it as APPLIED, deliberately: it measures authoring quality, the op was
+    well-formed and the engine took it, and counting a storage failure as model drift is the one
+    reading that number must never produce.
+
+  * **A broken record is refused at the write.** `Verify.admission` runs at the single choke point
+    every append path in each sink reaches, under the same lock / transaction as the insert, so the
+    head it checks against is the head the insert extends. The refusal names the failed check and
+    says nothing was written; the READ-side verifier is unchanged. `WriteAdmission.Off` is the named
+    opt-out, on the `LoadVerification.Off` precedent — there is no silent fast path.
+
+    **This is not tamper evidence and changes nothing about what the unkeyed chain proves.** A writer
+    free to write the store is free to write a self-consistent record. What this stops is a BROKEN
+    one, and the permanent unreadability it caused.
+
+  * **The Sqlite compare-and-append is IMMEDIATE, under WAL.** `BEGIN IMMEDIATE` takes the write lock
+    at the head SELECT rather than at the insert, which is what makes the compare and the append one
+    act; `journal_mode = WAL` (per database) stops a reader and a writer excluding each other
+    outright; `busy_timeout` (per connection, 5s) stops an ordinary two-writer moment failing
+    instantly. `SQLITE_BUSY` surfaces as `StaleHead` naming the head as it can then be observed —
+    a contention outcome, not a broken store.
+
+  * **Replay below the retention horizon REFUSES.** Two facts decide it: is the record at sequence 1
+    still present, and is there evidence ops once existed. The second is the one that is easy to miss
+    — a stream compacted past its own head reports `LatestSequence = 0`, exactly like a stream that
+    never had a record — so a retained CHECKPOINT is taken as that evidence: a checkpoint at N was
+    taken over ops 1..N. Without it, the worst case of the defect reads as a fresh stream.
+
+  * **Retention is one act where the sink has one.** `Compaction.applyPolicy` calls `Compact` on a
+    sink that implements `IOpStreamCompactSink`, so the ops and the checkpoints that justified
+    removing them go together; a failure between the two previously left the store permanently in the
+    state where surviving records begin above a checkpoint still claiming to cover them. The
+    invocation-key index compacts WITH the records it names, in both sinks — a key naming a truncated
+    record answered a later `AppendKeyed` with `Duplicate receipt` for a sequence the stream no longer
+    held, which is worse than no entry because it is indistinguishable from a live one.
+
+  * **A guest bundle imports under one transaction** where the sink offers `AppendAll`. Record by
+    record, a failure part-way left records in the stream, and the importer's own collision guard then
+    refused every retry — a transient failure becoming a permanently unimportable bundle. On a sink
+    without the batch append the partial state is now REPORTED rather than left for the guard to
+    mis-diagnose later.
+
+  * **A gap is refused rather than papered over.** Where `LatestSequence` reports a record the sink
+    cannot return, the persist path used to link the new record to the genesis hash — writing a record
+    whose `PreviousHash` names nothing, which then made every later read of the segment throw. It now
+    refuses that one append.
+
+  * **`PersistContext.Actor`**: `None` derives the actor from `UserId` exactly as before, so existing
+    records are byte-identical. A host that knows it is an agent, a merge or a replay says so, and the
+    wrapper does not overwrite it.
+
+### One recorded limit, and where it lives
+
+`Verify.classify` maps Core's untyped `ChainBreak.Reason` string onto a typed DU with an honest
+`Unrecognised` arm. The durable fix is a Core API change — `Reason` should be a closed DU, so the
+mapping is a total match the compiler checks — which this repo cannot make, and it is recorded in
+[`docs/CORE-API-ASKS.md`](docs/CORE-API-ASKS.md) beside the workaround that needs it rather than left
+implied. `Verify.segment` / `Verify.chain` still project an unrecognised reason onto `HashMismatch`,
+because `VerificationError` is a shipped closed DU; a caller needing the distinction calls `classify`.

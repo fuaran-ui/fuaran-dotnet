@@ -26,13 +26,26 @@ open Fuaran.UI.OpStream.Abstractions
 //      checkpoint's `PreviousChainHead` pins the chain head at its
 //      op-index.
 //
-//  FGP 2 / FGP 5 / FGP 6. SHA-256 (used to compute snapshot hashes) lives
-//  in `Fuaran.UI.OpStream.Abstractions.HashChain` behind a
-//  `#if !FABLE_COMPILER` guard — this module is .NET-only by transitive
-//  consequence (the entire Replay package is, by design — `Apply.apply`
-//  ships on both pipelines, but the persistence wrappers are server-side).
-//  The op stream stays the source of truth: checkpoints accelerate
-//  replay, they do not replace the chain as the canonical record.
+//  ── WHAT THE CHECKPOINT HASH BINDS (post-412) ──────────────────────────────
+//  A snapshot hash is NOT `sha256(canonicalTree)`. Since Phase 412 (A2) it
+//  binds the snapshot to its POSITION — `previousChainHead` + `sequence` + the
+//  canonical tree in one delimited pre-image — so a real snapshot from one
+//  position no longer validates at a different one. `applyFromCheckpoint`
+//  additionally anchors `PreviousChainHead` against the actual op-chain,
+//  including on the empty-tail path, so a checkpoint is trusted only at a
+//  position the verified chain confirms. Both are defence-in-depth against
+//  accidental corruption and cross-position substitution, NOT tamper-proofing
+//  against a writer who rewrites the whole checkpoint record consistently —
+//  that is the signed attestation seam's job. See CRYPTO.md.
+//
+//  ── FGP 2 / FGP 5 / FGP 6 (post-405 fence) ─────────────────────────────────
+//  SHA-256 no longer sits behind a `#if !FABLE_COMPILER` guard: since Phase 405
+//  `HashChain` routes through the pure, Fable-safe `Fuaran.UI.Hashing.sha256Hex`
+//  and compiles on both pipelines. This module is .NET-only for a different and
+//  still-true reason — the whole Replay package is server-side by design, the
+//  apply engine being the part that ships on both. The op stream stays the
+//  source of truth: checkpoints accelerate replay, they do not replace the
+//  chain as the canonical record.
 // ============================================================================
 
 [<RequireQualifiedAccess>]
@@ -46,6 +59,20 @@ type CheckpointReplayError =
     | SnapshotHashMismatch of checkpointSequence: int * expected: string * actual: string
     /// Replay of the tail records failed at the underlying apply engine.
     | TailApplyFailed of replayError: ReplayError
+    /// The state at `targetSequence` CANNOT be reconstructed: no retained
+    /// checkpoint covers it, and the ops needed to reach it from the initial
+    /// tree have been compacted away (Phase 1525, finding M-C2).
+    ///
+    /// **Why this is an error and not an answer.** The pre-1525 path replayed
+    /// whatever ops survived over `initialTree` and returned the result — which,
+    /// for a target below the retention horizon, is the INITIAL TREE presented
+    /// as the state at `target`. Nothing in the return said so. A caller
+    /// auditing "what did the document look like at op 40" on a stream compacted
+    /// to op 100 got an empty document and a `Ok`, and could not tell that from
+    /// a document that was genuinely empty then. Refusing is the only answer
+    /// that is not a lie, and `earliestRetainedSequence` says how far back the
+    /// store CAN go, so the caller can ask a question it can answer.
+    | BelowRetentionHorizon of targetSequence: int * earliestRetainedSequence: int option
 
 module Checkpoint =
 
@@ -147,10 +174,50 @@ module CheckpointedReplay =
                 // here lets callers use one entry point regardless of
                 // checkpoint availability.
                 let! records = sink.Replay(streamId, 1, targetSequence)
+                let! latest = sink.LatestSequence streamId
 
-                match Replay.applyTo initialTree records with
-                | Ok tree -> return Ok tree
-                | Error e -> return Error(CheckpointReplayError.TailApplyFailed e)
+                // ── RETENTION HORIZON (Phase 1525, finding M-C2) ───────────
+                // Replaying from `initialTree` is only sound when the ops from
+                // sequence 1 are actually there. Compaction removes them, and
+                // then this branch folded whatever survived over the initial
+                // tree and returned it as the state at `target` — silently
+                // wrong, and indistinguishable from a correct answer.
+                //
+                // Two facts decide it, and the second is the one that is easy to
+                // miss. First, is the record at sequence 1 still here? Second —
+                // because a stream compacted PAST its own head reports
+                // `LatestSequence = 0`, exactly like a stream that never had a
+                // record — is there any evidence that ops once existed? A
+                // retained CHECKPOINT is that evidence: a checkpoint at sequence
+                // N was taken over ops 1..N, so its presence says those ops were
+                // written whatever the op table now holds. Without this second
+                // fact a fully-compacted stream reads as a fresh one, which is
+                // the worst case of the very defect being fixed.
+                let! retainedCheckpoints = sink.ListCheckpoints streamId
+
+                let opsOnceExisted =
+                    latest > 0 || retainedCheckpoints |> List.exists (fun c -> c.Sequence >= 1)
+
+                let belowHorizon =
+                    targetSequence >= 1
+                    && opsOnceExisted
+                    && (match records with
+                        | first :: _ -> first.Sequence <> 1
+                        | [] -> true)
+
+                if belowHorizon then
+                    // What the store CAN still answer. Read from the surviving
+                    // range rather than assumed, so the number a caller is given
+                    // is one it can actually use.
+                    let! surviving = sink.Replay(streamId, 1, latest)
+
+                    let earliest = surviving |> List.tryHead |> Option.map _.Sequence
+
+                    return Error(CheckpointReplayError.BelowRetentionHorizon(targetSequence, earliest))
+                else
+                    match Replay.applyTo initialTree records with
+                    | Ok tree -> return Ok tree
+                    | Error e -> return Error(CheckpointReplayError.TailApplyFailed e)
             | Some cp ->
                 // Verify the snapshot first — if the stored hash doesn't
                 // recompute, the snapshot was tampered with, and replay
@@ -239,13 +306,30 @@ module Compaction =
                     let dropCount = all.Length - policy.KeepCheckpoints
                     let retained = all |> List.skip dropCount
                     let oldestRetained = retained |> List.head
-                    let! truncatedOps = sink.TruncateOpsThrough(streamId, oldestRetained.Sequence)
-                    // Drop the older checkpoints in the same pass so a future
-                    // `ListCheckpoints` reflects the retention policy. The
-                    // older checkpoints' snapshots are collapsed into history
-                    // once their op prefix is gone — keeping them would only
-                    // confuse the next compaction pass.
-                    let! _droppedCheckpoints = sink.TruncateCheckpointsBefore(streamId, oldestRetained.Sequence)
 
-                    return truncatedOps
+                    // ── ONE STEP, WHERE THE SINK HAS ONE (Phase 1525, M-C2) ──
+                    // The two truncations are one act: dropping the ops and
+                    // dropping the checkpoints that justified dropping them.
+                    // Run separately there is a window between them in which a
+                    // reader sees a stream whose surviving records begin above a
+                    // checkpoint that still claims to cover them — and, worse, a
+                    // failure between them leaves the store in exactly that
+                    // state permanently. A sink that implements
+                    // `IOpStreamCompactSink` does both atomically; one that does
+                    // not keeps the two-call path, which is what it always had.
+                    match sink with
+                    | :? IOpStreamCompactSink<'Msg> as compactable ->
+                        let! truncatedOps, _droppedCheckpoints = compactable.Compact(streamId, oldestRetained.Sequence)
+
+                        return truncatedOps
+                    | _ ->
+                        let! truncatedOps = sink.TruncateOpsThrough(streamId, oldestRetained.Sequence)
+                        // Drop the older checkpoints in the same pass so a future
+                        // `ListCheckpoints` reflects the retention policy. The
+                        // older checkpoints' snapshots are collapsed into history
+                        // once their op prefix is gone — keeping them would only
+                        // confuse the next compaction pass.
+                        let! _droppedCheckpoints = sink.TruncateCheckpointsBefore(streamId, oldestRetained.Sequence)
+
+                        return truncatedOps
         }

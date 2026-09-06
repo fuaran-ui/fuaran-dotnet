@@ -1,4 +1,4 @@
-namespace Fuaran.UI.Telemetry.Default
+﻿namespace Fuaran.UI.Telemetry.Default
 
 open System
 open Fuaran.UI.Telemetry.Abstractions
@@ -40,6 +40,8 @@ module private Format =
         | OpOutcome.DecoderRejected reason -> sprintf "decoder-rejected:%s" reason
         | OpOutcome.NodeNotFound nodeId -> sprintf "node-not-found:%s" nodeId
         | OpOutcome.ApplyEngineError detail -> sprintf "apply-engine-error:%s" detail
+        // Phase 1525 — the apply succeeded and the durable append did not.
+        | OpOutcome.PersistLost reason -> sprintf "persist-lost:%s" reason
 
     let opApply (t: OpApplyTelemetry) : string =
         sprintf

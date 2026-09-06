@@ -154,3 +154,53 @@ type IOpStreamKeyedSink<'Msg> =
     /// distinct invocations is the caller's contract, exactly as it is for
     /// Core's `keyOf` projection.
     abstract member AppendKeyed: record: OpRecord<'Msg> * invocationKey: string -> Async<KeyedAppendOutcome>
+
+// ============================================================================
+//  Phase 1525 — two further OPTIONAL extension interfaces, on exactly the
+//  reasoning Phase 1485 recorded above: `IOpStreamSink<'Msg>` is shipped and
+//  implemented outside this repo, so a new abstract member on it breaks every
+//  implementor at compile time. A sink claims what it can do; nothing is made
+//  to claim what it does not.
+// ============================================================================
+
+/// Extension of `IOpStreamSink<'Msg>` adding an ATOMIC multi-record append.
+///
+/// The shape a segment import needs. Appending a bundle record-by-record leaves
+/// a partial stream behind when the tenth of twenty appends fails — and the
+/// import's own collision guard ("refuse a scope whose stream already holds
+/// records") then makes the retry impossible, so a transient failure becomes a
+/// permanently unimportable bundle. One transaction removes the state that
+/// causes that: either every record is in the stream or none is.
+///
+/// `AppendAll` is `Append`'s contract over a list: the records must be
+/// contiguous and chain-linked from the stream's current head, the same
+/// admission the sink applies to a single append applies to each in turn, and a
+/// refusal of ANY record leaves the stream exactly as it was.
+type IOpStreamBatchSink<'Msg> =
+    inherit IOpStreamSink<'Msg>
+
+    /// Append every record in `records`, in list order, atomically. An empty
+    /// list is a no-op. Throws — leaving the stream untouched — if any record is
+    /// refused.
+    abstract member AppendAll: records: OpRecord<'Msg> list -> Async<unit>
+
+/// Extension of `IOpStreamSink<'Msg>` adding an ATOMIC retention step.
+///
+/// Compaction is two deletions — the ops at or below a retained checkpoint, and
+/// the checkpoints before it — and running them as two independent statements
+/// has a window between them in which the ops are gone and the checkpoints that
+/// justified removing them are not yet. A reader in that window sees a stream
+/// whose surviving records begin above a checkpoint that still claims to cover
+/// them. One call closes it.
+type IOpStreamCompactSink<'Msg> =
+    inherit IOpStreamSink<'Msg>
+
+    /// Remove the ops with `Sequence <= throughSequence` AND the checkpoints
+    /// with `Sequence < throughSequence`, in one atomic step. Returns
+    /// `(opsRemoved, checkpointsRemoved)`.
+    ///
+    /// Any index the sink keeps beside the log — an invocation-key map, a
+    /// content index — is compacted with the records it names, so a key whose
+    /// record is gone cannot answer a later lookup with a receipt naming
+    /// nothing.
+    abstract member Compact: streamId: string * throughSequence: int -> Async<int * int>

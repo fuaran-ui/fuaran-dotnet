@@ -1,4 +1,4 @@
-namespace Fuaran.UI.OpStream.Sqlite
+﻿namespace Fuaran.UI.OpStream.Sqlite
 
 open System
 open System.Globalization
@@ -92,11 +92,16 @@ module private ResultEnvelopeJson =
         // escaped strings; we extract via the same single-quote tokeniser.
         if json = "{\"$type\":\"Success\"}" then
             Ok OpResultEnvelope.Success
-        elif json.StartsWith("{\"$type\":\"Failure\"") then
+        // Phase 1525 (finding L-A9): ORDINAL. Both of these are structural JSON
+        // tokens this module wrote itself, not human text — a culture-sensitive
+        // comparison can fold, ignore or reorder characters, so under some
+        // installed culture the discriminator match or the key search silently
+        // changes answer for the same bytes.
+        elif json.StartsWith("{\"$type\":\"Failure\"", System.StringComparison.Ordinal) then
             let extractString (key: string) : string option =
                 let needle = sprintf "\"%s\":\"" key
 
-                match json.IndexOf needle with
+                match json.IndexOf(needle, System.StringComparison.Ordinal) with
                 | -1 -> None
                 | start ->
                     let valueStart = start + needle.Length
@@ -144,16 +149,49 @@ type SqliteSink<'Msg>
         connectionString: string,
         codec: IOpJsonCodec<'Msg>,
         nodeCodec: INodeJsonCodec<'Msg>,
-        loadVerification: LoadVerification
+        loadVerification: LoadVerification,
+        writeAdmission: WriteAdmission
     ) =
+
+    /// How long a writer waits for another writer's lock before SQLite gives up
+    /// with `SQLITE_BUSY` (Phase 1525, finding M-C1). Without it the default is
+    /// ZERO: a second connection that finds the write lock held fails instantly
+    /// rather than waiting out a transaction that is about to commit, so a
+    /// perfectly ordinary two-writer moment reads as contention failure.
+    /// Five seconds is long enough to absorb a commit and short enough that a
+    /// genuinely stuck writer is still reported rather than waited on forever.
+    let busyTimeoutMs = 5000
 
     let openConnection () : SqliteConnection =
         let conn = new SqliteConnection(connectionString)
         conn.Open()
+        // `busy_timeout` is per-CONNECTION, so it is set here rather than in
+        // `ensureSchema` — a PRAGMA run once at construction would not apply to
+        // any of the connections the methods below open.
+        use pragma = conn.CreateCommand()
+        pragma.CommandText <- sprintf "PRAGMA busy_timeout = %d;" busyTimeoutMs
+        pragma.ExecuteNonQuery() |> ignore
         conn
 
     let ensureSchema () =
         use conn = openConnection ()
+
+        // `journal_mode = WAL` is a property of the DATABASE FILE and persists,
+        // so unlike `busy_timeout` it belongs here, once. Under the default
+        // rollback journal a reader and a writer exclude each other outright:
+        // a `Replay` in progress blocks an `AppendIf`, and vice versa. Under WAL
+        // they do not, which is what makes the compare-and-append below a
+        // contention point rather than a serialisation point for the whole sink.
+        //
+        // An in-memory or shared-cache database cannot take WAL; SQLite reports
+        // the mode it actually adopted rather than failing, so the result is
+        // read and ignored deliberately — the sink works either way, and
+        // refusing to open such a database over a journal-mode preference would
+        // break every in-memory test host for no integrity gain.
+        use walPragma = conn.CreateCommand()
+        walPragma.CommandText <- "PRAGMA journal_mode = WAL;"
+        walPragma.ExecuteScalar() |> ignore
+
         use cmd = conn.CreateCommand()
 
         cmd.CommandText <-
@@ -199,16 +237,70 @@ CREATE TABLE IF NOT EXISTS op_invocation (
         | Ok() -> records
         | Error e -> invalidOp ("SqliteSink: " + Verify.describe streamId e)
 
+    /// The chain head as `IOpStreamCasSink.Head` reports it — the hash of the
+    /// row at the highest sequence, or the genesis anchor for an empty stream.
+    /// Takes the caller's connection (and transaction) so the compare and the
+    /// append below are one atomic read-then-write rather than two races.
+    let headOn (conn: SqliteConnection) (tx: SqliteTransaction option) (streamId: string) : string =
+        use cmd = conn.CreateCommand()
+
+        match tx with
+        | Some t -> cmd.Transaction <- t
+        | None -> ()
+
+        cmd.CommandText <- "SELECT hash FROM op_stream WHERE stream_id = @stream_id ORDER BY sequence DESC LIMIT 1;"
+
+        cmd.Parameters.AddWithValue("@stream_id", streamId) |> ignore
+
+        match cmd.ExecuteScalar() with
+        | :? string as h -> h
+        | _ -> HashChain.genesisPreviousHash
+
+    /// The highest sequence in `streamId`, or `0` — on the caller's connection,
+    /// for the same reason `headOn` takes one (Phase 1525).
+    let latestSequenceOn (conn: SqliteConnection) (tx: SqliteTransaction option) (streamId: string) : int =
+        use cmd = conn.CreateCommand()
+
+        match tx with
+        | Some t -> cmd.Transaction <- t
+        | None -> ()
+
+        cmd.CommandText <- "SELECT COALESCE(MAX(sequence), 0) FROM op_stream WHERE stream_id = @stream_id;"
+        cmd.Parameters.AddWithValue("@stream_id", streamId) |> ignore
+
+        match cmd.ExecuteScalar() with
+        | :? int64 as n -> int n
+        | :? int as n -> n
+        | _ -> 0
+
     /// The one INSERT into `op_stream`. Callers own the connection, and pass a
     /// transaction where a second statement has to land or not land with it
     /// (Phase 1485's keyed append). Extracted rather than duplicated so the
-    /// column list, the typed-actor encoding and the SQLITE_CONSTRAINT
-    /// translation cannot drift between the three append paths.
+    /// column list, the typed-actor encoding, the ADMISSION CHECK and the
+    /// SQLITE_CONSTRAINT translation cannot drift between the append paths.
     let insertRecordOn
         (conn: SqliteConnection)
         (tx: SqliteTransaction option)
         (record: OpRecord<'Msg>)
         : AppendReceipt =
+        // ── ADMISSION (Phase 1525, finding H-16) ────────────────────────────
+        // Read on the CALLER'S connection and transaction, so inside an
+        // immediate transaction the head this checks against is the head the
+        // insert below extends. Before this, a record whose `Hash` did not
+        // recompute or whose `PreviousHash` named nothing was written happily
+        // and then made every subsequent `Replay` of the segment throw — one
+        // bad write poisoning a stream for the rest of its life, in a store
+        // that outlives the process.
+        match
+            Verify.admission
+                writeAdmission
+                (headOn conn tx record.StreamId)
+                (latestSequenceOn conn tx record.StreamId)
+                record
+        with
+        | Error e -> invalidOp (Verify.describeAdmission "SqliteSink" record.StreamId e)
+        | Ok() -> ()
+
         use cmd = conn.CreateCommand()
 
         match tx with
@@ -258,25 +350,6 @@ VALUES
         { StreamId = record.StreamId
           Sequence = record.Sequence
           Hash = record.Hash }
-
-    /// The chain head as `IOpStreamCasSink.Head` reports it — the hash of the
-    /// row at the highest sequence, or the genesis anchor for an empty stream.
-    /// Takes the caller's connection (and transaction) so the compare and the
-    /// append below are one atomic read-then-write rather than two races.
-    let headOn (conn: SqliteConnection) (tx: SqliteTransaction option) (streamId: string) : string =
-        use cmd = conn.CreateCommand()
-
-        match tx with
-        | Some t -> cmd.Transaction <- t
-        | None -> ()
-
-        cmd.CommandText <- "SELECT hash FROM op_stream WHERE stream_id = @stream_id ORDER BY sequence DESC LIMIT 1;"
-
-        cmd.Parameters.AddWithValue("@stream_id", streamId) |> ignore
-
-        match cmd.ExecuteScalar() with
-        | :? string as h -> h
-        | _ -> HashChain.genesisPreviousHash
 
     /// The receipt a previous append under `invocationKey` produced, or `None`
     /// if the key is unseen on this stream. Reads the `op_invocation` side
@@ -343,9 +416,65 @@ VALUES (@stream_id, @key, @sequence, @hash);"""
                     invocationKey
             )
 
-    /// Three-arg constructor — verifies the whole loaded segment on `Replay`.
+    /// Delete the ops at or below `throughSequence` AND the invocation-key rows
+    /// that name them, on the caller's transaction (Phase 1525, finding L-A15).
+    ///
+    /// The index deletion is the part that was missing. Left behind, a key whose
+    /// record has been truncated answers a later `AppendKeyed` with
+    /// `Duplicate receipt` naming a sequence the stream no longer holds: the
+    /// caller is told its op is already durable, and `Replay` at that address
+    /// returns nothing. A stale index entry is worse than no entry, because it
+    /// is indistinguishable from a live one. Both statements run inside the
+    /// caller's transaction, so there is no window in which one has landed and
+    /// the other has not.
+    let truncateOpsOn (conn: SqliteConnection) (tx: SqliteTransaction) (streamId: string) (throughSequence: int) : int =
+        use invocations = conn.CreateCommand()
+        invocations.Transaction <- tx
+
+        invocations.CommandText <- "DELETE FROM op_invocation WHERE stream_id = @stream_id AND sequence <= @through;"
+
+        invocations.Parameters.AddWithValue("@stream_id", streamId) |> ignore
+        invocations.Parameters.AddWithValue("@through", throughSequence) |> ignore
+        invocations.ExecuteNonQuery() |> ignore
+
+        use cmd = conn.CreateCommand()
+        cmd.Transaction <- tx
+        cmd.CommandText <- "DELETE FROM op_stream WHERE stream_id = @stream_id AND sequence <= @through;"
+        cmd.Parameters.AddWithValue("@stream_id", streamId) |> ignore
+        cmd.Parameters.AddWithValue("@through", throughSequence) |> ignore
+        cmd.ExecuteNonQuery()
+
+    /// Delete the checkpoints below `beforeSequence`, on the caller's
+    /// transaction.
+    let truncateCheckpointsOn
+        (conn: SqliteConnection)
+        (tx: SqliteTransaction)
+        (streamId: string)
+        (beforeSequence: int)
+        : int =
+        use cmd = conn.CreateCommand()
+        cmd.Transaction <- tx
+        cmd.CommandText <- "DELETE FROM op_checkpoint WHERE stream_id = @stream_id AND sequence < @before;"
+        cmd.Parameters.AddWithValue("@stream_id", streamId) |> ignore
+        cmd.Parameters.AddWithValue("@before", beforeSequence) |> ignore
+        cmd.ExecuteNonQuery()
+
+    /// Four-arg constructor — read-path mode named, write admission left at its
+    /// `Full` default (Phase 1525). The pre-1525 primary constructor, kept by
+    /// name so every existing call site compiles unchanged.
+    new
+        (
+            connectionString: string,
+            codec: IOpJsonCodec<'Msg>,
+            nodeCodec: INodeJsonCodec<'Msg>,
+            loadVerification: LoadVerification
+        ) =
+        SqliteSink<'Msg>(connectionString, codec, nodeCodec, loadVerification, WriteAdmission.Full)
+
+    /// Three-arg constructor — verifies the whole loaded segment on `Replay`
+    /// and checks every offered record on the write path.
     new(connectionString: string, codec: IOpJsonCodec<'Msg>, nodeCodec: INodeJsonCodec<'Msg>) =
-        SqliteSink<'Msg>(connectionString, codec, nodeCodec, LoadVerification.Full)
+        SqliteSink<'Msg>(connectionString, codec, nodeCodec, LoadVerification.Full, WriteAdmission.Full)
 
     /// Legacy two-arg constructor, kept for callers that don't
     /// need checkpoint snapshot round-trip (hash-chain verification only).
@@ -353,7 +482,13 @@ VALUES (@stream_id, @key, @sequence, @hash);"""
     /// works (the encoder is purely additive) but LatestCheckpointAtOrBefore
     /// will return a decoder error if a checkpoint exists.
     new(connectionString: string, codec: IOpJsonCodec<'Msg>) =
-        SqliteSink<'Msg>(connectionString, codec, NodeJsonCodec.encodeOnly<'Msg> (), LoadVerification.Full)
+        SqliteSink<'Msg>(
+            connectionString,
+            codec,
+            NodeJsonCodec.encodeOnly<'Msg> (),
+            LoadVerification.Full,
+            WriteAdmission.Full
+        )
 
     // The BASE interface is implemented explicitly rather than through the
     // checkpoint extension's block, because Phase 1485 gives this type three
@@ -582,25 +717,19 @@ ORDER BY sequence;"""
         member _.TruncateOpsThrough(streamId: string, throughSequence: int) : Async<int> =
             async {
                 use conn = openConnection ()
-                use cmd = conn.CreateCommand()
-
-                cmd.CommandText <- "DELETE FROM op_stream WHERE stream_id = @stream_id AND sequence <= @through;"
-
-                cmd.Parameters.AddWithValue("@stream_id", streamId) |> ignore
-                cmd.Parameters.AddWithValue("@through", throughSequence) |> ignore
-                return cmd.ExecuteNonQuery()
+                use tx = conn.BeginTransaction(deferred = false)
+                let removed = truncateOpsOn conn tx streamId throughSequence
+                tx.Commit()
+                return removed
             }
 
         member _.TruncateCheckpointsBefore(streamId: string, beforeSequence: int) : Async<int> =
             async {
                 use conn = openConnection ()
-                use cmd = conn.CreateCommand()
-
-                cmd.CommandText <- "DELETE FROM op_checkpoint WHERE stream_id = @stream_id AND sequence < @before;"
-
-                cmd.Parameters.AddWithValue("@stream_id", streamId) |> ignore
-                cmd.Parameters.AddWithValue("@before", beforeSequence) |> ignore
-                return cmd.ExecuteNonQuery()
+                use tx = conn.BeginTransaction(deferred = false)
+                let removed = truncateCheckpointsOn conn tx streamId beforeSequence
+                tx.Commit()
+                return removed
             }
 
     // ── Phase 1485: the two contracts a durable port owes a consumer ────────
@@ -620,19 +749,44 @@ ORDER BY sequence;"""
 
         member _.AppendIf(record: OpRecord<'Msg>, expectedHead: string) : Async<CasAppendOutcome> =
             async {
-                use conn = openConnection ()
-                use tx = conn.BeginTransaction()
-                let actual = headOn conn (Some tx) record.StreamId
+                try
+                    use conn = openConnection ()
+                    // Phase 1525 (finding M-C1) — IMMEDIATE, not the default
+                    // DEFERRED. A deferred transaction takes no write lock until
+                    // its first WRITE, so the head SELECT below ran under a read
+                    // lock: two writers could both read the same head, both find
+                    // it current, and serialise only at the insert — where the
+                    // loser got a duplicate-sequence constraint violation
+                    // (a throw) instead of the `StaleHead` this method exists to
+                    // return. `BEGIN IMMEDIATE` takes the write lock AT the
+                    // SELECT, which is what makes the compare and the append one
+                    // act rather than two.
+                    use tx = conn.BeginTransaction(deferred = false)
+                    let actual = headOn conn (Some tx) record.StreamId
 
-                if actual <> expectedHead then
-                    // Nothing was written, so the rollback is what makes "the stream is
-                    // untouched" true rather than merely intended.
-                    tx.Rollback()
-                    return CasAppendOutcome.StaleHead(expectedHead, actual)
-                else
-                    let receipt = insertRecordOn conn (Some tx) record
-                    tx.Commit()
-                    return CasAppendOutcome.Appended receipt
+                    if actual <> expectedHead then
+                        // Nothing was written, so the rollback is what makes "the
+                        // stream is untouched" true rather than merely intended.
+                        tx.Rollback()
+                        return CasAppendOutcome.StaleHead(expectedHead, actual)
+                    else
+                        let receipt = insertRecordOn conn (Some tx) record
+                        tx.Commit()
+                        return CasAppendOutcome.Appended receipt
+                with :? SqliteException as ex when ex.SqliteErrorCode = 5 ->
+                    // SQLITE_BUSY — another writer held the write lock for longer
+                    // than `busy_timeout`. NOTHING was written (the immediate
+                    // transaction never started), so this is a contention outcome
+                    // and not a failure: report it as the value the caller's
+                    // retry loop already knows how to handle, naming the head as
+                    // it can now be observed. If the other writer did commit, the
+                    // head has moved and the caller rebuilds against it; if it
+                    // rolled back, the head is unchanged and the caller retries
+                    // the same record — which is exactly what should happen.
+                    // Reporting a throw here instead would make a moment of
+                    // ordinary contention indistinguishable from a broken store.
+                    use conn = openConnection ()
+                    return CasAppendOutcome.StaleHead(expectedHead, headOn conn None record.StreamId)
             }
 
     interface IOpStreamKeyedSink<'Msg> with
@@ -640,7 +794,11 @@ ORDER BY sequence;"""
         member _.AppendKeyed(record: OpRecord<'Msg>, invocationKey: string) : Async<KeyedAppendOutcome> =
             async {
                 use conn = openConnection ()
-                use tx = conn.BeginTransaction()
+                // IMMEDIATE for the same reason as `AppendIf` (Phase 1525): the
+                // key SELECT and the two INSERTs are a read-then-write, and under
+                // a deferred transaction two callers racing one key both read
+                // "unseen" before either writes.
+                use tx = conn.BeginTransaction(deferred = false)
 
                 match invocationReceiptOn conn (Some tx) record.StreamId invocationKey with
                 | Some receipt ->
@@ -653,6 +811,45 @@ ORDER BY sequence;"""
                     claimInvocationOn conn tx record.StreamId invocationKey receipt
                     tx.Commit()
                     return KeyedAppendOutcome.Appended receipt
+            }
+
+    // ── Phase 1525: the atomic batch append + the atomic retention step ─────
+
+    interface IOpStreamBatchSink<'Msg> with
+
+        member _.AppendAll(records: OpRecord<'Msg> list) : Async<unit> =
+            async {
+                if not (List.isEmpty records) then
+                    use conn = openConnection ()
+                    use tx = conn.BeginTransaction(deferred = false)
+
+                    // Each record meets the SAME admission check a single append
+                    // meets, in order, against the head the previous insert in
+                    // this transaction just produced — so a bundle that is not a
+                    // contiguous chain is refused rather than half-written. The
+                    // transaction is never committed on that path, so the stream
+                    // is left exactly as it was.
+                    for record in records do
+                        insertRecordOn conn (Some tx) record |> ignore
+
+                    tx.Commit()
+            }
+
+    interface IOpStreamCompactSink<'Msg> with
+
+        member _.Compact(streamId: string, throughSequence: int) : Async<int * int> =
+            async {
+                use conn = openConnection ()
+                use tx = conn.BeginTransaction(deferred = false)
+                // ONE transaction over both deletions. As two calls there is a
+                // window in which the ops are gone and the checkpoints that
+                // justified removing them are not — a reader inside it sees a
+                // stream whose surviving records begin above a checkpoint that
+                // still claims to cover them.
+                let ops = truncateOpsOn conn tx streamId throughSequence
+                let cps = truncateCheckpointsOn conn tx streamId throughSequence
+                tx.Commit()
+                return ops, cps
             }
 
 module SqliteSink =
@@ -691,3 +888,33 @@ module SqliteSink =
         (nodeCodec: INodeJsonCodec<'Msg>)
         : IOpStreamCheckpointSink<'Msg> =
         upcast SqliteSink<'Msg>(connectionString, codec, nodeCodec, loadVerification)
+
+    /// `create` under explicit read-path AND write-path modes (Phase 1525).
+    /// `WriteAdmission.Off` is what a caller deliberately writing a record the
+    /// admission checks would refuse — a corruption fixture, a store being
+    /// rebuilt out of order and verified afterwards — must name. There is no
+    /// silent way to reach it.
+    let createWithModes<'Msg>
+        (loadVerification: LoadVerification)
+        (writeAdmission: WriteAdmission)
+        (connectionString: string)
+        (codec: IOpJsonCodec<'Msg>)
+        : IOpStreamSink<'Msg> =
+        upcast
+            SqliteSink<'Msg>(
+                connectionString,
+                codec,
+                NodeJsonCodec.encodeOnly<'Msg> (),
+                loadVerification,
+                writeAdmission
+            )
+
+    /// `createWithCheckpoints` under explicit read-path AND write-path modes.
+    let createWithCheckpointsAndModes<'Msg>
+        (loadVerification: LoadVerification)
+        (writeAdmission: WriteAdmission)
+        (connectionString: string)
+        (codec: IOpJsonCodec<'Msg>)
+        (nodeCodec: INodeJsonCodec<'Msg>)
+        : IOpStreamCheckpointSink<'Msg> =
+        upcast SqliteSink<'Msg>(connectionString, codec, nodeCodec, loadVerification, writeAdmission)
