@@ -5024,3 +5024,78 @@ double-escape), and the 32-character clamp bites — with the DRAWN label in the
 authored string whole, so the clamp is a difference between two bytes the fixture holds rather than an
 assertion about one. A host whose chart-lowering leg walks the corpus directory sees all eleven before
 its own clauses exist; the four lowering hosts move in this same change-set.
+
+
+## Recorded change — 0.77.0, `Fuaran.UI.Client` speaks the deployed generation wire
+
+**A BREAKING change to `Fuaran.UI.Client`, and it ADVANCES the draft slot rather than riding it.**
+The four entries above were minted on the untagged, publicly-unpinned 0.76.0 draft and are additive
+relative to the released baseline (v0.75.0 is the newest tag). This one is not: `Wire.toWireBody`
+loses a parameter and `FuaranClientConfig` gains four fields, and a consumer on the released 0.75.0
+can call and construct both. The draft-slot rule is that a change of a HIGHER class than the draft
+already carries advances the number, because a number saying "additive" over a breaking change is
+false. **So 0.76.0 was never tagged, and everything recorded against it ships in 0.77.0.**
+
+### The defect: the client spoke a protocol the endpoint does not serve
+
+`Wire.fs` wrote `{Prompt, CurrentTreeJson, ByokKey, AccessToken, …}` and read
+`{TreeJson, Ops, Version}` across a 200 / 401 / 422 status map. That was faithful to the generation
+endpoint's published OpenAPI document — and refused by the endpoint itself, which reads `prompt` /
+`currentTree`, takes secrets from HEADERS ONLY, replies
+`{version, tree, opsApplied, provider, servedModel?, snapshot}`, and refuses with
+`{error:{code,message,stage?}}` at 400 / 401 / 405 / 422 / 500 / 503. A client built from the
+document got `400 BAD_REQUEST: request body has no 'prompt' string`; correcting the prompt's case
+then got `MISSING_PROVIDER_KEY`, because the body's key was never read. The document has been
+corrected to describe the deployed surface, and this package follows it.
+
+### What moved
+
+```fsharp
+// BEFORE                                        // AFTER
+Wire.toWireBody args secrets                      Wire.toWireBody args
+```
+
+The secrets parameter is gone because there is no secret MEMBER. `FuaranClient` sends the access
+token as `Authorization: Bearer` and the BYOK key as `X-Fuaran-Provider-Key`, and the endpoint
+refuses a body carrying either — detected by presence, never read — with `SECRETS_IN_BODY`. The old
+signature could not be kept as a deprecated overload without leaving a function whose output the
+endpoint now rejects, which is worse than removing it.
+
+`FuaranClientConfig` gains `Provider`, `Timeout`, `AllowInsecureEndpoint` (and `SendBearerHeader`
+keeps its name with a corrected meaning: it gates the endpoint's ONLY auth channel, not a
+belt-and-braces duplicate of a body field). `GenerateArgs` gains `InteractionId` and
+`SessionTurnOptions` follows. Both are record widenings, so a full-literal construction needs the new
+field; `GenerateArgs.prompt` / `.repair` and `SessionTurnOptions.none` are unaffected.
+
+**`TurnResult.Produced` keeps its arity.** The deployment facts the wire now carries —
+`opsApplied` as a COUNT, `provider`, the optional `servedModel`, the `snapshot` state — hang off a
+new `ProducedDetail` returned by `FuaranClient.GenerateDetailed`, not off the case. Widening the
+case would break every `match` in every consumer in order to carry information most of them ignore,
+and `Session.fs` matches `Produced(treeJson, _, _)` exactly as before. `ops` is still populated when
+a reply carries a full op list — a proxy, the offline mock, or an in-process host sends one — and is
+empty when only the count is on the wire, which is what `ProducedDetail.OpsApplied` is for.
+
+New additive surface: `ClientCode`, `SnapshotState`, `ProducedDetail`, `EndpointPolicy.isSecure`,
+`Wire.parseProducedDetail`, `FuaranClient.GenerateDetailed`, and a
+`Generate(args, cancellationToken)` overload.
+
+### Three refusals a caller can now branch on
+
+- **`MALFORMED_RESPONSE`** — a 200 with no tree is a failure, not `Produced("")`. The old behaviour
+  poisoned the session: `FuaranSession` holds the produced tree, so an empty one made every LATER
+  repair a no-op, and the fault surfaced one turn after the reply that caused it.
+- **`INSECURE_ENDPOINT`** — a plaintext, non-loopback endpoint is refused before the request is
+  built, since both credentials ride headers. Loopback, `https` and a relative same-origin path are
+  admitted; `AllowInsecureEndpoint` is the written-down opt-out.
+- **`NETWORK`** now carries a FIXED message. It used to be `ex.Message` verbatim, and a `TurnResult`
+  is routinely rendered straight into a browser — an exception string can quote a URL, a header name
+  or a proxy's internal hostname. The detail belongs in the host's log, which is why the transport is
+  a seam the host owns.
+
+`IFuaranTransport` is UNCHANGED: the `Timeout` is a race in the client, so it applies to every
+transport including an injected one, and no implementor has to adopt anything.
+
+### Not a wire-format change
+
+No `Node` / `TreeOp` byte moves, and no shared-corpus fixture changes. What moved is the generation
+endpoint's HTTP envelope, which the wire-format corpus does not govern.

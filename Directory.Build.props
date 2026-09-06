@@ -580,7 +580,7 @@
          ADVANCES rather than riding 0.75.0 because v0.75.0 is tagged - the slot
          is released, not a draft. See STABILITY.md "Recorded change - 0.76.0,
          `MergeChoice.KeepA` / `KeepB`". -->
-    <Version>0.76.0</Version>
+    <Version>0.77.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

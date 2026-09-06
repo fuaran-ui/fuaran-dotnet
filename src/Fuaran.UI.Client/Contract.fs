@@ -12,7 +12,9 @@
 // bring-your-own-key (BYOK) HTTPS surface that takes a prompt (+ an optional
 // current tree) and returns a new canonical wire-format tree. The endpoint URL
 // and the paid access token are the commercial gate; this client is a thin,
-// OSS-safe HTTPS + types layer over it.
+// OSS-safe types layer over it. `Client.fs` states the endpoint-scheme rule the
+// client actually enforces (https, or loopback, or an explicit opt-in) — this
+// comment used to say "HTTPS" flatly, which no code checked.
 
 namespace Fuaran.UI.Client
 
@@ -90,6 +92,65 @@ type RecoverableError =
       Code: string
       Message: string }
 
+/// Well-known `RecoverableError.Code` values this CLIENT synthesises, as
+/// opposed to the codes the endpoint sends. A caller branching on `Code` can
+/// tell "the endpoint refused" from "the call never reached it", which is a
+/// different remedy every time.
+[<RequireQualifiedAccess>]
+module ClientCode =
+
+    /// The call did not complete: the transport threw, or the configured
+    /// `Timeout` elapsed. The message is FIXED — an upstream exception string
+    /// can quote a URL, a header, or a proxy's internal hostname, and this
+    /// result is routinely rendered straight into a browser.
+    [<Literal>]
+    let Network = "NETWORK"
+
+    /// The endpoint replied 200 with no usable tree. Not a success: a caller
+    /// that accepted it would hold `""` as the current tree and silently
+    /// repair nothing on every subsequent turn.
+    [<Literal>]
+    let MalformedResponse = "MALFORMED_RESPONSE"
+
+    /// The endpoint is a plaintext `http://` URL that is not loopback, and
+    /// `AllowInsecureEndpoint` was not set. Refused BEFORE the request is
+    /// built, so the BYOK key and the access token are never put on a socket.
+    [<Literal>]
+    let InsecureEndpoint = "INSECURE_ENDPOINT"
+
+/// The grounding-corpus snapshot the endpoint served a turn against.
+/// `Version` / `ContentHash` are present only when a payload was actually
+/// loaded — a turn generated ungrounded still succeeds.
+type SnapshotState =
+    { State: string
+      Version: string option
+      ContentHash: string option }
+
+/// The deployment facts a produced turn carries beyond the tree itself.
+///
+/// They are here rather than on `TurnResult.Produced` deliberately. The three
+/// things every caller needs — the tree, how much changed, the version echo —
+/// stay in the case; the things a caller needs only when auditing a deployment
+/// hang off `FuaranClient.GenerateDetailed`. Widening the case would break
+/// every `match` in every consumer to carry information most of them ignore.
+type ProducedDetail =
+    {
+        /// How many ops the turn applied to reach the produced tree — a COUNT.
+        /// The endpoint does not return the op list, so `TurnResult.Produced`
+        /// carries ops only when something in front of it (a proxy, a mock, an
+        /// in-process host) supplies them.
+        OpsApplied: int
+        /// The allowlisted provider id the deployment chose.
+        Provider: string option
+        /// The model the provider's own reply named as having served. `None`
+        /// means UNREPORTED, and is deliberately not the model the deployment
+        /// asked for: a substituted value would look like a report and hide an
+        /// alias re-point, which is the one thing this field exists to expose.
+        ServedModel: string option
+        /// The grounding snapshot's state for this turn.
+        Snapshot: SnapshotState option
+    }
+
 /// The endpoint's reply, discriminated three ways. Mirrors the surface's
 /// three-case turn result; the HTTP status selects the case (see `Wire.fs`).
 [<RequireQualifiedAccess>]
@@ -127,6 +188,11 @@ type GenerateArgs =
         /// Opt IN to contributing this turn as a candidate for the next corpus
         /// version. `None` / `false` contributes nothing.
         ContributeCorpus: bool option
+        /// Your OPAQUE correlation id, joining this turn's records at the
+        /// endpoint with your own render / op-stream telemetry into one
+        /// reconstructable change. The endpoint mints none — an id minted
+        /// there could not reach your legs.
+        InteractionId: string option
     }
 
 [<RequireQualifiedAccess>]
@@ -140,7 +206,8 @@ module GenerateArgs =
           ProviderKey = None
           AccessToken = None
           DisableCorpusRead = None
-          ContributeCorpus = None }
+          ContributeCorpus = None
+          InteractionId = None }
 
     /// A repair request: a prompt against an existing tree's canonical wire JSON.
     let repair (text: string) (currentTreeJson: string) : GenerateArgs =
