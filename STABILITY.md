@@ -5978,3 +5978,86 @@ consumer switching exhaustively over `WireSurvivability.byCase` gains a row.
 `SortKey.col` is NOT part of this change — those slots are `Fuaran.Core.Transform`'s own DU, which
 this repo consumes as a pinned package.
 
+
+---
+
+## Recorded change — 0.77.0, renderer correctness: uploads, keys, refusals and two host-parity fixes (fuaran#1531)
+
+**Mostly additive; ONE source-breaking change, riding the standing 0.77.0 draft.**
+`v0.76.0` remains the newest tag. The draft already carries an `FS0764` record
+widening and `Derivation<'Msg>.StructuralKey`'s narrowing — both of which say the
+same thing to a consumer, *adopting this slot costs source edits* — so under the
+draft-slot rule the change below RIDES rather than advancing. It is the same class,
+not a higher one.
+
+### The breaking one
+
+**`LocalBindings.dispatchFormCommit : unit -> unit` becomes
+`Browser.Types.Element -> unit`.** The form-submit broadcast was a window-level
+dispatch that every `OnSubmit`-flushing `Binding.Local` input on the page answered,
+so a submit anywhere drained a search box in a header and any other form's fields —
+dispatching their `OnCommit` actions and writing their values into the model on a
+gesture the reader made somewhere else. The event is now dispatched ON the
+submitting form and bubbles; each listener asks whether that form contains its own
+input. **Migration:** pass the submit event's `currentTarget` (the renderer's own
+call site is `LocalBindings.dispatchFormCommit (unbox<Browser.Types.Element> e.currentTarget)`).
+It takes the form ELEMENT rather than a node id because a form's NodeId is its
+wrapper's, so there is nothing addressable to match on, and `contains` is a question
+the DOM already answers for every nesting an author can build.
+
+### Behaviour changes on existing surfaces
+
+- **`GridExport.escapeField` neutralises spreadsheet formulas.** A field beginning
+  `=`, `+`, `-`, `@`, TAB or CR gains OWASP's leading apostrophe and is quoted.
+  **Negative numbers are exempt** — `isPlainNumber` — because `-` leads every
+  negative number and prefixing them would turn a numeric column into text no
+  reader can sum. An ordinary export is byte-identical to before.
+- **`Formatting.format` never throws at a `Format.Date` slot.** `NaN`, the
+  infinities and any value outside `DateTimeOffset`'s span render as
+  `Formatting.unrepresentableInstant` on BOTH pipelines, where .NET used to throw
+  out of an SSR pass and `Intl` used to raise in the browser. The bounds are the
+  narrower, .NET pair on purpose: taking JavaScript's wider range would leave a
+  value one host draws and the other refuses.
+- **`Binding.projectSelectionField` is `inline`, and the Fable leg now coerces.**
+  `unbox` is a no-op under Fable, so a text cell in a `Binding<float>` used to
+  render `NaN` where .NET refused. It now coerces as `Convert.ChangeType` does, and
+  a string that is not a number throws rather than becoming `NaN`. `'T = obj` —
+  every decoded path — coerces nothing, so the wire path is unchanged. `inline` is
+  what makes the target type available: Fable erases a non-inline function's
+  generic parameter.
+- **`Email.renderDocument` takes `lang` / `dir` from the sources**, deriving the
+  direction with the shell's own `Formatting.textDirection`, where it hardcoded
+  `lang="en"`. An absent tag now declares neither attribute.
+- **`FastPath.bank` RAISES on a duplicate pattern id**, where it silently skipped —
+  and skipped inconsistently, so the registry kept one pattern's signature and the
+  pattern map kept another's builder. **`FastPath.instantiate` RAISES on a value its
+  hole's declared `ValueSpace` does not admit**, where `IntRange(1, 12)` accepted
+  `"purple"`. An unbound hole is still not a violation.
+- **The renderer's six silent `with _ -> ()` isolations now report** through
+  `Diagnostics.warn`. The isolation is unchanged; only the silence is.
+- **Both browser observers re-register a same-id element that has changed**, and
+  clear that node's change-detection caches with it.
+- **`StateStore.useStateKeys` / `FilterStore.useFilterKeys` /
+  `QueryStore.useQueryKeys` subscribe once per key set** rather than
+  re-subscribing on every notification. Signatures unchanged.
+
+### Additive surfaces
+
+`Render.reconciliationKey`; `UploadStream.streamSelections`;
+`Fuaran.UI.Renderer.Diagnostics`; `LocalBindings.errorSlotId` /
+`invalidFieldAttributes`; `GridExport.formulaLeadIns` / `isPlainNumber` /
+`neutraliseFormula`; `Formatting.minInstantSeconds` / `maxInstantSeconds` /
+`unrepresentableInstant` / `isRepresentableInstant`; `FastPath.tryBank` /
+`DuplicateId` / `HoleViolation` / `valueViolations`; and
+`ElementRegistration` (type + module) in **both** `Fuaran.UI.LayoutObserver` and
+`Fuaran.UI.StyleObserver` — each package carries its own copy rather than a
+dependency being minted between two deliberately independent packages.
+
+### What did NOT change
+
+No wire byte moves. No `NodeKind`, `Binding`, `Action` or spec-record case is added
+or removed, no corpus fixture changes, and no schema moves. The reject vectors and
+the `PreEmitValidate` rule this phase's M-B1 task proposed are NOT here: a
+count-like bound at `Skeleton.rows` contradicts the shipped §7.1 conformance test
+that every 32-bit integer decodes at an integer slot, so it is a specification
+amendment rather than a host-side refusal. See the phase's outcome.
