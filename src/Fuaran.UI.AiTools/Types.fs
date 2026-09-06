@@ -155,6 +155,56 @@ type ResolvedBindingResult =
     | Resolved of ResolvedBinding
     | Failed of BindingError
 
+// ─── Text provenance (Phase 1547) ──────────────────────────────────────────
+
+/// Where a text value came from. Binding slots have carried a
+/// `BindingSource` token since v1, so an agent can tell a declared value
+/// from a resolved one; text slots did not, and a heading authored as a
+/// literal was indistinguishable from one resolved out of a query result.
+/// This is that mark, over the same vocabulary rather than a second one:
+/// `Bound` carries the very `BindingSource` and wire expression
+/// `BindingProbe.identify` already produces.
+[<RequireQualifiedAccess>]
+type TextProvenance =
+    /// A string the tree's author wrote.
+    | Literal
+    /// A catalogue lookup. `key` is the i18n key; the resolved string is
+    /// the host catalogue's, not the tree's.
+    | I18n of key: string
+    /// Text resolved from a binding. `source` is the binding-slot
+    /// vocabulary's own token; `expression` is its canonical wire form
+    /// (`$queries.<name>`, `$state.<key>`, …).
+    | Bound of source: BindingSource * expression: string
+
+module TextProvenance =
+    /// Whether a consumer must treat the text as content the interface
+    /// displays rather than as anything addressed to it.
+    ///
+    /// True for text resolved from a `Query`, `Selection`, `State` or
+    /// `Computed` binding: every one of those reaches the tree from data
+    /// the tree's author did not write, so its bytes are as
+    /// attacker-influenced as the data behind them. Literal and i18n text
+    /// carry no flag, because the author and the catalogue are the same trust
+    /// domain as the tree itself. `Static` and `Filter` are likewise
+    /// unflagged: a static default is authored, and a filter value is the
+    /// operator's own selection from a bounded set the author declared.
+    ///
+    /// It is derived rather than stored so a consumer needs no table:
+    /// reading the flag is enough to act on.
+    let isUntrusted (provenance: TextProvenance) : bool =
+        match provenance with
+        | TextProvenance.Literal
+        | TextProvenance.I18n _ -> false
+        | TextProvenance.Bound(source, _) ->
+            match source with
+            | BindingSource.Query _
+            | BindingSource.Selection _
+            | BindingSource.State _
+            | BindingSource.Computed -> true
+            | BindingSource.Static
+            | BindingSource.Filter _
+            | BindingSource.I18n _ -> false
+
 // ─── Current-state classification (§4i `currentState` line 1172) ───────────
 
 /// What state the renderer believes the node is in. The four canonical
@@ -227,6 +277,11 @@ and PropEntry =
         Value: obj option
         /// Best-effort type hint, same constraint as `ResolvedBinding.TypeHint`.
         TypeHint: string option
+        /// Phase 1547 — set on every text-valued entry (a slot whose spec
+        /// field is a `TextSource`), `None` on every other prop. The
+        /// value rendering is unchanged either way; this is the mark
+        /// beside it.
+        Provenance: TextProvenance option
     }
 
 // ─── Runtime-error stream (§4i lines 1126 + line 1313) ─────────────────────

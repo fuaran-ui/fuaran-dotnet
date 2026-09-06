@@ -118,7 +118,19 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // control is the ONLY way a keyboard reader takes a token back, so an unstyled
 // one is not merely plain but keyboard-invisible, which is exactly the
 // unstyled-control skew this fingerprint exists to catch.
-let vocabularyFingerprint = "fv1:31d200d72663a91a"
+// Phase 1546 moved this, and it is the first move that adds NO class. The
+// enumeration this digest runs over is every `fuaran-`-shaped token in a
+// renderer string literal, not only the tokens that are class names, and the
+// Trusted Types policy name `fuaran-renderer` is one of the former and none of
+// the latter. That breadth is deliberate (`CssCoverageTests`'s
+// `declaredNonClassTokens` note says why: narrowing it would detect strictly
+// less renderer change), so the price of the breadth is a stamp move for a
+// token the sheet will never style. Stated plainly so a host reading this line
+// is not misled: nothing about the CLASS vocabulary changed between
+// fv1:31d200d72663a91a and this value, and a sheet stamped with either styles
+// exactly the same set. The token is declared a non-class in that suite, which
+// is what keeps the coverage assertion honest about it.
+let vocabularyFingerprint = "fv1:533d4239b16f57b7"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;

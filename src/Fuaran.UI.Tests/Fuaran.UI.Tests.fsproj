@@ -324,6 +324,7 @@
     <Compile Include="GridPasteTests.fs" />
     <Compile Include="RatingModelTests.fs" />
     <Compile Include="TokensModelTests.fs" />
+    <Compile Include="TrustedTypesTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

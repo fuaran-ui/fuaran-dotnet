@@ -3199,7 +3199,9 @@ let rec private renderKind
         // scheme floor alone never decided.
         let html = Markdown.toHtmlWithEgress ctx.EgressPolicy (renderText ctx spec.Text)
 
-        Html.div [ prop.className "fuaran-markdown"; prop.dangerouslySetInnerHTML html ]
+        Html.div
+            [ prop.className "fuaran-markdown"
+              prop.dangerouslySetInnerHTML (TrustedTypes.html html) ]
     | NodeKind.Metric spec -> renderMetric ctx parentNodeId state spec
     | NodeKind.Badge spec ->
         Html.span
@@ -3232,7 +3234,8 @@ let rec private renderKind
         // (the ONE serialisation the SSR + TS + Python legs also emit, so the
         // client / server are parity by construction). Rides
         // `dangerouslySetInnerHTML` like Markdown/Math — an inert display node.
-        Html.div [ prop.dangerouslySetInnerHTML (DrawingSvg.render ctx.Sources (renderText ctx) spec) ]
+        Html.div
+            [ prop.dangerouslySetInnerHTML (TrustedTypes.html (DrawingSvg.render ctx.Sources (renderText ctx) spec)) ]
     | NodeKind.LabelValueRow spec -> renderLabelValueRow ctx parentNodeId state spec
     | NodeKind.Fact spec -> renderFact ctx spec
     | NodeKind.Link spec ->
@@ -3971,7 +3974,7 @@ let rec private renderKind
 
         let content =
             match mathml with
-            | Some markup -> [ prop.dangerouslySetInnerHTML markup ]
+            | Some markup -> [ prop.dangerouslySetInnerHTML (TrustedTypes.html markup) ]
             | None -> [ prop.children [ Html.span [ prop.className "fuaran-math-source"; prop.text spec.Source ] ] ]
 
         if isBlock then
@@ -4738,7 +4741,9 @@ and private renderSparkline (ctx: RenderContext<'Msg>) (spec: SparklineSpec) : R
         | Some drawing ->
             Html.div
                 [ prop.className "fuaran-sparkline"
-                  prop.dangerouslySetInnerHTML (DrawingSvg.render ctx.Sources (renderText ctx) drawing) ]
+                  prop.dangerouslySetInnerHTML (
+                      TrustedTypes.html (DrawingSvg.render ctx.Sources (renderText ctx) drawing)
+                  ) ]
         | None -> Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
     | None -> Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
 
@@ -7235,7 +7240,7 @@ and private renderChart
                       // two call sites kept in step. The host-installed scope
                       // ships `Off`, so these client bytes are unchanged.
                       prop.dangerouslySetInnerHTML (
-                          Fuaran.UI.Charts.renderSvg ctx.Sources (renderText ctx) spec pointRows
+                          TrustedTypes.html (Fuaran.UI.Charts.renderSvg ctx.Sources (renderText ctx) spec pointRows)
                       ) ]
             | _ ->
                 // Unresolved data, or a chart kind whose lowering rule has not
@@ -8189,7 +8194,7 @@ let renderStateReactive
 /// the typed-theme path. See `renderWithTheme` for the wrapping entry
 /// point.
 let themeStyleElement (theme: Theme) : ReactElement =
-    Html.style [ prop.dangerouslySetInnerHTML (Theme.toCss theme) ]
+    Html.style [ prop.dangerouslySetInnerHTML (TrustedTypes.html (Theme.toCss theme)) ]
 
 /// Convenience entry point that mounts a `Theme`'s CSS-variable bundle
 /// alongside the rendered node tree. `Defaults.theme` mirrors the post-

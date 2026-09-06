@@ -230,7 +230,8 @@ let private boxNN (value: 'T) : obj = box value |> Unchecked.nonNull
 let private entry (name: string) (value: obj option) (typeHint: string option) : PropEntry =
     { Name = name
       Value = value
-      TypeHint = typeHint }
+      TypeHint = typeHint
+      Provenance = None }
 
 let private opaqueFn (name: string) (signature: string) : PropEntry = entry name None (Some signature)
 
@@ -241,6 +242,15 @@ let private valueEntry (name: string) (value: obj) : PropEntry =
         (value.GetType() |> Unchecked.nonNull).Name
 
     entry name (Some(boxNN value)) (Some typeName)
+
+/// Phase 1547 — a text-valued prop: `valueEntry`'s entry with the
+/// provenance mark added. It is defined in terms of `valueEntry` rather
+/// than beside it so the rendered VALUE and the type hint are the same
+/// bytes a text prop produced before the mark existed; a consumer that
+/// ignores provenance reads exactly what it read before.
+let private textEntry (name: string) (text: TextSource) : PropEntry =
+    { valueEntry name text with
+        Provenance = Some(textProvenance text) }
 
 let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
     match kind with
@@ -264,7 +274,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
 
         let headingEntries =
             match spec.Heading with
-            | Some h -> [ valueEntry "Heading" h ]
+            | Some h -> [ textEntry "Heading" h ]
             | None -> [ entry "Heading" None (Some "TextSource option") ]
 
         layoutEntries @ headingEntries
@@ -277,19 +287,19 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
     | NodeKind.SummaryList(spec) ->
         // Surface the optional section heading.
         match spec.Heading with
-        | Some h -> [ valueEntry "Heading" h ]
+        | Some h -> [ textEntry "Heading" h ]
         | None -> [ entry "Heading" None (Some "TextSource option") ]
     | NodeKind.Disclosure(spec) ->
         // Surface required Heading + DefaultOpen scalar.
         // Open is a Binding<bool> — exposed via the binding-slots extractor
         // rather than as a scalar prop.
-        [ valueEntry "Heading" spec.Heading; valueEntry "DefaultOpen" spec.DefaultOpen ]
+        [ textEntry "Heading" spec.Heading; valueEntry "DefaultOpen" spec.DefaultOpen ]
     | NodeKind.Modal(spec) ->
         // Phase 289 — Dismissable + optional Heading scalars (Open binding +
         // OnDismiss action are not scalar props).
         [ valueEntry "Dismissable" spec.Dismissable
           (match spec.Heading with
-           | Some h -> valueEntry "Heading" h
+           | Some h -> textEntry "Heading" h
            | None -> entry "Heading" None (Some "TextSource option")) ]
     | NodeKind.ScrollArea(spec) ->
         // Phase 289 — scroll axis + optional pixel bounds.
@@ -303,11 +313,11 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
     | NodeKind.Heading(spec) ->
         // Include Variant alongside Level + Text.
         [ valueEntry "Level" spec.Level
-          valueEntry "Text" spec.Text
+          textEntry "Text" spec.Text
           valueEntry "Variant" spec.Variant ]
-    | NodeKind.Markdown(spec) -> [ valueEntry "Text" spec.Text ]
+    | NodeKind.Markdown(spec) -> [ textEntry "Text" spec.Text ]
     | NodeKind.Metric(spec) ->
-        [ valueEntry "Label" spec.Label
+        [ textEntry "Label" spec.Label
           valueEntry "Format" spec.Format
           valueEntry "Tone" spec.Tone
           valueEntry "Weight" spec.Weight
@@ -320,26 +330,26 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
            | Some i -> valueEntry "Icon" i
            | None -> entry "Icon" None (Some "IconSource option"))
           (match spec.Subtext with
-           | Some s -> valueEntry "Subtext" s
+           | Some s -> textEntry "Subtext" s
            | None -> entry "Subtext" None (Some "TextSource option")) ]
-    | NodeKind.Badge(spec) -> [ valueEntry "Label" spec.Label; valueEntry "Variant" spec.Variant ]
+    | NodeKind.Badge(spec) -> [ textEntry "Label" spec.Label; valueEntry "Variant" spec.Variant ]
     | NodeKind.Sparkline(_) -> []
     | NodeKind.Callout(spec) ->
         [ valueEntry "Tone" spec.Tone
           (match spec.Heading with
-           | Some h -> valueEntry "Heading" h
+           | Some h -> textEntry "Heading" h
            | None -> entry "Heading" None (Some "TextSource option"))
-          valueEntry "Body" spec.Body
+          textEntry "Body" spec.Body
           (match spec.Icon with
            | Some i -> valueEntry "Icon" i
            | None -> entry "Icon" None (Some "IconSource option"))
           valueEntry "Dismissable" spec.Dismissable ]
     | NodeKind.Progress(spec) ->
         [ (match spec.Label with
-           | Some l -> valueEntry "Label" l
+           | Some l -> textEntry "Label" l
            | None -> entry "Label" None (Some "TextSource option"))
           (match spec.Caveat with
-           | Some c -> valueEntry "Caveat" c
+           | Some c -> textEntry "Caveat" c
            | None -> entry "Caveat" None (Some "TextSource option"))
           valueEntry "Indeterminate" spec.Indeterminate
           valueEntry "Tone" spec.Tone ]
@@ -355,26 +365,26 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
     | NodeKind.LabelValueRow(spec) ->
         // Source is a Binding slot exposed via
         // extractBindings; the remaining four fields are scalar props.
-        [ valueEntry "Label" spec.Label
+        [ textEntry "Label" spec.Label
           valueEntry "Format" spec.Format
           valueEntry "Emphasis" spec.Emphasis
           (match spec.Help with
-           | Some h -> valueEntry "Help" h
+           | Some h -> textEntry "Help" h
            | None -> entry "Help" None (Some "TextSource option")) ]
     | NodeKind.Fact(spec) ->
         // No Binding slot: `Value` is a TextSource (its Bound leg resolves
         // through renderText, not the slot surface) — all five are props.
-        [ valueEntry "Label" spec.Label
-          valueEntry "Value" spec.Value
+        [ textEntry "Label" spec.Label
+          textEntry "Value" spec.Value
           valueEntry "Tone" spec.Tone
           valueEntry "Emphasis" spec.Emphasis
           (match spec.Help with
-           | Some h -> valueEntry "Help" h
+           | Some h -> textEntry "Help" h
            | None -> entry "Help" None (Some "TextSource option")) ]
     | NodeKind.Link(spec) ->
         // Href is a Binding slot exposed via extractBindings; the remaining
         // fields are scalar props.
-        [ valueEntry "Label" spec.Label
+        [ textEntry "Label" spec.Label
           (match spec.Rel with
            | Some r -> valueEntry "Rel" r
            | None -> entry "Rel" None (Some "string option"))
@@ -385,7 +395,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
     | NodeKind.Image(spec) ->
         // Phase 287 — Src is a Binding<string> (sanitised at render); Alt +
         // Variant are scalar props.
-        [ valueEntry "Alt" spec.Alt; valueEntry "Variant" spec.Variant ]
+        [ textEntry "Alt" spec.Alt; valueEntry "Variant" spec.Variant ]
     | NodeKind.Media(spec) ->
         // Phase 1076 — `Src` is a Binding (sanitised at render), so it is not a
         // prop; `Label`, `Controls` and `Loop` are the scalars, and `Kind` is
@@ -393,7 +403,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
         // agent asking "what is this node" wants to know it is a video, and the
         // payload's two slots are a separate question the entry cannot answer
         // without inventing a spelling for a union.
-        [ valueEntry "Label" spec.Label
+        [ textEntry "Label" spec.Label
           valueEntry
               "Kind"
               (match spec.Kind with
@@ -408,7 +418,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
         // token list, because an agent asking "what is this node" most wants to
         // know what this frame has been allowed to do, and the empty list is a
         // meaningful answer rather than a missing one.
-        [ valueEntry "Title" spec.Title
+        [ textEntry "Title" spec.Title
           valueEntry "AspectRatio" spec.AspectRatio
           valueEntry
               "Permissions"
@@ -452,7 +462,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
     | NodeKind.Toast(spec) ->
         // Phase 289 — Open is a Binding<bool>; Message + Tone + Dismissable are
         // scalar props.
-        [ valueEntry "Message" spec.Message
+        [ textEntry "Message" spec.Message
           valueEntry "Tone" spec.Tone
           valueEntry "Dismissable" spec.Dismissable ]
     | NodeKind.CodeBlock(spec) ->
@@ -481,27 +491,27 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
               ))
               (Some "ViewBox (minX minY width height)") ]
     | NodeKind.Form(spec) ->
-        [ valueEntry "SubmitLabel" spec.SubmitLabel
+        [ textEntry "SubmitLabel" spec.SubmitLabel
           opaqueFn "OnSubmit" "Action<'Msg>"
           entry "Fields" (Some(boxNN (List.length spec.Fields))) (Some "FormField list (count)") ]
     | NodeKind.Filters(spec) ->
         [ entry "FilterCount" (Some(boxNN (List.length spec.Items))) (Some "FilterSpec list (count)") ]
     | NodeKind.Button(spec) ->
-        [ valueEntry "Label" spec.Label
+        [ textEntry "Label" spec.Label
           valueEntry "Variant" spec.Variant
           (match spec.Icon with
            | Some i -> valueEntry "Icon" i
            | None -> entry "Icon" None (Some "IconSource option"))
           opaqueFn "OnClick" "Action<'Msg>" ]
     | NodeKind.FileUpload(spec) ->
-        [ valueEntry "Label" spec.Label
+        [ textEntry "Label" spec.Label
           entry "Accept" (Some(boxNN (String.concat ", " spec.Accept))) (Some "string list (comma-joined for the wire)")
           valueEntry "Multiple" spec.Multiple
           opaqueFn "OnSelect" "FileSelection list -> Action<'Msg>" ]
     | NodeKind.Select(spec) ->
-        [ valueEntry "Label" spec.Label
+        [ textEntry "Label" spec.Label
           (match spec.Placeholder with
-           | Some p -> valueEntry "Placeholder" p
+           | Some p -> textEntry "Placeholder" p
            | None -> entry "Placeholder" None (Some "TextSource option"))
           opaqueFn "OnChange" "string option -> Action<'Msg>" ]
     | NodeKind.DataGrid(spec) ->
@@ -525,7 +535,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
               (Some(boxNN (String.concat ", " spec.YFields)))
               (Some "string list (comma-joined for the wire)")
           (match spec.Title with
-           | Some t -> valueEntry "Title" t
+           | Some t -> textEntry "Title" t
            | None -> entry "Title" None (Some "TextSource option"))
           (match spec.OnPointClick with
            | Some _ -> opaqueFn "OnPointClick" "obj -> Action<'Msg>"

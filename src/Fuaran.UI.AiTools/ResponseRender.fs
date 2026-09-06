@@ -44,6 +44,12 @@ let private bindingSourceToken (source: BindingSource) : string =
     | BindingSource.Computed -> "Computed"
     | BindingSource.I18n _ -> "I18n"
 
+let private textProvenanceToken (provenance: TextProvenance) : string =
+    match provenance with
+    | TextProvenance.Literal -> "literal"
+    | TextProvenance.I18n _ -> "i18n"
+    | TextProvenance.Bound _ -> "bound"
+
 let private bindingErrorCodeToken (code: BindingErrorCode) : string =
     match code with
     | BindingErrorCode.SourceUnregistered -> "SourceUnregistered"
@@ -163,6 +169,41 @@ let private writeProps (jw: Utf8JsonWriter) (props: PropEntry list) =
 
     jw.WriteEndObject()
 
+/// Phase 1547 — the text-provenance block, a sibling of `props` rather than
+/// a change to it. Every text-valued prop gets one entry: what kind of text
+/// it is, and, for bound text, the binding-source token and wire
+/// expression the `bindings` block already speaks, so an agent reads one
+/// vocabulary and not two. `untrusted` is present only when it is `true`, so
+/// its absence is never a claim.
+///
+/// It is written whenever the caller asked for `props`, including when the
+/// node carries no text at all: an empty object says "this surface looked and
+/// found none", which a missing key cannot. Nothing inside `props` moves, so
+/// a consumer that ignores this key reads the response it read before.
+let private writeTextProvenance (jw: Utf8JsonWriter) (props: PropEntry list) =
+    jw.WriteStartObject("textProvenance")
+
+    for p in props do
+        match p.Provenance with
+        | None -> ()
+        | Some provenance ->
+            jw.WriteStartObject(p.Name)
+            jw.WriteString("provenance", textProvenanceToken provenance)
+
+            match provenance with
+            | TextProvenance.Literal -> ()
+            | TextProvenance.I18n key -> jw.WriteString("key", key)
+            | TextProvenance.Bound(source, expression) ->
+                jw.WriteString("source", bindingSourceToken source)
+                jw.WriteString("expression", expression)
+
+            if TextProvenance.isUntrusted provenance then
+                jw.WriteBoolean("untrusted", true)
+
+            jw.WriteEndObject()
+
+    jw.WriteEndObject()
+
 let private writeBindings (jw: Utf8JsonWriter) (bindings: Map<string, ResolvedBindingResult>) =
     jw.WriteStartObject("bindings")
 
@@ -218,7 +259,9 @@ let private writeNodeState (jw: Utf8JsonWriter) (state: NodeState) =
     jw.WriteString("kind", state.Kind)
 
     match state.Props with
-    | Some props -> writeProps jw props
+    | Some props ->
+        writeProps jw props
+        writeTextProvenance jw props
     | None -> ()
 
     match state.Bindings with

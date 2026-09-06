@@ -3,7 +3,7 @@ module FableLaws.Laws
 // ============================================================================
 //  Phase 1488 — the laws the Fable harness certifies.
 //
-//  TWO, and they are different kinds of claim.
+//  THREE, and they are different kinds of claim.
 //
 //  1. THE BROWSER MERGE. `TreeMerge.merge3Way` is the tier's structural three-way
 //     merge, and it ships in a package that transpiles: it runs in a browser, on
@@ -28,6 +28,13 @@ module FableLaws.Laws
 //     value-identical under Fable (see `ConfRng.intBelow`'s comment on why it uses
 //     no 32-bit multiply), and this is the first thing in this repo that CHECKS
 //     that claim over a real consumer witness rather than trusting it.
+//
+//  3. THE BROWSER'S INFLATER, ON A FOREIGN BLOCK TYPE. `Deflate.inflate` decodes
+//     a raw-DEFLATE stream a standard deflate library emitted — a DYNAMIC-Huffman
+//     block, which is the block type this tier's own deflater never produces and
+//     every other producer always does. Its .NET conformance check runs through
+//     `System.IO.Compression`, which does not transpile, so the one pipeline that
+//     actually receives foreign bundles was the one pipeline the claim excluded.
 //
 //  Everything printed is COUNTS and fixed vocabulary. The runner beside this file
 //  executes the same program on .NET and under Node and compares the two outputs
@@ -500,3 +507,153 @@ let laneFoldResults (seed: int) (iterations: int) : Fuaran.Core.LawResult list =
     // `seed` argument still names the run in its verdicts, so a refutation stays quotable.
     PortableRng.reseed seed
     FoldConfluence.laneFoldLaws coreSw footprintOfEqOp hashState laneGen 3 seed iterations
+
+// ---------------------------------------------------------------------------
+//  law 3 — the raw-DEFLATE inflater, over a FOREIGN dynamic-Huffman stream
+// ---------------------------------------------------------------------------
+//
+//  `Deflate.inflate` is the receiving half of the teleport bundle codec, and it
+//  runs in a browser: a shared link is decoded by the JavaScript this tier is
+//  compiled to. Its .NET leg has had a conformance cross-check since Phase 437
+//  — `CompressionTests.fs` inflates what the BCL's `DeflateStream` emits, which
+//  is where the DYNAMIC-Huffman block type gets exercised — but that test sits
+//  behind `#if !FABLE_COMPILER`, because `System.IO.Compression` does not
+//  transpile. So the one block type no host of ours ever EMITS, and every
+//  standard deflater always does, was certified on the canonical pipeline only.
+//
+//  The gap was not theoretical. A bundle built by a standard deflate library
+//  (Python's `zlib`, and every other host's) inflated on .NET and failed in the
+//  browser, which made every such share link unresumable while the .NET suite
+//  stayed green.
+//
+//  The fixture below closes it by carrying a foreign stream as DATA — the one
+//  form that needs no compression library on either pipeline.
+
+/// Hex → bytes. Deliberately NOT `Base64Url.decode`, though this repo ships one:
+/// the fixture is the INPUT to the unit under test, and decoding it through
+/// another codec from the same module would let a defect there present as a
+/// deflate failure.
+let private ofHex (hex: string) : byte[] =
+    let digit (c: char) : int =
+        if c >= '0' && c <= '9' then int c - int '0'
+        elif c >= 'A' && c <= 'F' then 10 + int c - int 'A'
+        else 10 + int c - int 'a'
+
+    Array.init (hex.Length / 2) (fun i -> byte ((digit hex[i * 2] <<< 4) ||| digit hex[i * 2 + 1]))
+
+/// The bytes the fixture stream decodes to — a teleport-shaped envelope, chosen
+/// because it is what a real share link carries.
+let private foreignPayload =
+    """{"v":1,"kind":"teleport","tree":{"id":"root","kind":"Stack","""
+    + """"children":[{"id":"c0","kind":"Text","text":"hello teleport"},"""
+    + """{"id":"c1","kind":"Text","text":"dynamic huffman"},"""
+    + """{"id":"c2","kind":"Button","label":"resume"}]},"""
+    + """"state":{"count":42,"tone":"Brand","open":true}}"""
+
+/// A raw-DEFLATE stream (RFC 1951, no zlib/gzip wrapper) of `foreignPayload`,
+/// emitted by a foreign deflater as ONE final DYNAMIC-Huffman block. First byte
+/// `0x75` = `0111 0101`b: LSB-first that reads BFINAL=1, BTYPE=10b=2 (dynamic).
+///
+/// Regenerate with (Python 3, standard library only):
+///
+///     import zlib
+///     c = zlib.compressobj(9, zlib.DEFLATED, -15)          # -15 = raw, no wrapper
+///     raw = c.compress(payload) + c.flush()
+///     assert (raw[0] >> 1) & 3 == 2                        # dynamic block
+///     print(raw.hex().upper())
+///
+/// The same literal is carried by `Fuaran.UI.Tests/CompressionTests.fs` so both
+/// pipelines certify the identical bytes; test projects cannot reference each
+/// other, so it is copied rather than shared (the posture `TestSupport.fs`
+/// records for the merge witnesses).
+let private foreignDynamicHex =
+    "758FB10EC2300C447FA5F29C81564C19F905D81043485D356A6A57A9834055FE9DA42A9485C9BAD3BDD3798107E85AC1"
+    + "E0A8050D821E270E020A2420825EC0153F30176F4B9DC5D8214BDB3BDF0624D0D72D670F7BEA82CFB5A71C0D3D7ACFD5"
+    + "B73FA90F51FF23DA1799D1D9AA8F5D371AFA419A1D394511A6ACBDB9A32F4B718E2342BA2505B318597FB01C29571E9B"
+    + "5CCE84850B26F30A782AF325444CE90D"
+
+/// Spelled out rather than `%A`-formatted, for the reason `classString` above
+/// gives: a runtime's rendering of a DU case is not a contract either pipeline
+/// owes the other, and this string is compared between them.
+let private inflateErrString (e: Deflate.InflateError) : string =
+    match e with
+    | Deflate.InflateError.OutputLimit limit -> "OutputLimit " + string limit
+    | Deflate.InflateError.Malformed message -> "Malformed " + message
+
+type DeflateCase =
+    { Name: string
+      Passed: bool
+      Detail: string }
+
+let private inflateCase (name: string) (expected: byte[]) (stream: byte[]) : DeflateCase =
+    match Deflate.inflate (expected.Length + 64) stream with
+    | Error e ->
+        { Name = name
+          Passed = false
+          Detail = "inflate refused the stream: " + inflateErrString e }
+    | Ok back when back.Length <> expected.Length ->
+        { Name = name
+          Passed = false
+          Detail = "length " + string back.Length + " expected " + string expected.Length }
+    | Ok back ->
+        let mismatch =
+            let mutable at = -1
+
+            for i in 0 .. expected.Length - 1 do
+                if at < 0 && back[i] <> expected[i] then
+                    at <- i
+
+            at
+
+        if mismatch < 0 then
+            { Name = name
+              Passed = true
+              Detail = "" }
+        else
+            { Name = name
+              Passed = false
+              Detail = "byte " + string mismatch + " differs" }
+
+/// Three cases, and the pair is the point rather than either half.
+///
+/// `own-fixed` is the CONTROL: this tier's own deflater emits fixed-Huffman
+/// blocks, so the round trip through it exercises everything the foreign case
+/// does EXCEPT the dynamic table decode. It passed on both pipelines while
+/// `foreign-dynamic` failed on one, which is what localises a refutation to the
+/// dynamic path instead of to the inflater at large.
+///
+/// `foreign-dynamic-tight` runs the same foreign stream with `maxOutput` set to
+/// the exact decoded length: the bomb guard's boundary, on the block type that
+/// reaches it through the length/distance copy rather than through a literal.
+let deflateCases () : DeflateCase list =
+    let expected = Utf8.encode foreignPayload
+    let foreign = ofHex foreignDynamicHex
+
+    [ inflateCase "foreign-dynamic" expected foreign
+      inflateCase "own-fixed" expected (Deflate.compress expected)
+      (match Deflate.inflate expected.Length foreign with
+       | Ok back when back.Length = expected.Length ->
+           { Name = "foreign-dynamic-tight"
+             Passed = true
+             Detail = "" }
+       | Ok back ->
+           { Name = "foreign-dynamic-tight"
+             Passed = false
+             Detail = "length " + string back.Length + " expected " + string expected.Length }
+       | Error e ->
+           { Name = "foreign-dynamic-tight"
+             Passed = false
+             Detail = "inflate refused the stream: " + inflateErrString e }) ]
+
+let deflateLines (cases: DeflateCase list) : string list =
+    let failures = cases |> List.filter (fun c -> not c.Passed)
+
+    ("DEFLATE cases="
+     + string (List.length cases)
+     + " failed="
+     + string (List.length failures))
+    :: (failures
+        |> List.map (fun c -> "DEFLATEFAIL " + c.Name + " " + sanitise c.Detail))
+
+let deflateViolations (cases: DeflateCase list) : int =
+    cases |> List.filter (fun c -> not c.Passed) |> List.length
