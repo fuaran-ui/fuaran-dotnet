@@ -131,6 +131,9 @@
          validation, currying, totality, effect-class join. -->
     <Compile Include="ParamFragmentTests.fs" />
     <Compile Include="FragmentApplyTests.fs" />
+    <!-- The subtree slots the fragment child lens reaches: switch cases and
+         default, a nested declaration body, and the two state arms. -->
+    <Compile Include="FragmentLensTests.fs" />
     <!-- FragmentMemoTests pins Phase 183's incremental re-derivation engine
          (Fuaran.UI.Memo): cache hit/miss, effecting-bypass, incremental
          value-parameter recompute (only the changed hole-address), disjoint-
