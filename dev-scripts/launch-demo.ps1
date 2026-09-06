@@ -50,6 +50,17 @@ Push-Location $repoRoot
 
 # Sibling launcher conventions — see workspace CLAUDE.md "Sibling launcher conventions (mandate)".
 # Copy-pasted from the canonical body there; do not diverge without updating the workspace doc.
+function Resolve-Npm {
+    # The single resolution point for npm on this machine, shared by Invoke-Npm
+    # below and by the Start-Process that launches Vite. See the comment in
+    # Invoke-Npm for why the .ps1 shim must be bypassed; a background launch has
+    # exactly the same problem, and `cmd /c npm run dev` sidestepped it only by
+    # accident of going through cmd.exe rather than by resolving anything.
+    [CmdletBinding()]
+    param()
+    (Get-Command npm.cmd -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+}
+
 function Invoke-Npm {
     # Node 22.x ships an npm.ps1 shim that rebuilds args from the caller's command-line text via
     # Substring(InvocationName.Length). Called from inside another .ps1 as `& npm ci ...`, the
@@ -61,8 +72,7 @@ function Invoke-Npm {
     # concatenates the paths into one bogus string. Pin to the first match — both shims behave alike.
     [CmdletBinding()]
     param([Parameter(ValueFromRemainingArguments = $true)] $Arguments)
-    $cmd = Get-Command npm.cmd -CommandType Application -ErrorAction Stop | Select-Object -First 1
-    & $cmd.Source @Arguments
+    & (Resolve-Npm) @Arguments
 }
 
 function Write-Step {
@@ -77,6 +87,31 @@ function Register-Proc {
     param([string] $name, [System.Diagnostics.Process] $proc)
     $allProcesses.Add([pscustomobject]@{ Name = $name; Pid = $proc.Id; Process = $proc }) | Out-Null
 }
+
+# On SUCCESS this script deliberately leaves the watcher and the dev server
+# running and prints their PIDs — that is the whole point of a launcher. On
+# FAILURE it used to leave them running too, silently: every `exit 1` below fired
+# with the Fable watcher already started, so a run that could not reach Vite left
+# an orphaned `dotnet fable --watch` holding the demo's output directory. Run the
+# script twice and you had two, both writing the same files.
+function Stop-Registered {
+    param([string] $why)
+    if ($allProcesses.Count -eq 0) { return }
+    Write-Host ""
+    Write-Host "Tearing down started processes ($why):" -ForegroundColor Yellow
+    foreach ($entry in $allProcesses) {
+        if (-not $entry.Process.HasExited) {
+            Write-Host ("  stopping {0} (PID {1})" -f $entry.Name, $entry.Pid) -ForegroundColor Yellow
+            try { Stop-Process -Id $entry.Pid -Force -ErrorAction Stop }
+            catch { Write-Host ("    could not stop PID {0}: {1}" -f $entry.Pid, $_.Exception.Message) -ForegroundColor Red }
+        }
+    }
+    $allProcesses.Clear()
+}
+
+# Set only once the demo is genuinely up. Until then, any exit is a failure exit
+# and the finally block below tears down whatever was started.
+$script:LaunchSucceeded = $false
 
 try {
     # ─── 1. npm install ─────────────────────────────────────────────
@@ -127,11 +162,15 @@ try {
     # ─── 5. Start Vite dev server ──────────────────────────────────
     Write-Step "npm run dev (samples/demo)"
     $viteLog = Join-Path $demoDir "vite-dev.log"
-    # Use cmd /c npm run dev so Windows resolves npm.cmd from the shell
-    # (Start-Process + npm.cmd directly works too, but cmd /c is the
-    # established workspace shape).
-    $viteProc = Start-Process -FilePath "cmd" `
-        -ArgumentList @("/c", "npm", "run", "dev") `
+    # Resolve npm.cmd explicitly and start IT, per the workspace launcher
+    # conventions — the same resolution `Invoke-Npm` uses, shared through
+    # `Resolve-Npm`. The old `cmd /c npm run dev` avoided the npm.ps1 shim bug
+    # only by routing through cmd.exe, which means it also inserted a `cmd.exe`
+    # parent between this script and the dev server: `$viteProc.HasExited` and the
+    # teardown below then watched the WRAPPER, not node, so a dead Vite could read
+    # as a live process and a stopped wrapper could leave node running.
+    $viteProc = Start-Process -FilePath (Resolve-Npm) `
+        -ArgumentList @("run", "dev") `
         -WorkingDirectory $demoDir `
         -RedirectStandardOutput $viteLog `
         -RedirectStandardError "$viteLog.err" `
@@ -162,6 +201,9 @@ try {
         exit 1
     }
 
+    # From here the demo is up; the finally block leaves it running.
+    $script:LaunchSucceeded = $true
+
     # ─── 7. Open browser + print summary ───────────────────────────
     if (-not $NoBrowser) {
         Start-Process $url | Out-Null
@@ -177,5 +219,8 @@ try {
     Write-Host ""
 }
 finally {
+    if (-not $script:LaunchSucceeded) {
+        Stop-Registered "the launch did not complete"
+    }
     Pop-Location
 }

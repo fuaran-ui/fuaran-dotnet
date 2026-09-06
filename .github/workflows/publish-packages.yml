@@ -7,11 +7,35 @@ name: Publish packages
 # pack is the <Version> property in Directory.Build.props at the tagged
 # commit — see STABILITY.md for the per-release bump policy.
 
+# WHAT THIS WORKFLOW REFUSES TO PUBLISH, and why each refusal exists:
+#
+#   * A NON-TAG DISPATCH. `workflow_dispatch` is documented as the
+#     "rerun against an existing tag" escape hatch, but nothing enforced that:
+#     dispatching it on `main` packed and pushed whatever `<Version>` happened to
+#     stand there, which under the draft-slot model is routinely an UNRELEASED
+#     draft. A draft published to nuget.org is a version no tag, no ledger record
+#     and no STABILITY entry accounts for, and nuget.org does not un-publish. The
+#     gate below refuses unless the ref is a tag; `force: true` is the deliberate
+#     override and says so in the run.
+#
+#   * A TAG THAT DOES NOT MATCH THE PACKED <Version>. The tag is the release
+#     gesture; `<Version>` is what actually gets packed. When they disagree the
+#     registry and the tag name different things forever, and neither looks wrong
+#     on its own. Same shape as the sibling Python hosts' version gate.
+#
+# `version release` remains the gesture that creates the tag. This only refuses to
+# publish when the gesture was not made.
+
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Publish from a NON-TAG ref. Deliberate override; recorded in the run."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -23,8 +47,52 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
+      # BEFORE the checkout and before anything is packed, so a refusal leaves no
+      # artefact and costs nothing.
+      - name: Refuse a non-tag ref
+        run: |
+          echo "ref=$GITHUB_REF ref_type=$GITHUB_REF_TYPE ref_name=$GITHUB_REF_NAME"
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            if [ "${{ inputs.force }}" = "true" ]; then
+              echo "::warning::publishing from a NON-TAG ref ($GITHUB_REF_NAME) because force=true was set."
+            else
+              echo "::error::this workflow publishes on a v* TAG. The ref is $GITHUB_REF_NAME (type $GITHUB_REF_TYPE)."
+              echo "::error::Under the draft-slot model the standing <Version> is routinely an UNRELEASED draft,"
+              echo "::error::and nuget.org does not un-publish. Cut the tag, or re-dispatch with force=true if you mean it."
+              exit 1
+            fi
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Assert the tag equals the packed <Version>
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "NOT CHECKED — this run is on $GITHUB_REF_NAME ($GITHUB_REF_TYPE), so there is no tag to compare."
+            exit 0
+          fi
+          tag="${GITHUB_REF_NAME#v}"
+          # Read the ELEMENT, not a regex over the text. A props file's own comments
+          # routinely contain the literal string "<Version>" — the orchestration
+          # sibling's do, and `grep -oP '(?<=<Version>)[^<]+'` there returned a
+          # sentence from a comment. A probe that answers a different question than
+          # the one asked is worse than no probe.
+          ver="$(python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          t = ET.parse("Directory.Build.props")
+          v = [e.text.strip() for e in t.iter() if e.tag.split("}")[-1] == "Version"]
+          if len(v) != 1:
+              raise SystemExit(f"expected exactly one <Version> element, found {v}")
+          print(v[0])
+          PY
+          )"
+          echo "tag=$tag  <Version>=$ver"
+          if [ "$tag" != "$ver" ]; then
+            echo "::error::tag v$tag does not match the packed <Version> $ver — the registry and the tag would name different things, permanently."
+            exit 1
+          fi
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -61,8 +129,12 @@ jobs:
       # nuget.org profile name the policy belongs to. The login step sits
       # immediately before the push so the temp key cannot expire mid-run.
       # --skip-duplicate keeps re-runs idempotent.
+      # SHA-PINNED, not tag-pinned: this step exchanges the job's OIDC token for a
+      # live nuget.org API key, so a moved `v1` is credential-bearing code nobody
+      # reviewed — on the one path in this repository that can publish. `# v1.2.0`
+      # records which release the digest is; Dependabot proposes the bumps.
       - name: NuGet login (OIDC → temp API key)
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: nuget-login
         with:
           user: ${{ secrets.NUGET_USER }}
