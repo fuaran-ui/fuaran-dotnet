@@ -497,6 +497,11 @@ and [<RequireQualifiedAccess>] CellKindErased<'Msg> =
 and [<RequireQualifiedAccess>] ChartAnnotation =
     | ReferenceLine of value: float * label: TextSource option
     | EventMarker of at: ChartAnnotationX * label: TextSource option
+    | RangeBand of range: ChartAnnotationRange * label: TextSource option
+
+and [<RequireQualifiedAccess>] ChartAnnotationRange =
+    | ValueRange of from: float * ``to``: float
+    | XRange of from: ChartAnnotationX * ``to``: ChartAnnotationX
 
 and [<RequireQualifiedAccess>] ChartAnnotationX =
     | Category of key: string
@@ -1958,6 +1963,12 @@ and private encChartAnnotation (v: ChartAnnotation) : JVal =
     match v with
     | ChartAnnotation.ReferenceLine (value, label) -> Canon.typed "ReferenceLine" ([ Some("value", encFloat value); (label |> Option.map (fun v -> "label", encTextSource v)) ] |> List.choose id)
     | ChartAnnotation.EventMarker (at, label) -> Canon.typed "EventMarker" ([ Some("at", encChartAnnotationX at); (label |> Option.map (fun v -> "label", encTextSource v)) ] |> List.choose id)
+    | ChartAnnotation.RangeBand (range, label) -> Canon.typed "RangeBand" ([ Some("range", encChartAnnotationRange range); (label |> Option.map (fun v -> "label", encTextSource v)) ] |> List.choose id)
+
+and private encChartAnnotationRange (v: ChartAnnotationRange) : JVal =
+    match v with
+    | ChartAnnotationRange.ValueRange (from, ``to``) -> Canon.typed "ValueRange" [ "from", encFloat from; "to", encFloat ``to`` ]
+    | ChartAnnotationRange.XRange (from, ``to``) -> Canon.typed "XRange" [ "from", encChartAnnotationX from; "to", encChartAnnotationX ``to`` ]
 
 and private encChartAnnotationX (v: ChartAnnotationX) : JVal =
     match v with
@@ -3046,8 +3057,28 @@ and private decChartAnnotation (j: JVal) : Result<ChartAnnotation, string> =
             dReq "at" __fs decChartAnnotationX |> Result.bind (fun at ->
             dOpt "label" __fs decTextSource |> Result.bind (fun label ->
             Ok(ChartAnnotation.EventMarker(at, label))))
+        | "RangeBand" ->
+            dReq "range" __fs decChartAnnotationRange |> Result.bind (fun range ->
+            dOpt "label" __fs decTextSource |> Result.bind (fun label ->
+            Ok(ChartAnnotation.RangeBand(range, label))))
         | __other -> Error ("unknown ChartAnnotation case: " + __other))
     | _ -> Error "expected a ChartAnnotation object"
+
+and private decChartAnnotationRange (j: JVal) : Result<ChartAnnotationRange, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "ValueRange" ->
+            dReq "from" __fs dFloat |> Result.bind (fun from ->
+            dReq "to" __fs dFloat |> Result.bind (fun ``to`` ->
+            Ok(ChartAnnotationRange.ValueRange(from, ``to``))))
+        | "XRange" ->
+            dReq "from" __fs decChartAnnotationX |> Result.bind (fun from ->
+            dReq "to" __fs decChartAnnotationX |> Result.bind (fun ``to`` ->
+            Ok(ChartAnnotationRange.XRange(from, ``to``))))
+        | __other -> Error ("unknown ChartAnnotationRange case: " + __other))
+    | _ -> Error "expected a ChartAnnotationRange object"
 
 and private decChartAnnotationX (j: JVal) : Result<ChartAnnotationX, string> =
     match j with

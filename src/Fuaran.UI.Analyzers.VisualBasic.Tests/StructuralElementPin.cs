@@ -93,6 +93,9 @@ internal static class StructuralElementPin
             ["EventMarker"] = (
                 "Chart.annotations",
                 "the second ChartAnnotation arm (Phase 1491), named for its arm on 1490's precedent. Its x address is spelled as two attributes rather than a nested element — the dialect has no union spelling, and a child of a child would read as a third structural level where there is one address"),
+            ["RangeBand"] = (
+                "Chart.annotations",
+                "the third and last ChartAnnotation arm (Phase 1492), closing the set §4l opened. Its interval is spelled as one complete attribute PAIR out of three (fromValue/toValue, fromCategory/toCategory, fromDate/toDate) rather than a from/to beside an axis flag — the wire shape makes the axis and the address form one choice, and two attributes could otherwise disagree"),
             ["Prop"] = ("Custom.props", "rename — one entry of the props map, authored as name/value"),
 
             // Node-valued slots — the child element names the slot rather than a

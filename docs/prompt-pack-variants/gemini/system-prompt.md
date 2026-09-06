@@ -472,6 +472,10 @@ CellKindErased =
 ChartAnnotation =
 | ReferenceLine { value:num; label?:TextSource }
 | EventMarker { at:ChartAnnotationX; label?:TextSource }
+| RangeBand { range:ChartAnnotationRange; label?:TextSource }
+ChartAnnotationRange =
+| ValueRange { from:num; to:num }
+| XRange { from:ChartAnnotationX; to:ChartAnnotationX }
 ChartAnnotationX =
 | Category { key:str }
 | Date { iso:str }

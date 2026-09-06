@@ -3647,6 +3647,117 @@ let chartAnnotationEvents: Node<obj> =
                       None ] })
         None
 
+/// Phase 1492 (§4l) — the RANGE BAND, in all three of its addressing forms.
+///
+/// A THIRD fixture rather than more members on either above, on 1491's own
+/// argument: a corpus reader comparing the three commits sees one file added
+/// each time and none rewritten, which is the "absent omits" property stated
+/// where a byte comparison can read it.
+///
+/// Three charts, because the three forms cannot share one. A VALUE pair and a
+/// CATEGORY pair could in principle sit on one band-axis chart, but the third
+/// needs a temporal axis and §4l rule 1 makes the pairing a mismatch — so
+/// splitting by axis and keeping the value arm with the band one is the shape
+/// that carries every codec arm without asserting a tree the language refuses.
+///
+/// The bare arm rides the value band: a band with no label still draws, so the
+/// codec has to carry the absence as an absence.
+let chartAnnotationBands: Node<obj> =
+    node
+        "chart-annotation-bands"
+        (NodeKind.Box
+            { Layout = BoxLayout.Auto
+              Role = BoxRole.Dashboard
+              Heading = None
+              KeepTogether = false
+              BreakBefore = false
+              Children =
+                [ node
+                      "bands-value"
+                      (NodeKind.Chart(
+                          { Defaults.chart with
+                              Source =
+                                  Binding.Static(
+                                      Some(
+                                          Seq.ofList
+                                              [ (Map.ofList [ "week", box "W1"; "latencyMs", box 180 ]: Row)
+                                                Map.ofList [ "week", box "W2"; "latencyMs", box 240 ]
+                                                Map.ofList [ "week", box "W3"; "latencyMs", box 210 ] ]
+                                      )
+                                  )
+                              Kind = ChartKind.Line
+                              XField = "week"
+                              YFields = [ "latencyMs" ]
+                              Title = Some(TextSource.Literal "p95 latency")
+                              Annotations =
+                                  Some
+                                      [ ChartAnnotation.RangeBand(
+                                            ChartAnnotationRange.ValueRange(200.0, 260.0),
+                                            Some(TextSource.Literal "Tolerance")
+                                        )
+                                        ChartAnnotation.RangeBand(ChartAnnotationRange.ValueRange(0.0, 100.0), None) ] }
+                      ))
+                      None
+                  node
+                      "bands-category"
+                      (NodeKind.Chart(
+                          { Defaults.chart with
+                              Source =
+                                  Binding.Static(
+                                      Some(
+                                          Seq.ofList
+                                              [ (Map.ofList [ "quarter", box "Q1"; "revenue", box 120 ]: Row)
+                                                Map.ofList [ "quarter", box "Q2"; "revenue", box 150 ]
+                                                Map.ofList [ "quarter", box "Q3"; "revenue", box 90 ]
+                                                Map.ofList [ "quarter", box "Q4"; "revenue", box 175 ] ]
+                                      )
+                                  )
+                              Kind = ChartKind.Bar
+                              XField = "quarter"
+                              YFields = [ "revenue" ]
+                              Title = Some(TextSource.Literal "Revenue by quarter")
+                              Annotations =
+                                  Some
+                                      [ ChartAnnotation.RangeBand(
+                                            ChartAnnotationRange.XRange(
+                                                ChartAnnotationX.Category "Q2",
+                                                ChartAnnotationX.Category "Q3"
+                                            ),
+                                            Some(TextSource.Literal "Freeze")
+                                        ) ] }
+                      ))
+                      None
+                  node
+                      "bands-temporal"
+                      (NodeKind.Chart(
+                          { Defaults.chart with
+                              Source =
+                                  Binding.Static(
+                                      Some(
+                                          Seq.ofList
+                                              [ (Map.ofList [ "day", box "2026-01-05"; "sessions", box 40 ]: Row)
+                                                Map.ofList [ "day", box "2026-02-05"; "sessions", box 65 ]
+                                                Map.ofList [ "day", box "2026-03-05"; "sessions", box 55 ] ]
+                                      )
+                                  )
+                              Kind = ChartKind.Line
+                              XField = "day"
+                              YFields = [ "sessions" ]
+                              XScale = Some ChartXScale.Temporal
+                              Title = Some(TextSource.Literal "Sessions by day")
+                              Annotations =
+                                  Some
+                                      [ ChartAnnotation.RangeBand(
+                                            ChartAnnotationRange.XRange(
+                                                ChartAnnotationX.Date "2026-01-20",
+                                                ChartAnnotationX.Date "2026-02-20"
+                                            ),
+                                            Some(TextSource.Literal "Incident")
+                                        ) ] }
+                      ))
+                      None ] })
+        None
+
 // ─── fuaran#665 — the Phase 663 editable-grid anchor (grid + chart on ONE state key) ──
 //
 // The corpus carried NO `editable: true` fixture at all, so the cross-host
@@ -6500,6 +6611,8 @@ let allNodes: (string * Node<obj>) list =
       chartAnnotations
       "Visualisation/Chart (Phase 1491 — annotations: event markers in both x-address forms, category and date)",
       chartAnnotationEvents
+      "Visualisation/Chart (Phase 1492 — annotations: range bands in all three addressing forms, value / category / date)",
+      chartAnnotationBands
       "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
       "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)", tableSortable
       "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)", gridSortStateKey

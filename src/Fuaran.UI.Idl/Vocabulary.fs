@@ -2725,6 +2725,34 @@ let private chartAnnotationX =
             Fields = [ req "iso" TStr ]
             Annotations = Annotations.Empty } ] }
 
+/// Phase 1492 — a range band's PAIR (§4l "The three addressing forms", the
+/// third row). Two of the same address form, on one axis.
+///
+/// THE AXIS IS THE CASE, not a field beside the pair. §4l says a `RangeBand`
+/// declares which axis it is on, because a band is the one member legible on
+/// either; the shard spelled that as `axis: X | Y` alongside an untyped
+/// `from`/`to`, which cannot type the pair as "the axis's address form" — the
+/// same parenthetical demands it. A union tag carries the axis AND types the
+/// pair with it, so an x pair under a declared value axis is not a state the
+/// validator has to police: it cannot be written.
+///
+/// `ValueRange` is two `float`s in the VALUE axis's own units; `XRange` is two
+/// `ChartAnnotationX`, which is the type [Phase 1491](event marker) declared
+/// separately for exactly this — a pair of an inline shape has nothing to be a
+/// pair of.
+let private chartAnnotationRange =
+    { Name = "ChartAnnotationRange"
+      Params = []
+      Cases =
+        [ { Tag = "ValueRange"
+            Fields = [ req "from" TFloat; req "to" TFloat ]
+            Annotations = Annotations.Empty }
+          { Tag = "XRange"
+            Fields =
+              [ req "from" (TUnion("ChartAnnotationX", []))
+                req "to" (TUnion("ChartAnnotationX", [])) ]
+            Annotations = Annotations.Empty } ] }
+
 let private chartAnnotation =
     { Name = "ChartAnnotation"
       Params = []
@@ -2740,6 +2768,13 @@ let private chartAnnotation =
           // against.
           { Tag = "EventMarker"
             Fields = [ req "at" (TUnion("ChartAnnotationX", [])); opt "label" TS ]
+            Annotations = Annotations.Empty }
+          // Phase 1492 — the RANGE BAND: a shaded interval on either axis, the
+          // one member that draws BEHIND the series. The pair carries the axis
+          // (see `ChartAnnotationRange` above), so the case has an address and a
+          // label and — §4l — nothing else.
+          { Tag = "RangeBand"
+            Fields = [ req "range" (TUnion("ChartAnnotationRange", [])); opt "label" TS ]
             Annotations = Annotations.Empty } ] }
 
 /// Phase 679 — a `Switch` case: the match string plus the node it selects. The
@@ -2938,6 +2973,7 @@ let uiIdl: Idl =
           curveCommand
           shape
           chartAnnotationX
+          chartAnnotationRange
           chartAnnotation ]
       Enums =
         [ headingVariant

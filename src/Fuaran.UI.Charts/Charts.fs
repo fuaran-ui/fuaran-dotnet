@@ -191,6 +191,12 @@ type ChartAnnotation = Fuaran.UI.Types.ChartAnnotation
 /// the four above.
 type ChartAnnotationX = Fuaran.UI.Types.ChartAnnotationX
 
+/// A range band's address PAIR (Phase 1492 — §4l). A WIRE vocabulary
+/// (`ChartAnnotation.RangeBand`'s `range`), re-exported here on the same terms
+/// as the five above; the case carries the axis, so the pair and the axis it is
+/// on cannot disagree.
+type ChartAnnotationRange = Fuaran.UI.Types.ChartAnnotationRange
+
 /// How a value axis states its DISPLAY UNIT once a large magnitude has been
 /// scaled by a power of ten (Phase 876).
 ///
@@ -536,6 +542,18 @@ type ChartStyle =
         EventStrokeWidth: float
         /// Per-role opacity for an event marker's ink (`ChartStyle.Ink`, D8).
         EventOpacity: float
+        /// Per-role opacity for a range band's FILL (Phase 1492). A fill and not
+        /// a stroke: the band has no edge of its own, because an edge would read
+        /// as two reference lines and the family already has one spelling for
+        /// that.
+        ///
+        /// It is the LOWEST opacity in the record — below `GridOpacity` — and
+        /// that is the point rather than timidity. Every other role inks a
+        /// HAIRLINE or a glyph; this one inks an AREA, often most of the plot,
+        /// and area at a line's opacity competes with the marks drawn over it.
+        /// A band is a tint of the surface saying "this region", not a fill
+        /// saying "this value".
+        BandOpacity: float
         /// Font size of an annotation's label. One step below `TickFontSize`,
         /// on `DataLabelFontSize`'s reasoning: a tick sits outside the plot in
         /// a column of its own, an annotation label sits INSIDE it beside the
@@ -695,6 +713,25 @@ module ChartStyle =
           // host even though no pre-1491 golden's bytes change.
           EventStrokeWidth = 1.5
           EventOpacity = 0.55
+          // Phase 1492 — the range band's ink. `Ink` is `currentColor` (Phase
+          // 536), so the tint is the SURFACE'S OWN text colour at this opacity
+          // and is theme-aware by construction rather than by a second hex: on
+          // the light surface (#fcfcfb, near-black text) 0.08 composites to
+          // ≈ #eaeae9, and on the dark one (#1a1a19, near-white text) to
+          // ≈ #2c2c2b. Both are a clear step from their ground and both are
+          // LIGHTER than the 0.12 gridline over them, which is the ordering the
+          // picture needs: chrome reads through the band, and the band never
+          // reads as a mark.
+          //
+          // That symmetry is why Phase 875's lightness-band gate has nothing to
+          // measure here. The gate ranges over the categorical palette, whose
+          // eight hexes must sit in the INTERSECTION of two lightness bands
+          // because one hex set serves both themes; a `currentColor` tint has no
+          // hex to place in a band — it is a fixed contrast RATIO to whatever
+          // ground it lands on, which is the property the gate exists to buy.
+          // Both composites are recorded above so the claim is checkable rather
+          // than asserted.
+          BandOpacity = 0.08
           AnnotationLabelFontSize = 12.0
           AnnotationLabelOffsetX = 6.0
           AnnotationLabelNudgeY = 5.0
@@ -2051,6 +2088,56 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                 | _ -> None)
             |> List.toArray
 
+    // ── Range bands (Phase 1492 — §4l) ───────────────────────────────────────
+    //
+    // The band subsequence in DOCUMENT ORDER, carrying its per-case index —
+    // `<n>` in `annotation|band|<n>` — because the two arms are resolved in two
+    // different places and a band's identity must not depend on which. A value
+    // band's ends must join the value domain HERE, before `niceDomain`; an x
+    // band's addresses cannot be resolved until the axis form is known, several
+    // hundred lines below. Numbering once, over the whole case, is what keeps
+    // the two halves from inventing two orderings of one list.
+    //
+    // PIE IS NEUTRALISED, as it is for both other members: a polar arm has
+    // neither axis for a band to span.
+    let rangeBandsDeclared: (int * ChartAnnotationRange * TextSource option)[] =
+        if isPie then
+            [||]
+        else
+            spec.Annotations
+            |> Option.defaultValue []
+            |> List.choose (fun a ->
+                match a with
+                | ChartAnnotation.RangeBand(range, label) -> Some(range, label)
+                | _ -> None)
+            |> List.mapi (fun i (range, label) -> i, range, label)
+            |> List.toArray
+
+    /// The VALUE-axis bands, as `(index, lo, hi, label)` in the axis's own
+    /// units. `lo`/`hi` are the pair NORMALISED, not the pair as authored: an
+    /// unordered pair is refused pre-emit (FUARAN141) and at the wire boundary,
+    /// so what reaches here backwards came through a construction site neither
+    /// gate sits on — and the lowering's job at that point is to stay TOTAL and
+    /// draw the region the author named, which is the same division of labour
+    /// the non-finite filter and the duplicated-key resolution already draw.
+    ///
+    /// A non-finite end drops the whole band rather than half of it: half a
+    /// band is not a smaller claim, it is a different one.
+    let valueBands: (int * float * float * TextSource option)[] =
+        rangeBandsDeclared
+        |> Array.choose (fun (i, range, label) ->
+            match range with
+            | ChartAnnotationRange.ValueRange(a, b) when
+                not (
+                    System.Double.IsNaN a
+                    || System.Double.IsInfinity a
+                    || System.Double.IsNaN b
+                    || System.Double.IsInfinity b
+                )
+                ->
+                Some(i, min a b, max a b, label)
+            | _ -> None)
+
     let allValues =
         let vs =
             if stacked then
@@ -2067,6 +2154,17 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         // line at a value that is not the value declared, which is worse than
         // not drawing it at all.
         let vs = vs @ [ for v, _ in referenceLines -> v ]
+
+        // Phase 1492 — a value band's BOTH ends join the domain, on exactly the
+        // same rule. A tolerance band whose upper edge sits above every datum is
+        // still drawn whole, and the axis says so; clipping it at the data's own
+        // maximum would draw a band that ends where the author did not end it,
+        // which is the misreading the reference line's own widening exists to
+        // prevent.
+        let vs =
+            vs
+            @ [ for _, lo, hi, _ in valueBands do
+                    yield! [ lo; hi ] ]
 
         match vs with
         | [] -> [ 0.0 ]
@@ -2239,6 +2337,35 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             | _ -> Option.None)
         |> List.toArray
 
+    /// The X-AXIS bands (Phase 1492), as `(index, from, to, label)` with the two
+    /// addresses RESOLVED to the chart's one form — a band index under `bandX`,
+    /// a day number under `isTemporal` — exactly as `eventMarkers` resolves its
+    /// single address, and for the same reason: §4l rule 1 makes the two axis
+    /// forms mutually exclusive, so one `int` per end is the whole vocabulary.
+    ///
+    /// BOTH ENDS MUST BE THE SAME FORM. A `Category` paired with a `Date` is a
+    /// mismatch FUARAN139 refuses; here it simply yields no band, because half a
+    /// pair addresses no interval.
+    ///
+    /// The pair is NORMALISED (`min`/`max`) on `valueBands`' argument: an
+    /// unordered pair is refused by two gates upstream, and a lowering handed
+    /// one anyway draws the region named rather than an inverted rectangle.
+    let xBands: (int * int * int * TextSource option)[] =
+        let resolve (at: ChartAnnotationX) : int option =
+            match at with
+            | ChartAnnotationX.Category key when bandX -> categories |> Array.tryFindIndex (fun c -> c = key)
+            | ChartAnnotationX.Date iso when isTemporal -> Temporal.tryParseDay iso
+            | _ -> Option.None
+
+        rangeBandsDeclared
+        |> Array.choose (fun (i, range, label) ->
+            match range with
+            | ChartAnnotationRange.XRange(a, b) ->
+                match resolve a, resolve b with
+                | Some x, Some y -> Some(i, min x y, max x y, label)
+                | _ -> Option.None
+            | _ -> Option.None)
+
     /// §4l rule 3 on the X axis — A TEMPORAL ADDRESS ENTERS THE EXTENT, before
     /// the ticks are chosen, on the same terms the row dates do. A launch marked
     /// a month after the last datum is still drawn, and the axis says so; the
@@ -2255,7 +2382,14 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     /// outward to a calendar boundary.
     let domainDays: int[] =
         if isTemporal then
-            Array.append dayValues (eventMarkers |> Array.map fst)
+            // Phase 1492 — a temporal BAND's two days join the extent on the
+            // same rule, and it is the sharper case: a recession band whose end
+            // lies past the last datum would otherwise be silently truncated at
+            // the plot's right edge, which reads as the recession ENDING there.
+            Array.concat
+                [ dayValues
+                  eventMarkers |> Array.map fst
+                  xBands |> Array.collect (fun (_, a, b, _) -> [| a; b |]) ]
         else
             [||]
 
@@ -3509,6 +3643,60 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                           MarkId = Some("annotation|reference|" + string i) }
                   ) ]
 
+    /// The range bands as PLOT RECTANGLES — `(index, x0, y0, x1, y1, label)`,
+    /// ordered by the per-case index that both arms were numbered with, so the
+    /// paint order and the `annotation|band|<n>` ids agree by construction
+    /// rather than by the arms happening to be appended the right way round.
+    ///
+    /// EACH BAND SPANS THE OTHER AXIS IN FULL. A value band runs the plot's
+    /// whole width and an x band its whole height, because the band's claim is
+    /// about ONE axis: a tolerance band that stopped short of the plot's edge
+    /// would be asserting something about x it was never given.
+    ///
+    /// THE X ARM TAKES PHASE 903'S BOUNDARIES, not its centres — which is where
+    /// the band differs from the event marker drawn from the same address. A
+    /// marker is a POSITION and a band is an EXTENT, so "Q2 to Q3" runs from
+    /// Q2's band START to Q3's band END: shading centre-to-centre would leave
+    /// half of each named quarter outside the region that names it. On a
+    /// continuous temporal axis a date IS a position, so the band runs between
+    /// the two mapped days and there are no boundaries to take.
+    let rangeBands: (int * float * float * float * float * TextSource option)[] =
+        Array.append
+            (valueBands
+             |> Array.map (fun (i, lo, hi, label) -> i, r2 plotX0, yScale hi, r2 plotX1, yScale lo, label))
+            (xBands
+             |> Array.map (fun (i, a, b, label) ->
+                 let x0, x1 =
+                     if isTemporal then
+                         xScale (float a), xScale (float b)
+                     else
+                         boundaryX a, boundaryX (b + 1)
+
+                 i, x0, r2 plotY0, x1, r2 plotY1, label))
+        |> Array.sortBy (fun (i, _, _, _, _, _) -> i)
+
+    /// The band's ink: `ChartStyle.Ink` — `currentColor` (Phase 536) — as a
+    /// FILL at `BandOpacity`, with no stroke. §4l's prohibition is what makes
+    /// this one line: the wire carries no colour, no opacity and no edge, so
+    /// there is nothing here to read off the annotation.
+    let bandStyle = styleFillOpacity style.Ink style.BandOpacity
+
+    let rangeBandShapes: Shape list =
+        [ for i, x0, y0, x1, y1, _ in rangeBands do
+              yield
+                  Shape.Rectangle(
+                      x0,
+                      y0,
+                      r2 (x1 - x0),
+                      r2 (y1 - y0),
+                      // No corner radius. A band is a region of the SPACE, and
+                      // a rounded region would read as an object drawn on the
+                      // chart rather than as part of its ground.
+                      None,
+                      { bandStyle with
+                          MarkId = Some("annotation|band|" + string i) }
+                  ) ]
+
     let eventStyle = styleStrokeInk style style.EventOpacity style.EventStrokeWidth
 
     /// The x an event marker's line stands at (Phase 1491). PHASE 903'S SPLIT,
@@ -3608,6 +3796,40 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                           // markers collide along X, and that is the axis the
                           // gate is really measuring.
                           (max 0.0 (plotY1 - plotY0 - style.AnnotationLabelPadding))
+                          t
+
+          // Phase 1492 — the range bands' labels, after the other two cases'.
+          // All three are rung 4, so the case order here is a tie inside a rung
+          // and is chosen to keep every pre-1492 golden byte-identical; §4l's
+          // tiebreak (document order within the case) is honoured inside the run.
+          for _, x0, y0, x1, y1, label in rangeBands do
+              match label with
+              | None -> ()
+              | Some t ->
+                  // INSIDE THE BAND'S TOP EDGE, which is one rule serving both
+                  // arms rather than two placements: the top-left corner of the
+                  // band's own rectangle is the one point every band has,
+                  // whichever axis it spans, and it is where a reader looks for
+                  // the name of a region. Inside and not above, deliberately —
+                  // a label ABOVE a value band would sit over the series, and a
+                  // label above an x band would leave the plot entirely.
+                  let x = x0 + style.AnnotationLabelOffsetX
+                  let baseline = y0 + style.AnnotationLabelFontSize + style.AnnotationLabelNudgeY
+
+                  yield!
+                      annotationLabel
+                          x
+                          baseline
+                          // BOTH BUDGETS ARE THE BAND'S OWN, not the plot's, and
+                          // that is what makes this member's gate bite where the
+                          // other two's do not. A narrow x band is the ordinary
+                          // case — a fortnight on a decade axis — and its name
+                          // will not fit inside it; a thin value band is the same
+                          // fact on the other axis. Suppressed, per Phase 881:
+                          // never clipped, never spilled across the boundary of
+                          // the region it names, and the band still draws.
+                          (max 0.0 (x1 - x - style.AnnotationLabelPadding))
+                          (max 0.0 (y1 - y0 - style.AnnotationLabelPadding))
                           t ]
 
     // ── Legend (Phase 880) — one entry list, four placements ──
@@ -3847,7 +4069,20 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         match spec.Kind with
         | ChartKind.Pie -> pieShapes () @ legend @ titleShapes @ subtitleShapes
         | _ ->
-            gridlines
+            // Phase 1492 (§4l rung 1) — the RANGE BANDS, first of everything:
+            // behind the series, and behind the grid and axes with it. This is
+            // the half of the draw order the first two members could not
+            // exercise, and it is why §4l states the order as data rather than
+            // leaving it to a stylesheet. In inline SVG z-order IS emission
+            // order, so a host that emitted a band after its series would draw
+            // a tinted rectangle OVER the data: a valid document, a different
+            // picture, and nothing in a schema or a validator could see it.
+            //
+            // Before the GRID too, not merely before the series. A gridline is
+            // chrome for reading positions off the plot, and chrome a band
+            // covered would go missing exactly where the band drew attention.
+            rangeBandShapes
+            @ gridlines
             @ xGridlines
             @ zeroLine
             @ axes

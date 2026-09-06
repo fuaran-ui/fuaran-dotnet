@@ -1925,6 +1925,275 @@ let tests =
               | Ok() -> failtest "Expected ChartTemporalXNotDate for the int column"
           }
 
+          // ── Phase 1492 (§4l) — the range band's ORDER rule (FUARAN141), and
+          //    the three grounding codes it SHARES with the event marker ──
+          //
+          // Shared rather than duplicated. A band's x end is an address and
+          // fails exactly the three ways a marker's does, so a second code per
+          // failure would say the same thing twice and leave a fourth member to
+          // say it a third time — the cost §4l's one-union decision was taken to
+          // avoid, applied to the code space rather than to the wire.
+          //
+          // What only a PAIR can get wrong is the order, and that is FUARAN141.
+
+          let bandChart (kind: ChartKind) (temporal: bool) (anns: ChartAnnotation list) : Node<Msg> =
+              let rows: Row seq =
+                  if temporal then
+                      Seq.ofList
+                          [ Map.ofList
+                                [ "day", Unchecked.nonNull (box "2026-01-05")
+                                  "sessions", Unchecked.nonNull (box 40.0) ]
+                            Map.ofList
+                                [ "day", Unchecked.nonNull (box "2026-02-05")
+                                  "sessions", Unchecked.nonNull (box 65.0) ]
+                            Map.ofList
+                                [ "day", Unchecked.nonNull (box "2026-03-05")
+                                  "sessions", Unchecked.nonNull (box 55.0) ] ]
+                  else
+                      Seq.ofList
+                          [ Map.ofList
+                                [ "quarter", Unchecked.nonNull (box "Q1")
+                                  "revenue", Unchecked.nonNull (box 120.0) ]
+                            Map.ofList
+                                [ "quarter", Unchecked.nonNull (box "Q2")
+                                  "revenue", Unchecked.nonNull (box 150.0) ]
+                            Map.ofList
+                                [ "quarter", Unchecked.nonNull (box "Q3")
+                                  "revenue", Unchecked.nonNull (box 90.0) ]
+                            Map.ofList
+                                [ "quarter", Unchecked.nonNull (box "Q4")
+                                  "revenue", Unchecked.nonNull (box 175.0) ] ]
+
+              Fuaran.chart
+                  "cht"
+                  { Defaults.chart<Msg> with
+                      Kind = kind
+                      Source = Binding.Static(Some rows)
+                      XField = (if temporal then "day" else "quarter")
+                      YFields = [ (if temporal then "sessions" else "revenue") ]
+                      XScale = (if temporal then Some ChartXScale.Temporal else Option.None)
+                      Annotations = Some anns }
+
+          let bandCodes (node: Node<Msg>) : string list =
+              match PreEmitValidate.validate node with
+              | Ok() -> []
+              | Error defects ->
+                  defects
+                  |> List.map (fun d ->
+                      let code, _, _ = describe d
+                      code)
+
+          test "FUARAN141: a backwards band is refused on each of the three address forms" {
+              // The VALUE pair — decided by arithmetic, so no window is needed
+              // and the rule is total over every source shape.
+              Expect.equal
+                  (bandCodes (
+                      bandChart
+                          ChartKind.Bar
+                          false
+                          [ ChartAnnotation.RangeBand(ChartAnnotationRange.ValueRange(260.0, 200.0), Option.None) ]
+                  ))
+                  [ "FUARAN141" ]
+                  "a value pair running high-to-low is backwards"
+
+              // The CATEGORY pair — decided by the ROWS, which is why this arm
+              // is decided here and not at the wire boundary: a band axis's
+              // order IS the row order, and no local property of two strings
+              // knows it.
+              Expect.equal
+                  (bandCodes (
+                      bandChart
+                          ChartKind.Bar
+                          false
+                          [ ChartAnnotation.RangeBand(
+                                ChartAnnotationRange.XRange(
+                                    ChartAnnotationX.Category "Q3",
+                                    ChartAnnotationX.Category "Q2"
+                                ),
+                                Option.None
+                            ) ]
+                  ))
+                  [ "FUARAN141" ]
+                  "a category pair naming a later band first is backwards"
+
+              // The DATE pair — decided by the calendar.
+              Expect.equal
+                  (bandCodes (
+                      bandChart
+                          ChartKind.Line
+                          true
+                          [ ChartAnnotation.RangeBand(
+                                ChartAnnotationRange.XRange(
+                                    ChartAnnotationX.Date "2026-03-01",
+                                    ChartAnnotationX.Date "2026-02-01"
+                                ),
+                                Option.None
+                            ) ]
+                  ))
+                  [ "FUARAN141" ]
+                  "a date pair running later-to-earlier is backwards"
+
+              // …and every ORDERED counterpart passes clean. Without this half
+              // the three above would pass against a rule that fired on
+              // everything. Note the EQUAL-ends case: `from > to` is the rule,
+              // so a band of one quarter is ordered rather than degenerate.
+              let valueOk =
+                  bandChart
+                      ChartKind.Bar
+                      false
+                      [ ChartAnnotation.RangeBand(ChartAnnotationRange.ValueRange(200.0, 260.0), Option.None) ]
+
+              let categoryOk =
+                  bandChart
+                      ChartKind.Bar
+                      false
+                      [ ChartAnnotation.RangeBand(
+                            ChartAnnotationRange.XRange(ChartAnnotationX.Category "Q2", ChartAnnotationX.Category "Q3"),
+                            Option.None
+                        ) ]
+
+              let categorySingleton =
+                  bandChart
+                      ChartKind.Bar
+                      false
+                      [ ChartAnnotation.RangeBand(
+                            ChartAnnotationRange.XRange(ChartAnnotationX.Category "Q2", ChartAnnotationX.Category "Q2"),
+                            Option.None
+                        ) ]
+
+              let dateOk =
+                  bandChart
+                      ChartKind.Line
+                      true
+                      [ ChartAnnotation.RangeBand(
+                            ChartAnnotationRange.XRange(
+                                ChartAnnotationX.Date "2026-02-01",
+                                ChartAnnotationX.Date "2026-03-01"
+                            ),
+                            Option.None
+                        ) ]
+
+              for ordered in [ valueOk; categoryOk; categorySingleton; dateOk ] do
+                  Expect.equal (bandCodes ordered) [] "an ordered band is clean"
+
+              // The message names the BAND and both ends as authored, which is
+              // the repair: the author has to see which pair, and in which
+              // order they wrote it.
+              let _, severity, message =
+                  describe (
+                      PreEmitDefect.ChartAnnotationRangeUnordered("cht", "range band 0", "2026-03-01", "2026-02-01")
+                  )
+
+              Expect.equal severity DefectSeverity.Error "an Error: there is no legitimate backwards band"
+              Expect.stringContains message "range band 0" "the message names the band"
+              Expect.stringContains message "2026-03-01" "and quotes both ends as authored"
+              Expect.stringContains message "2026-02-01" "and quotes both ends as authored"
+          }
+
+          test "the band's x ends take the marker's grounding codes, and name WHICH end" {
+              // FUARAN138 — a key no row carries. And NO ordering finding beside
+              // it: an interval with one end nowhere has no order to be wrong
+              // about, so reporting both would be two findings for one repair.
+              Expect.equal
+                  (bandCodes (
+                      bandChart
+                          ChartKind.Bar
+                          false
+                          [ ChartAnnotation.RangeBand(
+                                ChartAnnotationRange.XRange(
+                                    ChartAnnotationX.Category "Q9",
+                                    ChartAnnotationX.Category "Q2"
+                                ),
+                                Option.None
+                            ) ]
+                  ))
+                  [ "FUARAN138" ]
+                  "an ungrounded end is ungrounded, and raises no ordering finding on top"
+
+              // FUARAN139 — a date end on a band axis. Reported per END, because
+              // an author who wrote one address in each form has two repairs.
+              Expect.equal
+                  (bandCodes (
+                      bandChart
+                          ChartKind.Bar
+                          false
+                          [ ChartAnnotation.RangeBand(
+                                ChartAnnotationRange.XRange(
+                                    ChartAnnotationX.Date "2026-01-01",
+                                    ChartAnnotationX.Date "2026-02-01"
+                                ),
+                                Option.None
+                            ) ]
+                  ))
+                  [ "FUARAN139"; "FUARAN139" ]
+                  "both date ends are refused on a band axis, one finding each"
+
+              // FUARAN140 — an end naming no calendar day. `2026-02-30` has the
+              // shape and not the day, which is the refusal a published schema's
+              // regex could not make.
+              Expect.equal
+                  (bandCodes (
+                      bandChart
+                          ChartKind.Line
+                          true
+                          [ ChartAnnotation.RangeBand(
+                                ChartAnnotationRange.XRange(
+                                    ChartAnnotationX.Date "2026-02-01",
+                                    ChartAnnotationX.Date "2026-02-30"
+                                ),
+                                Option.None
+                            ) ]
+                  ))
+                  [ "FUARAN140" ]
+                  "an unreadable end is refused; the pair's order is then unknowable and unreported"
+
+              // THE SUBJECT IS WHAT PHASE 1492 CHANGED, and this is the reason.
+              // The ordinal a finding carries is per CASE, so a bare `0` stopped
+              // identifying anything the moment a second case could carry the
+              // same rule — `annotation|event|0` and `annotation|band|0` are
+              // different marks. Every subject names the case, the ordinal, and
+              // for the band the END.
+              let subjectOf (d: PreEmitDefect) : string =
+                  let _, _, m = describe d
+                  m
+
+              Expect.stringContains
+                  (subjectOf (
+                      PreEmitDefect.ChartAnnotationAxisMismatch("cht", "range band 0 (to)", "date", "band (category)")
+                  ))
+                  "range band 0 (to)"
+                  "a band end names its band, its ordinal and which end"
+
+              Expect.stringContains
+                  (subjectOf (PreEmitDefect.ChartAnnotationKeyUngrounded("cht", "event marker 2", "Q9", 0)))
+                  "event marker 2"
+                  "and a marker still names itself as one"
+          }
+
+          test "FUARAN137 reaches the band's VALUE ends, and names the end it found" {
+              // 1490's rule, one member on. Both ends enter the value domain
+              // (§4l rule 3), so either one being non-finite takes `niceDomain`
+              // and every gridline with it — the damage the code exists for is
+              // identical, so the code is.
+              Expect.equal
+                  (bandCodes (
+                      bandChart
+                          ChartKind.Bar
+                          false
+                          [ ChartAnnotation.RangeBand(
+                                ChartAnnotationRange.ValueRange(200.0, System.Double.NaN),
+                                Option.None
+                            ) ]
+                  ))
+                  [ "FUARAN137" ]
+                  "a NaN upper end is refused"
+
+              let _, _, message =
+                  describe (PreEmitDefect.ChartAnnotationNonFinite("cht", "range band 0 (to)", "NaN"))
+
+              Expect.stringContains message "range band 0 (to)" "naming the end, not just the band"
+          }
+
           test "FUARAN097 accepts date and timestamp columns, and stays silent where the schema is unknowable" {
               let dated (t: Fuaran.Core.ColumnType) : Node<Msg> =
                   Fuaran.chart

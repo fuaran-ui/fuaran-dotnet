@@ -1438,7 +1438,28 @@ let private defs: (string * J) list =
             // `ChartAnnotationX` union rather than two inline members, because
             // the range band addresses an x-axis band with a PAIR of exactly
             // these and a pair of an inline shape has nothing to be a pair of.
-            duCase "EventMarker" [ "at" ] [ "at", ref "ChartAnnotationX"; "label", ref "TextSource" ] ]
+            duCase "EventMarker" [ "at" ] [ "at", ref "ChartAnnotationX"; "label", ref "TextSource" ]
+            // Phase 1492 — the range band. Its address is a PAIR, and the pair's
+            // own union carries the axis, so the schema never has to express
+            // "these two members are typed by the value of that third one" —
+            // a dependency Draft 2020-12 can only state as an `if`/`then`
+            // ladder, and which this shape removes rather than encodes.
+            duCase "RangeBand" [ "range" ] [ "range", ref "ChartAnnotationRange"; "label", ref "TextSource" ] ]
+
+      // Phase 1492 (§4l) — the range band's pair. Both `ValueRange` ends take
+      // `finiteNumber` on `ReferenceLine`'s argument: §4l rule 3 has both enter
+      // the value domain, so a sentinel would take `niceDomain` with it.
+      //
+      // WHAT THIS SCHEMA CANNOT SAY is that the pair is ORDERED — the decoder
+      // refuses `from` after `to` and no Draft 2020-12 keyword compares two
+      // sibling members. That is the `reject-daterange-unordered` limit, not a
+      // new one, and it is why the reject vector for it joins
+      // `schemaInexpressibleRejects`: the schema says LESS than the decoder,
+      // which is honest, rather than something DIFFERENT, which is not.
+      "ChartAnnotationRange",
+      union
+          [ duCase "ValueRange" [ "from"; "to" ] [ "from", finiteNumber; "to", finiteNumber ]
+            duCase "XRange" [ "from"; "to" ] [ "from", ref "ChartAnnotationX"; "to", ref "ChartAnnotationX" ] ]
 
       // Phase 1491 (§4l) — the x address, in the two forms the axis already
       // distinguishes. The `iso` slot is a bare `type: string` here and NOT a

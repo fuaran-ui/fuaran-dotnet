@@ -72,6 +72,67 @@ public readonly struct ChartAnnotation
         new(FsGen.ChartAnnotation.NewEventMarker(
             at.Inner,
             label is { } l ? Fs.Some(l.Inner) : Fs.None<FsGen.TextSource>()));
+
+    /// <summary>
+    /// A shaded interval on either axis (Phase 1492) — a recession, a
+    /// government's term, a tolerance band, a forecast window. The one member
+    /// that draws BEHIND every series.
+    /// </summary>
+    /// <param name="range">
+    /// The interval, as a pair in the axis's own address form. The pair's own
+    /// case declares WHICH axis — see <see cref="ChartAnnotationRange"/> — so a
+    /// band cannot name one axis and address the other. An unordered pair is
+    /// refused (FUARAN141) rather than swapped.
+    /// </param>
+    /// <param name="label">
+    /// An optional label, drawn inside the band's top edge and carried
+    /// unresolved into the drawing. Its width budget is the BAND's, not the
+    /// plot's, so a name too long for a narrow band is suppressed — never
+    /// clipped, never spilled outside the region it names — and the band still
+    /// draws.
+    /// </param>
+    public static ChartAnnotation RangeBand(ChartAnnotationRange range, Text? label = null) =>
+        new(FsGen.ChartAnnotation.NewRangeBand(
+            range.Inner,
+            label is { } l ? Fs.Some(l.Inner) : Fs.None<FsGen.TextSource>()));
+}
+
+/// <summary>
+/// The interval a range band shades (Phase 1492) — the authoring facade over
+/// the F# <c>ChartAnnotationRange</c>.
+/// </summary>
+/// <remarks>
+/// The case IS the axis. A band is the one annotation legible on either axis,
+/// so it has to say which — and carrying that as a separate flag beside an
+/// untyped pair would let a document declare the value axis and address it with
+/// two category keys. Choosing the factory chooses both at once, so that
+/// document cannot be written.
+/// </remarks>
+public readonly struct ChartAnnotationRange
+{
+    internal FsGen.ChartAnnotationRange Inner { get; }
+
+    private ChartAnnotationRange(FsGen.ChartAnnotationRange fs) => Inner = fs;
+
+    /// <summary>
+    /// An interval on the VALUE axis, in the axis's own units — a tolerance
+    /// band, a forecast window. Both ends enter the value domain before the axis
+    /// is chosen, so a band above every datum is drawn whole and the axis says
+    /// so.
+    /// </summary>
+    public static ChartAnnotationRange ValueRange(double from, double to) =>
+        new(FsGen.ChartAnnotationRange.NewValueRange(from, to));
+
+    /// <summary>
+    /// An interval on the X axis, as two addresses in the axis's own form — a
+    /// recession, a government's term. A category pair spans from the FIRST
+    /// key's band start to the LAST key's band end, which is a whole span of
+    /// named bands rather than centre-to-centre; a date pair spans between the
+    /// two mapped days, and both enter the axis extent before its ticks are
+    /// chosen.
+    /// </summary>
+    public static ChartAnnotationRange XRange(ChartAnnotationX from, ChartAnnotationX to) =>
+        new(FsGen.ChartAnnotationRange.NewXRange(from.Inner, to.Inner));
 }
 
 /// <summary>

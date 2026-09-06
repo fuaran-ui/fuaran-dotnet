@@ -1670,6 +1670,11 @@ and ChartXScale = Generated.ChartXScale
 /// the axes. §4l rule 2 is why there is exactly one of each: a vertical line at
 /// a date has ONE spelling, so the near-synonym pair that would otherwise be
 /// this family's worst confusion risk does not exist to be taught against.
+/// `RangeBand(range, label)` is a shaded interval on either axis — a recession,
+/// a tolerance band, a forecast window — addressed by a PAIR
+/// (`ChartAnnotationRange`, which carries the axis). It is the one member that
+/// draws BEHIND every series, which is what makes §4l's z-order a
+/// corpus-pinned lowering rule rather than a stylesheet accident.
 and ChartAnnotation = Generated.ChartAnnotation
 
 /// Phase 1491 — an annotation's X ADDRESS (§4l "The three addressing forms"),
@@ -1688,6 +1693,30 @@ and ChartAnnotation = Generated.ChartAnnotation
 /// Its own type rather than two inline fields, because
 /// [Phase 1492](the range band) addresses an x-axis band with a PAIR of these.
 and ChartAnnotationX = Generated.ChartAnnotationX
+
+/// Phase 1492 — a `RangeBand`'s PAIR (§4l "The three addressing forms", third
+/// row): two of the same address form, on one axis.
+///
+/// THE AXIS IS THE CASE. §4l requires a band to declare which axis it sits on;
+/// carrying that as a separate `axis` field beside an untyped pair would admit
+/// a document declaring the value axis and addressing it with two category
+/// keys — a contradiction some rule would then have to refuse. A union tag
+/// declares the axis AND types the pair with it, so that document cannot be
+/// written, on this host or on any conformant one.
+///
+/// `ValueRange(from, to)` is two floats in the VALUE axis's own units — a
+/// tolerance band, a forecast window; both ends enter the value domain before
+/// `niceDomain` runs, on §4l rule 3's terms. `XRange(from, to)` is two
+/// `ChartAnnotationX` — a recession, a government's term; a category pair spans
+/// from the FIRST key's band start to the LAST key's band end (Phase 903's
+/// boundaries), and a temporal pair's days enter the extent before the ticks
+/// are chosen.
+///
+/// An UNORDERED pair (`from` after `to`, once both are mapped) is refused
+/// pre-emit (FUARAN141) rather than silently normalised: a band written
+/// backwards is an author's mistake about their own data, and swapping the ends
+/// would draw a picture they did not describe.
+and ChartAnnotationRange = Generated.ChartAnnotationRange
 
 /// Author-facing carrier for a **static read-only table** (Phase 393). No longer a
 /// `VisKind` case of its own — `Fuaran.table` lowers it into the read-only mode of

@@ -50,7 +50,11 @@ internal static class Vocabulary
         //
         // `EventMarker` is `ReferenceLine`'s sibling — the second arm of the same
         // Phase 1491 annotation union, and a `<Chart>` child on the same terms.
-        "Item", "TreeItem", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default", "Source", "Tone", "Track", "ReferenceLine", "EventMarker");
+        //
+        // `RangeBand` closes the set §4l opened — the third and last arm of the
+        // annotation union, a `<Chart>` child on the same terms as its two
+        // siblings.
+        "Item", "TreeItem", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default", "Source", "Tone", "Track", "ReferenceLine", "EventMarker", "RangeBand");
 
     public static bool IsKnownElement(string name) => Kinds.Contains(name) || Structural.Contains(name);
 
@@ -296,6 +300,14 @@ internal static class Vocabulary
         // dropping a marker the author wrote. No side, no offset, no colour — §4l
         // gives an annotation an address and a label and nothing else.
         Add("EventMarker", "category", "date", "label");
+        // Phase 1492 — the range band's interval, spelled as one COMPLETE PAIR
+        // out of three. Six attributes rather than a from/to plus an axis flag,
+        // because the axis and the address form are one choice in the wire shape:
+        // splitting them would let a document declare the value axis and then
+        // name two categories, which is the state the union exists to make
+        // unwritable. Still no colour, no opacity and no side — §4l gives an
+        // annotation an address and a label and nothing else.
+        Add("RangeBand", "fromValue", "toValue", "fromCategory", "toCategory", "fromDate", "toDate", "label");
         Add("Prop", "name", "value");
         return b.ToImmutable();
     }

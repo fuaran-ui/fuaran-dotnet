@@ -953,6 +953,35 @@ let all: RejectFixture list =
         Description =
           "chart event marker addressing a date that names no calendar day — the address is what the marker is drawn at, and an unreadable one would place it at 1970-01-01 and drag the axis back with it (Phase 1491)" }
 
+      // ─── Chart annotation, backwards range band (Phase 1492, §4l) ────────
+      //
+      // The PAIR rule, and the first refusal in this family that is about two
+      // slots rather than one. A band names an interval, and an interval has an
+      // order; the alternative to refusing is normalising — draw `min`..`max`
+      // and say nothing — which is worse than it looks, because a pair written
+      // backwards is a mistake about the author's own data and silently drawing
+      // the band they did not describe is how that mistake reaches a reader as
+      // a fact.
+      //
+      // DECIDED AT THE WIRE for the two forms whose order is LOCAL: two floats
+      // compare as numbers, and two canonical ISO days compare as strings
+      // exactly as they compare as dates. Two CATEGORY keys do not — a band
+      // axis's order IS the row order — so that arm is pre-emit's alone
+      // (FUARAN141), which is the same line `decodeChartAnnotationX` already
+      // draws between refusing a date's shape and grounding a key against rows.
+      //
+      // `WRONG_TYPE` at the PAIR's own slot rather than at either end, on
+      // `reject-daterange-unordered`'s shape: neither number is wrong, their
+      // order is.
+      { Id = "reject-chart-annotation-range-unordered"
+        Json =
+          """{"id":"c1","kind":{"$type":"Chart","annotations":[{"$type":"RangeBand","range":{"$type":"ValueRange","from":260,"to":200}}],"kind":"Bar","source":{"$type":"Static","value":[]},"stacked":false,"xField":"quarter","yFields":["revenue"]}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.annotations[0].range"
+        IsOp = false
+        Description =
+          "chart range band whose pair runs from its upper value to its lower one — a band names an interval, and swapping the ends silently would draw one the author did not describe (Phase 1492)" }
+
       // ─── TonedPill tone-map values (Phase 750) ───────────────────────────
       //
       // The declarative pill's `map` VALUES are `ToneVariant`s, and a tone name

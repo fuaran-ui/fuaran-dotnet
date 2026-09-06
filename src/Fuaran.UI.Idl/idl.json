@@ -6135,9 +6135,92 @@
             }
           ],
           "tag": "EventMarker"
+        },
+        {
+          "fields": [
+            {
+              "name": "range",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "union",
+                "args": [],
+                "name": "ChartAnnotationRange"
+              }
+            },
+            {
+              "name": "label",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "union",
+                "args": [],
+                "name": "TextSource"
+              }
+            }
+          ],
+          "tag": "RangeBand"
         }
       ],
       "name": "ChartAnnotation",
+      "params": []
+    },
+    {
+      "cases": [
+        {
+          "fields": [
+            {
+              "name": "from",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "float"
+              }
+            },
+            {
+              "name": "to",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "float"
+              }
+            }
+          ],
+          "tag": "ValueRange"
+        },
+        {
+          "fields": [
+            {
+              "name": "from",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "union",
+                "args": [],
+                "name": "ChartAnnotationX"
+              }
+            },
+            {
+              "name": "to",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "union",
+                "args": [],
+                "name": "ChartAnnotationX"
+              }
+            }
+          ],
+          "tag": "XRange"
+        }
+      ],
+      "name": "ChartAnnotationRange",
       "params": []
     },
     {

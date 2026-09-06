@@ -133,12 +133,21 @@ let private acceptTest (e: Corpus.FixtureEntry) : Test =
 ///   dialect can state the calendar, the slot gains the constraint and this
 ///   entry goes, exactly as the inverse pin below intends.
 ///
+/// - `reject-chart-annotation-range-unordered` (Phase 1492, §4l): a range
+///   band's pair running backwards. This is the ORIGINAL entry's own limit
+///   arriving at a second slot — Draft 2020-12 has no keyword that compares two
+///   SIBLING members, which is exactly why `reject-daterange-unordered` has sat
+///   here since Phase 725. Nothing about the shape is unstated: both ends are
+///   `finiteNumber`, and it is the relation between them the dialect cannot
+///   name.
+///
 /// Each entry is asserted schema-VALID below — the INVERSE pin. If the schema
 /// ever gains the power to refuse one of these, this test fails and the list
 /// shrinks deliberately rather than the exemption quietly outliving its reason.
 let private schemaInexpressibleRejects: Set<string> =
     set
         [ "reject-chart-annotation-date-unparseable"
+          "reject-chart-annotation-range-unordered"
           "reject-daterange-unordered"
           // fuaran#1085 retired `reject-transform-source-empty-wrapper` from
           // this list with the fixture itself: the shape the schema could not

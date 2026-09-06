@@ -4894,3 +4894,86 @@ room is SUPPRESSED — never clipped, never overlapped, never nudged across a ne
 suppressed label never suppresses its marker. `line-temporal-events-five` shows it biting on the
 surveyed article's own spacing rather than only on a case built to break it: three of five labels
 survive, and all five markers draw.
+
+## Recorded change — 0.76.0, `ChartAnnotation.RangeBand` and `ChartAnnotationRange` (fuaran#1492)
+
+**A case on a closed union plus a new closed union (minor — `FS0025` only), exactly as 1491.**
+`ChartAnnotation` gains `RangeBand of range: ChartAnnotationRange * label: TextSource option`;
+`ChartAnnotationRange` is a new closed union with `ValueRange of from: float * to: float` and
+`XRange of from: ChartAnnotationX * to: ChartAnnotationX`. `ChartStyle` gains one constant. No
+record widens, so the FS0764 break 1490 paid for the family is not paid a third time — which was
+the whole point of the list-over-a-union shape, now demonstrated across all three members.
+
+```fsharp
+// Fuaran.UI.Generated — ChartAnnotation (case added)
+| RangeBand of range: ChartAnnotationRange * label: TextSource option
+
+// Fuaran.UI.Generated — ChartAnnotationRange (new), aliased as Fuaran.UI.Types.ChartAnnotationRange
+| ValueRange of from: float * ``to``: float
+| XRange of from: ChartAnnotationX * ``to``: ChartAnnotationX
+
+// Fuaran.UI.Charts — ChartStyle
+BandOpacity: float                 // 0.08
+```
+
+**THE AXIS IS THE CASE, and that is a deliberate reading of the phase text rather than a departure
+from it.** The shard spells the member `RangeBand { axis: X | Y; from; to; label }` and then requires
+`from`/`to` to be "typed as the axis's address form" — which a single case with an `axis` enum
+cannot do, since one pair of fields would have to be two types at once. §4l leaves the per-case
+payload open for exactly this reason and requires only that a band DECLARE its axis. Carrying the
+axis as the pair's own union tag satisfies that, types the pair with it, and makes the contradictory
+document — the value axis addressed by two category keys — unwritable rather than merely refused.
+It is also why the published schema needs no `if`/`then` ladder to state the dependency.
+
+**A BREAKING CHANGE INSIDE THE DRAFT SLOT: four `PreEmitDefect` cases changed arity.**
+`ChartAnnotationNonFinite`, `ChartAnnotationKeyUngrounded`, `ChartAnnotationAxisMismatch` and
+`ChartAnnotationDateUnparseable` now carry `subject: string` where they carried `index: int`. It is
+recorded here as the additive class **relative to the released baseline** — v0.75.0 is the newest
+tag, those four cases were all minted on this same untagged, publicly-unpinned 0.76.0 draft, and no
+released consumer can construct or match one. Against the released surface this is a case addition
+and nothing more.
+
+**It is forced, not cosmetic.** The index a finding carried was the per-CASE ordinal — the `<n>` in
+`annotation|<case>|<n>` — so a bare `0` stopped identifying anything the moment a second case could
+carry the same rule: a chart with an `annotation|event|0` and an `annotation|band|0` would get two
+findings both reading "0", one of them pointing at the wrong mark. The subject names the case, the
+ordinal, and for the band — the one member addressed by a PAIR — which END: `range band 1 (from)`.
+Three of the four codes are REUSED for the band's addresses rather than duplicated, because a band's
+x end fails exactly the three ways a marker's does; a second code per failure would have said the
+same thing twice and left a fourth member to say it a third time, which is the cost §4l's one-union
+decision was taken to avoid, applied to the code space.
+
+**One new pre-emit code — FUARAN141, the ORDER, which only a pair can get wrong.** A band whose
+`from` follows its `to` once both ends are mapped is refused rather than normalised: a pair written
+backwards is a mistake about the author's own data, and silently drawing the band they did not
+describe is how that mistake reaches a reader as a fact. The wire decoder refuses it too, for the
+two forms whose order is LOCAL — two floats compare as numbers, two canonical ISO days as strings —
+while two CATEGORY keys compare only through the rows, so that arm is pre-emit's alone under the
+closed static window. `reject-chart-annotation-range-unordered` joins `schemaInexpressibleRejects`
+beside its Phase-725 predecessor, and for the identical reason: Draft 2020-12 has no keyword that
+compares two sibling members. **The LOWERING normalises where the checks refuse**, deliberately: it
+is total, so a pair reaching it through a construction site no gate sits on draws the region named
+rather than an inverted rectangle.
+
+**Z-ORDER IS NOW EXERCISED IN BOTH DIRECTIONS.** The band is the one member that draws BEHIND the
+series — §4l rung 1, emitted before the grid, the axes and every series group — so
+`bar-band-x-categories` is the first golden in which a host that painted an annotation in the wrong
+sequence would emit a valid document showing a different picture. That is the class the corpus
+exists to catch and the reason the order is stated as data rather than left to a stylesheet.
+
+**A CORPUS EVENT on the same two counts as 1490 and 1491.** `BandOpacity` moves the shipped
+`ChartStyle` record every conformant host reproduces exactly; and three new goldens —
+`line-band-y-tolerance`, `line-temporal-band-x-period`, `bar-band-x-categories` — plus one node
+fixture and one reject vector are in the shared corpus, so a host whose chart-lowering leg walks the
+directory sees them before its own arm exists. Porting the arms is fuaran#1493's whole job. Every
+pre-1492 fixture is byte-unchanged; the corpus diff shows it directly.
+
+**The ink is `currentColor` at the record's LOWEST opacity, and that is the point rather than
+timidity.** Every other role inks a hairline or a glyph; this one inks an AREA, often most of the
+plot, and area at a line's opacity competes with the marks drawn over it. At 0.08 the tint
+composites to ≈ `#eaeae9` on the light surface and ≈ `#2c2c2b` on the dark one — a clear step from
+each ground, and lighter than the 0.12 gridline drawn over it, which is the ordering the picture
+needs. Phase 875's lightness-band gate has nothing to measure here: it ranges over the categorical
+palette, whose hexes must sit in the intersection of two bands because one set serves both themes,
+where a `currentColor` tint is a fixed contrast ratio to whatever ground it lands on — the property
+that gate exists to buy.

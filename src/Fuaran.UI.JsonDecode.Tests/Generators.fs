@@ -922,6 +922,36 @@ let private genChartAnnotation: Gen<ChartAnnotation> =
               let! at = genChartAnnotationX
               let! label = genOption genTextSource
               return ChartAnnotation.EventMarker(at, label)
+          }
+          // Phase 1492 — the range band. Both arms generate an ORDERED pair, on
+          // `genChartAnnotationX`'s reason exactly: the decoder REFUSES a
+          // backwards one, so a generated `to < from` would make the round-trip
+          // property fail on a document the codec is correct to reject.
+          //
+          // The category arm is generated UNORDERED-SAFE for free — two
+          // arbitrary keys have no order the decoder can see, since a band
+          // axis's order is the rows' and the decoder holds no rows.
+          gen {
+              let! a = genFiniteFloat
+              let! b = genFiniteFloat
+              let! label = genOption genTextSource
+              return ChartAnnotation.RangeBand(ChartAnnotationRange.ValueRange(min a b, max a b), label)
+          }
+          gen {
+              let! a = genChartAnnotationX
+              let! b = genChartAnnotationX
+              let! label = genOption genTextSource
+
+              let ordered =
+                  match a, b with
+                  | ChartAnnotationX.Date x, ChartAnnotationX.Date y when System.String.CompareOrdinal(x, y) > 0 ->
+                      // Canonical `YYYY-MM-DD` sorts lexicographically exactly as
+                      // it sorts chronologically, which is the same fact the
+                      // decoder's own ordering check rests on.
+                      ChartAnnotationRange.XRange(b, a)
+                  | _ -> ChartAnnotationRange.XRange(a, b)
+
+              return ChartAnnotation.RangeBand(ordered, label)
           } ]
 
 let private genChartSpec: Gen<ChartSpec<obj>> =

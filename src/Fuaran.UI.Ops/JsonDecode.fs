@@ -6999,6 +6999,82 @@ let private decodeChartAnnotationX (path: string) (j: Json) : Result<ChartAnnota
                 | Ok s -> Ok(ChartAnnotationX.Date s)
         | Ok s -> unknownDuCase path s "Category, Date"
 
+/// A range band's PAIR (Phase 1492, §4l "The three addressing forms"). The case
+/// carries the AXIS as well as the pair, so a value axis addressed by category
+/// keys is not a document this decoder has to refuse — it is one no encoder can
+/// write.
+///
+/// TWO REFUSALS, and they are the pair rules the WIRE can decide by itself. A
+/// non-finite endpoint is `ReferenceLine`'s narrowing at two slots instead of
+/// one, for its reason exactly: §4l rule 3 has both ends enter the value domain,
+/// so a NaN takes `niceDomain`, every gridline and every mark with it. An
+/// UNORDERED pair is refused on `reject-daterange-unordered`'s shape — reported
+/// at the pair's own slot, because the defect is the pair's and not either
+/// end's — rather than silently swapped: a band written backwards is a mistake
+/// about the author's own data, and normalising it would draw a picture nobody
+/// described.
+///
+/// A CATEGORY pair's order is NOT decided here, and that is the same line
+/// `decodeChartAnnotationX` already draws for grounding: the order of two band
+/// keys is the ROWS' order, which is a cross-reference and not a local property
+/// of the address. Pre-emit owns it (FUARAN141) under the closed static window,
+/// exactly as it owns grounding (FUARAN138).
+let private decodeChartAnnotationRange (path: string) (j: Json) : Result<ChartAnnotationRange, DecodeError> =
+    let finite (slot: string) (v: Json) : Result<float, DecodeError> =
+        match requireFloat (path + "." + slot) v with
+        | Error e -> Error e
+        | Ok f when Double.IsNaN f || Double.IsInfinity f ->
+            wrongType
+                (path + "." + slot)
+                "a FINITE JSON number — a range band's end names a place on the value axis, and NaN / Infinity names none; give the value in the axis's own units, or drop the annotation"
+        | Ok f -> Ok f
+
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        match requireDiscriminator path fields with
+        | Error e -> Error e
+        | Ok "ValueRange" ->
+            let fromR =
+                requireField path fields "from" "range-band lower value (a finite JSON number)"
+                |> Result.bind (finite "from")
+
+            let toR =
+                requireField path fields "to" "range-band upper value (a finite JSON number)"
+                |> Result.bind (finite "to")
+
+            match fromR, toR with
+            | Ok f, Ok t when f > t ->
+                wrongType
+                    path
+                    "an ORDERED pair — a range band runs from its lower value to its upper one, and this pair runs backwards; swapping the ends silently would draw a band the author did not describe"
+            | Ok f, Ok t -> Ok(ChartAnnotationRange.ValueRange(f, t))
+            | Error e, _
+            | _, Error e -> Error e
+        | Ok "XRange" ->
+            let fromR =
+                requireField path fields "from" "range-band lower x address (a ChartAnnotationX)"
+                |> Result.bind (decodeChartAnnotationX (path + ".from"))
+
+            let toR =
+                requireField path fields "to" "range-band upper x address (a ChartAnnotationX)"
+                |> Result.bind (decodeChartAnnotationX (path + ".to"))
+
+            match fromR, toR with
+            | Ok(ChartAnnotationX.Date a), Ok(ChartAnnotationX.Date b) when String.CompareOrdinal(a, b) > 0 ->
+                // Both dates are already known canonical and calendar-valid
+                // (`decodeChartAnnotationX` refused anything else), and a
+                // canonical `YYYY-MM-DD` sorts lexicographically exactly as it
+                // sorts chronologically — so no calendar arithmetic is needed to
+                // decide the order at this boundary.
+                wrongType
+                    path
+                    "an ORDERED pair — a range band runs from its earlier date to its later one, and this pair runs backwards; swapping the ends silently would draw a band the author did not describe"
+            | Ok f, Ok t -> Ok(ChartAnnotationRange.XRange(f, t))
+            | Error e, _
+            | _, Error e -> Error e
+        | Ok s -> unknownDuCase path s "ValueRange, XRange"
+
 let private decodeChartAnnotation (path: string) (j: Json) : Result<ChartAnnotation, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -7042,7 +7118,22 @@ let private decodeChartAnnotation (path: string) (j: Json) : Result<ChartAnnotat
             | Ok value, Ok label -> Ok(ChartAnnotation.ReferenceLine(value, label))
             | Error e, _
             | _, Error e -> Error e
-        | Ok s -> unknownDuCase path s "ReferenceLine, EventMarker"
+        | Ok "RangeBand" ->
+            let rangeR =
+                match requireField path fields "range" "range-band pair (a ChartAnnotationRange)" with
+                | Error e -> Error e
+                | Ok v -> decodeChartAnnotationRange (path + ".range") v
+
+            let labelR =
+                match tryField fields "label" with
+                | None -> Ok None
+                | Some v -> decodeTextSource (path + ".label") v |> Result.map Some
+
+            match rangeR, labelR with
+            | Ok range, Ok label -> Ok(ChartAnnotation.RangeBand(range, label))
+            | Error e, _
+            | _, Error e -> Error e
+        | Ok s -> unknownDuCase path s "ReferenceLine, EventMarker, RangeBand"
 
 let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, DecodeError> =
     match requireObject path j with

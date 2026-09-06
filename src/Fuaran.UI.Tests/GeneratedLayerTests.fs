@@ -713,12 +713,23 @@ let generatedLayerTests =
               //    would make the schema disagree with the decoder, and a schema
               //    that says LESS than the decoder is honest where one that says
               //    something DIFFERENT is not.
+              //  - a range band's BACKWARDS pair (Phase 1492) is the second
+              //    ORDERED-PAIR instance, after `reject-daterange-unordered`,
+              //    and it is that class rather than the value-bound one: neither
+              //    end is out of range, and what the generated layer cannot
+              //    judge is a RELATION between two members. The IDL has no
+              //    vocabulary for a cross-field constraint at all, which is also
+              //    precisely why the published schema cannot state it — so this
+              //    is the one class where the structural gap and the schema gap
+              //    are the same gap, and it joins `schemaInexpressibleRejects`
+              //    alongside its 725 predecessor for that shared reason.
               Expect.equal
                   policyOwned
                   [ "reject-action-print-with-payload.json"
                     "reject-box-masonry-nonpositive-cols.json"
                     "reject-chart-annotation-date-unparseable.json"
                     "reject-chart-annotation-nonfinite.json"
+                    "reject-chart-annotation-range-unordered.json"
                     "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"
                     "reject-fieldrule-empty.json"

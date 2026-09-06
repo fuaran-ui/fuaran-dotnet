@@ -1279,7 +1279,89 @@ let private cases: Case list =
                   [ ChartAnnotation.EventMarker(ChartAnnotationX.Date "2026-01-10", Some(lit "First review window"))
                     ChartAnnotation.EventMarker(ChartAnnotationX.Date "2026-01-12", Some(lit "Second review window"))
                     ChartAnnotation.EventMarker(ChartAnnotationX.Date "2026-01-14", Some(lit "Sign-off")) ]
-          Rows = seriesOver (isoRun "2026-01-05" 1 30) } ]
+          Rows = seriesOver (isoRun "2026-01-05" 1 30) }
+      // ── Phase 1492 (§4l) — the range band, the family's third member ──
+      //
+      // Three cases, one per fact the others cannot carry: the VALUE-axis pair
+      // with its domain widening, the TEMPORAL x pair at the shape the member
+      // was demanded for, and the CATEGORY x pair, which is the only place
+      // Phase 903's BOUNDARIES (rather than its centres) are exercised.
+      //
+      // All three pin the half of §4l's draw order no earlier member could: the
+      // band's rectangle is the FIRST shape in the golden, before the gridlines.
+      // A host that emitted it after its series would produce a valid document
+      // showing a different picture, and only these bytes can see that.
+      { plain with
+          // THE VALUE PAIR, and §4l rule 3 at BOTH ends. The tolerance runs
+          // 200–260 over latencies that peak at 300 and bottom at 180, so the
+          // band is interior at the top and the axis is unmoved — the control
+          // for the widening the `to` end would force if it ran past the data.
+          //
+          // Labelled, and the label fits: a value band spans the plot's whole
+          // width, so its horizontal budget is the widest any annotation label
+          // gets. That is the control for the two below, where it does not.
+          Name = "line-band-y-tolerance"
+          Kind = ChartKind.Line
+          XField = "week"
+          YFields = [ "latencyMs" ]
+          Title = Some(lit "p95 latency")
+          Annotations =
+              Some [ ChartAnnotation.RangeBand(ChartAnnotationRange.ValueRange(200.0, 260.0), Some(lit "Tolerance")) ]
+          Rows = [ "W1", [ 180.0 ]; "W2", [ 240.0 ]; "W3", [ 210.0 ]; "W4", [ 300.0 ] ] }
+      { plain with
+          // THE TEMPORAL PAIR — a recession over a decade series, which is the
+          // recorded demand (kc-009's `range_band` sighting). Both dates enter
+          // the extent before the calendar rung is chosen, exactly as an event
+          // marker's one date does; here it matters more, because a band
+          // truncated at the plot edge reads as a recession ENDING there.
+          //
+          // The label is deliberately longer than the band is wide — eighteen
+          // months on a fifteen-year axis — so the golden pins the SUPPRESSION
+          // this member's gate performs where the reference line's never could:
+          // the budget is the band's own width, not the plot's, and the band
+          // still draws with no label at all.
+          Name = "line-temporal-band-x-period"
+          Kind = ChartKind.Line
+          XField = "year"
+          YFields = [ "output" ]
+          Title = Some(lit "Output, 2004–2018")
+          XScale = Some "Temporal"
+          Annotations =
+              Some
+                  [ ChartAnnotation.RangeBand(
+                        ChartAnnotationRange.XRange(
+                            ChartAnnotationX.Date "2008-04-01",
+                            ChartAnnotationX.Date "2009-06-30"
+                        ),
+                        Some(lit "Recession")
+                    ) ]
+          Rows = seriesOver (isoYears 2004 15) }
+      { plain with
+          // THE CATEGORY PAIR, and the one case that exercises Phase 903's
+          // BOUNDARIES. The band runs Q2–Q3, so its left edge is the boundary
+          // BEFORE Q2 and its right edge the boundary AFTER Q3 — a whole two
+          // quarters of the axis. An event marker at Q3 sits at that band's
+          // CENTRE, and the difference is the whole reason both members exist:
+          // a marker is a position, a band is an extent.
+          //
+          // Two annotations of DIFFERENT cases, so the golden also pins that the
+          // per-case ordinals are independent (`annotation|band|0` beside
+          // `annotation|reference|0`) and that the band is painted FIRST while
+          // the reference line is painted in front of the series — one document,
+          // both halves of the draw order.
+          Name = "bar-band-x-categories"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields = [ "revenue" ]
+          Title = Some(lit "Revenue by quarter")
+          Annotations =
+              Some
+                  [ ChartAnnotation.RangeBand(
+                        ChartAnnotationRange.XRange(ChartAnnotationX.Category "Q2", ChartAnnotationX.Category "Q3"),
+                        Some(lit "Freeze")
+                    )
+                    ChartAnnotation.ReferenceLine(160.0, None) ]
+          Rows = [ "Q1", [ 120.0 ]; "Q2", [ 150.0 ]; "Q3", [ 90.0 ]; "Q4", [ 175.0 ] ] } ]
 
 /// Build the typed `Row` rows (the canonical embedded-data shape; fuaran#665
 /// named the slot — the representation is the same `Map<string,obj>`).
@@ -1673,6 +1755,28 @@ let private inputJson (case: Case) : string =
                        // before its value — the canonical order is the members'
                        // own, not a per-case convention.
                        "{\"$type\":\"EventMarker\",\"at\":" + addressJson at + labelPart label + "}"
+                   | ChartAnnotation.RangeBand(range, label) ->
+                       // Phase 1492 — `label` sorts BEFORE `range` (Ordinal), so
+                       // the label leads here where an event marker's trails its
+                       // address. Third spelling, third position, same rule: the
+                       // canonical order is the members' own.
+                       let rangeJson =
+                           match range with
+                           | ChartAnnotationRange.ValueRange(f, t) ->
+                               "{\"$type\":\"ValueRange\",\"from\":" + num f + ",\"to\":" + num t + "}"
+                           | ChartAnnotationRange.XRange(f, t) ->
+                               "{\"$type\":\"XRange\",\"from\":"
+                               + addressJson f
+                               + ",\"to\":"
+                               + addressJson t
+                               + "}"
+
+                       let l =
+                           match label with
+                           | None -> ""
+                           | Some t -> "\"label\":" + textSourceJson t + ","
+
+                       "{\"$type\":\"RangeBand\"," + l + "\"range\":" + rangeJson + "}"
 
                ",\"annotations\":[" + (anns |> List.map one |> String.concat ",") + "]")
 
@@ -4429,4 +4533,314 @@ let chartLoweringTests =
                       pie
                       (ChartAnnotation.EventMarker(ChartAnnotationX.Category "North", Some(lit "Anything")))
                       "a pie lowers identically with and without an event marker"
+              }
+
+              // ── Phase 1492 (§4l) — the range band's own rules. Same posture
+              //    as the two blocks above: the goldens pin the bytes, these say
+              //    why those bytes are the right ones.
+
+              test "a band is emitted FIRST — behind the series, and behind the grid with it" {
+                  // §4l rung 1, and the half of the draw order neither earlier
+                  // member could exercise. The assertion is POSITIONAL because
+                  // the property is: in inline SVG z-order IS emission order, so
+                  // a host that painted the band later would emit a valid
+                  // document showing a tinted rectangle OVER its own data, and
+                  // no schema and no validator could see it.
+                  let ds = loweredCase "bar-band-x-categories"
+
+                  let indexOfMark (markId: string) : int =
+                      ds.Shapes
+                      |> List.findIndex (fun sh ->
+                          match sh with
+                          | Shape.Rectangle(_, _, _, _, _, s)
+                          | Shape.Line(_, _, _, _, s) -> s.MarkId = Some markId
+                          | _ -> false)
+
+                  Expect.equal (indexOfMark "annotation|band|0") 0 "the band is the very first shape in the drawing"
+
+                  Expect.isTrue
+                      (indexOfMark "annotation|band|0" < indexOfMark "revenue|Q1")
+                      "…so every series mark is painted over it"
+
+                  // And the OTHER rung is unmoved by the band's arrival: a
+                  // reference line still sits in FRONT of the series (rung 3).
+                  // One document, both halves of the order.
+                  Expect.isTrue
+                      (indexOfMark "revenue|Q4" < indexOfMark "annotation|reference|0")
+                      "the reference line still paints in front of the series"
+
+                  // The per-case ordinals are independent: a band and a
+                  // reference line in one document are both `|0`.
+                  Expect.isTrue
+                      (indexOfMark "annotation|reference|0" > 0)
+                      "the reference line keeps its own case's ordinal 0 beside the band's"
+              }
+
+              test "a CATEGORY band takes Phase 903's BOUNDARIES where a marker takes its centres" {
+                  // The difference between the two members drawn from the same
+                  // address, and the reason both exist: a marker is a POSITION
+                  // and a band is an EXTENT. "Q2 to Q3" therefore runs from the
+                  // boundary BEFORE Q2 to the boundary AFTER Q3 — shading
+                  // centre-to-centre would leave half of each named quarter
+                  // outside the region that names it.
+                  //
+                  // Derived from the axis's own labels rather than from a
+                  // recomputed band pitch, so this states something about the
+                  // picture instead of repeating the lowering's arithmetic.
+                  let ds = loweredCase "bar-band-x-categories"
+
+                  let labelX (text: string) : float =
+                      ds.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Label(x, _, TextSource.Literal t, _) when t = text -> Some x
+                          | _ -> None)
+
+                  let x, width =
+                      ds.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Rectangle(x, _, w, _, _, s) when s.MarkId = Some "annotation|band|0" -> Some(x, w)
+                          | _ -> None)
+
+                  let pitch = labelX "Q3" - labelX "Q2"
+
+                  Expect.equal (r2 x) (r2 (labelX "Q2" - pitch / 2.0)) "the left edge is the boundary before Q2"
+
+                  Expect.equal
+                      (r2 (x + width))
+                      (r2 (labelX "Q3" + pitch / 2.0))
+                      "the right edge is the boundary after Q3"
+
+                  // FULL HEIGHT: the band's claim is about x, so it says nothing
+                  // about y by spanning all of it. A band that stopped short
+                  // would be asserting a value range it was never given.
+                  let y, height =
+                      ds.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Rectangle(_, y, _, h, _, s) when s.MarkId = Some "annotation|band|0" -> Some(y, h)
+                          | _ -> None)
+
+                  let axisTop, axisBottom =
+                      ds.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          // The y spine — the only vertical full-height line the
+                          // cartesian chrome draws.
+                          | Shape.Line(x1, y1, x2, y2, _) when x1 = x2 && y2 - y1 > 100.0 -> Some(y1, y2)
+                          | _ -> None)
+
+                  Expect.equal y axisTop "the band starts at the plot's top"
+                  Expect.equal (y + height) axisBottom "…and ends at its bottom"
+              }
+
+              test "a VALUE band widens the domain at BOTH ends, and spans the plot's whole width" {
+                  // §4l rule 3, at two addresses instead of one. A tolerance band
+                  // whose upper edge sits above every datum is drawn WHOLE and
+                  // the axis says so; clipping it at the data's own maximum would
+                  // end the band where the author did not, which is the
+                  // misreading `bar-reference-target-above-data` already pins for
+                  // the single-address case.
+                  let case = cases |> List.find (fun c -> c.Name = "line-band-y-tolerance")
+
+                  let ticksWith (ann: ChartAnnotation option) : string list =
+                      yTickTexts (
+                          Charts.lower
+                              { specOf case with
+                                  Annotations = ann |> Option.map List.singleton }
+                              (Seq.ofList (buildRows case))
+                      )
+
+                  let plain = ticksWith Option.None
+
+                  let widened =
+                      ticksWith (
+                          Some(ChartAnnotation.RangeBand(ChartAnnotationRange.ValueRange(400.0, 500.0), Option.None))
+                      )
+
+                  Expect.notEqual
+                      widened
+                      plain
+                      "a band above every datum lifts the axis rather than being clipped to it"
+
+                  // The interior band in the golden does NOT move the axis, which
+                  // is the control: the widening is the pair's, not the member's.
+                  Expect.equal
+                      (ticksWith (Some(List.head (Option.defaultValue [] case.Annotations))))
+                      plain
+                      "an interior band leaves the axis alone"
+
+                  // FULL WIDTH, the mirror of the x band's full height.
+                  let ds = loweredCase "line-band-y-tolerance"
+
+                  let x, width =
+                      ds.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Rectangle(x, _, w, _, _, s) when s.MarkId = Some "annotation|band|0" -> Some(x, w)
+                          | _ -> None)
+
+                  Expect.equal (r2 (x + width)) (r2 (plotRight ds)) "the band runs to the plot's right edge"
+              }
+
+              test "a band's label is budgeted by the BAND, not the plot — and suppressed on no fit" {
+                  // Where this member's gate bites and the other two's do not. A
+                  // narrow x band is the ordinary case — eighteen months on a
+                  // fifteen-year axis — and its name will not fit inside it.
+                  // Phase 881's rule: suppressed, never clipped, never spilled
+                  // across the boundary of the region it names, and the band
+                  // still draws.
+                  let narrow = loweredCase "line-temporal-band-x-period"
+
+                  Expect.isFalse
+                      (List.contains "Recession" (literalTexts narrow))
+                      "the label does not fit inside an 18-month band and is suppressed"
+
+                  Expect.isTrue
+                      (narrow.Shapes
+                       |> List.exists (fun sh ->
+                           match sh with
+                           | Shape.Rectangle(_, _, _, _, _, s) -> s.MarkId = Some "annotation|band|0"
+                           | _ -> false))
+                      "…and a suppressed label never suppresses its band"
+
+                  // The control, on the same case: widen the band and the same
+                  // label fits. Without this the suppression above would be
+                  // consistent with the label never being emitted at all.
+                  let case = cases |> List.find (fun c -> c.Name = "line-temporal-band-x-period")
+
+                  let wide =
+                      Charts.lower
+                          { specOf case with
+                              Annotations =
+                                  Some
+                                      [ ChartAnnotation.RangeBand(
+                                            ChartAnnotationRange.XRange(
+                                                ChartAnnotationX.Date "2006-01-01",
+                                                ChartAnnotationX.Date "2014-01-01"
+                                            ),
+                                            Some(lit "Recession")
+                                        ) ] }
+                          (Seq.ofList (buildRows case))
+
+                  Expect.isTrue
+                      (List.contains "Recession" (literalTexts wide))
+                      "the same label fits inside an eight-year band"
+
+                  // The label sits INSIDE the band's top edge — not above it,
+                  // which for a value band would put it over the series and for
+                  // an x band outside the plot entirely.
+                  let bandTop, bandLeft =
+                      wide.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Rectangle(x, y, _, _, _, s) when s.MarkId = Some "annotation|band|0" -> Some(y, x)
+                          | _ -> None)
+
+                  let labelX, labelY =
+                      wide.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Label(x, y, TextSource.Literal "Recession", _) -> Some(x, y)
+                          | _ -> None)
+
+                  Expect.isTrue (labelY > bandTop) "the baseline is below the band's top edge"
+                  Expect.isTrue (labelX > bandLeft) "…and inset from its left one"
+              }
+
+              test "an unusable band reaches no geometry — the lowering stays total" {
+                  // The third gate again, and the same division of labour the
+                  // other two members draw: what the validator REFUSES, the
+                  // lowering merely declines to draw, so a spec that arrived
+                  // through a construction site neither gate sits on still
+                  // produces the chart it can.
+                  let band = cases |> List.find (fun c -> c.Name = "bar-band-x-categories")
+                  let temporal = cases |> List.find (fun c -> c.Name = "line-temporal-band-x-period")
+
+                  let drawsNothing (case: Case) (bad: ChartAnnotation) (why: string) =
+                      let node (spec: ChartSpec<obj>) : Node<obj> =
+                          Fuaran.drawingSpec "c" (Charts.lower spec (Seq.ofList (buildRows case)))
+
+                      Expect.equal
+                          (CanonicalJson.encodeNode (
+                              node
+                                  { specOf case with
+                                      Annotations = Some [ bad ] }
+                          ))
+                          (CanonicalJson.encodeNode (
+                              node
+                                  { specOf case with
+                                      Annotations = Option.None }
+                          ))
+                          why
+
+                  drawsNothing
+                      band
+                      (ChartAnnotation.RangeBand(
+                          ChartAnnotationRange.XRange(
+                              ChartAnnotationX.Category "Q2",
+                              ChartAnnotationX.Date "2026-01-01"
+                          ),
+                          Option.None
+                      ))
+                      "a pair mixing the two address forms draws nothing — half a pair addresses no interval"
+
+                  drawsNothing
+                      band
+                      (ChartAnnotation.RangeBand(
+                          ChartAnnotationRange.XRange(ChartAnnotationX.Category "Q2", ChartAnnotationX.Category "Q9"),
+                          Option.None
+                      ))
+                      "an end no row carries draws nothing"
+
+                  drawsNothing
+                      temporal
+                      (ChartAnnotation.RangeBand(
+                          ChartAnnotationRange.XRange(
+                              ChartAnnotationX.Date "2008-04-01",
+                              ChartAnnotationX.Date "2009-13-40"
+                          ),
+                          Option.None
+                      ))
+                      "an end naming no calendar day draws nothing"
+
+                  drawsNothing
+                      band
+                      (ChartAnnotation.RangeBand(ChartAnnotationRange.ValueRange(100.0, System.Double.NaN), Option.None))
+                      "a non-finite end drops the WHOLE band — half a band is a different claim, not a smaller one"
+
+                  // The polar arm is neutralised for this member too: a pie has
+                  // neither axis for a band to span.
+                  let pie = cases |> List.find (fun c -> c.Name = "pie-single")
+
+                  drawsNothing
+                      pie
+                      (ChartAnnotation.RangeBand(ChartAnnotationRange.ValueRange(1.0, 2.0), Some(lit "Anything")))
+                      "a pie lowers identically with and without a range band"
+              }
+
+              test "a BACKWARDS band still draws the region it names — refusal is the validator's job" {
+                  // The division of labour stated as bytes. FUARAN141 refuses the
+                  // pair and the wire decoder refuses it too; a lowering handed
+                  // one anyway must not emit an inverted rectangle (a negative
+                  // width is not a picture at all), so it draws the interval the
+                  // ends bound. Both are right: the check refuses, the drawing
+                  // copes.
+                  let case = cases |> List.find (fun c -> c.Name = "line-band-y-tolerance")
+
+                  let lowerWith (f: float) (t: float) =
+                      Charts.lower
+                          { specOf case with
+                              Annotations =
+                                  Some [ ChartAnnotation.RangeBand(ChartAnnotationRange.ValueRange(f, t), Option.None) ] }
+                          (Seq.ofList (buildRows case))
+
+                  let forwards = Fuaran.drawingSpec "c" (lowerWith 200.0 260.0)
+                  let backwards = Fuaran.drawingSpec "c" (lowerWith 260.0 200.0)
+
+                  Expect.equal
+                      (CanonicalJson.encodeNode backwards)
+                      (CanonicalJson.encodeNode forwards)
+                      "a backwards pair lowers to the same band as its ordered twin"
               } ]

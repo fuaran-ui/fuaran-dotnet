@@ -117,6 +117,12 @@ Friend Module VisualisationMapping
     ''' the tree, since a silently-dropped marker is the failure this dialect makes
     ''' easiest to write.
     ''' </remarks>
+    ''' <remarks>
+    ''' Phase 1492 — &lt;RangeBand fromCategory="Q2" toCategory="Q3" label="Freeze"/&gt;
+    ''' joins them, in three attribute-pair spellings (see ReadBandRange). It is the
+    ''' third and last arm of the union §4l opened; a fourth would be a fourth loop
+    ''' here and nothing else, which is what the one-list-over-a-union shape bought.
+    ''' </remarks>
     Private Function ReadAnnotations(el As XElement) As IEnumerable(Of Csharp.ChartAnnotation)
         Dim annotations = New List(Of Csharp.ChartAnnotation)
 
@@ -144,8 +150,71 @@ Friend Module VisualisationMapping
             End If
         Next
 
+        For Each b In ChildElements(el, "RangeBand")
+            annotations.Add(Csharp.ChartAnnotation.RangeBand(ReadBandRange(b), OptText(b, "label")))
+        Next
+
         If annotations.Count = 0 Then Return Nothing
         Return annotations
+    End Function
+
+    ''' <summary>
+    ''' Phase 1492 — a &lt;RangeBand&gt;'s interval, spelled as ONE COMPLETE PAIR of
+    ''' attributes: fromValue/toValue, fromCategory/toCategory, or fromDate/toDate.
+    ''' </summary>
+    ''' <remarks>
+    ''' Three pairs rather than a from/to plus an axis attribute, because the axis
+    ''' and the address form are one choice in the wire shape and splitting them here
+    ''' would let a document say "value axis" and then name two categories — the state
+    ''' the union was chosen to make unwritable. Six attributes is the price of that
+    ''' in a dialect with no union spelling, and it is the &lt;EventMarker&gt; treatment
+    ''' one pair wider.
+    '''
+    ''' A HALF PAIR IS REFUSED, not completed with a default. AttrDouble takes a
+    ''' fallback and a band whose missing end silently read as 0 would draw a region
+    ''' reaching the axis origin — a plausible-looking picture nobody described, which
+    ''' is exactly the silent failure this dialect makes easiest to write.
+    ''' </remarks>
+    Private Function ReadBandRange(el As XElement) As Csharp.ChartAnnotationRange
+        Dim hasValue = HasAttr(el, "fromValue") OrElse HasAttr(el, "toValue")
+        Dim hasCategory = HasAttr(el, "fromCategory") OrElse HasAttr(el, "toCategory")
+        Dim hasDate = HasAttr(el, "fromDate") OrElse HasAttr(el, "toDate")
+
+        Dim declared = 0
+        If hasValue Then declared += 1
+        If hasCategory Then declared += 1
+        If hasDate Then declared += 1
+
+        If declared <> 1 Then
+            Throw New ArgumentException(
+                "<RangeBand> names " & declared.ToString() &
+                " address forms — a band spans ONE axis, so it carries exactly one complete pair: fromValue/toValue, fromCategory/toCategory, or fromDate/toDate.")
+        End If
+
+        If hasValue Then
+            If Not (HasAttr(el, "fromValue") AndAlso HasAttr(el, "toValue")) Then
+                Throw New ArgumentException("<RangeBand> carries only one of 'fromValue' and 'toValue' — a band is an interval and needs both ends.")
+            End If
+
+            Return Csharp.ChartAnnotationRange.ValueRange(
+                AttrDouble(el, "fromValue", 0.0), AttrDouble(el, "toValue", 0.0))
+        ElseIf hasCategory Then
+            If Not (HasAttr(el, "fromCategory") AndAlso HasAttr(el, "toCategory")) Then
+                Throw New ArgumentException("<RangeBand> carries only one of 'fromCategory' and 'toCategory' — a band is an interval and needs both ends.")
+            End If
+
+            Return Csharp.ChartAnnotationRange.XRange(
+                Csharp.ChartAnnotationX.Category(Attr(el, "fromCategory")),
+                Csharp.ChartAnnotationX.Category(Attr(el, "toCategory")))
+        Else
+            If Not (HasAttr(el, "fromDate") AndAlso HasAttr(el, "toDate")) Then
+                Throw New ArgumentException("<RangeBand> carries only one of 'fromDate' and 'toDate' — a band is an interval and needs both ends.")
+            End If
+
+            Return Csharp.ChartAnnotationRange.XRange(
+                Csharp.ChartAnnotationX.Date(Attr(el, "fromDate")),
+                Csharp.ChartAnnotationX.Date(Attr(el, "toDate")))
+        End If
     End Function
 
     Private Function ReadMarkers(el As XElement) As IEnumerable(Of (Latitude As Double, Longitude As Double, Label As String))
