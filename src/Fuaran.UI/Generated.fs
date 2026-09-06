@@ -340,6 +340,13 @@ type TextFormat =
     | Tel
 
 [<RequireQualifiedAccess>]
+type TimeGrain =
+    | Second
+    | Minute
+    | Hour
+    | Day
+
+[<RequireQualifiedAccess>]
 type ToneVariant =
     | Default
     | Subdued
@@ -449,7 +456,7 @@ and [<RequireQualifiedAccess>] Binding<'T> =
     | Filter of name: string * defaultValue: 'T option
     | Selection of nodeId: string * accessor: (obj -> 'T) * defaultValue: 'T option * field: string option
     | State of key: string * defaultValue: 'T option
-    | Now of accessor: (obj -> 'T)
+    | Now of accessor: (obj -> 'T) * grain: TimeGrain option
     | Computed of fn: (obj -> 'T)
     | Local of flushOn: LocalFlushTrigger * format: ('T -> string) * initialFrom: Binding<'T> * onCommit: ('T -> obj) option * parse: (string -> Result<'T, string>)
     | Format of source: Binding<float> * format: Format * locale: LocaleSource
@@ -545,6 +552,7 @@ and [<RequireQualifiedAccess>] Format =
     /// Phase 819 — locale-independent duration formatting: the numeric
     /// source counts `unit`s, rendered per `style`.
     | Duration of unit: DurationUnit * style: DurationStyle
+    | Since of unit: RelativeTimeUnit option
 
 and [<RequireQualifiedAccess>] FragmentArg<'Msg> =
     | Int of value: int
@@ -1806,6 +1814,13 @@ let private encTextFormat (v: TextFormat) : JVal =
     | TextFormat.Url -> JStr "url"
     | TextFormat.Tel -> JStr "tel"
 
+let private encTimeGrain (v: TimeGrain) : JVal =
+    match v with
+    | TimeGrain.Second -> JStr "Second"
+    | TimeGrain.Minute -> JStr "Minute"
+    | TimeGrain.Hour -> JStr "Hour"
+    | TimeGrain.Day -> JStr "Day"
+
 let private encToneVariant (v: ToneVariant) : JVal =
     match v with
     | ToneVariant.Default -> JStr "Default"
@@ -1919,7 +1934,7 @@ and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     | Binding.Filter (name, defaultValue) -> Canon.typed "Filter" ([ Some("name", JStr name); (defaultValue |> Option.map (fun v -> "defaultValue", encT v)) ] |> List.choose id)
     | Binding.Selection (nodeId, accessor, defaultValue, field) -> Canon.typed "Selection" ([ Some("nodeId", JStr nodeId); None; (defaultValue |> Option.map (fun v -> "defaultValue", encT v)); (field |> Option.map (fun v -> "field", JStr v)) ] |> List.choose id)
     | Binding.State (key, defaultValue) -> Canon.typed "State" ([ Some("key", JStr key); (defaultValue |> Option.map (fun v -> "defaultValue", encT v)) ] |> List.choose id)
-    | Binding.Now accessor -> Canon.typed "Now" ([ None ] |> List.choose id)
+    | Binding.Now (accessor, grain) -> Canon.typed "Now" ([ None; (grain |> Option.map (fun v -> "grain", encTimeGrain v)) ] |> List.choose id)
     | Binding.Computed fn -> Canon.typed "Computed" [ "fn", JStr "<closure>" ]
     | Binding.Local (flushOn, format, initialFrom, onCommit, parse) -> Canon.typed "Local" ([ Some("flushOn", encLocalFlushTrigger flushOn); Some("format", JStr "<closure>"); Some("initialFrom", (encBinding encT) initialFrom); (onCommit |> Option.map (fun v -> "onCommit", JStr "<closure>")); Some("parse", JStr "<closure>") ] |> List.choose id)
     | Binding.Format (source, format, locale) -> Canon.typed "Format" [ "source", (encBinding encFloat) source; "format", encFormat format; "locale", encLocaleSource locale ]
@@ -2015,6 +2030,7 @@ and private encFormat (v: Format) : JVal =
     | Format.Date dateStyle -> Canon.typed "Date" [ "dateStyle", encDateStyle dateStyle ]
     | Format.RelativeTime unit -> Canon.typed "RelativeTime" [ "unit", encRelativeTimeUnit unit ]
     | Format.Duration (unit, style) -> Canon.typed "Duration" [ "unit", encDurationUnit unit; "style", encDurationStyle style ]
+    | Format.Since unit -> Canon.typed "Since" ([ (unit |> Option.map (fun v -> "unit", encRelativeTimeUnit v)) ] |> List.choose id)
 
 and private encFragmentArg<'Msg> (v: FragmentArg<'Msg>) : JVal =
     match v with
@@ -2736,6 +2752,14 @@ let private decTextFormat (j: JVal) : Result<TextFormat, string> =
     | JStr "tel" -> Ok TextFormat.Tel
     | _ -> Error "not a TextFormat"
 
+let private decTimeGrain (j: JVal) : Result<TimeGrain, string> =
+    match j with
+    | JStr "Second" -> Ok TimeGrain.Second
+    | JStr "Minute" -> Ok TimeGrain.Minute
+    | JStr "Hour" -> Ok TimeGrain.Hour
+    | JStr "Day" -> Ok TimeGrain.Day
+    | _ -> Error "not a TimeGrain"
+
 let private decToneVariant (j: JVal) : Result<ToneVariant, string> =
     match j with
     | JStr "Default" -> Ok ToneVariant.Default
@@ -2912,7 +2936,8 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
         // would make every decoded `Now` resolve to nothing.
         | "Now" ->
             Ok ((fun (raw: obj) -> unbox raw)) |> Result.bind (fun accessor ->
-            Ok(Binding.Now(accessor)))
+            dOpt "grain" __fs decTimeGrain |> Result.bind (fun grain ->
+            Ok(Binding.Now(accessor, grain))))
         | "Computed" ->
             Ok ((fun _ -> Unchecked.defaultof<'T>)) |> Result.bind (fun fn ->
             Ok(Binding.Computed(fn)))
@@ -3258,6 +3283,9 @@ and private decFormat (j: JVal) : Result<Format, string> =
             dReq "unit" __fs decDurationUnit |> Result.bind (fun unit ->
             dReq "style" __fs decDurationStyle |> Result.bind (fun style ->
             Ok(Format.Duration(unit, style))))
+        | "Since" ->
+            dOpt "unit" __fs decRelativeTimeUnit |> Result.bind (fun unit ->
+            Ok(Format.Since(unit)))
         | __other -> Error ("unknown Format case: " + __other))
     | _ -> Error "expected a Format object"
 

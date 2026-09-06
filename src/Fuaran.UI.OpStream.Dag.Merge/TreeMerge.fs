@@ -187,13 +187,80 @@ module TreeMerge =
         : MergeSide option * MergeSide option =
         Some { Value = aValue; Tag = tagOf authorA }, Some { Value = bValue; Tag = tagOf authorB }
 
+    // ── canonical style-facet tokens ───────────────────────────────────
+    //
+    // `MergeConflict.encodeEnvelope` is documented byte-stable across hosts — its
+    // SHA-256 is the cross-host refusal hash — and the style facets reached it
+    // through a RUNTIME formatter, whose output is a property of the runtime
+    // rather than of the format. .NET and Fable need not agree on it, and a
+    // TypeScript or Rust replica has no equivalent to agree with at all, so the
+    // one artefact whose whole job is cross-host identity was being computed from
+    // a per-runtime rendering.
+    //
+    // Each facet's token is its canonical WIRE token — the same string the
+    // generated encoder emits — written as a total match so the compiler, not a
+    // reviewer, catches a new enum case. `StyleFacetTokenTests` pins each one
+    // against `Generated.encodeSemanticStyleJson` for every case that encoder
+    // emits; each enum's DEFAULT case is the one it OMITS (the omit-when-default
+    // discipline), so that token is named here because there is nowhere else it
+    // can be read from.
+    let private toneToken (v: ToneVariant) : string =
+        match v with
+        | ToneVariant.Default -> "Default"
+        | ToneVariant.Subdued -> "Subdued"
+        | ToneVariant.Brand -> "Brand"
+        | ToneVariant.Success -> "Success"
+        | ToneVariant.Warning -> "Warning"
+        | ToneVariant.Critical -> "Critical"
+        | ToneVariant.Info -> "Info"
+
+    let private weightToken (v: StyleWeight) : string =
+        match v with
+        | StyleWeight.Compact -> "Compact"
+        | StyleWeight.Standard -> "Standard"
+        | StyleWeight.Spacious -> "Spacious"
+
+    let private emphasisToken (v: Emphasis) : string =
+        match v with
+        | Emphasis.Quiet -> "Quiet"
+        | Emphasis.Normal -> "Normal"
+        | Emphasis.Loud -> "Loud"
+
+    let private roleToken (v: StyleRole) : string =
+        match v with
+        | StyleRole.None -> "None"
+        | StyleRole.Eyebrow -> "Eyebrow"
+        | StyleRole.Data -> "Data"
+        | StyleRole.Lede -> "Lede"
+        | StyleRole.Caption -> "Caption"
+
+    let private voiceToken (v: FontVoice) : string =
+        match v with
+        | FontVoice.Default -> "Default"
+        | FontVoice.Display -> "Display"
+        | FontVoice.Structural -> "Structural"
+
+    /// Note the LOWER-CASE tokens: `direction` is the one style facet whose
+    /// canonical wire spelling is not its F# case name, and it is exactly the
+    /// kind of thing a hand-written mirror gets wrong. `StyleFacetTokenTests`
+    /// caught precisely this on its first run, which is the argument for the
+    /// test existing at all.
+    let private directionToken (v: TextDirection) : string =
+        match v with
+        | TextDirection.Auto -> "auto"
+        | TextDirection.Ltr -> "ltr"
+        | TextDirection.Rtl -> "rtl"
+
     /// Merge a single SemanticStyle sub-field; record a conflict on divergence.
     /// `cellAuthor nodeId facet` yields the per-cell `(A-side, B-side)` authorship
     /// (the last writer of THIS cell on each branch — see `DagPrimacy`).
+    /// `token` renders a value for the refusal envelope; see the note above for
+    /// why it is passed in rather than produced by a runtime formatter.
     let private mergeStyleField<'T when 'T: equality>
         (conflicts: ResizeArray<MergeConflict>)
         (nodeId: string)
         (facet: string)
+        (token: 'T -> string)
         (cellAuthor: string -> string -> MergeAuthor * MergeAuthor)
         (baseV: 'T)
         (aV: 'T)
@@ -205,23 +272,23 @@ module TreeMerge =
         if aChanged && bChanged && aV <> bV then
             let authorA, authorB = cellAuthor nodeId facet
             let aPrimary, pinHeld, choices, secondaryTag = resolveAuthor authorA authorB
-            let sideA, sideB = sidesOf authorA authorB (sprintf "%A" aV) (sprintf "%A" bV)
+            let sideA, sideB = sidesOf authorA authorB (token aV) (token bV)
 
             conflicts.Add
                 { NodeId = nodeId
                   Facet = facet
                   Class = MergeConflictClass.ConcurrentEdit
-                  Base = sprintf "%A" baseV
+                  Base = token baseV
                   A = sideA
                   B = sideB
                   Primary =
                     (if pinHeld then
-                         Some(sprintf "%A" (if aPrimary then aV else bV))
+                         Some(token (if aPrimary then aV else bV))
                      else
                          None)
                   Secondary =
                     (if pinHeld then
-                         Some(sprintf "%A" (if aPrimary then bV else aV))
+                         Some(token (if aPrimary then bV else aV))
                      else
                          None)
                   SecondaryTag = secondaryTag
@@ -399,16 +466,34 @@ module TreeMerge =
         let bS = styleOf b
 
         let mergedStyle: SemanticStyle =
-            { Tone = mergeStyleField conflicts id "style.tone" cellAuthor baseS.Tone aS.Tone bS.Tone
-              Weight = mergeStyleField conflicts id "style.weight" cellAuthor baseS.Weight aS.Weight bS.Weight
-              Emphasis = mergeStyleField conflicts id "style.emphasis" cellAuthor baseS.Emphasis aS.Emphasis bS.Emphasis
-              Role = mergeStyleField conflicts id "style.role" cellAuthor baseS.Role aS.Role bS.Role
-              Voice = mergeStyleField conflicts id "style.voice" cellAuthor baseS.Voice aS.Voice bS.Voice
+            { Tone = mergeStyleField conflicts id "style.tone" toneToken cellAuthor baseS.Tone aS.Tone bS.Tone
+              Weight =
+                mergeStyleField conflicts id "style.weight" weightToken cellAuthor baseS.Weight aS.Weight bS.Weight
+              Emphasis =
+                mergeStyleField
+                    conflicts
+                    id
+                    "style.emphasis"
+                    emphasisToken
+                    cellAuthor
+                    baseS.Emphasis
+                    aS.Emphasis
+                    bS.Emphasis
+              Role = mergeStyleField conflicts id "style.role" roleToken cellAuthor baseS.Role aS.Role bS.Role
+              Voice = mergeStyleField conflicts id "style.voice" voiceToken cellAuthor baseS.Voice aS.Voice bS.Voice
               // Phase 1472 — `direction` merges as an independent sub-field like
               // every other style slot: two lanes declaring different directions
               // for one value is a genuine concurrent edit, not a mergeable pair.
               Direction =
-                mergeStyleField conflicts id "style.direction" cellAuthor baseS.Direction aS.Direction bS.Direction }
+                mergeStyleField
+                    conflicts
+                    id
+                    "style.direction"
+                    directionToken
+                    cellAuthor
+                    baseS.Direction
+                    aS.Direction
+                    bS.Direction }
 
         // state facet
         let statePick =

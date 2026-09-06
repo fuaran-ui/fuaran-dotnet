@@ -600,20 +600,47 @@
          and the mark is a sibling block. See STABILITY.md "Recorded change -
          0.77.0, text provenance on the agent snapshot".
 
+         (0.77.0, riding) - `Fuaran.UI.Client` is rewritten onto the generation
+         wire the endpoint actually serves: `Wire.toWireBody` loses its secrets
+         parameter and `FuaranClientConfig` gains four fields, which is BREAKING
+         against the released v0.75.0. It RIDES 0.77.0 rather than advancing
+         because that slot is untagged and already carries a record widening of
+         the same class, and the draft-slot rule advances only for a HIGHER
+         class. See STABILITY.md "Recorded change - 0.77.0, `Fuaran.UI.Client`
+         speaks the deployed generation wire".
+
+         (0.77.0, riding) - WIRE_FORMAT §20 decode determinism is ratified and
+         enforced, §7.1 pins the integer slot, and §21 gains a total-document
+         bound while §21.6 changes what the string bound COUNTS. No type moved:
+         no record widened, no DU gained a case, and the only new public members
+         are `WireLimits.MaxDocumentBytes` (a literal) and the `refusal-report`
+         CLI verb. What a consumer feels is behavioural - the decoder REFUSES
+         inputs it accepted (each one a document no conformant encoder can
+         produce, which is the specification's own admission test for such a
+         rule, though a consumer decoding third-party JSON meets them), and
+         `MergeConflict.encodeEnvelope`'s style facets render through canonical
+         wire tokens, so a stored refusal hash over a `style.direction` conflict
+         does not survive. Against an additive draft that would have ADVANCED the
+         number; this draft already carries a source-breaking client change, and
+         the draft-slot rule advances only for a HIGHER class. See STABILITY.md
+         "Recorded change - 0.77.0, WIRE_FORMAT §20 ratification, §7.1 integer
+         slots and §21.6/§21.7".
+
          (0.77.0, riding) - the op-stream write-path integrity work is additive
          throughout EXCEPT one change: `Fuaran.UI.Memo`'s
          `Derivation<'Msg>.StructuralKey` becomes `string option`, because a
          derivation whose canonical encoding carries an unrepresentable-value
          sentinel has no content address, and a magic string would have left that
          discrimination to a comment. It RIDES the standing 0.77.0 draft rather
-         than advancing it: that slot is untagged and publicly unpinned, and the
-         change it already carries is a record widening - `FS0764`, "requires
-         consumer source edits", which is the same class this one is. A narrowed
-         field type breaks readers as well as full-literal constructors, but both
-         are one pre-1.0 MINOR by the "Semver" section above, and the number's job
-         is to say what adopting the slot costs, which does not change. The entries
-         authored against 0.76.0 in STABILITY.md ship here; each says so in place.
-         See STABILITY.md "Recorded change - 0.76.0, the op-stream write path". -->
+         than advancing it: that slot is untagged and publicly unpinned, and it
+         already carries a record widening and a source-breaking client change -
+         "requires consumer source edits", which is the same class this one is. A
+         narrowed field type breaks readers as well as full-literal constructors,
+         but both are one pre-1.0 MINOR by the "Semver" section above, and the
+         number's job is to say what adopting the slot costs, which does not
+         change. The entries authored against 0.76.0 in STABILITY.md ship here;
+         each says so in place. See STABILITY.md "Recorded change - 0.76.0, the
+         op-stream write path". -->
     <Version>0.77.0</Version>
   </PropertyGroup>
 

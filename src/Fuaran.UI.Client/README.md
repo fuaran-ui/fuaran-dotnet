@@ -11,9 +11,9 @@ desktop, or any host) the same *call → render → remember-the-tree* ergonomic
 - **decode glue** to a typed `Node<obj>` you hand to `Fuaran.UI.Renderer`.
 
 The endpoint URL and the paid access token are the commercial gate; this client
-is a thin, OSS-safe HTTPS + types layer over it. The wire payload is the same
-canonical JSON both the F# and TypeScript renderers consume — one host-neutral
-contract, a second host client.
+is a thin, OSS-safe types layer over it. The wire payload is the same canonical
+JSON both the F# and TypeScript renderers consume — one host-neutral contract, a
+second host client.
 
 ## Quickstart (~10 lines)
 
@@ -80,6 +80,15 @@ renderer your host runs. For a **browser BYOK** integration, the TypeScript
 
 ## Key / token guidance
 
+Both credentials travel as **headers** — the access token as
+`Authorization: Bearer`, the provider key as `X-Fuaran-Provider-Key` — and never
+in the request body. A body is the thing most likely to be logged wholesale by
+an intermediary; a header is the thing most likely to be redacted by one. The
+endpoint enforces it: a body carrying `ByokKey` or `AccessToken` is refused
+`400 SECRETS_IN_BODY` and the value is not read, so if you see that code, treat
+the key you just sent as exposed and rotate it. `Wire.toWireBody` has no
+credential parameter, so this client cannot produce such a body.
+
 - **Never bundle a BYOK provider key into shipped client code.** It is
   memory-only — supply it per session from a secure input, and prefer the
   **server-proxied** pattern for anything user-facing.
@@ -90,9 +99,47 @@ renderer your host runs. For a **browser BYOK** integration, the TypeScript
   same-origin proxy path (e.g. `/api/fuaran`) and leave `AccessToken` /
   `ProviderKey` unset — your proxy injects them server-side, so no secret ever
   reaches the browser. Add a proxy auth header via `Headers` if needed.
-- `SendBearerHeader` (default `true`) also sends the access token as
-  `Authorization: Bearer <token>`; set it `false` for a deployment that reads the
-  token from the body only.
+- `SendBearerHeader` (default `true`) sends the `Authorization` header. That is
+  the endpoint's ONLY auth channel — a body-carried token is refused — so set it
+  `false` only when pointing at a proxy that authenticates some other way, and
+  supply that header via `Headers`.
+
+## The endpoint must be https, or loopback, or opted out of
+
+Because both credentials ride headers on every call, a plaintext hop hands them
+to anyone on the path. `http://127.0.0.1` and `http://localhost` are admitted
+(that is where the offline mock and a local proxy live, and no packet leaves the
+machine); a relative path like `/api/fuaran` is admitted (its security is the
+page's own origin); anything else plaintext is refused as `INSECURE_ENDPOINT`
+before the request is built, unless you set `AllowInsecureEndpoint = true`.
+`EndpointPolicy.isSecure` applies the same rule to a URL you are about to
+configure, so a host can check at startup rather than on the first turn.
+
+## Failures the CLIENT reports, as distinct from the endpoint's
+
+`RecoverableError.Code` carries the endpoint's own code whenever there is one
+(`ACCESS_DENIED`, `APPLY_REJECTED`, `SECRETS_IN_BODY`, `MISSING_PROVIDER_KEY`,
+…). Three codes are this client's own, on `ClientCode`:
+
+| Code | Means |
+|---|---|
+| `NETWORK` | the call did not complete — the transport threw, the `Timeout` elapsed, or a `CancellationToken` fired. The message is FIXED: an exception string can quote a URL, a header, or a proxy's internal hostname, and this result is routinely rendered straight into a browser. The detail belongs in your host's log. |
+| `MALFORMED_RESPONSE` | a 200 with no usable tree. Not a success — accepting it would leave the session holding `""` and silently repairing nothing on every later turn. |
+| `INSECURE_ENDPOINT` | the endpoint is plaintext and not loopback; see above. |
+
+`Generate(args)` never raises for an endpoint-level outcome. `Timeout` bounds one
+turn; `Generate(args, cancellationToken)` reports a cancelled call the same way,
+because from the caller's side it is a call that did not complete.
+
+## More than the tree
+
+`GenerateDetailed(args)` returns the result plus what the deployment reported:
+`OpsApplied` (a count — the endpoint returns how much changed, not the op list),
+`Provider` (which allowlisted provider it chose), `ServedModel` (what the
+provider's own reply said actually answered; `None` means **unreported**,
+deliberately not the model the deployment asked for) and the grounding
+`Snapshot` state. `Provider` on the config selects an allowlisted provider via
+`X-Fuaran-Provider`.
 
 ## Testing without a live endpoint
 
@@ -102,9 +149,16 @@ The transport is a seam. Implement `IFuaranTransport` to return a scripted
 
 ## Surface version
 
-The client is built against the additive corpus-flag request/response shape
-(surface `1.2.0`, in lockstep with the TypeScript client). Later minor surface
-bumps only add server-side usage fields that never cross the client boundary, so
-the shape is stable across them; `TurnResult.Produced` echoes whichever version
-the live surface stamps, and `SurfaceContract.isVersionCompatible` compares only
-the major.
+The client speaks the deployed endpoint's wire: a camelCase body
+(`prompt` / `currentTree` / the corpus flags / `interactionId`), secrets in
+headers, and a reply of `{version, tree, opsApplied, provider, servedModel?,
+snapshot}` at 200 with one `{error:{code,message,stage?}}` envelope at every
+refusal. Reads stay tolerant of the retired PascalCase spelling — a proxy or the
+offline mock in front of the endpoint may not have moved — but nothing writes it.
+
+`SurfaceContract.Version` is `1.2.0`, in lockstep with the TypeScript client, and
+names the request/response SHAPE this client understands rather than the newest
+surface. Later minor surface bumps have only added optional reply fields, so the
+shape is stable across them; `TurnResult.Produced` echoes whichever version the
+live surface stamps, and `SurfaceContract.isVersionCompatible` compares only the
+major.

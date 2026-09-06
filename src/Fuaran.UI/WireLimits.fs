@@ -102,9 +102,38 @@ let MaxDepth = 24
 [<Literal>]
 let MaxJsonDepth = 256
 
-/// Maximum length in characters of a single decoded JSON string.
+/// Maximum length of a single decoded JSON string, in **Unicode code points**
+/// (WIRE_FORMAT §21.6). A surrogate pair counts as ONE, so the bound is a
+/// property of the text rather than of .NET's UTF-16 representation: the same
+/// document must sit inside or outside this limit on every host, and the two
+/// obvious alternatives — UTF-16 code units, UTF-8 bytes — each make it depend
+/// on something the author did not choose (the host's string type, or the
+/// alphabet the author writes in).
 [<Literal>]
 let MaxStringLength = 1048576
+
+/// Maximum size of a whole input document, in **UTF-8 bytes**
+/// (WIRE_FORMAT §21.7). The five structural limits compose multiplicatively —
+/// 100 000 array elements each carrying a maximal string satisfies every one of
+/// them and is a hundred gigabytes — so nothing bounded the total until this
+/// one. Checked BEFORE the parse: it is one comparison on the input length, so
+/// deferring it buys nothing and pays the allocation it exists to refuse.
+///
+/// UTF-8 bytes rather than code points or .NET string length, deliberately, and
+/// it is the one limit here whose unit differs from `MaxStringLength`'s: this
+/// bounds the CARRIAGE — what an attacker sends and what the host allocates —
+/// and carriage is bytes. Measuring it in UTF-16 units would under-count a CJK
+/// document threefold, which is the direction that admits rather than refuses.
+///
+/// The FIGURE is constrained from below by `MaxNodes`, and the first candidate
+/// (8 MiB) was refuted by this repo's own max-nodes test: a document at exactly
+/// 100 000 nodes is about 8 MB of small nodes, so an 8 MiB ceiling would have
+/// refused a document §21.2 rule 1 requires every host to ACCEPT — quietly
+/// lowering `MaxNodes` while leaving its stated value in the table. 32 MiB
+/// leaves ~335 bytes per node at the node ceiling, and still refuses the
+/// multiplicative blow-up this limit exists for by three orders of magnitude.
+[<Literal>]
+let MaxDocumentBytes = 33554432
 
 /// Maximum number of elements in a single decoded JSON array, and of members in
 /// a single decoded JSON object.

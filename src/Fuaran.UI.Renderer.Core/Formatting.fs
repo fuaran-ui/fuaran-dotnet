@@ -135,6 +135,136 @@ let private relativeUnitStr (u: RelativeTimeUnit) : string =
     | RelativeTimeUnit.Month -> "month"
     | RelativeTimeUnit.Year -> "year"
 
+// ─── The host instant: grain truncation + epoch conversion (Phase 1533) ─────
+//
+// ONE shared implementation for BOTH pipelines, above the `#if`, for the same
+// reason `formatDuration` and the `dir` derivation are: the instant a server
+// renders with and the instant its client hydrates with must project to the
+// same string by the same route, or SSR and hydration disagree about what
+// "now" was. Neither runtime may be consulted — `DateTimeOffset.Parse` and
+// `Date.parse` are two oracles for one question, which is precisely the parity
+// hazard — so both halves are arithmetic over the canonical form's own digits.
+//
+// NO CLOCK IS READ HERE OR ANYWHERE BELOW. Every function in this section is a
+// pure projection of a string the HOST furnished; the tree names "now" and
+// never reads one.
+
+/// The canonical host instant is `YYYY-MM-DDTHH:MM:SS[.fff]Z` (`BindingSources.Now`).
+/// Truncate it to `grain` by PREFIX, zero-filling the finer components so the
+/// result stays a well-formed instant — except `Day`, which yields the bare
+/// `YYYY-MM-DD` that `Fuaran.Core`'s `DateDiffDays` reads.
+///
+/// `Second` is the identity, deliberately: it is the default grain, so a
+/// document that declares no grain resolves through exactly the bytes Phase 765
+/// shipped, including any sub-second precision a host chooses to furnish.
+///
+/// An instant too short to slice is returned VERBATIM rather than padded or
+/// refused: this is a host-furnished value, not wire data, and a renderer is the
+/// wrong place to adjudicate a host's clock format. The corpus pins the
+/// canonical form; a host that furnishes something else gets no truncation and
+/// a visibly odd date rather than a silently plausible wrong one.
+let truncateToGrain (grain: TimeGrain) (instant: string) : string =
+    let sliceOr (n: int) (suffix: string) =
+        if instant.Length >= n then
+            instant.Substring(0, n) + suffix
+        else
+            instant
+
+    match grain with
+    | TimeGrain.Second -> instant
+    | TimeGrain.Minute -> sliceOr 16 ":00Z"
+    | TimeGrain.Hour -> sliceOr 13 ":00:00Z"
+    | TimeGrain.Day -> sliceOr 10 ""
+
+/// Days since 1970-01-01 for a proleptic-Gregorian civil date — Howard
+/// Hinnant's `days_from_civil`, transcribed. Integer arithmetic only, so .NET
+/// and Fable compute it identically (F#'s `/` on `int` truncates, and so does
+/// the JS emission Fable produces for it).
+let private daysFromCivil (y: int) (m: int) (d: int) : int =
+    let y = if m <= 2 then y - 1 else y
+    let era = (if y >= 0 then y else y - 399) / 400
+    let yoe = y - era * 400
+    let doy = (153 * (m + (if m > 2 then -3 else 9)) + 2) / 5 + d - 1
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+    era * 146097 + doe - 719468
+
+/// Parse a canonical instant (`YYYY-MM-DD`, optionally `THH:MM:SS…`) to whole
+/// Unix-epoch seconds — the representation `Format.Date` and `Format.Since`
+/// read their numeric source in. `None` when the leading date is not readable,
+/// which the caller surfaces as unresolved rather than as an invented instant.
+///
+/// Deliberately tolerant of what follows the seconds (a fractional part, a `Z`,
+/// an offset suffix) and deliberately INTOLERANT of a missing or non-numeric
+/// date: truncating to a grain leaves `YYYY-MM-DDTHH:MM:00Z` and `YYYY-MM-DD`,
+/// both of which must parse, and anything shorter is not an instant at all.
+let epochSecondsOfInstant (instant: string) : float option =
+    let digits (from: int) (len: int) : int option =
+        if instant.Length < from + len then
+            None
+        else
+            let mutable acc = 0
+            let mutable ok = true
+
+            for i in from .. from + len - 1 do
+                let c = instant[i]
+
+                if c >= '0' && c <= '9' then
+                    acc <- acc * 10 + (int c - int '0')
+                else
+                    ok <- false
+
+            if ok then Some acc else None
+
+    match digits 0 4, digits 5 2, digits 8 2 with
+    | Some y, Some mo, Some d when y >= 1 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31 ->
+        let hh = digits 11 2 |> Option.defaultValue 0
+        let mi = digits 14 2 |> Option.defaultValue 0
+        let ss = digits 17 2 |> Option.defaultValue 0
+
+        Some(float (daysFromCivil y mo d) * 86400.0 + float (hh * 3600 + mi * 60 + ss))
+    | _ -> None
+
+/// Seconds in one `RelativeTimeUnit`. `Month` and `Year` are the mean Gregorian
+/// lengths (365.2425 days / 12 and 365.2425 days) — FIXED constants rather than
+/// calendar arithmetic, because "2 months ago" is a rounded human phrase and a
+/// calendar-exact answer would make the same delta read differently depending on
+/// which months it spanned, on five hosts that must agree to the byte.
+let private relativeUnitSeconds (u: RelativeTimeUnit) : float =
+    match u with
+    | RelativeTimeUnit.Second -> 1.0
+    | RelativeTimeUnit.Minute -> 60.0
+    | RelativeTimeUnit.Hour -> 3600.0
+    | RelativeTimeUnit.Day -> 86400.0
+    | RelativeTimeUnit.Week -> 604800.0
+    | RelativeTimeUnit.Month -> 2629746.0
+    | RelativeTimeUnit.Year -> 31556952.0
+
+/// The `Format.Since` reduction: a signed delta in seconds becomes a
+/// `(unit, count)` pair the relative-time renderers already know how to say.
+///
+/// `declared = None` is the AUTO-SELECTION request (not a default): the unit is
+/// the largest whose length does not exceed the magnitude, from the fixed
+/// threshold ladder in WIRE_FORMAT 4b. The count TRUNCATES toward zero rather
+/// than rounding, so 3599 seconds is "59 minutes" and never "1 hour" — the
+/// ladder and the count then agree at every boundary, which rounding would break
+/// exactly at the point a reader is most likely to check.
+let sinceUnitAndCount (declared: RelativeTimeUnit option) (deltaSeconds: float) : RelativeTimeUnit * float =
+    let unit =
+        match declared with
+        | Some u -> u
+        | None ->
+            let m = abs deltaSeconds
+
+            if m < 60.0 then RelativeTimeUnit.Second
+            elif m < 3600.0 then RelativeTimeUnit.Minute
+            elif m < 86400.0 then RelativeTimeUnit.Hour
+            elif m < 604800.0 then RelativeTimeUnit.Day
+            elif m < 2629746.0 then RelativeTimeUnit.Week
+            elif m < 31556952.0 then RelativeTimeUnit.Month
+            else RelativeTimeUnit.Year
+
+    unit, float (int (deltaSeconds / relativeUnitSeconds unit))
+
 // ─── Duration decomposition (Phase 819) ─────────────────────────────────────
 //
 // ONE shared hand-rolled implementation for BOTH pipelines, defined above the
@@ -256,6 +386,7 @@ let private numberOptions (fmt: Format) : obj =
     | Format.Percent None -> createObj [ "style" ==> "percent" ]
     | Format.Date _
     | Format.RelativeTime _
+    | Format.Since _
     | Format.Duration _ -> createObj []
 
 /// Format `value` per the bounded `Format` intent + resolved `localeTag`.
@@ -267,6 +398,13 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
     | Format.Date dateStyle ->
         intlDate (localeArg localeTag) (createObj [ "dateStyle" ==> dateStyleStr dateStyle ]) value
     | Format.RelativeTime unit -> intlRelative (localeArg localeTag) value (relativeUnitStr unit)
+    // Phase 1533 — for `Since`, `value` is the signed delta in SECONDS that the
+    // binding resolver has ALREADY taken against the host instant. This function
+    // stays a pure projection of its arguments in both pipelines; the one place
+    // that reads `sources.Now` is the resolver.
+    | Format.Since declared ->
+        let unit, count = sinceUnitAndCount declared value
+        intlRelative (localeArg localeTag) count (relativeUnitStr unit)
     | Format.Duration(unit, style) -> formatDuration unit style value
 
 #else
@@ -393,6 +531,14 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
         // shared helper above the #if (Phase 819 hoisted it so the
         // CellFormat.RelativeTime projection shares the exact rendering).
         formatRelativeEnglish unit value
+    // Phase 1533 — `value` is the signed delta in SECONDS the binding resolver
+    // already took against the host instant; the unit/count reduction is shared
+    // above the `#if`, so only the final phrasing differs between the pipelines
+    // (English here, `Intl.RelativeTimeFormat` in the browser) — exactly the
+    // split `RelativeTime` already has.
+    | Format.Since declared ->
+        let unit, count = sinceUnitAndCount declared value
+        formatRelativeEnglish unit count
     | Format.Duration(unit, style) ->
         // Locale-independent by design (see the shared helper above) — the
         // one Format case with exact .NET ↔ browser parity.

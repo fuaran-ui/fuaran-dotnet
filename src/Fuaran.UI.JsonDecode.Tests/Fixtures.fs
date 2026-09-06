@@ -113,6 +113,18 @@ let metricFloat17Sig: Node<obj> =
 let metricFloatBigInt: Node<obj> =
     metricFloat "metric-float-bigint" 123456789012345680.0
 
+/// §2 rule 5 — the exact boundary of the fixed-point window at a FLOAT slot.
+/// `1e17` has base-10 exponent 17, one past the window that ends at 16, so it
+/// canonicalises to `1E+17` and not to the seventeen digits an integer layout
+/// would give it. Two hosts emitted the digits, because they had kept the token's
+/// integer identity through a slot that declares a float.
+///
+/// Its neighbour `metric-float-bigint` sits in the same zone but at 18 significant
+/// digits, so it never distinguished the two layouts from a rounding difference.
+/// This one has a single-digit mantissa, which is also the layout case rule 5
+/// spells out separately (no decimal point when the mantissa is one digit).
+let metricFloat1e17: Node<obj> = metricFloat "metric-float-1e17" 1e17
+
 let heading: Node<obj> =
     node
         "heading-1"
@@ -4603,7 +4615,7 @@ let nowEnvironmentBinding: Node<obj> =
                       (NodeKind.Fact(
                           { Defaults.fact with
                               Label = TextSource.Literal "Today"
-                              Value = TextSource.Bound(Binding.Now(fun (o: obj) -> unbox<string> o)) }
+                              Value = TextSource.Bound(Binding.Now((fun (o: obj) -> unbox<string> o), None)) }
                       ))
                       None
                   node
@@ -4627,7 +4639,7 @@ let nowEnvironmentBinding: Node<obj> =
                                         )
                                     ) ],
                                   Some
-                                      [ { From = Binding.Now(fun (o: obj) -> JStr(unbox<string> o))
+                                      [ { From = Binding.Now((fun (o: obj) -> JStr(unbox<string> o)), None)
                                           Name = "today" } ]
                               )
                             RowKey = None
@@ -4647,6 +4659,142 @@ let nowEnvironmentBinding: Node<obj> =
                             Exportable = false }
                       ))
                       None ]
+              KeepTogether = false
+              BreakBefore = false }
+        ))
+        None
+
+// ─── Phase 1533 — the instant gains a declared GRAIN ──────────────────────
+//
+// `now-environment-binding` above pins the bare `{"$type":"Now"}` Phase 765
+// shipped; this fixture pins what the wire carries when a document declares the
+// RESOLUTION it wants. Three text slots at Minute / Hour / Day grain, plus the
+// leg that motivated the field: a `Transform` param at DAY grain, which is the
+// `YYYY-MM-DD` that Core's `DateDiffDays` reads — so "days overdue" no longer
+// depends on an unspecified host-side truncation of a full ISO-8601 datetime.
+//
+// The `Second` grain is deliberately ABSENT from this fixture: it is the
+// default, it is omitted on the wire, and its bytes are exactly
+// `now-environment-binding`'s. A fixture for it would assert nothing that
+// fixture does not already assert, and would invite a host to emit
+// `"grain":"Second"` to make it pass.
+let nowGrain: Node<obj> =
+    let source =
+        Fuaran.Core.Embedded
+            { Schema = [ "id", Fuaran.Core.StringType; "due", Fuaran.Core.StringType ]
+              Columns =
+                [ Fuaran.Core.Column.create "id" Fuaran.Core.StringType [ Fuaran.Core.Str "INV-2001" ]
+                  Fuaran.Core.Column.create "due" Fuaran.Core.StringType [ Fuaran.Core.Str "2026-07-01" ] ] }
+
+    let fieldCol (label: string) (field: string) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    let grainFact (id: string) (label: string) (grain: TimeGrain) : Node<obj> =
+        node
+            id
+            (NodeKind.Fact(
+                { Defaults.fact with
+                    Label = TextSource.Literal label
+                    Value = TextSource.Bound(Binding.Now((fun (o: obj) -> unbox<string> o), Some grain)) }
+            ))
+            None
+
+    node
+        "now-grain"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Auto
+              Role = BoxRole.Dashboard
+              Heading = None
+              Children =
+                [ grainFact "asof-minute" "As of (minute)" TimeGrain.Minute
+                  grainFact "asof-hour" "As of (hour)" TimeGrain.Hour
+                  grainFact "asof-day" "Today" TimeGrain.Day
+                  node
+                      "overdue-grid-day-grain"
+                      (NodeKind.DataGrid(
+                          { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
+                            EditStateKey = None
+                            DefaultSort = None
+                            Source =
+                              Binding.Transform(
+                                  TransformSource.Data(source),
+                                  [ Fuaran.Core.Derive(
+                                        "daysOverdue",
+                                        Fuaran.Core.ApplyFn(
+                                            Fuaran.Core.DateDiffDays,
+                                            [ Fuaran.Core.Param "today"; Fuaran.Core.Col "due" ]
+                                        )
+                                    ) ],
+                                  Some
+                                      [ { From =
+                                            Binding.Now((fun (o: obj) -> JStr(unbox<string> o)), Some TimeGrain.Day)
+                                          Name = "today" } ]
+                              )
+                            RowKey = None
+                            RowKeyField = Some "id"
+                            Columns =
+                              [ fieldCol "Invoice" "id"
+                                fieldCol "Due" "due"
+                                fieldCol "Days overdue" "daysOverdue" ]
+                            OnRowClick = None
+                            Editable = false
+                            Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false
+                            Exportable = false }
+                      ))
+                      None ]
+              KeepTogether = false
+              BreakBefore = false }
+        ))
+        None
+
+// ─── Phase 1533 — `Format.Since`, the instant-reading twin of RelativeTime ──
+//
+// `format-bindings` above carries `Format.RelativeTime`, whose numeric source
+// is a signed COUNT of its unit — already computed by whoever produced it. This
+// fixture carries the case whose source is an INSTANT in whole Unix-epoch
+// seconds (`Format.Date`'s convention): the count is the delta the HOST takes
+// against its own furnished instant, so a timestamp column can say "3 hours
+// ago" with no Transform and no arithmetic on the wire.
+//
+// Both spellings of `unit` are pinned, because the difference between them is
+// not a default: DECLARED fixes the unit, and ABSENT is the auto-selection
+// request resolved from the fixed threshold ladder. Nothing about the SOURCE
+// distinguishes them, so only a fixture can.
+let formatSince: Node<obj> =
+    let md (id: string) (b: Binding<string>) : Node<obj> =
+        node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
+
+    node
+        "format-since"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+              Role = BoxRole.Group
+              Heading = None
+              Children =
+                [ md
+                      "since-auto"
+                      (Binding.Format(Binding.Static(Some 1700000000.0), Format.Since None, LocaleSource.Ambient))
+                  md
+                      "since-declared-hour"
+                      (Binding.Format(
+                          Binding.Static(Some 1700000000.0),
+                          Format.Since(Some RelativeTimeUnit.Hour),
+                          LocaleSource.Explicit "en-GB"
+                      )) ]
               KeepTogether = false
               BreakBefore = false }
         ))
@@ -5019,6 +5167,36 @@ let mapVis: Node<obj> =
         None
 
 // ─── Custom + composite ─────────────────────────────────────────────────
+
+/// §2 rule 2 — canonical key order is UTF-16 CODE-UNIT order, and this is the
+/// only place the choice is observable.
+///
+/// Three orderings agree on every key up to U+FFFF, and code point and UTF-8 byte
+/// agree everywhere; UTF-16 disagrees with both above the BMP, because a surrogate
+/// pair begins at U+D800–U+DBFF and therefore sorts BELOW a key starting in
+/// U+E000–U+FFFF that it sorts above under the other two. So the three keys here
+/// canonicalise as `z` → U+1D11E → U+E000` under this rule and as
+/// `z` → U+E000 → U+1D11E` under either of the others — different bytes,
+/// different hash-chain and teleport digests, from one document.
+///
+/// A rule-12 payload position, because that is where a non-BMP key actually
+/// arrives: spec-minted keys are ASCII by construction, so a corpus of them could
+/// never have caught this.
+let customNonAsciiKeys: Node<obj> =
+    node
+        "custom-nonascii-keys"
+        (NodeKind.Custom(
+            { ModuleId = "analytics"
+              ComponentId = "trend-card"
+              Props =
+                Map.ofList
+                    [ "z", JStr "ascii"
+                      "\uD834\uDD1E", JStr "astral (U+1D11E, a surrogate pair)"
+                      "\uE000", JStr "private use (U+E000, one code unit)" ]
+              ContentHash = None
+              ExposedNodeIds = None }
+        ))
+        None
 
 let custom: Node<obj> =
     node
@@ -6454,6 +6632,7 @@ let allNodes: (string * Node<obj>) list =
       "Display/Metric (float divergence-zone — 1e-7 scientific)", metricFloatExpNeg
       "Display/Metric (float divergence-zone — 17 significant digits)", metricFloat17Sig
       "Display/Metric (float divergence-zone — integer > 2^53)", metricFloatBigInt
+      "Display/Metric (§2 rule 5 — 1e17, one past the fixed-point window)", metricFloat1e17
       "Display/Badge", badge
       "Display/Link", link
       "Display/Link (protected email — Phase 812 protection field)", linkProtected
@@ -6597,6 +6776,10 @@ let allNodes: (string * Node<obj>) list =
       scalarTransformComposition
       "Binding/Now (Phase 765 — the host-furnished instant: a text slot + a Transform param feeding dateDiffDays)",
       nowEnvironmentBinding
+      "Binding/Now (Phase 1533 — the declared grain: minute/hour/day text slots + a Day-grain Transform param)",
+      nowGrain
+      "Binding.Format (Phase 1533 — Since: the instant-reading twin of RelativeTime, declared unit and auto)",
+      formatSince
       "Display/Metric (Phase 283 — Binding.Invoke capability source)", metricInvoke
       "Input/Button (Phase 283 — Action.Invoke capability effect)", buttonInvoke
       "Visualisation/Chart", chart
@@ -6636,6 +6819,7 @@ let allNodes: (string * Node<obj>) list =
       "Input/Button (Phase 1124 — Action.Print: the payload-free action, inside a Chain)", buttonPrint
       "Visualisation/Map", mapVis
       "Custom", custom
+      "Custom (§2 rule 2 — astral vs BMP payload keys, the UTF-16-order discriminator)", customNonAsciiKeys
       "Custom (bounded escape, StrictReplay hash + exposed-ids)", customBounded
       "Custom (bounded escape, AdvisoryWarning hash + no exposed-ids)", customBoundedAdvisory
       "ErrorBoundary (Markdown child + Callout fallback)", errorBoundary

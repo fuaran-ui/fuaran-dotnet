@@ -178,6 +178,13 @@ type DateStyle = Generated.DateStyle
 /// Relative-time grain for `Format.RelativeTime` (generated).
 type RelativeTimeUnit = Generated.RelativeTimeUnit
 
+/// Phase 1533 — the resolution a `Binding.Now` declares for the host-furnished
+/// instant (generated). `Second` is the default and is omitted on the wire; the
+/// host truncates its instant to the declared grain BEFORE the binding's
+/// accessor sees it, so a `Day`-grain `Now` is the `YYYY-MM-DD` that
+/// `Fuaran.Core`'s `DateDiffDays` accepts.
+type TimeGrain = Generated.TimeGrain
+
 /// Phase 819 — the unit the raw numeric source counts for
 /// `Format.Duration` / `CellFormat.Duration` (generated).
 type DurationUnit = Generated.DurationUnit

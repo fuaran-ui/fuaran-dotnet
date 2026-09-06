@@ -209,11 +209,23 @@ type private Json =
 /// `Result<_, string>` in about forty places; carrying one out-of-band flag is
 /// a far smaller change than re-typing all of them, and it is written exactly
 /// once per parse.
+/// `PendingHigh` and `CodePoints` are `parseStringRaw`'s state, carried on the
+/// cursor rather than local to it for the same reason `Breach` is. Strings do
+/// not nest, so one slot per parse is enough; `parseStringRaw` resets both on
+/// entry.
 type private ParseState =
-    { Text: string
-      mutable Pos: int
-      mutable Depth: int
-      mutable Breach: bool }
+    {
+        Text: string
+        mutable Pos: int
+        mutable Depth: int
+        mutable Breach: bool
+        /// A `\uD800`-`\uDBFF` unit has been appended and its low half is owed
+        /// (WIRE_FORMAT §20.2 row 6).
+        mutable PendingHigh: bool
+        /// Unicode code points appended to the string under construction, a
+        /// surrogate pair counting once (WIRE_FORMAT §21.6).
+        mutable CodePoints: int
+    }
 
 /// Record a resource-limit breach and produce the message. The `Breach` flag is
 /// what promotes the eventual failure from `INVALID_JSON` to `LIMIT_EXCEEDED`.
@@ -249,6 +261,46 @@ let private expectChar (s: ParseState) (ch: char) : Result<unit, string> =
     else
         parseError s (sprintf "expected '%c' but found '%c'" ch (peek s))
 
+/// Append one UTF-16 unit to the accumulator, maintaining WIRE_FORMAT §20.2
+/// row 6 (unpaired surrogates are `INVALID_JSON`) and §21.6 (the string bound
+/// counts Unicode CODE POINTS, so a surrogate pair counts once).
+///
+/// One function for both the literal and the `\uXXXX` paths, deliberately: a
+/// lone surrogate is equally a lone surrogate however it arrived, and the two
+/// paths having separate checks is how a host ends up refusing `"\uD800"` while
+/// accepting the same scalar written literally.
+///
+/// `PendingHigh` is the state a pairing check cannot do without, and it is why
+/// the check runs on the way down rather than over the finished string: once
+/// the string is assembled, a high followed by a low and a lone high followed
+/// by a lone low are the same two units in the same order.
+let private appendStringChar (s: ParseState) (sb: System.Text.StringBuilder) (c: char) : string option =
+    let code = int c
+    let isHigh = code >= 0xD800 && code <= 0xDBFF
+    let isLow = code >= 0xDC00 && code <= 0xDFFF
+
+    if isHigh then
+        if s.PendingHigh then
+            Some "unpaired high surrogate: a \\uD800-\\uDBFF unit must be followed by a \\uDC00-\\uDFFF unit"
+        else
+            s.PendingHigh <- true
+            s.CodePoints <- s.CodePoints + 1
+            sb.Append c |> ignore
+            None
+    elif isLow then
+        if not s.PendingHigh then
+            Some "unpaired low surrogate: a \\uDC00-\\uDFFF unit must be preceded by a \\uD800-\\uDBFF unit"
+        else
+            s.PendingHigh <- false
+            sb.Append c |> ignore
+            None
+    elif s.PendingHigh then
+        Some "unpaired high surrogate: a \\uD800-\\uDBFF unit must be followed by a \\uDC00-\\uDFFF unit"
+    else
+        s.CodePoints <- s.CodePoints + 1
+        sb.Append c |> ignore
+        None
+
 let private parseStringRaw (s: ParseState) : Result<string, string> =
     match expectChar s '"' with
     | Error e -> Error e
@@ -256,6 +308,8 @@ let private parseStringRaw (s: ParseState) : Result<string, string> =
         let sb = System.Text.StringBuilder()
         let mutable finished = false
         let mutable error: string option = None
+        s.PendingHigh <- false
+        s.CodePoints <- 0
 
         while not finished && error.IsNone do
             if s.Pos >= s.Text.Length then
@@ -274,14 +328,14 @@ let private parseStringRaw (s: ParseState) : Result<string, string> =
                         advance s
 
                         match esc with
-                        | '"' -> sb.Append '"' |> ignore
-                        | '\\' -> sb.Append '\\' |> ignore
-                        | '/' -> sb.Append '/' |> ignore
-                        | 'b' -> sb.Append '\b' |> ignore
-                        | 'f' -> sb.Append '\f' |> ignore
-                        | 'n' -> sb.Append '\n' |> ignore
-                        | 'r' -> sb.Append '\r' |> ignore
-                        | 't' -> sb.Append '\t' |> ignore
+                        | '"' -> error <- appendStringChar s sb '"'
+                        | '\\' -> error <- appendStringChar s sb '\\'
+                        | '/' -> error <- appendStringChar s sb '/'
+                        | 'b' -> error <- appendStringChar s sb '\b'
+                        | 'f' -> error <- appendStringChar s sb '\f'
+                        | 'n' -> error <- appendStringChar s sb '\n'
+                        | 'r' -> error <- appendStringChar s sb '\r'
+                        | 't' -> error <- appendStringChar s sb '\t'
                         | 'u' ->
                             if s.Pos + 4 > s.Text.Length then
                                 error <- Some "incomplete \\u escape"
@@ -310,29 +364,109 @@ let private parseStringRaw (s: ParseState) : Result<string, string> =
                                     code <- code * 16 + digit
 
                                 if hexOk then
-                                    sb.Append(char code) |> ignore
+                                    error <- appendStringChar s sb (char code)
                                 else
                                     error <- Some(sprintf "invalid \\u escape '%s'" hex)
                         | other -> error <- Some(sprintf "unknown escape '\\%c'" other)
+                elif int c < 0x20 then
+                    // WIRE_FORMAT §20.2 row 5. RFC 8259 requires a C0 control
+                    // character to be escaped, and §2 rule 6 requires a
+                    // conformant encoder to escape it — so a RAW one is a byte
+                    // no host can emit, and accepting it admits input this
+                    // host's own encoder cannot produce. The ESCAPED spelling
+                    // stays legal: it is the specified one.
+                    error <- Some(sprintf "raw control character U+%04X in a string must be escaped" (int c))
                 else
-                    sb.Append c |> ignore
+                    error <- appendStringChar s sb c
+
+            // WIRE_FORMAT §21.6 / §21.2 rule 4 — bound the string ON THE WAY
+            // DOWN, in CODE POINTS. It used to be tested once on the finished
+            // string, which had already paid the allocation the bound exists to
+            // refuse; and it used to count `sb.Length`, which is UTF-16 units,
+            // so an astral document sat inside the limit here and outside it on
+            // a code-point-counting host. `CodePoints` counts a surrogate pair
+            // once.
+            if error.IsNone && s.CodePoints > Fuaran.UI.WireLimits.MaxStringLength then
+                s.Breach <- true
+
+                error <-
+                    Some(
+                        sprintf
+                            "string of %d code points exceeds the wire limit MaxStringLength = %d"
+                            s.CodePoints
+                            Fuaran.UI.WireLimits.MaxStringLength
+                    )
 
         match error with
         | Some e -> parseError s e
-        | None ->
-            // Phase 781 / WIRE_FORMAT §21. Linear rather than recursive work, so
-            // it cannot overflow the stack — but an unbounded string is still an
-            // unbounded allocation, and closing depth without closing this would
-            // leave the cheapest remaining denial-of-service open.
-            if sb.Length > Fuaran.UI.WireLimits.MaxStringLength then
-                limitError
-                    s
-                    (sprintf
-                        "string of length %d exceeds the wire limit MaxStringLength = %d"
-                        sb.Length
-                        Fuaran.UI.WireLimits.MaxStringLength)
-            else
-                Ok(sb.ToString())
+        | None when s.PendingHigh ->
+            parseError
+                s
+                "unpaired high surrogate at the end of a string: a \\uD800-\\uDBFF unit must be followed by a \\uDC00-\\uDFFF unit"
+        | None -> Ok(sb.ToString())
+
+/// The RFC 8259 number grammar, exactly:
+///
+///     number = [ '-' ] int [ frac ] [ exp ]
+///     int    = '0' | digit1-9 *digit
+///     frac   = '.' 1*digit
+///     exp    = ('e' | 'E') [ '+' | '-' ] 1*digit
+///
+/// Written out rather than delegated because delegation is the defect: every
+/// platform's own number parser accepts a slightly different superset (a
+/// leading `+`, a leading zero, `.5`, `1.`, thousands separators, hex), and a
+/// decoder that asks one of them "is this a number" is asking about that
+/// platform. WIRE_FORMAT §20.2 row 3 makes the answer a property of the format.
+///
+/// It is total and allocation-free, so it is affordable on every token.
+let private isRfc8259Number (slice: string) : bool =
+    let n = slice.Length
+
+    let digit i =
+        i < n && slice[i] >= '0' && slice[i] <= '9'
+
+    let mutable i = 0
+    let mutable ok = true
+
+    if i < n && slice[i] = '-' then
+        i <- i + 1
+
+    // int: a single '0', or a non-zero digit followed by any digits. A leading
+    // zero ('01') is the case this arm exists to refuse.
+    if not (digit i) then
+        ok <- false
+    elif slice[i] = '0' then
+        i <- i + 1
+    else
+        while digit i do
+            i <- i + 1
+
+    // frac: the point must be followed by at least one digit ('1.' is refused).
+    if ok && i < n && slice[i] = '.' then
+        i <- i + 1
+
+        if not (digit i) then
+            ok <- false
+        else
+            while digit i do
+                i <- i + 1
+
+    // exp: at least one digit after the optional sign ('1e', '1e+' are refused).
+    if ok && i < n && (slice[i] = 'e' || slice[i] = 'E') then
+        i <- i + 1
+
+        if i < n && (slice[i] = '+' || slice[i] = '-') then
+            i <- i + 1
+
+        if not (digit i) then
+            ok <- false
+        else
+            while digit i do
+                i <- i + 1
+
+    // Trailing characters inside the token ('1..2', '0x1F') are a refusal, not
+    // a prefix match: the caller has already consumed the whole run.
+    ok && i = n
 
 let private parseNumberRaw (s: ParseState) : Result<float, string> =
     let start = s.Pos
@@ -344,12 +478,36 @@ let private parseNumberRaw (s: ParseState) : Result<float, string> =
         advance s
 
     let slice = s.Text.Substring(start, s.Pos - start)
-    // Fable's `Double.TryParse` rejects the multi-arg overload — use the
-    // single-arg form. AI emissions are en-US-shaped (dot-decimal); the
-    // invariant-culture distinction is moot.
-    match System.Double.TryParse slice with
-    | true, n -> Ok n
-    | false, _ -> parseError s (sprintf "invalid number '%s'" slice)
+
+    // WIRE_FORMAT §20.2 row 3 — check the RFC 8259 grammar BEFORE handing the
+    // slice to a platform parser, never after. `Double.TryParse` accepts a
+    // leading `+`, a leading zero, a missing integer part and a bare trailing
+    // point; JSON permits none of them, and which subset a platform accepts is
+    // a property of that platform rather than of this format. Checking after
+    // the parse would measure the platform's dialect and call it conformance.
+    if not (isRfc8259Number slice) then
+        parseError s (sprintf "'%s' is not a JSON number (RFC 8259 grammar)" slice)
+    else
+        // Under Fable, `Double.TryParse` takes only the single-argument form and
+        // the JS runtime is invariant by construction. On .NET the single-arg
+        // overload honours the AMBIENT CULTURE and permits group separators, so
+        // on a de-DE host `1.5` parsed as `15` — silently, with a green decode,
+        // and a different tree from the same bytes on the same host in a
+        // different locale. That is exactly what §20 exists to refuse, so the
+        // .NET leg pins the culture and the number styles.
+#if FABLE_COMPILER
+        match System.Double.TryParse slice with
+#else
+        match
+            System.Double.TryParse(
+                slice,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture
+            )
+        with
+#endif
+        | true, n -> Ok n
+        | false, _ -> parseError s (sprintf "invalid number '%s'" slice)
 
 /// True when entering one more level of syntactic nesting would exceed
 /// `MaxJsonDepth`. Callers that pass this increment `Depth` and decrement it on
@@ -413,6 +571,7 @@ and private parseObjectValue (s: ParseState) : Result<Json, string> =
         else
             s.Depth <- s.Depth + 1
             let mutable acc: (string * Json) list = []
+            let mutable seen: Set<string> = Set.empty
             let mutable count = 0
             let mutable error: string option = None
             let mutable finished = false
@@ -422,6 +581,19 @@ and private parseObjectValue (s: ParseState) : Result<Json, string> =
 
                 match parseStringRaw s with
                 | Error e -> error <- Some e
+                | Ok key when seen.Contains key ->
+                    // WIRE_FORMAT §20.2 row 1. The one §20 row that changes what
+                    // a document MEANS rather than whether it is accepted: this
+                    // host used to keep the FIRST occurrence and every other
+                    // host the last, so `{"href":"https://ok","href":"javascript:…"}`
+                    // was a different tree on a vetting host than on a rendering
+                    // one, with no error anywhere. First-wins here was emergent
+                    // rather than chosen — `acc` accumulates in reverse and
+                    // `Map.ofList` lets later list entries win, so reversal left
+                    // the first-PARSED key standing. Rejection is the only answer
+                    // two hosts cannot silently differ on, and it costs nothing:
+                    // no conformant encoder can emit a repeated member.
+                    error <- Some(sprintf "duplicate object member '%s'" key)
                 | Ok key ->
                     skipWs s
 
@@ -432,6 +604,7 @@ and private parseObjectValue (s: ParseState) : Result<Json, string> =
                         | Error e -> error <- Some e
                         | Ok v ->
                             acc <- (key, v) :: acc
+                            seen <- seen.Add key
                             count <- count + 1
 
                             if count > Fuaran.UI.WireLimits.MaxArrayLength then
@@ -573,6 +746,48 @@ let private sniffArithmeticExpression (text: string) (pos: int) : string option 
 
                     Some(text.Substring(leftStart, j - leftStart))
 
+/// UTF-8 byte length of a .NET/Fable string, computed from its UTF-16 units.
+///
+/// `Encoding.UTF8.GetByteCount` is server-only, so the count is derived rather
+/// than delegated — and it must be derived rather than substituted: `String.Length`
+/// is UTF-16 units, which under-counts a CJK document threefold, and
+/// under-counting is the direction that ADMITS a document §21.7 requires the
+/// host to refuse.
+///
+/// The bounds short-circuit is not a micro-optimisation but the difference
+/// between an O(n) walk on every decode and one on the rare large document:
+/// every UTF-16 unit costs at least one byte and at most three (a surrogate
+/// PAIR costs four across two units, so two per unit), so a string shorter than
+/// a third of the ceiling cannot breach it and one longer than the ceiling must.
+let private documentBytes (input: string) : int =
+    if input.Length > Fuaran.UI.WireLimits.MaxDocumentBytes then
+        input.Length // already past the ceiling; the exact figure is not needed
+    elif input.Length <= Fuaran.UI.WireLimits.MaxDocumentBytes / 3 then
+        input.Length // cannot reach the ceiling however it encodes
+    else
+        let mutable total = 0
+        let mutable i = 0
+
+        while i < input.Length do
+            let c = int input[i]
+
+            if c < 0x80 then
+                total <- total + 1
+            elif c < 0x800 then
+                total <- total + 2
+            elif c >= 0xD800 && c <= 0xDBFF && i + 1 < input.Length then
+                // A surrogate PAIR is one scalar in four bytes. An unpaired half
+                // is §20.2 row 6's refusal, reached later in the parse; counting
+                // it as three here is the conservative reading and never admits.
+                total <- total + 4
+                i <- i + 1
+            else
+                total <- total + 3
+
+            i <- i + 1
+
+        total
+
 /// Parse, classifying the failure. The code is `LIMIT_EXCEEDED` when a
 /// `WireLimits` bound was hit (the `ParseState.Breach` flag) and `INVALID_JSON`
 /// for every ordinary syntax failure — the two are different repairs, and only
@@ -580,12 +795,28 @@ let private sniffArithmeticExpression (text: string) (pos: int) : string option 
 let private tryParse (input: string) : Result<Json, DecodeErrorCode * string> =
     if isNull input then
         Error(DecodeErrorCode.INVALID_JSON, "input is null")
+    elif documentBytes input > Fuaran.UI.WireLimits.MaxDocumentBytes then
+        // WIRE_FORMAT §21.7 — the total-payload ceiling, checked BEFORE the
+        // parse. The five structural limits compose multiplicatively (100 000
+        // array elements each carrying a maximal string satisfies every one of
+        // them and is a hundred gigabytes), so until this bound nothing refused
+        // a document for its size. One comparison, so deferring it would buy
+        // nothing and pay the allocation it exists to refuse.
+        Error(
+            DecodeErrorCode.LIMIT_EXCEEDED,
+            sprintf
+                "document of %d UTF-8 bytes exceeds the wire limit MaxDocumentBytes = %d"
+                (documentBytes input)
+                Fuaran.UI.WireLimits.MaxDocumentBytes
+        )
     else
         let state =
             { Text = input
               Pos = 0
               Depth = 0
-              Breach = false }
+              Breach = false
+              PendingHigh = false
+              CodePoints = 0 }
 
         skipWs state
 
@@ -593,7 +824,24 @@ let private tryParse (input: string) : Result<Json, DecodeErrorCode * string> =
             if state.Pos >= state.Text.Length then
                 Error "input is empty"
             else
-                parseValue state
+                match parseValue state with
+                | Error e -> Error e
+                | Ok j ->
+                    // WIRE_FORMAT §20.2 row 2 — a wire artefact is a single JSON
+                    // document (§1), so the root value must be followed by
+                    // nothing but whitespace. Without this check `{…}garbage`
+                    // decoded here and was refused by two other hosts, which is
+                    // a framing ambiguity rather than a tolerance.
+                    skipWs state
+
+                    if state.Pos < state.Text.Length then
+                        Error(
+                            sprintf
+                                "unexpected content after the root value ('%c'); a wire artefact is a single JSON document"
+                                state.Text[state.Pos]
+                        )
+                    else
+                        Ok j
 
         match outcome with
         | Ok j -> Ok j
@@ -1890,9 +2138,33 @@ let private requireFloat (path: string) (j: Json) : Result<float, DecodeError> =
     | JString "-Infinity" -> Ok Double.NegativeInfinity
     | _ -> wrongType path "JSON number (or 'NaN' / 'Infinity' / '-Infinity' sentinel string)"
 
+/// WIRE_FORMAT §7.1. A typed integer slot admits a finite number with no
+/// fractional part inside the signed 32-bit range, and nothing else.
+///
+/// Two behaviours are retired here and both were silent. `int n` TRUNCATED, so
+/// `2.5` at an integer slot decoded as `2` — the author's value discarded at a
+/// slot the author typed. And `int n` on an out-of-range double is
+/// implementation-defined: `1e10` became `Int32.MinValue` on .NET and
+/// `1410065408` under Fable, so the same bytes produced two different trees on
+/// the same host in two build configurations. §20's defect, one layer up from
+/// the syntax.
 let private requireInt (path: string) (j: Json) : Result<int, DecodeError> =
     match unwrapStaticEnvelope j with
-    | JNumber n -> Ok(int n)
+    | JNumber n when
+        not (System.Double.IsNaN n)
+        && not (System.Double.IsInfinity n)
+        && n = floor n
+        && n >= -2147483648.0
+        && n <= 2147483647.0
+        ->
+        Ok(int n)
+    | JNumber n when System.Double.IsNaN n || System.Double.IsInfinity n ->
+        wrongType
+            path
+            "JSON number (a finite 32-bit integer; the non-finite sentinels are a float slot's, not an integer slot's)"
+    | JNumber n when n <> floor n ->
+        wrongType path "JSON number (a 32-bit integer; a fractional value is not truncated at an integer slot)"
+    | JNumber _ -> wrongType path "JSON number (a 32-bit integer; the value is outside the range this slot can hold)"
     | _ -> wrongType path "JSON number (integer)"
 
 let private requireArray (path: string) (j: Json) : Result<Json list, DecodeError> =
@@ -2478,6 +2750,20 @@ let private decodeRelativeTimeUnit (path: string) (j: Json) : Result<RelativeTim
     | JString s -> unknownEnumCase path s "Second | Minute | Hour | Day | Week | Month | Year"
     | _ -> wrongType path "JSON string (RelativeTimeUnit)"
 
+/// Phase 1533 — the resolution a `Binding.Now` declares for the host instant.
+/// FOUR members, a strict subset of `RelativeTimeUnit`'s seven: `Week` /
+/// `Month` / `Year` are REFUSED here rather than quietly accepted, because this
+/// is a truncation of a calendar instant and those three have no truncation
+/// five hosts agree on (which weekday starts a week; which calendar).
+let private decodeTimeGrain (path: string) (j: Json) : Result<TimeGrain, DecodeError> =
+    match j with
+    | JString "Second" -> Ok TimeGrain.Second
+    | JString "Minute" -> Ok TimeGrain.Minute
+    | JString "Hour" -> Ok TimeGrain.Hour
+    | JString "Day" -> Ok TimeGrain.Day
+    | JString s -> unknownEnumCase path s "Second | Minute | Hour | Day"
+    | _ -> wrongType path "JSON string (TimeGrain)"
+
 let private decodeCellFormat (path: string) (j: Json) : Result<CellFormat, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -2620,7 +2906,17 @@ let private decodeFormat (path: string) (j: Json) : Result<Format, DecodeError> 
                     | Ok styleJ ->
                         decodeDurationStyle (path + ".style") styleJ
                         |> Result.map (fun style -> Format.Duration(unit, style))
-        | Ok s -> unknownDuCase path s "Number | Currency | Percent | Date | RelativeTime | Duration"
+        | Ok "Since" ->
+            // Phase 1533 — the INSTANT-reading twin of `RelativeTime`. `unit` is
+            // OPTIONAL, and its absence is not a default: it is the
+            // auto-selection request, resolved from the fixed threshold table in
+            // WIRE_FORMAT 4b. Present-but-unreadable is still a refusal.
+            match tryField fields "unit" with
+            | None -> Ok(Format.Since None)
+            | Some j ->
+                decodeRelativeTimeUnit (path + ".unit") j
+                |> Result.map (fun u -> Format.Since(Some u))
+        | Ok s -> unknownDuCase path s "Number | Currency | Percent | Date | RelativeTime | Duration | Since"
 
 let private decodeLocaleSource (path: string) (j: Json) : Result<LocaleSource, DecodeError> =
     match requireObject path j with
@@ -2889,15 +3185,26 @@ and private bindingGeneric<'T>
                 // Encoder writes the fn as `<closure>`; decode to a placeholder.
                 Ok(Binding.Computed(fun _ -> placeholder))
             | Ok "Now" ->
-                // Phase 765 — the host-furnished current instant. No wire fields:
-                // the VALUE is supplied by the runtime at resolve time (the `Query`
+                // Phase 765 — the host-furnished current instant. The VALUE is
+                // supplied by the runtime at resolve time (the `Query`
                 // precedent), never carried on the wire, so a tree stays a pure
                 // value and a replayed op-stream re-supplies the recorded instant
-                // rather than re-reading a clock. The accessor decodes to a
-                // placeholder exactly as `Computed`'s does.
-                // Identity, not a placeholder (the 427 Selection fix replayed):
-                // the instant is already the wire-shaped string.
-                Ok(Binding.Now(fun (raw: obj) -> unbox raw))
+                // rather than re-reading a clock.
+                //
+                // Identity accessor, not a placeholder (the 427 Selection fix
+                // replayed): the instant is already the wire-shaped string.
+                //
+                // Phase 1533 — `grain` is the ONE wire field, optional, and
+                // absent means `Second`. Absence is the default; PRESENT and
+                // unreadable is a refusal, never a silent fallback to the
+                // default, because a document that names a grain the host cannot
+                // honour would otherwise render at a resolution it did not ask
+                // for and say nothing about it.
+                match tryField fields "grain" with
+                | None -> Ok(Binding.Now((fun (raw: obj) -> unbox raw), None))
+                | Some j ->
+                    decodeTimeGrain (path + ".grain") j
+                    |> Result.map (fun g -> Binding.Now((fun (raw: obj) -> unbox raw), Some g))
             | Ok "I18n" ->
                 match requireField path fields "key" "i18n key string" with
                 | Error e -> Error e

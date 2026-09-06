@@ -1,4 +1,4 @@
-// Fuaran.UI.Cli — the command core.
+﻿// Fuaran.UI.Cli — the command core.
 //
 // Each command returns (exitCode, output) so the same core drives the `fuaran`
 // bin AND the tests (no process spawning). `generate` / `validate` run over the
@@ -20,6 +20,7 @@ Usage:
   fuaran validate <file>                                    Wire JSON -> pass/fail + diagnostics
   fuaran scaffold --target ts|fsharp                        Integration boilerplate
   fuaran recipe <query>                                     (served by @fuaran-ui/cli / the MCP)
+  fuaran refusal-report --corpus <dir>                      Conformance corpus -> this host's refusal report (JSON)
 
 Secrets: FUARAN_ENDPOINT / FUARAN_ACCESS_TOKEN / FUARAN_PROVIDER_KEY are read from
 the environment (never a flag, never printed). --mock needs no secret."""
@@ -119,6 +120,13 @@ let scaffold (args: string list) : int * string =
         "The ts-react scaffold is served by the npm CLI (single-sourced with the MCP):\n  npx @fuaran-ui/cli scaffold --target ts\n"
     | _ -> 2, "scaffold: --target ts|fsharp is required.\n"
 
+/// The generic refusal-report entry point the cross-host comparison drives. See
+/// `RefusalReport.fs` for what it answers and what it deliberately does not.
+let refusalReport (args: string list) : int * string =
+    match flagValue "--corpus" args with
+    | Some dir -> RefusalReport.run dir
+    | None -> 2, "refusal-report: --corpus <dir> is required (the wire-format corpus root).\n"
+
 let recipe (_args: string list) : int * string =
     0,
     "The recipe bank is single-sourced in the TS tier (shared with the MCP recipe tool):\n  npx @fuaran-ui/cli recipe <query>\n"
@@ -130,6 +138,7 @@ let dispatch (argv: string list) : int * string =
     | "validate" :: rest -> validate rest
     | "scaffold" :: rest -> scaffold rest
     | "recipe" :: rest -> recipe rest
+    | "refusal-report" :: rest -> refusalReport rest
     | []
     | "help" :: _
     | "--help" :: _
