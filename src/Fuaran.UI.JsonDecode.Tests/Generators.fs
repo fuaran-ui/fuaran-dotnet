@@ -585,7 +585,7 @@ let rec private genAction: Gen<Action<obj>> =
         [ Gen.constant (Action.Dispatch(box "<msg>"))
           Gen.map (fun ep -> Action.Call(ep, Some(fun _ -> box "<r>"), None)) genNonEmptyString
           Gen.map2 (fun c p -> Action.Notify(c, p)) genNonEmptyString genJVal
-          Gen.map Action.Navigate genNonEmptyString
+          Gen.map (fun r -> Action.Navigate(TextSource.Literal r, NavigateTarget.Self)) genNonEmptyString
           Gen.map2 (fun k v -> Action.SetState(k, Some(v), None)) genNonEmptyString genJVal
           Gen.map2 (fun n a -> Action.AiTool(n, a)) genNonEmptyString genJVal
           Gen.map Action.CommitLocal genNonEmptyString
@@ -596,7 +596,11 @@ let rec private genAction: Gen<Action<obj>> =
           Gen.map
               (fun id -> Action.ReadFileBody(id, None, FileReadEncoding.Base64, Some(fun _ -> box "<r>")))
               genNonEmptyString
-          Gen.map Action.Chain (genSmallList (Gen.map Action.Navigate genNonEmptyString)) ]
+          Gen.map
+              Action.Chain
+              (genSmallList (
+                  Gen.map (fun r -> Action.Navigate(TextSource.Literal r, NavigateTarget.Self)) genNonEmptyString
+              )) ]
 
 /// Deterministic chain covering all twelve `Action` arms — used as a form's
 /// `OnSubmit` so a single generated form exercises every action discriminator.
@@ -605,7 +609,7 @@ let private allActionsChain: Action<obj> =
         [ Action.Dispatch(box "<msg>")
           Action.Call("/api", Some(fun _ -> box "<r>"), None)
           Action.Notify("ch", JStr "p")
-          Action.Navigate "/route"
+          Action.Navigate(TextSource.Literal "/route", NavigateTarget.Self)
           Action.SetState("k", Some(JStr "v"), None)
           Action.AiTool("tool", JStr "a")
           Action.Chain []

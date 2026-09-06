@@ -1594,6 +1594,24 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "Action.WriteToClipboard's payload is a TextSource, so it is a string (the Literal shorthand) or a $type-tagged object — never a number. The refusal matters more here than at an ordinary text slot: the slot WIDENED in 1126 from a bare string, and a host that read the widening as \"anything goes\" would put a JSON literal on the reader's clipboard rather than refusing the document (Phase 1126)" }
+      // Phase 1536 — `Action.Navigate.target` is a CLOSED two-member enum, and
+      // `_blank` is the single most likely wrong guess: it is the HTML token for
+      // exactly this concept, and an emitter that has written an anchor before
+      // will write it here. It is refused rather than aliased, and the reason is
+      // the three tokens beside it in that vocabulary — `_parent` and `_top` are
+      // frame-busting gestures a hosted tree must not be able to ask for, and a
+      // named frame is an addressing scheme this language does not have.
+      // Accepting the two harmless HTML tokens would teach an emitter that the
+      // HTML vocabulary is the one in force, and the next guess would be one of
+      // the other three.
+      { Id = "reject-navigate-target-invalid"
+        Json =
+          """{"id":"x","kind":{"$type":"Button","label":"Docs","onClick":{"$type":"Navigate","route":"/docs","target":"_blank"},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.onClick.target"
+        IsOp = false
+        Description =
+          "Action.Navigate's target is the closed enum Self | Blank, not HTML's target attribute. `_blank` is refused rather than aliased: the vocabulary it comes from also contains `_parent` and `_top`, which are frame-busting gestures a hosted tree must not be able to ask for, so accepting any of it would teach an emitter the wrong vocabulary (Phase 1536)" }
       // Phase 1533 — the `Binding.Now` grain is a CLOSED four-member vocabulary
       // and a strict subset of `RelativeTimeUnit`'s seven. `Week` is the member
       // most likely to be reached for by an emitter that has met `RelativeTime`

@@ -496,7 +496,24 @@ module Action =
 
     let notify (channel: string) (payload: JVal) : Action<'Msg> = Action.Notify(channel, payload)
 
-    let navigate (route: string) : Action<'Msg> = Action.Navigate route
+    /// Navigate to a literal `route` in the current browsing context.
+    ///
+    /// Phase 1536 — `Action.Navigate` now carries a `TextSource` and a target,
+    /// and this helper stays the SHORTEST spelling of the commonest intent: a
+    /// route the author typed, opened here. `navigateTo` takes the general
+    /// form. Neither the wire nor this signature moved — a literal route is
+    /// still the bare JSON string.
+    let navigate (route: string) : Action<'Msg> =
+        Action.Navigate(TextSource.Literal route, NavigateTarget.Self)
+
+    /// Phase 1536 — the general form: a route from any `TextSource` (a literal,
+    /// a `Bound` value resolved at dispatch time, an `I18n` lookup) into the
+    /// browsing context `target` names.
+    ///
+    /// `NavigateTarget.Blank` opens a fresh context with `noopener,noreferrer`;
+    /// a bound route is resolved and only THEN egress-checked and gated, so the
+    /// policy judges the destination rather than the template.
+    let navigateTo (route: TextSource) (target: NavigateTarget) : Action<'Msg> = Action.Navigate(route, target)
 
     let setState (key: string) (value: JVal) : Action<'Msg> = Action.SetState(key, Some value, None)
 

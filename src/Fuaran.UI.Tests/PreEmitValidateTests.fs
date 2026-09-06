@@ -2818,7 +2818,8 @@ let tests =
                           Kind =
                               NodeKind.DataGrid
                                   { spec with
-                                      OnRowClick = Some(fun _ -> Action.Navigate "/x") } }
+                                      OnRowClick =
+                                          Some(fun _ -> Action.Navigate(TextSource.Literal "/x", NavigateTarget.Self)) } }
                   | _ -> grid
 
               let tree = dashboard "root" [ opaqueGrid; switchReader "sw" "occupancyTier" ]
@@ -2929,7 +2930,8 @@ let tests =
                           Kind =
                               NodeKind.DataGrid
                                   { spec with
-                                      OnRowClick = Some(fun _ -> Action.Navigate "/x") } }
+                                      OnRowClick =
+                                          Some(fun _ -> Action.Navigate(TextSource.Literal "/x", NavigateTarget.Self)) } }
                   | _ -> grid
 
               let tree = dashboard "root" [ opaqueGrid; derivedBadge "count" "members" None ]

@@ -93,7 +93,7 @@ let private allActionCases: (string * Fuaran.UI.Types.Action<Msg>) list =
     [ "Chain",
       Action.Chain
           [ Action.WriteToClipboard(TextSource.Literal poison)
-            Action.Navigate("/a?q=" + poison) ]
+            Action.Navigate(TextSource.Literal("/a?q=" + poison), NavigateTarget.Self) ]
       "WriteToClipboard", Action.WriteToClipboard(TextSource.Literal poison)
       "Dispatch", Action.Dispatch(Poke poison)
       // Fully qualified: `open System` elsewhere puts `System.Action` in scope
@@ -101,7 +101,7 @@ let private allActionCases: (string * Fuaran.UI.Types.Action<Msg>) list =
       "Invoke", Fuaran.UI.Generated.Action.Invoke("cap.publish", [])
       "ReadFileBody", Action.ReadFileBody(poison, None, FileReadEncoding.Text, None)
       "Call", Action.Call("/api/save", None, None)
-      "Navigate", Action.Navigate("/orders?email=" + poison + "#" + poison)
+      "Navigate", Action.Navigate(TextSource.Literal("/orders?email=" + poison + "#" + poison), NavigateTarget.Self)
       "CommitLocal", Action.CommitLocal "field-1"
       "Notify", Action.Notify("toast", Fuaran.Core.JStr poison)
       "SetState", Action.SetState("draft.body", Some(Fuaran.Core.JStr poison), None)

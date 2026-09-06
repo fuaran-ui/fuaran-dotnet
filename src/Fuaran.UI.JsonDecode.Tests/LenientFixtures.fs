@@ -290,6 +290,21 @@ let all: LenientFixture list =
         Description =
           "Web-prior aliases — Navigate `href`→`route` (the 2/2 observed Kimi guess) + ButtonVariant `Danger`→`Destructive`" }
 
+      // Phase 1536 — `Navigate.target` is omitted at `Self`, so an EXPLICIT
+      // `"Self"` is accepted and normalises away. Without this fixture nothing
+      // pins that half: the round-trip family can only show the member absent
+      // when it is absent, never that a host receiving it explicitly must drop
+      // it rather than echo it back. A host that echoed it would emit a second
+      // byte sequence for one meaning, which is the canonicity defect the whole
+      // omit-at-default rule exists to prevent.
+      { Id = "lenient-navigate-target-self"
+        LenientJson =
+          """{"id":"len-nav-self","kind":{"$type":"Button","label":{"$type":"Literal","text":"Home"},"onClick":{"$type":"Navigate","route":"/","target":"Self"},"variant":"Primary"}}"""
+        VerboseJson =
+          """{"id":"len-nav-self","kind":{"$type":"Button","label":{"$type":"Literal","text":"Home"},"onClick":{"$type":"Navigate","route":"/"},"variant":"Primary"}}"""
+        Description =
+          "Phase 1536 — an explicit `target: \"Self\"` normalises away; `Self` is omitted at default, so the canonical form carries no `target` member at all" }
+
       { Id = "lenient-alias-call-url"
         LenientJson =
           """{"id":"len-url","kind":{"$type":"Button","label":{"$type":"Literal","text":"Refresh"},"onClick":{"$type":"Call","url":"/api/refresh"},"variant":"Primary"}}"""

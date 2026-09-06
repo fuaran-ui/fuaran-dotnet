@@ -208,9 +208,30 @@ let rec private readAction (depth: int) (action: obj) : Result<Action<unit>, str
         match readString action "$type" with
         | None -> Error "envelope action has no string `$type`"
         | Some "Navigate" ->
+            // Phase 1536 — the route is a `TextSource`, whose canonical LITERAL
+            // form is the bare JSON string this reader has always taken. A
+            // non-string `route` is a bound or i18n route, and THIS PATH HOLDS
+            // NO RESOLVER — the server's `disposition` routes such a node to
+            // `fallback` for exactly that reason — so reaching here with one
+            // means the envelope and the interpreter disagree. It is REFUSED
+            // and reported, never coerced; the stake is higher than the
+            // clipboard's beside it, because a coerced destination is a real
+            // navigation the reader cannot undo, where a wrong clipboard write
+            // is inert until they paste.
+            //
+            // `target` rides only when it is `"Blank"`. An unrecognised token
+            // is refused rather than read as `Self`: a document that meant a
+            // fresh context and misspelled it must not silently take over the
+            // one the reader is in.
             match readString action "route" with
-            | Some route -> Ok(Action.Navigate route)
-            | None -> Error "Navigate has no string `route`"
+            | Some route ->
+                match readString action "target" with
+                | None -> Ok(Action.Navigate(TextSource.Literal route, NavigateTarget.Self))
+                | Some "Self" -> Ok(Action.Navigate(TextSource.Literal route, NavigateTarget.Self))
+                | Some "Blank" -> Ok(Action.Navigate(TextSource.Literal route, NavigateTarget.Blank))
+                | Some other -> Error(sprintf "Navigate `target` is not Self | Blank: '%s'" other)
+            | None ->
+                Error "Navigate carries a bound route; this node should have been dispositioned 'fallback' and hydrated"
         | Some "Notify" ->
             match readString action "channel" with
             | Some channel ->
@@ -297,7 +318,14 @@ let rec private runResumed (runtime: Runtime.IFuaranRuntime) (denied: string lis
     | Action.Chain actions ->
         for a in actions do
             runResumed runtime denied a
-    | Action.Navigate route -> note (Render.treeNavigateOutcome runtime resumeEgressPolicy route runtime.Navigate)
+    // Phase 1536 — the LITERAL route the reader constructed, through the same
+    // gate the hydrated path runs, and — for a `Blank` target — through the
+    // same `Render.performNavigation`, so `noopener,noreferrer` is applied by
+    // one function rather than by two that could drift. A bound route is
+    // unconstructible from an envelope (see `readAction`) and so falls to the
+    // catch-all below if one is ever synthesised.
+    | Action.Navigate(TextSource.Literal route, target) ->
+        note (Render.treeNavigateOutcome runtime resumeEgressPolicy route (Render.performNavigation runtime target))
     | Action.Notify(channel, payload) ->
         gate (Runtime.ActionDescriptor.Notify channel) (fun () -> runtime.Notify(channel, payload))
     | Action.SetState(key, value, _) ->

@@ -210,6 +210,28 @@ public enum CaptureSource
     Microphone,
 }
 
+/// <summary>
+/// Which browsing context an <see cref="FuaranAction.Navigate(Text, NavigateTarget)"/>
+/// lands in (Phase 1536) — maps to the F# <c>NavigateTarget</c>. <c>Self</c> is the
+/// default and is omitted on the wire; <c>Blank</c> opens a fresh context, which every
+/// host opens with <c>noopener,noreferrer</c>.
+/// </summary>
+/// <remarks>
+/// Closed at two members where an HTML <c>target</c> attribute takes any token: the
+/// axis declared here is whether the reader stays in this context or gets a new one,
+/// and that question has two answers. <c>_parent</c> and <c>_top</c> are frame-busting
+/// gestures a hosted tree must not be able to ask for, and a named frame is an
+/// addressing scheme this language does not have.
+/// </remarks>
+public enum NavigateTarget
+{
+    /// <summary>This browsing context — the default, omitted on the wire.</summary>
+    Self,
+
+    /// <summary>A fresh browsing context, opened with <c>noopener,noreferrer</c>.</summary>
+    Blank,
+}
+
 /// <summary>Math presentation — maps to the F# <c>MathDisplay</c>.</summary>
 public enum MathDisplay
 {
@@ -393,6 +415,9 @@ internal static class EnumMap
 
     internal static FsGen.CaptureSource ToFs(this CaptureSource c) =>
         c == CaptureSource.Microphone ? FsGen.CaptureSource.Microphone : FsGen.CaptureSource.Camera;
+
+    internal static FsGen.NavigateTarget ToFs(this NavigateTarget t) =>
+        t == NavigateTarget.Blank ? FsGen.NavigateTarget.Blank : FsGen.NavigateTarget.Self;
 
     internal static FsGen.MathDisplay ToFs(this MathDisplay d) =>
         d == MathDisplay.Inline ? FsGen.MathDisplay.Inline : FsGen.MathDisplay.Block;

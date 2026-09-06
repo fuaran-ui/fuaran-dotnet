@@ -644,6 +644,33 @@ let treeNavigateOutcome
                 (ActionInvocation.routePath route)
         )
 
+/// Phase 1536 — perform an already-resolved, already-gated navigation into the
+/// browsing context `target` names.
+///
+/// ONE function, shared by the hydrated interpreter and the zero-JS resume
+/// interpreter, because `noopener,noreferrer` is a SECURITY property of the
+/// `Blank` case and a property applied by two functions is a property that
+/// eventually differs between them. Without `noopener` the opened document holds
+/// a live `window.opener` handle back into the host page; without `noreferrer`
+/// the destination is told where the reader came from.
+///
+/// `Blank` deliberately does NOT route through `IFuaranRuntime.Navigate`. That
+/// seam is wired to an SPA router or `location.hash`, neither of which can open
+/// a second browsing context at all — handing it a `Blank` would silently
+/// navigate in place. Reaching `window.open` directly is the `Print` /
+/// `CommitLocal` precedent: the browser's own API, where there is nothing for a
+/// host to configure.
+///
+/// Public so both interpreters can share it, on the same reasoning that made
+/// `applyDispatchGate` public. It performs; it never judges — the caller has
+/// already run the egress check and the dispatch gate on `safeRoute`.
+let performNavigation (runtime: Runtime.IFuaranRuntime) (target: NavigateTarget) (safeRoute: string) : unit =
+    match target with
+    | NavigateTarget.Self -> runtime.Navigate safeRoute
+    | NavigateTarget.Blank ->
+        Browser.Dom.window.``open`` (safeRoute, "_blank", "noopener,noreferrer")
+        |> ignore
+
 let treeNavigate
     (runtime: Runtime.IFuaranRuntime)
     (policy: Sanitize.EgressPolicy)
@@ -774,8 +801,37 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
         gate (Runtime.ActionDescriptor.Notify channel) (fun () -> ctx.Runtime.Notify(channel, payload))
     // Phase 782 — sanitise-then-gate on the ACTION path, not only where an
     // href/src is rendered. See `treeNavigate`.
-    | Action.Navigate route ->
-        note (treeNavigateOutcome ctx.Runtime ctx.EgressPolicy route (fun safe -> ctx.Runtime.Navigate safe))
+    //
+    // Phase 1536 — RESOLVE, THEN GATE, and the order is the whole point. The
+    // route is a `TextSource`, so it may be computed from what the reader is
+    // looking at; the egress check and the dispatch gate then judge the
+    // RESOLVED string. Gating the template would consult the policy about
+    // `/orders/{id}`, a URL nobody navigates to, while the string the host
+    // actually receives went unexamined — which is not a weaker check, it is a
+    // check of the wrong subject.
+    //
+    // A route that does not resolve WARNS and navigates nowhere (FGP 3). It
+    // must not degrade to the empty string the way a bound LABEL does: `""` is
+    // a real navigation (this document, query and fragment stripped), so the
+    // rendering degradation would become a navigation the author never asked
+    // for. `tryResolveTextSource` is the resolution that reports rather than
+    // degrades.
+    | Action.Navigate(route, target) ->
+        // The EMPTY resolution is refused beside the absent one, and on the
+        // same reasoning rather than as a tidy-up: a `State` binding carrying a
+        // declared default of `""` RESOLVES, to a string that is not a
+        // destination. Both are "there is nothing to navigate to".
+        match
+            BindingResolver.tryResolveTextSource ctx.Sources route
+            |> Option.filter (System.String.IsNullOrWhiteSpace >> not)
+        with
+        | None ->
+            ctx.Runtime.Warn
+                "[Fuaran] Action.Navigate route did not resolve to a destination — no navigation performed. A bound route whose source is absent or empty, or an i18n key with no translation, is not a destination."
+
+            note (Error "Action.Navigate refused — route did not resolve to a destination")
+        | Some resolved ->
+            note (treeNavigateOutcome ctx.Runtime ctx.EgressPolicy resolved (performNavigation ctx.Runtime target))
     | Action.SetState(key, value, valueFrom) ->
         // Phase 782 — gated, and host-reserved keys refused. Scope-aware routing
         // (Phase 266): a guest rendered under `Some scopeId` writes to its own

@@ -50,7 +50,7 @@ let private allTwelveCases: (string * Action<Msg>) list =
     [ "Chain",
       Action.Chain
           [ Action.WriteToClipboard(TextSource.Literal poison)
-            Action.Navigate("/a?q=" + poison) ]
+            Action.Navigate(TextSource.Literal("/a?q=" + poison), NavigateTarget.Self) ]
       "WriteToClipboard", Action.WriteToClipboard(TextSource.Literal poison)
       "Dispatch", Action.Dispatch(Poke poison)
       // Fully qualified: `open System` puts `System.Action` in scope and its
@@ -58,7 +58,7 @@ let private allTwelveCases: (string * Action<Msg>) list =
       "Invoke", Fuaran.UI.Generated.Action.Invoke("cap.publish", [])
       "ReadFileBody", Action.ReadFileBody(poison, None, FileReadEncoding.Text, None)
       "Call", Action.Call("/api/save", None, None)
-      "Navigate", Action.Navigate("/orders?email=" + poison + "#" + poison)
+      "Navigate", Action.Navigate(TextSource.Literal("/orders?email=" + poison + "#" + poison), NavigateTarget.Self)
       "CommitLocal", Action.CommitLocal "field-1"
       "Notify", Action.Notify("toast", JStr poison)
       "SetState", Action.SetState("draft.body", Some(JStr poison), None)
@@ -127,7 +127,9 @@ let redactionTests =
               // A route is the one `describe` argument that is not author-fixed
               // vocabulary, and a query string is where user data rides.
               Expect.equal
-                  (ActionInvocation.describe (Action.Navigate "/orders?email=a@b.c#tok": Action<Msg>))
+                  (ActionInvocation.describe (
+                      Action.Navigate(TextSource.Literal "/orders?email=a@b.c#tok", NavigateTarget.Self): Action<Msg>
+                  ))
                   "Navigate(/orders)"
                   "query and fragment gone, path kept"
 
@@ -145,7 +147,7 @@ let redactionTests =
           test "a Chain is ONE invocation and names no constituent" {
               let chain: Action<Msg> =
                   Action.Chain
-                      [ Action.Navigate("/x?s=" + poison)
+                      [ Action.Navigate(TextSource.Literal("/x?s=" + poison), NavigateTarget.Self)
                         Action.WriteToClipboard(TextSource.Literal poison) ]
 
               Expect.equal (ActionInvocation.describe chain) "Chain" "no contents"
@@ -168,7 +170,7 @@ let optInTests =
               Expect.equal (payloadOf (Action.AiTool("t", JStr "a"))) (Some(JStr "a")) "AiTool"
 
               Expect.equal
-                  (payloadOf (Action.Navigate "/o?email=a@b.c"))
+                  (payloadOf (Action.Navigate(TextSource.Literal "/o?email=a@b.c", NavigateTarget.Self)))
                   (Some(JStr "/o?email=a@b.c"))
                   "Navigate under the opt-in keeps the WHOLE route — that IS the opt-in"
           }
@@ -298,7 +300,7 @@ let durabilityTests =
                       ActionCaptureMode.Redacted
                       site
                       ActionOutcome.Dispatched
-                      (Action.Navigate "/home?t=1": Action<Msg>)
+                      (Action.Navigate(TextSource.Literal "/home?t=1", NavigateTarget.Self): Action<Msg>)
               )
 
               // A second sink over the same file, as a later process would open it.

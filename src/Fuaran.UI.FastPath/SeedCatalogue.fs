@@ -103,7 +103,7 @@ module SeedCatalogue =
             id
             { Defaults.button with
                 Label = TextSource.Literal label
-                OnClick = Action.Navigate "cta"
+                OnClick = Action.Navigate(TextSource.Literal "cta", NavigateTarget.Self)
                 Variant = ButtonVariant.Primary }
 
     // ── ComputeLayer sample: an embedded table + a real transform pipeline ───

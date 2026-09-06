@@ -49,7 +49,7 @@ let private allActionCases: (string * Action<Msg>) list =
     [ "Chain",
       Action.Chain
           [ Action.WriteToClipboard(TextSource.Literal poison)
-            Action.Navigate("/a?q=" + poison) ]
+            Action.Navigate(TextSource.Literal("/a?q=" + poison), NavigateTarget.Self) ]
       "WriteToClipboard", Action.WriteToClipboard(TextSource.Literal poison)
       "Dispatch", Action.Dispatch(Poke poison)
       // Fully qualified: `System.Action`'s instance `Invoke` wins the name
@@ -57,7 +57,7 @@ let private allActionCases: (string * Action<Msg>) list =
       "Invoke", Fuaran.UI.Generated.Action.Invoke("cap.publish", [])
       "ReadFileBody", Action.ReadFileBody(poison, None, FileReadEncoding.Text, None)
       "Call", Action.Call("/api/save", None, None)
-      "Navigate", Action.Navigate("/orders?email=" + poison + "#" + poison)
+      "Navigate", Action.Navigate(TextSource.Literal("/orders?email=" + poison + "#" + poison), NavigateTarget.Self)
       "CommitLocal", Action.CommitLocal "field-1"
       "Notify", Action.Notify("toast", JStr poison)
       "SetState", Action.SetState("draft.body", Some(JStr poison), None)
@@ -114,7 +114,9 @@ let tests =
               // The two arms the census names specifically, asserted here rather
               // than left to "it delegates, so it must be fine".
               Expect.equal
-                  (Validation.describeAction (Action.Navigate("/orders?email=" + poison): Action<Msg>))
+                  (Validation.describeAction (
+                      Action.Navigate(TextSource.Literal("/orders?email=" + poison), NavigateTarget.Self): Action<Msg>
+                  ))
                   "Navigate(/orders)"
                   "the query string is gone and the path is kept"
 
