@@ -206,7 +206,7 @@ let epochSecondsOfInstant (instant: string) : float option =
             let mutable ok = true
 
             for i in from .. from + len - 1 do
-                let c = instant.[i]
+                let c = instant[i]
 
                 if c >= '0' && c <= '9' then
                     acc <- acc * 10 + (int c - int '0')
