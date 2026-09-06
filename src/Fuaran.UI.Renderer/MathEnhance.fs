@@ -124,7 +124,13 @@ let private renderInto (el: Element) (tex: string) (displayMode: bool) : unit =
                   "throwOnError" ==> false
                   "output" ==> "htmlAndMathml" ]
 
-        el.innerHTML <- unbox<string> (katex?renderToString (tex, opts))
+        // Phase 1546: `innerHTML` is a Trusted Types sink like the renderer's
+        // `dangerouslySetInnerHTML` seams, so KaTeX's output is minted through the
+        // same `fuaran-renderer` policy. KaTeX escapes its own output and this
+        // enhancement runs only on a container the renderer emitted, so the
+        // policy's floor finds nothing to remove; what it adds is the trusted
+        // value a host requiring the directive needs at this assignment.
+        el.innerHTML <- TrustedTypes.html (unbox<string> (katex?renderToString (tex, opts)))
     with _ ->
         ()
 

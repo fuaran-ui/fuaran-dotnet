@@ -5121,3 +5121,41 @@ two runs' output is compared byte for byte. A companion assertion pins the fixtu
 `BFINAL=1, BTYPE=2`, so a regenerated fixture that stopped being a dynamic block fails rather than
 quietly covering nothing. The refutation was observed before the fix: the Fable leg reported
 `DEFLATE cases=3 failed=2` while .NET reported `failed=0`.
+
+## Recorded change — 0.76.1, the `fuaran-renderer` Trusted Types policy (fuaran#1546)
+
+**Additive, and it rides the 0.76.1 draft rather than advancing it.** `v0.76.0` is the newest tag, so
+0.76.1 is an untagged, publicly-unpinned draft slot, and it already carries an additive DU case (the
+`ApplyErrorCode.LimitExceeded` entry directly above). This change is of no higher class than that, so
+the number does not move.
+
+**New public surface, `Fuaran.UI.Renderer`.** The module `Fuaran.UI.Renderer.TrustedTypes`:
+
+- `policyName : string` (`[<Literal>]`, value `"fuaran-renderer"`)
+- `createHtml : string -> string` — the policy's `createHTML` body, which is `Sanitize.sanitizeMarkdownHtml`
+- `html : string -> string` — the value every raw-HTML sink in the client renderer now takes
+
+`policyName` is a **configuration** surface, not merely a code one: a host writes that exact string
+into its `Content-Security-Policy: trusted-types` directive, so changing it stops the host's page
+rendering rather than stopping its build. Treat it as breaking on the same axis as a wire string.
+
+**Behaviour change, `Fuaran.UI.Renderer.Core`.** `Sanitize.sanitizeMarkdownHtml` now matches a
+dangerous element name only at a **tag-name boundary** (end of input, whitespace, `/` or `>`), where
+it previously matched the bare prefix. `<metadata>` and `<linearGradient>` therefore survive, where
+before the first lost its opening tag. This is a narrowing of false positives and admits no real
+element: a tag name has to be delimited for a parser to read it as that element at all, and every
+spelling of `<meta>` / `<link>` / `<script>` / `<iframe>` is still refused. A consumer relying on
+`<metadata>` being stripped would see a change; nothing in this repo did, and the sweep's documented
+job never included it. The TypeScript tier's mirror carries the same fix in the same change-set.
+
+**Why the fix belongs to this change.** The policy's floor now runs over the renderer's SVG payloads
+as well as its markdown, and the drawing builder's provenance `<metadata>` element (Phase 643) was
+the one payload the bare-prefix match rewrote. Routing the seams without it would have shipped a
+figure whose embedded document no longer parses.
+
+**No wire-format impact and no consumer edit required.** No spec record, `NodeKind`, `Binding`,
+`Action` or `TreeOp` moved; the renderer's emitted bytes are unchanged, on both pipelines and on the
+server renderer, which is what keeps SSR output and client hydration byte-identical.
+`Fuaran.UI.Tests/TrustedTypesTests.fs` pins that invariance against payloads built by the real
+emitters, and enumerates the sinks from the sources so a new one is red on the commit that adds it.
+The contract is [`SANITIZATION.md`](SANITIZATION.md) "Trusted Types (Phase 1546)".
