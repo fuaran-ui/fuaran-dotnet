@@ -466,6 +466,7 @@ and [<RequireQualifiedAccess>] Binding<'T> =
     // Selection / Query) is PRESERVED for live re-evaluation instead of being
     // snapshotted at decode (the Phase-815 leniency's semantics upgrade).
     | Transform of source: TransformSource * pipeline: Fuaran.Core.Transform list * ``params``: TransformParam list option
+    | Expr of expr: Fuaran.Core.ColExpr * ``params``: TransformParam list option
     | Invoke of capabilityId: string * args: InvokeArg list
 
 and [<RequireQualifiedAccess>] CallResultTarget =
@@ -1940,6 +1941,7 @@ and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     | Binding.Format (source, format, locale) -> Canon.typed "Format" [ "source", (encBinding encFloat) source; "format", encFormat format; "locale", encLocaleSource locale ]
     | Binding.I18n (key, args) -> Canon.typed "I18n" ([ Some("key", JStr key); (args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, (encBinding id) v))) v)) ] |> List.choose id)
     | Binding.Transform (source, pipeline, ``params``) -> Canon.typed "Transform" ([ Some("source", encTransformSource source); Some("pipeline", JArr(List.map Fuaran.Core.DataFrameCodec.encodeTransform pipeline)); (``params`` |> Option.map (fun v -> "params", JArr(List.map encTransformParam v))) ] |> List.choose id)
+    | Binding.Expr (expr, ``params``) -> Canon.typed "Expr" ([ Some("expr", Fuaran.Core.DataFrameCodec.encodeExpr expr); (``params`` |> Option.map (fun v -> "params", JArr(List.map encTransformParam v))) ] |> List.choose id)
     | Binding.Invoke (capabilityId, args) -> Canon.typed "Invoke" [ "capabilityId", JStr capabilityId; "args", JArr(List.map encInvokeArg args) ]
 
 and private encCallResultTarget (v: CallResultTarget) : JVal =
@@ -2969,6 +2971,10 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
             dReq "pipeline" __fs (dList (fun __j -> Fuaran.Core.DataFrameCodec.decodeTransform __j |> Result.mapError string)) |> Result.bind (fun pipeline ->
             dOpt "params" __fs (dList decTransformParam) |> Result.bind (fun ``params`` ->
             Ok(Binding.Transform(source, pipeline, ``params``)))))
+        | "Expr" ->
+            dReq "expr" __fs (fun __j -> Fuaran.Core.DataFrameCodec.decodeExpr __j |> Result.mapError string) |> Result.bind (fun expr ->
+            dOpt "params" __fs (dList decTransformParam) |> Result.bind (fun ``params`` ->
+            Ok(Binding.Expr(expr, ``params``))))
         | "Invoke" ->
             dReq "capabilityId" __fs dStr |> Result.bind (fun capabilityId ->
             dReq "args" __fs (dList decInvokeArg) |> Result.bind (fun args ->

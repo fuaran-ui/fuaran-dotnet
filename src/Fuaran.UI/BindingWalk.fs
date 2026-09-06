@@ -480,6 +480,26 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
                        | other -> other)
 
                BindingUse.TransformParam(p.Name, Set.contains p.Name referenced) :: sourceUses))
+    // Fuaran-UI Phase 1534 — the scalar expression. It has no source slot at
+    // all, so its whole reactive edge IS its params: the same
+    // `TransformParam` / `TransformParamFilter` uses `Transform` emits, over
+    // `ColExpr.paramsOf` in place of `Transform.paramsOf`. Reusing those two
+    // uses rather than minting parallel `Expr*` ones is deliberate — every
+    // dangling-param / unconsumed-filter rule already switches on them, so the
+    // checks reach an `Expr` with no rule edited, and a rule that ever needs to
+    // tell the two apart can read the param's own binding.
+    | Binding.Expr(expr, parameters) ->
+        let referenced = Fuaran.Core.ColExpr.paramsOf expr |> Set.ofList
+
+        defaultArg parameters []
+        |> List.collect (fun (p: TransformParam) ->
+            let sourceUses =
+                usesOfBinding p.From
+                |> List.map (function
+                    | BindingUse.Filter filterName -> BindingUse.TransformParamFilter filterName
+                    | other -> other)
+
+            BindingUse.TransformParam(p.Name, Set.contains p.Name referenced) :: sourceUses)
     // Phase 932 — `Computed` reads the whole state bag through a closure, so it
     // is an OPAQUE read, not an absent one. See `BindingUse.Computed`.
     | Binding.Computed _ -> [ BindingUse.Computed ]

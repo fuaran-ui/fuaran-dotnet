@@ -139,6 +139,9 @@ let bindingExpression (binding: Binding<'T>) : string * string =
     | Binding.Local _ -> "Computed", "$local"
     | Binding.Format _ -> "Computed", "$format"
     | Binding.Transform _ -> "Computed", "$transform"
+    // Fuaran-UI Phase 1534 — mirrors `BindingProbe.identify`'s $expr token; the
+    // two vocabularies are one vocabulary and drift is the only failure here.
+    | Binding.Expr _ -> "Computed", "$expr"
     | Binding.Invoke _ -> "Computed", "$invoke"
 
 /// One bound binding slot on a node — the slot name, its wire-form expression,

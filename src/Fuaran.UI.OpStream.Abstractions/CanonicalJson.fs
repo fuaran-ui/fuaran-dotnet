@@ -576,6 +576,39 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
                     (paramField
                      @ [ "pipeline", (fun sb -> sb.Append(Fuaran.Core.DataFrameCodec.encodePipeline pipeline) |> ignore)
                          "source", sourceAppender ]))
+        // Fuaran-UI Phase 1534 — the scalar expression binding. `expr` splices
+        // Core's own canonical rendering of the `ColExpr`, exactly as `pipeline`
+        // above splices its rendering of the steps; `params` is the same
+        // omitted-when-empty list in the same shape. `$type` (0x24) < `expr` <
+        // `params` under the Ordinal sort, so the composite is canonical with no
+        // second wire form.
+        | Binding.Expr(expr, parameters) ->
+            let exprParams =
+                match parameters with
+                | None
+                | Some [] -> []
+                | Some ps ->
+                    [ "params",
+                      (fun sb ->
+                          appendArrayWith
+                              sb
+                              (ps
+                               |> List.map (fun (p: TransformParam) ->
+                                   fun sb ->
+                                       appendObject
+                                           sb
+                                           [ "from", encodeBindingWith<JVal> (fun jv -> encodeJVal jv) p.From
+                                             "name", str p.Name ]))) ]
+
+            appendObject
+                sb
+                (case
+                    "Expr"
+                    ([ "expr",
+                       (fun sb ->
+                           sb.Append(Fuaran.Core.Canon.render (Fuaran.Core.DataFrameCodec.encodeExpr expr))
+                           |> ignore) ]
+                     @ exprParams))
         | Binding.Invoke(capabilityId, args) ->
             // Phase 283 — invoke a host-registered capability for a value. `args` are scalar
             // `InvokeArg` records since the swap (validated host-side against the capability's

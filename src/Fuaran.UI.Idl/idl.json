@@ -5609,6 +5609,39 @@
         {
           "fields": [
             {
+              "name": "expr",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun __j -> Fuaran.Core.DataFrameCodec.decodeExpr __j |> Result.mapError string)",
+                  "encode": "Fuaran.Core.DataFrameCodec.encodeExpr",
+                  "fsharp": "Fuaran.Core.ColExpr"
+                },
+                "wire": "json"
+              }
+            },
+            {
+              "name": "params",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "list",
+                "of": {
+                  "$type": "record",
+                  "name": "TransformParam"
+                }
+              }
+            }
+          ],
+          "tag": "Expr"
+        },
+        {
+          "fields": [
+            {
               "name": "capabilityId",
               "optionality": {
                 "$type": "required"

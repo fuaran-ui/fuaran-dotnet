@@ -894,7 +894,22 @@ let fewShot =
       // it was never a few-shot exemplar either. (Kept through the 834 dedup —
       // caution-listed: the Badge example.)
       "badge-1",
-      "Mark the record's state with a small inline status chip reading 'Active' — a compact badge, not a labelled stat tile." ]
+      "Mark the record's state with a small inline status chip reading 'Active' — a compact badge, not a labelled stat tile."
+      // Phase 1552. `ChartSpec.annotations` and its three arms (Phases 1489-1492)
+      // are taught by the signature catalogue and by prose, and NEITHER carries a
+      // worked example — so a consumer that reads this file rather than the system
+      // prompt's example blocks sees the slot with nothing in it. This entry is
+      // that example, and it is the corpus fixture rather than a hand-written one
+      // per the rule at the head of this script.
+      //
+      // `chart-annotation-events` is the richest of the three annotation fixtures:
+      // it carries the arm in BOTH x-address forms (a category key on a band axis,
+      // an ISO day under an explicitly temporal one) and a labelled marker beside
+      // an unlabelled one, so the optionality of `label` is shown rather than
+      // stated. It renders as no system-prompt example block, so the Phase 834
+      // dedup rule does not reach it.
+      "chart-annotation-events",
+      "Two charts on one dashboard, each carrying the moment that explains its shape: quarterly revenue as bars with Q3 marked 'Repricing', and daily sessions as a line over real calendar dates with 14 February marked 'Launch' and 1 March marked with no name at all." ]
 
 let buildFewShotJsonl () =
     fewShot

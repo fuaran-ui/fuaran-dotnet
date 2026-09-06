@@ -193,6 +193,16 @@ let rec private bindingTextWith<'T> (staticText: 'T -> string) (b: Binding<'T>) 
     | Binding.Format(source, _, _) -> "$format(" + bindingTextFloat source + ")"
     | Binding.I18n(key, _) -> "$i18n." + key
     | Binding.Transform(_, pipeline, _) -> "$transform(" + string (List.length pipeline) + " steps)"
+    // Fuaran-UI Phase 1534 — the notation names the SHAPE, not the expression:
+    // its param names are what a reader of an op summary can act on (they are
+    // the reactive edge), where a rendered expression would be unbounded text in
+    // a one-line form. `$expr()` with no params is a constant fold.
+    | Binding.Expr(_, parameters) ->
+        "$expr("
+        + (defaultArg parameters []
+           |> List.map (fun (p: TransformParam) -> p.Name)
+           |> String.concat ", ")
+        + ")"
     | Binding.Invoke(capabilityId, _) -> "$invoke." + capabilityId
 
 and private bindingTextFloat (b: Binding<float>) : string =

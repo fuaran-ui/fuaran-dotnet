@@ -435,7 +435,9 @@ let private textSource =
 /// `Binding<'T>` — the real recursive binding union, now at full case parity with
 /// the hand-written tier (the Phase 692 gap-closure): every case the hand-written
 /// encoder can emit is modelled — `Static` / `Query` / `Filter` / `Selection` /
-/// `State` / `Computed` / `I18n` / `Local` / `Format` / `Transform` / `Invoke`.
+/// `State` / `Computed` / `I18n` / `Local` / `Format` / `Transform` / `Expr` /
+/// `Invoke` (`Expr` is Fuaran-UI Phase 1534's, and has no hand-written twin —
+/// it was minted after the swap).
 ///
 /// **Case-field ORDER matches the hand-written tier's positional order, not the
 /// alphabetical convention** (Phase 692 swap-prep). The order is wire-free — the
@@ -567,6 +569,37 @@ let private binding =
                               Decode =
                                 "(fun __j -> Fuaran.Core.DataFrameCodec.decodeTransform __j |> Result.mapError string)" }
                     ))
+                opt "params" (TList(TRecord "TransformParam")) ]
+            Annotations = Annotations.Empty }
+          // Fuaran-UI Phase 1534 — scalar logic over bound values. `Transform`'s
+          // sibling with the ROW removed: one `ColExpr` evaluated against the
+          // param environment alone, yielding one cell.
+          //
+          // It mints NO operator. `Binary` / `Not` / `Coalesce` / `Case` /
+          // `ApplyFn concat` / `IsNull` / `InList` / `InParam` are already the
+          // pipeline's vocabulary, and `expr` reuses `Fuaran.Core`'s own
+          // encoding of them VERBATIM — so an expression means here exactly what
+          // it means inside a `derive`, and there is one algebra to specify,
+          // certify and teach rather than two that drift apart.
+          //
+          // Two refusals at decode, both because an `Expr` has no row (they are
+          // enforced in the POLICY decoder, where a `$`-rooted path and a code
+          // can be attached to each): a `Col` reference — whose remedy is
+          // `Binding.Transform`, the case that has the frame `Col` reads from —
+          // and a `Param` this binding's own `params` list does not bind. The
+          // second is decidable statically HERE where it is not for `Transform`
+          // (whose unbound filter params are PRUNED, the deliberate "unset chip
+          // ⇒ no constraint" leniency); an `Expr` has no step to prune, so an
+          // unbound param can only ever be an error, and saying so at decode
+          // beats discovering it once per render.
+          { Tag = "Expr"
+            Fields =
+              [ req
+                    "expr"
+                    (THosted
+                        { FSharp = "Fuaran.Core.ColExpr"
+                          Encode = "Fuaran.Core.DataFrameCodec.encodeExpr"
+                          Decode = "(fun __j -> Fuaran.Core.DataFrameCodec.decodeExpr __j |> Result.mapError string)" })
                 opt "params" (TList(TRecord "TransformParam")) ]
             Annotations = Annotations.Empty }
           // Host-registered capability value. Same wire shape as `Action.Invoke`.

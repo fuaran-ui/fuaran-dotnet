@@ -44,6 +44,7 @@
     <Compile Include="I18nTests.fs" />
     <Compile Include="FormatBindingTests.fs" />
     <Compile Include="NowGrainTests.fs" />
+    <Compile Include="ExprBindingTests.fs" />
     <Compile Include="AccessibilityTests.fs" />
     <!-- IdsTests pins Phase 138's deterministic correlation-id swap
          (Ids.deterministicCorrelationId) — same-seed-stable, the unit floor

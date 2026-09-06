@@ -384,6 +384,21 @@ let private bindingDef (self: string) (payload: StaticPayload) (elem: J) : J =
               [ "params", arrayOf (record [ "from"; "name" ] [ "from", binding "json"; "name", str ])
                 "pipeline", arrayOf anyJson
                 "source", object_ ]
+          // Scalar logic over bound values (Fuaran-UI Phase 1534). `expr` is ONE Fuaran.Core
+          // `ColExpr` in Core's own encoding — described structurally as an object, on the same
+          // "don't constrain content the encoder doesn't decompose" posture `pipeline` takes above,
+          // and for a sharper reason too: the case's two refusals (no `col`; every `param` the
+          // expression reads is bound by this binding's own `params`) are not expressible in JSON
+          // Schema — the second is a cross-field constraint over a recursive structure. A schema
+          // that described the shape and said nothing about the rules would read as a complete
+          // account of the case and be a false one, so the rules stay where they can be stated and
+          // enforced: §3.3 of the wire specification, and every host's decoder.
+          // `params` is the SAME shape `Transform` carries, deliberately, and omitted-when-empty.
+          duCase
+              "Expr"
+              [ "expr" ]
+              [ "expr", object_
+                "params", arrayOf (record [ "from"; "name" ] [ "from", binding "json"; "name", str ]) ]
           // Invoke a host-registered compute capability (Phase 283). `capabilityId` references a
           // capability in the host registry; `args` are scalar `(addr, value)` pairs validated
           // host-side against the capability signature. The body is never on the wire.

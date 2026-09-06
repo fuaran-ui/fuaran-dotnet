@@ -1784,6 +1784,12 @@ module Fuaran =
                 // evaluator's `Map<string,obj>` output IS the `Row` shape); it is
                 // 'T-agnostic, so re-wrap unchanged — `toRow` has nothing to do here.
                 | Binding.Transform(source, pipeline, parameters) -> Binding.Transform(source, pipeline, parameters)
+                // Fuaran-UI Phase 1534 — `Binding.Expr` yields ONE CELL, never
+                // rows, so it is as meaningless on a grid's row source as `Now`
+                // is above and is handled the same way: the DU is parameterised
+                // on 'T, so re-wrap unchanged and let resolution surface the
+                // cast loudly rather than silently rendering an empty grid.
+                | Binding.Expr(expr, parameters) -> Binding.Expr(expr, parameters)
                 // `Binding.Invoke` is 'T-agnostic (the resolved value is a host-produced `Deferred`);
                 // re-wrap unchanged.
                 | Binding.Invoke(capabilityId, args) -> Binding.Invoke(capabilityId, args)
