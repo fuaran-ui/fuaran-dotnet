@@ -231,6 +231,26 @@ type ApplyErrorCode =
     /// An inner op of a Batch failed; the batch was reverted to its
     /// pre-batch state. Carries the 0-based index of the failing inner op.
     | BatchAborted of innerIndex: int
+    /// Applying the op would produce a tree breaching a `WireLimits` §21 bound
+    /// — `MaxDepth` or `MaxNodes`.
+    ///
+    /// The decoder bounds what ARRIVES; nothing bounded what an apply produces.
+    /// A tree assembled op by op — a `Progressive` stream of small frames, a
+    /// replay, a driven session — can grow past either bound without any single
+    /// op looking unusual, and the result is a tree this host holds happily and
+    /// NO host can decode, itself included on the next round trip.
+    ///
+    /// Reported HERE rather than later by the pre-emit validator's
+    /// `MaxDepthExceeded`, and that is the point of the case rather than a
+    /// duplication of it: the validator walks a finished tree and names
+    /// whichever node it reached, which is a node that is not at fault and an
+    /// operation long since finished. As an apply outcome the refusal is
+    /// attributed to the op that crossed the line, at the moment it crossed it,
+    /// and it reaches the op-stream and telemetry sinks through the same path
+    /// as every other apply failure (FGP 5). The sibling Go and Rust engines
+    /// emit the same `LimitExceeded` name, so a client recovering from it need
+    /// not know which engine refused.
+    | LimitExceeded
 
 /// AI-recovery hint payload per §4d lines 745–759. Every field is
 /// optional so a renderer can emit only what's populated for a given

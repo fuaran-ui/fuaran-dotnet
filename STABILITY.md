@@ -5419,3 +5419,63 @@ false, and it is the number a consumer reads to decide what adopting it costs.
 So `<Version>` moves `0.76.0` → `0.77.0` in `Directory.Build.props`, and every entry recorded against
 0.76.0 in this document ships on 0.77.0. v0.75.0 remains the newest tag; 0.76.0 was never tagged and
 no public-path consumer pinned it, so nothing is stranded by the move.
+
+---
+
+---
+
+## Recorded change — 0.76.0, `ApplyErrorCode.LimitExceeded` (fuaran#1527)
+
+**A case on a closed union (minor — `FS0025` only), riding the draft slot exactly as 1491/1492 do.**
+`ApplyErrorCode` gains `LimitExceeded`, the apply-time §21 refusal. No record widens, so the
+`FS0764` class the 0.76.0 draft already paid once is not paid again; v0.75.0 remains the newest tag,
+and no released consumer can match on a case that did not exist when it was published.
+
+```fsharp
+// Fuaran.UI.Ops.Abstractions — ApplyErrorCode (case added)
+| LimitExceeded
+```
+
+Two exhaustive matches over the union were extended in the same change-set —
+`ErrorRender.codeToken` and `OpApplyTelemetry.errorCodeName` — and both render the bare token
+`"LimitExceeded"`. A downstream consumer with its own exhaustive match gets `FS0025` and adds one
+arm.
+
+**What it means, and why the case is not redundant with the pre-emit validator.** The decoder bounds
+what ARRIVES; nothing bounded what an apply PRODUCES. A tree assembled op by op — a `Progressive`
+stream of small frames, a replay, a driven session — grows past `WireLimits.MaxDepth` or `MaxNodes`
+without any single op looking unusual, and the result is a tree this host holds happily and no host
+can decode, including this one on the next round trip. `PreEmitValidate` already reports
+`MaxDepthExceeded`, but it walks a FINISHED tree and names whichever node its walk reached — a node
+that is not at fault, in an operation long since concluded. As an apply outcome the refusal is
+attributed to the op that crossed the line, at the moment it crossed it.
+
+**It reaches both sinks by the paths that already existed, which is why no sink contract moved.**
+`OpOutcome.ofApplyResult` maps it through its existing catch-all to `ApplyEngineError`, so the
+telemetry sink and the op-stream persist wrapper both receive it, correlated to the durable
+`OpRecord` by `(StreamId, Sequence)` (FGP 5). `Streaming.applyFold` folds through `Apply.apply`, so
+the `Progressive` path is covered by the same guard rather than by a second one — pinned by a test
+rather than left as an inference.
+
+**Only the three growing ops are checked** — `InsertChild`, `ReplaceRoot`, and a `Batch` containing
+either. The other seven rewrite in place or shrink, so charging them a whole-tree walk would
+establish what their own semantics already guarantee. `MoveNode` is the one worth naming: it
+relocates a subtree and so CAN deepen the tree, but only within a total node count that cannot change
+and to a depth the tree already passed. The check runs on the RESULT, because the op alone determines
+neither figure — the same `InsertChild` is fine under a shallow parent and over the line under a deep
+one — and one walk over `Introspect.descendantNodes` yields both axes. `descendantNodes` rather than
+the structural `getChildren`, deliberately: a node held in a `Switch` case, an `ErrorBoundary` slot
+or a `State` alternative is one the decoder counts, so this bound must count it too.
+
+**A tree that is ALREADY over the limit still accepts a non-growing op.** Refusing one would strand a
+tree the op did not create, with no way back; the ops that can reduce it are exactly the ones left
+unchecked.
+
+**`Fuaran.UI.Ops`, `fuaran-go`'s `ops` and `fuaran-rs`'s `ops` emit the same `LimitExceeded` token**,
+so a client recovering from the refusal need not know which engine refused.
+
+> **Slot note (fuaran#1525).** The entry above was authored against the 0.76.0 draft and the draft
+> has since moved: `<Version>` is `0.77.0`, because fuaran#1525 carries one change of a higher class
+> than a DU widening (`Fuaran.UI.Memo`'s `Derivation<'Msg'>.StructuralKey` becomes `string option`,
+> which requires consumer source edits). Nothing about the change recorded above moved — only the
+> number it ships on. See the version note in the fuaran#1525 entry.
