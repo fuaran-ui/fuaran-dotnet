@@ -589,7 +589,17 @@
          SOURCES for Fable consumers - the delivered content of the package moved,
          and a consumer restoring 0.76.0 gets a browser build that cannot read a
          foreign deflate stream. See STABILITY.md "Recorded fix - 0.76.1". -->
-    <Version>0.76.1</Version>
+
+    <!-- (0.77.0) - `Fuaran.UI.AiTools`'s `PropEntry` gains a `Provenance` field:
+         the text-provenance mark on the agent snapshot. A record widening, so
+         FS0764 for any consumer constructing a `PropEntry` by full literal, which
+         is a MINOR add pre-1.0 on the Phase 180 precedent. It ADVANCES rather
+         than riding 0.76.1 because that draft carries a patch and this is a
+         higher class, and the version is what tells a consumer what adopting it
+         costs. The rendered response is additive: nothing inside `props` moves,
+         and the mark is a sibling block. See STABILITY.md "Recorded change -
+         0.77.0, text provenance on the agent snapshot". -->
+    <Version>0.77.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
