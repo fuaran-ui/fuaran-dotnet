@@ -122,6 +122,36 @@ module DagWire =
         sb.Append '}' |> ignore
         sb.ToString()
 
+    // ── Content identity for the sinks' write path (Phase 1525) ───────────
+
+    /// The CONTENT IDENTITY of a DAG record: the SHA-256 of its canonical wire
+    /// form, with the retention-mutable `Tombstoned` flag normalised to `false`.
+    ///
+    /// This is what a sink's `Add` compares when a record arrives at an address
+    /// it already holds. It has to be a DIGEST of the canonical bytes rather
+    /// than the bytes themselves for one reason: retention drops a record's op
+    /// payload (`Tombstone`), so a sink that kept the bytes in order to compare
+    /// them would either have to retain the payload it was pruning — defeating
+    /// retention — or lose the ability to recognise an identical re-add after a
+    /// compaction. A fixed-size fingerprint survives the pruning that the
+    /// content it summarises does not.
+    ///
+    /// `Tombstoned` is normalised because it is retention STATE, not content: a
+    /// live record and its own tombstone are the same node at the same address,
+    /// and a re-add of the original after a sweep must resolve as the idempotent
+    /// duplicate it is, not as a collision.
+    ///
+    /// Everything else the record carries is inside these bytes — parents, op,
+    /// outcome hash, prompt id, actor, timestamp, result envelope, stream and
+    /// stored address — so two records that fingerprint alike differ in nothing
+    /// a host can observe, and two that differ anywhere at all fingerprint
+    /// apart. That is the property the collision refusal needs and that a
+    /// hand-picked field-by-field comparison cannot promise: the previous check
+    /// compared `Parents` and `OutcomeHash` only, so a record with a DIFFERENT
+    /// OP at the same address was admitted as a duplicate and silently dropped.
+    let contentFingerprint<'Msg> (record: DagOpRecord<'Msg>) : string =
+        HashChain.sha256Hex (encodeRecord { record with Tombstoned = false })
+
     // ── Decode ────────────────────────────────────────────────────────────
     //
     // A focused scanner over the canonical envelope. It walks only TOP-LEVEL
@@ -257,16 +287,38 @@ module DagWire =
 
             List.ofSeq result
 
-    let private parseEnvelope (raw: string) : OpResultEnvelope =
-        if raw.Contains "\"Success\"" then
-            OpResultEnvelope.Success
+    /// Decode a `resultEnvelope` value BY FIELD (Phase 1525).
+    ///
+    /// It used to decide the case by asking whether the raw text CONTAINED the
+    /// substring `"Success"` — a property of the whole envelope rather than of
+    /// its discriminator, so
+    /// `{"$type":"Failure","code":"E","message":"the \"Success\" branch was not
+    /// taken"}` decoded as a SUCCESS. A failure that merely mentions the word is
+    /// not an exotic payload: an apply error's message routinely quotes the op,
+    /// the field or the variant it refused. The discriminator is now read from
+    /// the `$type` member alone, through the same top-level scanner the record
+    /// envelope uses, so a nested value can never be mistaken for it.
+    ///
+    /// An unrecognised `$type` — or a value that is not an object at all — is a
+    /// typed `Error` rather than a silent coercion to `Success`. That is the
+    /// whole reason the defect was worth fixing: the wrong answer here is
+    /// indistinguishable from the right one everywhere downstream.
+    let private parseEnvelope (raw: string) : Result<OpResultEnvelope, string> =
+        let trimmed = raw.Trim()
+
+        if trimmed.Length = 0 || trimmed[0] <> '{' then
+            Error(sprintf "'resultEnvelope' is not an object: %s" trimmed)
         else
-            let f = topLevelFields raw
+            let f = topLevelFields trimmed
 
             let get k =
                 f |> Map.tryFind k |> Option.map unquote |> Option.defaultValue ""
 
-            OpResultEnvelope.Failure(get "code", get "message")
+            match f |> Map.tryFind "$type" |> Option.map unquote with
+            | Some "Success" -> Ok OpResultEnvelope.Success
+            | Some "Failure" -> Ok(OpResultEnvelope.Failure(get "code", get "message"))
+            | Some other -> Error(sprintf "'resultEnvelope' has an unrecognised $type '%s'" other)
+            | None -> Error(sprintf "'resultEnvelope' carries no '$type' discriminator: %s" trimmed)
 
     /// Decode a canonical DAG-record envelope. `decodeOp` is the host's op
     /// decoder for the nested `op` object (the `'Msg` shape is host-owned).
@@ -290,28 +342,36 @@ module DagWire =
                     )
                 | _, Error e -> Error(sprintf "DagWire.decodeRecord: op decode failed: %s" e)
                 | Some actor, Ok op ->
-                    let envelope =
-                        f
-                        |> Map.tryFind "resultEnvelope"
-                        |> Option.map parseEnvelope
-                        |> Option.defaultValue OpResultEnvelope.Success
+                    // An ABSENT `resultEnvelope` still defaults to `Success` — the
+                    // member is optional in the sense that a hand-written envelope
+                    // may omit it, and "not stated" has always meant success here.
+                    // A PRESENT but unrecognised one is refused: that is a shape
+                    // the writer meant something by, and guessing at it is exactly
+                    // the substring-sniffing this replaced.
+                    let envelopeResult =
+                        match Map.tryFind "resultEnvelope" f with
+                        | None -> Ok OpResultEnvelope.Success
+                        | Some raw -> parseEnvelope raw
 
-                    Ok
-                        { StreamId = unquote streamRaw
-                          Hash = unquote hashRaw
-                          Parents = parseStringArray parentsRaw
-                          Op = op
-                          OutcomeHash = f |> Map.tryFind "outcomeHash" |> Option.map unquote
-                          PromptId = f |> Map.tryFind "promptId" |> Option.map unquote
-                          Actor = actor
-                          // `int64 (s: string)` is FSharp.Core's invariant-culture
-                          // parse and is Fable-supported; the explicit
-                          // `Int64.Parse(s, provider)` overload is not (Fable
-                          // errors "provider argument is ignored"), and this file
-                          // ships in the Fable-packed abstractions.
-                          Timestamp = System.DateTimeOffset.FromUnixTimeSeconds(int64 tsRaw)
-                          ResultEnvelope = envelope
-                          Tombstoned = (f |> Map.tryFind "tombstoned") = Some "true" }
+                    match envelopeResult with
+                    | Error e -> Error("DagWire.decodeRecord: " + e)
+                    | Ok envelope ->
+                        Ok
+                            { StreamId = unquote streamRaw
+                              Hash = unquote hashRaw
+                              Parents = parseStringArray parentsRaw
+                              Op = op
+                              OutcomeHash = f |> Map.tryFind "outcomeHash" |> Option.map unquote
+                              PromptId = f |> Map.tryFind "promptId" |> Option.map unquote
+                              Actor = actor
+                              // `int64 (s: string)` is FSharp.Core's invariant-culture
+                              // parse and is Fable-supported; the explicit
+                              // `Int64.Parse(s, provider)` overload is not (Fable
+                              // errors "provider argument is ignored"), and this file
+                              // ships in the Fable-packed abstractions.
+                              Timestamp = System.DateTimeOffset.FromUnixTimeSeconds(int64 tsRaw)
+                              ResultEnvelope = envelope
+                              Tombstoned = (f |> Map.tryFind "tombstoned") = Some "true" }
             | _ when (Map.containsKey "userId" f) && not (Map.containsKey "actor" f) ->
                 // A pre-1144 envelope. Refused BY NAME rather than lifted: the actor
                 // is inside the content address, so a lifted record would carry a

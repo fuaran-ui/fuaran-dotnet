@@ -144,29 +144,62 @@ let tests =
               Expect.equal records.Length 1 "the guest branch reads back without being called corrupt"
           }
 
-          test "a GENUINELY dangling parent is still refused" {
-              // The counterpart to the test above: store-wide resolution must not
-              // become "resolve against nothing". A parent that exists in NO
-              // stream is a truncated store and is reported.
-              let sink = InMemoryDagSink.create<TestMsg> ()
+          // ── The read-path dangling-parent leg, AFTER Phase 1525 ──────────
+          //
+          // This test used to build the dangling edge by `Add`ing a record whose
+          // parent was in no stream, then asserting the READ refused it. Phase
+          // 1525 requires parent presence at the write choke point, so that
+          // record can no longer get in — the write path refuses it first, which
+          // `WriteIntegrityTests` proves on both sinks.
+          //
+          // The read-path check is NOT redundant and is not dropped here. It
+          // catches the case the write path structurally cannot see: a store that
+          // LOST a record after the link to it was made. That is reproduced the
+          // only way it actually happens — out of band, against the file — so the
+          // proof is now Sqlite-side. The in-memory sink has no out-of-band
+          // mutation path, so after 1525 it has no way to reach this state
+          // through its own API at all; that is a real gap in coverage on that
+          // sink and is stated rather than faked by relaxing the write check.
+          test "a store that LOST a parent row is refused on read (truncation, out of band)" {
+              let path = freshDbPath ()
 
-              let orphan =
-                  DagOpRecord.create
-                      "s"
-                      [ String.replicate 64 "c" ]
-                      removeRight
-                      None
-                      (Actor.Human "tester")
-                      (ts 1L)
-                      OpResultEnvelope.Success
+              try
+                  let sink =
+                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) dagTestCodec
 
-              add sink orphan
+                  let g = stepRecord "s" None brand 1L
+                  let child = stepRecord "s" (Some g) removeRight 2L
+                  add sink g
+                  add sink child
 
-              let message =
-                  refusalMessage "InMemoryDagSink.Records" (fun () ->
-                      sink.Records "s" |> Async.RunSynchronously |> ignore)
+                  Expect.equal
+                      (sink.Records "s" |> Async.RunSynchronously).Length
+                      2
+                      "the store verifies clean before truncation"
 
-              Expect.stringContains message "not in the store" "names the dangling parent"
+                  // Delete the parent ROW, leaving the child's link to it — a
+                  // truncated store, exactly what the read-path leg exists for.
+                  do
+                      use conn = new SqliteConnection(sprintf "Data Source=%s" path)
+                      conn.Open()
+                      use cmd = conn.CreateCommand()
+                      cmd.CommandText <- "DELETE FROM dag_op_record WHERE hash = @h;"
+                      cmd.Parameters.AddWithValue("@h", g.Hash) |> ignore
+
+                      if cmd.ExecuteNonQuery() <> 1 then
+                          failtest "expected to delete exactly the parent row"
+
+                  let reopened =
+                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) dagTestCodec
+
+                  let message =
+                      refusalMessage "SqliteDagSink.Records" (fun () ->
+                          reopened.Records "s" |> Async.RunSynchronously |> ignore)
+
+                  Expect.stringContains message "not in the store" "names the dangling parent"
+                  Expect.stringContains message g.Hash "names the parent that went missing"
+              finally
+                  cleanup path
           }
 
           test "LoadVerification.Off hands the corrupt record back — the opt-out is real, and named" {

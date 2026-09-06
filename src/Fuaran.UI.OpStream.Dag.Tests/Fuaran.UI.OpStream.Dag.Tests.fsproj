@@ -27,6 +27,10 @@
     <!-- Phase 793: DagVerify wired at the sinks' read paths. Go-red proofs —
          each corrupts a real record, the Sqlite ones by UPDATEing the file. -->
     <Compile Include="DagVerifyOnReadTests.fs" />
+    <!-- Phase 1525: verify on WRITE — parent presence, collision-vs-duplicate,
+         idempotence across a retention sweep, and the IMMEDIATE-transaction
+         go-red probe. -->
+    <Compile Include="WriteIntegrityTests.fs" />
     <!-- Phase 1476: the Core conformance kit's multi-writer law families over
          this tier's own witnesses, footprint projection and DAG ports. -->
     <Compile Include="CoreLawSupport.fs" />
