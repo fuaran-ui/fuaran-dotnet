@@ -5888,7 +5888,9 @@ let formLocalText: Node<obj> =
             (fun (s: string) -> s),
             Binding.State("salary", Some ""),
             Some(fun _ -> box (Action.Chain []: Action<obj>)),
-            (fun (raw: string) -> Ok raw)
+            (fun (raw: string) -> Ok raw),
+            None,
+            None
         )
 
     let textField: FormField<obj> =
@@ -5916,7 +5918,9 @@ let formLocalDebounce: Node<obj> =
             id,
             Binding.Static(Some "draft@example.com"),
             Some(fun _ -> box (Action.Chain []: Action<obj>)),
-            (fun raw -> Ok raw)
+            (fun raw -> Ok raw),
+            None,
+            None
         )
 
     let textField: FormField<obj> =

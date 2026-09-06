@@ -3293,8 +3293,22 @@ and private bindingGeneric<'T>
 
                         Binding.State(key, defaultV))
             | Ok "Computed" ->
-                // Encoder writes the fn as `<closure>`; decode to a placeholder.
-                Ok(Binding.Computed(fun _ -> placeholder))
+                // The encoder writes the fn as `<closure>`, and there is nothing
+                // else in the case — so a decoded `Computed` cannot compute.
+                //
+                // Fuaran-UI Phase 1538 — it used to decode to `placeholder`, the
+                // slot's zero: a decoded `Computed` in a text slot rendered `""`,
+                // in a numeric slot `0`, in a boolean slot `false`, and no host
+                // said anything. That is the worst available answer, because it
+                // is indistinguishable at the slot from a computation that ran
+                // and produced that value. The stand-in now RAISES, the resolver
+                // catches it into an `Errored` naming the cases that do cross,
+                // and the reader sees the slot's error surface instead of a
+                // plausible wrong number. The decode itself still SUCCEEDS: the
+                // document is well-formed, and refusing the whole tree for a
+                // binding nothing may ever read would be a different and larger
+                // claim than the evidence supports.
+                Ok(Binding.Computed Fuaran.UI.HostPrelude.decodedComputed)
             | Ok "Now" ->
                 // Phase 765 — the host-furnished current instant. The VALUE is
                 // supplied by the runtime at resolve time (the `Query`
@@ -3330,46 +3344,168 @@ and private bindingGeneric<'T>
                             | Error e -> Error e
                             | Ok argsMap -> Ok(Binding.I18n(key, Some argsMap))
             | Ok "Local" ->
-                // Local-binding decode. `initialFrom` recurses
-                // through the same `bindingGeneric` machinery; `flushOn`
-                // decodes the trigger DU; `format` / `parse` are name
-                // references resolved against a host-provided registry
-                // (consumer-side, not visible to the decoder), so the
-                // decoded `Format` is `None` and `Parse` returns a
-                // sentinel-error placeholder. `OnCommit` was rendered as
-                // the `<closure>` sentinel on encode and decodes to a
-                // closure that always returns the placeholder obj.
-                // Authors re-attach typed Format/Parse/OnCommit downstream
-                // via their `moduleMsgDecoder` per the storage-
-                // shape erasure.
-                match requireField path fields "initialFrom" "Local InitialFrom Binding<'T>" with
-                | Error e -> Error e
-                | Ok ifJ ->
-                    match bindingGeneric<'T> (path + ".initialFrom") parseStatic placeholder ifJ with
-                    | Error e -> Error e
-                    | Ok initialFrom ->
-                        let flushR =
-                            match tryField fields "flushOn" with
-                            | None -> Ok LocalFlushTrigger.OnBlur
-                            | Some fJ -> decodeLocalFlushTrigger (path + ".flushOn") fJ
+                // Local-binding decode. `initialFrom` recurses through the same
+                // `bindingGeneric` machinery; `flushOn` decodes the trigger DU.
+                //
+                // Fuaran-UI Phase 1538 — the three closure slots stop being holes.
+                //
+                // Before: `format` decoded to `string<'T>`, `parse` to a function
+                // that ALWAYS returned `Error "<closure>"`, and `onCommit` to a
+                // closure returning the sentinel object — so a wire-authored
+                // debounced input could not round-trip a single value. The fixture
+                // said so verbatim: three `"<closure>"` sentinels beside a `flushOn`
+                // and an `initialFrom` that survived perfectly.
+                //
+                // After, in three parts:
+                //
+                //  1. `format` / `parse` restore to the IDENTITY. `parse` reads the
+                //     reader's text back through `parseStatic` — the slot's OWN
+                //     decoder, which this function already carries — so a text slot
+                //     takes the string verbatim and a numeric slot takes the number
+                //     the text denotes, with no host-side type dispatch to diverge
+                //     on. The identity is what a controlled input does when nobody
+                //     asked for anything else; the old placeholder was not a
+                //     conservative default, it was a broken one.
+                //  2. `codec`, when declared, REPLACES both. This is the
+                //     context-dependent restoration the structural decoder
+                //     deliberately does not attempt (the `Selection.field`
+                //     precedent) — it needs the whole field set in view and a
+                //     `$`-rooted path to refuse on.
+                //  3. `commitTo` is the State-key alternative to the `onCommit`
+                //     closure. Declaring both is refused rather than resolved by a
+                //     precedence rule: the wire cannot carry the closure, so a host
+                //     that honoured `onCommit` and a host that honoured `commitTo`
+                //     would write to different places from identical bytes.
+                let codecR =
+                    match tryField fields "codec" with
+                    | None -> Ok None
+                    | Some cJ ->
+                        decodeFormat (path + ".codec") cJ
+                        |> Result.bind (fun fmt ->
+                            match fmt with
+                            // The admitted set is the cases with a TOTAL,
+                            // LOCALE-INDEPENDENT inverse, and today that is
+                            // `Number` alone.
+                            //
+                            // `Binding.Format` carries a `LocaleSource` because it
+                            // renders for reading; a `Local` codec carries none,
+                            // because whatever it renders it must also parse back —
+                            // and a buffer that writes `1,234.5` where the reader
+                            // types `1.234,5` is the round-trip hole this codec
+                            // exists to close. So `Currency` (a locale-chosen
+                            // symbol), `Date` (whose four `DateStyle` cases are all
+                            // locale renditions), `RelativeTime`, `Since` and
+                            // `Duration` (whose text is a phrase, not a number) have
+                            // no inverse to be had.
+                            //
+                            // `Percent` is refused for a different and narrower
+                            // reason, and it is worth stating because the phase text
+                            // expected it: its inverse needs a ×100 / ÷100 scale
+                            // whose IEEE round-trip is not exact (0.42 × 100 is
+                            // 42.000000000000004), so specifying it would mean
+                            // specifying a rounding to the bit across every host —
+                            // a spec liability bought for one formatting convenience.
+                            | Format.Number _ -> Ok(Some fmt)
+                            | _ ->
+                                err
+                                    DecodeErrorCode.WRONG_TYPE
+                                    (path + ".codec")
+                                    "Binding.Local 'codec' must be a Format case with a total, locale-independent inverse — only 'Number' has one"
+                                    (Some
+                                        "use {\"$type\":\"Number\",\"decimals\":2}, or drop 'codec' and let the buffer use the identity; a locale-rendered format (Currency / Date / RelativeTime / Since / Duration) cannot be parsed back from what the reader typed"))
 
-                        match flushR with
+                match codecR with
+                | Error e -> Error e
+                | Ok codec ->
+                    let onCommitPresent = (tryField fields "onCommit").IsSome
+                    let commitToJ = tryField fields "commitTo"
+
+                    let commitToR =
+                        match onCommitPresent, commitToJ with
+                        | true, Some _ ->
+                            err
+                                DecodeErrorCode.WRONG_TYPE
+                                (path + ".commitTo")
+                                "Binding.Local carries both 'onCommit' and 'commitTo' — exactly one commit destination is allowed"
+                                (Some
+                                    "either 'onCommit' (a host closure, which crosses the wire only as the \"<closure>\" sentinel) or 'commitTo' (the State key the flush writes); a decoding host can honour only the second, so keeping both makes the same document commit to two different places depending on who read it")
+                        | _, None -> Ok None
+                        | false, Some cJ -> requireString (path + ".commitTo") cJ |> Result.map Some
+
+                    match commitToR with
+                    | Error e -> Error e
+                    | Ok commitTo ->
+                        match requireField path fields "initialFrom" "Local InitialFrom Binding<'T>" with
                         | Error e -> Error e
-                        | Ok flushOn ->
-                            // Positional since the swap (flushOn, format, initialFrom,
-                            // onCommit, parse). The decoded stand-ins are unchanged in
-                            // meaning: `format` is the renderer's old `None`-default
-                            // (`string<'T>`) baked into the required slot, `onCommit` /
-                            // `parse` the sentinel placeholders a host re-attaches over.
-                            Ok(
-                                Binding.Local(
-                                    flushOn,
-                                    (fun (v: 'T) -> string (box v)),
-                                    initialFrom,
-                                    Some(fun _ -> box closureSentinel),
-                                    (fun _ -> Error closureSentinel)
-                                )
-                            )
+                        | Ok ifJ ->
+                            match bindingGeneric<'T> (path + ".initialFrom") parseStatic placeholder ifJ with
+                            | Error e -> Error e
+                            | Ok initialFrom ->
+                                let flushR =
+                                    match tryField fields "flushOn" with
+                                    | None -> Ok LocalFlushTrigger.OnBlur
+                                    | Some fJ -> decodeLocalFlushTrigger (path + ".flushOn") fJ
+
+                                match flushR with
+                                | Error e -> Error e
+                                | Ok flushOn ->
+                                    // The text a piece of buffer content denotes, in
+                                    // the decoder's own `Json` DU. The grammar itself
+                                    // is `HostPrelude`'s, so the identity parse and
+                                    // the codec parse cannot drift apart, and neither
+                                    // can this host and the others.
+                                    let jsonScalarOfText (s: string) : Json option =
+                                        match s with
+                                        | "true" -> Some(JBool true)
+                                        | "false" -> Some(JBool false)
+                                        | _ -> Fuaran.UI.HostPrelude.LocalCodec.tryNumberText s |> Option.map JNumber
+
+                                    let refusalOf (s: string) =
+                                        sprintf "Binding.Local: '%s' is not a value this field accepts" s
+
+                                    let identityParse (s: string) : Result<'T, string> =
+                                        match parseStatic (path + ".parse") (JString s) with
+                                        | Ok v -> Ok v
+                                        | Error _ ->
+                                            match jsonScalarOfText s with
+                                            | Some j ->
+                                                parseStatic (path + ".parse") j
+                                                |> Result.mapError (fun _ -> refusalOf s)
+                                            | None -> Error(refusalOf s)
+
+                                    let format, parse =
+                                        match codec with
+                                        | Some(Format.Number decimals) ->
+                                            (fun (v: 'T) ->
+                                                Fuaran.UI.HostPrelude.LocalCodec.numberText decimals (box v)),
+                                            (fun (s: string) ->
+                                                match Fuaran.UI.HostPrelude.LocalCodec.tryNumberText s with
+                                                | Some f ->
+                                                    parseStatic (path + ".parse") (JNumber f)
+                                                    |> Result.mapError (fun _ -> refusalOf s)
+                                                | None -> Error(refusalOf s))
+                                        | _ ->
+                                            (fun (v: 'T) -> Fuaran.UI.HostPrelude.LocalCodec.identityFormat (box v)),
+                                            identityParse
+
+                                    Ok(
+                                        Binding.Local(
+                                            flushOn,
+                                            format,
+                                            initialFrom,
+                                            // Presence, not a constant: the slot used
+                                            // to be `Some` unconditionally, which
+                                            // re-encoded an `onCommit` a document had
+                                            // never written.
+                                            (if onCommitPresent then
+                                                 Some(fun _ -> box closureSentinel)
+                                             else
+                                                 None),
+                                            parse,
+                                            codec,
+                                            commitTo
+                                        )
+                                    )
             | Ok "Format" ->
                 // Locale-aware formatted binding (Phase 102). `source`
                 // is always a `Binding<float>` regardless of the slot's `'T`;

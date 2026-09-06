@@ -340,3 +340,208 @@ module RowProjection =
         | CellValue.Bool b -> (if b then "true" else "false")
         | CellValue.Date d -> d.ToString("o")
         | CellValue.Empty -> ""
+
+/// The wire-survivability failure a DECODED host-only projection raises when a
+/// reader tries to run it. It exists because the alternative — returning a
+/// default — is indistinguishable from a real answer at the slot: a decoded
+/// `Binding.Computed` used to hand back `0` / `""` / `false` and render it as
+/// though the computation had run. Raised by the decoded stand-in, caught by the
+/// binding resolver, and surfaced as the slot's error rendition with the remedy
+/// named. `WireSurvivability.fs` is the build-time table of the same fact; this
+/// is its runtime twin.
+exception WireSurvivabilityError of string
+
+/// The one message a decoded `Binding.Computed` carries. A constant rather than
+/// a `sprintf` at each site so the resolver can recognise it, the corpus can pin
+/// it, and every host can render the same sentence.
+let decodedComputedMessage =
+    "Binding.Computed has no wire projection (decoded from a '<closure>' sentinel) — use Binding.Expr / Transform / State"
+
+/// The decoded stand-in for `Binding.Computed.fn`. Typed at the slot's own `'T`
+/// so it drops into the generated arm unchanged, and total in the only sense
+/// available to it: it never returns.
+let decodedComputed<'T> (_: obj) : 'T =
+    raise (WireSurvivabilityError decodedComputedMessage)
+
+/// The locale-free edit-buffer codec a `Binding.Local` uses to move a value
+/// between its typed slot and the text a reader edits.
+///
+/// **It is not a display formatter, and the distinction is the whole design.**
+/// `Binding.Format` carries a `LocaleSource` because it renders for READING —
+/// grouping separators, a locale decimal mark, a currency symbol. A `Local`
+/// codec carries none, because whatever it renders it must also PARSE BACK: a
+/// buffer that writes `1,234.5` and is handed `1.234,5` by a reader in another
+/// locale is exactly the round-trip hole this codec exists to close. So the
+/// admitted set is the cases with a total, locale-independent inverse, and every
+/// other `Format` case is a decode refusal rather than a silently one-way codec.
+[<RequireQualifiedAccess>]
+module LocalCodec =
+
+    /// The identity text rendition of a boxed buffered value. `string` is
+    /// deliberately not used for the numeric and boolean cases: .NET spells
+    /// `true` as `True` and `1e21` as `1E+21` where JavaScript spells them
+    /// `true` and `1e+21`, and the hosts have to agree. `Canon.render` is the
+    /// renderer the corpus bytes already go through, so a number reads here
+    /// exactly as it reads on the wire.
+    /// The parameter is `objnull` rather than `obj` because every caller reaches
+    /// it through `box`, and a boxed value of a nullable slot type IS null when
+    /// the slot is empty — an empty text buffer is the ordinary case, not a
+    /// defect, so refusing it at the type level would only push the check to
+    /// each call site.
+    let identityFormat (v: objnull) : string =
+        match v with
+        | null -> ""
+        | :? string as s -> s
+        | :? bool as b -> (if b then "true" else "false")
+        | :? float as f ->
+            // §7's three quoted sentinels have no number spelling; the
+            // buffer shows the sentinel rather than a host-chosen word.
+            if System.Double.IsNaN f then "NaN"
+            elif System.Double.IsPositiveInfinity f then "Infinity"
+            elif System.Double.IsNegativeInfinity f then "-Infinity"
+            else Canon.render (JFloat f)
+        | :? int as i -> Canon.render (JInt i)
+        | :? int64 as i -> Canon.render (JInt(int i))
+        | other -> string other
+
+    /// The JSON number grammar, and nothing wider. Surrounding ASCII whitespace
+    /// is trimmed first — a reader's trailing space is not a type error — but a
+    /// leading `+`, a bare `.5`, a hex literal and a thousands separator are all
+    /// refused, because a grammar each host guesses at is a grammar each host
+    /// guesses at differently.
+    let tryNumberText (text: string) : float option =
+        let s = text.Trim([| ' '; '\t'; '\n'; '\r' |])
+        let isDigit (c: char) = c >= '0' && c <= '9'
+
+        let rec digits (i: int) (seen: bool) =
+            if i < s.Length && isDigit s[i] then
+                digits (i + 1) true
+            else
+                (i, seen)
+
+        let ok =
+            if s.Length = 0 then
+                false
+            else
+                let i0 = if s[0] = '-' then 1 else 0
+                let i1, anyInt = digits i0 false
+
+                if not anyInt then
+                    false
+                else
+                    // A leading zero may only be the whole integer part.
+                    let leadingZeroOk = not (s[i0] = '0' && i1 - i0 > 1)
+
+                    let i2, fracOk =
+                        if i1 < s.Length && s[i1] = '.' then
+                            digits (i1 + 1) false
+                        else
+                            i1, true
+
+                    let i3, expOk =
+                        if i2 < s.Length && (s[i2] = 'e' || s[i2] = 'E') then
+                            let k =
+                                if i2 + 1 < s.Length && (s[i2 + 1] = '+' || s[i2 + 1] = '-') then
+                                    i2 + 2
+                                else
+                                    i2 + 1
+
+                            digits k false
+                        else
+                            i2, true
+
+                    leadingZeroOk && fracOk && expOk && i3 = s.Length
+
+        if not ok then
+            None
+        else
+            match
+                System.Double.TryParse(
+                    s,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture
+                )
+            with
+            | true, v -> Some v
+            | _ -> None
+
+    /// The scalar a piece of buffer text denotes, when it denotes one. `true` /
+    /// `false` and the JSON number grammar only — an empty string is NOT `null`
+    /// here, because a cleared text field is an empty string and reading it as
+    /// "no value" would make the buffer lie about what the reader did.
+    let scalarOfText (text: string) : JVal option =
+        match text with
+        | "true" -> Some(JBool true)
+        | "false" -> Some(JBool false)
+        | _ -> tryNumberText text |> Option.map JFloat
+
+    /// The identity `parse`: the text the reader typed, read back at the slot's
+    /// own `'T` through the slot's OWN decoder. Type-directed with no reflection
+    /// — `decT` is the function the surrounding decode already carries, so a
+    /// text slot accepts the string verbatim and a numeric slot accepts the
+    /// number the text denotes, with no host-side type dispatch to diverge on.
+    let identityParse (decT: JVal -> Result<'T, string>) (text: string) : Result<'T, string> =
+        match decT (JStr text) with
+        | Ok v -> Ok v
+        | Error _ ->
+            let refusal = sprintf "Binding.Local: '%s' is not a value this field accepts" text
+
+            match scalarOfText text with
+            | Some j -> decT j |> Result.mapError (fun _ -> refusal)
+            | None -> Error refusal
+
+    /// Fixed-point text: sign, integer part, and EXACTLY `decimals` fraction
+    /// digits, `.` as the point, no grouping. Rounding is half-away-from-zero,
+    /// spelled as `floor (x + 0.5)` on the absolute value rather than as
+    /// `Math.Round(_, MidpointRounding)` — the overload is not available on
+    /// every host, and a rounding mode each host picks a default for is a
+    /// divergence waiting to be found by a fixture.
+    let fixedText (decimals: int) (v: float) : string =
+        if System.Double.IsNaN v || System.Double.IsInfinity v then
+            identityFormat (box v)
+        else
+            let d = if decimals < 0 then 0 else decimals
+            let neg = v < 0.0
+            let scale = pown 10.0 d
+            let scaled = floor (abs v * scale + 0.5)
+            let whole = Canon.render (JFloat scaled)
+
+            let body =
+                if d = 0 then
+                    whole
+                else
+                    let padded =
+                        if whole.Length <= d then
+                            String.replicate (d + 1 - whole.Length) "0" + whole
+                        else
+                            whole
+
+                    padded.Substring(0, padded.Length - d)
+                    + "."
+                    + padded.Substring(padded.Length - d)
+
+            // `-0` is not a number a reader typed; a negative that rounds to
+            // zero shows as zero.
+            if neg && scaled <> 0.0 then "-" + body else body
+
+    /// The float a boxed buffered value holds, when it holds one.
+    let tryFloat (v: objnull) : float option =
+        match v with
+        | null -> None
+        | :? float as f -> Some f
+        | :? int as i -> Some(float i)
+        | :? int64 as i -> Some(float i)
+        | _ -> None
+
+    /// The `Format.Number` codec's rendition: fixed-point at the declared
+    /// decimals, or the identity when the codec declares none.
+    ///
+    /// A NON-numeric buffered value falls back to the identity text rather than
+    /// failing. The codec is a declaration about presentation, and a value of
+    /// the wrong shape underneath it is the slot's problem, reported by the
+    /// slot — a format function that threw here would take out the render of a
+    /// tree whose only defect is a mistyped binding.
+    let numberText (decimals: int option) (v: objnull) : string =
+        match decimals, tryFloat v with
+        | Some d, Some f -> fixedText d f
+        | _ -> identityFormat v

@@ -512,17 +512,70 @@ let private binding =
           { Tag = "Computed"
             // `BindingContext -> 'T`. `BindingContext` is a HOST type (it carries a
             // `TryGetState<'T>` member), so the argument erases to `obj` here.
-            Fields = [ req "fn" (projOf "obj" "'T" "(ctx: unknown) => T" "(fun _ -> Unchecked.defaultof<'T>)") ]
+            //
+            // Fuaran-UI Phase 1538 — the decoded stand-in RAISES. It used to be
+            // `(fun _ -> Unchecked.defaultof<'T>)`, which meant a decoded
+            // `Computed` handed the resolver `0` / `""` / `false` and the slot
+            // rendered it as though the computation had run: a wrong answer
+            // indistinguishable from a right one, with no warning anywhere. The
+            // case has no wire projection and never will (the `fn` is the whole
+            // payload and it encodes as `"<closure>"`), so the honest decoded
+            // behaviour is to fail loudly at the point of use and name the cases
+            // that DO cross — which is what `HostPrelude.decodedComputed` does.
+            Fields = [ req "fn" (projOf "obj" "'T" "(ctx: unknown) => T" "Fuaran.UI.HostPrelude.decodedComputed") ]
             Annotations = Annotations.Empty }
           // A controlled-input local buffer. `initialFrom` recurses at the same
           // `'T`; `format` / `onCommit` / `parse` are closures; `flushOn` is a DU.
+          //
+          // Fuaran-UI Phase 1538 — the three closure slots gained wire-representable
+          // DEFAULTS and ALTERNATIVES, so a wire-authored buffer round-trips a value
+          // instead of emptying the field:
+          //
+          //  * `format` / `parse` restore to the IDENTITY rather than to
+          //    `(fun _ -> "")` / `(fun _ -> Error "<closure>")`. The parse
+          //    placeholder is written against `decT`, the decoder the surrounding
+          //    `decBinding<'T>` already carries — type-directed with no reflection,
+          //    so a text slot takes the string verbatim and a numeric slot takes the
+          //    number the text denotes. It is the only placeholder that reads a
+          //    generated local, and it is spelled that way deliberately: the
+          //    alternative is a runtime type dispatch each host would get subtly
+          //    different.
+          //  * `codec` is the declarative twin the spec named — a locale-free
+          //    edit-buffer codec. The STRUCTURAL decoder here only carries it into
+          //    the case; synthesising `format` / `parse` FROM it is the hand-written
+          //    POLICY decoder's job, exactly as `Selection.field` is (a
+          //    context-dependent restoration the structural placeholder deliberately
+          //    does not attempt).
+          //  * `commitTo` is the State-key sibling of the `onCommit` closure — the
+          //    Phase 818 `valueFrom` shape. The policy decoder enforces the sentinel
+          //    XOR `commitTo`; a document that declares both has said the same thing
+          //    two ways and only one of them can be honoured.
+          //
+          // Both new fields are appended rather than sorted into place: the wire
+          // order is `Canon.typed`'s Ordinal sort and is unaffected either way, so
+          // appending is the change that leaves every existing positional
+          // construction and pattern in the estate arity-broken but position-stable.
           { Tag = "Local"
             Fields =
               [ req "flushOn" (TUnion("LocalFlushTrigger", []))
-                req "format" (projOf "'T" "string" "(v: T) => string" "(fun _ -> \"\")")
+                req
+                    "format"
+                    (projOf
+                        "'T"
+                        "string"
+                        "(v: T) => string"
+                        "(fun (v: 'T) -> Fuaran.UI.HostPrelude.LocalCodec.identityFormat (box v))")
                 req "initialFrom" (TUnion("Binding", [ TVar "T" ]))
                 opt "onCommit" (projOf "'T" "obj" "(v: T) => unknown" "(fun _ -> (\"<closure>\" :> obj))")
-                req "parse" (projOf "string" "Result<'T, string>" "(s: string) => T" "(fun _ -> Error \"<closure>\")") ]
+                req
+                    "parse"
+                    (projOf
+                        "string"
+                        "Result<'T, string>"
+                        "(s: string) => T"
+                        "(Fuaran.UI.HostPrelude.LocalCodec.identityParse decT)")
+                opt "codec" (TUnion("Format", []))
+                opt "commitTo" TStr ]
             Annotations = Annotations.Empty }
           // Locale-aware formatted string. `source` is ALWAYS `Binding<float>`
           // (independent of `'T`); `format` / `locale` are bounded DUs.

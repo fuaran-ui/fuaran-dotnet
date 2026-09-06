@@ -268,7 +268,7 @@ let rec tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>)
             "Now bindings resolve against the host-furnished instant (BindingSources.Now), which is renderer-side."
             (Some "Introspect the rendered value instead, or supply the instant to the renderer and read it there.")
 
-    | Binding.Local(_, _, initialFrom, _, _) ->
+    | Binding.Local(_, _, initialFrom, _, _, _, _) ->
         // Local binding's read side is its initialFrom source.
         // Recurse the resolution so the orchestrator sees the underlying
         // value; the buffer-overlay state is renderer-only and not part

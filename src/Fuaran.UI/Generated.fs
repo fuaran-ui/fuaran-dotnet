@@ -458,7 +458,7 @@ and [<RequireQualifiedAccess>] Binding<'T> =
     | State of key: string * defaultValue: 'T option
     | Now of accessor: (obj -> 'T) * grain: TimeGrain option
     | Computed of fn: (obj -> 'T)
-    | Local of flushOn: LocalFlushTrigger * format: ('T -> string) * initialFrom: Binding<'T> * onCommit: ('T -> obj) option * parse: (string -> Result<'T, string>)
+    | Local of flushOn: LocalFlushTrigger * format: ('T -> string) * initialFrom: Binding<'T> * onCommit: ('T -> obj) option * parse: (string -> Result<'T, string>) * codec: Format option * commitTo: string option
     | Format of source: Binding<float> * format: Format * locale: LocaleSource
     | I18n of key: string * args: Map<string, Binding<JVal>> option
     // Phase 818 — the source slot widened from `Fuaran.Core.DataSource` to the
@@ -1937,7 +1937,7 @@ and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     | Binding.State (key, defaultValue) -> Canon.typed "State" ([ Some("key", JStr key); (defaultValue |> Option.map (fun v -> "defaultValue", encT v)) ] |> List.choose id)
     | Binding.Now (accessor, grain) -> Canon.typed "Now" ([ None; (grain |> Option.map (fun v -> "grain", encTimeGrain v)) ] |> List.choose id)
     | Binding.Computed fn -> Canon.typed "Computed" [ "fn", JStr "<closure>" ]
-    | Binding.Local (flushOn, format, initialFrom, onCommit, parse) -> Canon.typed "Local" ([ Some("flushOn", encLocalFlushTrigger flushOn); Some("format", JStr "<closure>"); Some("initialFrom", (encBinding encT) initialFrom); (onCommit |> Option.map (fun v -> "onCommit", JStr "<closure>")); Some("parse", JStr "<closure>") ] |> List.choose id)
+    | Binding.Local (flushOn, format, initialFrom, onCommit, parse, codec, commitTo) -> Canon.typed "Local" ([ Some("flushOn", encLocalFlushTrigger flushOn); Some("format", JStr "<closure>"); Some("initialFrom", (encBinding encT) initialFrom); (onCommit |> Option.map (fun v -> "onCommit", JStr "<closure>")); Some("parse", JStr "<closure>"); (codec |> Option.map (fun v -> "codec", encFormat v)); (commitTo |> Option.map (fun v -> "commitTo", JStr v)) ] |> List.choose id)
     | Binding.Format (source, format, locale) -> Canon.typed "Format" [ "source", (encBinding encFloat) source; "format", encFormat format; "locale", encLocaleSource locale ]
     | Binding.I18n (key, args) -> Canon.typed "I18n" ([ Some("key", JStr key); (args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, (encBinding id) v))) v)) ] |> List.choose id)
     | Binding.Transform (source, pipeline, ``params``) -> Canon.typed "Transform" ([ Some("source", encTransformSource source); Some("pipeline", JArr(List.map Fuaran.Core.DataFrameCodec.encodeTransform pipeline)); (``params`` |> Option.map (fun v -> "params", JArr(List.map encTransformParam v))) ] |> List.choose id)
@@ -2941,15 +2941,17 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
             dOpt "grain" __fs decTimeGrain |> Result.bind (fun grain ->
             Ok(Binding.Now(accessor, grain))))
         | "Computed" ->
-            Ok ((fun _ -> Unchecked.defaultof<'T>)) |> Result.bind (fun fn ->
+            Ok (Fuaran.UI.HostPrelude.decodedComputed) |> Result.bind (fun fn ->
             Ok(Binding.Computed(fn)))
         | "Local" ->
             dReq "flushOn" __fs decLocalFlushTrigger |> Result.bind (fun flushOn ->
-            Ok ((fun _ -> "")) |> Result.bind (fun format ->
+            Ok ((fun (v: 'T) -> Fuaran.UI.HostPrelude.LocalCodec.identityFormat (box v))) |> Result.bind (fun format ->
             dReq "initialFrom" __fs (decBinding decT) |> Result.bind (fun initialFrom ->
             (dPresent "onCommit" __fs |> Result.map (Option.map (fun () -> (fun _ -> ("<closure>" :> obj))))) |> Result.bind (fun onCommit ->
-            Ok ((fun _ -> Error "<closure>")) |> Result.bind (fun parse ->
-            Ok(Binding.Local(flushOn, format, initialFrom, onCommit, parse)))))))
+            Ok ((Fuaran.UI.HostPrelude.LocalCodec.identityParse decT)) |> Result.bind (fun parse ->
+            dOpt "codec" __fs decFormat |> Result.bind (fun codec ->
+            dOpt "commitTo" __fs dStr |> Result.bind (fun commitTo ->
+            Ok(Binding.Local(flushOn, format, initialFrom, onCommit, parse, codec, commitTo)))))))))
         | "Format" ->
             dReq "source" __fs (decBinding dFloat) |> Result.bind (fun source ->
             dReq "format" __fs decFormat |> Result.bind (fun format ->

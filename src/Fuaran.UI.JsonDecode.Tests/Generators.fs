@@ -374,7 +374,9 @@ let rec private genBindingWith (genStatic: Gen<'T>) (placeholder: 'T) : Gen<Bind
                       (fun v -> string (box v)),
                       Binding.Static(Some init),
                       Some(fun _ -> box "<commit>"),
-                      (fun _ -> Ok placeholder)
+                      (fun _ -> Ok placeholder),
+                      None,
+                      None
                   )
           } ]
 

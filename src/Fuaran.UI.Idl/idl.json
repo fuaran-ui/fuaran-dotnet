@@ -5395,7 +5395,7 @@
                 "$type": "fn",
                 "hostSurface": {
                   "fsharp": "obj -> 'T",
-                  "placeholder": "(fun _ -> Unchecked.defaultof<'T>)",
+                  "placeholder": "Fuaran.UI.HostPrelude.decodedComputed",
                   "typescript": "(ctx: unknown) => T"
                 },
                 "wire": "<closure>"
@@ -5426,7 +5426,7 @@
                 "$type": "fn",
                 "hostSurface": {
                   "fsharp": "'T -> string",
-                  "placeholder": "(fun _ -> \"\")",
+                  "placeholder": "(fun (v: 'T) -> Fuaran.UI.HostPrelude.LocalCodec.identityFormat (box v))",
                   "typescript": "(v: T) => string"
                 },
                 "wire": "<closure>"
@@ -5472,10 +5472,30 @@
                 "$type": "fn",
                 "hostSurface": {
                   "fsharp": "string -> Result<'T, string>",
-                  "placeholder": "(fun _ -> Error \"<closure>\")",
+                  "placeholder": "(Fuaran.UI.HostPrelude.LocalCodec.identityParse decT)",
                   "typescript": "(s: string) => T"
                 },
                 "wire": "<closure>"
+              }
+            },
+            {
+              "name": "codec",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "union",
+                "args": [],
+                "name": "Format"
+              }
+            },
+            {
+              "name": "commitTo",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "str"
               }
             }
           ],

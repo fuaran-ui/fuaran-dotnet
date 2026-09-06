@@ -189,7 +189,7 @@ let rec private bindingTextWith<'T> (staticText: 'T -> string) (b: Binding<'T>) 
            | None -> "")
     | Binding.State(key, _) -> "$state." + key
     | Binding.Computed _ -> closureSentinel
-    | Binding.Local(_, _, initialFrom, _, _) -> "$local(" + bindingTextWith<'T> staticText initialFrom + ")"
+    | Binding.Local(_, _, initialFrom, _, _, _, _) -> "$local(" + bindingTextWith<'T> staticText initialFrom + ")"
     | Binding.Format(source, _, _) -> "$format(" + bindingTextFloat source + ")"
     | Binding.I18n(key, _) -> "$i18n." + key
     | Binding.Transform(_, pipeline, _) -> "$transform(" + string (List.length pipeline) + " steps)"

@@ -78,7 +78,7 @@ let tests =
                       parseDecimalLenient
 
               match b with
-              | Binding.Local(flushOn, format, initialFrom, _, parse) ->
+              | Binding.Local(flushOn, format, initialFrom, _, parse, _, _) ->
                   Expect.equal flushOn LocalFlushTrigger.OnBlur "FlushOn preserved"
 
                   match initialFrom with
@@ -107,7 +107,7 @@ let tests =
                       parseDecimalLenient
 
               match b with
-              | Binding.Local(_, _, _, Some onCommit, _) ->
+              | Binding.Local(_, _, _, Some onCommit, _, _, _) ->
                   // OnCommit : 'T -> obj — the smart-ctor wraps the typed
                   // Action<'Msg> in a box; the renderer recovers via unbox.
                   let raw = onCommit 250000m
@@ -177,7 +177,7 @@ let tests =
 
           test "Defaults.localBinding's Parse returns the placeholder Error" {
               match Defaults.localBinding<decimal> with
-              | Binding.Local(_, _, _, _, parse) ->
+              | Binding.Local(_, _, _, _, parse, _, _) ->
                   match parse "anything" with
                   | Error msg ->
                       Expect.stringContains

@@ -423,7 +423,7 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     // furnishes it once per render pass. It participates in no reactive edge,
     // so it contributes no usage (the `Computed` posture below).
     | Binding.Now _ -> []
-    | Binding.Local(_, _, initialFrom, _, _) -> usesOfBinding initialFrom
+    | Binding.Local(_, _, initialFrom, _, _, _, _) -> usesOfBinding initialFrom
     | Binding.I18n(_, Some args) -> args |> Map.toList |> List.collect (fun (_, ab) -> usesOfBinding<JVal> ab)
     | Binding.I18n(_, None) -> []
     | Binding.Format(source, _, _) -> usesOfBinding source
@@ -718,7 +718,7 @@ let rec usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
 let rec writeBackTargetOf<'T> (binding: Binding<'T>) : string option * bool =
     match binding with
     | Binding.State(key, _) -> Some key, false
-    | Binding.Local(_, _, initialFrom, onCommit, _) ->
+    | Binding.Local(_, _, initialFrom, onCommit, _, _, _) ->
         let key, opaque = writeBackTargetOf initialFrom
         key, opaque || onCommit.IsSome
     | _ -> None, false

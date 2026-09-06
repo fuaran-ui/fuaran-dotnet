@@ -1466,7 +1466,7 @@ let rec keysOfBinding<'T> (channel: KeyChannel) (binding: Binding<'T>) : string 
         match channel with
         | SelectionChannel -> [ nodeId ]
         | _ -> []
-    | Binding.Local(_, _, initialFrom, _, _) -> keysOfBinding channel initialFrom
+    | Binding.Local(_, _, initialFrom, _, _, _, _) -> keysOfBinding channel initialFrom
     | Binding.I18n(_, Some args) ->
         args
         |> Map.toList
@@ -5075,7 +5075,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.text))
 
             match value with
-            | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+            | Binding.Local(flushOn, format, initialFrom, onCommit, parse, _, _) ->
                 // Local-bound text field — render via the
                 // function-component shape that maintains the per-NodeId
                 // React.useState buffer and initialFrom re-sync invariant.
@@ -5142,7 +5142,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.number))
 
             match value with
-            | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+            | Binding.Local(flushOn, format, initialFrom, onCommit, parse, _, _) ->
                 // Local-bound number field — see the Text-side
                 // mirror above. The renderer uses `type=text` +
                 // `inputMode=numeric` so the consumer-side formatter
@@ -5304,7 +5304,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   | None -> () ]
 
             match value with
-            | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+            | Binding.Local(flushOn, format, initialFrom, onCommit, parse, _, _) ->
                 let external =
                     BindingResolver.tryResolve ctx.Sources initialFrom |> Option.defaultValue 0.0
 

@@ -87,7 +87,9 @@ let tests =
                       (fun v -> string (box v)),
                       binding.filter "draft",
                       Some(fun s -> nn s),
-                      Ok
+                      Ok,
+                      None,
+                      None
                   )
 
               Expect.equal (Render.filterKeysOfBinding local) [ "draft" ] "Local reads its re-sync source"

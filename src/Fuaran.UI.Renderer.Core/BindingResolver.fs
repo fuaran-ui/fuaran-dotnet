@@ -190,13 +190,16 @@ let rec private objOfJValBinding (b: Binding<JVal>) : Binding<obj> =
     // slot read it.
     | Binding.Now(_, grain) -> Binding.Now(id, grain)
     | Binding.I18n(key, args) -> Binding.I18n(key, args)
-    | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+    // Fuaran-UI Phase 1538 — wire data, preserved across the erasure.
+    | Binding.Local(flushOn, format, initialFrom, onCommit, parse, codec, commitTo) ->
         Binding.Local(
             flushOn,
             (fun (o: obj) -> format (unbox<JVal> o)),
             objOfJValBinding initialFrom,
             onCommit |> Option.map (fun oc -> fun (o: obj) -> oc (unbox<JVal> o)),
-            (fun s -> parse s |> Result.map box)
+            (fun s -> parse s |> Result.map box),
+            codec,
+            commitTo
         )
     | Binding.Format(source, format, locale) -> Binding.Format(source, format, locale)
     | Binding.Transform(source, pipeline, parameters) -> Binding.Transform(source, pipeline, parameters)
@@ -541,9 +544,17 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
 
         try
             Resolved(f ctx)
-        with ex ->
-            Errored(sprintf "Computed binding threw: %s" ex.Message)
-    | Binding.Local(_, _, initialFrom, _, _) ->
+        with
+        // Fuaran-UI Phase 1538 — the DECODED `Computed`. Its `fn` is the whole
+        // payload of the case and it encodes as `"<closure>"`, so a decoded
+        // `Computed` has nothing to compute with; the stand-in raises this
+        // instead of returning the slot's zero, and the message is surfaced
+        // VERBATIM rather than wrapped in "Computed binding threw" — the reader
+        // needs the remedy, not the mechanism, and the sentence already names
+        // the cases that do cross the wire.
+        | Fuaran.UI.HostPrelude.WireSurvivabilityError msg -> Errored msg
+        | ex -> Errored(sprintf "Computed binding threw: %s" ex.Message)
+    | Binding.Local(_, _, initialFrom, _, _, _, _) ->
         // A `Binding.Local` is structurally a re-sync source +
         // local-buffer overlay. Pure resolution returns the InitialFrom-
         // side value — the per-NodeId React.useState slot is mounted by
