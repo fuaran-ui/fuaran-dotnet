@@ -723,6 +723,32 @@ let generatedLayerTests =
               //    is the one class where the structural gap and the schema gap
               //    are the same gap, and it joins `schemaInexpressibleRejects`
               //    alongside its 725 predecessor for that shared reason.
+              //  - the SIXTH class, and the only one that is not about the
+              //    generated decoder at all: WIRE_FORMAT §20.2's rows, six of
+              //    which the generated layer accepts because it reads its JSON
+              //    through a DIFFERENT PARSER — the substrate's, in a package
+              //    this repository consumes rather than owns. That is exactly the
+              //    situation §20.1 was written for, and this list is where the
+              //    reference host DECLARES it, per §20.1 rule 2: a host that
+              //    cannot route every entry point through one parser must name
+              //    the divergent entry point and the rows on which it diverges.
+              //
+              //    Measured, the substrate parser refuses row 2 (trailing
+              //    content), row 4 (a bare `NaN` literal) and three of row 3's
+              //    four arms (`+1`, `.5`, `1.`), and ACCEPTS: row 1 (a repeated
+              //    member), row 3's leading-zero arm (`03`), row 5 (a raw C0
+              //    control character) and row 6 (an unpaired surrogate, in all
+              //    three shapes). So the divergence is neither "the substrate is
+              //    stricter" nor "it is looser" — it is a different accept set,
+              //    which is why §20.1 refuses to recognise a host-level claim.
+              //
+              //    Note what this list does NOT mean here. Every other entry is a
+              //    shape structure CANNOT judge; these six are shapes it could
+              //    judge and does not, because the judging happens one layer
+              //    below it. The gap closes when the substrate and the policy
+              //    parser are one parser, not by a refinement to the IDL — and
+              //    an entry leaving this list is then evidence of that, rather
+              //    than of a new refined type.
               Expect.equal
                   policyOwned
                   [ "reject-action-print-with-payload.json"
@@ -736,6 +762,14 @@ let generatedLayerTests =
                     "reject-fieldrule-length-unordered.json"
                     "reject-formfield-near-miss-validation.json"
                     "reject-image-srcset-nonpositive-width.json"
+                    // §20.2 rows 1, 3 (leading zero), 5 and 6 — the substrate
+                    // parser's divergence, declared per §20.1 rule 2.
+                    "reject-json-duplicate-key.json"
+                    "reject-json-lone-high-surrogate.json"
+                    "reject-json-lone-low-surrogate.json"
+                    "reject-json-number-leading-zero.json"
+                    "reject-json-raw-control-char.json"
+                    "reject-json-surrogate-pair-split.json"
                     "reject-limit-node-depth.json"
                     "reject-limit-tree-item-depth.json"
                     "reject-nearmiss-a11y-aria-hidden.json"
