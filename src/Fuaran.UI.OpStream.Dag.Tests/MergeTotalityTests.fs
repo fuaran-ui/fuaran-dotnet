@@ -482,18 +482,25 @@ let tests =
 
               let restyle (id: NodeId) (s: SemanticStyle) = TreeOp.UpdateStyle(id, s)
 
-              // 1. every style sub-field contended at once
+              // 1. every style sub-field contended at once. Named through
+              //    `Defaults.style with` rather than as a full literal (the
+              //    repo's own authoring-site lint) — and every field IS named,
+              //    deliberately: the point of the fixture is that each sub-field
+              //    differs on both sides, so a new sub-field arriving with no
+              //    entry here would leave its facet uncontended and out of the
+              //    roster, which the equality assertion below then catches.
               let styleA =
                   baseT
                   |> applyOk (
                       restyle
                           leftChildId
-                          { Tone = ToneVariant.Brand
-                            Weight = StyleWeight.Compact
-                            Emphasis = Emphasis.Loud
-                            Role = StyleRole.Data
-                            Voice = FontVoice.Display
-                            Direction = TextDirection.Ltr }
+                          { Defaults.style with
+                              Tone = ToneVariant.Brand
+                              Weight = StyleWeight.Compact
+                              Emphasis = Emphasis.Loud
+                              Role = StyleRole.Data
+                              Voice = FontVoice.Display
+                              Direction = TextDirection.Ltr }
                   )
 
               let styleB =
@@ -501,12 +508,13 @@ let tests =
                   |> applyOk (
                       restyle
                           leftChildId
-                          { Tone = ToneVariant.Critical
-                            Weight = StyleWeight.Spacious
-                            Emphasis = Emphasis.Quiet
-                            Role = StyleRole.Lede
-                            Voice = FontVoice.Structural
-                            Direction = TextDirection.Rtl }
+                          { Defaults.style with
+                              Tone = ToneVariant.Critical
+                              Weight = StyleWeight.Spacious
+                              Emphasis = Emphasis.Quiet
+                              Role = StyleRole.Lede
+                              Voice = FontVoice.Structural
+                              Direction = TextDirection.Rtl }
                   )
 
               // 2. kind
