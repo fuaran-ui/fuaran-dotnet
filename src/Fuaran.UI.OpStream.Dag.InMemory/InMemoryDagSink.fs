@@ -23,17 +23,49 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //  `Records` and `TryGet` re-verify what they hand back
 //  (`DagVerify.recordsResolving` / `DagVerify.record`) rather than trusting it
 //  because this sink wrote it.
-//  `Add` still checks only for a content-addressing collision, which is its own
-//  job — the collision check asks "does this hash already mean something else",
+//  `Add`'s checks are a different question — the write path asks "does this hash
+//  already mean something else" and "does this record link to anything real";
 //  verification asks "does this record still hash to its address", and only the
-//  second catches a store that changed underneath the process. A host that has
+//  last catches a store that changed underneath the process. A host that has
 //  measured the cost passes `LoadVerification.Off` explicitly; there is no
 //  silent fast path.
+//
+//  ── VERIFY ON WRITE (Phase 1525) ───────────────────────────────────────────
+//  Two checks run at the write choke point, both refusing BY NAME:
+//
+//   1. **Content-address collision.** A record arriving at an address the store
+//      already holds must BE the record already there. It is compared on
+//      `DagWire.contentFingerprint` — the digest of its full canonical wire form
+//      — rather than on a hand-picked pair of fields. The old check compared
+//      `Parents` and `OutcomeHash` only, so a record with the same hash and a
+//      DIFFERENT `Op` matched, was classified as an idempotent duplicate, and
+//      was silently dropped. That is the collision case, and dropping the
+//      newcomer is the one response that leaves no trace of it having happened.
+//   2. **Parent presence.** Every hash in `Parents` must already name a record
+//      somewhere in this store. A record admitted with a parent the store does
+//      not hold is a dangling edge nothing notices until a later `Records` read
+//      — or a replay — trips over it, by which time the write that caused it is
+//      long gone and unattributable. The read-path check stays as it was: it
+//      catches a store that lost a record AFTER the link was made, which no
+//      write-time check can see.
+//
+//  Fingerprints live in their own map and are deliberately NOT re-derived from
+//  the stored record: `Tombstone` prunes a record's payload, so the canonical
+//  bytes of what remains are not the bytes the address was minted over, and a
+//  check that recomputed them would call every post-compaction re-add of an
+//  unchanged record a collision.
 // ============================================================================
 
 type private StreamState<'Msg> =
-    { Records: Dictionary<string, DagOpRecord<'Msg>>
-      mutable Head: string option }
+    {
+        Records: Dictionary<string, DagOpRecord<'Msg>>
+        /// Content fingerprint per stored address, captured at first insert and
+        /// NEVER rewritten — not by a re-add, not by `Tombstone`. It is what makes
+        /// an identical re-add after a retention sweep still resolve as the
+        /// duplicate it is.
+        Fingerprints: Dictionary<string, string>
+        mutable Head: string option
+    }
 
 type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
 
@@ -61,6 +93,7 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
         | false, _ ->
             let fresh =
                 { Records = Dictionary<string, DagOpRecord<'Msg>>()
+                  Fingerprints = Dictionary<string, string>()
                   Head = None }
 
             streams[streamId] <- fresh
@@ -89,20 +122,45 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
             async {
                 lock lockObj (fun () ->
                     let state = getOrCreate record.StreamId
+                    let fingerprint = DagWire.contentFingerprint record
 
-                    match state.Records.TryGetValue record.Hash with
-                    | true, existing ->
-                        // Content addressing: an identical re-append is a no-op;
-                        // a hash collision with differing content is a defect.
-                        // Tombstone state is allowed to differ (pruning mutates
-                        // it in place), so compare on the content-bearing fields.
-                        if existing.Parents <> record.Parents || existing.OutcomeHash <> record.OutcomeHash then
+                    // ── Check 1: parent presence (Phase 1525) ───────────────
+                    // Store-wide, for the same reason the read path resolves
+                    // store-wide: a guest branch's genesis legitimately hangs off
+                    // a record in the HOST stream, so a stream-scoped universe
+                    // would refuse a healthy fork.
+                    record.Parents
+                    |> List.tryFind (knownHash >> not)
+                    |> Option.iter (fun missing ->
+                        invalidOp (
+                            sprintf
+                                "InMemoryDagSink: refused record %s in stream '%s' — parent-presence check failed: parent %s is not in the store."
+                                record.Hash
+                                record.StreamId
+                                missing
+                        ))
+
+                    // ── Check 2: content-address collision (Phase 1525) ─────
+                    match state.Fingerprints.TryGetValue record.Hash with
+                    | true, storedFingerprint ->
+                        // An identical re-append is a no-op; the SAME address
+                        // carrying DIFFERENT canonical content is a collision,
+                        // never a duplicate. Compared on the full canonical wire
+                        // form (`Tombstoned` normalised), so a differing `Op` —
+                        // which the pre-1525 parents+outcome comparison could not
+                        // see at all — is caught here rather than dropped.
+                        if storedFingerprint <> fingerprint then
                             invalidOp (
                                 sprintf
-                                    "InMemoryDagSink: hash collision at %s with differing content — content addressing violated."
+                                    "InMemoryDagSink: refused record %s in stream '%s' — content-address collision: the stored record at this address has different canonical content (stored fingerprint %s, incoming %s). Content addressing violated."
                                     record.Hash
+                                    record.StreamId
+                                    storedFingerprint
+                                    fingerprint
                             )
-                    | false, _ -> state.Records[record.Hash] <- record)
+                    | false, _ ->
+                        state.Records[record.Hash] <- record
+                        state.Fingerprints[record.Hash] <- fingerprint)
             }
 
         member _.TryGet(streamId: string, hash: string) : Async<DagOpRecord<'Msg> option> =
@@ -217,13 +275,22 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
                             match state.Records.TryGetValue hash with
                             | false, _ -> false
                             | true, r ->
-                                // Drop the payload (reset op to a placeholder),
+                                // Drop the PAYLOAD (reset op to a placeholder),
                                 // preserve hash + parents so the chain still
                                 // links + verifies.
+                                //
+                                // `OutcomeHash` is KEPT (Phase 1525). It used to
+                                // be cleared, which cost the store the one thing
+                                // that distinguishes a pruned merge node from a
+                                // pruned ordinary one, for no retention gain — it
+                                // is a 64-hex address, not payload. What it broke
+                                // was idempotence across a sweep: a re-add of the
+                                // unchanged record no longer matched what the
+                                // store held. The fingerprint map is likewise
+                                // untouched here, for the same reason.
                                 state.Records[hash] <-
                                     { r with
                                         Op = TreeOp.Batch []
-                                        OutcomeHash = None
                                         Tombstoned = true }
 
                                 true)

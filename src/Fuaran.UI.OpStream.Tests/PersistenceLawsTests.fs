@@ -621,8 +621,18 @@ let tests =
                       (fun () -> baseSink.Append clash |> Async.RunSynchronously)
                       (sprintf "%s: a duplicate (StreamId, Sequence) is still refused by throwing" storeName)
 
-                  // … and still accepts a mis-chained record, which the READ path catches.
-                  let unchecked_ =
+                  // … and — CHANGED at Phase 1525 (finding H-16) — a MIS-CHAINED
+                  //     record is now refused AT THE WRITE, not admitted and then
+                  //     refused by every subsequent read.
+                  //
+                  // The pre-1525 assertion here was that `Append` "still accepts a
+                  // mis-chained record, which the READ path catches", and that
+                  // acceptance was exactly the defect: one bad write made the
+                  // segment permanently unreadable, and the refusal then named the
+                  // record rather than the writer that produced it. The read-side
+                  // verifier is unchanged — what changed is that a broken record
+                  // no longer reaches the store to be read.
+                  let misChained =
                       buildAtHead
                           streamId
                           3
@@ -630,11 +640,21 @@ let tests =
                           HashChain.genesisPreviousHash
                           (DateTimeOffset.FromUnixTimeSeconds 600L)
 
-                  baseSink.Append unchecked_ |> Async.RunSynchronously
-
                   Expect.throws
-                      (fun () -> baseSink.Replay(streamId, 1, 10) |> Async.RunSynchronously |> ignore)
-                      (sprintf "%s: the mis-chained segment is refused on read, as it always was" storeName))
+                      (fun () -> baseSink.Append misChained |> Async.RunSynchronously)
+                      (sprintf "%s: a mis-chained record is refused at the write choke point" storeName)
+
+                  Expect.equal
+                      (baseSink.LatestSequence streamId |> Async.RunSynchronously)
+                      2
+                      (sprintf "%s: the refused mis-chained append persisted nothing" storeName)
+
+                  // And the stream is still READABLE, which is the point: before
+                  // this, that one refused write would have poisoned it for good.
+                  Expect.equal
+                      (baseSink.Replay(streamId, 1, 10) |> Async.RunSynchronously |> List.length)
+                      2
+                      (sprintf "%s: the stream survives the refused append intact" storeName))
 
           testCase
               "both durable stores return the same receipt for a re-sent keyed append and persist nothing the second time"

@@ -53,6 +53,8 @@
          SAME witness, with the tier's real claim minting and ECDSA keyring adapted to Core's
          IAttestationSink. Compiles after PersistenceLawsTests.fs, whose witness it reuses. -->
     <Compile Include="CoreAttestationLawsTests.fs" />
+    <!-- Phase 1525 — the write path: compare-and-append, admission, retention horizon. -->
+    <Compile Include="WritePathIntegrityTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

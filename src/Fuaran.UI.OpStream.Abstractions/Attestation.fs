@@ -34,6 +34,12 @@ open Fuaran.UI.Ops.Types
 //     claim, so a store-writer cannot alter it — but the SIGNER can backdate).
 //     The revocation boundary that compares against it is therefore a
 //     co-operative-failure mechanism, not a defence against a hostile signer.
+//     Its RESOLUTION is whole seconds, normatively: the claim binds unix
+//     seconds, signers store what they bound (`SegmentAttestation.signedInstant`,
+//     Phase 1525), and verification compares the bound value — so "bound inside
+//     the signed claim" is true at the resolution the field actually carries,
+//     which it was not while the record kept sub-second precision the pre-image
+//     floored away.
 //
 //  Design posture:
 //   - ADDITIVE. The chain format is untouched (`StreamEntry.chainFormatVersion`
@@ -182,12 +188,33 @@ module SegmentDescriptor =
 /// of them without invalidating the signature. (An unbound `SignedAt` would
 /// let a store-writer dodge a revocation boundary; an unbound `Adopted` would
 /// let one promote a vouched-after-the-fact claim to a witnessed one.)
+///
+/// `SignedAt` is bound at the STORED resolution and stored at the BOUND one —
+/// whole seconds, by construction (Phase 1525). See its field note.
 type SegmentAttestation =
     {
         Descriptor: SegmentDescriptor
         /// Names the signing key in the verifier's key directory.
         KeyId: string
         /// Asserted by the SIGNER — see the boundary note in the file header.
+        ///
+        /// **Whole SECONDS, normatively** (Phase 1525). The claim payload binds
+        /// `signedAt` as unix seconds — matching the chain pre-image's timestamp
+        /// resolution — so seconds is the resolution the SIGNATURE covers, and
+        /// this field carries the same instant at the same resolution: every
+        /// shipped signer normalises through `SegmentAttestation.signedInstant`
+        /// before it binds AND before it stores, so the stored value and the
+        /// signed pre-image agree by construction and a store round trip cannot
+        /// change the bytes that were signed.
+        ///
+        /// Before that normalisation the two disagreed by up to one second — the
+        /// record kept the signer's full-precision clock reading while the
+        /// pre-image floored it — so the sentence above ("a store-writer can
+        /// alter none of them") was false at sub-second granularity for exactly
+        /// this field. Verification therefore reads `signedInstant`, never the
+        /// raw field, wherever the value drives a decision (revocation, expiry,
+        /// validity start), so a sub-second edit changes no verdict even on an
+        /// attestation minted by an older signer.
         SignedAt: DateTimeOffset
         /// `true` = an adoption: the key holder vouches for pre-attestation
         /// history AFTER THE FACT. Permanently a distinct claim tier from a
@@ -202,10 +229,29 @@ type SegmentAttestation =
 
 module SegmentAttestation =
 
+    /// The instant a signature actually covers: `signedAt` floored to whole
+    /// seconds, the resolution `claimPayload` binds (Phase 1525).
+    ///
+    /// Signers call this before binding AND before storing, so a stored
+    /// `SignedAt` is already at this resolution and the pre-image cannot drift
+    /// from the record. Verifiers call it on a stored attestation, so a value
+    /// minted by an older signer — or shifted within its second by a
+    /// store-writer, which the signature does not prevent — still yields the
+    /// instant that was signed rather than the one that is written down.
+    ///
+    /// It is the same instant in a UTC offset, not a re-interpretation:
+    /// `ToUnixTimeSeconds` is offset-independent, so the value round-trips
+    /// through the payload exactly. The offset is normalised to `+00:00` rather
+    /// than preserved because the payload does not carry one, so preserving it
+    /// would keep a field the signature does not cover.
+    let signedInstant (signedAt: DateTimeOffset) : DateTimeOffset =
+        DateTimeOffset.FromUnixTimeSeconds(signedAt.ToUnixTimeSeconds())
+
     /// The exact string whose UTF-8 bytes the signature covers. Pinned field
     /// order: the descriptor fields, then keyId / signedAt / adopted.
     /// `signedAt` is unix seconds, matching the chain pre-image's timestamp
-    /// resolution.
+    /// resolution — which is why `signedInstant` exists and why every signer
+    /// stores what it bound.
     let claimPayload (d: SegmentDescriptor) (keyId: string) (signedAt: DateTimeOffset) (adopted: bool) : string =
         "{"
         + SegmentDescriptor.fields d
@@ -311,7 +357,10 @@ module AttestationSigner =
         { new IAttestationSigner with
             member _.SignSegment descriptor =
                 async {
-                    let signedAt = now ()
+                    // Normalised to the resolution the payload binds, so the
+                    // stored `SignedAt` IS the value the signature covers
+                    // (Phase 1525).
+                    let signedAt = SegmentAttestation.signedInstant (now ())
 
                     let payload = SegmentAttestation.claimPayload descriptor keyId signedAt adopted
 
@@ -470,9 +519,20 @@ module Evidence =
                     | Some key ->
                         let! signatureOk = verifier.VerifySignature attestation key
 
+                        // Every lifecycle comparison below reads the instant the
+                        // SIGNATURE covers, not the raw stored field (Phase
+                        // 1525). Shipped signers now store exactly this value, so
+                        // for a freshly-minted attestation the two are the same;
+                        // for one minted by an older signer — or edited within
+                        // its second by a store-writer, which the signature does
+                        // not prevent — this is the value that was actually
+                        // bound, so no sub-second difference can move an
+                        // attestation across a revocation boundary.
+                        let signedAt = SegmentAttestation.signedInstant attestation.SignedAt
+
                         let signedAtOrAfterRevocation =
                             match key.RevokedFrom with
-                            | Some boundary -> attestation.SignedAt >= boundary
+                            | Some boundary -> signedAt >= boundary
                             | None -> false
 
                         if not signatureOk || signedAtOrAfterRevocation then
@@ -501,11 +561,11 @@ module Evidence =
                                     | Ok() ->
                                         let warnings =
                                             [ match key.Expires with
-                                              | Some expiry when attestation.SignedAt > expiry ->
+                                              | Some expiry when signedAt > expiry ->
                                                   EvidenceWarning.KeyExpired key.KeyId
                                               | _ -> ()
                                               match key.NotBefore with
-                                              | Some notBefore when attestation.SignedAt < notBefore ->
+                                              | Some notBefore when signedAt < notBefore ->
                                                   EvidenceWarning.KeySignedBeforeValidity key.KeyId
                                               | _ -> ()
                                               match key.RevokedFrom with

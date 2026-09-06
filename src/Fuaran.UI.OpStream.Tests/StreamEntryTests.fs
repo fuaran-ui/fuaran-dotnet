@@ -1,6 +1,7 @@
 module Fuaran.UI.OpStream.Tests.StreamEntryTests
 
 open System
+open System.Globalization
 open Expecto
 open Fuaran.UI
 open Fuaran.UI.Types
@@ -216,4 +217,140 @@ let tests =
               match witness.Decode wellFormed with
               | Ok _ -> failtest "coreWitness must not decode"
               | Error e -> Expect.stringContains e "coreWitnessWith" "the refusal points at the decoding witness"
+          }
+
+          // ------------------------------------------------- Phase 1525 --
+
+          test "GO-RED: every truncation of an envelope is an Error, never a throw and never a record" {
+              // A truncated envelope is the ordinary outcome of a partial write,
+              // a clipped copy-paste or a bounded transport. The decoder promises
+              // a `Result`, so a caller has no reason to wrap the call — and a
+              // `StreamEntry` is the chain PRE-IMAGE, so a record assembled from a
+              // mis-spanned field re-hashes to something no other host reproduces
+              // and surfaces later as a chain break nowhere near its cause.
+              //
+              // Both failure modes lived here before: `scanValue` indexed `s[i]`
+              // without a bounds check, `scanString` stepped two past a trailing
+              // backslash, and the field walk read `s[keyEnd]` as a `:` it never
+              // confirmed. The prefixes that ended just after a nested object
+              // carried every required field and decoded to a plausible record
+              // nobody had written.
+              let full =
+                  StreamEntry.encode
+                      { Op =
+                          TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "k" "a \"quoted\" body with a back\\slash")
+                        Timestamp = ts 1_700_000_000L
+                        PromptId = Some "prompt-1"
+                        ResultEnvelope = OpResultEnvelope.Failure("APPLY_REFUSED", "no such node") }
+
+              Expect.isGreaterThan full.Length 100 "the fixture is long enough for the prefixes to be interesting"
+
+              for len in 0 .. full.Length - 1 do
+                  let prefix = full.Substring(0, len)
+
+                  match StreamEntry.decode decodeOp prefix with
+                  | Ok _ -> failtestf "a %d-character prefix decoded to a record: %s" len prefix
+                  | Error e ->
+                      Expect.stringContains
+                          e
+                          "StreamEntry.decode"
+                          (sprintf "the refusal is attributed (prefix length %d)" len)
+
+              // The whole thing still decodes — the guards refuse truncation, not
+              // the format.
+              match StreamEntry.decode decodeOp full with
+              | Error e -> failtestf "the untruncated envelope must still decode: %s" e
+              | Ok decoded -> Expect.equal (StreamEntry.encode decoded) full "and round-trips byte-for-byte"
+          }
+
+          test "GO-RED: a malformed field is an Error rather than a mis-read value" {
+              // Each of these is well-formed enough to reach the field walk and
+              // wrong enough that reading it would invent data. The `promptId`
+              // case is the sharpest: `unquote` stripped a first and last
+              // character unconditionally, so a numeric `123` decoded to the
+              // string "2".
+              let cases =
+                  [ "{\"v\":2,\"op\":{\"$type\":\"RemoveNode\",\"target\":\"n\"},\"ts\":1,\"promptId\":123,\"result\":{\"kind\":\"success\"}}",
+                    "a non-string promptId"
+                    "{\"v\":2,\"op\":{\"$type\":\"RemoveNode\",\"target\":\"n\"},\"ts\":1,\"result\":{\"kind\":7}}",
+                    "a non-string result kind"
+                    "{\"v\":2,\"op\":{\"$type\":\"RemoveNode\",\"target\":\"n\"},\"ts\":,\"result\":{\"kind\":\"success\"}}",
+                    "an empty ts value"
+                    "{\"v\":2 \"op\":{\"$type\":\"RemoveNode\",\"target\":\"n\"}}", "a missing ':' after a field name" ]
+
+              for payload, why in cases do
+                  match StreamEntry.decode decodeOp payload with
+                  | Ok r -> failtestf "expected a refusal (%s); decoded promptId=%A" why r.PromptId
+                  | Error e -> Expect.stringContains e "StreamEntry.decode" (sprintf "the error is attributed (%s)" why)
+          }
+
+          test "GO-RED: identifier comparisons are ORDINAL, not culture-sensitive" {
+              // A stream id and a format tag are KEYS. Under the culture-sensitive
+              // default overloads, ICU's collation ignores zero-width formatting
+              // characters entirely — so a string that does NOT begin with the
+              // reserved prefix byte-for-byte reports that it does, and the same
+              // record resolves differently depending on the reading machine's
+              // culture.
+              //
+              // The probe is verified before it is trusted: if the culture-sensitive
+              // overload agreed with the ordinal one here (a globalization-invariant
+              // runtime, say), these assertions would prove nothing, so that
+              // disagreement is asserted first.
+              let zwj = "\u200d"
+              let disguised = zwj + GuestStream.Prefix + "scope-1"
+
+              Expect.isTrue
+                  (disguised.StartsWith GuestStream.Prefix)
+                  "PROBE: the culture-sensitive overload is fooled by the ignorable character"
+
+              Expect.isFalse
+                  (disguised.StartsWith(GuestStream.Prefix, StringComparison.Ordinal))
+                  "PROBE: the ordinal overload is not"
+
+              let original = CultureInfo.CurrentCulture
+
+              try
+                  // A non-invariant culture, set inside the test and restored
+                  // below — the ambient culture must change none of the answers.
+                  CultureInfo.CurrentCulture <- CultureInfo "tr-TR"
+
+                  Expect.isFalse
+                      (GuestStream.isGuestStream disguised)
+                      "a stream id that only collates as guest-prefixed is not a guest stream"
+
+                  Expect.isNone
+                      (GuestStream.tryScopeOf disguised)
+                      "and projects no scope id — the two must never disagree"
+
+                  Expect.isTrue
+                      (GuestStream.isGuestStream (GuestStream.streamId "scope-1"))
+                      "a genuine guest stream id still resolves"
+
+                  Expect.equal
+                      (GuestStream.tryScopeOf (GuestStream.streamId "scope-1"))
+                      (Some "scope-1")
+                      "and round-trips its scope id"
+
+                  Expect.isFalse (GuestStream.isGuestStream "app-main") "a host stream id is not a guest stream"
+
+                  // `StreamEntry.formatVersion` reads the same kind of tag off the
+                  // wire, and the `Substring` after it slices at a fixed byte count
+                  // — so test and slice must agree by construction.
+                  let encoded =
+                      StreamEntry.encode
+                          { Op = TreeOp.RemoveNode(NodeId "n1")
+                            Timestamp = ts 1L
+                            PromptId = None
+                            ResultEnvelope = OpResultEnvelope.Success }
+
+                  Expect.equal
+                      (StreamEntry.formatVersion encoded)
+                      (Some StreamEntry.chainFormatVersion)
+                      "the version reads under a non-invariant culture"
+
+                  Expect.isNone
+                      (StreamEntry.formatVersion (zwj + encoded))
+                      "and an envelope that merely collates as tagged is reported tagless, not v2"
+              finally
+                  CultureInfo.CurrentCulture <- original
           } ]

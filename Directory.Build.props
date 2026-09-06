@@ -624,7 +624,23 @@
          number; this draft already carries a source-breaking client change, and
          the draft-slot rule advances only for a HIGHER class. See STABILITY.md
          "Recorded change - 0.77.0, WIRE_FORMAT §20 ratification, §7.1 integer
-         slots and §21.6/§21.7". -->
+         slots and §21.6/§21.7".
+
+         (0.77.0, riding) - the op-stream write-path integrity work is additive
+         throughout EXCEPT one change: `Fuaran.UI.Memo`'s
+         `Derivation<'Msg>.StructuralKey` becomes `string option`, because a
+         derivation whose canonical encoding carries an unrepresentable-value
+         sentinel has no content address, and a magic string would have left that
+         discrimination to a comment. It RIDES the standing 0.77.0 draft rather
+         than advancing it: that slot is untagged and publicly unpinned, and it
+         already carries a record widening and a source-breaking client change -
+         "requires consumer source edits", which is the same class this one is. A
+         narrowed field type breaks readers as well as full-literal constructors,
+         but both are one pre-1.0 MINOR by the "Semver" section above, and the
+         number's job is to say what adopting the slot costs, which does not
+         change. The entries authored against 0.76.0 in STABILITY.md ship here;
+         each says so in place. See STABILITY.md "Recorded change - 0.76.0, the
+         op-stream write path". -->
     <Version>0.77.0</Version>
   </PropertyGroup>
 

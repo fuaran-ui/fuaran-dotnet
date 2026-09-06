@@ -1,4 +1,4 @@
-namespace Fuaran.UI.OpStream.Replay
+﻿namespace Fuaran.UI.OpStream.Replay
 
 open System
 open Fuaran.UI.Types
@@ -57,138 +57,368 @@ open Fuaran.UI.Telemetry.Abstractions
 //  convenience for the common case.
 // ============================================================================
 
+
 /// Per-op correlation + sink-error context threaded into the persisted
-/// `OpRecord`. The wrapper queries the sink for the next sequence and the
-/// previous hash; the caller supplies only the stream identity, the user
-/// id, and (optionally) the conversation's current prompt id.
+/// `OpRecord`. The wrapper allocates the record's position against the sink's
+/// head; the caller supplies the stream identity, who is acting, and
+/// (optionally) the conversation's current prompt id.
 type PersistContext =
     {
         StreamId: string
         UserId: string
         PromptId: string option
-        /// Invoked synchronously inside the async block when `sink.Append`
-        /// throws. Exceptions thrown by the callback itself are swallowed —
+        /// The typed actor to record (Phase 1525, finding M-C4).
+        ///
+        /// `None` means "derive it from `UserId`", which is what every record
+        /// written before this field existed did — so an existing caller is
+        /// unaffected and its records are byte-identical. A host that already
+        /// knows the actor is an agent, a merge, or a replay says so HERE, and
+        /// the wrapper does not overwrite it: `Actor.ofLegacyString` is applied
+        /// only when this is absent. Before this field there was no way to
+        /// record anything but a `Human`, whatever was actually acting.
+        Actor: Actor option
+        /// Invoked synchronously inside the async block when an append fails or
+        /// is lost. Exceptions thrown by the callback itself are swallowed —
         /// the apply path is never broken by a misbehaving sink or logger.
-        /// Default: no logging.
+        ///
+        /// **`None` is no longer silence** (Phase 1525, finding H-15). It means
+        /// `PersistFailure.defaultReport`, which writes one line to stderr
+        /// naming the stream, the sequence and the reason. A lost durable op
+        /// that nothing anywhere records is the failure this phase exists to
+        /// remove, and a default of silence is how it kept happening. A host
+        /// that genuinely wants no report says so by name —
+        /// `PersistContext.withSilentSinkErrors`.
         OnSinkError: (exn -> unit) option
     }
 
+/// Why a persist attempt did not become durable — the value the retry loop
+/// hands back and the sink-error channel reports (Phase 1525).
+[<RequireQualifiedAccess>]
+type PersistFailure =
+    /// The compare-and-append kept losing to a concurrent writer until the
+    /// attempt budget ran out. Carries the number of attempts made.
+    | ContendedOut of attempts: int
+    /// The sink refused or failed the append. Carries the sink's own message.
+    | SinkRefused of reason: string
+
+module PersistFailure =
+
+    /// A one-line account of a failure, naming the stream and the sequence the
+    /// attempt was for.
+    let describe (streamId: string) (sequence: int) (failure: PersistFailure) : string =
+        match failure with
+        | PersistFailure.ContendedOut attempts ->
+            sprintf
+                "op-stream append to '%s' at sequence %d was NOT persisted: lost the compare-and-append %d times to a concurrent writer and gave up. The op was applied; it is not durable."
+                streamId
+                sequence
+                attempts
+        | PersistFailure.SinkRefused reason ->
+            sprintf
+                "op-stream append to '%s' at sequence %d was NOT persisted: %s. The op was applied; it is not durable."
+                streamId
+                sequence
+                reason
+
+    /// The report a context with no hook makes. Deliberately stderr and
+    /// deliberately unconditional: this package takes no logging dependency
+    /// (FGP 2 — it compiles under Fable, where this is `console.error`), and the
+    /// alternative it replaces is a lost durable op that nothing records at all.
+    let defaultReport (message: string) : unit = eprintfn "%s" message
+
+/// Carries a `PersistFailure` through the `exn`-shaped `OnSinkError` channel
+/// without losing which failure it was. A hook that only logs sees a sensible
+/// `Message`; a hook that wants the typed value pattern-matches on it.
+exception PersistFailedException of streamId: string * sequence: int * failure: PersistFailure
+
 module PersistContext =
-    /// Minimal context with no PromptId and no sink-error logging hook.
-    /// Equivalent to constructing the record with `PromptId = None` and
-    /// `OnSinkError = None`.
+    /// Minimal context with no PromptId, the actor derived from `userId`, and
+    /// the DEFAULT sink-error report (not silence — see `OnSinkError`).
     let create (streamId: string) (userId: string) : PersistContext =
         { StreamId = streamId
           UserId = userId
           PromptId = None
+          Actor = None
           OnSinkError = None }
 
     /// Attach a prompt id (conversation correlation) to the context.
     let withPromptId (promptId: string) (ctx: PersistContext) : PersistContext = { ctx with PromptId = Some promptId }
 
+    /// Record a specific typed actor rather than deriving a `Human` from
+    /// `UserId` (Phase 1525). This is how an agent, a merge or a replay reaches
+    /// the record as what it is.
+    let withActor (actor: Actor) (ctx: PersistContext) : PersistContext = { ctx with Actor = Some actor }
+
     /// Attach a sink-error logging hook to the context.
     let withSinkErrorHook (hook: exn -> unit) (ctx: PersistContext) : PersistContext =
         { ctx with OnSinkError = Some hook }
 
+    /// Suppress the default report. The ONLY way to get silence on a lost
+    /// append, and it has to be said out loud — the same shape as
+    /// `LoadVerification.Off` and `WriteAdmission.Off`.
+    let withSilentSinkErrors (ctx: PersistContext) : PersistContext =
+        { ctx with
+            OnSinkError = Some(fun _ -> ()) }
+
+/// What one persist attempt produced. Public because both the fan-out wrappers
+/// and a host that wants to know whether its op became durable read it.
+[<RequireQualifiedAccess>]
+type PersistAttempt =
+    /// The record is in the stream at this sequence.
+    | Persisted of sequence: int
+    /// The record is NOT in the stream. The sequence is the address the attempt
+    /// was for.
+    | Failed of sequence: int * failure: PersistFailure
+
 module ApplyPersist =
+
+    /// How many times the compare-and-append rebuilds against a moved head
+    /// before giving up. Bounded on purpose: an unbounded retry against a
+    /// permanently faster writer is a livelock that looks like a hang, and the
+    /// honest answer after a bounded number of genuine losses is to say the op
+    /// was not persisted rather than to keep trying for ever. Eight is well past
+    /// what real contention produces and well short of anything a caller waits
+    /// on.
+    [<Literal>]
+    let MaxCasAttempts = 8
 
     let private currentTimestamp () : DateTimeOffset = DateTimeOffset.UtcNow
 
-    /// Surface a sink failure through `ctx.OnSinkError` without propagating it —
-    /// durability is best-effort by contract. Extracted at Phase 1485 so the
-    /// keyed append path below reports through exactly the same channel as the
-    /// unkeyed one; a second hand-rolled `try ... with` is how the two would
-    /// come to report differently.
-    let private reportSinkError (ctx: PersistContext) (ex: exn) : unit =
+    /// Surface a failure through `ctx.OnSinkError`, or through the default
+    /// report when the context set no hook. Never propagates — durability is
+    /// best-effort by contract, and a hook that throws must not break the apply
+    /// path either.
+    let private reportFailure (ctx: PersistContext) (sequence: int) (failure: PersistFailure) : unit =
         match ctx.OnSinkError with
         | Some hook ->
             try
-                hook ex
+                hook (PersistFailedException(ctx.StreamId, sequence, failure))
             with _ ->
                 ()
-        | None -> ()
+        | None ->
+            try
+                PersistFailure.defaultReport (PersistFailure.describe ctx.StreamId sequence failure)
+            with _ ->
+                ()
+
+    /// The actor to record: the context's own when it named one, otherwise the
+    /// legacy lift of `UserId` (Phase 1525 — lifted only when absent).
+    let private actorOf (ctx: PersistContext) : Actor =
+        match ctx.Actor with
+        | Some actor -> actor
+        | None -> Actor.ofLegacyString ctx.UserId
+
+    /// Build the hash-chained `OpRecord` for an already-applied `op` at an
+    /// EXPLICIT position — the caller supplies both the sequence and the
+    /// previous hash it read from the store.
+    ///
+    /// The single place a record's chain fields are assembled. Splitting the
+    /// POSITION out of the build (Phase 1525) is what lets the compare-and-append
+    /// below rebuild a record against a head it has just been told about,
+    /// without a second round trip to rediscover it.
+    let private buildRecordWith<'Msg>
+        (ctx: PersistContext)
+        (sequence: int)
+        (previousHash: string)
+        (op: TreeOp<'Msg>)
+        : OpRecord<'Msg> =
+        let timestamp = currentTimestamp ()
+        let actor = actorOf ctx
+        // Phase 406: promptId + resultEnvelope are folded into the chain hash,
+        // so provenance is covered by the digest (corruption detection — the
+        // chain is unkeyed; see CRYPTO.md). v1 records only successful applies.
+        let resultEnvelope = OpResultEnvelope.Success
+
+        let hash =
+            HashChain.computeHash previousHash op sequence timestamp actor ctx.PromptId resultEnvelope
+
+        { StreamId = ctx.StreamId
+          Sequence = sequence
+          PreviousHash = previousHash
+          Hash = hash
+          Op = op
+          PromptId = ctx.PromptId
+          Actor = actor
+          Timestamp = timestamp
+          ResultEnvelope = resultEnvelope }
+
+    /// Recover the previous hash for a record at `sequence` by reading the
+    /// record before it. The non-compare-and-append path only — a sink that
+    /// implements `IOpStreamCasSink` reports its head directly and never needs
+    /// this.
+    let private previousHashAt<'Msg>
+        (sink: IOpStreamSink<'Msg>)
+        (ctx: PersistContext)
+        (sequence: int)
+        : Async<Result<string, string>> =
+        async {
+            if sequence = 1 then
+                return Ok HashChain.genesisPreviousHash
+            else
+                let! prev = sink.Replay(ctx.StreamId, sequence - 1, sequence - 1)
+
+                match prev with
+                | r :: _ -> return Ok r.Hash
+                | [] ->
+                    // `LatestSequence` reported > 0 and the record before this
+                    // one is missing. Phase 1525: this is a GAP, and the
+                    // pre-1525 code papered over it with the genesis hash —
+                    // writing a record whose `PreviousHash` names nothing, which
+                    // then made every later `Replay` of the segment throw. A
+                    // refusal here costs one op; the paper-over cost the stream.
+                    return
+                        Error(
+                            sprintf
+                                "the record at sequence %d is missing, so the record at %d has no head to link to"
+                                (sequence - 1)
+                                sequence
+                        )
+        }
 
     /// Build the hash-chained `OpRecord` for an already-applied `op` at the
-    /// given `sequence`, recovering the previous hash from `sink`. The single
-    /// place a record's `PreviousHash` / `Sequence` / chain hash is computed —
-    /// a second implementation is how a stream silently mis-chains.
+    /// given `sequence`, recovering the previous hash from `sink`. The non-CAS
+    /// path's builder; the CAS path uses `buildRecordWith` against the head the
+    /// sink reported.
     let private buildRecordAt<'Msg>
         (sink: IOpStreamSink<'Msg>)
         (ctx: PersistContext)
         (sequence: int)
         (op: TreeOp<'Msg>)
-        : Async<OpRecord<'Msg>> =
+        : Async<Result<OpRecord<'Msg>, string>> =
         async {
-            let! previousHash =
-                async {
-                    if sequence = 1 then
-                        return HashChain.genesisPreviousHash
-                    else
-                        let! prev = sink.Replay(ctx.StreamId, sequence - 1, sequence - 1)
-
-                        match prev with
-                        | r :: _ -> return r.Hash
-                        | [] ->
-                            // LatestSequence reported >0 but the prior record is
-                            // missing — sink invariant violation. Best-effort: use
-                            // the genesis hash. `Verify.chain` on the resulting
-                            // stream will surface the gap as `OutOfOrder` /
-                            // `PreviousHashMismatch`.
-                            return HashChain.genesisPreviousHash
-                }
-
-            let timestamp = currentTimestamp ()
-            // PersistContext keeps its bare-string UserId (host API unchanged);
-            // lift it to a typed Human actor at the op-record boundary (Phase 320).
-            let actor = Actor.ofLegacyString ctx.UserId
-            // Phase 406: promptId + resultEnvelope are folded into the chain hash,
-            // so provenance is covered by the digest (corruption detection — the
-            // chain is unkeyed; see CRYPTO.md). v1 records only successful applies.
-            let resultEnvelope = OpResultEnvelope.Success
-
-            let hash =
-                HashChain.computeHash previousHash op sequence timestamp actor ctx.PromptId resultEnvelope
-
-            return
-                { StreamId = ctx.StreamId
-                  Sequence = sequence
-                  PreviousHash = previousHash
-                  Hash = hash
-                  Op = op
-                  PromptId = ctx.PromptId
-                  Actor = actor
-                  Timestamp = timestamp
-                  ResultEnvelope = resultEnvelope }
+            let! previousHash = previousHashAt sink ctx sequence
+            return previousHash |> Result.map (fun h -> buildRecordWith ctx sequence h op)
         }
 
-    /// Build the record for `op` at `sequence` and append it to `sink`.
-    /// `Append` failures are surfaced via `ctx.OnSinkError` (when set) but do
-    /// NOT propagate — durability is best-effort. Shared by `applyAndPersist`,
-    /// `journalApplied` and `applyWithSinks` so the persistence path is
-    /// identical across the wrappers (Phase 124).
-    let private appendRecordAt<'Msg>
+    /// The compare-and-append loop, against a sink whose capability is already
+    /// established. Split out of `persistOp` (Phase 1525) so the same loop serves
+    /// both the probe path and the explicitly-typed entry point below — under
+    /// Fable the probe cannot answer, and a Fable host reaching this loop by
+    /// naming its sink must reach the SAME loop, not a second copy of it.
+    ///
+    /// **The read order is load-bearing.** Each attempt reads the HEAD FIRST and
+    /// the latest sequence SECOND, then builds against both and calls `AppendIf`
+    /// with the head it read. A write that lands between the two reads moves the
+    /// head *and* the sequence; taking the head first means the record is built
+    /// against a head the store has already left — which `AppendIf` reports as
+    /// `StaleHead`, the value this loop knows how to handle. Taking the sequence
+    /// first produces the opposite pairing (a CURRENT head with a STALE
+    /// sequence), which passes the head comparison and is then refused by the
+    /// sink's admission check as a throw: a race reported as corruption.
+    let private persistViaCas<'Msg>
+        (cas: IOpStreamCasSink<'Msg>)
+        (ctx: PersistContext)
+        (op: TreeOp<'Msg>)
+        : Async<PersistAttempt> =
+        async {
+            let sink = cas :> IOpStreamSink<'Msg>
+            let mutable attempt = 0
+            let mutable outcome = ValueNone
+
+            while outcome.IsNone && attempt < MaxCasAttempts do
+                attempt <- attempt + 1
+                let! head = cas.Head ctx.StreamId
+                let! latest = sink.LatestSequence ctx.StreamId
+                let sequence = latest + 1
+                let record = buildRecordWith ctx sequence head op
+
+                let! result =
+                    async {
+                        try
+                            let! r = cas.AppendIf(record, head)
+                            return Choice1Of2 r
+                        with ex ->
+                            return Choice2Of2 ex
+                    }
+
+                match result with
+                | Choice1Of2(CasAppendOutcome.Appended receipt) ->
+                    outcome <- ValueSome(PersistAttempt.Persisted receipt.Sequence)
+                | Choice1Of2(CasAppendOutcome.StaleHead _) ->
+                    // Another writer got there first. Rebuild against what the
+                    // store now holds and try again — that is the whole point of
+                    // a compare-and-append, and it is why the record is built
+                    // INSIDE the loop.
+                    ()
+                | Choice2Of2 ex ->
+                    outcome <- ValueSome(PersistAttempt.Failed(sequence, PersistFailure.SinkRefused ex.Message))
+
+            match outcome with
+            | ValueSome result -> return result
+            | ValueNone ->
+                let! latest = sink.LatestSequence ctx.StreamId
+                return PersistAttempt.Failed(latest + 1, PersistFailure.ContendedOut MaxCasAttempts)
+        }
+
+    /// Persist `op` — through the sink's compare-and-append when it has one.
+    ///
+    /// A sink with no compare-and-append keeps the read-then-append path. That
+    /// path is genuinely racy and always was; what changes is that its loss is
+    /// now REPORTED rather than swallowed, so a host on such a sink can see the
+    /// cost of the sink it chose.
+    ///
+    /// **Under Fable, EVERY sink takes that path here**, because the capability
+    /// probe is a type test and Fable has no interface identity to test against
+    /// (`SinkCapabilities.tryCas`). A Fable host that holds a capable sink is not
+    /// stuck with the racy path — it names the sink instead, through
+    /// `applyAndPersistThrough` below, which takes the compare-and-append
+    /// interface directly and behaves identically on both pipelines.
+    let private persistOp<'Msg>
         (sink: IOpStreamSink<'Msg>)
         (ctx: PersistContext)
-        (sequence: int)
         (op: TreeOp<'Msg>)
-        : Async<unit> =
+        : Async<PersistAttempt> =
         async {
-            let! record = buildRecordAt sink ctx sequence op
+            match SinkCapabilities.tryCas sink with
+            | Some cas -> return! persistViaCas cas ctx op
+            | None ->
+                let! latest = sink.LatestSequence ctx.StreamId
+                let sequence = latest + 1
+                let! built = buildRecordAt sink ctx sequence op
 
-            try
-                do! sink.Append record
-            with ex ->
-                reportSinkError ctx ex
+                match built with
+                | Error reason -> return PersistAttempt.Failed(sequence, PersistFailure.SinkRefused reason)
+                | Ok record ->
+                    try
+                        do! sink.Append record
+                        return PersistAttempt.Persisted sequence
+                    with ex ->
+                        return PersistAttempt.Failed(sequence, PersistFailure.SinkRefused ex.Message)
+        }
+
+    /// Persist `op` and report a loss through `ctx.OnSinkError` (or the default
+    /// report). Returns the outcome so the telemetry fan-out below can NAME it
+    /// rather than assume it.
+    let private persistAndReport<'Msg>
+        (sink: IOpStreamSink<'Msg>)
+        (ctx: PersistContext)
+        (op: TreeOp<'Msg>)
+        : Async<PersistAttempt> =
+        async {
+            let! attempt = persistOp sink ctx op
+
+            match attempt with
+            | PersistAttempt.Failed(sequence, failure) -> reportFailure ctx sequence failure
+            | PersistAttempt.Persisted _ -> ()
+
+            return attempt
         }
 
     /// Apply `op` against `tree`. On `Ok`, persist a hash-chained `OpRecord`
     /// to `sink` and return the updated tree. On `Error`, return the apply
     /// error unchanged — the sink is not touched.
     ///
-    /// Sink.Append failures are surfaced via `ctx.OnSinkError` (when set) but
-    /// do NOT propagate — the apply path returns `Ok updated` regardless of
-    /// sink durability. Callers that want strict durability wrap their sink
-    /// in a synchronous variant that propagates throws.
+    /// The append goes through the sink's compare-and-append when it has one,
+    /// with bounded retry (Phase 1525) — so two concurrent writers on one stream
+    /// both persist, at contiguous sequences, instead of one silently losing to
+    /// the other's duplicate-sequence refusal.
+    ///
+    /// A persist failure does NOT propagate — the apply path returns
+    /// `Ok updated` regardless of durability — but it is no longer SILENT: it
+    /// reaches `ctx.OnSinkError`, or the default stderr report when the context
+    /// set no hook. Callers that want strict durability wrap their sink in a
+    /// synchronous variant that propagates throws, or call `applyAndPersistWith`
+    /// below and read the attempt.
     let applyAndPersist<'Msg>
         (sink: IOpStreamSink<'Msg>)
         (ctx: PersistContext)
@@ -199,9 +429,55 @@ module ApplyPersist =
             match Apply.apply op tree with
             | Error e -> return Error e
             | Ok updated ->
-                let! latest = sink.LatestSequence ctx.StreamId
-                do! appendRecordAt sink ctx (latest + 1) op
+                let! _attempt = persistAndReport sink ctx op
                 return Ok updated
+        }
+
+    /// `applyAndPersist` that RETURNS the persist outcome beside the tree
+    /// (Phase 1525) — for a host that needs to know whether its op became
+    /// durable rather than being told about it through a callback. The
+    /// behaviour is otherwise identical, reporting included.
+    let applyAndPersistWith<'Msg>
+        (sink: IOpStreamSink<'Msg>)
+        (ctx: PersistContext)
+        (op: TreeOp<'Msg>)
+        (tree: Node<'Msg>)
+        : Async<Result<Node<'Msg> * PersistAttempt, ApplyError>> =
+        async {
+            match Apply.apply op tree with
+            | Error e -> return Error e
+            | Ok updated ->
+                let! attempt = persistAndReport sink ctx op
+                return Ok(updated, attempt)
+        }
+
+    /// `applyAndPersist` against a sink whose compare-and-append is NAMED rather
+    /// than probed for (Phase 1525).
+    ///
+    /// This is the entry point a Fable host uses to get the compare-and-append,
+    /// and it is worth having on .NET too: a host that types its sink as
+    /// `IOpStreamCasSink` here cannot silently fall back to the racy path
+    /// because someone swapped in a store that does not implement it — the
+    /// compiler stops that, where the probe would just quietly take the other
+    /// branch. Same behaviour, same bounded retry, same reporting; the only
+    /// difference is who establishes the capability.
+    let applyAndPersistThrough<'Msg>
+        (sink: IOpStreamCasSink<'Msg>)
+        (ctx: PersistContext)
+        (op: TreeOp<'Msg>)
+        (tree: Node<'Msg>)
+        : Async<Result<Node<'Msg> * PersistAttempt, ApplyError>> =
+        async {
+            match Apply.apply op tree with
+            | Error e -> return Error e
+            | Ok updated ->
+                let! attempt = persistViaCas sink ctx op
+
+                match attempt with
+                | PersistAttempt.Failed(sequence, failure) -> reportFailure ctx sequence failure
+                | PersistAttempt.Persisted _ -> ()
+
+                return Ok(updated, attempt)
         }
 
     /// Journal an op that has ALREADY been applied — append-only, no re-apply.
@@ -213,32 +489,65 @@ module ApplyPersist =
     /// appends the hash-chained record for the op that just happened, and
     /// nothing else.
     ///
-    /// Chaining is delegated to the same private helper `applyAndPersist` uses,
-    /// so there is exactly one place in the codebase that computes a record's
-    /// `PreviousHash` / `Sequence` — a second implementation is how a stream
-    /// silently mis-chains.
+    /// Chaining and allocation are delegated to the same private helper
+    /// `applyAndPersist` uses, so there is exactly one place in the codebase
+    /// that computes a record's `PreviousHash` / `Sequence` — a second
+    /// implementation is how a stream silently mis-chains.
     let journalApplied<'Msg> (sink: IOpStreamSink<'Msg>) (ctx: PersistContext) (op: TreeOp<'Msg>) : Async<unit> =
         async {
-            let! latest = sink.LatestSequence ctx.StreamId
-            do! appendRecordAt sink ctx (latest + 1) op
+            let! _attempt = persistAndReport sink ctx op
+            return ()
         }
 
 #if !FABLE_COMPILER
+    /// The telemetry row for one apply, given the outcome the PERSIST settled
+    /// on (Phase 1525, FGP 5). `sequence` is the address the record actually
+    /// took when it was persisted, and the address it would have taken when it
+    /// was not.
+    let private telemetryFor<'Msg>
+        (ctx: PersistContext)
+        (op: TreeOp<'Msg>)
+        (sequence: int)
+        (outcome: OpOutcome)
+        (elapsedMs: float)
+        : OpApplyTelemetry =
+        { StreamId = ctx.StreamId
+          Sequence = sequence
+          OpKind = OpKind.ofTreeOp op
+          NodeId = OpApplyTelemetry.topLevelNodeId op
+          Outcome = outcome
+          TimeToApplyMs = elapsedMs
+          PromptId = ctx.PromptId
+          UserId = ctx.UserId
+          Timestamp = currentTimestamp () }
+
+    let private emitTelemetry (telemetrySink: IFuaranTelemetrySink) (telemetry: OpApplyTelemetry) : unit =
+        try
+            telemetrySink.RecordOpApply telemetry
+        with _ ->
+            // Telemetry is best-effort by contract; never let a sink throw
+            // poison the apply + persist path.
+            ()
+
     /// Apply `op` against `tree` ONCE and fan out to BOTH sinks: persist a
     /// hash-chained `OpRecord` to the op-stream `sink` (on `Ok`) AND emit one
     /// `OpApplyTelemetry` to `telemetrySink` (on every outcome, success or
     /// failure). The recommended call site for hosts that want durability
-    /// AND telemetry — `applyAndPersist` (op-stream only) and
-    /// `applyWithTelemetry` (telemetry only) are not mutually exclusive any
-    /// more (Phase 124, FGP 5).
+    /// AND telemetry (Phase 124, FGP 5).
+    ///
+    /// **The telemetry row is emitted AFTER the append settles, and names what
+    /// the append did** (Phase 1525). Before this it was emitted BEFORE the
+    /// append with `Outcome = Applied`, so an op the sink then lost left a row
+    /// claiming success at a `(StreamId, Sequence)` naming no record — the join
+    /// key pointed at nothing and no reader could tell. A lost op now emits
+    /// `OpOutcome.PersistLost` carrying the reason.
     ///
     /// The op is applied exactly once (no double-apply): both records are
-    /// derived from the single `Apply.apply` result. The telemetry `Sequence`
-    /// equals the op-stream record's `Sequence` on success — the
-    /// `(StreamId, Sequence)` join key — and the would-be next sequence on
-    /// failure (no record is persisted on `Error`). Both sinks are
-    /// best-effort: a telemetry throw is swallowed, and a persist failure is
-    /// surfaced via `ctx.OnSinkError` without breaking the apply path.
+    /// derived from the single `Apply.apply` result. On an APPLY failure no
+    /// record is persisted and the telemetry carries the would-be next sequence,
+    /// exactly as before. Both sinks stay best-effort: a telemetry throw is
+    /// swallowed, and a persist failure is reported through `ctx.OnSinkError`
+    /// (or the default report) without breaking the apply path.
     let applyWithSinks<'Msg>
         (sink: IOpStreamSink<'Msg>)
         (telemetrySink: IFuaranTelemetrySink)
@@ -247,35 +556,32 @@ module ApplyPersist =
         (tree: Node<'Msg>)
         : Async<Result<Node<'Msg>, ApplyError>> =
         async {
-            let! latest = sink.LatestSequence ctx.StreamId
-            let sequence = latest + 1
-
             let sw = Stopwatch.StartNew()
             let result = Apply.apply op tree
             sw.Stop()
-
-            let telemetry: OpApplyTelemetry =
-                { StreamId = ctx.StreamId
-                  Sequence = sequence
-                  OpKind = OpKind.ofTreeOp op
-                  NodeId = OpApplyTelemetry.topLevelNodeId op
-                  Outcome = OpOutcome.ofApplyResult result
-                  TimeToApplyMs = sw.Elapsed.TotalMilliseconds
-                  PromptId = ctx.PromptId
-                  UserId = ctx.UserId
-                  Timestamp = currentTimestamp () }
-
-            try
-                telemetrySink.RecordOpApply telemetry
-            with _ ->
-                // Telemetry is best-effort by contract; never let a sink
-                // throw poison the apply + persist path.
-                ()
+            let elapsedMs = sw.Elapsed.TotalMilliseconds
 
             match result with
-            | Error e -> return Error e
+            | Error e ->
+                // Nothing is persisted, so the address is the one the record
+                // WOULD have taken — the pre-1525 behaviour, unchanged.
+                let! latest = sink.LatestSequence ctx.StreamId
+
+                emitTelemetry
+                    telemetrySink
+                    (telemetryFor ctx op (latest + 1) (OpOutcome.ofApplyResult result) elapsedMs)
+
+                return Error e
             | Ok updated ->
-                do! appendRecordAt sink ctx sequence op
+                let! attempt = persistAndReport sink ctx op
+
+                let sequence, outcome =
+                    match attempt with
+                    | PersistAttempt.Persisted sequence -> sequence, OpOutcome.Applied
+                    | PersistAttempt.Failed(sequence, failure) ->
+                        sequence, OpOutcome.PersistLost(PersistFailure.describe ctx.StreamId sequence failure)
+
+                emitTelemetry telemetrySink (telemetryFor ctx op sequence outcome elapsedMs)
                 return Ok updated
         }
 
@@ -305,7 +611,10 @@ module ApplyPersist =
     /// Returns the applied tree exactly as `applyWithSinks` does, including on
     /// a duplicate: the apply is deterministic and ran against the same tree,
     /// so the caller's state is correct either way — what the key changes is
-    /// what is DURABLE, not what is returned.
+    /// what is DURABLE, not what is returned. And as in `applyWithSinks`, the
+    /// telemetry row is emitted AFTER the append settles and names its outcome
+    /// (Phase 1525) — a DUPLICATE counts as persisted, because the record the
+    /// key names is in the stream and the join key resolves.
     let applyWithSinksKeyed<'Msg>
         (sink: IOpStreamKeyedSink<'Msg>)
         (telemetrySink: IFuaranTelemetrySink)
@@ -316,43 +625,61 @@ module ApplyPersist =
         : Async<Result<Node<'Msg>, ApplyError>> =
         async {
             let baseSink = sink :> IOpStreamSink<'Msg>
-            let! latest = baseSink.LatestSequence ctx.StreamId
-            let sequence = latest + 1
 
             let sw = Stopwatch.StartNew()
             let result = Apply.apply op tree
             sw.Stop()
-
-            let telemetry: OpApplyTelemetry =
-                { StreamId = ctx.StreamId
-                  Sequence = sequence
-                  OpKind = OpKind.ofTreeOp op
-                  NodeId = OpApplyTelemetry.topLevelNodeId op
-                  Outcome = OpOutcome.ofApplyResult result
-                  TimeToApplyMs = sw.Elapsed.TotalMilliseconds
-                  PromptId = ctx.PromptId
-                  UserId = ctx.UserId
-                  Timestamp = currentTimestamp () }
-
-            try
-                telemetrySink.RecordOpApply telemetry
-            with _ ->
-                // Telemetry is best-effort by contract; never let a sink
-                // throw poison the apply + persist path. This is the throw a
-                // caller misreads as failure — which is precisely why the
-                // append below carries the key.
-                ()
+            let elapsedMs = sw.Elapsed.TotalMilliseconds
 
             match result with
-            | Error e -> return Error e
-            | Ok updated ->
-                let! record = buildRecordAt baseSink ctx sequence op
+            | Error e ->
+                let! latest = baseSink.LatestSequence ctx.StreamId
 
-                try
-                    let! _outcome = sink.AppendKeyed(record, invocationKey)
-                    ()
-                with ex ->
-                    reportSinkError ctx ex
+                emitTelemetry
+                    telemetrySink
+                    (telemetryFor ctx op (latest + 1) (OpOutcome.ofApplyResult result) elapsedMs)
+
+                return Error e
+            | Ok updated ->
+                let! latest = baseSink.LatestSequence ctx.StreamId
+                let sequence = latest + 1
+                let! built = buildRecordAt baseSink ctx sequence op
+
+                let! attempt =
+                    async {
+                        match built with
+                        | Error reason -> return PersistAttempt.Failed(sequence, PersistFailure.SinkRefused reason)
+                        | Ok record ->
+                            try
+                                let! keyed = sink.AppendKeyed(record, invocationKey)
+
+                                match keyed with
+                                | KeyedAppendOutcome.Appended receipt ->
+                                    return PersistAttempt.Persisted receipt.Sequence
+                                | KeyedAppendOutcome.Duplicate receipt ->
+                                    // The record this key names is already in the
+                                    // stream, so the join key resolves and the op
+                                    // IS durable. That is a persisted outcome, not
+                                    // a lost one.
+                                    return PersistAttempt.Persisted receipt.Sequence
+                            with ex ->
+                                return PersistAttempt.Failed(sequence, PersistFailure.SinkRefused ex.Message)
+                    }
+
+                match attempt with
+                | PersistAttempt.Failed(failedAt, failure) ->
+                    reportFailure ctx failedAt failure
+
+                    emitTelemetry
+                        telemetrySink
+                        (telemetryFor
+                            ctx
+                            op
+                            failedAt
+                            (OpOutcome.PersistLost(PersistFailure.describe ctx.StreamId failedAt failure))
+                            elapsedMs)
+                | PersistAttempt.Persisted persistedAt ->
+                    emitTelemetry telemetrySink (telemetryFor ctx op persistedAt OpOutcome.Applied elapsedMs)
 
                 return Ok updated
         }

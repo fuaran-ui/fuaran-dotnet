@@ -1,4 +1,4 @@
-namespace Fuaran.UI.Telemetry.Default
+﻿namespace Fuaran.UI.Telemetry.Default
 
 open System
 open System.Globalization
@@ -145,6 +145,10 @@ module private Render =
         | OpOutcome.DecoderRejected reason -> DevToolsLevel.Warn, sprintf "decoder-rejected:%s" reason
         | OpOutcome.NodeNotFound nodeId -> DevToolsLevel.Warn, sprintf "node-not-found:%s" nodeId
         | OpOutcome.ApplyEngineError detail -> DevToolsLevel.Warn, sprintf "apply-engine-error:%s" detail
+        // Phase 1525 — the apply succeeded and the durable append did not.
+        // Warn, like the other non-Applied outcomes, because the row's
+        // `(StreamId, Sequence)` names no record and a reader must know that.
+        | OpOutcome.PersistLost reason -> DevToolsLevel.Warn, sprintf "persist-lost:%s" reason
 
     let opApply (t: OpApplyTelemetry) : DevToolsLevel * string * (string * string) list =
         let level, word = outcome t.Outcome

@@ -76,6 +76,49 @@ let private sameNameOtherBody: ParamFragment<unit> =
 let private otherNameSameBody: ParamFragment<unit> =
     { fragment with Name = "card-alt" }
 
+/// Two declarations that differ ONLY in a value the canonical encoder cannot
+/// represent (Phase 1525). The body is byte-for-byte the same tree except for
+/// the closure captured by an accessibility `Binding.Computed`, which encodes
+/// as the `"<closure>"` sentinel on both — so the two hash identically and a
+/// content-addressed store cannot tell them apart.
+///
+/// The captured value is observable through the closure, which is what makes a
+/// false cache hit a WRONG ANSWER rather than an invisible one: serve the first
+/// declaration's tree for the second and the label reads "alpha" where the
+/// author wrote "beta".
+let private closureBodied (hidden: string) : ParamFragment<unit> =
+    let root =
+        Fuaran.dashboard
+            "card-root"
+            { Defaults.dashboard<unit> with
+                Children =
+                    [ Fuaran.markdown "card-title" "Title"
+                      { Id = "content"
+                        Kind = NodeKind.FragmentRef { Name = "content"; Args = None }
+                        State = None
+                        Style = None
+                        Accessibility = None
+                        Motion = None
+                        ExtraAttributes = None
+                        Tooltip = None } ] }
+
+    { fragment with
+        Body =
+            { root with
+                Accessibility =
+                    Some
+                        { Defaults.Accessibility.empty with
+                            Label = Some(Binding.Computed(fun _ -> hidden)) } } }
+
+/// Read back the value the derived tree's accessibility closure captured.
+let private capturedLabel (node: Node<unit>) : string =
+    match node.Accessibility with
+    | None -> failtest "the derived tree lost its accessibility label"
+    | Some a ->
+        match a.Label with
+        | Some(Binding.Computed f) -> f (v (box 0))
+        | other -> failtestf "expected a Computed label, got %A" other
+
 let private slotArgs (text: string) : Map<string, Node<unit>> =
     Map.ofList [ "content", Fuaran.markdown "body" text ]
 
@@ -413,4 +456,166 @@ let tests =
                   (CanonicalJson.encodeNode d1.Result.Tree)
                   (CanonicalJson.encodeNode d0.Result.Tree)
                   "and it yields its OWN body, not the cached tree"
+          }
+
+          // ------------------------------------------------- Phase 1525 --
+
+          test "PROBE: two declarations differing only in a closure key IDENTICALLY" {
+              // The premise every assertion below rests on. If this ever stops
+              // holding — because the canonical encoder learns to represent the
+              // value, say — the admission rule is solving a problem that no
+              // longer exists, and these tests should be re-read rather than
+              // repaired.
+              let alpha = closureBodied "alpha"
+              let beta = closureBodied "beta"
+
+              Expect.equal
+                  (FragmentKey.structural alpha "ref1" (slotArgs "x"))
+                  (FragmentKey.structural beta "ref1" (slotArgs "x"))
+                  "the content hash cannot distinguish them"
+
+              Expect.notEqual (capturedLabel alpha.Body) (capturedLabel beta.Body) "yet they are different fragments"
+
+              Expect.stringContains
+                  (CanonicalJson.encodeNode alpha.Body)
+                  "\"<closure>\""
+                  "because the encoder stood a sentinel in for the part it could not carry"
+          }
+
+          test "GO-RED: a shared / persisted store REFUSES an unrepresentable body, naming what was lost" {
+              // A store the caller chose to share or persist is a contract with
+              // another session or machine. An entry keyed by an encoding that
+              // could not represent the fragment outlives the process that wrote
+              // it, so the caller is told rather than quietly un-memoised.
+              let sink = CaptureSink()
+              let store = FragmentStore.portable<unit> ()
+              let engine = Engine<unit>(store :> IFragmentStore<unit>, sink)
+
+              Expect.equal engine.Reach StoreReach.SharedOrPersisted "an injected store reads as shared / persisted"
+
+              match engine.Apply(closureBodied "alpha", "ref1", valueArgs "Hello" 3, slotArgs "x") with
+              | Ok d ->
+                  failtestf "a shared store must refuse an unrepresentable body; it keyed it as %A" d.StructuralKey
+              | Error message ->
+                  Expect.stringContains message "<closure>" "the refusal names the sentinel"
+                  Expect.stringContains message "body" "and where it appeared"
+
+              Expect.equal
+                  (store :> IFragmentStore<unit>).Count
+                  0
+                  "and nothing was stored under a key that cannot discriminate"
+          }
+
+          test "GO-RED: a shared / persisted store refuses an unrepresentable SLOT argument too" {
+              // Slot arguments are substituted INTO the cached tree, so they
+              // carry the same hazard as the body and get the same test.
+              let sink = CaptureSink()
+              let store = FragmentStore.portable<unit> ()
+              let engine = Engine<unit>(store :> IFragmentStore<unit>, sink)
+
+              let closureSlot: Map<string, Node<unit>> =
+                  let m = Fuaran.markdown "body" "x"
+
+                  Map.ofList
+                      [ "content",
+                        { m with
+                            Accessibility =
+                                Some
+                                    { Defaults.Accessibility.empty with
+                                        Label = Some(Binding.Computed(fun _ -> "slot-alpha")) } } ]
+
+              match engine.Apply(fragment, "ref1", valueArgs "Hello" 3, closureSlot) with
+              | Ok _ -> failtest "a shared store must refuse an unrepresentable slot argument"
+              | Error message ->
+                  Expect.stringContains message "<closure>" "the refusal names the sentinel"
+                  Expect.stringContains message "slot 'content'" "and names the slot rather than the body"
+
+              Expect.equal (store :> IFragmentStore<unit>).Count 0 "nothing stored"
+          }
+
+          test "GO-RED: a process-local memo serves the RIGHT fragment, by declining to cache it" {
+              // The false hit is not confined to a shared store: two colliding
+              // fragments are two fragments wherever they live. A process-local
+              // engine therefore bypasses rather than stores — the optimisation
+              // is declined, the work is not refused, and the second declaration
+              // gets its OWN closures.
+              let sink = CaptureSink()
+              let engine = Engine<unit>(64, sink)
+
+              Expect.equal engine.Reach StoreReach.ProcessLocal "the shipped constructor owns its store"
+
+              let dAlpha =
+                  engine.Apply(closureBodied "alpha", "ref1", valueArgs "Hello" 3, slotArgs "x")
+                  |> ok "alpha"
+
+              let dBeta =
+                  engine.Apply(closureBodied "beta", "ref1", valueArgs "Hello" 3, slotArgs "x")
+                  |> ok "beta"
+
+              Expect.equal (capturedLabel dAlpha.Result.Tree) "alpha" "the first declaration derives its own closure"
+
+              Expect.equal
+                  (capturedLabel dBeta.Result.Tree)
+                  "beta"
+                  "and the second is NOT served the first's cached tree"
+
+              Expect.isNone dAlpha.StructuralKey "an unrepresentable application carries no content address"
+              Expect.isNone dBeta.StructuralKey "neither does the second"
+              Expect.equal engine.Store.Count 0 "and nothing was stored under a key that cannot discriminate"
+
+              Expect.equal
+                  sink.Last.Outcome
+                  CacheOutcome.Bypass
+                  "the outcome is a bypass — the same shape the effect gate produces"
+
+              Expect.equal engine.Store.Bypasses 2 "both applications were routed around the store"
+          }
+
+          test "an un-keyable derivation is never reused incrementally" {
+              // `Reapply` reuses the prior tree only when a content address
+              // proves it is the same tree. `None` is not a key, so an
+              // un-keyable prior derivation always falls through to a full
+              // re-derive rather than reusing a tree it cannot vouch for.
+              let sink = CaptureSink()
+              let engine = Engine<unit>(64, sink)
+
+              let d0 =
+                  engine.Apply(closureBodied "alpha", "ref1", valueArgs "Hello" 3, slotArgs "x")
+                  |> ok "base apply"
+
+              let d1 =
+                  engine.Reapply(d0, closureBodied "beta", "ref1", valueArgs "Hello" 7, slotArgs "x")
+                  |> ok "value-only reapply over an un-keyable derivation"
+
+              Expect.equal (capturedLabel d1.Result.Tree) "beta" "the re-derive yields the new declaration's closure"
+
+              Expect.equal
+                  sink.Last.Outcome
+                  CacheOutcome.Bypass
+                  "and it re-derives rather than reporting an incremental reuse"
+          }
+
+          test "the representable path is untouched by the admission gate" {
+              // The gate must cost the ordinary case nothing: a fragment the
+              // encoder can represent still hits, stores and reuses exactly as
+              // before, under both reaches.
+              let sink = CaptureSink()
+              let store = FragmentStore.portable<unit> ()
+              let engine = Engine<unit>(store :> IFragmentStore<unit>, sink)
+
+              let d0 =
+                  engine.Apply(fragment, "ref1", valueArgs "Hello" 3, slotArgs "x")
+                  |> ok "first apply"
+
+              let d1 =
+                  engine.Apply(fragment, "ref1", valueArgs "Hello" 3, slotArgs "x")
+                  |> ok "second apply"
+
+              Expect.isSome d0.StructuralKey "a representable application is content-addressed"
+              Expect.equal d1.StructuralKey d0.StructuralKey "and keys identically on a repeat"
+              Expect.equal sink.Last.Outcome CacheOutcome.Hit "the repeat is a cache hit"
+
+              Expect.isTrue
+                  (System.Object.ReferenceEquals(d0.Result.Tree, d1.Result.Tree))
+                  "served from the store, not re-derived"
           } ]

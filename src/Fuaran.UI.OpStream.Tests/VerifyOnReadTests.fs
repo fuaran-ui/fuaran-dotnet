@@ -1,4 +1,4 @@
-module Fuaran.UI.OpStream.Tests.VerifyOnReadTests
+﻿module Fuaran.UI.OpStream.Tests.VerifyOnReadTests
 
 open System
 open System.IO
@@ -222,7 +222,17 @@ let tests =
           // ── InMemorySink ────────────────────────────────────────────────
 
           test "InMemorySink.Replay REFUSES a corrupt record it is holding" {
-              let sink = InMemorySink.create<TestMsg> ()
+              // Phase 1525: the corruption is INJECTED, so the sink is
+              // constructed with the write-path check named off. Since 1525 a
+              // sink refuses a record whose hash does not recompute at the
+              // WRITE, which is the right default and makes this store
+              // unreachable through the front door — so the test says out loud
+              // that it is simulating a store corrupted by something other than
+              // this sink (a torn write, a bad sector, a hand-run `UPDATE`),
+              // which is exactly what the READ path exists to catch.
+              let sink =
+                  InMemorySink.createWithModes<TestMsg> LoadVerification.Full WriteAdmission.Off
+
               let r1, r2, _ = cleanChain "mem-bad"
 
               sink.Append r1 |> Async.RunSynchronously
@@ -248,7 +258,9 @@ let tests =
           }
 
           test "LoadVerification.Off hands the corrupt segment back — the opt-out is real, and named" {
-              let sink = InMemorySink.createWith<TestMsg> LoadVerification.Off
+              let sink =
+                  InMemorySink.createWithModes<TestMsg> LoadVerification.Off WriteAdmission.Off
+
               let r1, r2, _ = cleanChain "mem-off"
 
               sink.Append r1 |> Async.RunSynchronously
@@ -262,7 +274,9 @@ let tests =
               let r1, r2, r3 = cleanChain "mem-tail"
 
               // Corruption INSIDE the window is caught.
-              let inside = InMemorySink.createWith<TestMsg> (LoadVerification.Tail 2)
+              let inside =
+                  InMemorySink.createWithModes<TestMsg> (LoadVerification.Tail 2) WriteAdmission.Off
+
               inside.Append r1 |> Async.RunSynchronously
               inside.Append r2 |> Async.RunSynchronously
               inside.Append(corruptContent r3) |> Async.RunSynchronously
@@ -274,7 +288,9 @@ let tests =
               // Corruption BEFORE the window is NOT caught. This is the honest cost
               // of the fast path, asserted rather than described, so that anyone who
               // widens the default has to come here and change a test that says so.
-              let outside = InMemorySink.createWith<TestMsg> (LoadVerification.Tail 1)
+              let outside =
+                  InMemorySink.createWithModes<TestMsg> (LoadVerification.Tail 1) WriteAdmission.Off
+
               outside.Append r1 |> Async.RunSynchronously
               outside.Append(corruptContent r2) |> Async.RunSynchronously
               outside.Append r3 |> Async.RunSynchronously

@@ -1,4 +1,4 @@
-namespace Fuaran.UI.OpStream.Replay
+﻿namespace Fuaran.UI.OpStream.Replay
 
 open System
 open System.Globalization
@@ -535,8 +535,47 @@ module GuestImport =
                 match reconstruct b with
                 | Error e -> return Error e
                 | Ok tree ->
-                    for record in b.Records do
-                        do! sink.Append record
+                    // ── ONE TRANSACTION, WHERE THE SINK HAS ONE (Phase 1525,
+                    //    finding L-A16) ─────────────────────────────────────
+                    // Record by record, a failure on the tenth of twenty leaves
+                    // nine records in the stream — and the collision guard above
+                    // then refuses every retry, because the stream now holds
+                    // records. A transient failure became a permanently
+                    // unimportable bundle. `AppendAll` is all-or-nothing, so the
+                    // retry stays available. A sink without it keeps the
+                    // per-record loop, and the partial state is REPORTED rather
+                    // than left for the guard to mis-diagnose on the next
+                    // attempt. (Under Fable the probe always answers `None` — it
+                    // is a type test, which Fable cannot express — so a Fable
+                    // host always takes the per-record loop and always gets the
+                    // report. See `SinkCapabilities`.)
+                    match SinkCapabilities.tryBatch sink with
+                    | Some batch ->
+                        do! batch.AppendAll b.Records
+                        return Ok tree
+                    | None ->
+                        let mutable written = 0
+                        let mutable failure = None
 
-                    return Ok tree
+                        for record in b.Records do
+                            if failure.IsNone then
+                                try
+                                    do! sink.Append record
+                                    written <- written + 1
+                                with ex ->
+                                    failure <- Some ex.Message
+
+                        match failure with
+                        | None -> return Ok tree
+                        | Some reason ->
+                            return
+                                Error(
+                                    sprintf
+                                        "GuestImport.load: the sink refused record %d of %d for stream '%s' (%s), and this sink offers no atomic batch append — %d record(s) are now in the stream, so a retry must remap the bundle to a fresh scope id"
+                                        (written + 1)
+                                        b.Records.Length
+                                        streamId
+                                        reason
+                                        written
+                                )
         }

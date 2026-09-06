@@ -56,6 +56,20 @@ type OpOutcome =
     /// `detail` carries the `ApplyError.Code` discriminator name + the
     /// engine's `Message` for diagnostic context.
     | ApplyEngineError of detail: string
+    /// The apply SUCCEEDED and the durable append did not (Phase 1525).
+    ///
+    /// The one outcome the four cases above could not express, and the reason
+    /// this case exists: on the apply-and-persist seam the telemetry row was
+    /// emitted BEFORE the append, so a lost append left a row reading `Applied`
+    /// at a `(StreamId, Sequence)` that names no record — the join key points at
+    /// nothing and the reader has no way to tell. The row is now emitted after
+    /// the append settles, and this is what it says when the op did not become
+    /// durable. `reason` is the persist path's own account of the loss.
+    ///
+    /// **It is not an apply failure**, and a consumer that reads outcomes as
+    /// authoring quality (the drift detector) must not count it as one: the
+    /// author's op was correct; the store did not take it.
+    | PersistLost of reason: string
 
 /// One op's worth of apply trace, surfaced to the configured
 /// `IFuaranTelemetrySink` from the apply-engine dispatch point.

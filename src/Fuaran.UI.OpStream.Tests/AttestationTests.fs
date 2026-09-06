@@ -5,6 +5,7 @@ module Fuaran.UI.OpStream.Tests.AttestationTests
 #nowarn "3261"
 
 open System
+open System.Globalization
 open System.IO
 open System.Security.Cryptography
 open System.Text.Json
@@ -499,4 +500,235 @@ let tests =
               Expect.equal entries.Head.PublicKeySpki spki "spki"
               Expect.isSome entries.Head.Expires "expiry parsed"
               Expect.isNone entries.Head.RevokedFrom "revocation absent"
+          }
+
+          // ------------------------------------------------- Phase 1525 --
+
+          test "GO-RED: a key-directory timestamp is read the same on every machine" {
+              // A key directory is a published document. Its three lifecycle
+              // fields ARE the revocation boundary, the expiry and the validity
+              // start, so if they resolve to different instants on different
+              // machines the same attestation verifies in one place and is void
+              // in another. Default parse styles do exactly that: a string with
+              // no offset is interpreted in the READING machine's local zone.
+              //
+              // The chosen behaviour is AssumeUniversal ||| AdjustToUniversal:
+              // an offset-less string reads as UTC, one carrying an offset
+              // normalises to the same instant in UTC.
+              use key = ECDsa.Create(ECCurve.NamedCurves.nistP256)
+              let spki = EcdsaP256.exportPublicKeySpki key
+
+              let directory (expires: string) (revoked: string) : KeyDirectoryEntry =
+                  let json =
+                      "{ \"keys\": [ { \"keyId\": \"k-1\", \"algorithm\": \"ecdsa-p256-sha256-v1\", \"publicKeySpki\": \""
+                      + spki
+                      + "\", \"notBefore\": null, \"expires\": \""
+                      + expires
+                      + "\", \"revokedFrom\": \""
+                      + revoked
+                      + "\" } ] }"
+
+                  (FileKeyDirectory.parse json).Head
+
+              let utcInstant = DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero)
+
+              // (1) No offset at all. Machine-INDEPENDENT only because of
+              //     AssumeUniversal; on a host whose local offset is zero this
+              //     arm cannot tell the two implementations apart, which is
+              //     precisely why arm (2) below exists.
+              let noOffset = directory "2027-01-01T00:00:00" "2027-01-01T00:00:00"
+              Expect.equal noOffset.Expires (Some utcInstant) "an offset-less expiry reads as UTC"
+
+              Expect.equal
+                  (noOffset.Expires |> Option.map _.Offset)
+                  (Some TimeSpan.Zero)
+                  "and carries a UTC offset, not the reading machine's"
+
+              // (2) An explicit non-UTC offset. AdjustToUniversal normalises it
+              //     to the same instant in UTC — red under default styles on
+              //     EVERY machine, whatever its local zone.
+              let shifted = directory "2026-12-31T19:00:00-05:00" "2027-01-01T05:00:00+05:00"
+              Expect.equal shifted.Expires (Some utcInstant) "an offset-bearing expiry is the same instant"
+
+              Expect.equal
+                  (shifted.Expires |> Option.map _.Offset)
+                  (Some TimeSpan.Zero)
+                  "normalised to UTC rather than kept in the document's offset"
+
+              Expect.equal shifted.RevokedFrom (Some utcInstant) "and so is the revocation boundary"
+
+              // (3) The reading is culture-independent too. th-TH is the classic
+              //     trap: its default calendar is the Buddhist era, so a
+              //     culture-sensitive read of the same digits lands 543 years
+              //     away.
+              let original = CultureInfo.CurrentCulture
+
+              try
+                  CultureInfo.CurrentCulture <- CultureInfo "th-TH"
+                  let underThai = directory "2027-01-01T00:00:00" "2027-01-01T00:00:00"
+                  Expect.equal underThai.Expires (Some utcInstant) "the ambient culture changes nothing"
+              finally
+                  CultureInfo.CurrentCulture <- original
+          }
+
+          test "GO-RED: a signer refuses a key on another 256-bit curve, naming the curve" {
+              // Key size does not identify a curve. secp256k1 is 256 bits and is
+              // NOT what `ecdsa-p256-sha256-v1` names, so the pre-1525 size gate
+              // admitted it and this signer would have minted attestations under
+              // an algorithm id that does not describe them.
+              use secp = ECDsa.Create(ECCurve.CreateFromFriendlyName "secp256k1")
+              Expect.equal secp.KeySize 256 "the fixture is 256 bits — a size gate cannot see the difference"
+
+              let refusalFor (k: ECDsa) : string =
+                  try
+                      EcdsaP256.signer now "key-1" k |> ignore
+                      failtest "the signer accepted a key the algorithm id does not describe"
+                  with :? ArgumentException as e ->
+                      e.Message
+
+              let message = refusalFor secp
+              Expect.stringContains message "secp256k1" "the refusal names the curve the key is actually on"
+              Expect.stringContains message "P-256" "and the curve the algorithm id requires"
+
+              // The same is true of P-521, which the size gate also caught — kept
+              // so the widening of the check is not mistaken for a replacement.
+              use p521 = ECDsa.Create(ECCurve.NamedCurves.nistP521)
+              Expect.stringContains (refusalFor p521) "P-256" "a P-521 key is still refused"
+          }
+
+          test "GO-RED: a verifier refuses an attestation signed under another 256-bit curve" {
+              // The signer refuses to build one, so the forgery is assembled by
+              // hand — which is exactly what an adversary with a secp256k1 key
+              // and a directory entry claiming `ecdsa-p256-sha256-v1` would do.
+              // The signature is REAL: it verifies under its own key, so the only
+              // thing standing between it and an `Attested` verdict is the curve
+              // check.
+              use secp = ECDsa.Create(ECCurve.CreateFromFriendlyName "secp256k1")
+              let records = makeChain ()
+
+              match SegmentDescriptor.forRecords AttestationAlgorithm.ecdsaP256Sha256V1 records with
+              | Error e -> failtestf "forRecords failed: %s" e
+              | Ok descriptor ->
+                  let signedAt = now ()
+                  let payload = SegmentAttestation.claimPayload descriptor "key-1" signedAt false
+
+                  let attestation =
+                      { Descriptor = descriptor
+                        KeyId = "key-1"
+                        SignedAt = signedAt
+                        Adopted = false
+                        Signature =
+                          Convert.ToBase64String(
+                              secp.SignData(System.Text.Encoding.UTF8.GetBytes payload, HashAlgorithmName.SHA256)
+                          ) }
+
+                  let bundle =
+                      { Records = records
+                        Attestation = Some attestation
+                        Keys = [] }
+
+                  let entry = EcdsaP256.keyEntry "key-1" secp
+
+                  Expect.equal
+                      entry.Algorithm
+                      AttestationAlgorithm.ecdsaP256Sha256V1
+                      "the directory entry claims the P-256 algorithm id"
+
+                  match verifyWith entry bundle with
+                  | EvidenceVerdict.SignatureInvalid "key-1" -> ()
+                  | other -> failtestf "expected SignatureInvalid for a secp256k1 key, got %A" other
+          }
+
+          test "GO-RED: SignedAt is stored at the resolution it was signed at" {
+              // The claim payload binds `signedAt` as unix SECONDS. Storing the
+              // signer's full-precision clock reading beside it meant the record
+              // held a value the signature did not fix, and every consumer of it
+              // — the revocation boundary above all — read that unfixed value.
+              let subSecond () =
+                  DateTimeOffset(2026, 8, 1, 12, 0, 0, 500, TimeSpan.Zero)
+
+              use key = ECDsa.Create(ECCurve.NamedCurves.nistP256)
+              let signer = EcdsaP256.signerWith subSecond false "key-1" key
+
+              let bundle =
+                  Evidence.produce signer AttestationAlgorithm.ecdsaP256Sha256V1 (makeChain ())
+                  |> run
+                  |> function
+                      | Ok b -> b
+                      | Error e -> failtestf "produce failed: %s" e
+
+              let attestation =
+                  match bundle.Attestation with
+                  | Some a -> a
+                  | None -> failtest "the signer produced no attestation"
+
+              Expect.equal
+                  attestation.SignedAt
+                  (SegmentAttestation.signedInstant attestation.SignedAt)
+                  "the stored SignedAt is already at the bound resolution"
+
+              // A store round trip is exactly this: the record is written at the
+              // resolution the format carries and read back. With the signer
+              // storing what it bound, the round trip is the identity.
+              let roundTripped =
+                  { attestation with
+                      SignedAt = DateTimeOffset.FromUnixTimeSeconds(attestation.SignedAt.ToUnixTimeSeconds()) }
+
+              Expect.equal roundTripped attestation "a store round trip returns the same record"
+
+              Expect.equal
+                  (SegmentAttestation.claimPayloadOf roundTripped)
+                  (SegmentAttestation.claimPayloadOf attestation)
+                  "so the bytes verified after the round trip are the bytes that were signed"
+
+              match
+                  verifyWith
+                      (EcdsaP256.keyEntry "key-1" key)
+                      { bundle with
+                          Attestation = Some roundTripped }
+              with
+              | EvidenceVerdict.Attested("key-1", _, 1, 3, []) -> ()
+              | other -> failtestf "expected Attested after the round trip, got %A" other
+          }
+
+          test "the revocation boundary is decided by the instant the signature covers" {
+              // Sub-second precision on a stored `SignedAt` is not covered by the
+              // signature, so a store-writer could shift it within its second. It
+              // must not be able to move an attestation across a revocation
+              // boundary by doing so.
+              let atSecond = DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero)
+
+              use key = ECDsa.Create(ECCurve.NamedCurves.nistP256)
+              let signer = EcdsaP256.signerWith (fun () -> atSecond) false "key-1" key
+
+              let bundle =
+                  Evidence.produce signer AttestationAlgorithm.ecdsaP256Sha256V1 (makeChain ())
+                  |> run
+                  |> function
+                      | Ok b -> b
+                      | Error e -> failtestf "produce failed: %s" e
+
+              let attestation = Option.get bundle.Attestation
+
+              // A store-writer nudges SignedAt forward by 900ms. The signature
+              // still verifies (the payload floors it), so only the lifecycle
+              // comparison can be affected.
+              let nudged =
+                  { bundle with
+                      Attestation =
+                          Some
+                              { attestation with
+                                  SignedAt = attestation.SignedAt.AddMilliseconds 900.0 } }
+
+              let entry =
+                  { EcdsaP256.keyEntry "key-1" key with
+                      RevokedFrom = Some(atSecond.AddMilliseconds 500.0) }
+
+              match verifyWith entry nudged with
+              | EvidenceVerdict.Attested("key-1", _, _, _, warnings) ->
+                  Expect.contains
+                      warnings
+                      (EvidenceWarning.KeyRevokedAfterSigning "key-1")
+                      "revoked AFTER signing — a warning, not a void attestation"
+              | other -> failtestf "expected Attested (the nudge must not void it), got %A" other
           } ]

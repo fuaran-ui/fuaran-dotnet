@@ -27,19 +27,37 @@ open Fuaran.UI.Types
 //  the original chain. Per FGP 5 the op stream stays the source of truth
 //  — compaction can shorten the live tail, never silently break the chain.
 //
-//  FGP 2 / FGP 6. Depends on `FSharp.Core` + `Fuaran.UI` only (Snapshot is
-//  a `Node<'Msg>`). No orchestration-private dependency anywhere; the
-//  checkpoint primitive ships in the abstractions tier alongside `OpRecord`
-//  and stays Apache-2.0-clean.
+//  FGP 2 / FGP 6. Adds no dependency of its own: `Snapshot` is a
+//  `Node<'Msg>`, so this file needs only what the tier already carries. (It
+//  used to claim "`FSharp.Core` + `Fuaran.UI` only" for the whole package;
+//  since Phase 406/465 the package also references the Fuaran.Core op-stream
+//  and function tiers, both FSharp.Core-only and Fable-clean, so the FGP-2
+//  property holds and the enumeration did not. Corrected Phase 1525.) The
+//  checkpoint primitive ships in the abstractions tier alongside `OpRecord` and
+//  stays Apache-2.0-clean.
 // ============================================================================
 
 /// A materialised snapshot at one op-index. The `Snapshot` is the state the
 /// apply engine would produce by folding `OpRecord[1..Sequence]` against
-/// the genesis tree; `SnapshotHash` is `HashChain.sha256Hex` applied to
-/// `CanonicalJson.encodeNode Snapshot`. `PreviousChainHead` is the chain
-/// head AT this op-index — equal to `OpRecord(Sequence).Hash` for
-/// `Sequence >= 1`, or `HashChain.genesisPreviousHash` for a Sequence-0
-/// checkpoint over an initial tree.
+/// the genesis tree. `PreviousChainHead` is the chain head AT this op-index —
+/// equal to `OpRecord(Sequence).Hash` for `Sequence >= 1`, or
+/// `HashChain.genesisPreviousHash` for a Sequence-0 checkpoint over an initial
+/// tree.
+///
+/// `SnapshotHash` is `HashChain.snapshotHash PreviousChainHead Sequence
+/// (CanonicalJson.encodeNode Snapshot)` — a POSITION-BOUND content address
+/// (Phase 412). Corrected here in Phase 1525: this comment still described the
+/// pre-412 rule, `sha256Hex (CanonicalJson.encodeNode Snapshot)` alone, which a
+/// reader recomputing the field from it would have got wrong, and which
+/// understates what the field protects.
+///
+/// The binding is what the position adds: a valid snapshot and its hash, taken
+/// from one `(PreviousChainHead, Sequence)`, no longer validate at a different
+/// one — so replaying a real older snapshot as a later checkpoint
+/// (cross-position substitution) is caught, as is accidental corruption. It is
+/// defence in depth, not tamper-proofing: an adversary who rewrites the whole
+/// checkpoint record consistently recomputes this too. Catching that is the
+/// signed attestation seam's job (`Attestation.fs`).
 type Checkpoint<'Msg> =
     { StreamId: string
       Sequence: int
@@ -89,8 +107,11 @@ module CompactionPolicy =
 /// Outcome of the checkpoint→tail boundary integrity check performed by
 /// `Replay.applyFromCheckpoint`. `BoundaryMismatch` means the first tail
 /// record's `PreviousHash` does not link to the retained checkpoint;
-/// `SnapshotHashMismatch` means the stored snapshot's canonical-JSON
-/// hash no longer matches the recorded `SnapshotHash` (snapshot tamper).
+/// `SnapshotHashMismatch` means the snapshot's recomputed POSITION-BOUND
+/// address (`HashChain.snapshotHash`, Phase 412) no longer matches the recorded
+/// `SnapshotHash` — so it covers a snapshot that was tampered with AND one
+/// lifted from another position, which the pre-412 "canonical-JSON hash" this
+/// comment used to name could not distinguish (corrected Phase 1525).
 [<RequireQualifiedAccess>]
 type CheckpointVerificationError =
     | BoundaryMismatch of checkpointSequence: int * expected: string * actual: string

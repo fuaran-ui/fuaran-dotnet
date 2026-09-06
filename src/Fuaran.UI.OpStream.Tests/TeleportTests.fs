@@ -405,4 +405,56 @@ let tests =
               match Teleport.decode ("XX9." + encoded.Substring 4) with
               | Error(TeleportError.InvalidFormat _) -> ()
               | other -> failtestf "expected InvalidFormat, got %A" other
+          }
+
+          test "GO-RED: the format-prefix test is ORDINAL, so the tag check and the slice agree" {
+              // `FT1.` is a WIRE TAG — four bytes the encoder emitted — and the
+              // `Substring` that follows the test slices at that same fixed count.
+              // Under the culture-sensitive default overload ICU ignores
+              // zero-width formatting characters, so a string that does NOT begin
+              // with the tag passes the test and is then sliced four characters in
+              // from the WRONG place; and the answer can differ by machine
+              // culture, so the same bundle decodes here and is refused there.
+              //
+              // The probe is verified before it is trusted: these assertions prove
+              // nothing unless the two overloads actually disagree on this input.
+              let encoded = encodeOk (exemplarBundle ())
+              let disguised = "\u200d" + encoded
+
+              Expect.isTrue
+                  (disguised.StartsWith "FT1.")
+                  "PROBE: the culture-sensitive overload accepts the disguised tag"
+
+              Expect.isFalse
+                  (disguised.StartsWith("FT1.", System.StringComparison.Ordinal))
+                  "PROBE: the ordinal overload does not"
+
+              let original = System.Globalization.CultureInfo.CurrentCulture
+
+              try
+                  // Set inside the test and restored below: the ambient culture
+                  // must change none of the answers.
+                  System.Globalization.CultureInfo.CurrentCulture <- System.Globalization.CultureInfo "tr-TR"
+
+                  // The MESSAGE is the discriminator, not the case. Under the
+                  // culture-sensitive overload the tag check PASSES and the
+                  // `Substring` then slices four characters in from the wrong
+                  // place, so the refusal still arrives — as `InvalidFormat` from
+                  // the base64url decoder, blaming the payload for a prefix that
+                  // was never there. The ordinal check refuses at the tag and
+                  // says so.
+                  match Teleport.decode disguised with
+                  | Error(TeleportError.InvalidFormat message) ->
+                      Expect.stringContains
+                          message
+                          "prefix"
+                          "the refusal attributes the failure to the missing tag, not to the payload"
+                  | other -> failtestf "expected InvalidFormat for a bundle that only collates as tagged, got %A" other
+
+                  // A genuine bundle still decodes under the same culture.
+                  match Teleport.decode encoded with
+                  | Ok _ -> ()
+                  | Error e -> failtestf "a real bundle must still decode under tr-TR: %A" e
+              finally
+                  System.Globalization.CultureInfo.CurrentCulture <- original
           } ]

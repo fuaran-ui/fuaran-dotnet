@@ -298,6 +298,15 @@ module Teleport =
     /// placeholders by construction (FGP 3); dispatch of the surviving
     /// wire-survivable actions goes through the host's standard
     /// `CanDispatch` gate exactly as for any decoded tree.
+    ///
+    /// The `FT1.` format-prefix test is ORDINAL (Phase 1525). It is a wire-tag
+    /// comparison, not a human-text one: the prefix is the four bytes the
+    /// encoder emitted, and the culture-sensitive default overload can answer
+    /// differently on a machine whose culture collates them differently — so a
+    /// bundle that decodes here would be refused as "not a teleport bundle"
+    /// there, or a non-bundle would get past the tag check into the base64url
+    /// decoder. The `Substring` below then slices at that same fixed byte count,
+    /// so agreement between the test and the slice is the property at stake.
     let decodeWith (limits: TeleportLimits) (encoded: string) : Result<DecodedTeleport, TeleportError> =
         if encoded.Length > limits.MaxEncodedChars then
             Error(
@@ -306,7 +315,7 @@ module Teleport =
                     sprintf "encoded input is %d chars (limit %d)" encoded.Length limits.MaxEncodedChars
                 )
             )
-        elif not (encoded.StartsWith FormatPrefix) then
+        elif not (encoded.StartsWith(FormatPrefix, System.StringComparison.Ordinal)) then
             Error(TeleportError.InvalidFormat "not a Fuaran teleport bundle (missing 'FT1.' prefix)")
         else
             let payload = encoded.Substring FormatPrefix.Length

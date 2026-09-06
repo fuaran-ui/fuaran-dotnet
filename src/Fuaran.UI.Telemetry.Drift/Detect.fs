@@ -1,4 +1,4 @@
-module Fuaran.UI.Telemetry.Drift.Detect
+﻿module Fuaran.UI.Telemetry.Drift.Detect
 
 open Fuaran.UI.Telemetry.Abstractions
 
@@ -49,6 +49,13 @@ let run
             |> Array.filter (fun r ->
                 match r.Outcome with
                 | OpOutcome.Applied -> true
+                // Phase 1525 — `PersistLost` means the apply SUCCEEDED and the
+                // durable append did not. This detector measures AUTHORING
+                // quality: the op was well-formed and the engine took it, so it
+                // belongs in the applied count. Counting it as a failure would
+                // report a storage problem as model drift, which is the one
+                // reading this number must never produce.
+                | OpOutcome.PersistLost _ -> true
                 | _ -> false)
             |> Array.length
 

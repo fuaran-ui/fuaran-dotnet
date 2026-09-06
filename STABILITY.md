@@ -5025,6 +5025,400 @@ authored string whole, so the clamp is a difference between two bytes the fixtur
 assertion about one. A host whose chart-lowering leg walks the corpus directory sees all eleven before
 its own clauses exist; the four lowering hosts move in this same change-set.
 
+## Recorded change — 0.76.0, the op-stream write path: compare-and-append, admission, retention refusal (fuaran#1525)
+
+**Additive throughout — three DU widenings, two new optional extension interfaces, one new record
+field with a `None` default, and a behaviour change on paths that were previously silent.** No wire
+byte moves and no shared-corpus fixture changes. Existing call sites compile unchanged; what changes
+is what the write path DOES with a record it would previously have swallowed or admitted.
+
+**One exception, recorded under "The memo tier" below:** `Fuaran.UI.Memo`'s
+`Derivation<'Msg>.StructuralKey` becomes `string option`, which does require consumer source edits.
+It ships in the standing **0.77.0** draft, not the 0.76.0 this entry was authored against — see
+"Version note" at the end of this entry.
+
+### What was wrong
+
+The write path was read-then-append on every host. `applyAndPersist` read `LatestSequence`, added
+one, and appended; two concurrent writers on one stream both computed the same sequence, one won, and
+the loser's duplicate-sequence refusal went into `PersistContext.OnSinkError` — whose default was
+`None`, and `None` meant nothing at all. The caller was returned `Ok` for an op that is not durable.
+
+Beside it, every sink accepted a record without recomputing its `Hash` or checking that its
+`PreviousHash` named the stream's head, and then refused the whole SEGMENT containing it on every
+subsequent read. One malformed write made a stream permanently unreadable, and the refusal named the
+record rather than the writer that produced it.
+
+And `CheckpointedReplay.applyFromCheckpoint`, asked for the state at a sequence whose ops had been
+compacted away, folded whatever survived over `initialTree` and returned it as the state at the
+target — the initial tree presented as history, `Ok`, and indistinguishable from a correct answer.
+
+### The surface
+
+```fsharp
+// Fuaran.UI.OpStream.Abstractions — new
+type WriteAdmission =
+    | Full   // recompute the offered record's Hash; require PreviousHash = head, Sequence = latest + 1
+    | Off    // admit whatever is offered — for a caller deliberately writing what Full refuses
+
+type ChainBreakReason =
+    | SequenceMismatch | PreviousHashLinkBroken | HashMismatch | Unrecognised of reason: string
+
+Verify.classify        : Fuaran.Core.ChainBreak -> ChainBreakReason
+Verify.admission       : WriteAdmission -> headHash: string -> latestSequence: int
+                         -> OpRecord<'Msg> -> Result<unit, VerificationError>
+Verify.describeAdmission : sinkName: string -> streamId: string -> VerificationError -> string
+
+type IOpStreamBatchSink<'Msg> =
+    inherit IOpStreamSink<'Msg>
+    abstract member AppendAll: records: OpRecord<'Msg> list -> Async<unit>
+
+type IOpStreamCompactSink<'Msg> =
+    inherit IOpStreamSink<'Msg>
+    abstract member Compact: streamId: string * throughSequence: int -> Async<int * int>
+
+// Fuaran.UI.OpStream.Replay — new
+type PersistContext = { …; Actor: Actor option; … }        // added, defaults to None
+type PersistFailure = ContendedOut of attempts: int | SinkRefused of reason: string
+type PersistAttempt = Persisted of sequence: int | Failed of sequence: int * failure: PersistFailure
+exception PersistFailedException of streamId: string * sequence: int * failure: PersistFailure
+
+PersistContext.withActor            : Actor -> PersistContext -> PersistContext
+PersistContext.withSilentSinkErrors : PersistContext -> PersistContext
+ApplyPersist.applyAndPersistWith    : … -> Async<Result<Node<'Msg> * PersistAttempt, ApplyError>>
+
+// Fuaran.UI.OpStream.Replay — widened
+type CheckpointReplayError =
+    | …
+    | BelowRetentionHorizon of targetSequence: int * earliestRetainedSequence: int option
+
+// Fuaran.UI.Telemetry.Abstractions — widened
+type OpOutcome =
+    | …
+    | PersistLost of reason: string
+```
+
+**The two extension interfaces are extensions for the reason fuaran#1485 recorded**: `IOpStreamSink`
+is shipped and implemented outside this repo, so a new abstract member on it breaks every implementor
+at compile time. A sink claims what it can do; nothing is made to claim what it does not. Both sinks
+in this tier implement both.
+
+### The behaviour changes, and what each replaces
+
+  * **Allocation is a compare-and-append.** `applyAndPersist`, `journalApplied` and `applyWithSinks`
+    take the sink's `Head`, build against it, `AppendIf`, and on a stale head REBUILD against the
+    head the refusal named and retry — bounded at `ApplyPersist.MaxCasAttempts` (8). A sink with no
+    compare-and-append keeps the read-then-append path; what changes there is that its loss is
+    reported rather than swallowed.
+
+    **The read ORDER inside the loop is load-bearing**: head FIRST, latest sequence SECOND. A write
+    landing between the two reads moves both, and taking the head first pairs a STALE head with a
+    current sequence — which `AppendIf` reports as `StaleHead`, the value the loop handles. The other
+    order pairs a CURRENT head with a stale sequence, which passes the head comparison and is then
+    refused by the admission check as a throw: a race reported as corruption.
+
+  * **`OnSinkError = None` is no longer silence.** It now means `PersistFailure.defaultReport`, one
+    line on stderr naming the stream, the sequence and the reason. Silence is still available and now
+    has to be asked for by name — `PersistContext.withSilentSinkErrors`. A host that passed a hook
+    already is unaffected; a host that passed none now hears about a lost durable op, which is the
+    whole point.
+
+  * **The telemetry row is emitted AFTER the append settles and names what the append did.** It was
+    emitted BEFORE, with `Outcome = Applied`, so an op the sink then lost left a row claiming success
+    at a `(StreamId, Sequence)` naming no record. `OpOutcome.PersistLost` is what such a row says now.
+    The drift detector counts it as APPLIED, deliberately: it measures authoring quality, the op was
+    well-formed and the engine took it, and counting a storage failure as model drift is the one
+    reading that number must never produce.
+
+  * **A broken record is refused at the write.** `Verify.admission` runs at the single choke point
+    every append path in each sink reaches, under the same lock / transaction as the insert, so the
+    head it checks against is the head the insert extends. The refusal names the failed check and
+    says nothing was written; the READ-side verifier is unchanged. `WriteAdmission.Off` is the named
+    opt-out, on the `LoadVerification.Off` precedent — there is no silent fast path.
+
+    **This is not tamper evidence and changes nothing about what the unkeyed chain proves.** A writer
+    free to write the store is free to write a self-consistent record. What this stops is a BROKEN
+    one, and the permanent unreadability it caused.
+
+  * **The Sqlite compare-and-append is IMMEDIATE, under WAL.** `BEGIN IMMEDIATE` takes the write lock
+    at the head SELECT rather than at the insert, which is what makes the compare and the append one
+    act; `journal_mode = WAL` (per database) stops a reader and a writer excluding each other
+    outright; `busy_timeout` (per connection, 5s) stops an ordinary two-writer moment failing
+    instantly. `SQLITE_BUSY` surfaces as `StaleHead` naming the head as it can then be observed —
+    a contention outcome, not a broken store.
+
+  * **Replay below the retention horizon REFUSES.** Two facts decide it: is the record at sequence 1
+    still present, and is there evidence ops once existed. The second is the one that is easy to miss
+    — a stream compacted past its own head reports `LatestSequence = 0`, exactly like a stream that
+    never had a record — so a retained CHECKPOINT is taken as that evidence: a checkpoint at N was
+    taken over ops 1..N. Without it, the worst case of the defect reads as a fresh stream.
+
+  * **Retention is one act where the sink has one.** `Compaction.applyPolicy` calls `Compact` on a
+    sink that implements `IOpStreamCompactSink`, so the ops and the checkpoints that justified
+    removing them go together; a failure between the two previously left the store permanently in the
+    state where surviving records begin above a checkpoint still claiming to cover them. The
+    invocation-key index compacts WITH the records it names, in both sinks — a key naming a truncated
+    record answered a later `AppendKeyed` with `Duplicate receipt` for a sequence the stream no longer
+    held, which is worse than no entry because it is indistinguishable from a live one.
+
+  * **A guest bundle imports under one transaction** where the sink offers `AppendAll`. Record by
+    record, a failure part-way left records in the stream, and the importer's own collision guard then
+    refused every retry — a transient failure becoming a permanently unimportable bundle. On a sink
+    without the batch append the partial state is now REPORTED rather than left for the guard to
+    mis-diagnose later.
+
+  * **A gap is refused rather than papered over.** Where `LatestSequence` reports a record the sink
+    cannot return, the persist path used to link the new record to the genesis hash — writing a record
+    whose `PreviousHash` names nothing, which then made every later read of the segment throw. It now
+    refuses that one append.
+
+  * **`PersistContext.Actor`**: `None` derives the actor from `UserId` exactly as before, so existing
+    records are byte-identical. A host that knows it is an agent, a merge or a replay says so, and the
+    wrapper does not overwrite it.
+
+### One recorded limit, and where it lives
+
+`Verify.classify` maps Core's untyped `ChainBreak.Reason` string onto a typed DU with an honest
+`Unrecognised` arm. The durable fix is a Core API change — `Reason` should be a closed DU, so the
+mapping is a total match the compiler checks — which this repo cannot make, and it is recorded in
+[`docs/CORE-API-ASKS.md`](docs/CORE-API-ASKS.md) beside the workaround that needs it rather than left
+implied. `Verify.segment` / `Verify.chain` still project an unrecognised reason onto `HashMismatch`,
+because `VerificationError` is a shipped closed DU; a caller needing the distinction calls `classify`.
+
+### The DAG tier — `Fuaran.UI.OpStream.Dag.*`
+
+Every item below is additive in surface, or a refusal of input the sinks previously accepted
+wrongly.
+
+- **The DAG sinks VERIFY ON WRITE, and two shapes that used to be
+  accepted are now refused by name.** Both are additive in surface and
+  behavioural in effect, and both refuse input the sinks previously admitted
+  quietly, so a host that was relying on either was relying on a defect.
+  - **A content-address collision is no longer mistaken for a duplicate.**
+    `IDagOpStreamSink.Add` compared `Parents` and `OutcomeHash` and nothing else,
+    so a record carrying the SAME hash and a DIFFERENT `Op` matched, was
+    classified as an idempotent re-append, and was dropped without trace. The
+    comparison is now over the record's **full canonical wire form** —
+    `DagWire.contentFingerprint` (new stable surface: the SHA-256 of
+    `DagWire.encodeRecord` with the retention-mutable `Tombstoned` flag
+    normalised to `false`) — so any difference at all is caught. A genuinely
+    identical re-append is still the no-op it always was.
+  - **A record naming a parent the store does not hold is refused at the write
+    choke point.** It used to be admitted, leaving a dangling edge that surfaced
+    at some later `Records` read or replay, long after the write that made it and
+    with nothing to attribute it to. Parent presence is resolved **store-wide**,
+    not per stream, so the guest-fork shape (a guest branch's genesis anchored on
+    a record in the HOST stream) is unaffected. **Consumers that append out of
+    topological order — a replication or sync path that can deliver a child
+    before its parent — must order their appends parent-first.** The read-path
+    `DagVerify` check is unchanged: it still catches a store that LOST a record
+    after the link was made, which no write-time check can see.
+  - **Retention keeps `outcome_hash` on a tombstone.** `Tombstone` used to clear
+    it along with the payload, which cost the store the only field distinguishing
+    a pruned merge node from a pruned ordinary one and bought no retention (it is
+    a 64-hex address, not payload) — and destroyed idempotence, since an
+    identical re-add of a swept record no longer matched what the store held. A
+    tombstoned record now reads back with its `OutcomeHash` intact.
+  - **`SqliteDagSink` schema, additive.** `dag_op_record` gains a nullable
+    `content_fingerprint TEXT` column and an `idx_dag_op_record_hash` index. An
+    existing database is migrated in place on open (`ALTER TABLE ADD COLUMN`);
+    pre-1525 rows read back with a NULL fingerprint and fall back to the old
+    parents/outcome comparison, which is stated in the refusal message when it
+    fires. No read path can retroactively give an old row a fingerprint it was
+    never written with.
+  - **`SqliteDagSink` concurrency posture.** The database is opened in `WAL`
+    journal mode with a 5 s `busy_timeout`, and `Add`'s read-then-write runs in a
+    `BEGIN IMMEDIATE` transaction so its parent-presence and collision checks and
+    its insert see one state. `SQLITE_BUSY` / `SQLITE_LOCKED` out of
+    `TryAdvanceHead` — the tier's only concurrency primitive — is now reported as
+    the CAS's existing contention outcome (`false`, on which every caller
+    re-reads and retries) rather than escaping as a raw `SqliteException` into a
+    caller's retry loop. A busy `Add` has no such channel and is refused by name.
+
+- **`Fuaran.UI.OpStream.Dag.Merge` — merge nodes carry the caller's attribution
+  (additive).** New stable surface: `MergeAttribution` (`Actor` / `Prompt` /
+  `ResultEnvelope`) with `MergeAttribution.anonymous` and `.ofActor`;
+  `MergeContext<'Msg>` (`Attribution` / `Checkpoint`) with `MergeContext.defaults`;
+  the entry points `DagMerge.mergeGatedWith` and `DagMerge.mergeIntoTrunkWith`;
+  and the `TrunkMergeOutcome<'Msg>` DU. The engine used to stamp every merge node
+  `Actor.ofLegacyString "merge"` with no prompt id and a bare `Success`, so no
+  merge in any stream could be traced to the session that ran it — the provenance
+  hole the content address closed for ordinary nodes at Phase 1144, left open on
+  the one node kind the engine mints itself. **`merge` / `mergeGated` /
+  `mergeIntoTrunk` are unchanged in signature AND in bytes**:
+  `MergeAttribution.anonymous` reproduces the pre-1525 stamping exactly, so the
+  merge-conformance corpus does not move. Attribution is folded into the merge
+  node's content address (Phase 1144), so an attributed merge is a different node
+  from an anonymous one — which is the point of threading it rather than
+  recording it beside the record.
+  - **`mergeIntoTrunkWith` returns what happened.** `mergeIntoTrunk` answers
+    `string option`, folding a refused merge, a missing common base, a replay
+    failure and an exhausted retry budget into one `None` — and discarding the
+    `MergeConflict` envelopes the merge had already built (the LCA value, both
+    sides with their provenance tags, the enumerated resolution choices, the
+    `ApplyHint`). `TrunkMergeOutcome` keeps them apart and hands the envelopes
+    back. The old entry point is retained as the lossy projection.
+  - **Checkpoint-bounded merge replay.** `MergeContext.Checkpoint` lets a merge
+    fold its three trees from a `DagCheckpoint` rather than from genesis, so its
+    cost tracks the divergence rather than the whole history. A checkpoint that
+    does not bound a head falls back to a full replay for that head; a checkpoint
+    whose snapshot fails its own position-bound hash does **not** fall back — that
+    is tamper evidence and it propagates as
+    `DagReplayError.SnapshotHashMismatch`.
+
+- **`DagWire.decodeRecord` reads the op-result envelope BY FIELD (behavioural
+  fix).** It decided the case by testing whether the raw envelope text contained
+  the substring `"Success"`, so a genuine `Failure` whose message mentioned the
+  word — an apply error quoting the op or field it refused, say — decoded as a
+  success, indistinguishably from a real one. The `$type` discriminator is now
+  read through the same top-level scanner the record envelope uses. An
+  **absent** `resultEnvelope` still defaults to `Success`; a **present** one with
+  an unrecognised `$type` is a typed `Error` rather than a silent coercion.
+
+- **`Fuaran.UI.OpStream.Dag.Inspect` — the depth pass is a Kahn sweep, and a
+  cyclic input is reported (additive surface, behavioural in one case).** New
+  stable surface: `DagGraphCycle` (`StreamId` / `Unresolved`),
+  `DagGraphCycle.describe`, and `DagGraphModel.tryBuild :
+  Result<DagGraph, DagGraphCycle>`. `DagGraphModel.build` is unchanged for every
+  well-formed input — the computed `Depth` values are identical — and now refuses
+  a cyclic record set by name (`invalidOp`) instead of recursing until the stack
+  ran out. That case previously ended the process with a
+  `StackOverflowException` .NET does not let anyone catch, so the refusal
+  replaces a crash rather than a working behaviour. A caller that wants to handle
+  a cycle rather than be told about it calls `tryBuild`.
+
+- **`SqliteDagSink.Parents` is a primary-key lookup.** It used to answer one
+  hash's parents by loading, decoding and discarding the whole stream's parent
+  map. The traversal path (`Reachable` / `Lca`) still loads that map once per
+  call, deliberately: the store is a file another process may be writing under
+  WAL, so a map cached across calls would answer from a topology that has since
+  moved. `DagMerge` no longer calls `sink.Lca` at all — it computes the LCA from
+  the records it has already loaded, over the same stream-scoped parent relation,
+  removing a second full-stream read per merge.
+
+### The abstractions tier — `Fuaran.UI.OpStream.Abstractions`
+
+- **Segment attestation: `SignedAt` is bound at the STORED resolution — whole seconds (Phase 1525,
+  behavioural).** The claim payload has always bound `signedAt` as unix seconds, but the
+  `SegmentAttestation` record kept the signer's full-precision clock reading, so the two disagreed
+  by up to a second: the field the type documented as "bound inside the signed claim, so a
+  store-writer cannot alter it" was in fact unfixed at sub-second granularity, and every consumer of
+  it — the revocation boundary above all — read a value the signature did not cover. New public
+  surface: `SegmentAttestation.signedInstant : DateTimeOffset -> DateTimeOffset` (additive), the
+  instant a signature actually covers. Both shipped signers (`EcdsaP256.signerWith`,
+  `AttestationSigner.ofCoreSink`) normalise through it before they bind AND before they store, so
+  pre-image and record agree by construction and a store round trip returns the same record;
+  `Evidence.verify` reads it rather than the raw field for revocation, expiry and validity-start, so
+  a sub-second edit changes no verdict even on an attestation minted by an older signer. **No wire
+  change** — the claim bytes, the descriptor encoding and the `wire-format-fixtures/attestation/`
+  goldens are byte-identical either side of this. What changes is the value a consumer reads back
+  from `SignedAt` after signing: a signer whose clock carries milliseconds now records the floored
+  second. A consumer that compared a stored `SignedAt` against its own full-precision clock reading
+  for equality sees that difference; one that compares instants (every comparison in this package
+  does) does not. `CRYPTO.md`'s attestation section states the resolution normatively.
+- **Segment attestation: the algorithm id is enforced by CURVE, not by key size (Phase 1525,
+  behavioural).** `ecdsa-p256-sha256-v1` names exactly one curve, and `KeySize = 256` does not
+  identify it — secp256k1, Brainpool P256r1 and any explicit-parameters 256-bit curve satisfy the
+  old size gate. `EcdsaP256.signerWith` / `.signer` now refuse at construction any key not on NIST
+  P-256, naming the curve the key is actually on; `EcdsaP256.verifier` answers `false` for one,
+  which `Evidence.verify` renders as `SignatureInvalid`. **Breaking for a host that was signing or
+  verifying under a differently-curved 256-bit key** — which was never a conforming use of the id,
+  and produced artefacts the registered algorithm did not describe. P-256 keys are unaffected;
+  P-521 and other sizes were already refused and still are.
+- **`FileKeyDirectory` timestamps parse machine-independently (Phase 1525, behavioural).** The three
+  lifecycle fields (`notBefore` / `expires` / `revokedFrom`) parsed with default
+  `DateTimeOffset.Parse` styles, so a string carrying no offset was interpreted in the READING
+  machine's local time zone — the same directory meant different instants on different machines, and
+  the same attestation could verify in one place and be void in another. They now parse with
+  `DateTimeStyles.AssumeUniversal ||| DateTimeStyles.AdjustToUniversal` under
+  `CultureInfo.InvariantCulture`: an offset-less string reads as UTC, and one carrying an offset
+  normalises to the same instant in UTC. A directory whose timestamps all carry explicit offsets is
+  unaffected in VALUE; the `Offset` property of the returned `DateTimeOffset` is now always
+  `00:00`. A host on a non-UTC machine reading an offset-less directory sees the instant move by its
+  local offset — to the value the document meant.
+- **`StreamEntry.decode` is TOTAL on truncated and malformed input (Phase 1525).** The decoder
+  promised a `Result` and could throw: `scanValue` indexed without a bounds check, `scanString`
+  stepped two characters past a trailing backslash, and the field walk read a `:` it had never
+  confirmed. Worse than the throw, a prefix cut immediately after a nested object still ended in `}`
+  and carried every required field, so it decoded to a plausible record nobody had written — and a
+  `StreamEntry` is the chain PRE-IMAGE, so such a record re-hashes to something no other host can
+  reproduce and surfaces later as a chain break nowhere near its cause. Every truncation is now a
+  named `Error`, as is a field that is not a string where a string is required (a numeric
+  `promptId` decoded to a one-character string before this). **No wire change and no format change**
+  — a well-formed envelope decodes exactly as it did, byte-for-byte, and `chainFormatVersion` stays
+  `2`. Additive on the error channel only: refusal messages are new, `Ok` results are unchanged.
+- **Identifier comparisons are ORDINAL (Phase 1525).** `GuestStream.isGuestStream` /
+  `GuestStream.tryScopeOf`, `StreamEntry.formatVersion` and `Teleport.decodeWith`'s format-prefix
+  test used culture-sensitive `StartsWith` overloads. Under ICU collation a zero-width formatting
+  character is ignorable, so a stream id that does NOT begin with the reserved `guest-` prefix
+  byte-for-byte reported that it did — and the answer could differ with the reading machine's
+  culture, while the `Substring` beside it always sliced at a fixed byte count. All four sites pass
+  `StringComparison.Ordinal`. Behaviourally this only changes inputs that were never conforming;
+  the `Teleport` case changes which error a non-conforming input gets (the prefix check now refuses
+  it by name instead of the base64url decoder blaming the payload).
+- **Doc corrections, no behavioural change (Phase 1525).** `OpRecord.fs`'s header stated the
+  PRE-406 raw-concatenation hash formula, hundreds of phases after Phase 406/411 replaced it with
+  the delimited Core-canonical payload; a reader implementing a host from it would have produced a
+  chain no other host could verify. `Checkpoint.fs` stated the PRE-412 `SnapshotHash` rule
+  (`sha256(canonicalTree)` alone) rather than the position-bound `HashChain.snapshotHash`, and
+  claimed a package dependency set (`FSharp.Core` + `Fuaran.UI` only) the package has not had since
+  Phase 406/465. Both corrected in place.
+
+### The memo tier — `Fuaran.UI.Memo`
+
+- **A fragment application whose canonical encoding is INCOMPLETE is never keyed or stored (Phase
+  1525, BREAKING on `Derivation<'Msg>`).** `CanonicalJson` stands a sentinel in for what it cannot
+  represent — `"<closure>"` for a function-typed payload (an `Action` callback, a `Column.Value`
+  projection, an accessibility `Binding.Computed`), `"<opaque>"` for an unrecognised CLR value — so
+  two fragment bodies differing ONLY there encode identically, hash identically, and key
+  identically. The store then SERVES one where the other was asked for, closures included: a button
+  dispatches the wrong message, a column formats with the wrong projection. Persisted or shared
+  (`MemoCacheStore.Snapshot`), the wrong fragment outlives the process that mis-keyed it.
+  New public surface, all additive: the `StoreReach` DU (`ProcessLocal` / `SharedOrPersisted`),
+  `Engine.Reach`, the `Engine(store, reach, sink, ?cacheName)` constructor, and in `FragmentKey` the
+  `Unrepresentable` record plus `unrepresentableIn` / `describeUnrepresentable` / `tryBodyDigest` /
+  `tryStructuralOf` / `tryStructural`. The existing total `bodyDigest` / `structuralOf` /
+  `structural` / `value` / `full` are unchanged in signature AND in key value — this adds an
+  admission test, never a different key, so no store snapshot is invalidated.
+  **`Derivation<'Msg>.StructuralKey` changes from `string` to `string option`** — the breaking half,
+  and deliberately a type rather than a sentinel string: `None` is a derivation that could not be
+  content-addressed, it never equals a key, and `Reapply` therefore declines to reuse a tree it
+  cannot prove is the same tree. A consumer reading the field adds one `Option` unwrap; the two
+  in-repo readers compare keys for equality and needed no change.
+  **Reach decides what happens, and it is DECLARED, not inferred.** `Engine(capacity, sink)` builds
+  its own store and declares `ProcessLocal`: an un-keyable application still derives, bypassing the
+  store exactly as an effecting fragment does (`CacheOutcome.Bypass`), so the optimisation is
+  declined and the work is not refused. `Engine(store, sink)` reads as `SharedOrPersisted` —
+  injection exists so a store CAN escape the process — and refuses with a message naming the
+  sentinel and its site (`body`, or `slot '<name>'`). That default is a behavioural change for a
+  host injecting a process-local store and applying closure-bearing fragments: it says so with
+  `Engine(store, StoreReach.ProcessLocal, sink)`. Neither reach ever consults or populates the store
+  under such a key. The detection is deliberately conservative — it looks for the sentinel as a
+  whole JSON string token, so a fragment whose own text content is literally `<closure>` is treated
+  as unrepresentable; that direction of error costs a cache entry, the other costs correctness.
+
+### Version note — this ships in 0.77.0, not the 0.76.0 it was authored against
+
+**Everything above is additive except one change**, and that one was authored expecting to advance
+the then-standing 0.76.0 draft: `Derivation<'Msg>.StructuralKey` changing from `string` to `string
+option` requires consumer source-code edits to compile.
+
+**The draft moved twice while this was in flight, and the destination is 0.77.0 either way.** `v0.76.0`
+was tagged, so 0.76.0 is a released slot that gains nothing; a patch took 0.76.1, and a record widening
+(`FS0764` for a full-literal constructor) then advanced the draft to 0.77.0, which is where the
+standing draft sits — untagged, and pinned by no public-path consumer. Two further changes landed on
+that draft while this one was queued behind it, and both rode it rather than advancing again for the
+reason below; one of them, `Fuaran.UI.Client`'s move onto the generation wire, is itself
+source-breaking.
+
+**It RIDES that draft rather than advancing again.** `FS0764` and a narrowed field type are one class
+by the [Semver](#semver) section above: both are pre-1.0 MINOR, and both say the same thing to a
+consumer — adopting this slot costs source edits. A narrowed type reaches readers as well as
+full-literal constructors, which is a wider blast radius inside the class, not a higher one; and
+0.78.0 would tell a consumer already paying for 0.77.0's widening that there is a second, separate
+price to pay. Read the heading of this entry as the slot it was authored against and this section as
+where it actually shipped, exactly as the `ApplyErrorCode.LimitExceeded` entry below reads.
+
 ---
 
 ## Recorded change — 0.76.0, `ApplyErrorCode.LimitExceeded` (fuaran#1527)
