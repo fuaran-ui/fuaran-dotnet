@@ -66,6 +66,12 @@ open Fuaran.UI.Ops.Types
 //  Cross-host contract: the canonical descriptor / claim encodings below are
 //  pinned byte-for-byte, with golden vectors in
 //  `wire-format-fixtures/attestation/descriptor-corpus.json`.
+//
+//  A SEGMENT is not a DOCUMENT. What this file signs is a range of op-stream
+//  records at a chain position; the same question about a standalone emitted
+//  tree — who produced this document — is `DocumentAttestation.fs` beside it
+//  (Phase 1549), which reuses this file's key model, algorithm ids, directory
+//  seam and warning vocabulary rather than minting a second set.
 // ============================================================================
 
 /// Registered attestation algorithm ids. An id names the signature primitive,

@@ -26,6 +26,10 @@
     <Compile Include="VerifyOnReadTests.fs" />
     <!-- Phase 789: segment attestation — descriptor corpus + forgery verdicts. -->
     <Compile Include="AttestationTests.fs" />
+    <!-- Phase 1549: document attestation — the claim pre-image corpus, every
+         refusal class the shared document corpus names, and the offline
+         round trip after the signing key is gone. -->
+    <Compile Include="DocumentAttestationTests.fs" />
     <Compile Include="ConcurrencyTests.fs" />
     <Compile Include="SqliteTests.fs" />
     <Compile Include="TreeDiffTests.fs" />

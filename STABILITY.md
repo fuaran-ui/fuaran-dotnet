@@ -5838,3 +5838,36 @@ never available to ride in any case.
 Consumers that DECODE third-party or model-emitted JSON should expect previously-accepted malformed
 documents to be refused — which is the point. Consumers that store refusal hashes over style
 conflicts recompute them once.
+
+## Recorded change — 0.77.0, document attestation (fuaran#1549)
+
+**Additive.** `Fuaran.UI.OpStream.Abstractions` gains an optional envelope that binds an emitted tree
+to a signing key: `DocumentDescriptor`, `DocumentAttestation`, `AttestedDocument`, `DocumentRefusal`,
+the `IClaimSignatureVerifier` seam, the `DocumentEnvelope` codec (`encode` / `attest` /
+`decodeAttestedDocument` / `grantedCapabilities`), and `EcdsaP256.claimVerifier` beside the existing
+segment verifier. Nothing existing changed shape.
+
+**No wire narrowing, and no existing document is affected.** The envelope sits OUTSIDE the document,
+so the canonical node bytes are untouched, every existing fixture decodes byte-identically, and an
+unattested document decodes exactly as before through `JsonDecode.decodeNode`, which this work calls
+and does not edit. A document with no envelope is honestly unattested rather than invalid.
+
+**What the new surface is stable about.** Two byte sequences are now published contracts and are
+pinned cross-host by `wire-format-fixtures/attestation/document-corpus.json`: the claim pre-image
+`DocumentAttestation.claimPayload` produces, whose UTF-8 bytes a signature covers, and the envelope
+`DocumentEnvelope.encode` produces. Changing the member order, the escaping, the folded
+`documentVersion`, or what `digest` is computed over invalidates every signature already issued, so
+each is a breaking change to this surface and not an implementation detail. `WIRE_FORMAT.md` §26 is
+the normative statement; its forward-coupling rule binds the text, the corpus and every adopting host
+in one change-set.
+
+**Verification is a host obligation.** Decoding verifies nothing, by design and by name: a host calls
+`decodeAttestedDocument` deliberately and receives a typed refusal rather than a boolean. A future
+change that made any decoder verify implicitly would be breaking in the direction that matters, since
+a caller would begin to receive refusals where it had received documents.
+
+**Version — it RIDES the 0.77.0 draft.** This is purely additive: new types, new module, one new
+member on an existing provider module, no existing signature or byte sequence moved. The draft is
+untagged and carries breaking work already, so a consumer adopting this slot is recompiling and
+re-reading its entry regardless, and the draft-slot rule advances only for a HIGHER class than the
+draft already carries. Additive is not higher than breaking.

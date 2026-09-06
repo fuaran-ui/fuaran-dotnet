@@ -29,6 +29,10 @@
          pipelines); AttestationEcdsa.fs is the .NET ECDSA P-256 provider,
          fenced out of Fable entirely. -->
     <Compile Include="Attestation.fs" />
+    <!-- Phase 1549: document attestation — a signature over an emitted tree's
+         canonical bytes, in an envelope OUTSIDE the document. Portable, so it
+         compiles before the .NET provider below, which serves both arms. -->
+    <Compile Include="DocumentAttestation.fs" />
     <Compile Include="AttestationEcdsa.fs" />
     <Compile Include="IOpStreamSink.fs" />
     <Compile Include="Checkpoint.fs" />
