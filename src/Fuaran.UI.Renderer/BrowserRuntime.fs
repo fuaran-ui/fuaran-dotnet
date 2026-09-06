@@ -75,10 +75,29 @@ let private writeClipboard (text: string) : obj = jsNative
 // → the full `data:<mime>;base64,…` string; "base64" → readAsDataURL with
 // the `…;base64,` header stripped (the bytes-to-API shape). `cb` fires from
 // the async onload callback — the typed dispatch surface stays callback-
-// shaped (same posture as Call). Failures route through console.warn and
-// the callback never fires.
-[<Emit("(function(file, mode, cb){ try { var r = new FileReader(); r.onload = function(){ var res = String(r.result == null ? '' : r.result); if (mode === 'base64') { var i = res.indexOf(','); cb(i >= 0 ? res.slice(i + 1) : res); } else { cb(res); } }; r.onerror = function(){ console.warn('[Fuaran] Action.ReadFileBody: FileReader error'); }; if (mode === 'text') { r.readAsText(file); } else { r.readAsDataURL(file); } } catch (e) { console.warn('[Fuaran] Action.ReadFileBody threw: ' + e); } })($0, $1, $2)")>]
-let private readFileBlob (file: obj) (mode: string) (cb: string -> unit) : unit = jsNative
+// shaped (same posture as Call).
+//
+// A FAILURE REACHES `onFail`, NOT `cb`. The `onerror` arm used to call
+// `console.warn` and stop there, so a read that failed — a file the reader
+// moved or deleted between choosing it and the action firing, a permission the
+// browser withdrew, a decode error — was indistinguishable from a read still in
+// progress: the continuation simply never fired, forever, with nothing on the
+// host's own channel to say why.
+//
+// `cb` is NOT called with an error string, and that is deliberate rather than an
+// omission. Its type is `string -> unit` and the string it carries IS the file's
+// body; a host that received "read failed" there would write that text into its
+// model as the file's contents, which is a worse failure than the silent one and
+// harder to notice. Reporting the failure on the runtime's own diagnostic
+// channel is what this seam can honestly do; a continuation that can express
+// "this did not happen" needs `IFuaranRuntime.ReadFileBody`'s own signature to
+// widen, which is a change every host implementation pays for and is not this
+// call site's to make.
+//
+// Both arms are guarded: `onerror` fires for a read that started and failed,
+// and the surrounding `catch` for one that could not start at all.
+[<Emit("(function(file, mode, cb, onFail){ try { var r = new FileReader(); r.onload = function(){ var res = String(r.result == null ? '' : r.result); if (mode === 'base64') { var i = res.indexOf(','); cb(i >= 0 ? res.slice(i + 1) : res); } else { cb(res); } }; r.onerror = function(){ onFail(String((r.error && r.error.name) ? r.error.name : 'FileReader error')); }; if (mode === 'text') { r.readAsText(file); } else { r.readAsDataURL(file); } } catch (e) { onFail(String(e)); } })($0, $1, $2, $3)")>]
+let private readFileBlob (file: obj) (mode: string) (cb: string -> unit) (onFail: string -> unit) : unit = jsNative
 
 type BrowserRuntime(layoutObserver: ILayoutObserver option, allowAll: bool) =
     let customRegistry = CustomRendererRegistry()
@@ -151,7 +170,20 @@ type BrowserRuntime(layoutObserver: ILayoutObserver option, allowAll: bool) =
                     | FileReadEncoding.Base64 -> "base64"
                     | FileReadEncoding.DataUrl -> "dataurl"
 
-                readFileBlob handle mode onRead
+                // The failure arm goes to the runtime's OWN diagnostic member
+                // rather than straight to the console, so a host that has
+                // routed `Warn` somewhere — an orchestration diagnostics
+                // surface, a log — sees a failed read on the same channel as
+                // every other renderer refusal. The file's NAME is deliberately
+                // absent: a reader's filename is theirs, and the reason plus
+                // the opaque ref is what makes the failure diagnosable.
+                readFileBlob handle mode onRead (fun reason ->
+                    consoleWarn (
+                        sprintf
+                            "[Fuaran] Action.ReadFileBody(%s): the file could not be read (%s); onRead will not fire."
+                            file.Id
+                            reason
+                    ))
             | None ->
                 consoleWarn
                     "[Fuaran] Action.ReadFileBody: FileSelection.Ref.Handle was None (no browser File blob); onRead will not fire."

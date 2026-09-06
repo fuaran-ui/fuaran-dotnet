@@ -126,13 +126,19 @@ let isPlainNumber (value: string) : bool =
         else
             value
 
-    let digits = body |> Seq.filter System.Char.IsAsciiDigit |> Seq.length
+    // `Char.IsAsciiDigit` is not in Fable's supported subset, and this module
+    // compiles on both pipelines by design — so the range test is written out.
+    // It is also the more exact predicate here: this must admit the ten ASCII
+    // digits and NOT the many other Unicode characters that are digits.
+    let isDigit (c: char) = c >= '0' && c <= '9'
+
+    let digits = body |> Seq.filter isDigit |> Seq.length
     let points = body |> Seq.filter (fun c -> c = '.') |> Seq.length
 
     body.Length > 0
     && digits > 0
     && points <= 1
-    && body |> Seq.forall (fun c -> System.Char.IsAsciiDigit c || c = '.')
+    && body |> Seq.forall (fun c -> isDigit c || c = '.')
 
 /// Neutralise a field a spreadsheet would evaluate. Returns the field unchanged
 /// when there is nothing to neutralise, so an ordinary export is byte-identical
