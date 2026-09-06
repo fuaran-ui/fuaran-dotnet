@@ -12,19 +12,43 @@ open Fuaran.UI.Ops.Types
 //  way Elmish dispatch is. Hosts that bridge multiple apps use one sink
 //  per app or erase to `obj` at the registration seam.
 //
-//  Hash chain rule (Phase 320 — typed attested provenance folds the actor in):
-//      Hash[n] = SHA-256(PreviousHash[n]
-//                        ++ CanonicalJson.encodeOp(Op[n])
-//                        ++ Sequence[n].ToString()
-//                        ++ Timestamp[n].ToUnixTimeSeconds().ToString()
-//                        ++ Actor.encode(Actor[n]))
+//  Hash chain rule (Phase 406, sequence basis aligned Phase 411). Corrected
+//  here in Phase 1525: this header still stated the PRE-406 raw-concatenation
+//  formula, which had not been the chain rule for hundreds of phases — a
+//  reader implementing a host from it would have produced a chain no other host
+//  could verify, and a reader auditing the coverage claims below would have
+//  reached the wrong conclusion about what the digest protects.
+//
+//      entry    = { v; op; ts; promptId; result }         // StreamEntry.encode
+//      payload  = {"seq":<Sequence-1>,"actor":<…>,"op":<entry>}
+//                                     // Fuaran.Core's canonical delimited form
+//      Hash[n]  = SHA-256(PreviousHash[n] ++ "|" ++ payload[n])
 //      Hash[0]'s PreviousHash is HashChain.genesisPreviousHash (sixty-four '0' chars).
-//  The actor is now INSIDE the hash, so re-attributing an op breaks the chain
-//  unless the chain is recomputed — attribution is covered by the digest, not
-//  merely stored beside it. (Pre-320 the actor lived outside the hash; see
-//  docs/migrations/12-Z-op-stream.md for the prior rule.) The chain is an
-//  UNKEYED digest, so this detects corruption and accidental re-attribution,
-//  NOT an editor who rewrites the records and re-chains them — see CRYPTO.md.
+//
+//  `StreamEntry.encode` + `HashChain.computeHash` are the authorities; the above
+//  is a summary of them, never a second definition. Three properties of it are
+//  load-bearing, and none of them held under the formula this header used to
+//  print:
+//
+//   * `PromptId` and `ResultEnvelope` are INSIDE the digest (Phase 406). They
+//     were outside it before, so re-attributing an op to a different prompt, or
+//     flipping a recorded `Failure` to `Success`, left verification passing.
+//   * The pre-image is DELIMITED. The old formula concatenated `Sequence` and
+//     the unix timestamp with no separator, so distinct `(seq, ts)` pairs could
+//     hash byte-identically.
+//   * The hashed sequence is Core's 0-BASED index (`Sequence - 1`, Phase 411).
+//     The domain's 1-based `Sequence` is presentation only — the `0 = empty
+//     stream` sentinel, the sequence-0 checkpoint — and never enters the hash.
+//
+//  The actor is still INSIDE the hash (Phase 320), now carried by Core's
+//  payload, so re-attributing an op breaks the chain unless the chain is
+//  recomputed — attribution is covered by the digest, not merely stored beside
+//  it. `StreamId` is deliberately OUTSIDE it: it is the sink's partition key,
+//  which is what lets a guest rebase or a stream rename keep a verifiable chain
+//  (see `StreamEntry.ofCoreRecord`). The chain is an UNKEYED digest, so it
+//  detects corruption and accidental re-attribution, NOT an editor who rewrites
+//  the records and re-chains them — see CRYPTO.md, and `Attestation.fs` for the
+//  signed evidence that does catch that.
 // ============================================================================
 
 /// Who authored an op. The Human/Agent distinction is the load-bearing

@@ -51,17 +51,85 @@ module EcdsaP256 =
           Expires = None
           RevokedFrom = None }
 
+    // ── curve identity ────────────────────────────────────────────────────
+    //
+    //  `ecdsa-p256-sha256-v1` names ONE curve, and a key size does not name a
+    //  curve (Phase 1525). `KeySize = 256` is satisfied by every 256-bit curve
+    //  — Brainpool P256r1, secp256k1, and any explicit-parameters curve a host
+    //  hands in — so the pre-1525 size gate admitted keys this algorithm id does
+    //  not describe, on both the signing and the verifying side. What follows
+    //  from that is not merely a mislabelled artefact: a verifier that accepts a
+    //  differently-curved key has accepted a signature the registered id does not
+    //  cover, and the id is what the whole algorithm-agility story rests on (a
+    //  new primitive is a new id, never a format change). So both sides check the
+    //  CURVE, and both name it in the refusal.
+
+    /// NIST P-256's object identifier — the one curve `ecdsa-p256-sha256-v1`
+    /// names. Also written secp256r1 / prime256v1; those are the same curve.
+    [<Literal>]
+    let private p256Oid = "1.2.840.10045.3.1.7"
+
+    /// The friendly names the platforms print for that one curve. The OID is the
+    /// authority; these exist because a Windows CNG export can carry a friendly
+    /// name with no OID value, in which case the OID test alone would refuse a
+    /// perfectly good P-256 key.
+    let private p256FriendlyNames =
+        [ "nistP256"; "ECDSA_P256"; "secp256r1"; "prime256v1" ]
+
+    /// How a curve identifies itself, for a refusal message. Never assumes an
+    /// OID or a friendly name is present — an unidentifiable curve is still
+    /// reported, as unidentifiable.
+    let private describeCurve (curve: ECCurve) : string =
+        if not curve.IsNamed then
+            "an explicit-parameters curve (the key names no curve at all)"
+        else
+            match curve.Oid.FriendlyName, curve.Oid.Value with
+            | null, null -> "a named curve carrying neither an OID nor a name"
+            | null, v -> "OID " + v
+            | n, null -> n
+            | n, v -> n + " (OID " + v + ")"
+
+    /// `Ok ()` when `curve` is NIST P-256; otherwise `Error` naming what it
+    /// actually is.
+    let private checkCurve (curve: ECCurve) : Result<unit, string> =
+        if not curve.IsNamed then
+            Error(describeCurve curve)
+        else
+            let oidValue = curve.Oid.Value
+            let friendly = curve.Oid.FriendlyName
+
+            let matchesOid =
+                match oidValue with
+                | null -> false
+                | v -> String.Equals(v, p256Oid, StringComparison.Ordinal)
+
+            let matchesName =
+                match friendly with
+                | null -> false
+                | n ->
+                    p256FriendlyNames
+                    |> List.exists (fun c -> String.Equals(c, n, StringComparison.OrdinalIgnoreCase))
+
+            if matchesOid || matchesName then
+                Ok()
+            else
+                Error(describeCurve curve)
+
     /// A signer over a host-supplied P-256 key. Refuses (throws) at
-    /// construction for a key of any other size — a signer that silently
-    /// produced attestations no registered algorithm id describes would be a
-    /// defect, not a fallback. `now` supplies the self-asserted `SignedAt`;
-    /// `adopted` marks the vouched-after-the-fact claim tier.
+    /// construction for a key on any other CURVE — not merely of another size:
+    /// key size does not identify a curve, and a signer that silently produced
+    /// attestations no registered algorithm id describes would be a defect, not
+    /// a fallback. The refusal names the curve the key is actually on.
+    /// `now` supplies the self-asserted `SignedAt`; `adopted` marks the
+    /// vouched-after-the-fact claim tier.
     let signerWith (now: unit -> DateTimeOffset) (adopted: bool) (keyId: string) (key: ECDsa) : IAttestationSigner =
-        if key.KeySize <> 256 then
+        match checkCurve (key.ExportParameters(false).Curve) with
+        | Error actual ->
             invalidArg
                 (nameof key)
-                ("ecdsa-p256-sha256-v1 requires a P-256 key; this key's size is "
-                 + string key.KeySize)
+                ("ecdsa-p256-sha256-v1 requires a key on the NIST P-256 curve; this key is on "
+                 + actual)
+        | Ok() -> ()
 
         { new IAttestationSigner with
             member _.SignSegment descriptor =
@@ -75,7 +143,12 @@ module EcdsaP256 =
                                  + "; the descriptor declares "
                                  + descriptor.Algorithm)
                     else
-                        let signedAt = now ()
+                        // Normalised to the resolution the claim payload binds
+                        // (unix seconds), so the `SignedAt` this attestation
+                        // STORES is exactly the value the signature COVERS — a
+                        // store round trip cannot change the signed bytes
+                        // (Phase 1525).
+                        let signedAt = SegmentAttestation.signedInstant (now ())
 
                         let payload = SegmentAttestation.claimPayload descriptor keyId signedAt adopted
                         // BCL default signature format for ECDsa is IEEE
@@ -99,8 +172,17 @@ module EcdsaP256 =
     /// The crypto verifier: imports the directory entry's SPKI public key and
     /// checks the signature over the canonical claim payload. Dispatches on
     /// the algorithm id — anything other than `ecdsa-p256-sha256-v1` (on the
-    /// key or the claim), a non-P-256 key, or malformed key/signature bytes
-    /// answers `false`; `Evidence.verify` renders that as `SignatureInvalid`.
+    /// key or the claim), a key on a curve other than NIST P-256, or malformed
+    /// key/signature bytes answers `false`; `Evidence.verify` renders that as
+    /// `SignatureInvalid`.
+    ///
+    /// The curve test is the CURVE, not the key size (Phase 1525): a 256-bit key
+    /// on secp256k1 or Brainpool P256r1 passed the pre-1525 size gate, so a
+    /// directory entry naming `ecdsa-p256-sha256-v1` could be verified under a
+    /// key the id does not describe. This side cannot name the curve in a
+    /// message — the interface answers `bool`, deliberately, so the typed verdict
+    /// stays `Evidence.verify`'s to give — but it refuses the same set the
+    /// signer refuses, which is what keeps the two ends of the id honest.
     let verifier: IAttestationVerifier =
         { new IAttestationVerifier with
             member _.VerifySignature attestation key =
@@ -120,9 +202,9 @@ module EcdsaP256 =
                                 &bytesRead
                             )
 
-                            if ecdsa.KeySize <> 256 then
-                                return false
-                            else
+                            match checkCurve (ecdsa.ExportParameters(false).Curve) with
+                            | Error _ -> return false
+                            | Ok() ->
                                 let payload = SegmentAttestation.claimPayloadOf attestation
 
                                 return
@@ -145,12 +227,40 @@ module EcdsaP256 =
 /// choice is the host's, never this package's.
 module FileKeyDirectory =
 
+    /// Parse one of the three ISO-8601 lifecycle timestamps.
+    ///
+    /// MACHINE-INDEPENDENT, and that is the whole point of the styles (Phase
+    /// 1525). `DateTimeOffset.Parse` with default styles interprets a string
+    /// carrying NO offset in the parsing machine's LOCAL time zone, so
+    /// `"2027-01-01T00:00:00"` in a key directory becomes a different instant on
+    /// every machine that reads it — and these three fields are the revocation
+    /// boundary, the expiry and the validity start, so the same attestation
+    /// would verify in London and be void in Sydney. A trust store cannot mean
+    /// different things in different places.
+    ///
+    /// The choice made here is ASSUME UNIVERSAL rather than refuse: a directory
+    /// is a published document, often hand-written, and an offset-less
+    /// timestamp in one is overwhelmingly meant as UTC — refusing it outright
+    /// would fail a store that is merely terse, and the refusal would land at
+    /// load time on a host that has no way to edit someone else's keyring. So
+    /// `AssumeUniversal` reads an offset-less string as UTC, `AdjustToUniversal`
+    /// normalises a string that DOES carry an offset to the same instant in
+    /// UTC, and `InvariantCulture` keeps the accepted grammar independent of the
+    /// host's culture. Every machine then reads one instant, whichever spelling
+    /// the document used.
     let private optionalDate (element: JsonElement) (name: string) : DateTimeOffset option =
         match element.TryGetProperty name with
         | true, value when value.ValueKind = JsonValueKind.String ->
             match value.GetString() with
             | null -> None
-            | s -> Some(DateTimeOffset.Parse(s, CultureInfo.InvariantCulture))
+            | s ->
+                Some(
+                    DateTimeOffset.Parse(
+                        s,
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal ||| DateTimeStyles.AdjustToUniversal
+                    )
+                )
         | _ -> None
 
     let private requiredString (element: JsonElement) (name: string) : string =

@@ -116,10 +116,19 @@ module StreamEntry =
     /// NOT a full `Json.parse`: the envelope legitimately carries `promptId:null`,
     /// which the Fuaran wire JVal model rejects, and a version reader must work on
     /// an envelope of an *unknown future* shape it cannot fully parse anyway.
+    ///
+    /// The prefix test is ORDINAL (Phase 1525). It is a WIRE-BYTE comparison,
+    /// not a human-text one: the envelope's leading five characters are what the
+    /// encoder emitted, and the culture-sensitive default overload can answer
+    /// differently under a culture whose collation treats them differently — so
+    /// the same persisted record would report its format version on one machine
+    /// and read as tagless (v1) on another, which is exactly the "cryptic chain
+    /// break" this reader exists to prevent. The `Substring` below slices at the
+    /// same fixed count, so test and slice must agree by construction.
     let formatVersion (encodedEnvelope: string) : int option =
         let prefix = "{\"v\":"
 
-        if encodedEnvelope.StartsWith prefix then
+        if encodedEnvelope.StartsWith(prefix, System.StringComparison.Ordinal) then
             let digits =
                 encodedEnvelope.Substring prefix.Length
                 |> Seq.takeWhile System.Char.IsDigit
@@ -146,30 +155,57 @@ module StreamEntry =
     // envelope field out of the nested payload. The scanner captures each
     // top-level value's RAW span, so `op` reaches the host decoder byte-for-byte
     // — the same round-trip guarantee `Core.OpStream.fromJsonl` gives its `op`.
+    //
+    // TOTAL ON TRUNCATED INPUT (Phase 1525). Every scanner below answers `-1`
+    // for "this span does not close", and `tryTopLevelFields` turns that into a
+    // named `Error`. Before, each scanner ASSUMED its span was well-formed:
+    // `scanString` stepped two characters past a trailing backslash and could
+    // return an index beyond the string; `scanValue` indexed `s[i]` without
+    // checking `i` was in range; the field walk read `s[keyEnd]` as a `:` it had
+    // never confirmed and sliced a value span that might not exist. A stream
+    // truncated mid-record — the ordinary outcome of a partial write, a clipped
+    // copy-paste, or a bounded transport — therefore reached a decoder that
+    // either threw an index exception past the `Result` boundary the signature
+    // promises, or silently produced a field map missing (or mis-spanning) the
+    // very fields the chain pre-image is built from. Both are worse than a
+    // refusal: the caller is holding a `Result` and has no reason to expect
+    // either. Malformed input is now always `Error`, never a throw and never a
+    // plausible-looking record.
 
-    /// Index just past the string starting at the opening quote `s[i]`.
+    /// Index just past the string starting at the opening quote `s[i]`, or `-1`
+    /// when the string never closes (truncated input) or an escape's payload
+    /// runs off the end.
     let rec private scanString (s: string) (i: int) : int =
         let mutable j = i + 1
         let mutable fin = false
+        let mutable truncated = false
 
-        while not fin && j < s.Length do
+        while not fin && not truncated && j < s.Length do
             match s[j] with
-            | '\\' -> j <- j + 2
+            | '\\' ->
+                // A trailing backslash has no escaped character to consume; the
+                // pre-1525 `j <- j + 2` walked past the end of the string here.
+                if j + 1 >= s.Length then truncated <- true else j <- j + 2
             | '"' ->
                 fin <- true
                 j <- j + 1
             | _ -> j <- j + 1
 
-        j
+        if fin then j else -1
 
-    /// Index just past a `{…}` / `[…]` starting at `s[i]`, respecting strings.
+    /// Index just past a `{…}` / `[…]` starting at `s[i]`, respecting strings,
+    /// or `-1` when the bracket never closes or a nested string is truncated.
     and private scanBracketed (s: string) (i: int) (openCh: char) (closeCh: char) : int =
         let mutable j = i + 1
         let mutable depth = 1
+        let mutable truncated = false
 
-        while depth > 0 && j < s.Length do
+        while not truncated && depth > 0 && j < s.Length do
             match s[j] with
-            | '"' -> j <- scanString s j
+            | '"' ->
+                let k = scanString s j
+
+                if k < 0 then truncated <- true else j <- k
             | c when c = openCh ->
                 depth <- depth + 1
                 j <- j + 1
@@ -178,30 +214,49 @@ module StreamEntry =
                 j <- j + 1
             | _ -> j <- j + 1
 
-        j
+        if truncated || depth > 0 then -1 else j
 
-    /// Index just past one JSON value starting at `s[i]`.
+    /// Index just past one JSON value starting at `s[i]`, or `-1` when there is
+    /// no value there at all (the input ended) or the value does not close.
     and private scanValue (s: string) (i: int) : int =
-        match s[i] with
-        | '"' -> scanString s i
-        | '{' -> scanBracketed s i '{' '}'
-        | '[' -> scanBracketed s i '[' ']'
-        | _ ->
-            // number / true / false / null — read to the next structural char.
-            let mutable j = i
+        if i >= s.Length then
+            -1
+        else
+            match s[i] with
+            | '"' -> scanString s i
+            | '{' -> scanBracketed s i '{' '}'
+            | '[' -> scanBracketed s i '[' ']'
+            | _ ->
+                // number / true / false / null — read to the next structural char.
+                let mutable j = i
 
-            while j < s.Length && s[j] <> ',' && s[j] <> '}' && s[j] <> ']' do
-                j <- j + 1
+                while j < s.Length && s[j] <> ',' && s[j] <> '}' && s[j] <> ']' do
+                    j <- j + 1
 
-            j
+                // A bare value is delimited by a structural character. Running to
+                // the end of the input means the object was cut mid-value, and an
+                // empty span means there was no value where one was promised.
+                if j >= s.Length || j = i then -1 else j
 
     /// Unescape a raw JSON string span (quotes included). The inverse of `jstr`
     /// -- which writes control characters as \uXXXX -- plus the shorthand
     /// escapes (\n, \t, \r, \b, \f, \/) a conformant peer is entitled to emit
     /// for the same characters. Accepting the wider set costs nothing and keeps
     /// this a decoder of the FORMAT rather than of one encoder's habits.
+    ///
+    /// The length guard is defence in depth (Phase 1525), not the check that
+    /// matters: `scanString` already refuses a span that does not open and close
+    /// with a quote, and `tryUnquote` refuses one that is not a string at all. It
+    /// is here because the pre-1525 `Substring(1, raw.Length - 2)` THREW on a
+    /// shorter span, and a throw is precisely what a caller holding a `Result`
+    /// has no way to handle.
     let private unquote (raw: string) : string =
-        let inner = raw.Substring(1, raw.Length - 2)
+        let inner =
+            if raw.Length < 2 then
+                raw
+            else
+                raw.Substring(1, raw.Length - 2)
+
         let sb = System.Text.StringBuilder()
         let mutable i = 0
 
@@ -261,45 +316,95 @@ module StreamEntry =
 
         sb.ToString()
 
-    /// Map of top-level key → raw value span for a canonical envelope object.
-    let private topLevelFields (json: string) : Map<string, string> =
+    /// A raw value span unescaped as a JSON string, or `None` when the span is
+    /// not a string at all. The `None` case is the load-bearing one (Phase
+    /// 1525): the pre-1525 decoder handed every span straight to `unquote`,
+    /// which strips a leading and a trailing character unconditionally — so a
+    /// numeric `promptId` of `123` decoded to the string `"2"` and a truncated
+    /// span decoded to whatever was left. A field that is not a string is a
+    /// malformed envelope, and the caller says so rather than reading it.
+    let private tryUnquote (raw: string) : string option =
+        let t = raw.Trim()
+
+        if t.Length >= 2 && t[0] = '"' && t[t.Length - 1] = '"' then
+            Some(unquote t)
+        else
+            None
+
+    /// Map of top-level key → raw value span for a canonical envelope object,
+    /// or a named `Error` when the input is not one (Phase 1525). Every scanner
+    /// result is checked before it indexes or slices, so a truncated envelope
+    /// refuses by name instead of throwing or yielding a partial field map that
+    /// the decoder above would read as a plausible record.
+    let private tryTopLevelFields (json: string) : Result<Map<string, string>, string> =
         let s = json.Trim()
 
-        if s.Length < 2 || s[0] <> '{' then
-            Map.empty
+        if s.Length < 2 || s[0] <> '{' || s[s.Length - 1] <> '}' then
+            Error "StreamEntry.decode: the envelope is not a complete JSON object (truncated or malformed input)"
         else
             let mutable i = 1
             let mutable fields = Map.empty
+            let mutable failure = None
 
-            while i < s.Length && s[i] <> '}' do
+            while failure.IsNone && i < s.Length && s[i] <> '}' do
                 if s[i] = '"' then
                     let keyEnd = scanString s i
-                    let key = unquote (s.Substring(i, keyEnd - i))
-                    let valStart = keyEnd + 1 // past ':'
-                    let valEnd = scanValue s valStart
-                    fields <- Map.add key (s.Substring(valStart, valEnd - valStart)) fields
 
-                    i <-
-                        if valEnd < s.Length && s[valEnd] = ',' then
-                            valEnd + 1
+                    if keyEnd < 0 then
+                        failure <- Some "StreamEntry.decode: a field name is not a terminated string (truncated input)"
+                    elif keyEnd >= s.Length || s[keyEnd] <> ':' then
+                        failure <-
+                            Some
+                                "StreamEntry.decode: a field name is not followed by ':' (truncated or malformed input)"
+                    else
+                        let valStart = keyEnd + 1 // past ':'
+                        let valEnd = scanValue s valStart
+
+                        if valEnd < 0 then
+                            failure <-
+                                Some "StreamEntry.decode: a field value is truncated or malformed (it does not close)"
                         else
-                            valEnd
+                            let key = unquote (s.Substring(i, keyEnd - i))
+                            fields <- Map.add key (s.Substring(valStart, valEnd - valStart)) fields
+
+                            i <-
+                                if valEnd < s.Length && s[valEnd] = ',' then
+                                    valEnd + 1
+                                else
+                                    valEnd
                 else
                     i <- i + 1
 
-            fields
+            match failure with
+            | Some e -> Error e
+            | None when i = s.Length - 1 && s[i] = '}' -> Ok fields
+            | None ->
+                // The walk ran off the end without reaching the object's OWN
+                // closing brace. This is the truncation the shape check above
+                // structurally cannot see: a prefix cut immediately after a
+                // nested object still ENDS in `}` and can carry every required
+                // field, so it would otherwise decode to a perfectly plausible
+                // record that nobody ever wrote.
+                Error "StreamEntry.decode: the envelope object does not close (truncated input)"
 
     let private decodeResult (raw: string) : Result<OpResultEnvelope, string> =
-        let f = topLevelFields raw
-
-        match Map.tryFind "kind" f with
-        | Some k when unquote k = "success" -> Ok OpResultEnvelope.Success
-        | Some k when unquote k = "failure" ->
-            match Map.tryFind "code" f, Map.tryFind "message" f with
-            | Some c, Some m -> Ok(OpResultEnvelope.Failure(unquote c, unquote m))
-            | _ -> Error "StreamEntry.decode: a failure result must carry both 'code' and 'message'"
-        | Some k -> Error(sprintf "StreamEntry.decode: unrecognised result kind %s" (unquote k))
-        | None -> Error "StreamEntry.decode: the result envelope has no 'kind'"
+        match tryTopLevelFields raw with
+        | Error e -> Error e
+        | Ok f ->
+            match Map.tryFind "kind" f with
+            | None -> Error "StreamEntry.decode: the result envelope has no 'kind'"
+            | Some kindRaw ->
+                match tryUnquote kindRaw with
+                | None -> Error "StreamEntry.decode: the result envelope's 'kind' is not a string"
+                | Some "success" -> Ok OpResultEnvelope.Success
+                | Some "failure" ->
+                    match
+                        Map.tryFind "code" f |> Option.bind tryUnquote,
+                        Map.tryFind "message" f |> Option.bind tryUnquote
+                    with
+                    | Some c, Some m -> Ok(OpResultEnvelope.Failure(c, m))
+                    | _ -> Error "StreamEntry.decode: a failure result must carry both 'code' and 'message' as strings"
+                | Some k -> Error(sprintf "StreamEntry.decode: unrecognised result kind %s" k)
 
     /// Parse an envelope produced by `encode` back to a `StreamEntry`.
     /// `decodeOp` is the host's op decoder for the nested `op` payload — the
@@ -318,54 +423,73 @@ module StreamEntry =
     /// unix seconds, matching the pre-406 pre-image resolution), not a decode
     /// loss — sub-second precision never reaches the wire and so is never in the
     /// hash either.
+    ///
+    /// TOTAL (Phase 1525): truncated or malformed input is always a named
+    /// `Error`. Not a throw — the signature promises a `Result`, and a caller
+    /// reading a partial record off disk or a bounded transport has no reason to
+    /// wrap the call — and not a mis-read record either, which is the worse of
+    /// the two failures: a `StreamEntry` is the chain PRE-IMAGE, so a record
+    /// assembled from a mis-spanned field would re-hash to something no other
+    /// host can reproduce, and the break would surface later as a chain error
+    /// nowhere near the truncation that caused it.
     let decode<'Msg>
         (decodeOp: string -> Result<TreeOp<'Msg>, string>)
         (encoded: string)
         : Result<StreamEntry<'Msg>, string> =
-        let fields = topLevelFields encoded
+        let decodeFields (fields: Map<string, string>) : Result<StreamEntry<'Msg>, string> =
+            let version =
+                match Map.tryFind "v" fields with
+                | Some raw ->
+                    match System.Int32.TryParse(raw.Trim()) with
+                    | true, n -> Some n
+                    | _ -> None
+                // A tagless envelope is the pre-406 v1 format (see `formatVersion`).
+                | None -> Some 1
 
-        let version =
-            match Map.tryFind "v" fields with
-            | Some raw ->
-                match System.Int32.TryParse(raw.Trim()) with
-                | true, n -> Some n
-                | _ -> None
-            // A tagless envelope is the pre-406 v1 format (see `formatVersion`).
-            | None -> Some 1
+            match version with
+            | None -> Error "StreamEntry.decode: the 'v' field is not an integer"
+            | Some v when v <> chainFormatVersion ->
+                Error(
+                    sprintf
+                        "StreamEntry.decode: unsupported chain format version %d (this host implements %d)"
+                        v
+                        chainFormatVersion
+                )
+            | Some _ ->
+                match Map.tryFind "op" fields, Map.tryFind "ts" fields, Map.tryFind "result" fields with
+                | Some opRaw, Some tsRaw, Some resultRaw ->
+                    match decodeOp opRaw with
+                    | Error e -> Error(sprintf "StreamEntry.decode: op decode failed: %s" e)
+                    | Ok op ->
+                        match System.Int64.TryParse(tsRaw.Trim()) with
+                        | false, _ -> Error(sprintf "StreamEntry.decode: 'ts' is not an integer: %s" (tsRaw.Trim()))
+                        | true, unixSeconds ->
+                            match decodeResult resultRaw with
+                            | Error e -> Error e
+                            | Ok envelope ->
+                                // `promptId` is `null` or a STRING. Anything else is a
+                                // malformed envelope, refused rather than stripped of
+                                // its first and last character (Phase 1525).
+                                let promptId =
+                                    match Map.tryFind "promptId" fields with
+                                    | Some raw when raw.Trim() = "null" -> Ok None
+                                    | Some raw ->
+                                        match tryUnquote raw with
+                                        | Some p -> Ok(Some p)
+                                        | None -> Error "StreamEntry.decode: 'promptId' is neither null nor a string"
+                                    | None -> Ok None
 
-        match version with
-        | None -> Error "StreamEntry.decode: the 'v' field is not an integer"
-        | Some v when v <> chainFormatVersion ->
-            Error(
-                sprintf
-                    "StreamEntry.decode: unsupported chain format version %d (this host implements %d)"
-                    v
-                    chainFormatVersion
-            )
-        | Some _ ->
-            match Map.tryFind "op" fields, Map.tryFind "ts" fields, Map.tryFind "result" fields with
-            | Some opRaw, Some tsRaw, Some resultRaw ->
-                match decodeOp opRaw with
-                | Error e -> Error(sprintf "StreamEntry.decode: op decode failed: %s" e)
-                | Ok op ->
-                    match System.Int64.TryParse(tsRaw.Trim()) with
-                    | false, _ -> Error(sprintf "StreamEntry.decode: 'ts' is not an integer: %s" (tsRaw.Trim()))
-                    | true, unixSeconds ->
-                        match decodeResult resultRaw with
-                        | Error e -> Error e
-                        | Ok envelope ->
-                            let promptId =
-                                match Map.tryFind "promptId" fields with
-                                | Some raw when raw.Trim() = "null" -> None
-                                | Some raw -> Some(unquote (raw.Trim()))
-                                | None -> None
+                                match promptId with
+                                | Error e -> Error e
+                                | Ok promptId ->
+                                    Ok
+                                        { Op = op
+                                          Timestamp = DateTimeOffset.FromUnixTimeSeconds unixSeconds
+                                          PromptId = promptId
+                                          ResultEnvelope = envelope }
+                | _ -> Error "StreamEntry.decode: missing one of the required fields (op/ts/result)"
 
-                            Ok
-                                { Op = op
-                                  Timestamp = DateTimeOffset.FromUnixTimeSeconds unixSeconds
-                                  PromptId = promptId
-                                  ResultEnvelope = envelope }
-            | _ -> Error "StreamEntry.decode: missing one of the required fields (op/ts/result)"
+        tryTopLevelFields encoded |> Result.bind decodeFields
 
     /// The certified host-side SHA-256 `HashFn` (Phase 405) supplied to Core's
     /// chain — `sha256(prev | payload)`, mirroring Core's `defaultHash` shape but
