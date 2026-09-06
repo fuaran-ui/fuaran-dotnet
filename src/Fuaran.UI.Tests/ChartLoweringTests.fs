@@ -1361,6 +1361,45 @@ let private cases: Case list =
                         Some(lit "Freeze")
                     )
                     ChartAnnotation.ReferenceLine(160.0, None) ]
+          Rows = [ "Q1", [ 120.0 ]; "Q2", [ 150.0 ]; "Q3", [ 90.0 ]; "Q4", [ 175.0 ] ] }
+      // ── Phase 1494 (§4i) — an annotation LABEL as untrusted text ──
+      { plain with
+          // The `bar-summary-hostile-text` shape at the slot 1494 opened. That
+          // fixture pins the exposure the summary carries through the SERIES
+          // and CATEGORY strings; this one pins it through an annotation
+          // LABEL, which is a different path into the same string: the label
+          // is authored rather than fed, but it is authored by whoever authors
+          // the tree, so the summary's guarantee has to be the same one.
+          //
+          // Three properties in one case, and each needs the other two to be
+          // legible:
+          //
+          //   * markup metacharacters survive into `Description` as DATA —
+          //     the renderer's XML escape is what makes them inert, and doing
+          //     it here would double-escape;
+          //   * the 32-character clamp bites on the LABEL as it does on a
+          //     series name, so an overlong label cannot be the whole summary;
+          //   * the label carries the `", "` the item list is joined with,
+          //     which is why the summary brackets a label rather than
+          //     appending it — the brackets are the delimiter, not decoration.
+          //
+          // The label FITS, deliberately: the drawn label and the announced one
+          // are then the same authored string at two different lengths, so the
+          // golden shows the clamp as a difference between two bytes it holds
+          // rather than as an assertion about one. `line-temporal-events-collide`
+          // is where the other half — a SUPPRESSED label still announced — is
+          // pinned, because that is the fixture whose gate actually bites.
+          Name = "bar-annotation-hostile-text"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields = [ "revenue" ]
+          Title = Some(lit "Revenue against target")
+          Annotations =
+              Some
+                  [ ChartAnnotation.ReferenceLine(
+                        160.0,
+                        Some(lit "<b>target</b> & \"stretch\", a label comfortably past the clamp")
+                    ) ]
           Rows = [ "Q1", [ 120.0 ]; "Q2", [ 150.0 ]; "Q3", [ 90.0 ]; "Q4", [ 175.0 ] ] } ]
 
 /// Build the typed `Row` rows (the canonical embedded-data shape; fuaran#665
@@ -3950,6 +3989,144 @@ let chartLoweringTests =
                   Expect.stringContains summary "<script>" "hostile text is carried as data, unescaped"
 
                   Expect.isTrue (summary.Length <= 320) "the whole summary is inside its cap"
+              }
+
+              // ── Phase 1494 — the annotation clauses ──
+              //
+              // The goldens pin these byte-for-byte like every other summary
+              // arm; these pin the GRAMMAR by name, so a rewrite that kept the
+              // goldens green by regenerating them still answers for each rule.
+
+              test "each annotation member gets its own clause, after the data clauses" {
+                  let reference = summaryOf "line-reference-zero"
+
+                  Expect.stringContains reference "1 reference line: 0" "one reference line, named by its value"
+
+                  Expect.isTrue
+                      (reference.IndexOf "Peak " < reference.IndexOf "1 reference line")
+                      ("the annotation clause follows the data clauses: " + reference)
+
+                  Expect.stringContains
+                      (summaryOf "line-reference-labelled")
+                      "2 reference lines: 250 (SLO), 350 (Breach)"
+                      "a Literal label is bracketed after its address, in document order"
+
+                  Expect.stringContains
+                      (summaryOf "bar-event-single")
+                      "1 event: Q3 (Repricing)"
+                      "a band-axis event is named by its category key"
+
+                  Expect.stringContains
+                      (summaryOf "line-band-y-tolerance")
+                      "1 band: 200 to 260 (Tolerance)"
+                      "a value band states its pair in the value axis's own rendering"
+
+                  Expect.stringContains
+                      (summaryOf "bar-band-x-categories")
+                      "1 band: Q2 to Q3 (Freeze)"
+                      "a category band states its pair in the band axis's keys"
+
+                  // Both cases present, each in its own clause, in the
+                  // `ChartAnnotation` declaration order.
+                  let both = summaryOf "bar-band-x-categories"
+
+                  Expect.isTrue
+                      (both.IndexOf "1 reference line" < both.IndexOf "1 band")
+                      ("reference lines are announced before bands: " + both)
+              }
+
+              test "a temporal address is announced in the axis's own tick format" {
+                  // Never the authored ISO string: clause 3 has already stated
+                  // how this axis writes a date, and two spellings in one
+                  // summary would disagree with the picture about one of them.
+                  let five = summaryOf "line-temporal-events-five"
+
+                  Expect.stringContains five "(Dot-com)" "the marker's Literal label is announced"
+                  Expect.isFalse (five.Contains "2000-03-10") ("the authored ISO form is not announced: " + five)
+
+                  let period = summaryOf "line-temporal-band-x-period"
+
+                  Expect.stringContains period "1 band: " "a temporal band is announced"
+                  Expect.stringContains period "(Recession)" "…with its label, though the drawn one is suppressed"
+                  Expect.isFalse (period.Contains "2008-04-01") ("the authored ISO form is not announced: " + period)
+              }
+
+              test "an annotation clause folds at four, exactly as the series clause does" {
+                  Expect.stringContains
+                      (summaryOf "line-temporal-events-five")
+                      ", and 1 more"
+                      "five markers fold to four named plus a singular count"
+              }
+
+              test "a SUPPRESSED label is still announced — suppression is about ink, not meaning" {
+                  // `line-temporal-events-collide` draws three markers and one
+                  // label: the first two labels have a few pixels of budget and
+                  // the fit gate refuses them. All three are named here.
+                  let collide = summaryOf "line-temporal-events-collide"
+
+                  Expect.stringContains collide "3 events: " "all three markers are announced"
+                  Expect.stringContains collide "(First review window)" "the first suppressed label is announced"
+                  Expect.stringContains collide "(Second review window)" "the second suppressed label is announced"
+                  Expect.stringContains collide "(Sign-off)" "the drawn label is announced too"
+
+                  // The drawing itself carries only the third label, which is
+                  // what makes the assertions above a statement about the
+                  // summary rather than about the fit gate.
+                  let drawn = literalTexts (loweredCase "line-temporal-events-collide")
+
+                  Expect.isTrue (List.contains "Sign-off" drawn) "the third label is drawn"
+
+                  Expect.isFalse
+                      (List.contains "First review window" drawn)
+                      "the first label was suppressed by the fit gate"
+
+                  Expect.isFalse
+                      (List.contains "Second review window" drawn)
+                      "the second label was suppressed by the fit gate"
+              }
+
+              test "a NON-Literal label leaves the annotation named by its address alone" {
+                  // The same honest boundary the fit gate draws: the text
+                  // behind a `Bound` arm is not known at lowering, and
+                  // announcing something that is not the text drawn is silently
+                  // wrong. The address is always stated, so the annotation is
+                  // never unannounced.
+                  let bound = summaryOf "line-reference-labelled-bound-label"
+
+                  Expect.stringContains bound "1 reference line: 250" "the address is announced"
+                  Expect.isFalse (bound.Contains "(") ("no label is bracketed for a Bound arm: " + bound)
+                  Expect.isFalse (bound.Contains "live binding") ("the binding's text is not announced: " + bound)
+              }
+
+              test "an annotation LABEL is untrusted text, clamped and carried as data" {
+                  let summary = summaryOf "bar-annotation-hostile-text"
+
+                  Expect.stringContains
+                      summary
+                      "1 reference line: 160 (<b>target</b> & \"stretch\", a la…)"
+                      "the label is bracketed, clamped at 32 with the ellipsis, and carried verbatim"
+
+                  Expect.isTrue (summary.Length <= 320) "the whole summary is inside its cap"
+
+                  // The DRAWN label carries the same authored string WHOLE —
+                  // the clamp is the summary's own bound, not the label's, and
+                  // the two bytes side by side are what say so.
+                  let drawn = literalTexts (loweredCase "bar-annotation-hostile-text")
+
+                  Expect.isTrue
+                      (List.contains "<b>target</b> & \"stretch\", a label comfortably past the clamp" drawn)
+                      "the drawn label is the authored string, unclamped"
+              }
+
+              test "a chart with no annotations gains no clause" {
+                  // The stability claim the phase makes: every pre-1494 golden
+                  // that carries no annotation is byte-unchanged, which shows
+                  // here as a summary that ends at its peak clause.
+                  let unannotated = summaryOf "bar-multi"
+
+                  Expect.isFalse (unannotated.Contains "reference line") "no reference-line clause"
+                  Expect.isFalse (unannotated.Contains " event") "no event clause"
+                  Expect.isFalse (unannotated.Contains " band") "no band clause"
               }
 
               test "a REFUSED pie announces nothing — the Phase 880 legend rule, in words" {

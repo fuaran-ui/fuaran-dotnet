@@ -4977,3 +4977,50 @@ needs. Phase 875's lightness-band gate has nothing to measure here: it ranges ov
 palette, whose hexes must sit in the intersection of two bands because one set serves both themes,
 where a `currentColor` tint is a fixed contrast ratio to whatever ground it lands on — the property
 that gate exists to buy.
+
+## Recorded change — 0.76.0, the accessible summary names its annotations (fuaran#1494)
+
+**No public type moves at all — this is a change to GENERATED TEXT, and its whole surface is the
+corpus.** The Phase 921 summary (§4i) gains up to three clauses after its four data clauses, one per
+`ChartAnnotation` member, so an annotation is announced to a screen reader rather than being visible
+only as ink. No record widens, no union gains a case, no signature changes, and `ChartStyle` is
+untouched; the classification is additive on the same reading the three member entries above take.
+
+```text
+Bar chart. 1 series: revenue. 4 categories: Q1 to Q4. Peak revenue at Q4, 175.
+  1 reference line: 160. 1 band: Q2 to Q3 (Freeze).
+```
+
+**The grammar, in one paragraph** (normative statement in §4i): clauses 5–7 are reference lines,
+events and bands, in the union's own declaration order, each `1 <noun>: <item>` or
+`<k> <plural>: <item>, …` folding at four to `, and <k−4> more` on clause 2's rule. An item is the
+annotation's ADDRESS in its own axis's vocabulary — a value through the §4-series formatter with the
+axis display unit, a category key verbatim, a date through §4h's tick label rather than the authored
+ISO string — followed by ` (<label>)` when the label is a `Literal`. A value pair states its unit once,
+after the second number.
+
+**Only the `Literal` label arm contributes, and that is the same boundary the fit gate draws.** The
+text behind a `Bound` or `I18n` arm is unknown at lowering, and announcing something that is not the
+text drawn is silently wrong in exactly the way measuring it would be (Phase 1143's contract, clauses
+3 and 4). Because the address is always stated, such an annotation is still NAMED — which is what
+makes this a weaker restriction than §4i's reason for keeping the chart TITLE out of the summary
+altogether, where dropping the arm would have left nothing at all.
+
+**A SUPPRESSED LABEL IS STILL ANNOUNCED**, and it is the reason the phase exists. §4l's fit gate
+decides ink, not meaning; the summary is where suppressed meaning goes. So the clauses read the
+RESOLVED annotation lists and never the shapes that survived the gate — and, by the same rule in the
+other direction, an annotation the lowering DROPPED (non-finite, ungrounded key, mismatched axis form,
+or any member on the polar arm) is announced by nobody, which is §4i's refused-pie rule at the level
+of one annotation.
+
+**A CORPUS EVENT, and a deliberately narrow one.** The ten `chart-lowering/*` goldens carrying
+annotations change in the `description` member and in **nothing else**; every other fixture in the
+corpus — chart or not — is byte-unchanged, and no `.input.json` moves, because the summary is derived
+rather than declared. That containment is why the clauses were appended after the data clauses rather
+than woven among them. One case is added, `bar-annotation-hostile-text`, pinning through an annotation
+LABEL what the 921 pair pinned through a series and a category name: markup metacharacters reach
+`Description` as data (the renderer's XML escape is what makes them inert, and escaping here would
+double-escape), and the 32-character clamp bites — with the DRAWN label in the same golden carrying the
+authored string whole, so the clamp is a difference between two bytes the fixture holds rather than an
+assertion about one. A host whose chart-lowering leg walks the corpus directory sees all eleven before
+its own clauses exist; the four lowering hosts move in this same change-set.

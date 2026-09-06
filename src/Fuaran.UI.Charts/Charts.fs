@@ -1824,6 +1824,16 @@ let describeRefusal (r: ChartRefusal) : string =
 // resolves — so the announced string is "<title>. <summary>" for every arm, and
 // the two artefacts stay what SVG says they are: `<title>` names, `<desc>`
 // describes.
+//
+// PHASE 1494 EXTENDS IT WITH ONE CLAUSE PER ANNOTATION MEMBER, appended after
+// the four data clauses. An annotation is by definition the thing the author
+// most wants noticed, so a sighted reader shown five labelled events and a zero
+// line while a non-sighted reader is told none of it was an accessibility
+// defect the language introduced by admitting the members. The clauses are
+// generated from the RESOLVED annotations — what the lowering drew — so a
+// marker whose label the fit gate suppressed is still announced: suppression is
+// a decision about ink, not about meaning. Their grammar is at the clause site
+// below and normatively in §4i.
 
 /// The clause separator + terminator. Periods, not commas: a screen reader
 /// pauses at a sentence boundary, and four comma-spliced clauses read as one
@@ -1837,6 +1847,16 @@ let private summaryClauseSeparator = ". "
 /// the last arrives — the count is then the more useful statement.
 [<Literal>]
 let private summaryMaxSeriesNamed = 4
+
+/// At most this many ANNOTATIONS are named in one annotation clause (Phase
+/// 1494) before that clause folds the rest into a count — the same legibility
+/// bound `summaryMaxSeriesNamed` states, for the same reason, over a different
+/// list. It is a SEPARATE constant rather than a reuse of that one because the
+/// two lists are different things: a chart carrying twenty markers and four
+/// series is an ordinary chart, and a future decision to fold one list sooner
+/// must not silently move the other.
+[<Literal>]
+let private summaryMaxAnnotationsNamed = 4
 
 /// The per-NAME character cap (a series field, a category label). Untrusted
 /// strings straight off the data feed; a single 4 000-character category would
@@ -4194,6 +4214,16 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             // stated how the axis writes a date; this clause has to identify one
             // point, and "Mar 26" identifies a month where "2026-03-15"
             // identifies the datum.
+            //
+            // The unit suffix is hoisted out of this clause (Phase 1494)
+            // because the annotation clauses below print numbers on the same
+            // axis and must say the same thing about their magnitude.
+            let unitSuffix =
+                if yDisplayUnit.Label = "" then
+                    ""
+                else
+                    " " + yDisplayUnit.Label
+
             let peakClause =
                 if n = 0 || m = 0 then
                     []
@@ -4209,12 +4239,6 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                                 bi <- i
                                 bj <- j
 
-                    let unitSuffix =
-                        if yDisplayUnit.Label = "" then
-                            ""
-                        else
-                            " " + yDisplayUnit.Label
-
                     [ "Peak "
                       + clampText summaryMaxNameChars yFields.[bj]
                       + " at "
@@ -4223,8 +4247,128 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                       + yTickText bv
                       + unitSuffix ]
 
+            // ── The annotation clauses (Phase 1494 — §4i, extended) ───────
+            //
+            // One clause per MEMBER of the annotation family, appended after
+            // the four data clauses, in the `ChartAnnotation` declaration
+            // order: reference lines, event markers, range bands. After,
+            // because clauses 1–4 describe the DATA and an annotation is the
+            // author's mark ON that data — a reader needs the frame before the
+            // marks on it — and because appending is what keeps every chart
+            // WITHOUT annotations byte-identical to its pre-1494 golden.
+            //
+            // WHAT IS ANNOUNCED IS WHAT WAS DRAWN. These read the RESOLVED
+            // lists, so a member the lowering dropped (non-finite, ungrounded
+            // key, mismatched axis form, or any member at all on the polar
+            // arm) is announced by nobody. That is §4i's refused-pie rule at
+            // the level of one annotation: naming a line the picture declined
+            // to draw would be a claim about ink that is not there.
+            //
+            // AND A SUPPRESSED LABEL IS STILL ANNOUNCED — which is the whole
+            // point of the phase. The fit gate above is a decision about INK:
+            // it refuses to draw glyphs that would overlap a mark or another
+            // annotation. It is not a decision about MEANING, and the summary
+            // is where suppressed meaning goes, so these clauses read the
+            // resolved lists and never the shapes that survived the gate.
+
+            /// An annotation's label as summary words: ` (<label>)`, or nothing.
+            ///
+            /// ONLY THE `Literal` ARM CONTRIBUTES, and it is the same honest
+            /// boundary `annotationLabel`'s fit gate draws one screen up: the
+            /// text behind a `Bound` or an `I18n` arm is not known here, and
+            /// announcing something that is not the text drawn is silently
+            /// wrong in exactly the way measuring it would be. The ADDRESS is
+            /// always stated, so the annotation is never unannounced — which is
+            /// what makes this weaker than §4i's reason for keeping the TITLE
+            /// out altogether: there, dropping the arm left nothing at all.
+            ///
+            /// An EMPTY literal contributes nothing rather than an empty pair
+            /// of brackets — the rule §4i already gives the empty title at the
+            /// root wiring.
+            ///
+            /// The brackets are the delimiter, not decoration: a label is
+            /// untrusted feed text and may itself contain the `", "` the item
+            /// list is joined with.
+            let annotationLabelWords (label: TextSource option) : string =
+                match label with
+                | Some(TextSource.Literal s) when s <> "" -> " (" + clampText summaryMaxNameChars s + ")"
+                | _ -> ""
+
+            /// One annotation clause: `1 <noun>: <item>` or
+            /// `<k> <plural>: <item>, …[, and <k−4> more]`. The fold is Phase
+            /// 921's exactly — four named, then a count, the singular falling
+            /// out of the arithmetic rather than being a case.
+            let annotationClause (noun: string) (plural: string) (items: string list) : string list =
+                match items with
+                | [] -> []
+                | _ ->
+                    let k = List.length items
+
+                    let head =
+                        if k = 1 then
+                            "1 " + noun + ": "
+                        else
+                            string k + " " + plural + ": "
+
+                    let named = items |> List.truncate summaryMaxAnnotationsNamed |> String.concat ", "
+
+                    if k > summaryMaxAnnotationsNamed then
+                        [ head + named + ", and " + string (k - summaryMaxAnnotationsNamed) + " more" ]
+                    else
+                        [ head + named ]
+
+            /// A resolved x address in the ADDRESS'S OWN VOCABULARY — a
+            /// category key on a band axis, the axis's own Phase-882 tick label
+            /// on a temporal one. Never the authored ISO string: clause 3 has
+            /// already stated how this axis writes a date, and a summary that
+            /// wrote it two ways would disagree with the picture about one of
+            /// them.
+            let xAddressWords (i: int) : string =
+                if isTemporal then
+                    xTickText (float i)
+                elif i >= 0 && i < categories.Length then
+                    clampText summaryMaxNameChars categories.[i]
+                else
+                    ""
+
+            let referenceClause =
+                referenceLines
+                |> Array.map (fun (v, label) -> yTickText v + unitSuffix + annotationLabelWords label)
+                |> List.ofArray
+                |> annotationClause "reference line" "reference lines"
+
+            let eventClause =
+                eventMarkers
+                |> Array.map (fun (i, label) -> xAddressWords i + annotationLabelWords label)
+                |> List.ofArray
+                |> annotationClause "event" "events"
+
+            // The two band arms rejoined on the per-case ordinal they were
+            // numbered with, which is the order `<n>` counts in and the order
+            // they are painted in — so the clause cannot disagree with the mark
+            // ids about which band is which.
+            //
+            // A VALUE PAIR STATES ITS UNIT ONCE, after the second number: the
+            // pair is one measurement in one unit, and saying it twice says
+            // nothing more.
+            let bandClause =
+                Array.append
+                    (valueBands
+                     |> Array.map (fun (i, lo, hi, label) ->
+                         i, yTickText lo + " to " + yTickText hi + unitSuffix, label))
+                    (xBands
+                     |> Array.map (fun (i, a, b, label) -> i, xAddressWords a + " to " + xAddressWords b, label))
+                |> Array.sortBy (fun (i, _, _) -> i)
+                |> Array.map (fun (_, address, label) -> address + annotationLabelWords label)
+                |> List.ofArray
+                |> annotationClause "band" "bands"
+
             let clauses =
-                [ summaryKindWords spec.Kind stacked; seriesClause; extentClause ] @ peakClause
+                [ summaryKindWords spec.Kind stacked; seriesClause; extentClause ]
+                @ peakClause
+                @ referenceClause
+                @ eventClause
+                @ bandClause
 
             Some(clampText summaryMaxChars (String.concat summaryClauseSeparator clauses + "."))
 
