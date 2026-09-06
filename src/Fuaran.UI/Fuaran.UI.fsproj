@@ -27,6 +27,13 @@
          bounded by. Literals only — depends on nothing, so it compiles first and
          is visible to Ops, Renderer.Server and ServerDriven alike. -->
     <Compile Include="WireLimits.fs" />
+    <!-- Phase 1523: the emission grammar for string-typed slots (CSS value /
+         track-list / colour, URL scheme, `rel` + `target` token sets). Beside
+         WireLimits and for the same reason — a protocol rule, not a renderer
+         detail — so PreEmitValidate can name a refusal before any renderer runs
+         and Renderer.Core.Sanitize can re-export the identical rule at every
+         emission site. FSharp.Core only; depends on nothing. -->
+    <Compile Include="EmissionGrammar.fs" />
     <Compile Include="StateKeyPolicy.fs" />
     <Compile Include="Generated.fs" />
     <Compile Include="Types.fs" />

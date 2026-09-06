@@ -116,6 +116,21 @@ type VisualisationContext<'Msg> =
         /// nothing else, so the whole affordance was inert on the adapter path
         /// while working on the first-party one.
         NodeId: string
+        /// The composition's ambient destination policy (Phase 1026), threaded
+        /// so an adapter's own emission sites gate exactly as the first-party
+        /// ones do (Phase 1523).
+        ///
+        /// It is here for the same reason `NodeId` is: an adapter cannot
+        /// recover it from the spec, so without it the adapter path was
+        /// STRUCTURALLY unable to apply the floor. The AG Grid `Link` cell
+        /// emitted `prop.href (hrefFn row)` raw where the simple-table twin
+        /// called `sanitizeUrlForEgress` — so the SAME decoded tree was gated on
+        /// one grid backend and ungated on the other, and which one a reader got
+        /// depended on whether the host happened to have wired an adapter. A
+        /// grid href comes from a ROW ACCESSOR over bound data, so one tree
+        /// emits one per row: it is the highest-volume egress surface the
+        /// renderer has, and it was the one place the policy could not reach.
+        EgressPolicy: Sanitize.EgressPolicy
     }
 
 /// Adapter contract for the two Visualisation kinds whose author surface

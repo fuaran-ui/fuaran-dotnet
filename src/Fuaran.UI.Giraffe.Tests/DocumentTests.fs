@@ -141,3 +141,89 @@ let tests =
                     "", "ltr" ] do
                   Expect.equal (Fuaran.UI.Renderer.Formatting.textDirection tag) expected ("direction of " + tag)
           } ]
+
+// ─── Phase 1523 — the document shell's two hand-built seams ────────────────
+
+[<Tests>]
+let documentShellHardeningTests =
+    testList
+        "Document.render — attribute NAMES and the ScriptRef security slots (Phase 1523)"
+        [ test "an attribute NAME that is really three attributes is DROPPED, not mangled" {
+              // The value side of `HtmlAttributes` / `BodyAttributes` was
+              // escaped; the NAME was written verbatim. HTML has no escape for
+              // an illegal character in an attribute name — a space inside one
+              // simply starts a NEW attribute and an `=` starts its value — so
+              // this key was not a mangled name, it was three attributes, one of
+              // them a live event handler, on the document's own `<html>`
+              // element. These two tags are concatenated as strings rather than
+              // built through ViewEngine, which is exactly why the gate the rest
+              // of the renderer gets for free had to be applied by hand here.
+              let shell =
+                  { DocumentShell.create "T" with
+                      HtmlAttributes = [ "data-x=1 onload=alert(1) z", "v" ]
+                      BodyAttributes = [ "cls\"><script>evil()</script", "v" ] }
+
+              let html = Document.render shell "BODY"
+
+              Expect.isFalse (html.Contains "onload") "the smuggled handler does not reach the html element"
+              Expect.isFalse (html.Contains "evil()") "nor does a name that closes the body tag and opens a script"
+              Expect.isFalse (html.Contains "alert(1)") "and neither does the html one's payload"
+
+              // What this rule is and is NOT. It is the Phase 788 class — a NAME
+              // that is not a legal attribute name, which HTML gives no way to
+              // escape. It is deliberately not an event-handler denylist: these
+              // two attribute bags are HOST-authored, not tree-authored, so a
+              // host that writes `onclick` on its own `<body>` has written the
+              // script it wanted. The tree-authored bag is a different seam with
+              // a different (stricter) rule — `isAllowedExtraAttributeKey`.
+
+              // Dropping rather than escaping is the only correct response:
+              // there is nothing to escape TO. A dropped attribute is a missing
+              // attribute, which is visible; a mangled one would be a different
+              // attribute, which is not.
+              Expect.stringContains html "<html" "the element itself is still emitted"
+          }
+
+          test "ALLOW twin — an ordinary attribute name survives on both elements" {
+              let shell =
+                  { DocumentShell.create "T" with
+                      HtmlAttributes = [ "data-theme", "dark" ]
+                      BodyAttributes = [ "class", "app" ] }
+
+              let html = Document.render shell "BODY"
+              Expect.stringContains html "data-theme=\"dark\"" "a legitimate html attribute is untouched"
+              Expect.stringContains html "class=\"app\"" "and a legitimate body attribute"
+          }
+
+          test "a ScriptRef carries the host's nonce, digest and CORS mode when set" {
+              // The omission these close was not cosmetic: a host serving a
+              // nonce-based CSP could not use `Scripts` AT ALL, because every
+              // `<script>` this shell emitted lacked the nonce and was blocked
+              // by the very policy the host had adopted to be safe.
+              let shell =
+                  { DocumentShell.create "T" with
+                      Scripts =
+                          [ ScriptRef.moduleScript "/app.js"
+                            |> ScriptRef.withNonce "r4nd0m"
+                            |> ScriptRef.withIntegrity "sha384-abc" "anonymous" ] }
+
+              let html = Document.render shell "BODY"
+              Expect.stringContains html "nonce=\"r4nd0m\"" "the nonce reaches the script element"
+              Expect.stringContains html "integrity=\"sha384-abc\"" "and the SRI digest"
+              Expect.stringContains html "crossorigin=\"anonymous\"" "and the CORS mode SRI needs to work at all"
+          }
+
+          test "a ScriptRef declaring none of them is byte-identical to the pre-phase emission" {
+              // The three slots are `option` precisely so this stays true. If it
+              // fails, every existing shell's head has changed shape.
+              let html =
+                  Document.render
+                      { DocumentShell.create "T" with
+                          Scripts = [ ScriptRef.moduleScript "/app.js" ] }
+                      "BODY"
+
+              Expect.stringContains html "<script src=\"/app.js\" type=\"module\">" "the unchanged emission"
+              Expect.isFalse (html.Contains "nonce") "no nonce attribute"
+              Expect.isFalse (html.Contains "integrity") "no integrity attribute"
+              Expect.isFalse (html.Contains "crossorigin") "no crossorigin attribute"
+          } ]

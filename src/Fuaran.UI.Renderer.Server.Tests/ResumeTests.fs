@@ -257,3 +257,48 @@ let resumeTests =
                   "fallback"
                   "Call degrades to hydration for that subtree only"
           } ]
+
+[<Tests>]
+let resumeModelEscapeTests =
+    testList
+        "Resume.encodeEnvelope — the host model is script-escaped unconditionally (Phase 1523)"
+        [ test "a model carrying `</script>` cannot terminate the block it is embedded in" {
+              // It used to be embedded verbatim, on the reasoning that "the host
+              // owns its escaping". A host serialising its own model does own its
+              // JSON — but nothing about correct JSON keeps a string value from
+              // containing `</script`, and this string is spliced inside a
+              // `<script>` element, where the HTML parser looks for that sequence
+              // BEFORE any JSON parser sees the content. So a model carrying it in
+              // any string field terminated the block and put the remainder of the
+              // envelope into the document as markup: an injection whose source is
+              // whatever data the host happened to serialise, which on a
+              // user-content-bearing model is user input.
+              let model = """{"note":"</script><img src=x onerror=alert(1)>"}"""
+              let json = Resume.encodeEnvelope "m" model [] (Fuaran.markdown "t" "hi")
+
+              Expect.isFalse (json.Contains "</script") "the terminator does not survive into the envelope"
+              Expect.stringContains json @"\u003c" "because `<` is escaped, exactly as every other embedded value is"
+
+              // And the escape is sound: `<`, `>` and `&` occur in JSON only
+              // inside string literals, and every JSON parser reads the escapes
+              // back as the characters they name — so the structured data is
+              // unchanged and only the HTML parser is disarmed.
+              use doc = System.Text.Json.JsonDocument.Parse json
+
+              Expect.equal
+                  (doc.RootElement.GetProperty("model").GetProperty("note").GetString())
+                  "</script><img src=x onerror=alert(1)>"
+                  "the model round-trips through a JSON parser with its value intact"
+          }
+
+          test "ALLOW twin — an ordinary model is embedded unchanged, and an absent one is `{}`" {
+              let json = Resume.encodeEnvelope "m" """{"count":3}""" [] (Fuaran.markdown "t" "hi")
+
+              Expect.stringContains
+                  json
+                  "\"model\":{\"count\":3}"
+                  "nothing is rewritten in a model with no markup in it"
+
+              let empty = Resume.encodeEnvelope "m" "" [] (Fuaran.markdown "t" "hi")
+              Expect.stringContains empty "\"model\":{}" "and an absent model still falls back to the empty object"
+          } ]

