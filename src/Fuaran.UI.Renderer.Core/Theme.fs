@@ -504,7 +504,17 @@ let colorVarToCss (color: ColorVar) : string =
         let hStr = invariantFloat h
         let aStr = invariantFloat alpha
         sprintf "oklch(%s %s %s / %s)" lStr cStr hStr aStr
-    | ColorVar.CssRaw raw -> raw
+    // Phase 1523 — `CssRaw` is the theme's declared escape hatch to an arbitrary
+    // CSS value, and its output lands in a `:root { --fuaran-x: <value>; }`
+    // block inside a `<style>` element. A `}` there CLOSES the rule and every
+    // following declaration becomes a new one at document scope; a `;` ends the
+    // declaration with the same effect one property earlier; and a `url(…)`
+    // fetches on render. The hatch stays a hatch — `var(…)`, `clamp(…)`,
+    // `color-mix(…)` and every future colour function pass, because the rule is
+    // a character-and-two-functions denylist, not a colour grammar — but it can
+    // no longer leave its own declaration. A refused value emits empty, so the
+    // variable falls back to the reference stylesheet's own `:root` value.
+    | ColorVar.CssRaw raw -> Sanitize.sanitizeCssValue raw
 
 /// The 7 ToneVariant cases in stable order matching the
 /// reference CSS layout (`HOST-STYLING-CHECKLIST.md` §1.1).

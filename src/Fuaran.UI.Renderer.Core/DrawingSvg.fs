@@ -292,8 +292,20 @@ let private styleAttrs (sources: BindingResolver.BindingSources) (defaultFillNon
         | Some b -> BindingResolver.tryResolve sources b
         | None -> if defaultFillNone then Some "none" else None
 
+    // Phase 1523 — a paint is a CLOSED colour grammar, not a free string.
+    // `escape` makes a value safe as MARKUP; it says nothing about what the
+    // value MEANS, and `url(https://collector/x)` in an SVG `fill` names a paint
+    // server the user agent FETCHES — on render, with no user act, outside the
+    // egress policy. It also contains no character the generic CSS rule
+    // forbids, which is why these two slots need a positive grammar where a
+    // `style` value needs only a denylist. A refused paint emits `"none"`
+    // rather than an empty value: an empty `fill` INHERITS the enclosing
+    // group's paint, so it would silently paint the shape a different colour
+    // instead of leaving it unpainted.
     fill
-    |> Option.iter (fun v -> sb.Append(" fill=\"").Append(escape v).Append("\"") |> ignore)
+    |> Option.iter (fun v ->
+        sb.Append(" fill=\"").Append(escape (Sanitize.sanitizePaintValue v)).Append("\"")
+        |> ignore)
 
     style.Opacity
     |> Option.bind (BindingResolver.tryResolve sources)
@@ -301,7 +313,9 @@ let private styleAttrs (sources: BindingResolver.BindingSources) (defaultFillNon
 
     style.Stroke
     |> Option.bind (BindingResolver.tryResolve sources)
-    |> Option.iter (fun v -> sb.Append(" stroke=\"").Append(escape v).Append("\"") |> ignore)
+    |> Option.iter (fun v ->
+        sb.Append(" stroke=\"").Append(escape (Sanitize.sanitizePaintValue v)).Append("\"")
+        |> ignore)
 
     style.StrokeWidth
     |> Option.bind (BindingResolver.tryResolve sources)

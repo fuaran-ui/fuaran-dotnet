@@ -1500,6 +1500,66 @@ type PreEmitDefect =
     /// Carries the chart node's id, the band's SUBJECT (see
     /// `ChartAnnotationNonFinite`), and the two ends as the author wrote them.
     | ChartAnnotationRangeUnordered of nodeId: string * subject: string * fromText: string * toText: string
+    /// A URL slot whose SCHEME the renderer floor refuses (FUARAN142,
+    /// Phase 1523) - `javascript:`, `vbscript:`, `file:`, an unrecognised
+    /// scheme, or a protocol-relative reference that leaves the origin with no
+    /// scheme named.
+    ///
+    /// Why it is a PRE-EMIT rule and not only a render-time one: the floor
+    /// existed, and it ran too late to be seen. A `javascript:` href decoded
+    /// clean, passed `validate`, persisted to the op-stream and was introspected
+    /// by the AI-tools surface exactly as written, then was refused SILENTLY at
+    /// render - so the model that emitted it was never told, the demand loop
+    /// counted nothing, and a headless consumer that decodes and persists
+    /// without ever rendering met no floor at all. Judged only under a
+    /// `Binding.Static`: a bound URL resolves at runtime and there is nothing
+    /// here to read.
+    ///
+    /// Carries the node, the SLOT (`href` / `src`), and the refusal reason in
+    /// the vocabulary a repair can act on - `rejected scheme 'javascript:'`
+    /// names an intent the wire has typed slots for.
+    | UnsafeUrlScheme of nodeId: string * slot: string * reason: string
+    /// A CSS-valued slot carrying a character or function that lets the value
+    /// LEAVE its own declaration (FUARAN143, Phase 1523): a semicolon, a brace,
+    /// a backslash, a C0 control, `url(` or `expression(`.
+    ///
+    /// The finding this closes: `templateColumns` is a free string that four
+    /// server renderers concatenated into a `grid-template-columns` style
+    /// declaration, so a value carrying `;background:url(https://collector/...)`
+    /// closed the declaration, opened a second one, and fetched on RENDER
+    /// outside the egress policy - while the React client dropped the identical
+    /// value silently. Every renderer refuses it now; this is the same refusal,
+    /// said early enough for the emitter to hear it.
+    | UnsafeCssValue of nodeId: string * slot: string * value: string
+    /// A `templateColumns` that is SAFE but is not shaped like a CSS
+    /// `<track-list>` (FUARAN144, Phase 1523) - so the grid lays nothing out and
+    /// the browser falls back to a single column.
+    ///
+    /// Distinct from `UnsafeCssValue` because the two say different things and
+    /// have different remedies: that one is a refusal the renderer enforces,
+    /// this one is a value the renderer emits faithfully and the BROWSER
+    /// discards. Only a shape check catches the second, and only pre-emit can
+    /// report it - by render time the evidence is a grid that silently has one
+    /// column.
+    | MalformedTrackList of nodeId: string * value: string
+    /// An SVG paint slot (`fill` / `stroke`) whose value is not a colour in the
+    /// closed grammar (FUARAN145, Phase 1523).
+    ///
+    /// A paint needs a POSITIVE grammar where a generic CSS value needs only a
+    /// denylist, and that asymmetry is the finding: a `url(...)` paint contains
+    /// no forbidden character, and in an SVG `fill` it names a paint server the
+    /// user agent FETCHES. Only naming what a colour may BE excludes it.
+    | UnsafePaintValue of nodeId: string * slot: string * value: string
+    /// A `Link.target` or `Link.rel` token outside the closed set every renderer
+    /// now emits (FUARAN146, Phase 1523).
+    ///
+    /// The wire still ACCEPTS these - narrowing the decoder is a section 4b
+    /// amendment proposal, not a silent amend - so this is the one place a
+    /// document is told, before it is rendered, that a token it wrote will not
+    /// survive emission. `rel: "opener"` is the case that matters: it re-enables
+    /// `window.opener` on a `_blank` link, handing the opened document a live
+    /// reference to the opening one.
+    | UnsupportedLinkAnchor of nodeId: string * slot: string * value: string
 
 /// Which `FieldRule` slot a control cannot honour (FUARAN100, Phase 864).
 /// Typed rather than a string so the honourable set stays enumerable: a slot
@@ -1589,6 +1649,104 @@ and [<RequireQualifiedAccess>] AutoAdvanceDefect =
     /// Fewer than two cases — the advance has nowhere to go but back to where
     /// it already is.
     | NotEnoughCases
+
+/// The emission-grammar findings for ONE node (FUARAN142-146, Phase 1523).
+///
+/// Pure and node-local: it reads only this node's own kind spec, so it can be
+/// called from the per-node sweep without any of the cross-node evidence the
+/// reference families collect.
+///
+/// Only `Binding.Static` values are judged, and the omission is deliberate
+/// rather than a gap. A `Binding.State` / `Query` / `Ref` URL is decided at
+/// runtime against data this pass cannot see; reporting it would report the
+/// binding, not the value, and would fire on every correctly-authored dynamic
+/// href in the estate. The renderer floor covers the runtime case on every host
+/// — that is what makes the two layers a pair rather than a duplicate.
+let private emissionGrammarDefects (n: Node<'Msg>) : PreEmitDefect list =
+    let defects = ResizeArray<PreEmitDefect>()
+
+    let staticText (b: Binding<string>) : string option =
+        match b with
+        | Binding.Static(Some v) -> Some v
+        | _ -> None
+
+    /// One URL slot: refuse the scheme, naming the rule that refused it.
+    let checkUrl (slot: string) (b: Binding<string>) =
+        match staticText b with
+        | Some url ->
+            match EmissionGrammar.classifyUrlRefusal url with
+            | Some r -> defects.Add(PreEmitDefect.UnsafeUrlScheme(n.Id, slot, EmissionGrammar.describeUrlRefusal r))
+            | None -> ()
+        | None -> ()
+
+    /// One paint slot: the CSS floor first (so a value that both escapes its
+    /// declaration and is not a colour is reported as the escape, which is the
+    /// more serious of the two and names the more specific fix), then the
+    /// closed colour grammar.
+    let checkPaint (slot: string) (b: Binding<string> option) =
+        match b |> Option.bind staticText with
+        | Some v when not (EmissionGrammar.isSafeCssValue v) -> defects.Add(PreEmitDefect.UnsafeCssValue(n.Id, slot, v))
+        | Some v when not (EmissionGrammar.isColourValue v) ->
+            defects.Add(PreEmitDefect.UnsafePaintValue(n.Id, slot, v))
+        | _ -> ()
+
+    match n.Kind with
+    | NodeKind.Link spec ->
+        checkUrl "href" spec.Href
+
+        // The anchor token slots. `target` and `rel` are plain strings on the
+        // spec (not bindings), so there is no static window to narrow to.
+        match spec.Target with
+        | Some t when (EmissionGrammar.sanitizeLinkTarget t).IsNone ->
+            defects.Add(PreEmitDefect.UnsupportedLinkAnchor(n.Id, "target", t))
+        | _ -> ()
+
+        match spec.Rel with
+        | Some r when not (System.String.IsNullOrWhiteSpace r) ->
+            // Report the DROPPED tokens, one finding per token, because each has
+            // its own remedy and a single finding naming the whole attribute
+            // would leave the author guessing which word was the problem. The
+            // forced `noopener noreferrer` is NOT reported: it is an addition
+            // the renderer makes, not a refusal of anything the document wrote.
+            let kept = EmissionGrammar.sanitizeLinkRel (Some r) (Some "_self") |> Set.ofList
+
+            for token in r.Split([| ' '; '\t'; '\n'; '\r'; '\f' |], System.StringSplitOptions.RemoveEmptyEntries) do
+                if not (kept.Contains(token.ToLowerInvariant())) then
+                    defects.Add(PreEmitDefect.UnsupportedLinkAnchor(n.Id, "rel", token))
+        | _ -> ()
+    | NodeKind.Image spec -> checkUrl "src" spec.Src
+    | NodeKind.Media spec -> checkUrl "src" spec.Src
+    | NodeKind.Embed spec -> checkUrl "src" spec.Src
+    | NodeKind.Box spec ->
+        match spec.Layout with
+        | BoxLayout.Grid(_, Some template, _) ->
+            if not (EmissionGrammar.isSafeCssValue template) then
+                defects.Add(PreEmitDefect.UnsafeCssValue(n.Id, "templateColumns", template))
+            elif not (EmissionGrammar.isTrackList template) then
+                defects.Add(PreEmitDefect.MalformedTrackList(n.Id, template))
+        | _ -> ()
+    | NodeKind.Drawing spec ->
+        // Every style in the drawing, the spec's own default included, and
+        // through `Group` children — a `Group`'s style applies to the subtree,
+        // so a paint declared there reaches emission exactly as a leaf's does.
+        let rec shapeStyles (shape: Shape) : DrawStyle list =
+            match shape with
+            | Shape.Group(children, style) -> style :: (children |> List.collect shapeStyles)
+            | Shape.Rectangle(_, _, _, _, _, style)
+            | Shape.Line(_, _, _, _, style)
+            | Shape.Polyline(_, style)
+            | Shape.Polygon(_, style)
+            | Shape.Curve(_, style)
+            | Shape.Circle(_, _, _, style)
+            | Shape.Ellipse(_, _, _, _, style)
+            | Shape.Label(_, _, _, style) -> [ style ]
+
+        for style in spec.Style :: (spec.Shapes |> List.collect shapeStyles) do
+            checkPaint "fill" style.Fill
+            checkPaint "stroke" style.Stroke
+    | _ -> ()
+
+    List.ofSeq defects
 
 /// Render a defect as its stable (code, severity, message) triple — the ONE
 /// projection every consumer shares (the .NET validator oracle, certification
@@ -1821,6 +1979,45 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "node '%s' nests deeper than the wire limit MaxDepth = %d (WIRE_FORMAT §21) — the tree was not walked past this point; flatten the nesting"
             nodeId
             limit
+    | PreEmitDefect.UnsafeUrlScheme(nodeId, slot, reason) ->
+        "FUARAN142",
+        DefectSeverity.Warning,
+        sprintf
+            "node '%s' declares a %s the renderer floor refuses: %s. Every conformant host refuses this before it reaches the document, so the slot renders as a refusal marker rather than as the destination you wrote. If the intent was to run something on click, the wire has typed actions for it (Action.Notify, Action.Call, Action.SetState); if the destination is real, name its scheme (http / https / mailto / tel / ftp / sftp) or write a same-origin relative path"
+            nodeId
+            slot
+            reason
+    | PreEmitDefect.UnsafeCssValue(nodeId, slot, value) ->
+        "FUARAN143",
+        DefectSeverity.Warning,
+        sprintf
+            "node '%s' declares '%s' in its %s slot, which carries a character or function that lets a CSS value leave its own declaration (a semicolon, a brace, a backslash, a control byte, `url(`, `expression(`). Every renderer emits an empty value here instead, because the same string in a style attribute is a second declaration the document never wrote - and `url(` is a network request made at render time with no user act. Write a single CSS value with none of those"
+            nodeId
+            value
+            slot
+    | PreEmitDefect.MalformedTrackList(nodeId, value) ->
+        "FUARAN144",
+        DefectSeverity.Warning,
+        sprintf
+            "grid '%s' declares templateColumns '%s', which is not shaped like a CSS track-list. It is safe - the renderers emit it - but no browser reads it as a column definition, so the grid falls back to one column. Write track sizes (1fr 2fr auto), a repeat(...), or a minmax(...)"
+            nodeId
+            value
+    | PreEmitDefect.UnsafePaintValue(nodeId, slot, value) ->
+        "FUARAN145",
+        DefectSeverity.Warning,
+        sprintf
+            "node '%s' declares '%s' as its %s paint, which is not a colour. The renderers emit `none` instead: an SVG paint slot accepts `url(...)` as a paint-server reference, which is also how a remote fetch is spelled, so the slot admits only hex (#rgb / #rrggbb / #rrggbbaa), the keywords (none / transparent / currentColor / inherit / initial / unset), and the colour functions (rgb, rgba, hsl, hsla, oklch, oklab, lch, lab, color)"
+            nodeId
+            value
+            slot
+    | PreEmitDefect.UnsupportedLinkAnchor(nodeId, slot, value) ->
+        "FUARAN146",
+        DefectSeverity.Warning,
+        sprintf
+            "link '%s' declares %s='%s', which every renderer drops. `target` is closed to `_self` and `_blank` - `_parent` / `_top` navigate a document that framed this one, and a named frame addresses a browsing context this document did not create. `rel` is closed to the descriptive tokens, and `opener` in particular is refused: it re-enables window.opener on a `_blank` link, handing the opened page a live reference to this one. A `_blank` link is emitted with `noopener noreferrer` whether or not it asks"
+            nodeId
+            slot
+            value
     | PreEmitDefect.ProtectedNonMailtoLink nodeId ->
         "FUARAN092",
         DefectSeverity.Warning,
@@ -2796,6 +2993,26 @@ let private validateCore
         // FUARAN110's evidence — judged after the walk, see the declaration.
         for (slot, target) in accessibilityRefs n do
             accessibilityRefUses.Add(n.Id, slot, target)
+
+        // FUARAN142-146 (Phase 1523) — the emission grammar for string-typed
+        // slots, judged ONCE per node here rather than in the per-kind arms
+        // below.
+        //
+        // Sited here for the reason the accessibility family above is: the rule
+        // is about a SLOT'S GRAMMAR, not about a kind's invariants, and the same
+        // grammar governs the same slot wherever it appears. One site covers
+        // every kind that carries a URL or a CSS value, and a kind that newly
+        // gains one is reached with no arm to remember — which is exactly the
+        // failure this family exists to close, since `templateColumns` and
+        // `DrawStyle.fill` each reached emission on four hosts with no rule
+        // anywhere.
+        //
+        // Every check stands down outside a `Binding.Static`. A bound URL or
+        // colour resolves at runtime against data pre-emit cannot see, so
+        // judging it would be judging the binding rather than the value — and
+        // the renderer floor is what covers the runtime case, on every host,
+        // which is the whole point of the two layers agreeing.
+        emissionGrammarDefects n |> List.iter defects.Add
 
         // Per-kind: check kind-specific invariants + enumerate children.
         match n.Kind with
