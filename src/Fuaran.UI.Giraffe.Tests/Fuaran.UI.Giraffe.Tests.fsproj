@@ -13,6 +13,9 @@
     <!-- Phase 790 — the render cache is bounded (LRU eviction), including the
          default `inMemory` one the samples and docs wire. -->
     <Compile Include="CachingTests.fs" />
+    <!-- Phase 1532 — the ETag / cache key covers every render input, and where
+         it cannot, no validator is minted. -->
+    <Compile Include="RenderInputsTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

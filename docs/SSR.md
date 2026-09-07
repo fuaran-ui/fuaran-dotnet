@@ -938,8 +938,10 @@ let webApp =
 | `fuaranHydratablePage` | The document + the Phase 143 hydrate `<script>` payload. |
 | `fuaranFragment` | The body fragment only (no shell). |
 
-**Deterministic ETag + 304 + render cache.** Every response carries a strong
-ETag = SHA-256 over the canonical tree wire-form + theme CSS + shell signature;
+**Deterministic ETag + 304 + render cache.** Every response whose inputs have an
+identity carries a strong ETag = SHA-256 over the canonical tree wire-form + the
+options identity (theme CSS, egress policy, `Custom` registry, ambient locale,
+host-furnished instant, i18n catalog) + the shell signature;
 `If-None-Match` serves `304 Not Modified` with no body and no re-render. A
 host-supplied `IFuaranRenderCache` is consulted before render and populated
 after – the default `RenderCache.none` is a zero-cost pass-through, and
@@ -950,6 +952,23 @@ high-fan-out surface mints a fresh key per distinct tree and a never-evicting
 store grows for the process lifetime. The render
 mode (static vs hydratable vs fragment) folds into the ETag, so the three
 emissions of one tree get distinct cache keys.
+
+**Per-request sources need a `SourcesKey` (Phase 1532).** The options identity
+cannot cover `Sources.QueryResults` / `State` / `Filters` / `Selections` /
+`ComputedContext`, nor a replaced i18n resolver or capability invoker: those are
+`obj` values and host closures, and no adapter can project them into bytes. So a
+host that builds `FuaranGiraffeOptions` per request names the variant —
+`SourcesKey = Some (sprintf "u:%s|rev:%d" user.Id user.DataRevision)` — and that
+token folds into the ETag. It is a cache key, not a secret: it is hashed into a
+public validator, so give it a discriminator rather than a tenant's data.
+
+Say nothing and the adapter does not guess. A request with host data in its
+sources and no declared key is served with **no `ETag` and `Cache-Control:
+no-store`**; configuring a render `Cache` in that state is refused where the
+handler is built. Until this phase such a request got a source-blind validator,
+which meant a shared cache could serve one user's document to another and — with
+the cache off — the second user's browser still won a `304` against the first
+user's ETag.
 
 **Injection safety** follows the document-shell boundary above: text fields
 HTML-escape via `Feliz.ViewEngine`; URL fields (`Canonical`, stylesheet hrefs,

@@ -147,7 +147,21 @@ let options: FuaranGiraffeOptions =
     { FuaranGiraffeOptions.create with
         Customs = customs
         Theme = Some Defaults.theme
-        Cache = RenderCache.inMemory () }
+        Cache = RenderCache.inMemory ()
+        // Phase 1532 — every host that turns the cache on says which variant of
+        // its binding sources these options carry, because the ETag (and hence
+        // the cache key) cannot compute that: `BindingSources` holds `obj`
+        // values and host closures.
+        //
+        // This site serves the SAME document to every visitor — the sources are
+        // empty, nothing here is per-user — so one constant token is the whole
+        // truth, and stating it is what makes that a claim rather than an
+        // omission. A host with per-user `Query` results REPLACES this with a
+        // token that varies with the user (a tenant discriminator plus a data
+        // revision, never the data itself: the key is hashed into a public
+        // ETag). A host that declares nothing and carries per-user sources gets
+        // no validator at all, and is refused outright if it also wires a cache.
+        SourcesKey = Some "shared-marketing-site" }
 
 let webApp: HttpHandler =
     choose

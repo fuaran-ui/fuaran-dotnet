@@ -70,6 +70,34 @@ type FuaranGiraffeOptions =
         /// without it, a cache populated under one policy would serve that
         /// document to a request rendering under another.
         EgressPolicy: Sanitize.EgressPolicy
+        /// Phase 1532 — the host's own name for the variant of `Sources` this
+        /// options record carries, folded into the ETag (and therefore the
+        /// render cache key).
+        ///
+        /// `BindingSources` holds `obj` query results, module state, filters and
+        /// selections, plus an i18n resolver and a capability invoker that are
+        /// arbitrary code. No adapter can project those into bytes, so nothing
+        /// here can compute what makes one host's sources DIFFERENT from
+        /// another's — only the host knows whether two source bags render the
+        /// same document. Naming the variant is that knowledge:
+        ///
+        /// ```fsharp
+        /// { options with
+        ///     Sources = sourcesFor user
+        ///     SourcesKey = Some (sprintf "u:%s|rev:%d" user.Id user.DataRevision) }
+        /// ```
+        ///
+        /// The key is a CACHE KEY, not a secret: it is hashed into the ETag,
+        /// which is public, so give it a tenant discriminator rather than a
+        /// tenant's data.
+        ///
+        /// `None` is the honest default and means "I have not said". When the
+        /// sources are also OPAQUE (`RenderInputs.sourcesOpaque`), the handlers
+        /// then emit **no ETag at all** and mark the response `no-store` rather
+        /// than mint a validator that cannot separate two users' documents —
+        /// and constructing a handler that would ALSO put such a render in a
+        /// shared cache is refused outright (`FuaranGiraffeOptions.validate`).
+        SourcesKey: string option
     }
 
 [<RequireQualifiedAccess>]
@@ -82,7 +110,43 @@ module FuaranGiraffeOptions =
           Customs = ServerRegistry.empty
           Theme = None
           Cache = RenderCache.none
-          EgressPolicy = Sanitize.denyNonLocalEgress }
+          EgressPolicy = Sanitize.denyNonLocalEgress
+          SourcesKey = None }
+
+    /// Does this options record ask for a rendered document to be CACHED?
+    ///
+    /// Reference identity against the shipped no-op, which is the only question
+    /// available: `IFuaranRenderCache` is a host-supplied interface with no
+    /// member that could answer it. `RenderCache.none` is a module-level value,
+    /// so every read of it is the same instance; a host that hands back its own
+    /// never-hitting implementation reads as "caching" and is held to the
+    /// stricter rule, which is the safe direction to be wrong in.
+    let cacheConfigured (opts: FuaranGiraffeOptions) : bool =
+        not (System.Object.ReferenceEquals(opts.Cache, RenderCache.none))
+
+    /// The ETag / cache-key identity of the binding sources, or `None` when the
+    /// sources carry host data no adapter can project and the host has not
+    /// named the variant (Phase 1532).
+    let sourcesIdentity (opts: FuaranGiraffeOptions) : string option =
+        let canonical = RenderInputs.sourcesCanonical opts.Sources
+
+        match opts.SourcesKey with
+        | Some key -> Some(canonical + string RenderInputs.Separator + "key:" + key)
+        | None when RenderInputs.sourcesOpaque opts.Sources -> None
+        | None -> Some(canonical + string RenderInputs.Separator + "key:<none>")
+
+    /// Refuse an options record that would put a source-blind render into a
+    /// SHARED cache: opaque sources, no declared `SourcesKey`, and a cache the
+    /// host configured. Raised where the handler is CONSTRUCTED, so a host that
+    /// builds its options per request meets it on the first request rather than
+    /// on the first collision.
+    ///
+    /// Deliberately not silent: dropping the cache instead would leave a host
+    /// believing it had one. The remedy is one field.
+    let validate (opts: FuaranGiraffeOptions) : unit =
+        if cacheConfigured opts && (sourcesIdentity opts).IsNone then
+            invalidOp
+                "Fuaran.UI.Giraffe: this FuaranGiraffeOptions configures a render Cache over binding sources that carry host data (query results / state / filters / selections / computed context, or a replaced i18n resolver or capability invoker) without declaring SourcesKey. The ETag cannot separate two source bags, so the cache would serve one request's document to another's. Set SourcesKey to a token that varies with the sources (a tenant or user discriminator plus a data revision), or leave Cache = RenderCache.none."
 
 [<AutoOpen>]
 module Handlers =
@@ -115,8 +179,13 @@ module Handlers =
         | Some theme -> Theme.toCss theme
         | None -> ""
 
-    /// The deterministic OPTIONS contribution to the ETag: the theme CSS, plus
-    /// the canonical projection of the destination policy (Phase 1026).
+    /// The deterministic OPTIONS contribution to the ETag: the theme CSS, the
+    /// canonical projection of the destination policy (Phase 1026), the ambient
+    /// locale, and — since Phase 1532 — the identity of the binding sources and
+    /// of the server `Custom` registry.
+    ///
+    /// Returns `None` exactly when the sources have no identity (opaque and
+    /// unnamed), which is the caller's signal to emit no validator at all.
     ///
     /// The policy belongs in the cache key because it changes the OUTPUT: the
     /// same tree renders a live `href` under one policy and
@@ -128,15 +197,23 @@ module Handlers =
     /// `Sanitize.encodeEgressPolicy` is canonical and sorted, so it is stable
     /// across runs for the same policy — an ETag input has to be, or every
     /// process restart invalidates every cached page.
-    let private optionsSig (opts: FuaranGiraffeOptions) : string =
+    let private optionsSig (opts: FuaranGiraffeOptions) : string option =
         // The ambient locale is part of the signature since Phase 1114: it is
         // now an INPUT to the rendered document (`<html lang dir>`), so two
-        // option sets differing only in locale must not share a cache entry.
-        themeCss opts
-        + "|"
-        + Sanitize.encodeEgressPolicy opts.EgressPolicy
-        + "|"
-        + opts.Sources.Locale
+        // option sets differing only in locale must not share a cache entry. It
+        // now arrives inside the sources identity, which is where it lives.
+        //
+        // NUL-joined, like the ETag's own three fields: theme CSS and a policy
+        // projection both contain `|` freely, so the old separator could not
+        // keep the fields apart.
+        FuaranGiraffeOptions.sourcesIdentity opts
+        |> Option.map (fun sources ->
+            String.concat
+                (string RenderInputs.Separator)
+                [ themeCss opts
+                  Sanitize.encodeEgressPolicy opts.EgressPolicy
+                  sources
+                  RenderInputs.customsIdentity opts.Customs ])
 
     /// A deterministic signature of the shell + render mode (`sprintf "%A"` over
     /// the shell record is stable across runs for the same value). `Fragment`
@@ -170,41 +247,69 @@ module Handlers =
 
     /// Write the document/fragment with the strong ETag + `If-None-Match` → 304;
     /// the render cache is consulted before render and populated after.
+    ///
+    /// `etag` is `None` when the render inputs have no computable identity —
+    /// opaque binding sources the host has not named (Phase 1532). Then there is
+    /// no validator to emit and no key to cache under: the response carries
+    /// `Cache-Control: no-store` and is rendered fresh. Emitting a validator
+    /// that cannot separate two users' documents would be worse than emitting
+    /// none, because a browser honours it.
     let private respond
-        (etag: string)
+        (etag: string option)
         (contentType: string)
         (render: unit -> string)
         (cache: IFuaranRenderCache)
         : HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
-            let ifNoneMatch = ctx.Request.Headers.IfNoneMatch
-
-            let notModified =
-                ifNoneMatch.Count > 0 && (ifNoneMatch |> Seq.exists (fun v -> v = etag))
-
-            if notModified then
-                (setStatusCode 304 >=> setHttpHeader "ETag" etag) next ctx
-            else
-                let html =
-                    match cache.TryGet etag with
-                    | Some cached -> cached
-                    | None ->
-                        let produced = render ()
-                        cache.Set(etag, produced)
-                        produced
-
-                (setHttpHeader "ETag" etag
+            match etag with
+            | None ->
+                (setHttpHeader "Cache-Control" "no-store"
                  >=> setHttpHeader "Content-Type" contentType
-                 >=> setBodyFromString html)
+                 >=> setBodyFromString (render ()))
                     next
                     ctx
+            | Some etag ->
+                let ifNoneMatch = ctx.Request.Headers.IfNoneMatch
+
+                let notModified =
+                    ifNoneMatch.Count > 0 && (ifNoneMatch |> Seq.exists (fun v -> v = etag))
+
+                if notModified then
+                    (setStatusCode 304 >=> setHttpHeader "ETag" etag) next ctx
+                else
+                    let html =
+                        match cache.TryGet etag with
+                        | Some cached -> cached
+                        | None ->
+                            let produced = render ()
+                            cache.Set(etag, produced)
+                            produced
+
+                    (setHttpHeader "ETag" etag
+                     >=> setHttpHeader "Content-Type" contentType
+                     >=> setBodyFromString html)
+                        next
+                        ctx
+
+    /// The response validator for one render, or `None` when the inputs have no
+    /// identity. Every handler goes through here, so the refusal and the
+    /// no-validator fallback are stated once.
+    let private etagFor
+        (opts: FuaranGiraffeOptions)
+        (mode: BodyMode)
+        (shell: DocumentShell option)
+        (node: Node<obj>)
+        : string option =
+        FuaranGiraffeOptions.validate opts
+
+        optionsSig opts
+        |> Option.map (fun sig' -> Etag.compute (CanonicalJson.encodeNode node) sig' (shellSig mode shell))
 
     /// Render a Fuaran tree as a full crawlable document — static SSR, no
     /// client runtime. Host-authored `<head>` from the shell; zero hand-written
     /// shell HTML.
     let fuaranPage (opts: FuaranGiraffeOptions) (shell: DocumentShell) (node: Node<obj>) : HttpHandler =
-        let etag =
-            Etag.compute (CanonicalJson.encodeNode node) (optionsSig opts) (shellSig Static (Some shell))
+        let etag = etagFor opts Static (Some shell) node
 
         let render () =
             Document.renderWithLocale opts.Sources.Locale shell (themeBlock opts + bodyFor opts Static node)
@@ -215,8 +320,7 @@ module Handlers =
     /// payload — server render for first paint + SEO, then `hydrateRoot` for
     /// interactivity. Parity (Phase 142) keeps the mount mismatch-free.
     let fuaranHydratablePage (opts: FuaranGiraffeOptions) (shell: DocumentShell) (node: Node<obj>) : HttpHandler =
-        let etag =
-            Etag.compute (CanonicalJson.encodeNode node) (optionsSig opts) (shellSig Hydratable (Some shell))
+        let etag = etagFor opts Hydratable (Some shell) node
 
         let render () =
             Document.renderWithLocale opts.Sources.Locale shell (themeBlock opts + bodyFor opts Hydratable node)
@@ -229,8 +333,7 @@ module Handlers =
     /// islands-aware variant of `fuaranHydratablePage` — the client mounts
     /// `Renderer.Hydration.hydrateIslands` to attach exactly those subtrees.
     let fuaranIslandsPage (opts: FuaranGiraffeOptions) (shell: DocumentShell) (node: Node<obj>) : HttpHandler =
-        let etag =
-            Etag.compute (CanonicalJson.encodeNode node) (optionsSig opts) (shellSig Islands (Some shell))
+        let etag = etagFor opts Islands (Some shell) node
 
         let render () =
             Document.renderWithLocale opts.Sources.Locale shell (themeBlock opts + bodyFor opts Islands node)
@@ -241,8 +344,7 @@ module Handlers =
     /// HTMX-style swaps or a host that composes its own document. ETag + 304 +
     /// cache apply identically.
     let fuaranFragment (opts: FuaranGiraffeOptions) (node: Node<obj>) : HttpHandler =
-        let etag =
-            Etag.compute (CanonicalJson.encodeNode node) (optionsSig opts) (shellSig Fragment None)
+        let etag = etagFor opts Fragment None node
 
         let render () = bodyFor opts Fragment node
 
