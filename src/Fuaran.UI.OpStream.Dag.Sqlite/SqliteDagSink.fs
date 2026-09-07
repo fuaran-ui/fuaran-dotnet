@@ -448,7 +448,14 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
                     // up front, so the reads and the write see one state.
                     use tx = conn.BeginTransaction(false)
 
-                    let fingerprint = DagWire.contentFingerprint record
+                    // Phase 1587 — `contentFingerprint` takes the op encoding
+                    // rather than choosing one. `CanonicalJson.encodeOp` is what
+                    // this sink's stored fingerprints were minted under, so
+                    // naming it here keeps every existing database comparing
+                    // against the bytes it already holds; it is deliberately not
+                    // `codec.EncodeOp`, which would re-mint every fingerprint in
+                    // every store the moment a host supplied a different encoder.
+                    let fingerprint = DagWire.contentFingerprint CanonicalJson.encodeOp record
 
                     // ── Check 1: parent presence ────────────────────────────────
                     // Store-wide, for the same reason the read path resolves

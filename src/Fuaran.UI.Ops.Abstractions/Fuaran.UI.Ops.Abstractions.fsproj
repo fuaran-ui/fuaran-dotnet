@@ -17,6 +17,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Types.fs" />
+    <!-- Phase 1587: TreeOp.mapMsg — the decoded `TreeOp<obj>` retyped onto a
+         host's own `'Msg`, refusing by name a payload the host's mapper cannot
+         type. Here rather than in Fuaran.UI.Ops because it is a combinator over
+         the type contract in Types.fs (plus Fuaran.UI's NodeMap as its inner
+         half) and needs neither the decoder nor the apply engine — so a Fable
+         consumer that retypes an op does not pull either in. -->
+    <Compile Include="TreeOpMap.fs" />
     <!-- Phase 889: the user-action record + its sink seam. Here rather than on
          the telemetry tier because a user action is not a TreeOp (Phase 866
          Q2), so it can ride neither IOpStreamSink nor a seventh

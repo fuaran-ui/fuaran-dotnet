@@ -249,12 +249,10 @@ let private entryStreamGen: Fuaran.Core.StreamGen<StreamEntry<obj>, EqNode> =
 /// `CanonicalJson` + `JsonDecode` rather than a test-only format. (`TestSupport.testCodec` covers
 /// only four closure-free op shapes and cannot decode a node at all, which is why the existing
 /// checkpoint suite could not read a snapshot back out of SQLite.)
-let private opCodec: IOpJsonCodec<obj> =
-    { new IOpJsonCodec<obj> with
-        member _.EncodeOp op = CanonicalJson.encodeOp op
-
-        member _.DecodeOp json =
-            JsonDecode.decodeOp json |> Result.mapError (sprintf "%A") }
+/// Phase 1587 — the same pair the DAG law suite wrote, promoted to the tier as
+/// `OpJsonCodec.canonicalObj`. This leg now runs the SHIPPED reference codec at
+/// the erased `'Msg`, which is what makes it evidence about what a host gets.
+let private opCodec: IOpJsonCodec<obj> = OpJsonCodec.canonicalObj ()
 
 let private nodeCodec: INodeJsonCodec<obj> =
     { new INodeJsonCodec<obj> with

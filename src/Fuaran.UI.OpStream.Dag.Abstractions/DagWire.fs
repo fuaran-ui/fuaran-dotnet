@@ -1,4 +1,4 @@
-namespace Fuaran.UI.OpStream.Dag.Abstractions
+﻿namespace Fuaran.UI.OpStream.Dag.Abstractions
 
 open System.Globalization
 open System.Text
@@ -20,9 +20,18 @@ open Fuaran.UI.OpStream.Abstractions
 //       "tombstoned":false}
 //
 //  `outcomeHash` / `promptId` are omitted when `None` (algorithm rule 4).
-//  `op` nests the existing `CanonicalJson.encodeOp` output verbatim, and `actor`
-//  nests `Actor.encode` verbatim, so the DAG envelope reuses the TreeOp and
-//  actor wire contracts rather than re-specifying either.
+//  `op` nests the HOST CODEC's op encoding verbatim, and `actor` nests
+//  `Actor.encode` verbatim, so the DAG envelope reuses the TreeOp and actor
+//  wire contracts rather than re-specifying either.
+//
+//  Phase 1587 made that first clause true in both directions. `decodeRecord`
+//  has always taken the host codec's `DecodeOp` for the nested `op`; the
+//  encoder hardwired the tier's own, so the envelope had a host-owned path one
+//  way and a tier-owned path the other, and there was a second op-encoding site
+//  beside the codec seam. `encodeRecord` and `contentFingerprint` now take the
+//  codec's `EncodeOp` as a parameter. The default a caller wants is
+//  `OpJsonCodec.canonical`'s encode, which is the same function this file used
+//  to name — so the bytes an existing store holds are unchanged.
 //
 //  Phase 1144 replaced the trailing `"userId":"…"` member with the leading
 //  `"actor":{…}` — the typed `Human | Agent` the linear chain has carried since
@@ -65,9 +74,18 @@ module DagWire =
 
     /// Encode a `DagOpRecord` to its canonical JSON wire form. Keys are emitted
     /// in Ordinal-sorted order; `outcomeHash` / `promptId` are omitted when
-    /// `None`. `op` nests `CanonicalJson.encodeOp` verbatim and `actor` nests
+    /// `None`. `op` nests `encodeOp`'s output verbatim and `actor` nests
     /// `Actor.encode` verbatim (both pinned encodings, embedded as-is).
-    let encodeRecord<'Msg> (record: DagOpRecord<'Msg>) : string =
+    ///
+    /// **`encodeOp` is the host's — the codec's `EncodeOp`, exactly as
+    /// `decodeRecord` below takes the codec's `DecodeOp`** (Phase 1587). This
+    /// function used to hardwire the tier's own canonical op encoder while its
+    /// inverse was parameterised, so the DAG wire had a host-owned path in one
+    /// direction and a tier-owned one in the other, and a host whose codec
+    /// encoded anything else could not round-trip its own records through this
+    /// envelope. `OpJsonCodec.canonical`'s encode IS that same function, so a
+    /// caller that wants what this always did passes it and nothing changes.
+    let encodeRecord<'Msg> (encodeOp: TreeOp<'Msg> -> string) (record: DagOpRecord<'Msg>) : string =
         let sb = StringBuilder()
         sb.Append '{' |> ignore
 
@@ -80,7 +98,7 @@ module DagWire =
         escapeInto sb record.Hash
 
         sb.Append ",\"op\":" |> ignore
-        sb.Append(CanonicalJson.encodeOp record.Op) |> ignore
+        sb.Append(encodeOp record.Op) |> ignore
 
         match record.OutcomeHash with
         | Some o ->
@@ -149,8 +167,15 @@ module DagWire =
     /// hand-picked field-by-field comparison cannot promise: the previous check
     /// compared `Parents` and `OutcomeHash` only, so a record with a DIFFERENT
     /// OP at the same address was admitted as a duplicate and silently dropped.
-    let contentFingerprint<'Msg> (record: DagOpRecord<'Msg>) : string =
-        HashChain.sha256Hex (encodeRecord { record with Tombstoned = false })
+    ///
+    /// `encodeOp` is the host's, for the reason `encodeRecord` states: a
+    /// fingerprint over bytes the host's codec did not produce is a digest of
+    /// something the host never wrote. Both sinks in this repo pass
+    /// the tier's canonical op encoder — the encoding their stored fingerprints
+    /// were minted under — so an existing store keeps comparing against the
+    /// bytes it already holds.
+    let contentFingerprint<'Msg> (encodeOp: TreeOp<'Msg> -> string) (record: DagOpRecord<'Msg>) : string =
+        HashChain.sha256Hex (encodeRecord encodeOp { record with Tombstoned = false })
 
     // ── Decode ────────────────────────────────────────────────────────────
     //

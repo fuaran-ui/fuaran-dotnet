@@ -1,9 +1,10 @@
-module Fuaran.UI.OpStream.Dag.Tests.ConformanceTests
+﻿module Fuaran.UI.OpStream.Dag.Tests.ConformanceTests
 
 open System.IO
 open Expecto
 open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
+open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 
 // ============================================================================
@@ -37,13 +38,16 @@ let tests =
                       let committed = File.ReadAllText(path).TrimEnd('\n', '\r')
 
                       // 1. The committed bytes == the current encoder's output.
-                      Expect.equal (DagWire.encodeRecord record) committed (sprintf "%s encoder == committed bytes" id)
+                      Expect.equal
+                          (DagWire.encodeRecord CanonicalJson.encodeOp record)
+                          committed
+                          (sprintf "%s encoder == committed bytes" id)
 
                       // 2. decode → re-encode round-trips byte-identically.
                       match DagWire.decodeRecord decodeOp committed with
                       | Ok decoded ->
                           Expect.equal
-                              (DagWire.encodeRecord decoded)
+                              (DagWire.encodeRecord CanonicalJson.encodeOp decoded)
                               committed
                               (sprintf "%s decode→re-encode is byte-stable" id)
                       | Error e -> failtestf "%s decode failed: %s" id e
