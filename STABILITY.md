@@ -6783,3 +6783,52 @@ retired rather than re-explained.
 **Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and it
 already carries breaking-class entries, so a source-breaking constructor arity is not a higher class
 than the draft already holds. `v0.77.0` is the newest tag.
+
+## Recorded change — 0.78.0, `TreeOp.mapMsg` and a reference `IOpJsonCodec` (fuaran#1587)
+
+**Two ADDITIVE surfaces and one SOURCE-BREAKING signature change, and the set RIDES the standing
+0.78.0 draft rather than advancing it.**
+
+**What changed.** The decoder returns `TreeOp<obj>` and the sinks take an `IOpJsonCodec<'Msg>`, and
+the only codec this tier shipped was `OpJsonCodec.encodeOnly`, whose decode always errors — so a
+host wanting a durable, readable op-stream had to write a structural re-typing of the whole op and
+node vocabulary into its own tree. That mapping is the same for every host, so it lives here now.
+
+- **`Fuaran.UI.Ops.Abstractions` gains `Fuaran.UI.Ops.TreeOpMap`** — `TreeOp.mapMsg :
+  (obj -> 'Msg option) -> TreeOp<obj> -> Result<TreeOp<'Msg>, MapRefusal>`, exhaustive over all
+  eleven op cases, plus the `MapRefusal` record, `MapRefusal.render`, and the `MapRefusalRaised`
+  exception. Purely additive; FSharp.Core-only and Fable-portable like the rest of the package. It
+  is assembled from what existed: `GuestExport.mapOpIds` is the traversal shape and
+  `Fuaran.UI.NodeMap` is the inner half.
+- **`Fuaran.UI.OpStream.Abstractions` gains `OpJsonCodec.canonical` and `OpJsonCodec.canonicalObj`**
+  — the tier's canonical encoder composed with its own decoder and `TreeOp.mapMsg`. Additive;
+  `encodeOnly` is untouched and still the right choice for a host that verifies a chain and never
+  replays.
+- **`Fuaran.UI.OpStream.Dag.Abstractions`: `DagWire.encodeRecord` and `DagWire.contentFingerprint`
+  each take the op encoding as a leading parameter.** SOURCE-BREAKING. `decodeRecord` has always
+  taken the host codec's decode as a function while the encoder hardwired the tier's own, so the
+  envelope had a host-owned path one way and a tier-owned path the other, and there was a second
+  op-encoding site beside the codec seam.
+
+**What a consumer pays.**
+
+- **Wire and stored bytes: nothing.** Encoding is `'Msg`-invariant — `Action.Dispatch` emits
+  `{"$type":"Dispatch"}` and nothing else, so a message never reaches the wire — and both DAG sinks
+  pass the same canonical encoder their stored fingerprints were minted under. No document, no
+  chain hash, no content address and no stored fingerprint moves. The conformance corpus is
+  untouched.
+- **Source: two call sites per DAG host.** `DagWire.encodeRecord record` becomes
+  `DagWire.encodeRecord CanonicalJson.encodeOp record`, and the same for `contentFingerprint`. A
+  host using the reference codec passes `codec.EncodeOp`, which is the same function.
+- **One hazard worth naming, because it is silent.** Passing a DIFFERENT encoder to
+  `contentFingerprint` re-mints every fingerprint a store compares against, and the next re-add of
+  an unchanged record then reads as a content-address collision. The parameter exists so a host CAN
+  make that choice; the sinks here deliberately do not.
+
+**Version — it RIDES 0.78.0.** The draft is untagged (`v0.77.0` is the newest tag) and pinned by no
+public-path consumer, and it already carries breaking-class entries — a generated smart
+constructor's arity, a union rename in the IDL, a schema `required` correction — so a
+source-breaking parameter on two DAG-wire functions is not a higher class than the slot already
+holds.
+
+**Migration:** [`docs/migrations/1587-treeop-message-mapping.md`](docs/migrations/1587-treeop-message-mapping.md).

@@ -1,4 +1,4 @@
-module Fuaran.UI.OpStream.Dag.Tests.DagCorpus
+﻿module Fuaran.UI.OpStream.Dag.Tests.DagCorpus
 
 open System.IO
 open Fuaran.UI.Types
@@ -79,7 +79,7 @@ let emit (root: string) : unit =
     let manifestEntries = ResizeArray<string>()
 
     for (id, description, record) in fixtures do
-        let json = DagWire.encodeRecord record
+        let json = DagWire.encodeRecord CanonicalJson.encodeOp record
         File.WriteAllText(Path.Combine(dagDir, id + ".json"), json)
 
         manifestEntries.Add(

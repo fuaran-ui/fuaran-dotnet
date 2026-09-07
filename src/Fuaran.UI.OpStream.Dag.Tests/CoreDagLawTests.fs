@@ -67,12 +67,12 @@ let private seed = 20260904
 /// The canonical op codec a host supplies to the DAG sinks. `dagLaws`' JSONL round-trip law
 /// runs over exactly this pair (as `StreamWitness.Encode` / `Decode`); here it is handed to a
 /// real `SqliteDagSink`, so the same ops make the same trip through a database file.
-let private canonicalCodec: IOpJsonCodec<obj> =
-    { new IOpJsonCodec<obj> with
-        member _.EncodeOp op = CanonicalJson.encodeOp op
-
-        member _.DecodeOp json =
-            JsonDecode.decodeOp json |> Result.mapError (sprintf "%A") }
+/// Phase 1587 — this pair was written by hand here and again in the linear
+/// persistence suite before it existed anywhere a CONSUMER could reach it. It
+/// is `OpJsonCodec.canonicalObj` now: the shipped reference codec at the erased
+/// `'Msg`, so this leg exercises what a host actually gets rather than a
+/// test-local reconstruction of it.
+let private canonicalCodec: IOpJsonCodec<obj> = OpJsonCodec.canonicalObj ()
 
 /// A deterministic script of law-generated ops that all APPLY against the base tree — the
 /// rejection cases `genStreamOp` mixes in are dropped here, because this leg is about

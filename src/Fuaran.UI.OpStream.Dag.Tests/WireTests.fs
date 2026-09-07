@@ -1,4 +1,4 @@
-module Fuaran.UI.OpStream.Dag.Tests.WireTests
+﻿module Fuaran.UI.OpStream.Dag.Tests.WireTests
 
 open System
 open Expecto
@@ -57,7 +57,7 @@ let tests =
               let r =
                   mkRecord "stream-1" "h1" [ "p0" ] (TreeOp.RemoveNode(NodeId "n1")) None None 1700000000L false
 
-              let json = DagWire.encodeRecord r
+              let json = DagWire.encodeRecord CanonicalJson.encodeOp r
 
               match DagWire.decodeRecord decodeOp json with
               | Ok decoded ->
@@ -67,7 +67,7 @@ let tests =
                   Expect.equal decoded.OutcomeHash None "no outcome hash on an ordinary node"
                   Expect.equal (decoded.Timestamp.ToUnixTimeSeconds()) 1700000000L "timestamp"
                   Expect.isFalse decoded.Tombstoned "live"
-                  Expect.equal (DagWire.encodeRecord decoded) json "re-encode is byte-stable"
+                  Expect.equal (DagWire.encodeRecord CanonicalJson.encodeOp decoded) json "re-encode is byte-stable"
               | Error e -> failtestf "decode failed: %s" e
           }
 
@@ -79,7 +79,7 @@ let tests =
               let merge =
                   mkRecord "stream-1" "mh" [ pa; pb ] (TreeOp.Batch []) (Some oh) None 1700000001L false
 
-              let json = DagWire.encodeRecord merge
+              let json = DagWire.encodeRecord CanonicalJson.encodeOp merge
 
               match DagWire.decodeRecord decodeOp json with
               | Ok decoded ->
@@ -95,7 +95,7 @@ let tests =
               let expected =
                   """{"actor":{"kind":"human","id":"u1"},"hash":"h1","op":{"$type":"RemoveNode","target":"n1"},"parents":["p1","p2"],"resultEnvelope":{"$type":"Success"},"streamId":"s1","timestamp":1700000000,"tombstoned":false}"""
 
-              Expect.equal (DagWire.encodeRecord r) expected "canonical bytes pinned"
+              Expect.equal (DagWire.encodeRecord CanonicalJson.encodeOp r) expected "canonical bytes pinned"
           }
 
           test "byte-golden: an AGENT actor nests its pinned member order" {
@@ -107,7 +107,7 @@ let tests =
                       Actor = Actor.Agent("claude", "4.8", "planner") }
 
               Expect.stringContains
-                  (DagWire.encodeRecord r)
+                  (DagWire.encodeRecord CanonicalJson.encodeOp r)
                   """{"actor":{"kind":"agent","model":"claude","version":"4.8","id":"planner"},"hash":"""
                   "agent actor nests in pinned member order, first in the envelope"
           }
@@ -152,14 +152,14 @@ let tests =
               let withOpt =
                   mkRecord "s1" "h1" [] (TreeOp.RemoveNode(NodeId "n1")) (Some "oh") (Some "prompt-7") 1700000000L false
 
-              let json = DagWire.encodeRecord withOpt
+              let json = DagWire.encodeRecord CanonicalJson.encodeOp withOpt
               Expect.stringContains json "\"outcomeHash\":\"oh\"" "outcomeHash present"
               Expect.stringContains json "\"promptId\":\"prompt-7\"" "promptId present"
 
               let bare =
                   mkRecord "s1" "h1" [] (TreeOp.RemoveNode(NodeId "n1")) None None 1700000000L false
 
-              let bareJson = DagWire.encodeRecord bare
+              let bareJson = DagWire.encodeRecord CanonicalJson.encodeOp bare
               Expect.isFalse (bareJson.Contains "outcomeHash") "outcomeHash omitted when None"
               Expect.isFalse (bareJson.Contains "promptId") "promptId omitted when None"
 

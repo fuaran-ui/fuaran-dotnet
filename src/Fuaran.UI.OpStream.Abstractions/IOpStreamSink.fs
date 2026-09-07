@@ -1,4 +1,4 @@
-namespace Fuaran.UI.OpStream.Abstractions
+﻿namespace Fuaran.UI.OpStream.Abstractions
 
 open Fuaran.UI.Ops.Types
 
@@ -34,6 +34,57 @@ module OpJsonCodec =
 
             member _.DecodeOp _ =
                 Error "OpJsonCodec.encodeOnly does not implement DecodeOp" }
+
+    // ── The reference codec (Phase 1587) ────────────────────────────────────
+    //
+    // `encodeOnly` above is the only codec this tier shipped, and it fails
+    // every read — so a host that wanted a DURABLE, readable stream had to
+    // write its own, and the decode half of that is the same structural
+    // retyping of `TreeOp<obj>` onto its `'Msg` for every host. That retyping
+    // is `TreeOp.mapMsg`, so the codec composing it belongs here too: a host
+    // supplies ONE mapper and gets a round-tripping codec, instead of a copy
+    // of the tier's own encoder/decoder pair.
+    //
+    // This pair was already written by hand twice in this repo's own test code
+    // (the DAG and persistence law suites) before it was written anywhere a
+    // consumer could reach it. Promoting it is the point.
+
+    /// Render a decoder refusal as the flat string `IOpJsonCodec` reports.
+    /// Both halves of the decode — the wire refusal and the mapper's — reach a
+    /// consumer through the same one-line shape.
+    let private renderDecodeError (error: Fuaran.UI.Ops.JsonDecode.DecodeError) : string =
+        sprintf "%s at '%s': %s" error.Code error.Path error.Message
+
+    /// The reference codec: the tier's canonical encoder, and the tier's own
+    /// decoder composed with `TreeOp.mapMsg mapper`.
+    ///
+    /// `mapper` answers, for one erased payload the decoder produced, which
+    /// host message it is — or `None`, which refuses the decode BY NAME rather
+    /// than putting a default message on the tree. `JsonDecode` replaces every
+    /// closure it cannot carry with a constant returning the same `"<closure>"`
+    /// sentinel it puts in `Action.Dispatch`, so a mapper total on that one
+    /// value is total over every op this codec will ever be handed.
+    ///
+    /// Encoding is `'Msg`-invariant (`Action.Dispatch` emits `{"$type":
+    /// "Dispatch"}` and nothing else — a message never reaches the wire), so
+    /// the mapper affects only what a REPLAY hands back.
+    let canonical<'Msg> (mapper: obj -> 'Msg option) : IOpJsonCodec<'Msg> =
+        { new IOpJsonCodec<'Msg> with
+            member _.EncodeOp op = CanonicalJson.encodeOp op
+
+            member _.DecodeOp json =
+                Fuaran.UI.Ops.JsonDecode.decodeOp json
+                |> Result.mapError renderDecodeError
+                |> Result.bind (
+                    Fuaran.UI.Ops.TreeOpMap.TreeOp.mapMsg mapper
+                    >> Result.mapError Fuaran.UI.Ops.TreeOpMap.MapRefusal.render
+                ) }
+
+    /// The ERASED reference codec — `canonical` at `'Msg = obj`, where the
+    /// mapper is the identity and can never refuse. This is the pair a
+    /// law suite or a `'Msg`-agnostic tool wants, and the one that was
+    /// duplicated in test code.
+    let canonicalObj () : IOpJsonCodec<obj> = canonical<obj> Some
 
 /// The durable sink contract. All methods are `Async`; concrete sinks
 /// implement either truly asynchronously (Sqlite I/O) or synchronously

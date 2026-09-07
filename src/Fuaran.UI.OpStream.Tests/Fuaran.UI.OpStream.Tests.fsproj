@@ -59,6 +59,10 @@
     <Compile Include="CoreAttestationLawsTests.fs" />
     <!-- Phase 1525 — the write path: compare-and-append, admission, retention horizon. -->
     <Compile Include="WritePathIntegrityTests.fs" />
+    <!-- Phase 1587 — the TreeOp.mapMsg laws: identity preservation over the
+         corpus's registered op set, the map's wire-invisibility through the
+         shipped reference codec, and a refusal that names the op and the slot. -->
+    <Compile Include="TreeOpMapLawsTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

@@ -1,4 +1,4 @@
-module Fuaran.UI.OpStream.Dag.Tests.WriteIntegrityTests
+﻿module Fuaran.UI.OpStream.Dag.Tests.WriteIntegrityTests
 
 open System
 open System.IO
@@ -443,7 +443,7 @@ VALUES
 
                   insert.Parameters.AddWithValue("@env", "{\"$type\":\"Success\"}") |> ignore
 
-                  insert.Parameters.AddWithValue("@fingerprint", DagWire.contentFingerprint a)
+                  insert.Parameters.AddWithValue("@fingerprint", DagWire.contentFingerprint CanonicalJson.encodeOp a)
                   |> ignore
 
                   Expect.equal (insert.ExecuteNonQuery()) 1 "the external writer inserted `a` (uncommitted)"
@@ -496,7 +496,7 @@ VALUES
                     ResultEnvelope = poisoned
                     Tombstoned = false }
 
-              match DagWire.decodeRecord canonicalDecodeOp (DagWire.encodeRecord record) with
+              match DagWire.decodeRecord canonicalDecodeOp (DagWire.encodeRecord CanonicalJson.encodeOp record) with
               | Ok decoded -> Expect.equal decoded.ResultEnvelope poisoned "the failure round-trips as a FAILURE"
               | Error e -> failtestf "decode failed: %s" e
           }
@@ -515,7 +515,8 @@ VALUES
                     Tombstoned = false }
 
               let encoded =
-                  (DagWire.encodeRecord record).Replace("{\"$type\":\"Success\"}", "{\"$type\":\"Sideways\"}")
+                  (DagWire.encodeRecord CanonicalJson.encodeOp record)
+                      .Replace("{\"$type\":\"Success\"}", "{\"$type\":\"Sideways\"}")
 
               match DagWire.decodeRecord canonicalDecodeOp encoded with
               | Ok r -> failtestf "expected a refusal, decoded %A" r.ResultEnvelope

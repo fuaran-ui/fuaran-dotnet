@@ -122,7 +122,14 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
             async {
                 lock lockObj (fun () ->
                     let state = getOrCreate record.StreamId
-                    let fingerprint = DagWire.contentFingerprint record
+                    // Phase 1587 — `contentFingerprint` takes the op encoding
+                    // rather than choosing one. This sink holds no codec (it
+                    // stores typed records, not text), so it names the canonical
+                    // encoder directly: the same bytes the check has always
+                    // compared, and the same ones the Sqlite sink uses, so a
+                    // record's fingerprint does not depend on which store it
+                    // landed in.
+                    let fingerprint = DagWire.contentFingerprint CanonicalJson.encodeOp record
 
                     // ── Check 1: parent presence (Phase 1525) ───────────────
                     // Store-wide, for the same reason the read path resolves
