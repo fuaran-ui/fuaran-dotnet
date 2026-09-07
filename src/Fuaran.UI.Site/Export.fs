@@ -10,6 +10,7 @@ module Fuaran.UI.Site.Export
 // bottom touch a filesystem. Determinism is inherited: the plan renders once,
 // and the export writes exactly those bytes.
 
+open System
 open System.IO
 open System.Text
 
@@ -20,6 +21,19 @@ let relativePathOf (route: string) : string =
         "index.html"
     else
         route.TrimStart('/') + "/index.html"
+
+/// XML-escape a string bound for element content.
+///
+/// The sitemap's `<loc>` is built by concatenation, and a route is DISCOVERED —
+/// from a filename and its frontmatter — not authored here. An `&` in one (a
+/// perfectly legal path character, and the commonest of these by far) produced a
+/// document no conforming sitemap reader accepts; a `<` closed the element.
+///
+/// The full five-entity set rather than the three element content strictly
+/// needs: the sitemap protocol's own escaping table lists all five, and this
+/// string is one concatenation away from being an attribute value.
+let private xmlEscape (s: string) : string =
+    s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;").Replace("'", "&apos;")
 
 /// sitemap.xml content for a page set. `baseUrl` is the site origin without a
 /// trailing slash (one is trimmed if present), e.g. "https://example.org".
@@ -34,7 +48,9 @@ let sitemapXml (baseUrl: string) (pages: SitePage list) : string =
 
     for page in pages do
         let path = if page.Route = "/" then "" else page.Route
-        sb.Append(sprintf "  <url><loc>%s%s</loc></url>\n" origin path) |> ignore
+
+        sb.Append(sprintf "  <url><loc>%s</loc></url>\n" (xmlEscape (origin + path)))
+        |> ignore
 
     sb.Append("</urlset>\n") |> ignore
     sb.ToString()
@@ -46,19 +62,70 @@ let robotsTxt (baseUrl: string) : string =
 
 // ─── File I/O surface (everything above is pure) ─────────────────────────────
 
-/// Write one rendered page under `outDir` at its `relativePathOf` location.
-let writePage (outDir: string) (route: string) (html: string) : unit =
+/// Resolve `route` to the absolute file the export would write, or refuse it.
+///
+/// The refusal is the point. `writePage` used to trust the route as a path
+/// fragment, so a route of `/../secrets` resolved OUTSIDE `outDir` and the
+/// export wrote a page over whatever was there — and a route is DISCOVERED from
+/// a filename and its frontmatter, which is the trust boundary. Every route this
+/// module was designed for resolves unchanged; what is refused is a route that
+/// leaves the directory the caller named.
+///
+/// Pure: `Path.GetFullPath` normalises `..` segments textually, so this is a
+/// decision about two strings and is testable without a filesystem. The
+/// containment test compares the normalised target against the normalised
+/// directory with a trailing separator, so a SIBLING directory sharing a prefix
+/// (`out-2/` beside `out/`) is refused rather than admitted by a bare
+/// `StartsWith`.
+let tryResolveTarget (outDir: string) (route: string) : Result<string, string> =
+    let root = Path.GetFullPath outDir
+
+    let rooted =
+        root
+        + (if root.EndsWith(string Path.DirectorySeparatorChar) then
+               ""
+           else
+               string Path.DirectorySeparatorChar)
+
     let target =
         if route = "/" then
-            Path.Combine(outDir, "index.html")
+            Path.Combine(root, "index.html")
         else
-            let dir =
-                Path.Combine(outDir, route.TrimStart('/').Replace('/', Path.DirectorySeparatorChar))
+            Path.Combine(root, route.TrimStart('/').Replace('/', Path.DirectorySeparatorChar), "index.html")
 
-            Directory.CreateDirectory dir |> ignore
-            Path.Combine(dir, "index.html")
+    // `Path.Combine` DISCARDS the first argument when the second is rooted, so a
+    // route of `/C:/x` or `//host/share` escapes without a single `..` in it. The
+    // full-path comparison below catches that too, and catches it for the same
+    // reason: the answer is not under the root.
+    let full = Path.GetFullPath target
 
-    File.WriteAllText(target, html)
+    if full.StartsWith(rooted, StringComparison.Ordinal) then
+        Ok full
+    else
+        Error(
+            sprintf
+                "Route '%s' resolves to '%s', which is outside the export directory '%s'. A route is a site path, not a filesystem path: it may not contain '..' segments, a drive or UNC root, or anything else that leaves the directory being exported."
+                route
+                full
+                root
+        )
+
+/// Write one rendered page under `outDir` at its `relativePathOf` location.
+///
+/// REFUSES a route that resolves outside `outDir` (see `tryResolveTarget`),
+/// raising rather than returning: this function's contract is "the page is
+/// written", a partially-exported site is not a site, and a silent skip would
+/// leave `writeAll`'s count claiming a page that is not there.
+let writePage (outDir: string) (route: string) (html: string) : unit =
+    match tryResolveTarget outDir route with
+    | Error message -> invalidArg (nameof route) message
+    | Ok target ->
+        match Path.GetDirectoryName target with
+        | null
+        | "" -> ()
+        | dir -> Directory.CreateDirectory dir |> ignore
+
+        File.WriteAllText(target, html)
 
 /// Recursively copy every file under `publicRoot` into `outDir`, preserving
 /// relative paths. Returns the number of files copied.

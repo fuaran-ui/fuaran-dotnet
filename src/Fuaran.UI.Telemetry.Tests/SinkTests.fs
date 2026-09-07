@@ -171,4 +171,106 @@ let tests =
                   Expect.stringContains output "_test.tool" "deny carries ToolName"
                   Expect.stringContains output "outcome=cancelled" "provider-call carries the outcome token"
               }
-          ) ]
+          )
+
+          // ── Phase 1532 — the default sink redacts ──────────────────────────
+          //
+          // These are sequenced with the stdout test above for the same reason:
+          // they redirect the global `Console.Out`.
+          testSequenced (
+              test "the DEFAULT ConsoleSink withholds the user id and truncates free text" {
+                  let longDetail = String.replicate 40 "node-content-"
+
+                  let noisy =
+                      { sampleOpApply with
+                          Outcome = OpOutcome.ApplyEngineError longDetail }
+
+                  let failure: RenderFailureTelemetry =
+                      { NodeId = "n-1"
+                        NodeKindName = "Markdown"
+                        CaughtBy = RenderFailureSource.ErrorBoundary
+                        ErrorMessage = longDetail
+                        CorrelationId = "corr-1"
+                        PromptId = Some "prompt-A"
+                        UserId = Some "user-1"
+                        Timestamp = DateTimeOffset(2026, 5, 26, 12, 0, 3, TimeSpan.Zero) }
+
+                  let originalOut = Console.Out
+                  use writer = new IO.StringWriter()
+                  Console.SetOut writer
+
+                  try
+                      let sink = ConsoleSink.create ()
+                      sink.RecordOpApply noisy
+                      sink.RecordDeny sampleDeny
+                      sink.RecordProviderCall sampleProviderCall
+                      sink.RecordRenderFailure failure
+                  finally
+                      Console.SetOut originalOut
+
+                  let output = writer.ToString()
+
+                  Expect.isFalse (output.Contains "user-1") "no user id reaches stdout from the default sink"
+                  Expect.stringContains output "user=<redacted>" "the field is present and marked, not silently dropped"
+
+                  Expect.stringContains
+                      output
+                      "…<truncated>"
+                      "long free text is cut, and the cut is MARKED — a silently-shortened message reads as a whole one"
+
+                  Expect.isFalse
+                      (output.Contains longDetail)
+                      "the whole apply-engine detail (which quotes node content) does not reach stdout"
+
+                  // Redaction is not silence: everything structural still lands,
+                  // so a line stays as useful for diagnosis as it was.
+                  Expect.stringContains output "stream-1" "the stream id still lands"
+                  Expect.stringContains output "apply-engine-error:" "the outcome CLASS still lands"
+                  Expect.stringContains output "prompt=prompt-A" "the correlation handle still lands"
+                  Expect.stringContains output "correlation=corr-1" "the render-failure correlation id still lands"
+                  Expect.stringContains output "nodeId=n-1" "the node ADDRESS still lands (it is not content)"
+              }
+          )
+
+          testSequenced (
+              test "the VERBOSE ConsoleSink writes the record whole" {
+                  // The negative control for the test above: the redaction is a
+                  // posture the sink applies, not something the sample data lacks.
+                  let longDetail = String.replicate 40 "node-content-"
+
+                  let noisy =
+                      { sampleOpApply with
+                          Outcome = OpOutcome.ApplyEngineError longDetail }
+
+                  let originalOut = Console.Out
+                  use writer = new IO.StringWriter()
+                  Console.SetOut writer
+
+                  try
+                      let sink = ConsoleSink.createVerbose ()
+                      sink.RecordOpApply noisy
+                  finally
+                      Console.SetOut originalOut
+
+                  let output = writer.ToString()
+
+                  Expect.stringContains output "user=user-1" "the verbose sink writes the user id"
+                  Expect.stringContains output longDetail "the verbose sink writes the detail whole"
+                  Expect.isFalse (output.Contains "…<truncated>") "nothing was truncated"
+              }
+          )
+
+          test "the parameterless constructor is the REDACTED one" {
+              // The property that decides what a careless composition root gets.
+              // Asserted on the sink's own declaration rather than on its output,
+              // so it holds whatever the sample record happens to contain.
+              Expect.equal
+                  (ConsoleSink().Disclosure)
+                  ConsoleDisclosure.Redacted
+                  "`ConsoleSink()` must be the safe posture — a host asks for Verbose by name"
+
+              Expect.equal
+                  (ConsoleSink(ConsoleDisclosure.Verbose).Disclosure)
+                  ConsoleDisclosure.Verbose
+                  "and the verbose one is reachable, so the check above is not vacuous"
+          } ]

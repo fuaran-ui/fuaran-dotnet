@@ -89,6 +89,15 @@ internal static class Program
         // ── Full node-shape coverage guard (Phase 305). ────────────────────────
         Coverage.Run(h);
 
+        // ── The VALUE vocabularies the nodes are built from (Phase 1532): facade
+        //    ⊇ wire-DU for Binding / Action / Format / CellFormat. Coverage.Run
+        //    above quantifies over NodeKind CASES and structurally cannot see
+        //    these, which is how the veneer came to author every node shape in the
+        //    language and almost none of its declarative primitives. Ordered here
+        //    for the same reason as the blocks below: ahead of the corpus pass,
+        //    whose §21 shape-limit fixture aborts the process.
+        FacadeVocabulary.Run(h);
+
         // ── The 861–867 behaviour + constraint slots (Phase 873). No reflection
         //    over the kind set can notice these, which is why they are hand-written.
         //    Ordered AHEAD of the corpus pass deliberately: the §21 shape-limit

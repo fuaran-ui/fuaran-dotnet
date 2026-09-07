@@ -58,6 +58,15 @@ let private slotNotFound (kind: NodeKind<'Msg>) (NodeId rawId) (slot: string) : 
 let private resolveSlot<'T> (ctx: IntrospectionContext) (binding: Binding<'T>) : ResolvedBindingResult =
     tryResolveBinding ctx binding
 
+/// Fuaran-UI Phase 1532 — resolve a NUMERIC SCALAR slot: one the renderer resolves
+/// through `BindingResolver.resolveScalar*` rather than the general entry point.
+/// Used for exactly the three the renderer treats that way — `Metric.Value`,
+/// `Metric.Trend`, `LabelValueRow.Value` — so a `Transform` or an `Expr` in one
+/// of them reports the 1x1 result cell the reader is looking at, and the probe's
+/// answer and the rendered value stay one answer.
+let private resolveScalarSlot (ctx: IntrospectionContext) (binding: Binding<float>) : ResolvedBindingResult =
+    tryResolveScalarBindingWith Fuaran.UI.Renderer.BindingResolver.cellToFloat ctx binding
+
 /// Resolve an optional `Binding<'T> option` slot (Phase 130 interactive
 /// disabled-state shape). `Some` resolves the binding; `None` surfaces the
 /// synthetic-None Resolved result (Expression `"$none"`) so callers can tell
@@ -81,15 +90,15 @@ let private resolveOptionalSlot<'T>
 let private extractBindings (ctx: IntrospectionContext) (kind: NodeKind<'Msg>) : Map<string, ResolvedBindingResult> =
     match kind with
     | NodeKind.Metric(spec) ->
-        let baseMap = Map.empty |> Map.add "Value" (resolveSlot ctx spec.Value)
+        let baseMap = Map.empty |> Map.add "Value" (resolveScalarSlot ctx spec.Value)
 
         match spec.Trend with
-        | Some trend -> baseMap |> Map.add "Trend" (resolveSlot ctx trend)
+        | Some trend -> baseMap |> Map.add "Trend" (resolveScalarSlot ctx trend)
         | None -> baseMap
     | NodeKind.Sparkline(spec) -> Map.ofList [ "Source", resolveSlot ctx spec.Source ]
     | NodeKind.Progress(spec) -> Map.ofList [ "Fraction", resolveSlot ctx spec.Fraction ]
     // LabelValueRow's single Binding-typed slot.
-    | NodeKind.LabelValueRow(spec) -> Map.ofList [ "Value", resolveSlot ctx spec.Value ]
+    | NodeKind.LabelValueRow(spec) -> Map.ofList [ "Value", resolveScalarSlot ctx spec.Value ]
     // Link's Href is a Binding<string> slot.
     | NodeKind.Link(spec) -> Map.ofList [ "Href", resolveSlot ctx spec.Href ]
     | NodeKind.Stepper(spec) -> Map.ofList [ "ActiveStep", resolveSlot ctx spec.ActiveStep ]
@@ -144,10 +153,10 @@ let private extractSlot<'Msg>
     (slot: string)
     : ResolvedBindingResult option =
     match kind, slot with
-    | NodeKind.Metric(spec), "Value" -> Some(resolveSlot ctx spec.Value)
+    | NodeKind.Metric(spec), "Value" -> Some(resolveScalarSlot ctx spec.Value)
     | NodeKind.Metric(spec), "Trend" ->
         match spec.Trend with
-        | Some trend -> Some(resolveSlot ctx trend)
+        | Some trend -> Some(resolveScalarSlot ctx trend)
         | None ->
             // Trend is an optional slot — when absent, surface as Resolved
             // with no value rather than NotFound; the orchestrator
@@ -163,7 +172,7 @@ let private extractSlot<'Msg>
     | NodeKind.Sparkline(spec), "Source" -> Some(resolveSlot ctx spec.Source)
     | NodeKind.Progress(spec), "Fraction" -> Some(resolveSlot ctx spec.Fraction)
     // LabelValueRow's Source slot.
-    | NodeKind.LabelValueRow(spec), "Value" -> Some(resolveSlot ctx spec.Value)
+    | NodeKind.LabelValueRow(spec), "Value" -> Some(resolveScalarSlot ctx spec.Value)
     | NodeKind.Link(spec), "Href" -> Some(resolveSlot ctx spec.Href)
     | NodeKind.Stepper(spec), "ActiveStep" -> Some(resolveSlot ctx spec.ActiveStep)
     | NodeKind.Tabs(spec), "ActiveIndex" -> Some(resolveSlot ctx spec.ActiveIndex)
