@@ -741,6 +741,38 @@ let all: RejectFixture list =
         Description =
           "Print carrying a member — the payload-free action takes none; page range, size, margins and copies are the host's page setup and the reader's dialogue, so a member here is refused rather than dropped (Phase 1124)" }
 
+      // ─── Phase 1537 — Confirm's two refusals ─────────────────────────
+      //
+      // A `Confirm` with no `onConfirm` is a question with no answer. It is
+      // MISSING_FIELD rather than a policy refusal because the member is
+      // genuinely required by the shape, and it is worth a vector because the
+      // OTHER two members are optional-looking to an emitter: `onCancel` may be
+      // absent and `prompt` may be a bare string, so "some members are optional
+      // here" is exactly the wrong generalisation to leave untested.
+      { Id = "reject-confirm-missing-onconfirm"
+        Json =
+          """{"id":"b-confirm","kind":{"$type":"Button","label":{"$type":"Literal","text":"Delete"},"onClick":{"$type":"Confirm","prompt":"Delete this order?"},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick"
+        IsOp = false
+        Description =
+          "Confirm with no 'onConfirm' — a question with no answer. The other two members are absent-legal (`onCancel`) or shorthand-legal (`prompt` as a bare string), so this vector is what keeps an emitter from generalising 'optional' across the case (Phase 1537)" }
+
+      // The DEPTH-ONE bound, and the vector puts the nested confirm inside a
+      // `Chain` rather than directly under `onConfirm` on purpose: the direct
+      // shape is caught by any check written against the continuation's own
+      // `$type`, while this one is caught only by a check that walks the
+      // DECODED continuation. A host that implements the first and not the
+      // second passes a naive vector and still admits the modal stack.
+      { Id = "reject-confirm-nested"
+        Json =
+          """{"id":"b-confirm","kind":{"$type":"Button","label":{"$type":"Literal","text":"Delete"},"onClick":{"$type":"Confirm","prompt":"Delete this order?","onConfirm":{"$type":"Chain","ops":[{"$type":"Notify","channel":"audit","payload":"delete"},{"$type":"Confirm","prompt":"Really?","onConfirm":{"$type":"Print"}}]}},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.onClick.onConfirm.ops[1]"
+        IsOp = false
+        Description =
+          "A Confirm inside a Confirm's continuation, reached through a Chain — confirmation is bounded at one question, and the check walks the DECODED continuation so a chain cannot hide the nesting (Phase 1537)" }
+
       // ─── WRONG_NODE_KIND ─────────────────────────────────────────────
       { Id = "reject-wrongnodekind-widget"
         Json =
@@ -1659,6 +1691,37 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a Binding.Expr whose expression reads `param quantity` while its own `params` binds only `unitPrice`. Unlike Binding.Transform — where an unbound filter param prunes its step, the deliberate unset-chip leniency — an Expr has no step to prune and no rows to fall back on, so the reference has no value it could ever take. Refused at decode, where the missing name can be named (Phase 1534)" }
+      // Fuaran-UI Phase 1535 — the two shapes a `SwitchCase` selector can take
+      // wrongly. Exactly one of `match` and `when`; the pair follows Phase 818's
+      // `value` / `valueFrom` precedent, and for the same reason: the two are
+      // siblings in one slot, so the "exactly one" rule is decoder policy that
+      // no record shape can express.
+      //
+      // BOTH is refused rather than resolved by a precedence rule. A precedence
+      // rule would have to be specified, agreed on five hosts and remembered by
+      // every author — for a document nobody meant to write. Refusing costs an
+      // author one deletion and costs a reader nothing.
+      { Id = "reject-switch-case-match-and-when"
+        Json =
+          """{"id":"x","kind":{"$type":"Switch","cases":[{"child":{"id":"c","kind":{"$type":"Markdown","text":"hi"}},"match":"a","when":{"$type":"State","key":"flag"}}],"default":{"id":"d","kind":{"$type":"Markdown","text":"no"}},"stateKey":"view"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.cases[0].when"
+        IsOp = false
+        Description =
+          "a Switch case carrying both `match` and `when` — the two ways of selecting a case, in one case. `match` compares the switch's `on` selector against a literal; `when` evaluates a Binding<bool> and consults no selector at all. Refused rather than resolved by precedence: a precedence rule would need specifying, agreeing on five hosts and remembering, for a document nobody meant to write (Phase 1535)" }
+      // NEITHER is the sharper of the two. A case with no condition is not a
+      // case that never matches — it is a document whose author meant something
+      // the wire cannot say, and there is no rendering that could be right. A
+      // host that silently skipped it would render the `default` and report
+      // nothing, which is precisely the class of silence H-42 was filed about.
+      { Id = "reject-switch-case-neither"
+        Json =
+          """{"id":"x","kind":{"$type":"Switch","cases":[{"child":{"id":"c","kind":{"$type":"Markdown","text":"hi"}}}],"default":{"id":"d","kind":{"$type":"Markdown","text":"no"}},"stateKey":"view"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.cases[0].match"
+        IsOp = false
+        Description =
+          "a Switch case carrying neither `match` nor `when` — no condition, so no rendering could be right. Refused at decode rather than skipped silently at render: skipping it renders the `default` and reports nothing, which is the exact class of silence this phase's finding was filed about. The message names both fields, so the author is told which two spellings exist (Phase 1535)" }
       { Id = "reject-limit-json-depth-at-max"
         Json =
           String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "["

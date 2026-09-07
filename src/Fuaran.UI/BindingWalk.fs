@@ -297,6 +297,18 @@ type StateKeyFacts =
         /// Transform. That reading is the one the deferral of the seeding rule
         /// requires; see `PreEmitDefect.TransformSourceInert`.
         TransformInertSources: (string * string) list
+        /// Fuaran-UI Phase 1535 — every node whose `visible` predicate is a
+        /// **default-less** `Binding.State`, as (node id, key). FUARAN148's
+        /// subjects.
+        ///
+        /// The Phase-865 shape on a new slot, and the same reasoning: the shared
+        /// `Binding.State` rule resolves an unwritten default-less key to the
+        /// slot default, which at `bool` is `false` — so such a predicate HIDES
+        /// the node the moment nothing writes the key. A source carrying a
+        /// `defaultValue` is not recorded: declaring `true` is exactly how an
+        /// author says "visible unless something says otherwise", and declaring
+        /// `false` is a deliberate start-hidden.
+        VisibleStateSources: (string * string) list
         /// Phase 1075 — every `Binding.State` in the tree carrying a present
         /// `defaultValue`, in walk order. Under the seeding rule the FIRST
         /// declaration of a key seeds the slot; the rest are either agreements
@@ -626,6 +638,13 @@ let rec callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse 
             HasOnResult = onResult.IsSome
             Into = into } ]
     | Action.Chain actions -> actions |> List.collect (callsOfAction readerId)
+    // Phase 1537 — a `Confirm` is the SECOND recursive arm on this union, so it
+    // recurses here exactly as `Chain` does. A `Call` inside a continuation is
+    // a fetch this tree can reach; a walk that stopped at the dialogue would
+    // report a reader as fetch-free while it fetches on the reader's yes.
+    | Action.Confirm(_, onConfirm, onCancel) ->
+        callsOfAction readerId onConfirm
+        @ (onCancel |> Option.map (callsOfAction readerId) |> Option.defaultValue [])
     | Action.Dispatch _
     | Action.Notify _
     | Action.Navigate _
@@ -636,6 +655,8 @@ let rec callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse 
     | Action.ReadFileBody _
     // Phase 1124 — payload-free; no endpoint, so no fetch.
     | Action.Print
+    // Phase 1537 — a node id, and no endpoint.
+    | Action.Focus _
     | Action.Invoke _ -> []
 
 /// Closure-carrying slots held by an ACTION value, recursing `Chain` — the
@@ -660,6 +681,15 @@ let rec closuresOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : Closu
         else
             []
     | Action.Chain actions -> actions |> List.collect (closuresOfAction readerId)
+    // Phase 1537 — the second recursive arm, and the one where recursing is
+    // load-bearing rather than tidy: `Dispatch` inside a continuation is the
+    // FUARAN112 case, and a walk that stopped at the dialogue would let a
+    // closure-bearing action cross the transport refusal by hiding one level
+    // down. The `Confirm` itself holds no closure — its prompt is a
+    // `TextSource` and its branches are values.
+    | Action.Confirm(_, onConfirm, onCancel) ->
+        closuresOfAction readerId onConfirm
+        @ (onCancel |> Option.map (closuresOfAction readerId) |> Option.defaultValue [])
     // The closure-free arms. `Invoke` reaches a host capability by ID with
     // wire-encoded args, and `AiTool` by tool name — neither holds host code.
     | Action.Notify _
@@ -670,14 +700,17 @@ let rec closuresOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : Closu
     | Action.WriteToClipboard _
     // Phase 1124 — payload-free; there is no slot at all, so no closure.
     | Action.Print
+    // Phase 1537 — a node id, and no closure.
+    | Action.Focus _
     | Action.Invoke _ -> []
 
 /// Binding usages carried by an ACTION value, recursing `Chain` — the sibling
 /// of `callsOfAction`, and the arm of the walk that was missing.
 ///
-/// THREE action slots are binding-bearing: `SetState`'s `valueFrom` (Phase
-/// 818), `WriteToClipboard`'s `text` and `Navigate`'s `route` — the last two
-/// because a `TextSource` may be `Bound` (Phases 1126 and 1536). Every other arm
+/// FOUR action slots are binding-bearing: `SetState`'s `valueFrom` (Phase
+/// 818), `WriteToClipboard`'s `text`, `Navigate`'s `route` and `Confirm`'s
+/// `prompt` — the last three because a `TextSource` may be `Bound` (Phases
+/// 1126, 1536 and 1537). Every other arm
 /// carries strings, a `JVal` literal, an `InvokeArg` pair of strings, or a
 /// closure the wire cannot see, so this still reads as a few arms and a long
 /// tail of empties — which is exactly why it is written as an EXHAUSTIVE match
@@ -710,6 +743,15 @@ let rec usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
     // because the tree does read that key.
     | Action.WriteToClipboard text -> usesOfText text
     | Action.Navigate(route, _) -> usesOfText route
+    // Phase 1537 — a FOURTH binding-bearing slot (the prompt's `TextSource`,
+    // which may be `Bound`, so the question can name what the reader selected),
+    // plus the two continuations, which recurse exactly as `Chain` does. Both
+    // resolve at DISPATCH time, so the recorded asymmetry above applies to them
+    // unchanged.
+    | Action.Confirm(prompt, onConfirm, onCancel) ->
+        usesOfText prompt
+        @ usesOfAction onConfirm
+        @ (onCancel |> Option.map usesOfAction |> Option.defaultValue [])
     | Action.Call _
     | Action.Dispatch _
     | Action.Notify _
@@ -718,6 +760,8 @@ let rec usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
     | Action.ReadFileBody _
     // Phase 1124 — payload-free; nothing to read a binding from.
     | Action.Print
+    // Phase 1537 — a node id the author wrote, never a binding.
+    | Action.Focus _
     | Action.Invoke _ -> []
 
 #warnon "44"
@@ -815,6 +859,9 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
 
     // ── The Phase 865 read-side projection FUARAN105 runs on ──
     let transformInertSources = ResizeArray<string * string>()
+
+    // ── The Phase 1535 projection FUARAN148 runs on ──
+    let visibleStateSources = ResizeArray<string * string>()
 
     // ── The Phase 1075 seeding projection (the resolver's seed map, FUARAN106,
     //    FUARAN107) ──
@@ -923,6 +970,13 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             stateWrites.Add(readerId, key)
             stateWriteKeys.Add key |> ignore
         | Action.Chain actions -> actions |> List.iter (recordStateAction readerId)
+        // Phase 1537 — the second recursive arm. A `SetState` inside a
+        // continuation is a write this slot performs on the reader's yes, and a
+        // walk that stopped at the dialogue would report the key as unwritten —
+        // which is what FUARAN105/106/107 reason from.
+        | Action.Confirm(_, onConfirm, onCancel) ->
+            recordStateAction readerId onConfirm
+            onCancel |> Option.iter (recordStateAction readerId)
         // A declared result target names its destination; an `onResult` closure
         // does not, and may write anything at all.
         | Action.Call(_, onResult, into) ->
@@ -943,6 +997,9 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         // Phase 1124 — opens the reader's print dialogue and returns nothing;
         // it reaches no host code, so it is NOT an opaque writer.
         | Action.Print
+        // Phase 1537 — moves focus inside the document already rendered; it
+        // reaches no host code and writes no state.
+        | Action.Focus _
         | Action.WriteToClipboard _ -> ()
 
     let recordCalls (inUses: bool) (readerId: string) (action: Action<'Msg>) =
@@ -978,6 +1035,17 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         // unread — and the unwired-producer diagnostics quantify over exactly
         // that.
         record inUses readerId (usesOfTextOpt n.Tooltip)
+
+        // Fuaran-UI Phase 1535 — the node-level `visible` predicate, for the same
+        // reason the tooltip is walked: the renderer resolves it against the same
+        // sources, so a state key that ONLY a visibility predicate reads would
+        // otherwise look unread. It is recorded as a READ and never as a write —
+        // deciding whether a node appears writes nothing.
+        record inUses readerId (usesOfBindingOpt n.Visible)
+
+        match n.Visible with
+        | Some(Binding.State(key, None)) -> visibleStateSources.Add(readerId, key)
+        | _ -> ()
 
         // A `StateBehaviour` branch is a wire-encoded child node rendered in
         // place of the body — a real reader the walk never descended into.
@@ -1258,11 +1326,29 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             | NodeKind.Switch spec ->
                 record inUses readerId (usesOfBinding spec.On)
 
+                // Fuaran-UI Phase 1535 — a PREDICATE case's `when` binding is a
+                // read on exactly the same footing as the selector: it decides
+                // which branch renders, so a state key only a `when` reads is
+                // read.
+                record inUses readerId (spec.Cases |> List.collect (fun c -> usesOfBindingOpt c.When))
+
                 // The selector, recorded EXPLICITLY for FUARAN103: a Switch's
                 // accessibility slots are State-bindable too, so a reader-tagged
                 // State use on this node does not identify the branch selector.
+                //
+                // Fuaran-UI Phase 1535 — and recorded ONLY when some case
+                // actually consults it. A switch whose cases are all predicates
+                // never reads `on` at all, so "nothing writes the key this
+                // switch selects on" is not a defect there: it is a selector
+                // that is simply unused, and FUARAN103 reasons from the absence
+                // of a write to conclude one branch renders forever. That
+                // conclusion is false when the branch is chosen by predicate.
+                // The rule fires on a MIXED switch, which does still consult
+                // `on`.
+                let consultsSelector = spec.Cases |> List.exists (fun c -> c.Match.IsSome)
+
                 match spec.On with
-                | Binding.State(key, _) -> switchSelectors.Add(readerId, key)
+                | Binding.State(key, _) when consultsSelector -> switchSelectors.Add(readerId, key)
                 | _ -> ()
 
                 [], (spec.Cases |> List.map _.Child) @ [ spec.Default ]
@@ -1315,6 +1401,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
           OpaqueWriter = opaqueWriter
           SwitchSelectors = List.ofSeq switchSelectors
           TransformInertSources = List.ofSeq transformInertSources
+          VisibleStateSources = List.ofSeq visibleStateSources
           Seeds = List.ofSeq seeds
           InlineTables = List.ofSeq inlineTables } }
 

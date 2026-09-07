@@ -102,6 +102,7 @@ let private bare (id: string) (kind: NodeKind<obj>) : Node<obj> =
       Accessibility = Option.None
       ExtraAttributes = Option.None
       Tooltip = None
+      Visible = None
       Motion = Option.None
       State = Option.None
       Style = Option.None }
@@ -296,7 +297,8 @@ let private containers: Node<obj> =
                       { Defaults.switch<obj> with
                           On = Binding.State("view", Option.None)
                           Cases =
-                              [ { Match = "detail"
+                              [ { Match = Some "detail"
+                                  When = None
                                   Child = Fuaran.markdown "c-sw-d" "detail" } ]
                           Default = Fuaran.markdown "c-sw-def" "default branch" } ] }
 

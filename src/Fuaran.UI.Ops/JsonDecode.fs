@@ -2290,7 +2290,8 @@ let private placeholderClosureNode: Node<obj> =
       Accessibility = None
       Motion = None
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 // ─── Variant DU decoders ─────────────────────────────────────────────────
 
@@ -4198,6 +4199,79 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                 match requireField path fields "text" "clipboard payload TextSource" with
                 | Error e -> Error e
                 | Ok v -> decodeTextSource (path + ".text") v |> Result.map Action.WriteToClipboard
+            | Ok "Confirm" ->
+                // Phase 1537 — ask, then act. `prompt` is a `TextSource` (so the
+                // question can name what the reader selected), `onConfirm` is
+                // required and `onCancel` optional — an author who declares no
+                // cancel branch means "nothing happens", which is exactly what
+                // an absent action expresses.
+                //
+                // THE DEPTH-ONE REFUSAL is the substance of this arm. A
+                // `Confirm` reachable from either continuation is refused, and
+                // the check runs on the DECODED continuation rather than on its
+                // JSON, so `Chain [ …, Confirm … ]` is caught by the same line
+                // that catches a bare nested one. A dialogue that answers a
+                // dialogue is a modal stack a reader cannot escape, and it
+                // expresses no intent one question does not.
+                //
+                // `WRONG_TYPE` follows the `SetState` value/valueFrom and
+                // `Print`-with-payload precedents: a decoder POLICY refusal
+                // reuses it, where a code of its own would be a wire-visible
+                // widening every host in the §11.0 roster would owe an adoption
+                // for, to name a refusal that already has a home.
+                //
+                // `Dispatch` inside a continuation is NOT refused here, and that
+                // is deliberate rather than an omission: it decodes to the
+                // closure sentinel exactly as it does anywhere else, and the
+                // transport refusal (FUARAN112) is what stops it from being
+                // SENT. One rule, one place.
+                let rec nestedConfirmPath (p: string) (a: Action<obj>) : string option =
+                    match a with
+                    | Action.Confirm _ -> Some p
+                    | Action.Chain ops ->
+                        ops
+                        |> List.mapi (fun i o -> nestedConfirmPath (sprintf "%s.ops[%d]" p i) o)
+                        |> List.tryPick id
+                    | _ -> None
+
+                let refuseNested (p: string) (a: Action<obj>) : Result<Action<obj>, DecodeError> =
+                    match nestedConfirmPath p a with
+                    | Some found ->
+                        err
+                            DecodeErrorCode.WRONG_TYPE
+                            found
+                            "a Confirm may not appear inside another Confirm's continuation — confirmation is bounded at one question. A dialogue that answers a dialogue is a modal stack the reader cannot escape, and it says nothing a single question does not."
+                            (Some "any action but Confirm")
+                    | None -> Ok a
+
+                match requireField path fields "prompt" "confirm prompt TextSource" with
+                | Error e -> Error e
+                | Ok promptJ ->
+                    match decodeTextSource (path + ".prompt") promptJ with
+                    | Error e -> Error e
+                    | Ok prompt ->
+                        match requireField path fields "onConfirm" "Action to dispatch on acceptance" with
+                        | Error e -> Error e
+                        | Ok confirmJ ->
+                            match
+                                decodeAction (path + ".onConfirm") confirmJ
+                                |> Result.bind (refuseNested (path + ".onConfirm"))
+                            with
+                            | Error e -> Error e
+                            | Ok onConfirm ->
+                                match tryField fields "onCancel" with
+                                | None -> Ok(Action.Confirm(prompt, onConfirm, None))
+                                | Some cancelJ ->
+                                    decodeAction (path + ".onCancel") cancelJ
+                                    |> Result.bind (refuseNested (path + ".onCancel"))
+                                    |> Result.map (fun onCancel -> Action.Confirm(prompt, onConfirm, Some onCancel))
+            | Ok "Focus" ->
+                // Phase 1537 — a bare node id, the `CommitLocal` shape. It
+                // addresses a node in THIS document, so there is nothing for a
+                // binding to compute and no `TextSource` here.
+                match requireField path fields "nodeId" "NodeId string of the node to focus" with
+                | Error e -> Error e
+                | Ok v -> requireString (path + ".nodeId") v |> Result.map Action.Focus
             | Ok "Print" ->
                 // Phase 1124 — payload-free. `{"$type":"Print"}` and nothing else.
                 //
@@ -8754,16 +8828,42 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
                             match requireObject casePath item with
                             | Error e -> Error e
                             | Ok caseFields ->
-                                let matchR =
-                                    requireField casePath caseFields "match" "Switch case match string"
-                                    |> Result.bind (requireString (casePath + ".match"))
+                                // Fuaran-UI Phase 1535 — a case selects on a string
+                                // `match` XOR a predicate `when` (a `Binding<bool>`
+                                // evaluated at render time). Exactly one; both and
+                                // neither are refused, naming both fields, on the
+                                // Phase 818 `value` / `valueFrom` precedent.
+                                //
+                                // The refusal is here rather than left to the
+                                // renderer because "neither" has no rendering: a case
+                                // that names no condition is not a case that never
+                                // matches, it is a document whose author meant
+                                // something the wire cannot say.
+                                let selectorR: Result<string option * Binding<bool> option, DecodeError> =
+                                    match tryField caseFields "match", tryField caseFields "when" with
+                                    | Some _, Some _ ->
+                                        err
+                                            DecodeErrorCode.WRONG_TYPE
+                                            (casePath + ".when")
+                                            "Switch case carries both 'match' and 'when' — exactly one is allowed"
+                                            (Some
+                                                "either 'match' (a literal string compared against the switch's `on` selector) or 'when' (a Binding<bool> predicate evaluated at render time, needing no selector); remove one")
+                                    | None, None ->
+                                        missingField
+                                            casePath
+                                            "match"
+                                            "a literal string under 'match' (compared against the switch's `on` selector), or a Binding<bool> under 'when' (a predicate evaluated at render time)"
+                                    | Some mJ, None ->
+                                        requireString (casePath + ".match") mJ |> Result.map (fun m -> Some m, None)
+                                    | None, Some wJ ->
+                                        decodeBindingBool (casePath + ".when") wJ |> Result.map (fun b -> None, Some b)
 
                                 let childR =
                                     requireField casePath caseFields "child" "Switch case child Node"
                                     |> Result.bind (decodeNodeAst (descend w) (casePath + ".child"))
 
-                                match matchR, childR with
-                                | Ok m, Ok child -> Ok({ Match = m; Child = child }: SwitchCase<obj>)
+                                match selectorR, childR with
+                                | Ok(m, w'), Ok child -> Ok({ Match = m; When = w'; Child = child }: SwitchCase<obj>)
                                 | Error e, _
                                 | _, Error e -> Error e)
 
@@ -9259,8 +9359,18 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
             | None -> Ok None
             | Some v -> decodeTextSource (path + ".tooltip") v |> Result.map Some
 
-        match idR, kindR, stateR, styleR, accessibilityR, tooltipR with
-        | Ok id, Ok kind, Ok state, Ok style, Ok accessibility, Ok tooltip ->
+        // Fuaran-UI Phase 1535 — the node-level visibility predicate. An
+        // ordinary optional `Binding<bool>`, decoded by the shared binding
+        // decoder for the reason the tooltip above states: the one time a host
+        // read a node-envelope slot as its own narrower thing it took two hosts
+        // and a ruling to unwind.
+        let visibleR =
+            match tryField fields "visible" with
+            | None -> Ok None
+            | Some v -> decodeBindingBool (path + ".visible") v |> Result.map Some
+
+        match idR, kindR, stateR, styleR, accessibilityR, tooltipR, visibleR with
+        | Ok id, Ok kind, Ok state, Ok style, Ok accessibility, Ok tooltip, Ok visible ->
             // Motion / ExtraAttributes are not emitted by the encoder
             // (see Types.fs lines 213-218 — ExtraAttributes is "the §4d
             // JSON wire shape omits it on emit"; Motion follows the same
@@ -9273,13 +9383,15 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
                   Accessibility = accessibility
                   Motion = None
                   ExtraAttributes = None
-                  Tooltip = tooltip }
-        | Error e, _, _, _, _, _
-        | _, Error e, _, _, _, _
-        | _, _, Error e, _, _, _
-        | _, _, _, Error e, _, _
-        | _, _, _, _, Error e, _
-        | _, _, _, _, _, Error e -> Error e
+                  Tooltip = tooltip
+                  Visible = visible }
+        | Error e, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _
+        | _, _, Error e, _, _, _, _
+        | _, _, _, Error e, _, _, _
+        | _, _, _, _, Error e, _, _
+        | _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, Error e -> Error e
 
 // ─── TreeOp decoder ─────────────────────────────────────────────────────
 

@@ -185,7 +185,8 @@ module FastPathRefusalTests =
                   Accessibility = None
                   Motion = None
                   ExtraAttributes = None
-                  Tooltip = None } }
+                  Tooltip = None
+                  Visible = None } }
 
     [<Tests>]
     let tests =

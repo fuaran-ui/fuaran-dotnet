@@ -67,7 +67,11 @@ let private allActionCases: (string * Action<Msg>) list =
       // payload-free case is the shape most likely to be left out of a coverage
       // list on the grounds that there is nothing to check, and the describer
       // still composes a string that reaches an always-on host log.
-      "Print", Action.Print ]
+      "Print", Action.Print
+      // Phase 1537 — the poison rides in the prompt AND in the continuation.
+      "Confirm", Action.Confirm(TextSource.Literal poison, Action.Notify("toast", JStr poison), None)
+      // Author-declared vocabulary, carried in full — the `CommitLocal` shape.
+      "Focus", Action.Focus "search-field" ]
 
 [<Tests>]
 let tests =

@@ -1217,6 +1217,84 @@ let resolveScalarFloat (sources: BindingSources) (binding: Binding<float>) : Res
 let resolveScalarBool (sources: BindingSources) (binding: Binding<bool>) : Resolution<bool> =
     resolveScalarWith cellToBool sources binding
 
+// ─── Conditional presence and predicate branching (Phase 1535) ───────────────
+//
+// Two decisions a renderer takes BEFORE it draws anything, and both are here
+// rather than in either renderer because the two renderers must agree
+// byte-for-byte on them: a node the client draws and the server omits is a
+// hydration mismatch, and the whole point of SSR parity is that neither host
+// gets to have its own opinion.
+
+/// Fuaran-UI Phase 1535 — the resolution of a node's `visible` predicate, or
+/// `None` when the node declares none.
+///
+/// `None` is NOT the same as an unresolved predicate. A node with no `visible`
+/// slot has nothing to say and nothing to warn about; a node whose predicate
+/// could not be resolved has a broken document behind it, and a host may want to
+/// say so.
+let nodeVisibility<'Msg> (sources: BindingSources) (node: Node<'Msg>) : Resolution<bool> option =
+    node.Visible |> Option.map (resolveScalarBool sources)
+
+/// Fuaran-UI Phase 1535 — THE rule for whether a node reaches the output at all.
+///
+/// A node is removed ONLY on a resolved `false`. Absent, `NotResolved`,
+/// `Errored` and `I18nUnresolved` all render, and that asymmetry is the whole
+/// design rather than a leniency:
+///
+///   - A `false` is an author saying "not now", and removal is what they asked
+///     for — no element, no placeholder, no `aria-hidden`, nothing in the layout
+///     and nothing in the accessibility tree. (That is what makes `visible`
+///     different from `accessibility.hidden`, which is `aria-hidden` over a node
+///     that IS drawn and DOES occupy space.)
+///   - Every other outcome is the renderer failing to answer the question, and
+///     content that vanishes because a source was missing is the one failure a
+///     reader cannot see, cannot report and cannot work around. Rendering the
+///     node leaves the failure visible to somebody.
+let isNodeVisible<'Msg> (sources: BindingSources) (node: Node<'Msg>) : bool =
+    match nodeVisibility sources node with
+    | Some(Resolved v) -> v
+    | Some NotResolved
+    | Some(Errored _)
+    | Some(I18nUnresolved _)
+    | None -> true
+
+/// Fuaran-UI Phase 1535 — first-match-wins case selection for a `Switch`,
+/// over BOTH kinds of case: a literal `match` compared against the already
+/// resolved selector, and a `when` predicate evaluated here.
+///
+/// `selector` is the switch's resolved `on` value (`None` when it did not
+/// resolve). A predicate case ignores it entirely — which is why a switch whose
+/// cases are all predicates needs no selector at all.
+///
+/// A predicate case is taken ONLY on a resolved `true`; `false`, `NotResolved`
+/// and `Errored` all fall through to the next case and ultimately to `default`.
+/// Note this is the OPPOSITE default from `isNodeVisible` above, and deliberately
+/// so: falling through here lands on a `default` branch the author wrote, so no
+/// content disappears — whereas a node with no `visible` verdict has no fallback
+/// to land on.
+///
+/// A case carrying neither `match` nor `when` can never be selected. The decoder
+/// refuses that shape and FUARAN142 reports it pre-emit, so it is unreachable
+/// from the wire; it is handled here rather than asserted away because a tree
+/// built in-process can still hold one and a renderer is total by signature.
+let selectSwitchCase<'Msg>
+    (sources: BindingSources)
+    (selector: string option)
+    (cases: SwitchCase<'Msg> list)
+    : Node<'Msg> option =
+    cases
+    |> List.tryPick (fun c ->
+        match c.Match, c.When with
+        | Some m, _ -> (if selector = Some m then Some c.Child else None)
+        | None, Some predicate ->
+            match resolveScalarBool sources predicate with
+            | Resolved true -> Some c.Child
+            | Resolved false
+            | NotResolved
+            | Errored _
+            | I18nUnresolved _ -> None
+        | None, None -> None)
+
 /// Best-effort scalar text resolution — the `tryResolve` twin for text slots.
 let tryResolveScalarText (sources: BindingSources) (binding: Binding<string>) : string option =
     match resolveScalarText sources binding with

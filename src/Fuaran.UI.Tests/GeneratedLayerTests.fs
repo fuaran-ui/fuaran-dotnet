@@ -749,6 +749,20 @@ let generatedLayerTests =
               //    parser are one parser, not by a refinement to the IDL — and
               //    an entry leaving this list is then evidence of that, rather
               //    than of a new refined type.
+              //  - the two Phase-1535 `SwitchCase` selector fixtures are the
+              //    SIBLING-ABSENCE class `reject-fieldrule-empty` opened, now
+              //    reached from both ends: `neither` is that class exactly (a
+              //    relation over the ABSENCE of two siblings), and
+              //    `match-and-when` is its mirror (a relation over their joint
+              //    PRESENCE). The IDL declares both members Optional and has no
+              //    vocabulary for a cross-field constraint, so the generated
+              //    decoder reads whichever is there and accepts either count.
+              //    Both are schema-EXPRESSIBLE and expressed — `anyOf` over the
+              //    two `required` for one, `not: { required: [both] }` for the
+              //    other — so like the near misses they stay OUT of
+              //    `schemaInexpressibleRejects`. That is the discriminator worth
+              //    noting: this pair is structure-inexpressible and
+              //    schema-expressible, where 725's ordered pair was neither.
               Expect.equal
                   policyOwned
                   [ "reject-action-print-with-payload.json"
@@ -756,6 +770,21 @@ let generatedLayerTests =
                     "reject-chart-annotation-date-unparseable.json"
                     "reject-chart-annotation-nonfinite.json"
                     "reject-chart-annotation-range-unordered.json"
+                    // Fuaran-UI Phase 1537 — Confirm's depth-one bound. The
+                    // `reject-expr-col-reference` class exactly, one union over:
+                    // an unbounded existential over a recursive structure, since
+                    // `Chain` lets a nested `Confirm` sit at any depth inside a
+                    // continuation. The generated decoder decodes the whole
+                    // shape correctly and has nowhere to state that one arm may
+                    // not appear beneath another. Note its SIBLING
+                    // `reject-confirm-missing-onconfirm` is deliberately NOT
+                    // here: a required member is exactly what structure judges,
+                    // so the two fixtures of one phase land on opposite sides of
+                    // this line — which is the clearest evidence the seam is
+                    // about the KIND of rule and not about the case that carries
+                    // it. It joins `schemaInexpressibleRejects` for the same
+                    // shared reason the ordered-pair class does.
+                    "reject-confirm-nested.json"
                     "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"
                     // Fuaran-UI Phase 1534 — `Binding.Expr`'s two refusals. Both
@@ -791,6 +820,8 @@ let generatedLayerTests =
                     "reject-nearmiss-grid-behaviour-record.json"
                     "reject-nearmiss-grid-current-page.json"
                     "reject-nearmiss-grid-sortable.json"
+                    "reject-switch-case-match-and-when.json"
+                    "reject-switch-case-neither.json"
                     "reject-upload-destination-empty.json"
                     "reject-wrongtype-grid-default-sort-column.json"
                     "reject-wrongtype-grid-page-size-zero.json"

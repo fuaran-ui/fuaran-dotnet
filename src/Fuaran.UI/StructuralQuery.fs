@@ -88,6 +88,13 @@ type Act =
     /// Phase 1124 — a print-dialogue request. Payload-free, so like
     /// `WriteToClipboard` it carries no discriminator to match on.
     | Print
+    /// Phase 1537 — a confirm-before-action dialogue. The discriminator is the
+    /// LITERAL prompt, on the `Navigate` rule below: a bound prompt is not
+    /// known until dispatch, so it matches only the `"*"` form.
+    | Confirm of prompt: string
+    /// Phase 1537 — a focus move. The discriminator is the addressed node id,
+    /// which is always literal.
+    | Focus of nodeId: string
     | CommitLocal of nodeId: string
     | ReadFileBody of fileRef: string
     | Any
@@ -389,6 +396,24 @@ let rec private carriedOf (label: 'Msg -> string option) (action: Action<'Msg>) 
         [ { Tag = "ReadFileBody"
             Disc = Some fileRef } ]
     | Action.Print -> [ { Tag = "Print"; Disc = None } ]
+    // Phase 1537 — the confirm itself is one carried action, AND its
+    // continuations are carried too: `Chain`'s arm above is the shape, and a
+    // query for "does this button navigate" must answer yes for a button that
+    // navigates on the reader's confirmation. Stopping at the dialogue would
+    // make the confirm a place actions hide from a structural search.
+    //
+    // The discriminator is the LITERAL prompt only, on the `Navigate` reasoning
+    // one arm up: a bound prompt has no text until dispatch, and answering with
+    // the template would be a guess.
+    | Action.Confirm(prompt, onConfirm, onCancel) ->
+        { Tag = "Confirm"
+          Disc =
+            match prompt with
+            | TextSource.Literal s -> Some s
+            | _ -> None }
+        :: (carriedOf label onConfirm
+            @ (onCancel |> Option.map (carriedOf label) |> Option.defaultValue []))
+    | Action.Focus nodeId -> [ { Tag = "Focus"; Disc = Some nodeId } ]
 
 #warnon "44"
 
@@ -429,6 +454,8 @@ let private actMatches (query: Act) (carried: Carried) : bool =
     | Act.CommitLocal nodeId -> tagMatches "CommitLocal" && discMatches nodeId
     | Act.ReadFileBody fileRef -> tagMatches "ReadFileBody" && discMatches fileRef
     | Act.Print -> tagMatches "Print"
+    | Act.Confirm prompt -> tagMatches "Confirm" && discMatches prompt
+    | Act.Focus nodeId -> tagMatches "Focus" && discMatches nodeId
 
 /// Does one recorded binding usage answer a `BoundTo (channel, name)` term?
 ///

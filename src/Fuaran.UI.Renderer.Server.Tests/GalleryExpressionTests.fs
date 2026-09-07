@@ -393,7 +393,8 @@ let tests =
               let styled =
                   { artwork "s1" "harbour" "Harbour at dawn" ImageAspect.Natural with
                       ExtraAttributes = Some(Map.ofList [ "style", "grid-row: span 2" ])
-                      Tooltip = None }
+                      Tooltip = None
+                      Visible = None }
 
               let html = renderHtml styled
 

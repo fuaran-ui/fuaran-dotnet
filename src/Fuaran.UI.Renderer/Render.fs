@@ -579,6 +579,15 @@ let rec private containsUnwiredAction (action: Action<'Msg>) : bool =
     // cancels the dialogue) is intrinsic to the host, which is the clipboard
     // arm's reasoning exactly — treat as wired, never as an unwired stub.
     | Action.Print -> false
+    // Phase 1537 — `window.confirm()` and `.focus()` are the browser's own on
+    // the same reasoning. A `Confirm` is "unwired" exactly when its own
+    // CONTINUATIONS are: the dialogue always works, so what the reader would be
+    // asking for is whatever the yes branch would do. `onCancel` counts too —
+    // a cancel branch that reaches no substrate is as inert as a confirm one.
+    | Action.Confirm(_, onConfirm, onCancel) ->
+        containsUnwiredAction onConfirm
+        || (onCancel |> Option.map containsUnwiredAction |> Option.defaultValue false)
+    | Action.Focus _ -> false
 
 #warnon "44"
 
@@ -989,6 +998,70 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
         // nor what they chose; the tree therefore learns nothing about the reader,
         // which is what keeps this the least-disclosing effect in the gated set.
         gate Runtime.ActionDescriptor.Print (fun () -> Browser.Dom.window.print ())
+    | Action.Confirm(prompt, onConfirm, onCancel) ->
+        // Phase 1537 — ONE dispatch path, gated twice, and the ordering is the
+        // whole of the security argument.
+        //
+        // The FIRST gate is this one: `ActionDescriptor.Confirm` asks whether
+        // this tree may raise a dialogue at all. `window.confirm()` is modal,
+        // steals focus and blocks the page, so a host rendering untrusted trees
+        // must be able to refuse it — the `Print` reasoning exactly, and for the
+        // same reason it is renderer-native with no `IFuaranRuntime` member
+        // behind it.
+        //
+        // The SECOND gate is not written here, and that is the point. On
+        // acceptance the continuation re-enters `runActionCore` — this same
+        // function, from the top — so a `Navigate` inside it meets
+        // `treeNavigateOutcome`'s egress check and its own descriptor, a
+        // `SetState` meets the host-reserved-key guard, a `Call` meets
+        // `treeCallOutcome`. There is no branch here that performs an effect
+        // directly, so there is no way for a confirm to carry an action past a
+        // gate that would have refused it standing alone.
+        //
+        // A refusal of the confirm itself performs NEITHER branch. The reader
+        // was never asked, so neither answer happened; running `onCancel` would
+        // report a refusal the reader did not make.
+        //
+        // The prompt resolves at DISPATCH time through the same `renderText` the
+        // surrounding tree renders its labels through (the `WriteToClipboard`
+        // precedent), so a question may name what the reader is looking at.
+        gate (Runtime.ActionDescriptor.Confirm(renderText ctx prompt)) (fun () ->
+            if Browser.Dom.window.confirm (renderText ctx prompt) then
+                runActionCore ctx denied onConfirm
+            else
+                onCancel |> Option.iter (runActionCore ctx denied))
+    | Action.Focus nodeId ->
+        // Phase 1537 — move focus to the addressed node. Renderer-native for
+        // the `Print` / `CommitLocal` reason: `.focus()` is the browser's own
+        // and takes nothing a host could configure.
+        //
+        // GATED all the same. Focus theft is host-observable — it moves the
+        // reader's caret and, on most engines, scrolls the element into view —
+        // so a default-deny host refuses it through the same `CanDispatch` seam
+        // it refuses `Call` / `Navigate` / `AiTool`.
+        //
+        // A node id that addresses nothing WARNS and moves nothing. It is not
+        // an error: a document may address a node that a `Switch` branch or a
+        // `Visible` predicate has legitimately removed from the flow, and
+        // throwing there would take the whole gesture down. It is not silent
+        // either — an author whose focus target never resolves has a defect,
+        // and the warning is where they find it.
+        gate (Runtime.ActionDescriptor.Focus nodeId) (fun () ->
+            let selector =
+                "[data-fuaran-node-id=\""
+                + nodeId.Replace("\\", "\\\\").Replace("\"", "\\\"")
+                + "\"]"
+
+            let el = Browser.Dom.document.querySelector selector
+
+            if isNull el then
+                ctx.Runtime.Warn(
+                    sprintf
+                        "[Fuaran] Action.Focus('%s') addressed no rendered node — focus unchanged. The node may be absent from the tree, or removed from the flow by a Switch branch."
+                        nodeId
+                )
+            else
+                (el :?> Browser.Types.HTMLElement).focus ())
     | Action.ReadFileBody(fileRef, fileHandle, encoding, onRead) ->
         // Default-deny by shape (FGP 3): consult the policy gate before the
         // host reads the file. On allow, the runtime reads the blob (async at
@@ -4346,17 +4419,27 @@ let rec private renderKind
                 BindingResolver.tryResolve ctx.Sources (Binding.Selection(nodeId, projector, dv |> Option.map box, fld))
                 |> Option.map (fun v -> if isNull v then "" else string v)
             | on ->
-                // Filter / Static / Query / Now selectors resolve through the
-                // standard resolver at the string slot type.
-                BindingResolver.tryResolve ctx.Sources on
+                // Filter / Static / Query / Now / Transform / Expr selectors
+                // resolve through the SCALAR resolver at the string slot type.
+                //
+                // Fuaran-UI Phase 1535 — this was `tryResolve`, whose
+                // `Binding.Transform` arm is row-only: it evaluates the pipeline
+                // to a `Row seq` and `unbox`es that at `string`, so the one wire
+                // spelling of "count > 3 ⇒ 'yes'" threw on .NET and silently
+                // rendered the rows array under Fable — either way the switch
+                // fell through to `Default`, with nothing anywhere saying why.
+                // `resolveScalarText` reads the 1x1 result cell through the same
+                // coercion every other text slot uses. Every other binding case
+                // resolves exactly as it did before, so no shipped document
+                // changes what it renders.
+                BindingResolver.tryResolveScalarText ctx.Sources on
                 |> Option.map (fun s -> if isNull (box s) then "" else s)
 
-        let matched =
-            match currentValue with
-            | Some valueStr ->
-                spec.Cases
-                |> List.tryPick (fun c -> if c.Match = valueStr then Some c.Child else None)
-            | None -> None
+        // Fuaran-UI Phase 1535 — first-match-wins over BOTH kinds of case (a
+        // literal `match` against the selector, a `when` predicate evaluated
+        // here), through the one shared definition in `Renderer.Core` so this
+        // renderer and the server renderer cannot drift on the order.
+        let matched = BindingResolver.selectSwitchCase ctx.Sources currentValue spec.Cases
 
         let selected =
             match matched with
@@ -4403,7 +4486,14 @@ let rec private renderKind
                 {| nodeId = parentNodeId
                    className = "fuaran-switch-stage"
                    autoAdvanceMs = spec.AutoAdvanceMs
-                   matches = (spec.Cases |> List.map _.Match)
+                   // Phase 1535 — the timed advance cycles the MATCH values,
+                   // which is the whole of what it can cycle: advancing writes
+                   // a string into the switch's own selector key, and a
+                   // predicate case is not selected by that key at all. A
+                   // when-only switch therefore has an empty rotation and does
+                   // not advance, which is what FUARAN128 already reports for
+                   // "a declared interval with nothing for a tick to do".
+                   matches = (spec.Cases |> List.choose _.Match)
                    current = currentValue
                    advanceTo = advanceTo
                    children = [ selected ] |}
@@ -7794,7 +7884,34 @@ and private buttonVariantClass (variant: ButtonVariant) : string =
 
 /// Render a Fuaran `Node<'Msg>` to a Feliz `ReactElement` against an
 /// explicit context (sources + runtime + dispatch).
+/// Fuaran-UI Phase 1535 — CONDITIONAL PRESENCE, and the reason `render` is now
+/// two lines in front of `renderPresent` rather than one function.
+///
+/// A resolved `false` on `node.Visible` removes the node from the output
+/// entirely: no element, no placeholder, no `aria-hidden`, nothing in the layout
+/// and nothing in the accessibility tree. The rule itself lives in
+/// `BindingResolver.isNodeVisible` — ONE definition, shared with the server
+/// renderer, because a node the client draws and the server omits is a hydration
+/// mismatch.
+///
+/// The guard sits on `render` rather than at each of the ~90 call sites that
+/// produce a child, so a kind added tomorrow inherits it without anyone
+/// remembering to.
+///
+/// Absence, `NotResolved` and `Errored` all RENDER. An `Errored` predicate
+/// additionally warns: a document asked a question the renderer could not
+/// answer, and the node is on screen when its author may have meant it not to
+/// be, which is exactly the state somebody should be told about.
 and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
+    match BindingResolver.nodeVisibility ctx.Sources node with
+    | Some(BindingResolver.Resolved false) -> Html.none
+    | Some(BindingResolver.Errored m) ->
+        ctx.Runtime.Warn(sprintf "[Fuaran] node '%s' visible predicate errored (%s) — rendering the node" node.Id m)
+
+        renderPresent ctx node
+    | _ -> renderPresent ctx node
+
+and private renderPresent (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     // `Node.Id` is a bare string in the generated envelope (the `NodeId`
     // wrapper erased at the tree level).
     let id = node.Id

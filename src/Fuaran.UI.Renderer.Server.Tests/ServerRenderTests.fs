@@ -279,7 +279,8 @@ let extraAttributeNameInjectionTests =
                         { Defaults.heading with
                             Text = TextSource.Literal "Title" } with
                       ExtraAttributes = Some(Map.ofList [ injectedKey, "v"; "data-cy", "title" ])
-                      Tooltip = None }
+                      Tooltip = None
+                      Visible = None }
 
               let html = Render.render BindingResolver.empty node
 
@@ -299,7 +300,8 @@ let extraAttributeNameInjectionTests =
                         { Defaults.heading with
                             Text = TextSource.Literal "Title" } with
                       ExtraAttributes = Some(Map.ofList [ "data-test-id", "hero"; "aria-describedby", "hint-1" ])
-                      Tooltip = None }
+                      Tooltip = None
+                      Visible = None }
 
               let html = Render.render BindingResolver.empty node
               Expect.isTrue (contains "data-test-id=\"hero\"" html) "data-* key round-trips"
@@ -315,7 +317,8 @@ let extraAttributeNameInjectionTests =
                         { Defaults.heading with
                             Text = TextSource.Literal "Title" } with
                       ExtraAttributes = Some(Map.ofList [ "  data-cy  ", "padded" ])
-                      Tooltip = None }
+                      Tooltip = None
+                      Visible = None }
 
               let html = Render.render BindingResolver.empty node
               Expect.isTrue (contains "data-cy=\"padded\"" html) "emitted under the trimmed name"

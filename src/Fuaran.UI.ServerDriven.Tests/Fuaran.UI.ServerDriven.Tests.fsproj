@@ -17,6 +17,7 @@
     <Compile Include="FormBufferTests.fs" />
     <Compile Include="NavigationTests.fs" />
     <Compile Include="NavigateBoundRouteTests.fs" />
+    <Compile Include="ConfirmActionTests.fs" />
     <Compile Include="InteractionTelemetryTests.fs" />
     <Compile Include="DomPatchCorpusTests.fs" />
     <!-- Phase 889: the server-driven user-action emission point (Driver.step

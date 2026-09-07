@@ -826,6 +826,52 @@ let private action =
           // decoder drops silently is a parameter an emitter believes it sent.
           { Tag = "Print"
             Fields = []
+            Annotations = Annotations.Empty }
+          // Phase 1537 — "delete — are you sure?" as ONE case rather than as a
+          // composition. Today it is spelled `Modal.Open` + `SetState` + a
+          // second button: a state key, a writer and a control the emitter must
+          // invent, for an intent every host already owns as a dialogue.
+          //
+          // `onConfirm` / `onCancel` are `Action`s, so this case RECURSES — the
+          // `Chain` shape, and the second recursive case on this union. The
+          // recursion is bounded at DEPTH ONE by the policy decoder, which
+          // refuses a `Confirm` anywhere inside either continuation (under a
+          // `Chain` included): a dialogue that answers a dialogue is a modal
+          // stack a reader cannot escape, and there is no intent it expresses
+          // that a single question does not.
+          //
+          // The continuation is NOT a second path around the dispatch gate.
+          // `Confirm` itself is gated — a host rendering untrusted trees must be
+          // able to refuse an unbidden dialogue, the `Print` reasoning — and on
+          // acceptance the continuation re-enters the ORDINARY dispatch entry,
+          // so a `Navigate` inside it meets its own egress check and its own
+          // gate exactly as it would outside one.
+          //
+          // `prompt` is a `TextSource` (the 1126 / 1536 spelling), so the
+          // question can name what the reader selected; a literal prompt is the
+          // bare JSON string, so nothing about that spelling is new.
+          { Tag = "Confirm"
+            Fields =
+              [ req "prompt" (TUnion("TextSource", []))
+                req "onConfirm" (TUnion("Action", []))
+                opt "onCancel" (TUnion("Action", [])) ]
+            Annotations = Annotations.Empty }
+          // Phase 1537 — move keyboard focus to an addressed node. The
+          // server-driven tier has carried `ClientEffect.Focus of nodeId` since
+          // Phase 152 with no `Action` counterpart, which Phase 1124's outcome
+          // recorded in passing; this closes that asymmetry rather than opening
+          // a new capability.
+          //
+          // `nodeId` is a bare string and not a `TextSource`: it addresses a
+          // node in THIS document, which the author wrote, so there is nothing
+          // for a binding to compute that the author does not already know —
+          // the `CommitLocal` precedent exactly.
+          //
+          // Gated, on the `Print` reasoning: moving the reader's caret (and,
+          // with it, the viewport) is host-observable even though no
+          // `IFuaranRuntime` member backs it.
+          { Tag = "Focus"
+            Fields = [ req "nodeId" TStr ]
             Annotations = Annotations.Empty } ] }
 
 /// Where a `Call`'s result lands, declaratively. NOTE the wire tags are `State` /
@@ -2891,9 +2937,17 @@ let private chartAnnotation =
 /// Phase 679 — a `Switch` case: the match string plus the node it selects. The
 /// tier holds this as a `(string * Node) tuple list`, which the IDL has no type
 /// for; on the wire it is a two-field record, so that is what is modelled.
+///
+/// Fuaran-UI Phase 1535 — `when` (a `Binding<bool>` evaluated at render time) is
+/// a SIBLING of the string `match`, and `match` became optional in the same
+/// change so the when-only wire shape is representable. This is the Phase 818
+/// `value` / `valueFrom` shape exactly: both are declared Optional because that
+/// is what the SHAPE is, and the "exactly one" rule is decoder policy
+/// (`reject-switch-case-match-and-when` / `-neither`), which the IDL states no
+/// more than it states path addressing.
 let private switchCase =
     { Name = "SwitchCase"
-      Fields = [ req "child" TNode; req "match" TStr ] }
+      Fields = [ req "child" TNode; opt "match" TStr; opt "when" (bindingOf TBool) ] }
 
 /// Phase 679 — `Mount`'s guest channel. `messageShape` rides only on `TwoWay`
 /// in practice but is optional in the shape, not conditional on direction.
@@ -3201,7 +3255,29 @@ let uiIdl: Idl =
           // affordance under the affordance→op charter, so no event name and no
           // placement token is minted here: a document says WHAT the hint is and
           // never HOW it appears.
-          opt "tooltip" TS ]
+          opt "tooltip" TS
+          // Fuaran-UI Phase 1535 — CONDITIONAL PRESENCE. A `Binding<bool>` whose
+          // resolved `false` removes this node from the rendered output
+          // entirely: no element, no placeholder, no `aria-hidden`, nothing in
+          // the layout and nothing in the accessibility tree.
+          //
+          // It sits on the envelope, beside `accessibility`, for the reason the
+          // trait tier exists: "should this be here at all" is uniform across
+          // every kind, and 41 per-spec fields would be 41 independently
+          // driftable decisions about one concept.
+          //
+          // It is deliberately NOT `accessibility.hidden`, and the two are not
+          // interchangeable: `hidden` is `aria-hidden` over a node that IS
+          // rendered and DOES occupy layout — the right spelling for decorative
+          // content a screen reader should skip — while `visible` decides
+          // whether the node exists in the output at all. §3.1 states the rule
+          // normatively.
+          //
+          // Absence and failure render the node. A binding that does not resolve
+          // is NOT a false: a missing source silently hiding content is the one
+          // failure mode a reader cannot see, cannot report and cannot work
+          // around, so the unresolved and errored cases both render.
+          opt "visible" (bindingOf TBool) ]
       Ops = treeOps
       Wire = WireShape.Default
       Harden = HardenPolicy.Default }

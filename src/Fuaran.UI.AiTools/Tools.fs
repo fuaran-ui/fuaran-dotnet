@@ -606,7 +606,13 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
                    (sprintf "$selection.%s%s" nodeId (field |> Option.map (sprintf ".%s") |> Option.defaultValue ""))
            | Binding.Filter(name, _) -> valueEntry "On" (sprintf "$filter.%s" name)
            | _ -> valueEntry "On" "$binding")
-          valueEntry "MatchValues" (spec.Cases |> List.map _.Match |> String.concat ", ")
+          // Phase 1535 — the MATCH values only. A predicate case has no match
+          // string to report, and reporting a placeholder for one would tell an
+          // AI consumer that a literal it could write into the selector selects
+          // that branch, which is false. The predicate count is reported
+          // separately so the peek does not silently under-report the cases.
+          valueEntry "MatchValues" (spec.Cases |> List.choose _.Match |> String.concat ", ")
+          valueEntry "PredicateCases" (string (spec.Cases |> List.filter (fun c -> c.When.IsSome) |> List.length))
           valueEntry "DefaultNodeId" spec.Default.Id ]
     | NodeKind.FragmentDecl spec ->
         // Expose the decl's fragment name + the

@@ -67,6 +67,15 @@ let accessibilityAttributes
     match a11y with
     | None -> []
     | Some a ->
+        // `label` deliberately still resolves through the GENERIC path, and the
+        // asymmetry with `hidden` below is recorded rather than accidental.
+        // Phase 1535 routed `hidden` (and `Switch.on`) to the scalar resolver
+        // because a `Binding.Transform` in those slots is row-only and cannot
+        // work; the same is true here, but the fix is a cross-host behaviour
+        // change with no fixture behind it, so it is ROUTED as a finding rather
+        // than folded into a phase whose acceptance does not cover it. Whoever
+        // takes it takes all five hosts and a corpus vector, exactly as 1535
+        // did for the two slots it names.
         let labelAttr =
             a.Label
             |> Option.bind (fun b -> BindingResolver.tryResolve sources b)
@@ -84,7 +93,12 @@ let accessibilityAttributes
 
         let hiddenAttr =
             a.Hidden
-            |> Option.bind (fun b -> BindingResolver.tryResolve sources b)
+            |> Option.bind (fun b ->
+                match BindingResolver.resolveScalarBool sources b with
+                | BindingResolver.Resolved v -> Some v
+                | BindingResolver.NotResolved
+                | BindingResolver.Errored _
+                | BindingResolver.I18nUnresolved _ -> None)
             |> Option.bind (fun h -> if h then Some("aria-hidden", "true") else None)
 
         [ labelAttr; labelledByAttr; describedByAttr; roleAttr; liveAttr; hiddenAttr ]

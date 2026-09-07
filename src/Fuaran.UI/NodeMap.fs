@@ -77,12 +77,19 @@ let rec mapAction (f: 'a -> 'b) (action: Action<'a>) : Action<'b> =
     | Action.Invoke(capabilityId, args) -> Action.Invoke(capabilityId, args)
     // Phase 1124 — payload-free, so the relabel is a re-tag at the new 'Msg.
     | Action.Print -> Action.Print
+    // Phase 1537 — both continuations are `Action<'a>`, so they RECURSE through
+    // this same relabel; `Chain`'s arm above is the shape. The prompt is a
+    // `TextSource` and the node id a string, both 'Msg-free data that passes
+    // through unchanged.
+    | Action.Confirm(prompt, onConfirm, onCancel) ->
+        Action.Confirm(prompt, mapAction f onConfirm, onCancel |> Option.map (mapAction f))
+    | Action.Focus nodeId -> Action.Focus nodeId
 
 #warnon "44"
 
 /// Relabel a whole `Node<'a>` to `Node<'b>`. The `'Msg`-free traits (`Style`,
-/// `Accessibility`, `Motion`, `ExtraAttributes`) pass through; `Kind` + `State`
-/// recurse.
+/// `Accessibility`, `Motion`, `ExtraAttributes`, `Tooltip`, `Visible`) pass
+/// through; `Kind` + `State` recurse.
 let rec mapMsg (f: 'a -> 'b) (node: Node<'a>) : Node<'b> =
     { Id = node.Id
       Kind = mapKind f node.Kind
@@ -91,7 +98,8 @@ let rec mapMsg (f: 'a -> 'b) (node: Node<'a>) : Node<'b> =
       Accessibility = node.Accessibility
       Motion = node.Motion
       ExtraAttributes = node.ExtraAttributes
-      Tooltip = node.Tooltip }
+      Tooltip = node.Tooltip
+      Visible = node.Visible }
 
 and mapState (f: 'a -> 'b) (state: StateBehaviour<'a>) : StateBehaviour<'b> =
     { OnLoading = state.OnLoading |> Option.map (mapMsg f)
@@ -219,6 +227,7 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
                 spec.Cases
                 |> List.map (fun c ->
                     { Match = c.Match
+                      When = c.When
                       Child = mapMsg f c.Child })
               Default = mapMsg f spec.Default
               AutoAdvanceMs = spec.AutoAdvanceMs }

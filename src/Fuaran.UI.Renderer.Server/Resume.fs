@@ -78,7 +78,33 @@ let rec disposition (action: Action<'Msg>) : ResumeDisposition =
     // Phase 1124 — payload-free and browser-native, so the resumed client
     // interprets it directly: no module chunk to boot, no host to consult.
     | Action.Print
+    // Phase 1537 — a node id the resumed client already holds, and `.focus()`
+    // is browser-native: no module chunk to boot, no host to consult.
+    | Action.Focus _
     | Action.CommitLocal _ -> ResumeDisposition.Interpret
+    // Phase 1537 — a confirm is exactly as interpretable as the branch it would
+    // run, so the disposition is the STRICTEST of its own continuations, the
+    // `Chain` rule below applied to a two-armed case. `window.confirm()` itself
+    // needs nothing booted.
+    //
+    // A BOUND or i18n PROMPT falls back first, on the `WriteToClipboard`
+    // reasoning above: the zero-JS interpreter holds no binding sources and no
+    // i18n catalogue, so it would show the reader the DECLARATION as the
+    // question. A dialogue asking the wrong question and then acting on the
+    // answer is worse than one subtree hydrating.
+    | Action.Confirm(TextSource.Literal _, onConfirm, onCancel) ->
+        let rank =
+            function
+            | ResumeDisposition.Interpret -> 0
+            | ResumeDisposition.Boot -> 1
+            | ResumeDisposition.Fallback -> 2
+
+        (onConfirm :: (onCancel |> Option.toList))
+        |> List.map disposition
+        |> List.sortByDescending rank
+        |> List.tryHead
+        |> Option.defaultValue ResumeDisposition.Interpret
+    | Action.Confirm _ -> ResumeDisposition.Fallback
     // Phase 1126 — a BOUND or i18n clipboard payload falls back, on exactly the
     // `Call` reasoning: the resume interpreter is the zero-JS path and holds no
     // binding sources and no i18n catalogue, so it cannot say what the payload
@@ -219,6 +245,35 @@ let rec encodeAction (action: Action<'Msg>) : string =
     // Phase 1124 — no members beside the discriminator, so the lite encoder and
     // the canonical codec agree with nothing to keep in step.
     | Action.Print -> "{\"$type\":\"Print\"}"
+    // Phase 1537 — a node id and nothing else, the `CommitLocal` shape.
+    | Action.Focus nodeId -> sprintf "{\"$type\":\"Focus\",\"nodeId\":%s}" (jsonString nodeId)
+    // Phase 1537 — a LITERAL prompt keeps the lite shape, with the
+    // continuations encoded through this same function so a nested `Dispatch`
+    // still carries the sentinel the client's disposition already accounted
+    // for; `Chain`'s arm below is the shape. Ordinal field order:
+    // $type < onCancel < onConfirm < prompt.
+    | Action.Confirm(TextSource.Literal prompt, onConfirm, onCancel) ->
+        let onCancelJson =
+            match onCancel with
+            | Some c -> sprintf ",\"onCancel\":%s" (encodeAction c)
+            | None -> ""
+
+        sprintf
+            "{\"$type\":\"Confirm\"%s,\"onConfirm\":%s,\"prompt\":%s}"
+            onCancelJson
+            (encodeAction onConfirm)
+            (jsonString prompt)
+    | Action.Confirm _ ->
+        // A bound prompt re-encodes wholesale through the canonical encoder,
+        // with the same script-embedding escape the `valueFrom` and clipboard
+        // arms apply. The node's disposition is `Fallback` in this case, so the
+        // resume interpreter never reads it — it is written faithfully anyway,
+        // because a payload that is present and wrong is worse than one that is
+        // present and unread.
+        (Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeActionJson action))
+            .Replace("<", "\u003c")
+            .Replace(">", "\u003e")
+            .Replace("&", "\u0026")
     | Action.Chain inner ->
         let ops = inner |> List.map encodeAction |> String.concat ","
         sprintf "{\"$type\":\"Chain\",\"ops\":[%s]}" ops

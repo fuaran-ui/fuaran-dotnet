@@ -6013,11 +6013,11 @@ empty, because an empty paint INHERITS the enclosing group's rather than clearin
 CSS ident (which is how every named colour, keyword and SVG2 paint keyword is spelled) and the named
 colour functions, so `steelblue` and `currentColor` are unaffected; the CSS rule is a character
 denylist, so `var(…)`, `clamp(…)` and `color-mix(…)` all pass. What is refused is a value that could
-close its own declaration or fetch. FUARAN143 / FUARAN145 name either case pre-emit.
+close its own declaration or fetch. FUARAN148 / FUARAN145 name either case pre-emit.
 
 ### The new advisory codes
 
-`FUARAN142` unsafe URL scheme · `FUARAN143` a CSS value that leaves its declaration · `FUARAN144` a
+`FUARAN147` unsafe URL scheme · `FUARAN148` a CSS value that leaves its declaration · `FUARAN144` a
 safe but malformed track-list (the value renders and the BROWSER discards it, so only a shape check
 catches it) · `FUARAN145` a paint outside the colour grammar · `FUARAN146` an anchor token outside
 the closed sets. All Warning, all judged only under a `Binding.Static` — a bound value resolves at
@@ -6238,3 +6238,162 @@ the `PreEmitValidate` rule this phase's M-B1 task proposed are NOT here: a
 count-like bound at `Skeleton.rows` contradicts the shipped §7.1 conformance test
 that every 32-bit integer decodes at an integer slot, so it is a specification
 amendment rather than a host-side refusal. See the phase's outcome.
+
+---
+
+## Recorded change — 0.78.0, `Node.Visible` and the predicate `SwitchCase` (fuaran#1535)
+
+**One record widening and one field narrowed to `option`, riding the standing 0.78.0 draft — this
+change did not move the number, and the distinction matters.** The entry was authored against a
+then-standing *untagged* 0.77.0 draft, on the draft-slot rule that a change of no higher class than
+the draft already carries RIDES it. **`v0.77.0` was tagged while this phase was in flight**, and a
+separate commit (`6f290c0`, "advance the draft to 0.78.0 — v0.77.0 is tagged") moved the draft for
+that reason rather than for this one: a released slot is some consumer's contract, so a change
+costing them source edits cannot be repacked into it. This phase then rides 0.78.0 rather than
+bumping again, which is the "ride their bump with a note" half of the same rule — two phases moving
+the counter for one release would tell a consumer there were two prices to pay.
+
+Both classes here are pre-1.0 MINOR by the [Semver](#semver) section's own definitions: `FS0764` for
+a full-literal constructor, and a narrowed field type. 0.78.0 already carries changes of that class,
+so nothing here is a higher class than the slot it rides. `v0.77.0` is the newest tag.
+
+**What changed on the types.**
+
+- `Node<'Msg>` gains `Visible: Binding<bool> option` — `FS0764` for anyone constructing a node by
+  full literal. The `Fuaran.*` smart constructors, `Defaults`, the C# `FuaranNode` handle and the VB
+  translator all fill it, so authoring through any of those is unaffected.
+- `SwitchCase<'Msg>.Match` narrows from `string` to `string option`, and the record gains
+  `When: Binding<bool> option`. This is the Phase 818 `SetState` shape exactly — `value` became
+  optional in the same change that added `valueFrom`, and for the same reason: the two are siblings
+  in one slot, so "exactly one" is a policy the decoder and the validator state rather than something
+  a record can express.
+
+**The wire is ADDITIVE, and that is checkable rather than asserted.** `visible` and `when` are
+omitted when absent, and the corpus diff for this change contains only new files plus
+`manifest.json` / `schema.json` / `idl.json` / `WIRE_FORMAT.md` / `validator/defect-vocabulary.json`
+— every pre-1535 fixture byte is unchanged, `switch-1.json` / `switch-carousel-1.json` /
+`switch-on-selection.json` included.
+
+**Two RENDERING changes that are wire-neutral, and are the point of the phase.** `Switch.on` and
+`Accessibility.hidden` now resolve through the SCALAR path (`resolveScalarText` /
+`resolveScalarBool`) rather than the generic `tryResolve`. The generic arm evaluates a
+`Binding.Transform` to a `Row seq` and `unbox`es it at the slot type — which threw on .NET and
+silently produced the rows array under Fable — so the one wire spelling of "count > 3 ⇒ `busy`"
+rendered `Default`, and a computed `hidden` never hid. **A document that worked before works
+identically**: every other binding case resolves exactly as it did, and only the shape that could not
+work at all changes behaviour.
+
+**`Node.Visible` is REMOVAL, not concealment**, and it is deliberately not `accessibility.hidden`. A
+resolved `false` emits no element, no placeholder, no `aria-hidden`, nothing in the layout and nothing
+in the accessibility tree; `hidden` remains `aria-hidden` over a node that IS drawn and DOES occupy
+space. Absent, unresolved and errored predicates all RENDER — a missing source silently hiding content
+is the one failure a reader cannot see, cannot report and cannot work around. `WIRE_FORMAT.md` §3.1
+carries the side-by-side table and the one-line rule for which to emit.
+
+**A consequence worth reading before adopting the slot.** `visible` is an ordinary `Binding<bool>` and
+follows the shared `Binding.State` rule unchanged: a default-less `State` binding on a key nothing has
+written resolves to the slot default, which at `bool` is `false` — so it HIDES. That is the same rule
+`Modal.Open` and `Disclosure.Open` already follow, and carving `visible` out of it would have made one
+slot the exception to a position-independent rule (the 2026-08-25 accessibility-trait ruling's
+reasoning, applied). The spelling for "visible unless something says otherwise" is therefore an
+explicit `Some true`, and the new **FUARAN148** (Warning) reports the omission.
+
+**Three new validator surfaces**, all reached through the existing `PreEmitDefect` union, so a
+consumer matching exhaustively over it gains three cases:
+
+- **FUARAN147** (Error) — `SwitchCaseSelectorShape`: a case carrying both `match` and `when`, or
+  neither. The pre-emit twin of the decoder's own refusal, which a tree authored in F# never meets.
+- **FUARAN148** (Warning) — `VisibleStateNoWriter`: the silent hide described above. Stands down
+  under a declared default, under a writer anywhere in the tree, and under any opaque writer, exactly
+  as FUARAN103 and FUARAN105 do.
+- **FUARAN082** narrows to the `match` cases: two predicate cases are not duplicates of each other.
+
+**Two existing rules changed their answer, both narrowing.** FUARAN103 no longer reports a switch
+whose cases are ALL predicates — such a switch never consults its selector, so "one branch renders
+forever" is false there; it still fires on a mixed switch, which does. FUARAN069's inert-control walk
+is unaffected by `visible` and a test now pins that: deciding whether a control appears is not an
+affordance that makes it live.
+
+**Consumer-visible beyond the types.** `BindingResolver` gains `nodeVisibility`, `isNodeVisible` and
+`selectSwitchCase` — the three rules stated once, so the two reference renderers cannot drift on
+them. `Fuaran.UI.CSharp.FuaranNode.WithVisible` joins `WithTooltip` / `WithDirection` on the same
+decoration-on-a-built-node terms, the C# `SwitchCase` record gains `When` (and its `Match` is no
+longer `required`), and the VB XML dialect admits `visible` as its third universal node-trait
+attribute beside `tooltip` and `direction`.
+
+**What did NOT change.** No `NodeKind` is added, merged or retired, so the vocabulary charter's
+admission gates do not arise. `accessibility.hidden` keeps its meaning exactly. The timed carousel
+(`autoAdvanceMs`) still rotates the `match` values only — advancing writes a string into the switch's
+own selector key, which a predicate case does not consult — so a when-only switch does not advance,
+which is what FUARAN128 already reports as "a declared interval with nothing for a tick to do".
+---
+
+## Recorded change — 0.78.0, `Action.Confirm` and `Action.Focus` (fuaran#1537)
+
+**Two cases on the closed public `Action<'Msg>` union: source-breaking at every exhaustive `match`
+(`FS0025`), wire-additive, and it RIDES the standing 0.78.0 draft rather than advancing it.**
+
+**The version reasoning, on the draft-slot rule — and the draft moved under this phase.** It was
+authored against the then-standing 0.77.0 draft; `v0.77.0` was tagged while it was in flight, a
+separate commit advanced the draft to 0.78.0, and fuaran#1535 then rode that. The destination is
+0.78.0 either way, and the heading says the slot it shipped in rather than the one it was written
+against — the `ApplyErrorCode.LimitExceeded` entry's convention.
+
+It RIDES rather than advancing again. 0.78.0 is untagged and pinned by no public-path consumer, so
+it is a draft slot, and it already carries breaking-class entries — an `FS0764` record widening and
+a field narrowed to `option`. A DU case addition is that same class rather than a higher one: both
+say to a consumer *adopting this slot costs source edits*. A `v0.79.0` would tell a consumer already
+paying 0.78.0's price that there is a second, separate one. `Directory.Build.props` is not touched.
+
+**What breaks, and where.** Any exhaustive `match` over `Action<'Msg>` in consumer code stops
+compiling with `FS0025` until the two arms are added. That is the whole of the source break — no
+existing case changes arity, no record gains a field, and no member is removed. In this repo the
+compiler named eleven such sites and each was classified rather than wildcarded, which is the point
+of leaving those matches exhaustive.
+
+**The wire does not move.** Both are new `$type` discriminators, so every document written before
+this release encodes and decodes byte-identically; the emit diff is five new fixture files and the
+four generated artefacts, with every pre-1537 fixture unchanged.
+
+**`Action.Confirm of prompt: TextSource * onConfirm: Action<'Msg> * onCancel: Action<'Msg> option`**
+— the SECOND recursive case on this union after `Chain`, and the first that recurses into named
+members rather than a list. `onCancel` is omitted from the wire when absent, and an absent cancel
+branch means *nothing happens*: a host must not substitute one. Confirmation is **bounded at depth
+one** — a `Confirm` reachable from either continuation, through a `Chain` included, is refused at
+decode (`WRONG_TYPE`). The JSON Schema deliberately does not carry that bound; the decoder is the
+authority, recorded in `SchemaConformanceTests.schemaInexpressibleRejects` with its reason.
+
+**`Action.Focus of nodeId: string`** — the `Action` counterpart of `ClientEffect.Focus`, which the
+server-driven tier has carried since Phase 152 with nothing on the wire able to reach it. A bare
+string and never a `TextSource`: it addresses a node in this document, which the author wrote.
+
+**`Runtime.ActionDescriptor` gains `Confirm of prompt: string` and `Focus of nodeId: string`** — the
+same `FS0025` class, on a union a host implementing `CanDispatch` may switch over. `Confirm` carries
+the RESOLVED prompt, deliberately unlike `WriteToClipboard`'s withheld payload: a prompt is a
+question the author wrote and is about to be shown on screen, so a gate logging its descriptor logs
+something already on display, and carrying it is what makes a per-question policy expressible.
+
+**`ServerDriven.ClientEffect` gains `Confirm of prompt: string * token: string`**, and the
+continuations are deliberately NOT in it: the shim is told what to ask and nothing about what a yes
+will do. The answer returns as the originating event re-delivered with `confirmToken` /
+`confirmAccepted`, is re-validated in full, and the continuation then meets its OWN dispatch gate. No
+new event name is admitted, so `Validation.legitimateEvents` is unchanged.
+
+**`StructuralQuery.Act` gains `Confirm of prompt: string` and `Focus of nodeId: string`** — same
+class again. A `Confirm`'s continuations are CARRIED by the query walk, so a search for "does this
+button navigate" answers yes for a button that navigates on the reader's confirmation.
+
+**One dispatch path, gated twice.** `Confirm` itself is gated; on acceptance the continuation
+re-enters the ordinary dispatch entry, so a `Navigate` inside it meets its own egress check and its
+own descriptor. A host that allows dialogues and denies navigation accepts the confirm and still
+refuses the navigate — pinned by test, and falsified against a deliberately broken driver before it
+was believed.
+
+**What this does NOT claim.** A confirmation is a courtesy to the reader, never an authorisation: the
+answer comes from the client, and a hostile client answers yes without asking anyone. `Focus` claims
+nothing about scrolling and nothing about selection. `docs/security/ESCAPE-HATCHES.md` Hatch 1
+carries both entries in the three-part form.
+
+**What did NOT change.** `IFuaranRuntime` gains no member — `window.confirm()` and `.focus()` are the
+browser's own, on the `Print` / `CommitLocal` precedent — so direct implementers are unaffected.
+`DriverServices` gains no field. No existing fixture's bytes move.

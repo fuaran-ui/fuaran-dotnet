@@ -16,6 +16,7 @@
  *   DomPatch.kind ∈ SetAttr | RemoveAttr | SetText | ReplaceFragment |
  *                   InsertFragment | RemoveNode | ReorderChildren | MoveNode
  *   ClientEffect.kind ∈ WriteToClipboard | Navigate | PushState | Focus | Download | ReadFileBody
+ *                     | Print | Confirm
  *
  * Transport is isolated behind a tiny adapter — `connect(onFrame, onState)` +
  * `send(event)`, the client mirror of `IFuaranLiveChannel`. The default adapter
@@ -192,6 +193,12 @@
   }
 
   // ── ClientEffect performer ──────────────────────────────────────────────
+  //
+  // Phase 1537 — the last event this shim dispatched, so a `Confirm` answer can
+  // re-deliver it. See the `Confirm` case for why that is the correlation and
+  // what a different transport owes instead.
+  var lastDispatch = null;
+
   function performEffect(fx, send) {
     switch (fx.kind) {
       case "WriteToClipboard":
@@ -216,6 +223,35 @@
         if (global.history && history.pushState) history.pushState({ fuaranRoute: fx.route }, "", fx.route);
         break;
       case "Focus": { var e = byId(fx.nodeId); if (e) e.focus(); break; }
+      case "Confirm": {
+        // Phase 1537 — ask, and send the ANSWER back. What this instruction
+        // does NOT carry is the point: the server told us what to ask and
+        // nothing about what a yes will do, so there is nothing here to
+        // perform. We answer; the server decides what the answer means, under
+        // the same dispatch gate it applies to every other action.
+        //
+        // The answer rides the ORIGINATING event, re-delivered with two extra
+        // payload members. That is why no new event name is admitted anywhere:
+        // the server re-validates it exactly as it validated the first
+        // delivery, and re-resolves the same action from its own tree.
+        //
+        // `lastDispatch` is the event that produced this frame. Effects arrive
+        // in the frame answering the dispatch that raised them, and this shim
+        // marks an element pending for the duration of its turn, so the most
+        // recent dispatch is the originating one. A transport with a different
+        // concurrency model must correlate the frame to its request rather
+        // than assume this.
+        var origin = lastDispatch;
+        if (!origin) break;
+        var accepted = global.confirm ? global.confirm(fx.prompt) : false;
+        var answerPayload = {};
+        for (var k in origin.payload) if (Object.prototype.hasOwnProperty.call(origin.payload, k))
+          answerPayload[k] = origin.payload[k];
+        answerPayload.confirmToken = fx.token;
+        answerPayload.confirmAccepted = accepted;
+        send({ nodeId: origin.nodeId, event: origin.event, payload: answerPayload });
+        break;
+      }
       case "Download": {
         var a = document.createElement("a");
         a.href = fx.url; a.download = fx.name || "";
@@ -312,10 +348,15 @@
     function dispatch(el, type, target) {
       markPending(el); // QW1
       if (type === "click" && el.hasAttribute(OPTIMISTIC)) el.setAttribute(OPTIMISTIC_ACTIVE, ""); // QW4
-      var ack = send({
+      lastDispatch = {
         nodeId: el.getAttribute(ATTR),
         event: type,
-        payload: payloadFor(el, target, type),
+        payload: payloadFor(el, target, type)
+      };
+      var ack = send({
+        nodeId: lastDispatch.nodeId,
+        event: lastDispatch.event,
+        payload: lastDispatch.payload,
         lastSeq: getSeq()
       });
       // Clear THIS element's pending mark when the server acknowledges the

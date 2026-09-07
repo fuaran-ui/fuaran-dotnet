@@ -43,6 +43,7 @@ let private sparkline (series: float list option) : Node<obj> =
       Accessibility = Option.None
       ExtraAttributes = Option.None
       Tooltip = Option.None
+      Visible = None
       Motion = Option.None
       State = Option.None
       Style = Option.None }

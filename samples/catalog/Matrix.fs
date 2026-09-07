@@ -131,7 +131,8 @@ let private demoBadge (tone, weight, emphasis) : Node<unit> =
       Accessibility = Defaults.Accessibility.none
       Motion = Defaults.Motion.none
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 let private demoHeading (tone, weight, emphasis) : Node<unit> =
     Fuaran.heading
@@ -186,7 +187,8 @@ let private demoSparkline (tone, weight, emphasis) : Node<unit> =
       Accessibility = Defaults.Accessibility.none
       Motion = Defaults.Motion.none
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 let private demoSkeleton (tone, weight, emphasis) : Node<unit> =
     Fuaran.skeleton (idFor "skeleton" tone weight emphasis) 3
@@ -608,7 +610,8 @@ let private demoCustom (tone, weight, emphasis) : Node<unit> =
       Accessibility = Defaults.Accessibility.none
       Motion = Defaults.Motion.none
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 // ─── Public entries ───────────────────────────────────────────────────────
 

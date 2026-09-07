@@ -164,7 +164,10 @@ let private fixtures: Fixture list =
               "sw"
               { Defaults.switch<obj> with
                   On = Binding.State("view", None)
-                  Cases = [ { Match = "details"; Child = leaf "d" } ]
+                  Cases =
+                      [ { Match = Some "details"
+                          When = None
+                          Child = leaf "d" } ]
                   Default =
                       Fuaran.heading
                           "sw-def"
