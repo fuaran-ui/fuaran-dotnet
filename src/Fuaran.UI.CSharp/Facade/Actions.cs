@@ -223,6 +223,75 @@ public sealed class FuaranAction
     public static FuaranAction Navigate(string route) =>
         new(FsAction.NewNavigate(Text.Literal(route).Inner, FsGen.NavigateTarget.Self));
 
+    // Phase 1532 — the rest of the wire-representable vocabulary. Phase 1153 opened
+    // this surface with `Notify` / `Call` / `Print`; everything below was still
+    // unauthorable from C# (and so from the VB dialect, which translates through
+    // here), which left the veneer unable to write a reactive slot, commit a form
+    // field, reach a registered capability, read an uploaded file, or raise a tool
+    // call — the whole of the language's declarative host vocabulary bar the pieces
+    // 1153 admitted. Each is wire-representable in full, which is the boundary this
+    // facade is drawn on.
+
+    /// <summary>
+    /// Write <paramref name="value"/> to the reactive
+    /// <c>$state.<paramref name="key"/></c> slot. Every <c>Binding.State(key)</c>
+    /// reader re-renders.
+    /// </summary>
+    public static FuaranAction SetState(string key, Payload value) =>
+        new(FsAction.NewSetState(key, Fs.Some(value.Inner), Fs.None<FsGen.Binding<FsJVal>>()));
+
+    /// <summary>
+    /// Write the value a BINDING resolves to at dispatch time into
+    /// <c>$state.<paramref name="key"/></c> (Phase 818) — "copy what that other slot
+    /// holds into this one", with no literal to keep in step.
+    /// </summary>
+    /// <remarks>
+    /// The wire enforces <c>value</c> XOR <c>valueFrom</c>: an action carries a
+    /// literal or a source, never both, so there is never a question of which won.
+    /// </remarks>
+    public static FuaranAction SetStateFrom(string key, Binding<Payload> valueFrom) =>
+        new(FsAction.NewSetState(
+            key,
+            Fs.None<FsJVal>(),
+            Fs.Some(Fs.MapBinding(valueFrom.Inner, (Payload p) => p.Inner))));
+
+    /// <summary>
+    /// Commit the LOCAL buffer of the field on node <paramref name="nodeId"/> — the
+    /// explicit counterpart of <see cref="LocalFlush.OnCommitAction"/>.
+    /// </summary>
+    public static FuaranAction CommitLocal(string nodeId) =>
+        new(FsAction.NewCommitLocal(nodeId));
+
+    /// <summary>
+    /// Dispatch a host-registered CAPABILITY (Phase 283) for its effect.
+    /// <see cref="Binding.Invoke{T}"/> is the twin that dispatches one for a VALUE.
+    /// </summary>
+    public static FuaranAction Invoke(string capabilityId, params (string Addr, string Value)[] args) =>
+        new(FsAction.NewInvoke(capabilityId, Fs.List(args.Select(a => new FsGen.InvokeArg(a.Addr, a.Value)))));
+
+    /// <summary>
+    /// Read the body of an uploaded file, in the given <paramref name="encoding"/>.
+    /// </summary>
+    /// <remarks>
+    /// The F# tier's <c>onRead</c> callback is absent here for the same reason
+    /// <c>Dispatch</c> is: it is a host closure with no wire projection. The
+    /// closure-free form is what the wire carries, and a host binds its handler to
+    /// the artifact's declared action hole.
+    /// </remarks>
+    public static FuaranAction ReadFileBody(string fileRef, FileEncoding encoding) =>
+        new(FsAction.NewReadFileBody(
+            fileRef,
+            Fs.None<object>(),
+            encoding.ToFs(),
+            Fs.None<Microsoft.FSharp.Core.FSharpFunc<string, object>>()));
+
+    /// <summary>
+    /// Raise a named AI tool call with a JSON argument payload — the language's own
+    /// hole for "ask the model to do this", carried as data like every other action.
+    /// </summary>
+    public static FuaranAction AiTool(string toolName, Payload args) =>
+        new(FsAction.NewAiTool(toolName, args.Inner));
+
     /// <summary>Raise several actions in order.</summary>
     public static FuaranAction Chain(params FuaranAction[] actions) =>
         new(FsAction.NewChain(Fs.List(actions.Select(a => a.Inner))));

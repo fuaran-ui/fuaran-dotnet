@@ -590,3 +590,108 @@ internal static class EnumMap
             _ => FsGen.HeadingVariant.Standard,
         };
 }
+
+// ── Phase 1532 ────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// The grain a <see cref="Binding.Now"/> instant is truncated to before any slot
+/// reads it (Phase 1533) — maps to the F# <c>TimeGrain</c>.
+/// </summary>
+/// <remarks>
+/// Truncation happens BEFORE the projection, not after: the grain is the
+/// document's declaration about the instant, so it has to be upstream of every
+/// reading of it.
+/// </remarks>
+public enum TimeGrain
+{
+    /// <summary>Whole seconds — the identity, and what an omitted grain means.</summary>
+    Second,
+
+    /// <summary>Whole minutes.</summary>
+    Minute,
+
+    /// <summary>Whole hours.</summary>
+    Hour,
+
+    /// <summary>Whole days.</summary>
+    Day,
+}
+
+/// <summary>
+/// The unit a <see cref="LocaleFormat.Duration"/> / <see cref="CellFormat.Duration"/>
+/// source counts (Phase 819) — maps to the F# <c>DurationUnit</c>.
+/// </summary>
+public enum DurationUnit
+{
+    Seconds,
+    Minutes,
+    Hours,
+}
+
+/// <summary>
+/// How a duration renders (Phase 819) — maps to the F# <c>DurationStyle</c>.
+/// </summary>
+public enum DurationStyle
+{
+    /// <summary>"1h 23m".</summary>
+    Compact,
+
+    /// <summary>"1:23:45".</summary>
+    Clock,
+
+    /// <summary>"1 hour 23 minutes".</summary>
+    Long,
+}
+
+/// <summary>
+/// How a <see cref="FuaranAction.ReadFileBody"/> hands the file's bytes back —
+/// maps to the F# <c>FileReadEncoding</c>.
+/// </summary>
+public enum FileEncoding
+{
+    /// <summary>Decoded text.</summary>
+    Text,
+
+    /// <summary>Base64 of the raw bytes.</summary>
+    Base64,
+
+    /// <summary>A <c>data:</c> URL carrying the bytes and their media type.</summary>
+    DataUrl,
+}
+
+/// <summary>The Phase 1532 vocabulary mappings.</summary>
+public static class VocabularyMap1532
+{
+    internal static FsGen.TimeGrain ToFs(this TimeGrain g) =>
+        g switch
+        {
+            TimeGrain.Minute => FsGen.TimeGrain.Minute,
+            TimeGrain.Hour => FsGen.TimeGrain.Hour,
+            TimeGrain.Day => FsGen.TimeGrain.Day,
+            _ => FsGen.TimeGrain.Second,
+        };
+
+    internal static FsGen.DurationUnit ToFs(this DurationUnit u) =>
+        u switch
+        {
+            DurationUnit.Minutes => FsGen.DurationUnit.Minutes,
+            DurationUnit.Hours => FsGen.DurationUnit.Hours,
+            _ => FsGen.DurationUnit.Seconds,
+        };
+
+    internal static FsGen.DurationStyle ToFs(this DurationStyle s) =>
+        s switch
+        {
+            DurationStyle.Clock => FsGen.DurationStyle.Clock,
+            DurationStyle.Long => FsGen.DurationStyle.Long,
+            _ => FsGen.DurationStyle.Compact,
+        };
+
+    internal static FsGen.FileReadEncoding ToFs(this FileEncoding e) =>
+        e switch
+        {
+            FileEncoding.Base64 => FsGen.FileReadEncoding.Base64,
+            FileEncoding.DataUrl => FsGen.FileReadEncoding.DataUrl,
+            _ => FsGen.FileReadEncoding.Text,
+        };
+}

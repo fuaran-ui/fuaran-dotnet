@@ -36,4 +36,19 @@ public readonly struct CellFormat
     /// <summary>A date formatted with the given .NET/Intl-style format string.</summary>
     public static CellFormat Date(string format) =>
         new(FsGen.CellFormat.NewDate(format));
+
+    /// <summary>
+    /// A trendable DURATION cell (Phase 819) — the raw value counts
+    /// <paramref name="unit"/>s, rendered per <paramref name="style"/>.
+    /// </summary>
+    public static CellFormat Duration(DurationUnit unit, DurationStyle style) =>
+        new(FsGen.CellFormat.NewDuration(unit.ToFs(), style.ToFs()));
+
+    /// <summary>
+    /// A relative time (Phase 819) — the raw value is a signed count of
+    /// <paramref name="unit"/>s. The cell-vocabulary twin of
+    /// <see cref="LocaleFormat.RelativeTime"/>.
+    /// </summary>
+    public static CellFormat RelativeTime(RelativeTimeUnit unit) =>
+        new(FsGen.CellFormat.NewRelativeTime(unit.ToFs()));
 }
