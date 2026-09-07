@@ -2491,8 +2491,17 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
 // verbs' outputs are exactly the names they list.
 //
 // FSharp.Core-only and Fable-clean, like everything else in this file.
+
+/// `SchemaWalk.noSources` — the walk's own "no named source declared" lookup —
+/// became `internal` in `Fuaran.Core.DataFrame` 0.19.0's surface narrowing,
+/// which measured no caller outside the defining package and did not see this
+/// one. `SchemaWalk.ofMap Map.empty` is the public spelling of exactly that
+/// function: every name misses, so a `Ref` opens the walk, which is the
+/// behaviour the block above describes and relies on.
+let private noSources = SchemaWalk.ofMap Map.empty
+
 let private producedSchema (source: DataSource) (pipeline: Transform list) : SchemaKnowledge =
-    SchemaWalk.ofPipelineFrom SchemaWalk.noSources (SchemaWalk.ofSource SchemaWalk.noSources source) pipeline
+    SchemaWalk.ofPipelineFrom noSources (SchemaWalk.ofSource noSources source) pipeline
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
