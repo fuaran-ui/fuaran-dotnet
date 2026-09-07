@@ -1606,8 +1606,10 @@ let private defs: (string * J) list =
             "source", binding "hosted"
             "xField", str
             "yFields", arrayOf str
-            // `stacked` (Phase 126) is now carried; optional in the schema to
-            // match the decoder's tolerance of legacy wire that omits it.
+            // `stacked` (Phase 126) is carried; optional in the schema because
+            // the IDL declares it `omitDefault false` (Phase 1585) — absence IS
+            // the contract, so a `required` entry here would refuse documents
+            // the estate's encoders now deliberately write.
             "stacked", boolean
             "title", ref "TextSource"
             // `valueFormat` (Phase 876) — the value axis's number format,

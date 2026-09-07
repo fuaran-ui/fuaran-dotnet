@@ -6730,3 +6730,56 @@ already carries breaking-class entries. A `required` list SHRINKING is a relaxat
 previously valid document stays valid — and the one narrowing beside it refuses only documents no
 decoder ever accepted, so neither is a higher class than the draft already carries. `v0.77.0` is the
 newest tag.
+
+## Recorded change — 0.78.0, `Chart.stacked` becomes omit-at-default (fuaran#1585)
+
+**A WIRE-VISIBLE serialisation relaxation plus one SOURCE-BREAKING generated smart constructor, and
+it RIDES the standing 0.78.0 draft rather than advancing it.**
+
+**What changed.** The IDL declared `Chart.stacked` `required`, so the encoder always emitted it — but
+no decoder in the estate required it: the F# hand decoder read absence as `false` (recorded as
+tolerance of "legacy wire predating the field", Phase 126), and the TypeScript, Python, Rust and Go
+hosts did the same. The one reader that followed the declaration literally — the IDL-generated
+structural decoder, `dReq "stacked"` — refused what every other reader accepted, and the published
+schema had to leave the member out of `required` to avoid refusing documents the hosts accept, which
+made the two artefacts disagree about the same field. The IDL now declares it
+`omitDefault (VBool false)`: the generated encoder omits `stacked` when it is `false`, the generated
+decoder restores `false` on absence (`dDef`), the schema is optional by construction, and
+`WIRE_FORMAT.md` states the rule in §3.6's generated identity-default table and in §10.1.
+
+**What a consumer pays.**
+
+- **Documents.** Every document a new encoder writes is read identically by every shipped reader,
+  because absence already decoded to `false` everywhere. A document carrying an explicit
+  `"stacked": false` remains valid and decodes unchanged — it is now a §3.6 lenient normalisation
+  case, re-encoding to the omitted form. Ten node fixtures and one lenient expectation in the
+  conformance corpus lost the member; nothing else in the corpus moved.
+- **Source.** `mkChart`, the generated smart constructor, loses its `stacked` parameter — an
+  omit-at-default field is not a constructor parameter, it takes its identity default — so a call
+  site passing it stops compiling and drops the argument. This repo had no call site. The
+  `ChartSpec.Stacked` record field itself is unchanged: still a plain `bool`, still required in a
+  full-literal construction, still readable and settable.
+- **Renderers and lowering.** Nothing. `ChartSpec.Stacked` reaches the lowering and the adapters
+  exactly as before, and the `chart-lowering/*` goldens are a different artefact family with its own
+  hand-built input encoding — none of them moved.
+- **Chart provenance stamps (Phase 643) — the one genuine compatibility event.** A chart's `specHash`
+  is `sha256` over the canonical wire bytes of its `ChartSpec`, so a chart with `Stacked = false`
+  now stamps a different digest: the bytes are one member shorter. A stamp emitted before this
+  change still re-derives against the bytes that produced it, but it no longer equals a re-encode
+  from this tier, so an artefact archived earlier and re-stamped now will not compare equal. The
+  pinned digest in `ChartProvenanceTests` moved with the change and says at its site that 1585 is
+  why. Nothing about verifying an OLD artefact against its OWN recorded bytes changed.
+
+**`Tabs.activeIndex` did NOT follow, and the reason is the value model rather than the posture.**
+Its identity default is `Binding.Static (Some 0)` — a union case carrying a payload — and the
+generated codec renders a union default only for a payload-free case. Declaring it is refused
+outright, and the near miss is worse than the refusal: a default the generator cannot render
+degrades silently to always-emit and require-on-decode, so the declaration would state a rule the
+code generated from it does not follow. The member therefore stays required of the encoder and
+tolerated on absence by every decoder, said plainly in `WIRE_FORMAT.md` §10.1, and it is what
+remains of the schema-optionality guard's named residue — the other half of which this change
+retired rather than re-explained.
+
+**Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and it
+already carries breaking-class entries, so a source-breaking constructor arity is not a higher class
+than the draft already holds. `v0.77.0` is the newest tag.

@@ -446,22 +446,35 @@ let private render (fs: Finding list) (pick: Finding -> string list) =
 /// Named, never counted — a site MOVING onto or off this list is the
 /// interesting event (the `schemaInexpressibleRejects` posture).
 ///
-/// Both entries are the same case, and it is a case where the two artefacts
-/// answer different questions rather than one of them being wrong. `required`
-/// in the IDL says the ENCODER always emits the field and the F# slot is not an
-/// `option`; `required` in the schema says a document LACKING it is invalid.
-/// For these two the decoder deliberately reads absence — `Chart.stacked`
-/// defaults to `false` for wire that predates Phase 126's field, and
-/// `Tabs.activeIndex` to `Binding.Static (Some 0)` — so requiring them here
-/// would make the published schema refuse documents every conformant host
-/// accepts. Saying LESS than the decoder is admissible; saying something
-/// DIFFERENT is the one thing this artefact must not do.
+/// The entry is a case where the two artefacts answer different questions
+/// rather than one of them being wrong. `required` in the IDL says the ENCODER
+/// always emits the field and the F# slot is not an `option`; `required` in the
+/// schema says a document LACKING it is invalid. The decoder here deliberately
+/// reads absence — `Tabs.activeIndex` restores `Binding.Static (Some 0)` — so
+/// requiring it would make the published schema refuse documents every
+/// conformant host accepts. Saying LESS than the decoder is admissible; saying
+/// something DIFFERENT is the one thing this artefact must not do.
 ///
-/// Pinned INVERSELY below: if either slot's decoder stops tolerating absence
-/// (or `SchemaGen` starts requiring it), this test fails and the entry goes,
-/// rather than the exemption outliving its reason.
+/// **`Chart.stacked` left this residue in Phase 1585** — the right resolution
+/// for a divergence of this shape is not a longer exemption list but a change
+/// of posture, so the IDL now declares it `omitDefault false`, the encoder omits
+/// it at the default, the generated decoder restores it, and the divergence is
+/// gone rather than named. `Tabs.activeIndex` could not follow in the same pass
+/// for a reason that is about the VALUE MODEL and not the posture: its identity
+/// default is `Binding.Static (Some 0)`, a union case carrying a field, and the
+/// codegen renders a union default only when the case is nullary — the
+/// declaration is refused outright (`UnsupportedDefault`), and a default the
+/// generator cannot render silently degrades to always-emit-and-require, which
+/// would be a declaration contradicting the code generated from it. So this
+/// entry stays NAMED here until a value-carrying union literal exists to render
+/// it, which is a better state than a half-declared posture.
+///
+/// Pinned INVERSELY below: if the slot's decoder stops tolerating absence (or
+/// `SchemaGen` starts requiring it), this test fails and the entry goes, rather
+/// than the exemption outliving its reason — which is exactly how `stacked`
+/// left.
 let private decoderTolerantOfAbsence: Set<string * string> =
-    set [ "kind Chart", "stacked"; "kind Tabs", "activeIndex" ]
+    set [ "kind Tabs", "activeIndex" ]
 
 /// Records `idl.json` declares but no IDL field type references, so the walk
 /// cannot reach whatever the schema says about them. Both are reached in the

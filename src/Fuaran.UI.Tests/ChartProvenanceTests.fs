@@ -94,9 +94,19 @@ let private metadataRegion (svg: string) : string option =
 // a moved `specHash` means every previously-emitted artefact's stamp no longer
 // re-derives, which is a compatibility event, not a test update.
 
+// **Moved once, deliberately, by Phase 1585** — the one moved-pin event this
+// comment anticipates, recorded rather than quietly repasted.
+// `ef42e203…d48839` was the hash while `Chart.stacked` was `required` and the
+// encoder emitted `"stacked":false` on every chart. 1585 made the member
+// omit-at-default, so the canonical bytes of a `stacked = false` spec are one
+// member shorter and the digest over them necessarily moves. Every stamp
+// emitted before 1585 therefore re-derives against the OLD bytes and not
+// against a re-encode from this tier — which is the compatibility event, stated
+// here and in `STABILITY.md`'s 0.78.0 entry. A future move without a wire change
+// behind it is still the defect this pin exists to catch.
 [<Literal>]
 let private pinnedSpecHash =
-    "sha256:ef42e203d7e34705f0fe50ed6e1c7321d1779e037a10b9f28920434b1dd48839"
+    "sha256:eccf212d667b9e8a47a8a0b7811ba53f4ba40db7d48488304146f4c35e29841a"
 
 [<Literal>]
 let private pinnedDataFingerprint =

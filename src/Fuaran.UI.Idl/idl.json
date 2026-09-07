@@ -707,7 +707,11 @@
         {
           "name": "stacked",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
           },
           "type": {
             "$type": "bool"

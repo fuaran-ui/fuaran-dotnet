@@ -7932,8 +7932,10 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
                     traverseIndexed (fun i item -> decodeChartAnnotation (sprintf "%s.annotations[%d]" path i) item) xs
                     |> Result.map Some
 
-        // `stacked` (Phase 126): now carried on the wire. Absent (legacy wire
-        // predating the field) decodes to the default `false`.
+        // `stacked` (Phase 126, restated Phase 1585): OMIT-AT-DEFAULT. The IDL
+        // declares it `omitDefault false`, so the encoder emits it only when it
+        // is `true` and absence means `false` BY CONTRACT — not, as this note
+        // read until 1585, by tolerance of legacy wire predating the field.
         let stackedR: Result<bool, DecodeError> =
             match tryField fields "stacked" with
             | None -> Ok false
