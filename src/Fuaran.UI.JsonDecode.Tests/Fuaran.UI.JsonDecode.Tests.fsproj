@@ -68,6 +68,14 @@
          share a `$def` with the scalar slots that do not. Pinned INVERSELY in
          both directions; reads no corpus fixture. -->
     <Compile Include="BindingStaticPresenceTests.fs" />
+    <!-- The published schema's hand-typed `required` lists, measured against
+         idl.json's own optionality declaration. Reaches the
+         INLINE object schemas at their use sites (eight IDL records have no
+         `$def`), so a case's array-item record is measured too. Reads the
+         generator rather than the committed schema.json, and no corpus fixture:
+         a `required` defect is invisible to every fixture that happens to carry
+         the field. -->
+    <Compile Include="SchemaOptionalityParityTests.fs" />
     <!-- Phase 442 — the render-fidelity manifest's completeness rule (one row
          per canonical wire kind, proven to fail on a probe kind), the
          fixture-pin existence check, and the stale-artefact guard. -->

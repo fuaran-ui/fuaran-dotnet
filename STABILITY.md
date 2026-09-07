@@ -6675,3 +6675,58 @@ already carries breaking-class entries: an `FS0764` record widening, a field nar
 two cases added to the closed `Action<'Msg>` union, and a removed `DebugGlobal` member. A narrowing
 that costs a schema-validating consumer an edit to non-canonical documents is that same class rather
 than a higher one. `v0.77.0` is the newest tag.
+
+## Recorded change — 0.78.0, the published schema's `required` lists follow the IDL's optionality
+
+**A RELAXATION of the published `schema.json` at eight slots and a narrowing at one — nothing for a
+package consumer, something for a consumer that VALIDATES documents against that artefact — and it
+RIDES the standing 0.78.0 draft rather than advancing it.**
+
+**What changed.** `SchemaGen`'s `required` lists are hand-typed string lists, and nothing measured
+them against `idl.json`, the artefact that DECLARES each field's optionality. Eight slots had
+drifted: the schema REQUIRED a member the IDL declares `opt`, the F# record carries as an `option`,
+and the decoder reads with `tryField` — `Action.ReadFileBody.onRead`, `CellKindErased.Editable.onEdit`,
+`.Checkbox.onToggle`, `.Button.onClick`, `.Progress.labelFn`, `ButtonGroupItem.onClick` (the inline
+item record under `ButtonGroup.buttons`), `FileUpload.onSelect` and `Mount.onBubble`. Each leaves
+`required`; each stays in `properties`. In the other direction, `InvokeArg` — the `{addr, value}`
+pair inside a `Binding.Invoke` / `Action.Invoke` `args` array — was published as a bare
+`{"type":"object"}` that neither required nor typed either member, where the IDL declares both
+`required`, the encoder emits both as strings and the decoder reads both with `requireField` +
+`requireString`. It is now the record it always was.
+
+**Nothing about the wire moved.** No encoder, decoder, validator or public F# member changed; every
+fixture in the conformance corpus is byte-identical (the corpus emit rewrote `schema.json` and
+nothing else), and both schema-conformance legs pass unchanged.
+
+**What a consumer pays.** For a consumer of the packages, nothing at all. For a consumer that
+validates documents against the published `schema.json`, the eight relaxations cost nothing by
+construction — every document that validated before still validates, and documents that a conformant
+decoder always accepted now validate too. The `InvokeArg` narrowing is the one direction that can
+cost an edit: an `Invoke` whose `args` entry omits `addr` or `value`, or carries a non-string at
+either, no longer validates. No such document was ever decodable, so this closes a gap between the
+schema and the decoder rather than moving the contract.
+
+**The teaching surfaces moved with it**, because they are generated from that schema: the authoring
+pack drops the five optional closure slots it had been presenting as mandatory members an author
+must supply (its own pre-existing rule — a required closure slot is taught as the `"<closure>"`
+sentinel, an optional one is not an authorable slot at all), and renders `Invoke`'s args as
+`{ addr:str; value:str }[]` in place of `object[]`.
+
+**A guard now measures the two artefacts against each other**
+(`Fuaran.UI.JsonDecode.Tests/SchemaOptionalityParityTests.fs`), walking every record, union case,
+node kind, tree op and node field — resolving INLINE object schemas at their use sites, since eight
+of the IDL's records have no `$def` of their own. It states the two directions separately: an
+IDL-omittable field in `required` is a hard failure, because the schema would then refuse a document
+the decoder accepts; an IDL-required field missing from `required` leaves the schema merely WEAKER,
+which is admissible, so it carries a named residue pinned inversely. That residue is
+`Chart.stacked` and `Tabs.activeIndex` — both decode from absence by design (`false` for wire
+predating Phase 126's field, `Binding.Static (Some 0)` for the tab index), so requiring them would
+make the published artefact refuse documents every conformant host accepts. The two unreachable
+records (`RangePair`, `DateRangePair`, reached only through a `hosted` codec pair whose slots the
+schema models as the §5 any-JSON abstention) are enumerated for the same reason.
+
+**Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and it
+already carries breaking-class entries. A `required` list SHRINKING is a relaxation — every
+previously valid document stays valid — and the one narrowing beside it refuses only documents no
+decoder ever accepted, so neither is a higher class than the draft already carries. `v0.77.0` is the
+newest tag.

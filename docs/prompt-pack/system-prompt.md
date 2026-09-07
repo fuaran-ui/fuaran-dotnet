@@ -228,7 +228,7 @@ NodeKind =
 | Switch { cases:any[]; default:Node; autoAdvanceMs?:int; on?:Binding_str; stateKey?:str }
 | FragmentDecl { body:Node; name:str; effect?:EffectClass; holes?:HoleDecl[] }
 | FragmentRef { name:str; args?:{ [key]:FragmentArg } }
-| Mount { capabilities:str[]; channel:GuestChannel; onBubble:closure; scopeId:str; inputs?:{ [key]:FragmentArg } }
+| Mount { capabilities:str[]; channel:GuestChannel; scopeId:str; inputs?:{ [key]:FragmentArg } }
 LayoutKind =
 | Box { children:Node[]; layout:BoxLayout; role:"Group"|"Card"|"Dashboard"|"Separator"; breakBefore?:bool; heading?:TextSource; keepTogether?:bool }
 | SplitPanel { children:Node[]; weight:num }
@@ -264,7 +264,7 @@ InputKind =
 | Form { fields:FormField[]; onSubmit:Action; submitLabel:TextSource; disabled?:Binding_bool }
 | Filters { items:FilterSpec[] }
 | Button { label:TextSource; onClick:Action; variant:"Primary"|"Secondary"|"Tertiary"|"Destructive"; disabled?:Binding_bool; icon?:str }
-| FileUpload { accept:str[]; label:TextSource; multiple:bool; onSelect:closure; acceptPaste?:bool; capture?:"Camera"|"Microphone"; destination?:str; disabled?:Binding_bool; dropTarget?:bool }
+| FileUpload { accept:str[]; label:TextSource; multiple:bool; acceptPaste?:bool; capture?:"Camera"|"Microphone"; destination?:str; disabled?:Binding_bool; dropTarget?:bool }
 | Select { label:TextSource; source:Binding_list_SelectOption; value:Binding_str_choice; disabled?:Binding_bool; multiple?:bool; placeholder?:TextSource; values?:Binding_list_str }
 VisKind =
 | DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; exportable?:bool; keepRowsTogether?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; repeatHeader?:bool; rowKeyField?:str; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool }; transferInKey?:str; transferOutKey?:str }
@@ -292,8 +292,8 @@ Action =
 | Chain { ops:Action[] }
 | CommitLocal { nodeId:str }
 | WriteToClipboard { text:TextSource }
-| ReadFileBody { encoding:"Text"|"Base64"|"DataUrl"; fileRef:str; onRead:closure }
-| Invoke { args:object[]; capabilityId:str }
+| ReadFileBody { encoding:"Text"|"Base64"|"DataUrl"; fileRef:str }
+| Invoke { args:{ addr:str; value:str }[]; capabilityId:str }
 | Print
 | Confirm { onConfirm:Action; prompt:TextSource; onCancel?:Action }
 | Focus { nodeId:str }
@@ -310,7 +310,7 @@ Binding_bool =
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
-| Invoke { args:object[]; capabilityId:str }
+| Invoke { args:{ addr:str; value:str }[]; capabilityId:str }
 Binding_float =
 | Static { value:num }
 | Query { name:str; dependsOn?:str[] }
@@ -324,7 +324,7 @@ Binding_float =
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
-| Invoke { args:object[]; capabilityId:str }
+| Invoke { args:{ addr:str; value:str }[]; capabilityId:str }
 Binding_hosted =
 | Static { value?:any }
 | Query { name:str; dependsOn?:str[] }
@@ -338,7 +338,7 @@ Binding_hosted =
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
-| Invoke { args:object[]; capabilityId:str }
+| Invoke { args:{ addr:str; value:str }[]; capabilityId:str }
 Binding_int =
 | Static { value:int }
 | Query { name:str; dependsOn?:str[] }
@@ -352,7 +352,7 @@ Binding_int =
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
-| Invoke { args:object[]; capabilityId:str }
+| Invoke { args:{ addr:str; value:str }[]; capabilityId:str }
 Binding_json =
 | Static { value?:any }
 | Query { name:str; dependsOn?:str[] }
@@ -366,7 +366,7 @@ Binding_json =
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
-| Invoke { args:object[]; capabilityId:str }
+| Invoke { args:{ addr:str; value:str }[]; capabilityId:str }
 Binding_list_MapMarker =
 | Static { value?:MapMarker[] }
 | Query { name:str; dependsOn?:str[] }
@@ -380,7 +380,7 @@ Binding_list_MapMarker =
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
-| Invoke { args:object[]; capabilityId:str }
+| Invoke { args:{ addr:str; value:str }[]; capabilityId:str }
 Binding_list_SelectOption =
 | Static { value?:SelectOption[] }
 | Query { name:str; dependsOn?:str[] }
@@ -394,7 +394,7 @@ Binding_list_SelectOption =
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
-| Invoke { args:object[]; capabilityId:str }
+| Invoke { args:{ addr:str; value:str }[]; capabilityId:str }
 Binding_list_float =
 | Static { value?:num[] }
 | Query { name:str; dependsOn?:str[] }
@@ -408,7 +408,7 @@ Binding_list_float =
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
-| Invoke { args:object[]; capabilityId:str }
+| Invoke { args:{ addr:str; value:str }[]; capabilityId:str }
 Binding_list_str =
 | Static { value?:str[] }
 | Query { name:str; dependsOn?:str[] }
@@ -422,7 +422,7 @@ Binding_list_str =
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
-| Invoke { args:object[]; capabilityId:str }
+| Invoke { args:{ addr:str; value:str }[]; capabilityId:str }
 Binding_str =
 | Static { value:str }
 | Query { name:str; dependsOn?:str[] }
@@ -436,7 +436,7 @@ Binding_str =
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
-| Invoke { args:object[]; capabilityId:str }
+| Invoke { args:{ addr:str; value:str }[]; capabilityId:str }
 Binding_str_choice =
 | Static { value?:str }
 | Query { name:str; dependsOn?:str[] }
@@ -450,7 +450,7 @@ Binding_str_choice =
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
-| Invoke { args:object[]; capabilityId:str }
+| Invoke { args:{ addr:str; value:str }[]; capabilityId:str }
 BoxLayout =
 | Flex { direction:Orientation; wrap:bool; gap?:int }
 | Grid { cols:int; gap?:int; templateColumns?:str }
@@ -473,14 +473,14 @@ CellKindErased =
 | Text
 | Numeric
 | Date
-| Editable { onEdit:closure }
-| Checkbox { get:closure; onToggle:closure }
-| Button { label:TextSource; onClick:closure }
-| ButtonGroup { buttons:{ label:TextSource; onClick:closure }[] }
+| Editable
+| Checkbox { get:closure }
+| Button { label:TextSource }
+| ButtonGroup { buttons:{ label:TextSource }[] }
 | Link { hrefFn:closure; labelFn:closure }
 | Pill { labelFn:closure; toneFn:closure }
 | TonedPill { field:str; map:{ [key]:ToneVariant }; default?:ToneVariant }
-| Progress { fractionFn:closure; labelFn:closure }
+| Progress { fractionFn:closure }
 | Custom { fn:closure }
 ChartAnnotation =
 | ReferenceLine { value:num; label?:TextSource }

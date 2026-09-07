@@ -206,6 +206,15 @@ let private record (required: string list) (props: (string * J) list) : J =
 
     JObj fields
 
+/// The `args` array of a `Binding.Invoke` / `Action.Invoke` — `InvokeArg` in the
+/// IDL, which has no `$def` of its own and is reached only here. Both members
+/// are IDL-`required`, the encoder emits both as strings, and the decoder reads
+/// both with `requireField` + `requireString`; the slot was a bare `object_`
+/// (Phase 283), which required and typed neither. Shared by the two positions
+/// so they cannot drift from each other.
+let private invokeArgs: J =
+    arrayOf (record [ "addr"; "value" ] [ "addr", str; "value", str ])
+
 /// Phase 863 — forbid an ENUMERATED set of near-miss property names on a
 /// record, as `allOf: [{ "not": { "required": ["<name>"] } }, …]`.
 ///
@@ -425,7 +434,7 @@ let private bindingDef (self: string) (payload: StaticPayload) (elem: J) : J =
           // Invoke a host-registered compute capability (Phase 283). `capabilityId` references a
           // capability in the host registry; `args` are scalar `(addr, value)` pairs validated
           // host-side against the capability signature. The body is never on the wire.
-          duCase "Invoke" [ "args"; "capabilityId" ] [ "args", arrayOf object_; "capabilityId", str ] ]
+          duCase "Invoke" [ "args"; "capabilityId" ] [ "args", invokeArgs; "capabilityId", str ] ]
 
 /// A `$type`-discriminated branch whose spec fields are hoisted to the top level
 /// — the flat wire carries no `spec` wrapper (WIRE_FORMAT.md §3.2). The value
@@ -769,11 +778,14 @@ let private defs: (string * J) list =
             duCase "WriteToClipboard" [ "text" ] [ "text", ref "TextSource" ]
             duCase
                 "ReadFileBody"
-                [ "encoding"; "fileRef"; "onRead" ]
+                // `onRead` leaves `required` (Phase 1568): the IDL declares it
+                // `opt` and the decoder reads it with `tryField`, so a
+                // continuation-free read is a document the schema must admit.
+                [ "encoding"; "fileRef" ]
                 [ "encoding", ref "FileReadEncoding"; "fileRef", str; "onRead", closure ]
             // Invoke a host-registered compute capability as an effect (Phase 283) — same wire shape
             // as `Binding.Invoke`.
-            duCase "Invoke" [ "args"; "capabilityId" ] [ "args", arrayOf object_; "capabilityId", str ]
+            duCase "Invoke" [ "args"; "capabilityId" ] [ "args", invokeArgs; "capabilityId", str ]
             // Phase 1124 — payload-free, and the ONLY branch in this union that
             // closes the object. `additionalProperties: false` is not a
             // tightening for its own sake: it is how the schema mirrors the
@@ -976,13 +988,13 @@ let private defs: (string * J) list =
           [ duCase "Text" [] []
             duCase "Numeric" [] []
             duCase "Date" [] []
-            duCase "Editable" [ "onEdit" ] [ "onEdit", closure ]
-            duCase "Checkbox" [ "get"; "onToggle" ] [ "get", closure; "onToggle", closure ]
-            duCase "Button" [ "label"; "onClick" ] [ "label", ref "TextSource"; "onClick", closure ]
+            duCase "Editable" [] [ "onEdit", closure ]
+            duCase "Checkbox" [ "get" ] [ "get", closure; "onToggle", closure ]
+            duCase "Button" [ "label" ] [ "label", ref "TextSource"; "onClick", closure ]
             duCase
                 "ButtonGroup"
                 [ "buttons" ]
-                [ "buttons", arrayOf (record [ "label"; "onClick" ] [ "label", ref "TextSource"; "onClick", closure ]) ]
+                [ "buttons", arrayOf (record [ "label" ] [ "label", ref "TextSource"; "onClick", closure ]) ]
             duCase "Link" [ "hrefFn"; "labelFn" ] [ "hrefFn", closure; "labelFn", closure ]
             duCase "Pill" [ "labelFn"; "toneFn" ] [ "labelFn", closure; "toneFn", closure ]
             // Phase 750 — the declarative pill. `default` is omitted-when-`Default`, so
@@ -996,7 +1008,7 @@ let private defs: (string * J) list =
                 [ "default", ref "ToneVariant"
                   "field", str
                   "map", JObj [ "type", JStr "object"; "additionalProperties", ref "ToneVariant" ] ]
-            duCase "Progress" [ "fractionFn"; "labelFn" ] [ "fractionFn", closure; "labelFn", closure ]
+            duCase "Progress" [ "fractionFn" ] [ "fractionFn", closure; "labelFn", closure ]
             duCase "Custom" [ "fn" ] [ "fn", closure ] ]
 
       // ── Display specs ─────────────────────────────────────────────────────
@@ -1455,7 +1467,9 @@ let private defs: (string * J) list =
 
       "FileUploadSpec",
       record
-          [ "accept"; "label"; "multiple"; "onSelect" ]
+          // `onSelect` leaves `required` (Phase 1568) — IDL-`opt`, decoder
+          // `tryField`: a declarative upload with no host continuation is legal.
+          [ "accept"; "label"; "multiple" ]
           [ "accept", arrayOf str
             "label", ref "TextSource"
             "multiple", boolean
@@ -1948,7 +1962,9 @@ let private defs: (string * J) list =
             // `inputs` (a FragmentArg map) additive.
             duCase
                 "Mount"
-                [ "capabilities"; "channel"; "onBubble"; "scopeId" ]
+                // `onBubble` leaves `required` (Phase 1568) — IDL-`opt`, decoder
+                // `tryField`; a guest whose host declines its bubbles is legal.
+                [ "capabilities"; "channel"; "scopeId" ]
                 [ "capabilities", arrayOf str
                   "channel", ref "GuestChannel"
                   "onBubble", closure
