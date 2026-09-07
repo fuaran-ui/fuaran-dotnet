@@ -245,7 +245,7 @@ section), so omit it or emit the sentinel string `"<closure>"`.
 
 <!-- fuaran:signature-catalogue -->
 ```ts
-Node { id:str; kind:NodeKind; accessibility?:Accessibility; state?:StateBehaviour; style?:SemanticStyle; tooltip?:TextSource }
+Node { id:str; kind:NodeKind; accessibility?:Accessibility; state?:StateBehaviour; style?:SemanticStyle; tooltip?:TextSource; visible?:Binding_bool }
 NodeKind =
 | LayoutKind
 | DisplayKind
@@ -253,13 +253,13 @@ NodeKind =
 | VisKind
 | Custom { componentId:str; moduleId:str; props:{ [key]:any }; contentHash?:ContentHash; exposedNodeIds?:str[] }
 | ErrorBoundary { child:Node; fallback:Node }
-| Switch { cases:{ child:Node; match:str }[]; default:Node; autoAdvanceMs?:int; on?:Binding_str; stateKey?:str }
+| Switch { cases:any[]; default:Node; autoAdvanceMs?:int; on?:Binding_str; stateKey?:str }
 | FragmentDecl { body:Node; name:str; effect?:EffectClass; holes?:HoleDecl[] }
 | FragmentRef { name:str; args?:{ [key]:FragmentArg } }
 | Mount { capabilities:str[]; channel:GuestChannel; onBubble:closure; scopeId:str; inputs?:{ [key]:FragmentArg } }
 LayoutKind =
 | Box { children:Node[]; layout:BoxLayout; role:"Group"|"Card"|"Dashboard"|"Separator"; breakBefore?:bool; heading?:TextSource; keepTogether?:bool }
-| SplitPanel { children:Node[]; weight:any }
+| SplitPanel { children:Node[]; weight:num }
 | Tabs { children:Node[]; activeIndex?:Binding_int; activeTag?:Binding_str; orientation?:Orientation; tabHeaders?:TabHeader[]; tabTags?:str[] }
 | Stepper { activeStep:Binding_int; children:Node[] }
 | SummaryList { children:Node[]; heading?:TextSource }
@@ -297,7 +297,7 @@ InputKind =
 VisKind =
 | DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; exportable?:bool; keepRowsTogether?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; repeatHeader?:bool; rowKeyField?:str; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool }; transferInKey?:str; transferOutKey?:str }
 | Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding_hosted; xField:str; yFields:str[]; annotations?:ChartAnnotation[]; dataLabels?:"Off"|"Ends"; legendPosition?:"Top"|"Right"|"Bottom"|"None"; stacked?:bool; subtitle?:TextSource; title?:TextSource; valueFormat?:Format; xScale?:"Category"|"Temporal"; xTitle?:TextSource; yTitle?:TextSource }
-| Map { centreLatitude:any; centreLongitude:any; source:Binding_list_MapMarker; zoom:int }
+| Map { centreLatitude:num; centreLongitude:num; source:Binding_list_MapMarker; zoom:int }
 TreeOp =
 | EditNode { newKind:NodeKind; target:str }
 | UpdateProp { path:str; target:str; value:any }
@@ -314,7 +314,7 @@ Action =
 | Dispatch
 | Call { endpoint:str; into?:CallResultTarget }
 | Notify { channel:str; payload:any }
-| Navigate { route:str }
+| Navigate { route:TextSource; target?:"Self"|"Blank" }
 | SetState { key:str; value?:any; valueFrom?:Binding_json }
 | AiTool { args:any; toolName:str }
 | Chain { ops:Action[] }
@@ -323,6 +323,8 @@ Action =
 | ReadFileBody { encoding:"Text"|"Base64"|"DataUrl"; fileRef:str; onRead:closure }
 | Invoke { args:object[]; capabilityId:str }
 | Print
+| Confirm { onConfirm:Action; prompt:TextSource; onCancel?:Action }
+| Focus { nodeId:str }
 Binding_bool =
 | Static { value:bool }
 | Query { name:str; dependsOn?:str[] }
@@ -330,24 +332,26 @@ Binding_bool =
 | Selection { nodeId:str; defaultValue?:bool; field?:str }
 | State { key:str; defaultValue?:bool }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_bool; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_bool; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_float =
-| Static { value:any }
+| Static { value:num }
 | Query { name:str; dependsOn?:str[] }
-| Filter { name:str; defaultValue?:any }
-| Selection { nodeId:str; defaultValue?:any; field?:str }
-| State { key:str; defaultValue?:any }
+| Filter { name:str; defaultValue?:num }
+| Selection { nodeId:str; defaultValue?:num; field?:str }
+| State { key:str; defaultValue?:num }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_float; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_float; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_hosted =
 | Static { value?:any }
@@ -356,11 +360,12 @@ Binding_hosted =
 | Selection { nodeId:str; defaultValue?:any; field?:str }
 | State { key:str; defaultValue?:any }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_hosted; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_hosted; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_int =
 | Static { value:int }
@@ -369,11 +374,12 @@ Binding_int =
 | Selection { nodeId:str; defaultValue?:int; field?:str }
 | State { key:str; defaultValue?:int }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_int; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_int; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_json =
 | Static { value?:any }
@@ -382,11 +388,12 @@ Binding_json =
 | Selection { nodeId:str; defaultValue?:any; field?:str }
 | State { key:str; defaultValue?:any }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_json; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_json; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_list_MapMarker =
 | Static { value?:MapMarker[] }
@@ -395,11 +402,12 @@ Binding_list_MapMarker =
 | Selection { nodeId:str; defaultValue?:MapMarker[]; field?:str }
 | State { key:str; defaultValue?:MapMarker[] }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_MapMarker; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_MapMarker; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_list_SelectOption =
 | Static { value?:SelectOption[] }
@@ -408,24 +416,26 @@ Binding_list_SelectOption =
 | Selection { nodeId:str; defaultValue?:SelectOption[]; field?:str }
 | State { key:str; defaultValue?:SelectOption[] }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_SelectOption; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_SelectOption; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_list_float =
-| Static { value?:any[] }
+| Static { value?:num[] }
 | Query { name:str; dependsOn?:str[] }
-| Filter { name:str; defaultValue?:any[] }
-| Selection { nodeId:str; defaultValue?:any[]; field?:str }
-| State { key:str; defaultValue?:any[] }
+| Filter { name:str; defaultValue?:num[] }
+| Selection { nodeId:str; defaultValue?:num[]; field?:str }
+| State { key:str; defaultValue?:num[] }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_float; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_float; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_list_str =
 | Static { value?:str[] }
@@ -434,11 +444,12 @@ Binding_list_str =
 | Selection { nodeId:str; defaultValue?:str[]; field?:str }
 | State { key:str; defaultValue?:str[] }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_str; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_str; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_str =
 | Static { value:str }
@@ -447,11 +458,12 @@ Binding_str =
 | Selection { nodeId:str; defaultValue?:str; field?:str }
 | State { key:str; defaultValue?:str }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_str_choice =
 | Static { value?:str }
@@ -460,11 +472,12 @@ Binding_str_choice =
 | Selection { nodeId:str; defaultValue?:str; field?:str }
 | State { key:str; defaultValue?:str }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str_choice; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str_choice; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 BoxLayout =
 | Flex { direction:Orientation; wrap:bool; gap?:int }
@@ -510,7 +523,7 @@ ChartAnnotationX =
 ColumnWidth =
 | Auto
 | Fixed { pixels:int }
-| Flex { weight:any }
+| Flex { weight:num }
 CurveCommand =
 | MoveTo { to:DrawPoint }
 | LineTo { to:DrawPoint }
@@ -520,15 +533,15 @@ CurveCommand =
 FormFieldKind =
 | Text { value?:Binding_str }
 | Number { value?:Binding_float }
-| Range { max?:any; min?:any; step?:any; value?:any }
+| Range { max?:num; min?:num; step?:num; value?:any }
 | Checkbox { value?:Binding_bool }
 | Toggle { value?:Binding_bool }
 | Choice { options:Binding_list_SelectOption; value?:Binding_str_choice }
-| RangedNumber { max?:any; min?:any; step?:any; value?:Binding_float }
+| RangedNumber { max?:num; min?:num; step?:num; value?:Binding_float }
 | SegmentedChoice { options:Binding_list_SelectOption; orientation:Orientation; value?:Binding_str_choice }
 | TextArea { rows:int; value?:Binding_str }
-| Date { variant:DateVariant; max?:str; min?:str; step?:any; value?:Binding_str }
-| DateRange { variant:DateVariant; max?:str; min?:str; step?:any; value?:any }
+| Date { variant:DateVariant; max?:str; min?:str; step?:num; value?:Binding_str }
+| DateRange { variant:DateVariant; max?:str; min?:str; step?:num; value?:any }
 | Combobox { options:Binding_list_SelectOption; allowFreeText?:bool; value?:Binding_str_choice }
 | Rating { max:int; allowHalf?:bool; value?:Binding_float }
 | Color { value?:Binding_str }
@@ -540,9 +553,10 @@ Format =
 | Date { dateStyle:"Short"|"Medium"|"Long"|"Full" }
 | RelativeTime { unit:RelativeTimeUnit }
 | Duration { style:DurationStyle; unit:DurationUnit }
+| Since { unit?:RelativeTimeUnit }
 FragmentArg =
 | Int { value:int }
-| Float { value:any }
+| Float { value:num }
 | Bool { value:bool }
 | Str { value:str }
 | SlotArg { tree:Node }
@@ -552,7 +566,7 @@ HoleDecl =
 | Repeat { countSpace:HoleValueSpace; name:str }
 HoleValueSpace =
 | IntRange { max:int; min:int }
-| FloatRange { max:any; min:any }
+| FloatRange { max:num; min:num }
 | StringLen { maxLen:int; minLen:int }
 | Enum { choices:str[] }
 | AnyString
@@ -569,44 +583,63 @@ MediaKind =
 | Audio
 Scalar =
 | Int { value:int }
-| Float { value:any }
+| Float { value:num }
 | Bool { value:bool }
 | Str { value:str }
 Shape =
 | Group { children:Shape[]; style:DrawStyle }
-| Rectangle { height:any; style:DrawStyle; width:any; x:any; y:any; cornerRadius?:any }
-| Line { style:DrawStyle; x1:any; x2:any; y1:any; y2:any }
+| Rectangle { height:num; style:DrawStyle; width:num; x:num; y:num; cornerRadius?:num }
+| Line { style:DrawStyle; x1:num; x2:num; y1:num; y2:num }
 | Polyline { points:DrawPoint[]; style:DrawStyle }
 | Polygon { points:DrawPoint[]; style:DrawStyle }
 | Curve { commands:CurveCommand[]; style:DrawStyle }
-| Circle { cx:any; cy:any; r:any; style:DrawStyle }
-| Ellipse { cx:any; cy:any; rx:any; ry:any; style:DrawStyle }
-| Label { style:DrawStyle; text:TextSource; x:any; y:any }
+| Circle { cx:num; cy:num; r:num; style:DrawStyle }
+| Ellipse { cx:num; cy:num; rx:num; ry:num; style:DrawStyle }
+| Label { style:DrawStyle; text:TextSource; x:num; y:num }
 TextSource =
 | str
 | Literal { text:str }
 | Bound { binding:Binding_str }
 | I18n { args:{ [key]:any }; key:str }
+TransformStep =
+| filter { pred:object }
+| project { cols:TransformRename[] }
+| derive { expr:object; name:str }
+| groupBy { aggs:TransformAgg[]; keys:str[] }
+| join { how:"inner"|"left"|"right"|"outer"|"semi"|"anti"; on:TransformRename[]; source:object }
+| window { as:str; fn:"rowNumber"|"rank"|"lag"|"lead"|"cumulSum"|"rollingMean"|"denseRank"|"competitionRank"|"ntile"|"cumulMax"|"cumulMin"|"rollingSum"; of:str; orderBy:TransformSortKey[]; partitionBy:str[]; n?:int }
+| pivot { agg:AggFn; index:str[]; on:str; values:str }
+| unpivot { idVars:str[]; valueVars:str[] }
+| sort { by:TransformSortKey[] }
+| distinct
+| limit { n:int; offset?:int }
+| union { source:object }
+| intersect { source:object }
+| except { source:object }
 Accessibility { describedBy?:str; hidden?:Binding_bool; label?:Binding_str; labelledBy?:str; liveRegion?:"polite"|"assertive"|"off"; role?:str }
 ColumnErased { kind:CellKindErased; label:str; editable?:bool; field?:str; format?:CellFormat; sortable?:bool; width?:ColumnWidth }
 CompareRule { against:Binding_json; op:"eq"|"neq"|"lt"|"lte"|"gt"|"gte" }
 ContentHash { algorithm:str; hash:str; strictness:"StrictReplay"|"AdvisoryWarning"|"Enforced" }
-DrawPoint { x:any; y:any }
-DrawStyle { emphasis?:Emphasis; fill?:Binding_str; fontFamily?:str; fontSize?:any; markId?:str; opacity?:Binding_float; rotation?:any; stroke?:Binding_str; strokeWidth?:Binding_float; textAnchor?:"Start"|"Middle"|"End"; tip?:TextSource }
+DrawPoint { x:num; y:num }
+DrawStyle { emphasis?:Emphasis; fill?:Binding_str; fontFamily?:str; fontSize?:num; markId?:str; opacity?:Binding_float; rotation?:num; stroke?:Binding_str; strokeWidth?:Binding_float; textAnchor?:"Start"|"Middle"|"End"; tip?:TextSource }
 EffectClass { determinism:"Deterministic"|"Clock"|"Random"|"Network"; hostEffect:"Pure"|"ReadsHost"|"WritesHost" }
 FieldRule { compare?:CompareRule; format?:"email"|"url"|"tel"; maxLength?:int; message?:TextSource; minLength?:int; pattern?:str }
 FilterSpec { kind:FormFieldKind; label:TextSource; name:str }
 FormField { id:str; kind:FormFieldKind; label:TextSource; required:bool; help?:TextSource; rule?:FieldRule }
 GuestChannel { direction:"OutOnly"|"TwoWay"; messageShape?:str }
-MapMarker { label:TextSource; latitude:any; longitude:any }
+MapMarker { label:TextSource; latitude:num; longitude:num }
 SelectOption { label:TextSource; value:str }
 SemanticStyle { direction?:"auto"|"ltr"|"rtl"; emphasis?:Emphasis; role?:"None"|"Eyebrow"|"Data"|"Lede"|"Caption"; tone?:ToneVariant; voice?:"Default"|"Display"|"Structural"; weight?:StyleWeight }
 SrcSetEntry { src:Binding_str; width:int }
 StateBehaviour { onEmpty?:Node; onLoading?:Node }
 TabHeader { label:TextSource; disabled?:Binding_bool; icon?:str }
 TrackEntry { kind:"Subtitles"|"Captions"|"Descriptions"|"Chapters"; label:TextSource; src:Binding_str; srcLang:str; default?:bool }
+TransformAgg { fn:AggFn; name:str; of:str }
+TransformRename { a:str; b:str }
+TransformSortKey { col:str; dir?:"asc"|"desc" }
 TreeItem { id:str; label:TextSource; children?:TreeItem[]; icon?:str }
-ViewBox { height:any; minX:any; minY:any; width:any }
+ViewBox { height:num; minX:num; minY:num; width:num }
+AggFn = "sum"|"mean"|"min"|"max"|"count"|"median"|"stddev"|"first"|"last"|"countDistinct"
 DateVariant = "Date"|"Time"|"DateTime"
 DurationStyle = "Compact"|"Clock"|"Long"
 DurationUnit = "Seconds"|"Minutes"|"Hours"
@@ -615,6 +648,7 @@ ImageAspect = "Natural"|"Square"|"FourThree"|"ThreeTwo"|"SixteenNine"
 Orientation = "Vertical"|"Horizontal"
 RelativeTimeUnit = "Second"|"Minute"|"Hour"|"Day"|"Week"|"Month"|"Year"
 StyleWeight = "Compact"|"Standard"|"Spacious"
+TimeGrain = "Second"|"Minute"|"Hour"|"Day"
 ToneVariant = "Default"|"Subdued"|"Brand"|"Success"|"Warning"|"Critical"|"Info"
 ```
 <!-- /fuaran:signature-catalogue -->

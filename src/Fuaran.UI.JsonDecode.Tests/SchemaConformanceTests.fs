@@ -1,4 +1,4 @@
-module Fuaran.UI.JsonDecode.Tests.SchemaConformance
+﻿module Fuaran.UI.JsonDecode.Tests.SchemaConformance
 
 // ============================================================================
 //  Schema-conformance acceptance against the corpus (Phase 96).
@@ -314,3 +314,158 @@ let staleSchemaGuard =
               // The schema must itself be a parseable, well-formed JSON Schema —
               // FromText above would have thrown otherwise; assert it loaded.
               Expect.isFalse (isNull (box schema)) "schema parsed as a JSON Schema document") ]
+
+// ─── Fuaran-UI Phase 1571 — the typed pipeline step union ───────────────────
+//
+// `Binding.Transform.pipeline` was `{"type":"array","items":true}`: the step
+// shapes `JsonDecode` enforces (through `Fuaran.Core.DataFrameCodec`) reached
+// the published schema as untyped, so a schema-bound emitter had no constraint
+// to honour and the generated catalogue taught `pipeline:any[]`. `SchemaGen`
+// now emits the closed `TransformStep` union. Two claims hold it honest, and
+// they are different claims: the first that the union COVERS the DU, the second
+// that a member the decoder requires is actually refused.
+
+open Microsoft.FSharp.Reflection
+
+/// The `$type` const of every alternative of a named union `$def`, read from
+/// the EMITTER rather than the committed artefact.
+///
+/// The subject of the exhaustiveness claim is what `SchemaGen` produces; the
+/// artefact's own staleness is the guard at the foot of this file, and going
+/// through the file here would make this test pass on a stale `schema.json`
+/// whose union no longer matches the generator (proved: dropping an arm from
+/// `SchemaGen` and NOT regenerating left it green). The two together bind the
+/// published artefact to the DU; separately, neither does.
+let private unionTags (defName: string) : Set<string> =
+    use doc = JsonDocument.Parse SchemaGen.wireFormatSchema
+
+    let def = doc.RootElement.GetProperty("$defs").GetProperty defName
+
+    def.GetProperty("oneOf").EnumerateArray()
+    |> Seq.map (fun alt ->
+        match alt.GetProperty("properties").GetProperty("$type").GetProperty("const").GetString() with
+        | null -> failtestf "an alternative of the '%s' union carries a non-string `$type` const" defName
+        | tag -> tag)
+    |> Set.ofSeq
+
+/// The wire tag a `Fuaran.Core.Transform` case encodes as. Every one
+/// of the fourteen is its case name with a lowered initial — `Filter` → `filter`,
+/// `GroupBy` → `groupBy` — which is what `DataFrameCodec.encodeTransform` writes
+/// and `decodeTransform` reads back, so the mapping is derived rather than
+/// transcribed and a case added to Core arrives here on its own.
+let private wireTagOfCaseName (name: string) : string =
+    string (System.Char.ToLowerInvariant name[0]) + name.Substring 1
+
+let private transformDuTags: Set<string> =
+    FSharpType.GetUnionCases typeof<Fuaran.Core.Transform>
+    |> Array.map (fun c -> wireTagOfCaseName c.Name)
+    |> Set.ofArray
+
+/// A minimal node whose only `Transform` binding carries `step` as its whole
+/// pipeline. Hand-built rather than spliced out of a corpus fixture: the claim
+/// is about ONE step object, and every other part of this document is held
+/// fixed across a probe's two halves so a refusal is attributable to the step.
+let private pipelineNode (step: string) : string =
+    sprintf
+        """{"id":"n1","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[%s],"source":{"columns":{"km":[1,2],"split":[4.8,5.1]}}}},"variant":"Info"}}"""
+        step
+
+/// One step probe. `Complete` is asserted schema-VALID **and** decodable, so a
+/// refusal of `Defective` is evidence about the missing member and not about
+/// some other defect in the hand-built document.
+type private StepProbe =
+    { Id: string
+      Why: string
+      Defective: string
+      Complete: string }
+
+let private completeWindowStep =
+    """{"$type":"window","partitionBy":["km"],"orderBy":[{"col":"km","dir":"asc"}],"fn":"cumulSum","of":"split","as":"cumulative"}"""
+
+let private completeGroupByStep =
+    """{"$type":"groupBy","keys":[],"aggs":[{"name":"n","fn":"count","of":"km"}]}"""
+
+let private stepProbes: StepProbe list =
+    [
+      // The motivating instance: the 2026-09-07 comparative rerun lost
+      // `tier-a-059` (the window / running-total probe) to
+      // `source.pipeline: missing field: fn`, and the schema arm could not
+      // recover it, because the schema said nothing at all about a window step.
+      { Id = "window-missing-fn"
+        Why = "a window step with no `fn`"
+        Defective =
+          """{"$type":"window","partitionBy":["km"],"orderBy":[{"col":"km","dir":"asc"}],"of":"split","as":"cumulative"}"""
+        Complete = completeWindowStep }
+      // The same member name at the other slot that reads it — a `groupBy`
+      // aggregate. Same decoder error text, different position, so the two are
+      // not one probe.
+      { Id = "groupby-agg-missing-fn"
+        Why = "a groupBy aggregate with no `fn`"
+        Defective = """{"$type":"groupBy","keys":[],"aggs":[{"name":"n","of":"km"}]}"""
+        Complete = completeGroupByStep }
+      // Closedness in the two directions a union can be open: an unrecognised
+      // discriminator, and none at all. Both are decoder refusals carrying their
+      // own didactic (`decodeTransform`'s op roster); neither was expressible
+      // while the slot was `items: true`.
+      { Id = "unknown-step-type"
+        Why = "a step whose `$type` names no op"
+        Defective = """{"$type":"aggregate","keys":[],"aggs":[]}"""
+        Complete = completeGroupByStep }
+      { Id = "step-without-discriminator"
+        Why = "a step object with no `$type`"
+        Defective = """{"cols":[{"a":"km","b":"km"}]}"""
+        Complete = """{"$type":"project","cols":[{"a":"km","b":"km"}]}""" }
+      // An enum value outside the closed window vocabulary. The legacy `cumSum`
+      // spelling the decoder still admits is deliberately NOT the probe here —
+      // that one is a §16 alias, and the schema carries canonical spellings only.
+      { Id = "unknown-window-fn"
+        Why = "a window `fn` outside the closed vocabulary"
+        Defective =
+          """{"$type":"window","partitionBy":["km"],"orderBy":[{"col":"km","dir":"asc"}],"fn":"runningTotal","of":"split","as":"cumulative"}"""
+        Complete = completeWindowStep } ]
+
+[<Tests>]
+let transformStepUnion =
+    testList
+        "Fuaran.UI.Ops.SchemaGen — TransformStep is the pipeline's typed step union"
+        [ testCase "the emitted union is exhaustive over Fuaran.Core.Transform" (fun () ->
+              let emitted = unionTags "TransformStep"
+
+              let missing = Set.difference transformDuTags emitted
+              let extra = Set.difference emitted transformDuTags
+
+              Expect.isEmpty
+                  missing
+                  (sprintf
+                      "these Fuaran.Core.Transform cases have NO arm in the emitted TransformStep union, so the published schema types them as nothing and a schema-bound emitter cannot spell them: %s"
+                      (String.concat ", " missing))
+
+              Expect.isEmpty
+                  extra
+                  (sprintf
+                      "the emitted TransformStep union declares arms Fuaran.Core.Transform has no case for, so the schema admits steps the decoder refuses: %s"
+                      (String.concat ", " extra)))
+
+          for p in stepProbes do
+              testCase (sprintf "the schema refuses %s (%s)" p.Why p.Id) (fun () ->
+                  match validate (pipelineNode p.Complete) with
+                  | Some true -> ()
+                  | Some false ->
+                      failtestf
+                          "the CONTROL for '%s' does not validate against the schema — the probe proves nothing until it does\n  %s"
+                          p.Id
+                          (pipelineNode p.Complete)
+                  | None -> failtestf "the control for '%s' is not parseable JSON" p.Id
+
+                  match JsonDecode.decodeNode (pipelineNode p.Complete) with
+                  | Ok _ -> ()
+                  | Error e -> failtestf "the CONTROL for '%s' does not DECODE: %A" p.Id e
+
+                  match validate (pipelineNode p.Defective) with
+                  | Some false -> ()
+                  | Some true ->
+                      failtestf
+                          "the schema ACCEPTED %s — a schema-bound emitter is unconstrained there and the decoder is the only refusal\n  %s"
+                          p.Why
+                          (pipelineNode p.Defective)
+                  | None -> failtestf "the probe for '%s' is not parseable JSON" p.Id) ]

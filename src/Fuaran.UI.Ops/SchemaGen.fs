@@ -387,11 +387,13 @@ let private bindingDef (self: string) (payload: StaticPayload) (elem: J) : J =
                 "locale", ref "LocaleSource"
                 "source", binding "float" ]
           // Declarative dataframe transform (Phase 282 — the Compute layer). `source` (a
-          // Fuaran.Core.DataSource object) + `pipeline` (a Fuaran.Core Transform-step array) are
-          // Fuaran.Core values whose detailed shape is owned + certified by Fuaran.Core's own
-          // codec; the host schema describes them structurally (array / object) without re-deriving
-          // Core's algebra schema — the same "don't constrain content the encoder doesn't
-          // decompose" posture as an obj-erased JSON payload (§5 / §13).
+          // Fuaran.Core.DataSource object) is a Fuaran.Core value whose detailed shape is owned +
+          // certified by Fuaran.Core's own codec; the host schema describes it structurally
+          // (object) without re-deriving Core's algebra schema — the same "don't constrain content
+          // the encoder doesn't decompose" posture as an obj-erased JSON payload (§5 / §13).
+          // `pipeline` NO LONGER takes that posture (Fuaran-UI Phase 1571): its steps are a closed,
+          // `$type`-discriminated union the decoder enforces member by member, so the schema states
+          // it — see the `TransformStep` definition for the three boundaries that stayed structural.
           // `params` (Phase 424) is optional (omitted-when-empty) — each entry binds a `ColExpr.Param`
           // name to a scalar `Binding` source; absent leaves the Phase 282 shape byte-identical.
           // `source` (Phase 818) is EITHER a Fuaran.Core DataSource object OR a live
@@ -402,13 +404,14 @@ let private bindingDef (self: string) (payload: StaticPayload) (elem: J) : J =
               "Transform"
               [ "pipeline"; "source" ]
               [ "params", arrayOf (record [ "from"; "name" ] [ "from", binding "json"; "name", str ])
-                "pipeline", arrayOf anyJson
+                "pipeline", arrayOf (ref "TransformStep")
                 "source", object_ ]
           // Scalar logic over bound values (Fuaran-UI Phase 1534). `expr` is ONE Fuaran.Core
           // `ColExpr` in Core's own encoding — described structurally as an object, on the same
-          // "don't constrain content the encoder doesn't decompose" posture `pipeline` takes above,
-          // and for a sharper reason too: the case's two refusals (no `col`; every `param` the
-          // expression reads is bound by this binding's own `params`) are not expressible in JSON
+          // "don't constrain content the encoder doesn't decompose" posture `Transform.source` takes
+          // above (and that `pipeline` took until Phase 1571 typed its steps), and for a sharper
+          // reason too: the case's two refusals (no `col`; every `param` the expression reads is
+          // bound by this binding's own `params`) are not expressible in JSON
           // Schema — the second is a cross-field constraint over a recursive structure. A schema
           // that described the shape and said nothing about the rules would read as a complete
           // account of the case and be a false one, so the rules stay where they can be stated and
@@ -588,6 +591,124 @@ let private defs: (string * J) list =
       described
           "Binding<string> at a choice-valued control (Choice / SegmentedChoice / Combobox / Select). The Static payload is OPTIONAL and its absence is the value: no selection. Every other string-valued slot uses Binding_str, where the payload is required."
           (bindingDef "Binding_str_choice" Absentable str)
+
+      // ── The Transform pipeline algebra (Fuaran-UI Phase 1571) ─────────────
+      //
+      // `Binding.Transform.pipeline` was `arrayOf anyJson` — the step shapes the
+      // decoder enforces reached the schema as untyped, so the published
+      // artefact said nothing about them, the generated catalogue taught
+      // `pipeline:any[]` on all eleven `Binding_*` rows, and a schema-bound
+      // emitter had no constraint to honour. The 2026-09-07 comparative rerun
+      // lost a task to `source.pipeline: missing field: fn` — a `window` step
+      // with no `fn` — which is exactly what a typed union refuses.
+      //
+      // The steps are `Fuaran.Core.Transform` cases (the `Fuaran.Core.DataFrame` package), tagged by
+      // `DataFrameCodec.encodeTransform` / read back by `decodeTransform`; the
+      // tags below are that DU's, and `SchemaConformanceTests` pins the union
+      // EXHAUSTIVE against the DU itself (reflection over its cases), so a case
+      // added to Core with no arm here is red rather than silently untyped.
+      //
+      // Three boundaries, each a decision rather than an omission:
+      //
+      //  1. `pred` / `expr` / `source` stay structural objects. `ColExpr` is a
+      //     recursive algebra owned + certified by Core's own codec, and typing
+      //     it here would put a second, larger derivation of it in a published
+      //     artefact — the "don't re-derive Core's algebra" posture the
+      //     `Binding.Expr` case takes for the same slot, and the same reason.
+      //     The demand this phase answers is at the STEP level.
+      //  2. The §16 lenient spellings are NOT carried — the flat filter short
+      //     form (`{column, op, param|value}`), `by` for `keys`, `column` /
+      //     `descending` / `direction` on a sort key, `aggregations` / `op` /
+      //     `as` / `avg` on an aggregate, `count` for `n`, `predicate` for
+      //     `pred`, the legacy `cumSum` window tag. The schema has carried the
+      //     canonical form only since it was cut (see the §16 note in
+      //     `SchemaConformanceTests`), the lenient corpus family is not on the
+      //     schema-validation leg, and a schema-bound emitter steered to the
+      //     canonical spelling is steered to the better one.
+      //  3. `window.n` is OPTIONAL here where the decoder requires it exactly
+      //     when `fn` is `ntile`. That relation IS expressible — `if`/`then` on
+      //     the `fn` const — and is deliberately not expressed: `if`/`then` sits
+      //     outside the keyword subsets the provider structured-output dialects
+      //     accept, so stating it risks the whole schema being refused at the
+      //     provider, which costs more than one unstated bound. The schema says
+      //     LESS than the decoder here, never something DIFFERENT.
+      "TransformStep",
+      union
+          [ duCase "filter" [ "pred" ] [ "pred", object_ ]
+            duCase "project" [ "cols" ] [ "cols", arrayOf (ref "TransformRename") ]
+            duCase "derive" [ "expr"; "name" ] [ "expr", object_; "name", str ]
+            duCase "groupBy" [ "aggs"; "keys" ] [ "aggs", arrayOf (ref "TransformAgg"); "keys", arrayOf str ]
+            duCase
+                "join"
+                [ "how"; "on"; "source" ]
+                [ "how", ref "JoinKind"
+                  "on", arrayOf (ref "TransformRename")
+                  "source", object_ ]
+            duCase
+                "window"
+                [ "as"; "fn"; "of"; "orderBy"; "partitionBy" ]
+                [ "as", str
+                  "fn", ref "WindowFn"
+                  "n", integer
+                  "of", str
+                  "orderBy", arrayOf (ref "TransformSortKey")
+                  "partitionBy", arrayOf str ]
+            duCase
+                "pivot"
+                [ "agg"; "index"; "on"; "values" ]
+                [ "agg", ref "AggFn"; "index", arrayOf str; "on", str; "values", str ]
+            duCase "unpivot" [ "idVars"; "valueVars" ] [ "idVars", arrayOf str; "valueVars", arrayOf str ]
+            duCase "sort" [ "by" ] [ "by", arrayOf (ref "TransformSortKey") ]
+            duCase "distinct" [] []
+            duCase "limit" [ "n" ] [ "n", integer; "offset", integer ]
+            duCase "union" [ "source" ] [ "source", object_ ]
+            duCase "intersect" [ "source" ] [ "source", object_ ]
+            duCase "except" [ "source" ] [ "source", object_ ] ]
+
+      // A column rename pair — `project.cols` and `join.on` both carry it, and
+      // both read `a` / `b` through the same `pairOf`.
+      "TransformRename", record [ "a"; "b" ] [ "a", str; "b", str ]
+
+      // One aggregate of a `groupBy`. Its `fn` is the SECOND position reading
+      // that member name, and the decoder spells both absences identically
+      // (`missing field: fn`), so the rerun's message alone does not say which
+      // slot it came from — the failing task is the running-total probe, which
+      // is why the block above names `window`. Both are required here.
+      "TransformAgg", record [ "fn"; "name"; "of" ] [ "fn", ref "AggFn"; "name", str; "of", str ]
+
+      // One ordering key — `sort.by` and `window.orderBy`. `dir` is optional
+      // because a directionless key is unambiguously ascending (the SQL
+      // default), which is what the decoder reads it as.
+      "TransformSortKey", record [ "col" ] [ "col", str; "dir", ref "SortDir" ]
+
+      "SortDir", enumDef [ "asc"; "desc" ]
+      "JoinKind", enumDef [ "inner"; "left"; "right"; "outer"; "semi"; "anti" ]
+      "AggFn",
+      enumDef
+          [ "sum"
+            "mean"
+            "min"
+            "max"
+            "count"
+            "median"
+            "stddev"
+            "first"
+            "last"
+            "countDistinct" ]
+      "WindowFn",
+      enumDef
+          [ "rowNumber"
+            "rank"
+            "lag"
+            "lead"
+            "cumulSum"
+            "rollingMean"
+            "denseRank"
+            "competitionRank"
+            "ntile"
+            "cumulMax"
+            "cumulMin"
+            "rollingSum" ]
 
       "LocalFlushTrigger",
       union

@@ -308,7 +308,7 @@ Binding_bool =
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_bool; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_float =
@@ -322,7 +322,7 @@ Binding_float =
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_float; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_hosted =
@@ -336,7 +336,7 @@ Binding_hosted =
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_hosted; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_int =
@@ -350,7 +350,7 @@ Binding_int =
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_int; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_json =
@@ -364,7 +364,7 @@ Binding_json =
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_json; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_list_MapMarker =
@@ -378,7 +378,7 @@ Binding_list_MapMarker =
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_MapMarker; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_list_SelectOption =
@@ -392,7 +392,7 @@ Binding_list_SelectOption =
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_SelectOption; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_list_float =
@@ -406,7 +406,7 @@ Binding_list_float =
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_float; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_list_str =
@@ -420,7 +420,7 @@ Binding_list_str =
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_str; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_str =
@@ -434,7 +434,7 @@ Binding_str =
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_str_choice =
@@ -448,7 +448,7 @@ Binding_str_choice =
 | I18n { key:str; args?:{ [key]:Binding_json } }
 | Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str_choice; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Transform { pipeline:TransformStep[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 BoxLayout =
@@ -573,6 +573,21 @@ TextSource =
 | Literal { text:str }
 | Bound { binding:Binding_str }
 | I18n { args:{ [key]:any }; key:str }
+TransformStep =
+| filter { pred:object }
+| project { cols:TransformRename[] }
+| derive { expr:object; name:str }
+| groupBy { aggs:TransformAgg[]; keys:str[] }
+| join { how:"inner"|"left"|"right"|"outer"|"semi"|"anti"; on:TransformRename[]; source:object }
+| window { as:str; fn:"rowNumber"|"rank"|"lag"|"lead"|"cumulSum"|"rollingMean"|"denseRank"|"competitionRank"|"ntile"|"cumulMax"|"cumulMin"|"rollingSum"; of:str; orderBy:TransformSortKey[]; partitionBy:str[]; n?:int }
+| pivot { agg:AggFn; index:str[]; on:str; values:str }
+| unpivot { idVars:str[]; valueVars:str[] }
+| sort { by:TransformSortKey[] }
+| distinct
+| limit { n:int; offset?:int }
+| union { source:object }
+| intersect { source:object }
+| except { source:object }
 Accessibility { describedBy?:str; hidden?:Binding_bool; label?:Binding_str; labelledBy?:str; liveRegion?:"polite"|"assertive"|"off"; role?:str }
 ColumnErased { kind:CellKindErased; label:str; editable?:bool; field?:str; format?:CellFormat; sortable?:bool; width?:ColumnWidth }
 CompareRule { against:Binding_json; op:"eq"|"neq"|"lt"|"lte"|"gt"|"gte" }
@@ -591,8 +606,12 @@ SrcSetEntry { src:Binding_str; width:int }
 StateBehaviour { onEmpty?:Node; onLoading?:Node }
 TabHeader { label:TextSource; disabled?:Binding_bool; icon?:str }
 TrackEntry { kind:"Subtitles"|"Captions"|"Descriptions"|"Chapters"; label:TextSource; src:Binding_str; srcLang:str; default?:bool }
+TransformAgg { fn:AggFn; name:str; of:str }
+TransformRename { a:str; b:str }
+TransformSortKey { col:str; dir?:"asc"|"desc" }
 TreeItem { id:str; label:TextSource; children?:TreeItem[]; icon?:str }
 ViewBox { height:num; minX:num; minY:num; width:num }
+AggFn = "sum"|"mean"|"min"|"max"|"count"|"median"|"stddev"|"first"|"last"|"countDistinct"
 DateVariant = "Date"|"Time"|"DateTime"
 DurationStyle = "Compact"|"Clock"|"Long"
 DurationUnit = "Seconds"|"Minutes"|"Hours"

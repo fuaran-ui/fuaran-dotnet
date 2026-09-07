@@ -6624,3 +6624,54 @@ two cases added to the closed `Action<'Msg>` union, and a removed `DebugGlobal` 
 that costs a generated-layer consumer a source edit is that same class rather than a higher one —
 both say *adopting this slot costs source edits* — so a `v0.79.0` would tell a consumer already
 paying 0.78.0's price that there is a second, separate one. `v0.77.0` is the newest tag.
+
+## Recorded change — 0.78.0, the transform pipeline's steps are typed in the published schema (fuaran#1571)
+
+**A NARROWING of the published `schema.json` — nothing for a package consumer, something for a
+consumer that VALIDATES documents against that artefact — and it RIDES the standing 0.78.0 draft
+rather than advancing it.**
+
+**What changed.** `SchemaGen` emitted `Binding.Transform.pipeline` as `{"type":"array","items":
+true}`: the step shapes the decoder enforces (through `Fuaran.Core.DataFrameCodec`) reached the
+published schema as untyped. It now emits `items: { "$ref": "#/$defs/TransformStep" }` — the closed,
+`$type`-discriminated union of the fourteen `Fuaran.Core.Transform` cases (`filter` / `project` /
+`derive` / `groupBy` / `join` / `window` / `pivot` / `unpivot` / `sort` / `distinct` / `limit` /
+`union` / `intersect` / `except`), each with the members the decoder requires — plus the three entry
+records the steps decompose into (`TransformRename`, `TransformAgg`, `TransformSortKey`) and the four
+closed vocabularies they range over (`AggFn`, `JoinKind`, `WindowFn`, `SortDir`).
+
+**Nothing about the wire moved, and that is why this is a narrowing and not a migration.** No
+encoder, decoder, validator or public F# member changed; `SchemaGen.wireFormatSchema` is the same
+`string`-valued binding it always was, and only its content moved. Every fixture in the conformance
+corpus is byte-identical, and the accept leg — every node and op round-trip validating against the
+schema — passes unchanged, because every pipeline the corpus carries was already canonical.
+
+**What a consumer pays.** For a consumer of the packages, nothing at all. For a consumer that
+validates documents against the published `schema.json`, a pipeline step is now CHECKED where it was
+previously unconstrained, so two document classes that used to validate no longer do: a step whose
+shape the decoder refuses (the case this exists to close), and a step written in one of the §16
+lenient spellings the decoder still ACCEPTS — the flat filter short form
+(`{"$type":"filter","column":…,"op":…,"param"|"value":…}`), `by` for `keys`, `column` / `descending`
+/ `direction` on a sort key, `aggregations` / `op` / `as` / `avg` on an aggregate, `count` for `n`,
+`predicate` for `pred`, and the legacy `cumSum` window tag. That second class is the one to check
+before adopting. It is not a new divergence in kind — this schema has carried canonical spellings
+only since it was cut, and says so — but it is newly reachable at this slot, and a validator is the
+only consumer that can see it. The remedy is the canonical spelling, which the decoder canonicalises
+the lenient one to anyway.
+
+**Three things the schema still does not say, each a decision rather than an omission.** `pred` /
+`expr` / `source` stay structural objects: `ColExpr` is a recursive algebra owned and certified by
+`Fuaran.Core`'s own codec, and re-deriving it here would put a second, larger copy of it in a
+published artefact — the posture `Binding.Expr` already takes at the same slot. The §16 spellings
+above are not carried, per the paragraph above. And `window.n` is optional here where the decoder
+requires it exactly when `fn` is `ntile`: that relation IS expressible (`if`/`then` on the `fn`
+const) and is deliberately not expressed, because `if`/`then` sits outside the keyword subsets the
+provider structured-output dialects accept, and risking the whole schema being refused at a provider
+costs more than one unstated bound. The schema says LESS than the decoder there, never something
+DIFFERENT.
+
+**Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and it
+already carries breaking-class entries: an `FS0764` record widening, a field narrowed to `option`,
+two cases added to the closed `Action<'Msg>` union, and a removed `DebugGlobal` member. A narrowing
+that costs a schema-validating consumer an edit to non-canonical documents is that same class rather
+than a higher one. `v0.77.0` is the newest tag.

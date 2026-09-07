@@ -120,6 +120,13 @@
         "Popover"
       ]
     },
+    "NavigateTarget": {
+      "type": "string",
+      "enum": [
+        "Self",
+        "Blank"
+      ]
+    },
     "CaptureSource": {
       "type": "string",
       "enum": [
@@ -291,6 +298,15 @@
         "Week",
         "Month",
         "Year"
+      ]
+    },
+    "TimeGrain": {
+      "type": "string",
+      "enum": [
+        "Second",
+        "Minute",
+        "Hour",
+        "Day"
       ]
     },
     "DurationUnit": {
@@ -508,6 +524,9 @@
           "properties": {
             "$type": {
               "const": "Now"
+            },
+            "grain": {
+              "$ref": "#/$defs/TimeGrain"
             }
           },
           "required": [
@@ -541,6 +560,12 @@
             "$type": {
               "const": "Local"
             },
+            "codec": {
+              "$ref": "#/$defs/Format"
+            },
+            "commitTo": {
+              "type": "string"
+            },
             "flushOn": {
               "$ref": "#/$defs/LocalFlushTrigger"
             },
@@ -562,7 +587,6 @@
             "flushOn",
             "format",
             "initialFrom",
-            "onCommit",
             "parse"
           ]
         },
@@ -615,7 +639,9 @@
             },
             "pipeline": {
               "type": "array",
-              "items": true
+              "items": {
+                "$ref": "#/$defs/TransformStep"
+              }
             },
             "source": {
               "type": "object"
@@ -625,6 +651,39 @@
             "$type",
             "pipeline",
             "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Expr"
+            },
+            "expr": {
+              "type": "object"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "expr"
           ]
         },
         {
@@ -810,6 +869,9 @@
           "properties": {
             "$type": {
               "const": "Now"
+            },
+            "grain": {
+              "$ref": "#/$defs/TimeGrain"
             }
           },
           "required": [
@@ -843,6 +905,12 @@
             "$type": {
               "const": "Local"
             },
+            "codec": {
+              "$ref": "#/$defs/Format"
+            },
+            "commitTo": {
+              "type": "string"
+            },
             "flushOn": {
               "$ref": "#/$defs/LocalFlushTrigger"
             },
@@ -864,7 +932,6 @@
             "flushOn",
             "format",
             "initialFrom",
-            "onCommit",
             "parse"
           ]
         },
@@ -917,7 +984,9 @@
             },
             "pipeline": {
               "type": "array",
-              "items": true
+              "items": {
+                "$ref": "#/$defs/TransformStep"
+              }
             },
             "source": {
               "type": "object"
@@ -927,6 +996,39 @@
             "$type",
             "pipeline",
             "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Expr"
+            },
+            "expr": {
+              "type": "object"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "expr"
           ]
         },
         {
@@ -1059,6 +1161,9 @@
           "properties": {
             "$type": {
               "const": "Now"
+            },
+            "grain": {
+              "$ref": "#/$defs/TimeGrain"
             }
           },
           "required": [
@@ -1092,6 +1197,12 @@
             "$type": {
               "const": "Local"
             },
+            "codec": {
+              "$ref": "#/$defs/Format"
+            },
+            "commitTo": {
+              "type": "string"
+            },
             "flushOn": {
               "$ref": "#/$defs/LocalFlushTrigger"
             },
@@ -1113,7 +1224,6 @@
             "flushOn",
             "format",
             "initialFrom",
-            "onCommit",
             "parse"
           ]
         },
@@ -1166,7 +1276,9 @@
             },
             "pipeline": {
               "type": "array",
-              "items": true
+              "items": {
+                "$ref": "#/$defs/TransformStep"
+              }
             },
             "source": {
               "type": "object"
@@ -1176,6 +1288,39 @@
             "$type",
             "pipeline",
             "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Expr"
+            },
+            "expr": {
+              "type": "object"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "expr"
           ]
         },
         {
@@ -1317,6 +1462,9 @@
           "properties": {
             "$type": {
               "const": "Now"
+            },
+            "grain": {
+              "$ref": "#/$defs/TimeGrain"
             }
           },
           "required": [
@@ -1350,6 +1498,12 @@
             "$type": {
               "const": "Local"
             },
+            "codec": {
+              "$ref": "#/$defs/Format"
+            },
+            "commitTo": {
+              "type": "string"
+            },
             "flushOn": {
               "$ref": "#/$defs/LocalFlushTrigger"
             },
@@ -1371,7 +1525,6 @@
             "flushOn",
             "format",
             "initialFrom",
-            "onCommit",
             "parse"
           ]
         },
@@ -1424,7 +1577,9 @@
             },
             "pipeline": {
               "type": "array",
-              "items": true
+              "items": {
+                "$ref": "#/$defs/TransformStep"
+              }
             },
             "source": {
               "type": "object"
@@ -1434,6 +1589,39 @@
             "$type",
             "pipeline",
             "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Expr"
+            },
+            "expr": {
+              "type": "object"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "expr"
           ]
         },
         {
@@ -1566,6 +1754,9 @@
           "properties": {
             "$type": {
               "const": "Now"
+            },
+            "grain": {
+              "$ref": "#/$defs/TimeGrain"
             }
           },
           "required": [
@@ -1599,6 +1790,12 @@
             "$type": {
               "const": "Local"
             },
+            "codec": {
+              "$ref": "#/$defs/Format"
+            },
+            "commitTo": {
+              "type": "string"
+            },
             "flushOn": {
               "$ref": "#/$defs/LocalFlushTrigger"
             },
@@ -1620,7 +1817,6 @@
             "flushOn",
             "format",
             "initialFrom",
-            "onCommit",
             "parse"
           ]
         },
@@ -1673,7 +1869,9 @@
             },
             "pipeline": {
               "type": "array",
-              "items": true
+              "items": {
+                "$ref": "#/$defs/TransformStep"
+              }
             },
             "source": {
               "type": "object"
@@ -1683,6 +1881,39 @@
             "$type",
             "pipeline",
             "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Expr"
+            },
+            "expr": {
+              "type": "object"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "expr"
           ]
         },
         {
@@ -1835,6 +2066,9 @@
           "properties": {
             "$type": {
               "const": "Now"
+            },
+            "grain": {
+              "$ref": "#/$defs/TimeGrain"
             }
           },
           "required": [
@@ -1868,6 +2102,12 @@
             "$type": {
               "const": "Local"
             },
+            "codec": {
+              "$ref": "#/$defs/Format"
+            },
+            "commitTo": {
+              "type": "string"
+            },
             "flushOn": {
               "$ref": "#/$defs/LocalFlushTrigger"
             },
@@ -1889,7 +2129,6 @@
             "flushOn",
             "format",
             "initialFrom",
-            "onCommit",
             "parse"
           ]
         },
@@ -1942,7 +2181,9 @@
             },
             "pipeline": {
               "type": "array",
-              "items": true
+              "items": {
+                "$ref": "#/$defs/TransformStep"
+              }
             },
             "source": {
               "type": "object"
@@ -1952,6 +2193,39 @@
             "$type",
             "pipeline",
             "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Expr"
+            },
+            "expr": {
+              "type": "object"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "expr"
           ]
         },
         {
@@ -2104,6 +2378,9 @@
           "properties": {
             "$type": {
               "const": "Now"
+            },
+            "grain": {
+              "$ref": "#/$defs/TimeGrain"
             }
           },
           "required": [
@@ -2137,6 +2414,12 @@
             "$type": {
               "const": "Local"
             },
+            "codec": {
+              "$ref": "#/$defs/Format"
+            },
+            "commitTo": {
+              "type": "string"
+            },
             "flushOn": {
               "$ref": "#/$defs/LocalFlushTrigger"
             },
@@ -2158,7 +2441,6 @@
             "flushOn",
             "format",
             "initialFrom",
-            "onCommit",
             "parse"
           ]
         },
@@ -2211,7 +2493,9 @@
             },
             "pipeline": {
               "type": "array",
-              "items": true
+              "items": {
+                "$ref": "#/$defs/TransformStep"
+              }
             },
             "source": {
               "type": "object"
@@ -2221,6 +2505,39 @@
             "$type",
             "pipeline",
             "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Expr"
+            },
+            "expr": {
+              "type": "object"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "expr"
           ]
         },
         {
@@ -2417,6 +2734,9 @@
           "properties": {
             "$type": {
               "const": "Now"
+            },
+            "grain": {
+              "$ref": "#/$defs/TimeGrain"
             }
           },
           "required": [
@@ -2450,6 +2770,12 @@
             "$type": {
               "const": "Local"
             },
+            "codec": {
+              "$ref": "#/$defs/Format"
+            },
+            "commitTo": {
+              "type": "string"
+            },
             "flushOn": {
               "$ref": "#/$defs/LocalFlushTrigger"
             },
@@ -2471,7 +2797,6 @@
             "flushOn",
             "format",
             "initialFrom",
-            "onCommit",
             "parse"
           ]
         },
@@ -2524,7 +2849,9 @@
             },
             "pipeline": {
               "type": "array",
-              "items": true
+              "items": {
+                "$ref": "#/$defs/TransformStep"
+              }
             },
             "source": {
               "type": "object"
@@ -2534,6 +2861,39 @@
             "$type",
             "pipeline",
             "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Expr"
+            },
+            "expr": {
+              "type": "object"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "expr"
           ]
         },
         {
@@ -2686,6 +3046,9 @@
           "properties": {
             "$type": {
               "const": "Now"
+            },
+            "grain": {
+              "$ref": "#/$defs/TimeGrain"
             }
           },
           "required": [
@@ -2719,6 +3082,12 @@
             "$type": {
               "const": "Local"
             },
+            "codec": {
+              "$ref": "#/$defs/Format"
+            },
+            "commitTo": {
+              "type": "string"
+            },
             "flushOn": {
               "$ref": "#/$defs/LocalFlushTrigger"
             },
@@ -2740,7 +3109,6 @@
             "flushOn",
             "format",
             "initialFrom",
-            "onCommit",
             "parse"
           ]
         },
@@ -2793,7 +3161,9 @@
             },
             "pipeline": {
               "type": "array",
-              "items": true
+              "items": {
+                "$ref": "#/$defs/TransformStep"
+              }
             },
             "source": {
               "type": "object"
@@ -2803,6 +3173,39 @@
             "$type",
             "pipeline",
             "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Expr"
+            },
+            "expr": {
+              "type": "object"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "expr"
           ]
         },
         {
@@ -2944,6 +3347,9 @@
           "properties": {
             "$type": {
               "const": "Now"
+            },
+            "grain": {
+              "$ref": "#/$defs/TimeGrain"
             }
           },
           "required": [
@@ -2977,6 +3383,12 @@
             "$type": {
               "const": "Local"
             },
+            "codec": {
+              "$ref": "#/$defs/Format"
+            },
+            "commitTo": {
+              "type": "string"
+            },
             "flushOn": {
               "$ref": "#/$defs/LocalFlushTrigger"
             },
@@ -2998,7 +3410,6 @@
             "flushOn",
             "format",
             "initialFrom",
-            "onCommit",
             "parse"
           ]
         },
@@ -3051,7 +3462,9 @@
             },
             "pipeline": {
               "type": "array",
-              "items": true
+              "items": {
+                "$ref": "#/$defs/TransformStep"
+              }
             },
             "source": {
               "type": "object"
@@ -3061,6 +3474,39 @@
             "$type",
             "pipeline",
             "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Expr"
+            },
+            "expr": {
+              "type": "object"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "expr"
           ]
         },
         {
@@ -3202,6 +3648,9 @@
           "properties": {
             "$type": {
               "const": "Now"
+            },
+            "grain": {
+              "$ref": "#/$defs/TimeGrain"
             }
           },
           "required": [
@@ -3235,6 +3684,12 @@
             "$type": {
               "const": "Local"
             },
+            "codec": {
+              "$ref": "#/$defs/Format"
+            },
+            "commitTo": {
+              "type": "string"
+            },
             "flushOn": {
               "$ref": "#/$defs/LocalFlushTrigger"
             },
@@ -3256,7 +3711,6 @@
             "flushOn",
             "format",
             "initialFrom",
-            "onCommit",
             "parse"
           ]
         },
@@ -3309,7 +3763,9 @@
             },
             "pipeline": {
               "type": "array",
-              "items": true
+              "items": {
+                "$ref": "#/$defs/TransformStep"
+              }
             },
             "source": {
               "type": "object"
@@ -3319,6 +3775,39 @@
             "$type",
             "pipeline",
             "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Expr"
+            },
+            "expr": {
+              "type": "object"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "expr"
           ]
         },
         {
@@ -3343,6 +3832,398 @@
             "capabilityId"
           ]
         }
+      ]
+    },
+    "TransformStep": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "filter"
+            },
+            "pred": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "pred"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "project"
+            },
+            "cols": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TransformRename"
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "cols"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "derive"
+            },
+            "expr": {
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "expr",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "groupBy"
+            },
+            "aggs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TransformAgg"
+              }
+            },
+            "keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "aggs",
+            "keys"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "join"
+            },
+            "how": {
+              "$ref": "#/$defs/JoinKind"
+            },
+            "on": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TransformRename"
+              }
+            },
+            "source": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "how",
+            "on",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "window"
+            },
+            "as": {
+              "type": "string"
+            },
+            "fn": {
+              "$ref": "#/$defs/WindowFn"
+            },
+            "n": {
+              "type": "integer"
+            },
+            "of": {
+              "type": "string"
+            },
+            "orderBy": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TransformSortKey"
+              }
+            },
+            "partitionBy": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "as",
+            "fn",
+            "of",
+            "orderBy",
+            "partitionBy"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "pivot"
+            },
+            "agg": {
+              "$ref": "#/$defs/AggFn"
+            },
+            "index": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "on": {
+              "type": "string"
+            },
+            "values": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "agg",
+            "index",
+            "on",
+            "values"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "unpivot"
+            },
+            "idVars": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "valueVars": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "idVars",
+            "valueVars"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "sort"
+            },
+            "by": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TransformSortKey"
+              }
+            }
+          },
+          "required": [
+            "$type",
+            "by"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "distinct"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "limit"
+            },
+            "n": {
+              "type": "integer"
+            },
+            "offset": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "$type",
+            "n"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "union"
+            },
+            "source": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "intersect"
+            },
+            "source": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "except"
+            },
+            "source": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "source"
+          ]
+        }
+      ]
+    },
+    "TransformRename": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "string"
+        },
+        "b": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ]
+    },
+    "TransformAgg": {
+      "type": "object",
+      "properties": {
+        "fn": {
+          "$ref": "#/$defs/AggFn"
+        },
+        "name": {
+          "type": "string"
+        },
+        "of": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "fn",
+        "name",
+        "of"
+      ]
+    },
+    "TransformSortKey": {
+      "type": "object",
+      "properties": {
+        "col": {
+          "type": "string"
+        },
+        "dir": {
+          "$ref": "#/$defs/SortDir"
+        }
+      },
+      "required": [
+        "col"
+      ]
+    },
+    "SortDir": {
+      "type": "string",
+      "enum": [
+        "asc",
+        "desc"
+      ]
+    },
+    "JoinKind": {
+      "type": "string",
+      "enum": [
+        "inner",
+        "left",
+        "right",
+        "outer",
+        "semi",
+        "anti"
+      ]
+    },
+    "AggFn": {
+      "type": "string",
+      "enum": [
+        "sum",
+        "mean",
+        "min",
+        "max",
+        "count",
+        "median",
+        "stddev",
+        "first",
+        "last",
+        "countDistinct"
+      ]
+    },
+    "WindowFn": {
+      "type": "string",
+      "enum": [
+        "rowNumber",
+        "rank",
+        "lag",
+        "lead",
+        "cumulSum",
+        "rollingMean",
+        "denseRank",
+        "competitionRank",
+        "ntile",
+        "cumulMax",
+        "cumulMin",
+        "rollingSum"
       ]
     },
     "LocalFlushTrigger": {
@@ -3493,7 +4374,10 @@
               "const": "Navigate"
             },
             "route": {
-              "type": "string"
+              "$ref": "#/$defs/TextSource"
+            },
+            "target": {
+              "$ref": "#/$defs/NavigateTarget"
             }
           },
           "required": [
@@ -3667,6 +4551,43 @@
             "$type"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Confirm"
+            },
+            "onCancel": {
+              "$ref": "#/$defs/Action"
+            },
+            "onConfirm": {
+              "$ref": "#/$defs/Action"
+            },
+            "prompt": {
+              "$ref": "#/$defs/TextSource"
+            }
+          },
+          "required": [
+            "$type",
+            "onConfirm",
+            "prompt"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Focus"
+            },
+            "nodeId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "nodeId"
+          ]
         }
       ]
     },
@@ -4041,6 +4962,20 @@
             "$type",
             "style",
             "unit"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Since"
+            },
+            "unit": {
+              "$ref": "#/$defs/RelativeTimeUnit"
+            }
+          },
+          "required": [
+            "$type"
           ]
         }
       ]
@@ -8319,18 +9254,46 @@
                 "cases": {
                   "type": "array",
                   "items": {
-                    "type": "object",
-                    "properties": {
-                      "child": {
-                        "$ref": "#/$defs/Node"
+                    "allOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "child": {
+                            "$ref": "#/$defs/Node"
+                          },
+                          "match": {
+                            "type": "string"
+                          },
+                          "when": {
+                            "$ref": "#/$defs/Binding_bool"
+                          }
+                        },
+                        "required": [
+                          "child"
+                        ]
                       },
-                      "match": {
-                        "type": "string"
+                      {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "match"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "when"
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "not": {
+                          "required": [
+                            "match",
+                            "when"
+                          ]
+                        }
                       }
-                    },
-                    "required": [
-                      "child",
-                      "match"
                     ]
                   }
                 },
@@ -8652,6 +9615,9 @@
         },
         "tooltip": {
           "$ref": "#/$defs/TextSource"
+        },
+        "visible": {
+          "$ref": "#/$defs/Binding_bool"
         }
       },
       "required": [
