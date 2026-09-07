@@ -164,9 +164,71 @@ let private buildSeries<'Msg> (runAction: Action<'Msg> -> unit) (nodeId: string)
             ))
         |> List.toArray
 
+// ─── Ready-handle ref (Phase 1594) ──────────────────────────────────
+//
+// AG Charts has no options-level ready event — the raw component handle is
+// reached through React's callback ref — and React re-invokes a callback ref
+// whenever its IDENTITY changes. The adapter builds fresh props on every
+// render, so a closure written inline would be detached and re-attached each
+// time, re-entering the host's hook on every re-render: exactly what the
+// contract forbids. The callback is therefore cached per node id, which gives
+// it a stable identity across renders; the cached cell carries the CURRENT
+// hook, so a host that swaps its options is never served a stale closure.
+// React hands the callback `null` on unmount, which drops the entry and
+// re-arms — a remount is a new chart instance and must fire again.
+
+type private ReadyRef =
+    { mutable Hook: (obj -> unit) option
+      mutable Fired: bool
+      mutable Callback: obj -> unit }
+
+let private readyRefs = System.Collections.Generic.Dictionary<string, ReadyRef>()
+
+let private readyRef (nodeId: string) (hook: obj -> unit) : obj -> unit =
+    match readyRefs.TryGetValue nodeId with
+    | true, existing ->
+        existing.Hook <- Some hook
+        existing.Callback
+    | _ ->
+        let cell =
+            { Hook = Some hook
+              Fired = false
+              Callback = ignore }
+
+        cell.Callback <-
+            fun handle ->
+                if isNull handle then
+                    cell.Fired <- false
+                    readyRefs.Remove nodeId |> ignore
+                elif not cell.Fired then
+                    cell.Fired <- true
+                    cell.Hook |> Option.iter (fun h -> h handle)
+
+        readyRefs[nodeId] <- cell
+        cell.Callback
+
 // ─── Top-level Chart render ─────────────────────────────────────────
 
-let renderChart<'Msg> (spec: ChartSpec<'Msg>) (context: VisAdapter.VisualisationContext<'Msg>) : ReactElement option =
+/// `renderChart`, plus the Phase 1594 raw-handle escape valve: `onReady`, when
+/// the host supplied one, is invoked once with the mounted `ag-charts-react`
+/// component handle (whose `chart` member is the library's own chart
+/// instance).
+///
+/// The hook is a PARAMETER and never a member of `ChartSpec` — it is supplied
+/// by the host when it constructs the adapter ([AgAdapter.fs](AgAdapter.fs)),
+/// so no decoded tree can carry it, reach it or trigger it. That is a
+/// structural guarantee rather than the weaker "a callback cannot cross the
+/// wire" argument `spec.OnPointClick` rests on: the slot is not a member of any
+/// wire type, so there is nothing for a decoder to fill.
+///
+/// The handle is passed on exactly as React yields it, unwrapped and
+/// unvalidated; if the component does not accept a ref the hook simply never
+/// fires, which fails closed. See the escape-hatch inventory's Hatch 14.
+let renderChartWithReady<'Msg>
+    (onReady: (obj -> unit) option)
+    (spec: ChartSpec<'Msg>)
+    (context: VisAdapter.VisualisationContext<'Msg>)
+    : ReactElement option =
     ensureChartsModulesRegistered ()
 
     // State-slot dispatch mirrors AgGridAdapter — short-circuit to
@@ -211,7 +273,15 @@ let renderChart<'Msg> (spec: ChartSpec<'Msg>) (context: VisAdapter.Visualisation
                       "title" ==> titleObj
                       "legend" ==> createObj [ "enabled" ==> true; "position" ==> "bottom" ] ]
 
-            let chartProps = createObj [ "options" ==> options ]
+            // Phase 1594 — the escape valve. Attached only when the host asked
+            // for it, so a composition that supplied no hook emits exactly the
+            // props it emitted before.
+            let readyProps =
+                match onReady with
+                | Some hook -> [ "ref" ==> readyRef context.NodeId hook ]
+                | None -> []
+
+            let chartProps = createObj ([ "options" ==> options ] @ readyProps)
 
             let chartElement =
                 ReactLegacy.createElement (unbox<ReactElement> agCharts, chartProps)
@@ -224,3 +294,9 @@ let renderChart<'Msg> (spec: ChartSpec<'Msg>) (context: VisAdapter.Visualisation
                       prop.style [ style.width (length.percent 100); style.height 320 ]
                       prop.children [ chartElement ] ]
             )
+
+/// `renderChartWithReady` with no ready hook — the shape every caller had
+/// before Phase 1594, kept so the addition is additive rather than a signature
+/// change.
+let renderChart<'Msg> (spec: ChartSpec<'Msg>) (context: VisAdapter.VisualisationContext<'Msg>) : ReactElement option =
+    renderChartWithReady None spec context

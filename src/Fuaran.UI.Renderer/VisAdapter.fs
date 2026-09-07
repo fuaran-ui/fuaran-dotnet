@@ -142,6 +142,16 @@ type VisualisationContext<'Msg> =
 /// + `context.RecurseRender` for the loading / empty / error branches, and
 /// receives `spec.Source` unresolved so it can decide when to short-circuit
 /// to a state slot vs commit to a real grid / chart render.
+///
+/// **This is a host-registered seam, and it is inventoried as such.** A host
+/// that registers an adapter supplies arbitrary render behaviour for the two
+/// `Visualisation` kinds, and nothing typed stands between that behaviour and
+/// the rendered output — a decoded tree selects the kind, the host decides what
+/// a kind means. Hatch 14 of the escape-hatch inventory states what crosses,
+/// what mediates and what is therefore not claimed; the Phase 1594 `OnReady`
+/// hooks on [`AgAdapter.AgAdapterOptions`](AgAdapter.fs) are the same door read
+/// in the other direction (the library instance handed back OUT to the host),
+/// and are covered by the same entry.
 type IVisualisationAdapter<'Msg> =
     /// Render a Fuaran Grid via the consumer's grid library. Return `None`
     /// to fall back to the renderer's simple-HTML-table.

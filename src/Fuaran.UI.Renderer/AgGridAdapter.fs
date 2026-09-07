@@ -371,7 +371,25 @@ let private buildColumnDef<'Msg>
 
 // ─── Top-level Grid render ──────────────────────────────────────────
 
-let renderGrid<'Msg> (spec: GridSpec<'Msg>) (context: VisAdapter.VisualisationContext<'Msg>) : ReactElement option =
+/// `renderGrid`, plus the Phase 1594 raw-handle escape valve: `onReady`, when
+/// the host supplied one, is invoked with AG Grid's own grid API once the grid
+/// signals readiness.
+///
+/// The hook is a PARAMETER and never a member of `GridSpec` — it is supplied by
+/// the host when it constructs the adapter ([AgAdapter.fs](AgAdapter.fs)), so no
+/// decoded tree can carry it, reach it or trigger it. That is a structural
+/// guarantee rather than the weaker "a closure cannot cross the wire" argument
+/// that `spec.OnRowClick` rests on: the slot is not a member of any wire type,
+/// so there is nothing for a decoder to fill.
+///
+/// Once-per-instance comes from AG Grid itself: `onGridReady` is raised when the
+/// grid API becomes available and not again for the life of that grid, so a
+/// re-render with fresh props does not re-enter the host's hook.
+let renderGridWithReady<'Msg>
+    (onReady: (obj -> unit) option)
+    (spec: GridSpec<'Msg>)
+    (context: VisAdapter.VisualisationContext<'Msg>)
+    : ReactElement option =
     ensureModulesRegistered ()
 
     // State-slot dispatch — adapter mirrors the simple-HTML fallback's
@@ -431,14 +449,26 @@ let renderGrid<'Msg> (spec: GridSpec<'Msg>) (context: VisAdapter.VisualisationCo
             let onRowClicked (p: obj) =
                 Render.gridRowSelected context.RunAction context.NodeId spec (p?data: Row)
 
+            // Phase 1594 — the escape valve. Attached only when the host asked
+            // for it, so a composition that supplied no hook emits exactly the
+            // props it emitted before. The handle passed on is AG Grid's own
+            // grid API (`GridReadyEvent.api`) — unwrapped, unvalidated and
+            // unmediated; see the escape-hatch inventory's Hatch 14.
+            let readyProps =
+                match onReady with
+                | Some hook -> [ "onGridReady" ==> (fun (p: obj) -> hook (p?api: obj)) ]
+                | None -> []
+
             let gridProps =
-                createObj
+                createObj (
                     [ "columnDefs" ==> columnDefs
                       "rowData" ==> List.toArray rows
                       "getRowId" ==> getRowId
                       "onRowClicked" ==> onRowClicked
                       "domLayout" ==> "autoHeight"
                       "animateRows" ==> true ]
+                    @ readyProps
+                )
 
             let gridElement =
                 ReactLegacy.createElement (unbox<ReactElement> agGridReact, gridProps)
@@ -453,3 +483,8 @@ let renderGrid<'Msg> (spec: GridSpec<'Msg>) (context: VisAdapter.VisualisationCo
                       prop.style [ style.width (length.percent 100); style.minHeight 200 ]
                       prop.children [ gridElement ] ]
             )
+
+/// `renderGridWithReady` with no ready hook — the shape every caller had before
+/// Phase 1594, kept so the addition is additive rather than a signature change.
+let renderGrid<'Msg> (spec: GridSpec<'Msg>) (context: VisAdapter.VisualisationContext<'Msg>) : ReactElement option =
+    renderGridWithReady None spec context

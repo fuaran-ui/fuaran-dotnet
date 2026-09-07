@@ -6891,3 +6891,81 @@ source — it simply restricts nothing.
 **Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and this
 change is additive, which is not a higher class than the draft already carries. `v0.77.0` is the
 newest tag.
+
+## Recorded change — 0.78.0, the AG adapters gain an `OnReady` raw-handle escape valve (fuaran#1594)
+
+**Additive to `Fuaran.UI.Renderer`: one new record, three new values, one new constructor overload,
+and two new functions.** Nothing is removed, no existing signature moves, no wire member changes, no
+`NodeKind` changes, no decoder changes, and the behaviour of every existing call site is byte-for-byte
+what it was.
+
+**Why.** An application that needs the grid or chart library's own API had one route: fork the
+adapter. The typed path exposed no handle at all, so a host wanting `api.exportDataAsCsv()` — or any
+of the hundreds of members the libraries publish and this stack deliberately does not model — had to
+copy `AgGridAdapter.fs` and maintain the copy. The valve closes that without widening the wire by a
+single byte.
+
+**What is new.**
+
+- **`Fuaran.UI.Renderer.AgAdapter.AgAdapterOptions<'Msg>`** — a record of three optional hooks,
+  `OnGridReady` / `OnChartReady` / `OnVisReady`, each `(obj -> unit) option`. `OnGridReady` receives
+  AG Grid's own grid API (`GridReadyEvent.api`); `OnChartReady` receives the mounted
+  `ag-charts-react` component handle, whose `chart` member is the library's chart instance;
+  `OnVisReady` receives every visualisation instance the adapter mounts, grid or chart, immediately
+  after the kind-specific hook. Each fires once per mounted instance and is not re-entered on
+  re-render. `'Msg` carries no field today; it is declared so the record stays in lockstep with the
+  adapter it configures.
+- **`AgAdapter.defaultOptions<'Msg>`** — all three `None`, the base for a copy-and-update.
+- **`AgAdapter.adapterWith<'Msg>`** — the adapter with host-supplied options.
+  `AgVisualisationAdapter<'Msg>` gains a primary constructor taking the options record and **keeps
+  its parameterless one**, so `AgAdapter.adapter<'Msg>` and every existing construction are
+  unchanged.
+- **`AgGridAdapter.renderGridWithReady`** and **`AgChartAdapter.renderChartWithReady`** — the
+  existing render functions plus the hook parameter. `renderGrid` / `renderChart` remain, as the
+  no-hook specialisations, so this is an addition rather than a signature change.
+
+**Intended use, and the boundary in the same breath.**
+
+```fsharp
+open Fuaran.UI.Renderer
+
+// The HOST keeps the handle. It is reached at construction time, by code the
+// host wrote; it is never named by a tree and never reachable from one.
+let mutable gridApi: obj option = None
+
+let visAdapter =
+    AgAdapter.adapterWith<Msg>
+        { AgAdapter.defaultOptions with OnGridReady = Some(fun api -> gridApi <- Some api) }
+
+// …then, once, when the composition builds its render context:
+//     { renderContext with VisAdapter = visAdapter }
+```
+
+There is no spelling of the above that a decoded tree can reach. `GridSpec` and `ChartSpec` gain no
+member, so an emission has nothing to name; the record is a parameter of the adapter's constructor,
+which only host code calls.
+
+**The guarantee is structural, and that is the point of the placement.** `GridSpec.OnRowClick` and
+`ChartSpec.OnPointClick` are authoring-only for a *behavioural* reason — they always arrive `None`
+on a decoded tree, because a callback cannot cross the wire. This record is authoring-only for a
+*structural* one: it is not a member of any wire-decoded type, so there is nothing for a decoder to
+fill, and "no wire path constructs it" is true by inspection. `Fuaran.UI.Tests.AdapterOptionsIsolation`
+checks it three ways — the two specs carry no ready-hook member, no type in the reflective closure of
+`Node<'Msg>` mentions the record in any field, and the wire assembly holds no reference to the
+renderer assembly that declares it — plus two probe tests, because a reflective walk that found
+nothing would otherwise satisfy all three vacuously.
+
+**What is NOT claimed, and it is stated here as well as in the inventory.** A handle handed out is a
+handle out of scope: nothing mediates what a host does with the library instance, and a host that
+mutates grid state behind the renderer's back is outside every rendering guarantee this package
+makes. The valve is disclosed in `docs/security/ESCAPE-HATCHES.md` as Hatch 14, alongside the
+`IVisualisationAdapter` seam it belongs to — which had no entry of its own until this change and now
+has one.
+
+**One honest limit on the chart half.** AG Charts publishes no options-level ready event, so the
+chart handle is reached through React's callback ref. If the component does not accept a ref, the
+hook simply never fires: the valve fails closed rather than handing over something else.
+
+**Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and this
+change is additive, which is not a higher class than the draft already carries. `v0.77.0` is the
+newest tag.

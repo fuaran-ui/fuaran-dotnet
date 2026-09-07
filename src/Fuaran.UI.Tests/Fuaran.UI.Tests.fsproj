@@ -346,6 +346,8 @@
     <Compile Include="TransformBudgetTests.fs" />
     <Compile Include="StatePersistenceTests.fs" />
     <Compile Include="ReferenceTablesEnhancementTests.fs" />
+    <!-- Phase 1594 — the AG adapters' OnReady valve is authoring-only by construction. -->
+    <Compile Include="AdapterOptionsIsolationTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
