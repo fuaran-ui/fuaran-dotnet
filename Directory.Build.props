@@ -653,7 +653,21 @@
          says so in place. The wire is additive: `visible` and `when` are omitted
          when absent and every pre-existing fixture byte is unchanged. See
          STABILITY.md "Recorded change - 0.78.0, `Node.Visible` and the predicate
-         `SwitchCase`". -->
+         `SwitchCase`".
+
+         (0.78.0, and the second change on this slot) - `Binding<'T>.Local` gains
+         `codec: Format option` and `commitTo: string option`, appended after the
+         existing five fields, so every positional construction and pattern over
+         the case needs two more slots. Source-breaking of the same class as the
+         two above, and it RIDES this draft rather than advancing again: 0.79.0
+         would tell a consumer already paying 0.78.0's price that there is a
+         second, separate one. The wire is additive - both members are omitted
+         when absent and every pre-existing fixture byte is unchanged - but the
+         DECODED BEHAVIOUR is not: `format`/`parse` restore to the identity
+         instead of to a value-discarding placeholder, and a decoded
+         `Binding.Computed` now raises where it used to answer the slot's zero.
+         See STABILITY.md "Recorded change - 0.78.0, a wire-complete
+         `Binding.Local`". -->
     <Version>0.78.0</Version>
   </PropertyGroup>
 

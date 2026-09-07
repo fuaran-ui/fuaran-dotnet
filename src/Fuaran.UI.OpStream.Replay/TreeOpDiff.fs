@@ -197,13 +197,17 @@ module TreeOpDiff =
         | Binding.Computed f -> Binding.Computed(f >> boxNN)
         | Binding.Now(accessor, grain) -> Binding.Now(accessor >> boxNN, grain)
         | Binding.I18n(key, args) -> Binding.I18n(key, args)
-        | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+        // Fuaran-UI Phase 1538 — the two declared slots are wire data and cross
+        // the erasure unchanged (the closures are what the erasure is about).
+        | Binding.Local(flushOn, format, initialFrom, onCommit, parse, codec, commitTo) ->
             Binding.Local(
                 flushOn,
                 (fun (o: obj) -> format (unbox<'T> o)),
                 toObjBinding initialFrom,
                 onCommit |> Option.map (fun oc -> fun (o: obj) -> oc (unbox<'T> o)),
-                (fun s -> parse s |> Result.map boxNN)
+                (fun s -> parse s |> Result.map boxNN),
+                codec,
+                commitTo
             )
         | Binding.Format(source, format, locale) -> Binding.Format(source, format, locale)
         | Binding.Transform(source, pipeline, parameters) -> Binding.Transform(source, pipeline, parameters)

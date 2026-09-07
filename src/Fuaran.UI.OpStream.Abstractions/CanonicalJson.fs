@@ -490,7 +490,7 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
                 |> Option.toList
 
             appendObject sb (case "I18n" (argsField @ [ "key", str key ]))
-        | Binding.Local(flushOn, _format, initialFrom, onCommit, _parse) ->
+        | Binding.Local(flushOn, _format, initialFrom, onCommit, _parse, _, _) ->
             // Local binding (positional since the swap). `format` / `parse` are
             // closures encoded as `<closure>` sentinels unconditionally (both
             // slots are required); `onCommit` rides only when present — decode

@@ -126,13 +126,19 @@ let all: SlotCapability list =
           "—"
       row
           "Binding.Local.onCommit"
-          (SlotPosture.HostOnlyByDesign "the Phase 62 buffered-commit pipeline — consumer-side by construction")
+          (SlotPosture.HostOnlyByDesign
+              "the Phase 62 buffered-commit pipeline — consumer-side by construction. `commitTo` is its declarative sibling and the two are mutually exclusive on the wire; the CLOSURE is what stays host-only")
           "62"
       row
           "Binding.Local.format"
-          (SlotPosture.HostOnlyByDesign "consumer-side display formatter (62); Binding.Format is the declarative twin")
+          (SlotPosture.HostOnlyByDesign
+              "consumer-side display formatter (62); `codec` is the declarative twin, and the decoded default is the identity rather than the empty string")
           "62"
-      row "Binding.Local.parse" (SlotPosture.HostOnlyByDesign "consumer-side reverse parser (62)") "62"
+      row
+          "Binding.Local.parse"
+          (SlotPosture.HostOnlyByDesign
+              "consumer-side reverse parser (62); the decoded default is the identity read through the slot's own decoder, not a function that always failed")
+          "62"
       row
           "StateBehaviour.onError"
           (SlotPosture.HostOnlyByDesign

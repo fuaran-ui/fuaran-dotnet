@@ -1184,6 +1184,23 @@ let private writeBackTo (ctx: RenderContext<'Msg>) (binding: Binding<'T>) (value
         | None -> FilterStore.clear name
     | _ -> ()
 
+/// Fuaran-UI Phase 1538 — a `Binding.Local`'s DECLARED commit destination. It
+/// routes through `writeBackTo`'s `Binding.State` arm rather than touching the
+/// store itself, so the flush inherits everything that path already owes: the
+/// Phase 266 scope routing, and the Phase 782 refusal of host-reserved keys. A
+/// declared commit target is a tree-originated write like any other, and a
+/// decoded document must not reach `host.<x>` through a buffer when it cannot
+/// reach it through `Action.SetState`.
+///
+/// A `Local` that ALSO carries an `onCommit` closure runs both. That pair is a
+/// decode refusal, so it can only arise in an in-process tree an author built
+/// by hand — where both were written deliberately and silently dropping one
+/// would be the surprise.
+let private commitLocalTo (ctx: RenderContext<'Msg>) (commitTo: string option) (value: obj) : unit =
+    match commitTo with
+    | Some key -> writeBackTo ctx (Binding.State(key, None): Binding<obj>) (Some value)
+    | None -> ()
+
 /// The control write-back dispatch (Phase 426) — THE one, for every client
 /// form-field and filter-chip control. A present handler dispatches (the
 /// closure wins and no store is touched); an omitted handler writes the typed
@@ -1654,7 +1671,7 @@ let rec keysOfBinding<'T> (channel: KeyChannel) (binding: Binding<'T>) : string 
         match channel with
         | SelectionChannel -> [ nodeId ]
         | _ -> []
-    | Binding.Local(_, _, initialFrom, _, _) -> keysOfBinding channel initialFrom
+    | Binding.Local(_, _, initialFrom, _, _, _, _) -> keysOfBinding channel initialFrom
     | Binding.I18n(_, Some args) ->
         args
         |> Map.toList
@@ -5319,7 +5336,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.text))
 
             match value with
-            | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+            | Binding.Local(flushOn, format, initialFrom, onCommit, parse, _, commitTo) ->
                 // Local-bound text field — render via the
                 // function-component shape that maintains the per-NodeId
                 // React.useState buffer and initialFrom re-sync invariant.
@@ -5329,9 +5346,14 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                 let commit (parsed: string) : unit =
                     // onCommit returns an obj-erased Action; unbox back to the
                     // typed Action<'Msg> the smart-ctor wrapped. An absent
-                    // onCommit (possible on the generated shape) commits nothing.
+                    // onCommit (possible on the generated shape) commits nothing
+                    // THROUGH THE CLOSURE — `commitTo` is the wire-carried
+                    // alternative, and it is why a decoded buffer is no longer
+                    // inert (Fuaran-UI Phase 1538).
                     onCommit
                     |> Option.iter (fun oc -> runAction ctx (unbox<Action<'Msg>> (oc parsed)))
+
+                    commitLocalTo ctx commitTo (box parsed)
 
                 // Phase 864 RECORDED KNOWN LIMIT — the Local-bound text field
                 // renders through `LocalBindings.localTextInput`, whose
@@ -5386,7 +5408,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.number))
 
             match value with
-            | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+            | Binding.Local(flushOn, format, initialFrom, onCommit, parse, _, commitTo) ->
                 // Local-bound number field — see the Text-side
                 // mirror above. The renderer uses `type=text` +
                 // `inputMode=numeric` so the consumer-side formatter
@@ -5397,6 +5419,8 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                 let commit (parsed: float) : unit =
                     onCommit
                     |> Option.iter (fun oc -> runAction ctx (unbox<Action<'Msg>> (oc parsed)))
+
+                    commitLocalTo ctx commitTo (box parsed)
 
                 LocalBindings.localNumberInput
                     {| nodeId = fieldNodeId
@@ -5549,13 +5573,15 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   | None -> () ]
 
             match value with
-            | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+            | Binding.Local(flushOn, format, initialFrom, onCommit, parse, _, commitTo) ->
                 let external =
                     BindingResolver.tryResolve ctx.Sources initialFrom |> Option.defaultValue 0.0
 
                 let commit (parsed: float) : unit =
                     onCommit
                     |> Option.iter (fun oc -> runAction ctx (unbox<Action<'Msg>> (oc parsed)))
+
+                    commitLocalTo ctx commitTo (box parsed)
 
                 LocalBindings.localNumberInput
                     {| nodeId = fieldNodeId

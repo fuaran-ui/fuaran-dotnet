@@ -273,13 +273,18 @@ let rec private mapBinding<'T> (conv: obj -> 'T) (b: Binding<obj>) : Binding<'T>
     // Local bindings carry an initialFrom of the same 'T plus
     // obj-erased onCommit / format / parse. Recurse initialFrom; box-wrap
     // 'T → obj on the obj-typed projections so the typed payload matches.
-    | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+    // Fuaran-UI Phase 1538 — `codec` and `commitTo` are WIRE data, not closures,
+    // so they carry across the erasure untouched: a cast that dropped them would
+    // silently turn a declared buffer back into an inert one.
+    | Binding.Local(flushOn, format, initialFrom, onCommit, parse, codec, commitTo) ->
         Binding.Local(
             flushOn,
             (fun (t: 'T) -> format (box t)),
             mapBinding conv initialFrom,
             onCommit |> Option.map (fun oc -> fun (t: 'T) -> oc (box t)),
-            (fun s -> parse s |> Result.map conv)
+            (fun s -> parse s |> Result.map conv),
+            codec,
+            commitTo
         )
     // Format bindings carry a `Binding<float>` source + bounded
     // Format / LocaleSource — no 'T payload to cast (the formatter always

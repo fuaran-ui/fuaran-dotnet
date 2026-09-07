@@ -435,7 +435,7 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     // furnishes it once per render pass. It participates in no reactive edge,
     // so it contributes no usage (the `Computed` posture below).
     | Binding.Now _ -> []
-    | Binding.Local(_, _, initialFrom, _, _) -> usesOfBinding initialFrom
+    | Binding.Local(_, _, initialFrom, _, _, _, _) -> usesOfBinding initialFrom
     | Binding.I18n(_, Some args) -> args |> Map.toList |> List.collect (fun (_, ab) -> usesOfBinding<JVal> ab)
     | Binding.I18n(_, None) -> []
     | Binding.Format(source, _, _) -> usesOfBinding source
@@ -772,12 +772,24 @@ let rec usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
 /// inert-control condition — so it contributes no write. A `Local` buffers and
 /// commits to whatever it re-syncs FROM, so its destination is `initialFrom`'s;
 /// its `onCommit` hook is host code layered on top of that.
+///
+/// Fuaran-UI Phase 1538 — a `commitTo` DECLARES the destination, so it wins over
+/// the re-sync source's. That is what narrows FUARAN069's `Local` exemption to
+/// what it always meant: a buffer is not inert when it carries a closure, a
+/// declared commit key, OR a writable re-sync source — and one carrying none of
+/// the three warns, because it buffers a value and then has nowhere to put it.
 let rec writeBackTargetOf<'T> (binding: Binding<'T>) : string option * bool =
     match binding with
     | Binding.State(key, _) -> Some key, false
-    | Binding.Local(_, _, initialFrom, onCommit, _) ->
+    | Binding.Local(_, _, initialFrom, onCommit, _, _, commitTo) ->
         let key, opaque = writeBackTargetOf initialFrom
-        key, opaque || onCommit.IsSome
+
+        let destination =
+            match commitTo with
+            | Some _ -> commitTo
+            | None -> key
+
+        destination, opaque || onCommit.IsSome
     | _ -> None, false
 
 /// The write-side facts of one `FormFieldKind`'s value slot.

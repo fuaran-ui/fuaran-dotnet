@@ -341,6 +341,7 @@
     <Compile Include="RatingModelTests.fs" />
     <Compile Include="TokensModelTests.fs" />
     <Compile Include="TrustedTypesTests.fs" />
+    <Compile Include="LocalWireTests.fs" />
     <!-- Phase 1532 — the client Transform evaluator has a row x step budget. -->
     <Compile Include="TransformBudgetTests.fs" />
     <Compile Include="StatePersistenceTests.fs" />

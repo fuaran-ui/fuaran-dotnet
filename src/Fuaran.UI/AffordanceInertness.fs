@@ -148,7 +148,7 @@ let family: Consequence list =
           "Binding.Computed"
           DecodedVerdict.Inert
           Coverage.Reported
-          "the computation decodes to a placeholder value. FUARAN084 already refuses this on the SOURCE path; this is the same fact observed from the other end, where refusing is no longer possible"
+          "the computation decodes to a stand-in that RAISES, and the resolver surfaces the slot's error rendition naming the cases that do cross the wire. Fuaran-UI Phase 1538 changed this: it used to decode to the slot's ZERO — `0` / `\"\"` / `false` rendered as though the computation had run, which is a wrong answer indistinguishable at the slot from a right one. FUARAN084 refuses it on the SOURCE path; this is the same fact observed from the other end, where refusing the document is no longer available but staying silent never was either"
 
       row
           "Action.Dispatch"
@@ -228,19 +228,19 @@ let family: Consequence list =
           DecodedVerdict.Inert
           (Coverage.NotWalked
               "reaching it needs a `Binding.Local` usage the shared binding walk does not surface — it recurses into `initialFrom` and emits no `Local` use. Widening that walk's usage DU would change the input of five shipped Error-severity consumption rules, which is well outside an additive report's remit")
-          "the commit continuation decodes to a closure returning a boxed `<closure>`, so a buffered edit commits a sentinel"
+          "the commit continuation decodes to a closure returning a boxed `<closure>`, so a buffered edit commits a sentinel — UNLESS the binding declares `commitTo`, which the wire does carry and which the flush writes to State. The two are mutually exclusive on the wire, so this verdict is the reading of a document that chose the closure (Fuaran-UI Phase 1538)"
 
       row
           "Binding.Local.format"
           DecodedVerdict.Degraded
           (Coverage.NotWalked "same binding-walk gap as `Binding.Local.onCommit`")
-          "decodes to the generic value-to-string default, so a value still renders — the author's formatting is what is lost. `Binding.Format` is the declarative twin"
+          "decodes to the identity text rendition, so a value still renders — the author's formatting is what is lost, unless the binding declares a `codec`, which the wire carries (Fuaran-UI Phase 1538)"
 
       row
           "Binding.Local.parse"
-          DecodedVerdict.Inert
+          DecodedVerdict.Degraded
           (Coverage.NotWalked "same binding-walk gap as `Binding.Local.onCommit`")
-          "decodes to a function returning `Error \"<closure>\"`, so EVERY edit fails to parse and the buffered value can never commit — a hard block, not a degradation"
+          "decodes to the identity read through the slot's own decoder, so an edit parses and can commit. Fuaran-UI Phase 1538 changed this from Inert: it used to decode to a function returning `Error \"<closure>\"`, so EVERY edit failed to parse and a wire-authored buffer could never commit at all"
 
       row
           "CellFormat.Custom.fn"

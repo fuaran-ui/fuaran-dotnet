@@ -812,6 +812,20 @@ let generatedLayerTests =
                     "reject-json-surrogate-pair-split.json"
                     "reject-limit-node-depth.json"
                     "reject-limit-tree-item-depth.json"
+                    // Fuaran-UI Phase 1538 — `Binding.Local`'s two refusals, and
+                    // both are the CROSS-FIELD / CASE-RESTRICTION shape rather
+                    // than the value-bound one. The generated layer reads
+                    // `codec` as a well-typed `Format` and `commitTo` as a
+                    // well-typed string, which each is; what it cannot judge is
+                    // that only ONE `Format` case has an inverse, and that a
+                    // declared commit key and a closure sentinel are
+                    // alternatives. Neither is a refinement the IDL's type
+                    // language could carry — the first is a restriction on a
+                    // shared union reference, the second a relation between two
+                    // sibling members — so both land where the `DateRange` pair
+                    // and the near misses do.
+                    "reject-local-codec-no-inverse.json"
+                    "reject-local-oncommit-and-committo.json"
                     "reject-nearmiss-a11y-aria-hidden.json"
                     "reject-nearmiss-a11y-arialabel.json"
                     "reject-nearmiss-a11y-live.json"

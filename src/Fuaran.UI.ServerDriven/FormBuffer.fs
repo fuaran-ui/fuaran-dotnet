@@ -76,22 +76,47 @@ let private asStr (v: LiveValue) : string option =
 /// protocol — see the module header) or the buffer fails to parse (a malformed
 /// value flushes to nothing rather than mutating).
 let fieldFlushAction (field: FormField<'Msg>) (value: LiveValue) : Action<'Msg> option =
-    // Positional Local since the swap; an absent `onCommit` flushes to nothing.
+    // Positional Local since the swap.
+    //
+    // Fuaran-UI Phase 1538 — a `Local` has TWO possible commit destinations now,
+    // and this tier expresses the declared one as `Action.SetState`, which is
+    // the same write the client renderer performs through `writeBackTo` and
+    // travels through the same gated dispatch as any other action. Before, an
+    // absent `onCommit` flushed to nothing, so a wire-authored buffer on a
+    // server-driven form buffered a value and then dropped it.
+    //
+    // Both present is a decode refusal, so it can only be an in-process tree
+    // someone built by hand; both are run, in a `Chain`, matching the client
+    // renderer rather than picking a winner the two tiers might pick differently.
     let commitOf
         (parse: string -> Result<'T, string>)
         (onCommit: ('T -> obj) option)
+        (commitTo: string option)
         (s: string)
         : Action<'Msg> option =
         match parse s with
-        | Ok t -> onCommit |> Option.map (fun oc -> unbox<Action<'Msg>> (oc t))
         | Error _ -> None
+        | Ok t ->
+            let dispatched = onCommit |> Option.map (fun oc -> unbox<Action<'Msg>> (oc t))
+
+            let declared =
+                commitTo
+                |> Option.map (fun key ->
+                    Action.SetState(key, Some(Fuaran.UI.HostPrelude.LocalCodec.jvalOf (box t)), None))
+
+            match dispatched, declared with
+            | Some a, Some b -> Some(Action.Chain [ a; b ])
+            | Some a, None -> Some a
+            | None, Some b -> Some b
+            | None, None -> None
 
     match field.Kind with
-    | FormFieldKind.Text(Some(Binding.Local(_, _, _, oc, p)), _)
-    | FormFieldKind.TextArea(Some(Binding.Local(_, _, _, oc, p)), _, _) -> asStr value |> Option.bind (commitOf p oc)
-    | FormFieldKind.Number(Some(Binding.Local(_, _, _, oc, p)), _)
-    | FormFieldKind.RangedNumber(Some(Binding.Local(_, _, _, oc, p)), _, _, _, _) ->
-        asStr value |> Option.bind (commitOf p oc)
+    | FormFieldKind.Text(Some(Binding.Local(_, _, _, oc, p, _, ct)), _)
+    | FormFieldKind.TextArea(Some(Binding.Local(_, _, _, oc, p, _, ct)), _, _) ->
+        asStr value |> Option.bind (commitOf p oc ct)
+    | FormFieldKind.Number(Some(Binding.Local(_, _, _, oc, p, _, ct)), _)
+    | FormFieldKind.RangedNumber(Some(Binding.Local(_, _, _, oc, p, _, ct)), _, _, _, _) ->
+        asStr value |> Option.bind (commitOf p oc ct)
     // Non-`Local` fields are not buffered by this protocol; other field shapes
     // (Checkbox / Choice / Segmented) carry no `Local` value binding.
     | _ -> None

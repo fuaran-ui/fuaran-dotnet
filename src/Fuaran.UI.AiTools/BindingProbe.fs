@@ -256,7 +256,9 @@ let rec private resolveThrough<'T>
             | None -> resolvedOk Unchecked.defaultof<'T>
 
 
-    | Binding.Local(_, _, initialFrom, _, _) ->
+    // Phase 1538 widened `Local` to seven slots; the two added ones are wire
+    // shape, not read side, so the arm's answer is unchanged.
+    | Binding.Local(_, _, initialFrom, _, _, _, _) ->
         // Local binding's read side is its initialFrom source. Recursed rather
         // than delegated so the underlying source keeps THIS function's richer
         // error vocabulary; the buffer-overlay state is a render-time concern

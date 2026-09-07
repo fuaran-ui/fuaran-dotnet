@@ -81,7 +81,13 @@ let localBinding<'T> : Binding<'T> =
         // through `onCommit` after `parse` succeeds, which the defaulted
         // `parse` can never do).
         Some(fun _ -> box "__fuaran_local_no_commit__"),
-        (fun _ -> Error "no Parse function supplied to Binding.Local")
+        (fun _ -> Error "no Parse function supplied to Binding.Local"),
+        // Fuaran-UI Phase 1538 — the stub declares NEITHER a codec nor a commit
+        // target. Both are deliberate omissions rather than defaults: a codec
+        // the author did not ask for would silently reformat the buffer, and a
+        // commit key invented here would write somewhere nobody named.
+        None,
+        None
     )
 
 #warnon "3261"

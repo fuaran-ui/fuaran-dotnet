@@ -124,7 +124,9 @@ let private census: CensusRow list =
                           string,
                           binding.state "cw-local" 0.0,
                           None,
-                          (fun _ -> Ok 0.0)
+                          (fun _ -> Ok 0.0),
+                          None,
+                          None
                       ) }
         ExpectRead = true
         ExpectSubscribe = true

@@ -350,10 +350,30 @@ let private bindingDef (self: string) (payload: StaticPayload) (elem: J) : J =
               [ "key" ]
               [ "args", JObj [ "type", JStr "object"; "additionalProperties", binding "json" ]
                 "key", str ]
+          // Fuaran-UI Phase 1538 — `codec` and `commitTo` are the declarative
+          // twins of the three closures, both optional. `onCommit` leaves the
+          // REQUIRED list in the same change: it is an `opt` slot in the IDL and
+          // always was, and a document that declares `commitTo` instead carries
+          // no `onCommit` at all — so requiring it here would make every
+          // declarative buffer schema-invalid while decoding perfectly.
+          //
+          // Two things this schema does NOT say, and the honest reason is that
+          // they are not said rather than that they cannot be: that `onCommit`
+          // and `commitTo` are mutually exclusive (`not: { required: [both] }`
+          // would state it), and that only `Format.Number` is an admissible
+          // codec (an `allOf` narrowing the shared `$ref` would). Both are
+          // decode refusals carrying a code and a `$`-rooted path, both have a
+          // reject vector in the corpus, and both are filed in
+          // `schemaInexpressibleRejects` WITH this reason — the
+          // `reject-int-slot-out-of-range` precedent — so the exemption fails
+          // the moment the schema gains the power to refuse them rather than
+          // quietly outliving it.
           duCase
               "Local"
-              [ "flushOn"; "format"; "initialFrom"; "onCommit"; "parse" ]
-              [ "flushOn", ref "LocalFlushTrigger"
+              [ "flushOn"; "format"; "initialFrom"; "parse" ]
+              [ "codec", ref "Format"
+                "commitTo", str
+                "flushOn", ref "LocalFlushTrigger"
                 "format", closure
                 "initialFrom", ref self
                 "onCommit", closure

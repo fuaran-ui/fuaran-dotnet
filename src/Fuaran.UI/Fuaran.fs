@@ -421,10 +421,54 @@ module binding =
             flushOn,
             (match format with
              | Some f -> f
-             | None -> fun (v: 'T) -> string (box v)),
+             | None -> fun (v: 'T) -> HostPrelude.LocalCodec.identityFormat (box v)),
             initialFrom,
             Some(fun (t: 'T) -> box (onCommit t)),
-            parse
+            parse,
+            None,
+            None
+        )
+
+    /// The DECLARATIVE local buffer (Fuaran-UI Phase 1538) — the same case, said
+    /// on the wire instead of in closures. `codec` renders the buffered value and
+    /// parses the reader's text back; `commitTo` is the State key the flush writes.
+    ///
+    /// It is a second entry point rather than two more parameters on `local`
+    /// because the two shapes are alternatives, not options: `local` takes an
+    /// `onCommit` DISPATCH and host closures, and a host that has those does not
+    /// need the wire to carry a codec — whereas a document that says everything
+    /// declaratively has no closure to hand over. Passing `None` for a codec you
+    /// are overriding anyway is a parameter that only ever means "not this one".
+    ///
+    /// Both slots are optional here for one honest reason: a `Local` may declare
+    /// only a commit target (an ordinary text buffer that writes a state key), or
+    /// only a codec (a numeric buffer whose commit a handler still owns). Declaring
+    /// NEITHER is what FUARAN069 calls inert, and this builder does not stop you
+    /// spelling it — the validator does, where the whole tree is in view.
+    ///
+    /// `parse` is still an argument, and it is not a contradiction: the closures
+    /// never cross the wire, so this one serves the IN-PROCESS host only. A
+    /// decoding host rebuilds `format` and `parse` from `codec` — or from the
+    /// identity when no codec is declared — which is why an author who intends
+    /// the document to travel should keep the two agreeing.
+    let localDeclared
+        (initialFrom: Binding<'T>)
+        (flushOn: LocalFlushTrigger)
+        (parse: string -> Result<'T, string>)
+        (codec: Format option)
+        (commitTo: string option)
+        : Binding<'T> =
+        Binding.Local(
+            flushOn,
+            (fun (v: 'T) -> HostPrelude.LocalCodec.identityFormat (box v)),
+            initialFrom,
+            // No host closure: the commit destination is `commitTo`, and a
+            // sentinel-shaped `onCommit` beside it is exactly the pair the
+            // decoder refuses.
+            None,
+            parse,
+            codec,
+            commitTo
         )
 
     #warnon "3261"

@@ -226,7 +226,21 @@ let private schemaInexpressibleRejects: Set<string> =
           //
           // The MISSING_FIELD sibling `reject-confirm-missing-onconfirm` is NOT
           // here: `required` expresses it, and the ordinary path asserts it.
-          "reject-confirm-nested" ]
+          "reject-confirm-nested"
+
+          // Fuaran-UI Phase 1538 — `Binding.Local`'s two refusals. Unlike the
+          // two above these ARE expressible in principle, and are filed here for
+          // the `reject-int-slot-out-of-range` reason rather than a dialect one:
+          // `not: { required: ["onCommit", "commitTo"] }` would state the
+          // exclusion, and an `allOf` narrowing the codec's `$ref` to the
+          // `Number` arm would state the admitted set. Neither is emitted today.
+          //
+          // Filed with the reason rather than left silently passing, and pinned
+          // INVERSELY like every entry here — so the day `SchemaGen` states
+          // either one, this test fails and the entry goes, instead of the
+          // exemption outliving its reason.
+          "reject-local-codec-no-inverse"
+          "reject-local-oncommit-and-committo" ]
 
 // Phase 1068 — `schemaTypeErasedBindingRejects` is GONE, and its deletion is the
 // point rather than a tidy-up. Phase 1064 found four reject fixtures the emitted
