@@ -19,6 +19,10 @@
          + the Ops.Introspect container lens. -->
     <Compile Include="FunctionTool.fs" />
     <Compile Include="ResponseRender.fs" />
+    <!-- Phase 1591 — the kind-intrinsic ARIA question ("is this kind already
+         announced, whatever the trait says?") as queries over the shipped
+         Fuaran.UI.RenderFidelity declaration. No table of its own. -->
+    <Compile Include="Fidelity.fs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />

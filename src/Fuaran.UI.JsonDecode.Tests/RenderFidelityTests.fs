@@ -24,10 +24,17 @@ module Fuaran.UI.JsonDecode.Tests.RenderFidelityTests
 //
 //  Plus the stale-artefact guard on `render-fidelity.json`, mirroring the
 //  stale-schema guard beside it.
+//
+//  And, since Phase 1591, the KIND-INTRINSIC ARIA lock — the declaration and
+//  the two per-kind renderer arms held to each other over BOTH pipelines. See
+//  the block at the foot of this file for what that lock claims and, more
+//  importantly, what it does not.
 // ============================================================================
 
+open System
 open System.IO
 open System.Text.Json
+open System.Text.RegularExpressions
 open Expecto
 
 open Fuaran.UI
@@ -336,3 +343,317 @@ let badgeDerivation =
                   match tryFind kind |> Option.map (fun r -> r.Rich) with
                   | Some RichTier.None -> ()
                   | other -> failtestf "%s declares no client-only tier, got %A" kind other) ]
+
+// ─── Kind-intrinsic ARIA — the lock (Phase 1591) ─────────────────────────────
+//
+// The declaration says which roles and live regions the renderer pins for a
+// kind WHATEVER the node's `Accessibility` trait says. A declaration nothing
+// measures is prose in a record, so this holds it to the two per-kind renderer
+// arms — `Fuaran.UI.Renderer/Render.fs` and
+// `Fuaran.UI.Renderer.Server/Render.fs`, copied beside the test binary by this
+// project's own Content items so the scan reads the sources THIS build
+// compiled.
+//
+// FOUR legs, and they fail in different directions on purpose:
+//
+//   A. DECLARED ARE EMITTED. Every token a row declares appears in the client
+//      arm, and — for an entry declared on both pipelines — in the server arm
+//      too. A role deleted from a renderer, or moved out of `Render.fs` into a
+//      sibling control module, fails here.
+//
+//   B. EMITTED ARE DECLARED (the go-red leg). Every role token either arm emits
+//      is declared by some row, or is one of the two NON-KIND emissions named
+//      and justified below. A kind that gains an intrinsic role without the
+//      fact fails here, in the repo that changed it — which is the whole point
+//      of the phase.
+//
+//   C. THE TWO ARMS AGREE. Their role-token sets differ by exactly the recorded
+//      difference. A role added to one pipeline alone fails here even when leg
+//      B is satisfied, which is what makes this a BOTH-PIPELINES lock rather
+//      than two independent ones.
+//
+//   D. THE SCAN CAN FAIL. Leg B's rule is exercised against a synthetic source
+//      line, so the census is known to report an undeclared token rather than
+//      being trusted to.
+//
+// THE HONESTY BOUNDARY, stated because the alternative is a reader assuming
+// more: the lock is TOKEN-level, not arm-level. It proves that the set of roles
+// the renderers emit is the set the table declares, and that both arms emit the
+// same set. It does NOT prove that `role="tree"` is emitted by the `Tree` arm
+// specifically — a token moved between two declaring kinds would pass. Locating
+// an emission inside its own arm needs the rendered output of both pipelines,
+// which this project has neither renderer referenced to produce; the SSR-parity
+// suite is where that lives. What this lock buys is that no intrinsic emission
+// can appear, vanish, or diverge across the pipelines unnoticed.
+
+/// One of the two per-kind renderer arms, as this build compiled it.
+let private rendererArm (tier: string) : string =
+    let path =
+        Path.Combine(AppContext.BaseDirectory, "renderer-sources", tier, "Render.fs")
+
+    if not (File.Exists path) then
+        failwithf
+            "the %s renderer arm is not beside the test binary (%s) — the `renderer-sources` Content copy in Fuaran.UI.JsonDecode.Tests.fsproj did not run"
+            tier
+            path
+
+    File.ReadAllText path
+
+/// The arm's EMITTING lines: comment lines dropped, so a role named in prose
+/// (`// … same classes + role="dialog" …`) is not read as an emission. The
+/// patterns below would not match those anyway; dropping the lines makes the
+/// scan's intent legible rather than accidental.
+let private emittingLines (source: string) : string list =
+    source.Split('\n')
+    |> Array.map (fun line -> line.TrimEnd('\r'))
+    |> Array.filter (fun line -> not ((line.TrimStart()).StartsWith "//"))
+    |> List.ofArray
+
+let private tokensMatching (pattern: string) (lines: string list) : Set<string> =
+    let rx = Regex pattern
+
+    lines
+    |> List.collect (fun line -> [ for m in rx.Matches line -> m.Groups[1].Value ])
+    |> Set.ofList
+
+/// Both spellings a renderer uses for a role: Feliz's typed `prop.role "x"` and
+/// the `prop.custom ("role", "x")` escape that the server arm and the
+/// conditional client sites take.
+let private roleTokens (lines: string list) : Set<string> =
+    Set.union
+        (tokensMatching "prop\\.role\\s+\"([a-z]+)\"" lines)
+        (tokensMatching "\\(\\s*\"role\"\\s*,\\s*\"([a-z]+)\"\\s*\\)" lines)
+
+let private liveTokens (lines: string list) : Set<string> =
+    tokensMatching "\\(\\s*\"aria-live\"\\s*,\\s*\"([a-z]+)\"\\s*\\)" lines
+
+/// The roles a renderer emits that are NOT kind-intrinsic, each with the reason
+/// no row could carry it. Both are cross-kind: declaring either on all
+/// forty-three rows would state something false about every one of them, and on
+/// none would leave the census unable to close.
+let private nonKindRoles: (string * string) list =
+    [ "tooltip",
+      "the per-node tooltip hint is emitted for ANY kind whose `Accessibility` trait declares one - trait-DRIVEN, which is the exact opposite of intrinsic"
+      "note",
+      "the depth-exceeded marker replaces the subtree of ANY kind that breaches `WireLimits.MaxDepth` - a wire-limit refusal, not a kind's own announcement (server arm only; the client arm carries no depth guard)" ]
+
+/// The one recorded difference between the two arms' role sets: the server
+/// emits the depth-exceeded marker and the client does not.
+let private serverOnlyRoles: Set<string> = Set.ofList [ "note" ]
+
+let private clientLines = emittingLines (rendererArm "client")
+let private serverLines = emittingLines (rendererArm "server")
+
+let private declaredRoles: Set<string> =
+    allIntrinsics |> List.choose (fun (_, a) -> a.Role) |> Set.ofList
+
+/// Leg B's rule as a function, so the negative probe below exercises the SAME
+/// code the positive case does rather than a paraphrase.
+let private rolesWithNoRow (emitted: Set<string>) : string list =
+    let accounted = Set.union declaredRoles (nonKindRoles |> List.map fst |> Set.ofList)
+
+    Set.difference emitted accounted |> Set.toList
+
+[<Tests>]
+let intrinsicAria =
+    testList
+        "Fuaran.UI.RenderFidelity — kind-intrinsic ARIA (Phase 1591)"
+        [ testCase "every declared entry carries a role or a live region" (fun () ->
+              for (kind, a) in allIntrinsics do
+                  Expect.isTrue
+                      (Option.isSome a.Role || Option.isSome a.Live)
+                      (sprintf
+                          "%s/%s declares neither a role nor a live region — an entry that announces nothing is not an announcement"
+                          kind
+                          a.Element)
+
+                  Expect.isNotEmpty a.Element (sprintf "%s: an intrinsic entry with no element" kind)
+
+                  match a.Condition with
+                  | Some c ->
+                      Expect.isNotEmpty
+                          c
+                          (sprintf "%s/%s: an empty condition — omit the field to mean 'every instance'" kind a.Element)
+                  | None -> ()
+
+                  match a.Tier with
+                  | IntrinsicTier.ClientOnly why ->
+                      Expect.isNotEmpty
+                          why
+                          (sprintf
+                              "%s/%s is declared client-only with no reason — the asymmetry IS the fact, so it must say why the server floor emits none"
+                              kind
+                              a.Element)
+                  | IntrinsicTier.BothPipelines -> ())
+
+          testCase "no kind declares the same element's role twice" (fun () ->
+              let dupes =
+                  all
+                  |> List.collect (fun r -> r.Intrinsic |> List.map (fun a -> r.Kind, a.Element, a.Role))
+                  |> List.countBy id
+                  |> List.filter (fun (_, n) -> n > 1)
+                  |> List.map fst
+
+              Expect.isEmpty
+                  dupes
+                  "a kind declares one element's role twice; a consumer would read whichever came first")
+
+          testCase "leg A — every declared role reaches the arms that declare it" (fun () ->
+              let clientRoles = roleTokens clientLines
+              let serverRoles = roleTokens serverLines
+
+              for (kind, a) in allIntrinsics do
+                  match a.Role with
+                  | None -> ()
+                  | Some role ->
+                      Expect.isTrue
+                          (Set.contains role clientRoles)
+                          (sprintf
+                              "%s declares role=\"%s\" on %s, and the CLIENT arm emits no such role — either the renderer dropped it, or the emission moved out of Render.fs into a sibling module and the row must say so"
+                              kind
+                              role
+                              a.Element)
+
+                      match a.Tier with
+                      | IntrinsicTier.BothPipelines ->
+                          Expect.isTrue
+                              (Set.contains role serverRoles)
+                              (sprintf
+                                  "%s declares role=\"%s\" on %s as emitted by BOTH pipelines, and the SERVER arm emits no such role — fix the floor, or re-declare the entry as IntrinsicTier.ClientOnly with the reason"
+                                  kind
+                                  role
+                                  a.Element)
+                      | IntrinsicTier.ClientOnly _ -> ())
+
+          testCase "leg A — every declared live region reaches the arms that declare it" (fun () ->
+              let clientLive = liveTokens clientLines
+              let serverLive = liveTokens serverLines
+
+              for (kind, a) in allIntrinsics do
+                  match a.Live with
+                  | None -> ()
+                  | Some politeness ->
+                      let token = liveRegionToken politeness
+
+                      Expect.isTrue
+                          (Set.contains token clientLive)
+                          (sprintf
+                              "%s declares aria-live=\"%s\" on %s; the CLIENT arm emits no such value"
+                              kind
+                              token
+                              a.Element)
+
+                      match a.Tier with
+                      | IntrinsicTier.BothPipelines ->
+                          Expect.isTrue
+                              (Set.contains token serverLive)
+                              (sprintf
+                                  "%s declares aria-live=\"%s\" on %s as emitted by BOTH pipelines; the SERVER arm emits no such value"
+                                  kind
+                                  token
+                                  a.Element)
+                      | IntrinsicTier.ClientOnly _ -> ())
+
+          testCase "leg B — every role either arm emits is declared, or is named non-kind" (fun () ->
+              let emitted = Set.union (roleTokens clientLines) (roleTokens serverLines)
+
+              Expect.isEmpty
+                  (rolesWithNoRow emitted)
+                  "a renderer emits a role no fidelity row declares: add it to that kind's `Intrinsic` list in Fuaran.UI.RenderFidelity, or — if it is cross-kind rather than a kind's own announcement — to `nonKindRoles` here with the reason no row could carry it")
+
+          testCase "leg B — a role with no row FAILS the rule (negative probe)" (fun () ->
+              // The census has to be able to go red. A probe token — the shape a
+              // newly-pinned intrinsic role takes before anyone declares it —
+              // must be reported by name.
+              let probe = "probekindintrinsicrole"
+
+              let emitted =
+                  roleTokens (("                  prop.role \"" + probe + "\"") :: clientLines)
+
+              Expect.equal
+                  (rolesWithNoRow emitted)
+                  [ probe ]
+                  "the census must name an undeclared role — if this is empty the rule cannot fail and guards nothing")
+
+          testCase "leg C — the two arms emit the same roles, bar the recorded difference" (fun () ->
+              let clientRoles = roleTokens clientLines
+              let serverRoles = roleTokens serverLines
+
+              Expect.equal
+                  (Set.difference serverRoles clientRoles)
+                  serverOnlyRoles
+                  "the server arm emits a role the client arm does not — a kind announced on one pipeline and silent on the other is an SSR/CSR divergence; fix the arm, or record the difference in `serverOnlyRoles` here with its reason in `nonKindRoles`"
+
+              Expect.isEmpty
+                  (Set.difference clientRoles serverRoles |> Set.toList)
+                  "the client arm emits a role the server arm does not — a no-script reader is not announced what a hydrated one is; fix the server floor, or record the difference here")
+
+          testCase "leg C — the two arms emit the same live-region politeness" (fun () ->
+              Expect.equal
+                  (liveTokens clientLines)
+                  (liveTokens serverLines)
+                  "the two arms disagree about which live-region politeness they emit; a difference must be fixed or recorded here")
+
+          testCase "the non-kind roles are genuinely undeclared" (fun () ->
+              // The exemption list is only honest while it names roles NO row
+              // declares. A token appearing in both would silence leg B for a
+              // kind that does own it.
+              for (role, why) in nonKindRoles do
+                  Expect.isFalse
+                      (Set.contains role declaredRoles)
+                      (sprintf
+                          "'%s' is both declared by a fidelity row and exempted as non-kind — remove the exemption, it is now a kind's own announcement"
+                          role)
+
+                  Expect.isNotEmpty why (sprintf "'%s' is exempted with no reason" role))
+
+          testCase "the emitted artefact carries every declared intrinsic entry" (fun () ->
+              use doc = JsonDocument.Parse(RenderFidelityArtifact.toJson ())
+
+              let emitted =
+                  doc.RootElement.GetProperty("kinds").EnumerateArray()
+                  |> Seq.collect (fun k ->
+                      k.GetProperty("intrinsic").EnumerateArray()
+                      |> Seq.map (fun i ->
+                          k.GetProperty("kind").GetString(),
+                          i.GetProperty("element").GetString(),
+                          (match i.TryGetProperty "role" with
+                           | true, r -> r.GetString() |> Option.ofObj
+                           | _ -> None)))
+                  |> List.ofSeq
+
+              Expect.equal
+                  emitted
+                  (allIntrinsics |> List.map (fun (kind, a) -> kind, a.Element, a.Role))
+                  "every declared intrinsic emission must reach the artefact, in table order — a consumer reads the artefact, not this table"
+
+              // Every row carries the key, empty included: an absent array and an
+              // empty one would be two spellings of "this kind announces nothing
+              // of itself", and a consumer would have to guess which it met.
+              for k in doc.RootElement.GetProperty("kinds").EnumerateArray() do
+                  Expect.isTrue
+                      (fst (k.TryGetProperty "intrinsic"))
+                      (sprintf "%s carries no `intrinsic` key at all" (k.GetProperty("kind").GetString()))
+
+              // A client-only entry must say so in the artefact, with its reason
+              // — the asymmetry is the part a consumer cannot re-derive.
+              let clientOnly =
+                  doc.RootElement.GetProperty("kinds").EnumerateArray()
+                  |> Seq.collect (fun k -> k.GetProperty("intrinsic").EnumerateArray())
+                  |> Seq.filter (fun i -> i.GetProperty("tier").GetString() = "clientOnly")
+                  |> List.ofSeq
+
+              Expect.equal
+                  (List.length clientOnly)
+                  (allIntrinsics
+                   |> List.filter (fun (_, a) ->
+                       match a.Tier with
+                       | IntrinsicTier.ClientOnly _ -> true
+                       | IntrinsicTier.BothPipelines -> false)
+                   |> List.length)
+                  "the artefact must carry every client-only entry as such"
+
+              for i in clientOnly do
+                  Expect.isTrue
+                      (fst (i.TryGetProperty "tierNote"))
+                      "a client-only entry reaches the artefact without the reason the server floor emits none") ]

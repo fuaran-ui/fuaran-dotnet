@@ -3094,7 +3094,20 @@
         {
           "name": "activeIndex",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "union",
+              "fields": [
+                {
+                  "name": "value",
+                  "value": {
+                    "$type": "int",
+                    "value": 0
+                  }
+                }
+              ],
+              "tag": "Static"
+            }
           },
           "type": {
             "$type": "union",

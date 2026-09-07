@@ -149,6 +149,23 @@
          point, and the intended repairs sit beside them for diffability. -->
     <Content Include="overclose-fixtures\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- Phase 1591 — the two per-KIND renderer arms, copied beside the test binary
+       so the intrinsic-ARIA lock reads the sources THIS build compiled rather
+       than whatever a climb to a repo root happens to find (the shape
+       Fuaran.UI.Tests already takes for its renderer-source scans). Only the two
+       `Render.fs` files: the fact is per kind, and the kind arms live there. A
+       role that MOVED out of one of them into a sibling control module fails the
+       lock's declared-are-emitted leg, which is the direction that matters. -->
+  <ItemGroup>
+    <Content Include="..\Fuaran.UI.Renderer\Render.fs">
+      <Link>renderer-sources\client\Render.fs</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Fuaran.UI.Renderer.Server\Render.fs">
+      <Link>renderer-sources\server\Render.fs</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />

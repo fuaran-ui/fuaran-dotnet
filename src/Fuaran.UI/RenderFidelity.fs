@@ -247,6 +247,100 @@ type Obligation =
         Section: string
     }
 
+// ─── Kind-intrinsic ARIA (Phase 1591) ────────────────────────────────────────
+//
+// What a node DECLARES is the `Accessibility` trait, and it is queryable
+// already. What the renderer PINS regardless of that trait was prose: `Toast`
+// always emits `role="status"` with `aria-live="polite"`, and the only place
+// that was written down was the `Fallback` sentence below. A consumer needing
+// the answer had to mirror the render arms in its own repo — the hand-kept copy
+// this tier has watched go stale three times — or scan prose.
+//
+// The fact is DATA rather than an `ObligationClaim`, and the difference is the
+// point: a claim is a checkable prose statement a host's suite asserts, this is
+// a value a consumer reads. Ten kinds carry a role rather than a live region,
+// and "which role, on which element, under what condition" is not a yes/no.
+
+/// Which render tiers pin an intrinsic emission.
+///
+/// The distinction is the one `RichTier` draws, for the same reason: a role a
+/// NO-SCRIPT reader is announced is a different fact from one that arrives at
+/// hydration. `ClientOnly` is not by itself a defect claim — the `DataGrid`
+/// drag-status region announces a transfer the static floor cannot perform at
+/// all, so there is nothing for the server to say — but where the static floor
+/// DOES render the control it names a real asymmetry, and naming it is the
+/// whole reason the field exists rather than a bare boolean.
+[<RequireQualifiedAccess>]
+type IntrinsicTier =
+    /// Both renderers emit it, and the SSR-parity corpus compares them.
+    | BothPipelines
+    /// The client renderer alone, with the reason the server floor emits none.
+    | ClientOnly of why: string
+
+/// One KIND-INTRINSIC ARIA emission: a role and/or a live-region politeness the
+/// renderer emits WHATEVER the node's `Accessibility` trait says.
+///
+/// `Role` is the emitted TOKEN and deliberately not the `AriaRole` DU beside it.
+/// That DU is the AUTHORING vocabulary — what a document may declare — and ten
+/// of the tokens here (`tree`, `treeitem`, `group`, `img`, `switch`, `radio`,
+/// `radiogroup`, …) are outside its closed set, so they would every one of them
+/// spell as `AriaRole.Custom`. A type whose escape hatch carries two thirds of
+/// the values states nothing, and it would additionally suggest that these are
+/// roles an author selects, which is the opposite of what the field says.
+/// `Live` IS the shipped `LiveRegionKind`, because politeness is a genuinely
+/// closed three-value vocabulary with no such escape.
+type IntrinsicAria =
+    {
+        /// The element the emission lands on, as prose — a kind can pin three
+        /// roles on three elements (`Tree`, `Tabs`), so the role alone does not
+        /// locate it.
+        Element: string
+        /// The emitted `role` token, verbatim as it reaches the DOM, or `None`
+        /// where the entry declares only a live region.
+        Role: string option
+        /// The emitted `aria-live` politeness, or `None`.
+        Live: LiveRegionKind option
+        /// The condition, where the emission turns on the kind's OWN spec
+        /// rather than on every instance (`Icon` announces only when it carries
+        /// a label). `None` means every instance of the kind.
+        Condition: string option
+        /// Which pipelines emit it.
+        Tier: IntrinsicTier
+    }
+
+/// The wire token for a live-region politeness — `aria-live`'s value, exactly
+/// as it reaches the DOM.
+///
+/// The renderer spine carries a private twin of this match (`Accessibility.fs`,
+/// which projects the authored trait). It cannot be shared in that direction:
+/// this module is in `Fuaran.UI` and the spine references it, never the
+/// reverse.
+let liveRegionToken (kind: LiveRegionKind) : string =
+    match kind with
+    | LiveRegionKind.Polite -> "polite"
+    | LiveRegionKind.Assertive -> "assertive"
+    | LiveRegionKind.Off -> "off"
+
+/// One role-bearing intrinsic emission, spelled at the call site: unconditional
+/// and on both pipelines, which is the common case. A site that differs says so
+/// with a record copy — `{ pinsRole … with Condition = Some … }` — so the
+/// difference is visible rather than hidden in a seventh positional argument.
+let private pinsRole element role =
+    { Element = element
+      Role = Some role
+      Live = None
+      Condition = None
+      Tier = IntrinsicTier.BothPipelines }
+
+/// The live-region-only twin of `pinsRole`, for an element that is announced
+/// without carrying a role of its own.
+let private pinsLive element politeness =
+    { Element = element
+      Role = None
+      Live = Some politeness
+      Condition = None
+      Tier = IntrinsicTier.BothPipelines }
+
 /// One row: a canonical wire kind and its declared fidelity posture.
 type FidelityRow =
     {
@@ -273,6 +367,11 @@ type FidelityRow =
         /// Empty means the row states no claim a host suite is expected to
         /// assert — NOT that the kind's fallback prose is optional.
         Obligations: Obligation list
+        /// The ARIA roles and live regions the renderer pins for this kind
+        /// whatever the node's `Accessibility` trait says (Phase 1591). Empty
+        /// is a positive statement: this kind announces nothing of itself, so
+        /// what it announces is exactly what its trait declares.
+        Intrinsic: IntrinsicAria list
         /// Where the contract is written down: the phase that pinned it plus
         /// the normative doc section.
         Contract: string
@@ -286,6 +385,7 @@ let private row kind sensitive source fallback rich fixtures contract =
       Rich = rich
       Fixtures = fixtures
       Obligations = []
+      Intrinsic = []
       Contract = contract }
 
 /// Attach the checkable obligations to a row. A combinator rather than a tenth
@@ -293,6 +393,12 @@ let private row kind sensitive source fallback rich fixtures contract =
 /// site, which reads as "considered and found none" on forty rows where only two
 /// were considered at all.
 let private obliged (obligations: Obligation list) (r: FidelityRow) = { r with Obligations = obligations }
+
+/// Attach the kind-intrinsic ARIA emissions to a row. A combinator rather than
+/// an eleventh parameter on `row`, for the reason `obliged` is one: forty-three
+/// rows would otherwise carry an empty list at the call site, reading as
+/// "considered and found none" where only nine kinds were considered at all.
+let private announces (intrinsic: IntrinsicAria list) (r: FidelityRow) = { r with Intrinsic = intrinsic }
 
 /// One obligation, spelled at the call site.
 let private owes claim section statement =
@@ -403,6 +509,20 @@ let all: FidelityRow list =
           ))
           [ "grid-1" ]
           "Phase 393; docs/SSR.md (Visualisation, sortable rendered tables)"
+      |> announces
+          [ { pinsRole "the transfer status region beside a transfer-enabled grid" "status" with
+                Live = Some LiveRegionKind.Polite
+                Condition =
+                    Some
+                        "a grid declaring a transfer key; rendered EMPTY, and only a reader's own gesture puts text in it"
+                Tier =
+                    IntrinsicTier.ClientOnly
+                        "a transfer needs script, so the static floor renders no lift or drop affordance and has nothing to announce" }
+            { pinsLive "the pager position" LiveRegionKind.Polite with
+                Condition = Some "a paged grid; the page position changes without the surrounding layout moving"
+                Tier =
+                    IntrinsicTier.ClientOnly
+                        "paging is a hydration-time affordance; the static floor emits the requested page and no pager" } ]
 
       row
           "Disclosure"
@@ -453,6 +573,17 @@ let all: FidelityRow list =
           ))
           []
           "docs/SSR.md (Input - rendered inert)"
+      |> announces
+          [ { pinsRole "the filter chip's checkbox input" "switch" with
+                Condition =
+                    Some
+                        "a `Toggle` filter - the same boolean data as a checkbox, announced as on/off rather than checked" }
+            { pinsRole "the segmented filter's group container" "radiogroup" with
+                Condition =
+                    Some
+                        "a `SegmentedChoice` filter in `Horizontal` orientation; the `Vertical` form floors on native radio inputs and emits no hand-written role" }
+            { pinsRole "each segmented option button" "radio" with
+                Condition = Some "a `SegmentedChoice` filter in `Horizontal` orientation" } ]
 
       row
           "Form"
@@ -465,6 +596,25 @@ let all: FidelityRow list =
           ))
           []
           "docs/SSR.md (Input - rendered inert)"
+      |> announces
+          [ { pinsRole "the toggle field's checkbox input" "switch" with
+                Condition =
+                    Some
+                        "a `Toggle` field - the same boolean data as a checkbox, announced as on/off rather than checked"
+                Tier =
+                    IntrinsicTier.ClientOnly
+                        "the server floor renders the field through its generic input arm and emits no role, where the FILTER twin emits one on both sides - a recorded asymmetry, not a claim that the floor is complete" }
+            { pinsRole "the segmented field's group container" "radiogroup" with
+                Condition =
+                    Some
+                        "a `SegmentedChoice` field in `Horizontal` orientation; the `Vertical` form floors on native radio inputs and emits no hand-written role"
+                Tier =
+                    IntrinsicTier.ClientOnly
+                        "the server floor renders the field through its generic input arm and emits no group role - the same asymmetry as the toggle above" }
+            { pinsRole "each segmented option button" "radio" with
+                Condition = Some "a `SegmentedChoice` field in `Horizontal` orientation"
+                Tier =
+                    IntrinsicTier.ClientOnly "the server floor emits no option buttons for a form-side segmented choice" } ]
 
       plain
           "FragmentDecl"
@@ -479,6 +629,11 @@ let all: FidelityRow list =
       plain "Heading" "the heading TextSource + level" "the full structural heading element"
 
       plain "Icon" "the icon name + size" "the resolved icon markup through the uniform icon hook"
+      |> announces
+          [ { pinsRole "the icon span" "img" with
+                Condition =
+                    Some
+                        "a LABELLED icon (`label` present); a decorative icon emits `aria-hidden=\"true\"` instead, which is the same decision made the other way rather than an omission" } ]
 
       // Phase 1079 promotes `Image` out of `plain`. It now carries an explicit,
       // phase-pinned three-tier contract of exactly the Phase 290 shape: a
@@ -648,6 +803,11 @@ let all: FidelityRow list =
                  "a `src` the `embed` egress class refuses omits the attribute entirely - an `<iframe>` at the refusal URL renders that page, where one with no `src` is an empty frame that fetches nothing - and the refusal is recorded as the egress-refusal data attribute" ])
 
       plain "Metric" "the label + value source + format" "the resolved, formatted metric tile"
+      |> announces
+          [ { pinsRole "the trend glyph beside the figure" "img" with
+                Condition =
+                    Some
+                        "a `trend` binding that resolves to a number; the glyph is a direction, so it carries the sentiment as its accessible name rather than being read out as a character" } ]
 
       (row
           "Modal"
@@ -664,7 +824,8 @@ let all: FidelityRow list =
            [ owes
                  ObligationClaim.AriaModalOnlyWhenBlocking
                  "WIRE_FORMAT.md 3.6.11"
-                 "`aria-modal=\"true\"` is emitted for `modality: Modal` and never for `modality: Popover`; both carry `role=\"dialog\"`, and the popover carries no scrim element for the same reason - the page behind it is genuinely still there" ])
+                 "`aria-modal=\"true\"` is emitted for `modality: Modal` and never for `modality: Popover`; both carry `role=\"dialog\"`, and the popover carries no scrim element for the same reason - the page behind it is genuinely still there" ]
+       |> announces [ pinsRole "the dialog surface, in BOTH modalities" "dialog" ])
 
       plain
           "Mount"
@@ -744,6 +905,10 @@ let all: FidelityRow list =
           ))
           []
           "docs/SSR.md (Layout.Tabs)"
+      |> announces
+          [ pinsRole "the tab bar" "tablist"
+            pinsRole "each tab header button" "tab"
+            pinsRole "the active panel" "tabpanel" ]
 
       row
           "Toast"
@@ -753,6 +918,9 @@ let all: FidelityRow list =
           RichTier.None
           [ "toast-1" ]
           "Phase 289; WIRE_FORMAT.md 3.2 (Toast vs Action.Notify); docs/SSR.md"
+      |> announces
+          [ { pinsRole "the toast surface" "status" with
+                Live = Some LiveRegionKind.Polite } ]
 
       // Phase 1120 — `Tree` carries a RICH tier where `Disclosure` and `Tabs`
       // carry Behavioural ones, and the difference is the whole admission. Those
@@ -778,7 +946,12 @@ let all: FidelityRow list =
           [ owes
                 ObligationClaim.AccessibleNameAlways
                 "WIRE_FORMAT.md 3.6.12"
-                "every row carries a stated `aria-label` equal to its visible label - a treeitem OWNS its child group, so a name computed from contents would read the whole branch out as the row's own name" ] ]
+                "every row carries a stated `aria-label` equal to its visible label - a treeitem OWNS its child group, so a name computed from contents would read the whole branch out as the row's own name" ]
+      |> announces
+          [ pinsRole "the root list" "tree"
+            pinsRole "each row" "treeitem"
+            { pinsRole "the nested child list under an expandable row" "group" with
+                Condition = Some "a row that HAS children" } ] ]
 
 /// The canonical wire-kind enumeration this table declares a posture for — the
 /// `kind.$type` vocabulary of WIRE_FORMAT.md 3.2, Ordinal-sorted.
@@ -871,6 +1044,56 @@ let ofNode (node: Node<'Msg>) : FidelityRow option = tryFind (wireNameOf node.Ki
 let allObligations: (string * Obligation) list =
     [ for r in all do
           for o in r.Obligations -> r.Kind, o ]
+
+// ─── Kind-intrinsic ARIA — the enumeration + the query (Phase 1591) ──────────
+
+/// Every kind-intrinsic emission, paired with the kind that pins it, in table
+/// order. The artefact writer and the AI-tools surface both project this rather
+/// than re-walking `all`, so the artefact and an agent's answer cannot disagree
+/// about what the table says.
+let allIntrinsics: (string * IntrinsicAria) list =
+    [ for r in all do
+          for i in r.Intrinsic -> r.Kind, i ]
+
+/// The kinds that pin something, in table order.
+let announcedKinds: string list =
+    all
+    |> List.filter (fun r -> not (List.isEmpty r.Intrinsic))
+    |> List.map (fun r -> r.Kind)
+
+/// Does the renderer announce this kind of its own accord — a role or a live
+/// region emitted whatever the node's `Accessibility` trait declares?
+///
+/// `false` for a kind with no row at all, which is the honest reading of an
+/// unknown kind: nothing is KNOWN to be pinned. It is not a claim of silence.
+let announcesIntrinsically (wireKind: string) : bool =
+    match tryFind wireKind with
+    | Some r -> not (List.isEmpty r.Intrinsic)
+    | None -> false
+
+/// The one-line rendering of an intrinsic emission, so every surface that shows
+/// one shows the same sentence.
+let describeIntrinsic (kind: string) (a: IntrinsicAria) : string =
+    let attrs =
+        [ match a.Role with
+          | Some r -> "role=\"" + r + "\""
+          | None -> ()
+          match a.Live with
+          | Some l -> "aria-live=\"" + liveRegionToken l + "\""
+          | None -> () ]
+        |> String.concat " + "
+
+    let condition =
+        match a.Condition with
+        | Some c -> " when " + c
+        | None -> " on every instance"
+
+    let tier =
+        match a.Tier with
+        | IntrinsicTier.BothPipelines -> "both pipelines"
+        | IntrinsicTier.ClientOnly why -> "CLIENT ONLY (" + why + ")"
+
+    kind + "/" + a.Element + ": " + attrs + condition + " [" + tier + "]"
 
 /// A host's answer for one declared obligation.
 ///

@@ -70,4 +70,24 @@ let tests =
                       token
                       (sprintf
                           "the reconciled WIRE_FORMAT.md no longer mentions %s — the projection emitted nothing"
-                          token) ]
+                          token)
+
+          // Phase 1585 — a union identity default may CARRY a payload, and the
+          // renderer showed only the tag until it did. The drift guard above
+          // would catch a regression, but only as "drift", pointing at the
+          // regeneration command — so the repair for a renderer that had
+          // silently dropped the payload again would be to regenerate, writing
+          // the weaker claim into the normative table. This says what the
+          // document must STATE, so the regression fails as itself.
+          testCase "a payload-carrying identity default renders its payload, not just the tag"
+          <| fun () ->
+              let _, rebuilt, _ = SpecProjection.reconcile corpusRoot
+
+              Expect.stringContains
+                  rebuilt
+                  "`Static{value=0}`"
+                  "the §3.6 identity-default table renders `Tabs.activeIndex` without its payload — `Static` alone cannot tell a default of index 0 from one of index 5, and the spelling is what a second host implements its omit test against"
+
+              Expect.isFalse
+                  (rebuilt.Contains "| `activeIndex` | `Binding<int>` | `Static` |")
+                  "the §3.6 row for `activeIndex` states a bare `Static` as the identity default" ]

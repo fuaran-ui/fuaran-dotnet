@@ -6969,3 +6969,140 @@ hook simply never fires: the valve fails closed rather than handing over somethi
 **Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and this
 change is additive, which is not a higher class than the draft already carries. `v0.77.0` is the
 newest tag.
+## Recorded change — 0.78.0, `Tabs.activeIndex` becomes omit-at-default (fuaran#1585)
+
+**The second half of 1585, landed once the VALUE MODEL moved. A WIRE-VISIBLE serialisation
+relaxation plus one SOURCE-BREAKING generated smart constructor, and it RIDES the standing 0.78.0
+draft rather than advancing it — the same class, on the same slot, as the `Chart.stacked` entry
+above.**
+
+**Why it is a separate entry.** 1585 declared `Chart.stacked` `omitDefault (VBool false)` and
+STOPPED at `activeIndex`, because its identity default is `Binding.Static (Some 0)` — a union case
+carrying a payload — and the code generator rendered a union default only for a payload-free case.
+The declaration was refused outright as
+`UnsupportedDefault (TUnion ("Binding", [TInt]), VUnion ("Static", [("value", VInt 0)]))`, and
+forcing it would have been worse than stopping: a default the generator cannot render degrades to
+always-emit plus require-on-decode, so the declaration would have stated a rule the layer generated
+from it did not follow. The posture was right the whole time; the literal did not exist. It does
+now — the IDL code generator renders a value-carrying union case in an expression AND a pattern
+position — so the slot takes the declaration it was always owed.
+
+**What changed.** The IDL declares `activeIndex`
+`omitDefault (VUnion ("Static", [("value", VInt 0)]))`. The generated encoder omits the member when
+the binding is exactly `Binding.Static (Some 0)` — the omit test is a pattern match, not `=`, because
+`Binding` reaches a closure and so supports no equality — and emits it for every other binding,
+including a `Static` carrying any other index and every `State` / `Filter` / `Selection` / `Query`
+form. The generated decoder restores `Binding.Static (Some 0)` on absence (`dDef`, previously
+`dReq`). The schema is optional by construction, and `WIRE_FORMAT.md` states the rule in §3.6's
+generated identity-default table and in §10.1, where the two members are now one statement instead
+of two.
+
+**What a consumer pays.**
+
+- **Documents.** Every document a new encoder writes is read identically by every shipped reader:
+  absence already decoded to `Binding.Static (Some 0)` in the F# hand decoder (since Phase 126) and
+  in the TypeScript, Python, Rust and Go hosts. A document carrying an explicit
+  `"activeIndex":{"$type":"Static","value":0}` remains valid and decodes unchanged — it is a §3.6
+  lenient normalisation case now, re-encoding to the omitted form. Three node fixtures in the
+  conformance corpus lost the member; nothing else in the corpus moved, and the `reject/` fixture
+  that spells the member out is untouched standing evidence that the explicit form is still parsed.
+- **Source.** `mkTabs`, the generated smart constructor, loses its `activeIndex` parameter — an
+  omit-at-default field is not a constructor parameter, it takes its identity default — so a call
+  site passing it stops compiling and drops the argument. This repo had no call site. The
+  `TabsSpec.ActiveIndex` record field itself is unchanged: still a plain `Binding<int>`, still
+  required in a full-literal construction, still readable and settable.
+- **Renderers and the write-back default.** Nothing. `TabsSpec.ActiveIndex` reaches the renderer and
+  the Phase 426 write-back path exactly as before; a tabs control whose index binding is `State` or
+  `Filter` still carries that binding on the wire, because it is not the identity.
+- **Provenance stamps.** Nothing moved. The Phase 643 stamp is over a `ChartSpec`'s canonical bytes;
+  no stamped artefact family takes a digest over a `TabsSpec`.
+
+**What the guard says now.** The schema-optionality parity guard's `decoderTolerantOfAbsence`
+residue is EMPTY. Both of its entries left the same way and it is worth naming the pattern: a
+divergence between what the IDL requires and what the schema requires is resolved by changing the
+POSTURE, never by lengthening the exemption list, and the inverse pin is what makes an exemption
+unable to outlive its reason. The set is kept at `Set.empty` rather than deleted — the mechanism is
+the guard, and the next genuine divergence belongs there with its reason.
+
+**Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and it
+already carries breaking-class entries, so a source-breaking constructor arity is not a higher class
+than the draft already holds. `v0.77.0` is the newest tag.
+
+## Recorded change — 0.78.0, kind-intrinsic ARIA becomes a typed, queryable fact (fuaran#1591)
+
+**Additive to `Fuaran.UI` and to `Fuaran.UI.AiTools`: two new types and a new field on
+`FidelityRow`, a handful of projections over them, and a new AI-tools query module.** No wire member
+moves, no renderer behaviour changes, and no emitted markup changes — the ARIA the renderers pin was
+already being emitted; this only makes it interrogable.
+
+**The gap it closes.** The tier could answer what a node DECLARES — the `Accessibility` trait is a
+wire member and always was. What the renderer PINS regardless of that trait lived in prose:
+`Toast` is emitted with `role="status"` and `aria-live="polite"` whatever the trait says, and the
+only place that was written down was the render-fidelity table's `Fallback` sentence. A consumer
+needing the answer either scanned prose or mirrored the render arms in its own repo — the
+hand-kept copy this tier has watched go stale three times.
+
+**What is new.**
+
+- **`Fuaran.UI.RenderFidelity.IntrinsicAria`** — one intrinsic emission: the `Element` it lands on,
+  the `Role` token, the `Live` politeness, the `Condition` where the emission turns on the kind's
+  own spec, and the `Tier` that emits it.
+- **`Fuaran.UI.RenderFidelity.IntrinsicTier`** — `BothPipelines` | `ClientOnly of why`. A role a
+  no-script reader is announced is a different fact from one that arrives at hydration, so the
+  distinction is a case rather than a comment.
+- **`FidelityRow.Intrinsic: IntrinsicAria list`**, declared by the nine kinds that pin something
+  (`DataGrid`, `Filters`, `Form`, `Icon`, `Metric`, `Modal`, `Tabs`, `Toast`, `Tree`) and `[]`
+  everywhere else. Empty is a positive statement: the kind announces nothing of itself, so what it
+  announces is exactly what its trait declares.
+- **`liveRegionToken`, `allIntrinsics`, `announcedKinds`, `announcesIntrinsically`,
+  `describeIntrinsic`** — the enumeration and the projections every consuming surface reads, so the
+  artefact and an agent's answer cannot disagree about what the table says.
+- **`Fuaran.UI.AiTools.Fidelity`** — `all` / `kinds` / `forKind` / `ofNode` / `isAnnounced` /
+  `rolesEmitted` / `liveRegionsEmitted` / `describe`. Queries over the shipped declaration, with no
+  table of its own; a DTO here would be exactly the second source of truth the declaration removes.
+  No `Fuaran.UI.AiTools` module referenced `RenderFidelity` before this, so the coupling is
+  net-new and one-directional.
+
+**`Role` is a token string and `Live` is the shipped `LiveRegionKind`, and the asymmetry is
+deliberate.** `AriaRole` is the AUTHORING vocabulary — what a document may declare — and ten of the
+tokens recorded here (`tree`, `treeitem`, `group`, `img`, `switch`, `radio`, `radiogroup`, …) fall
+outside its closed set, so every one of them would spell as `AriaRole.Custom`. A type whose escape
+hatch carries two thirds of its values states nothing, and it would additionally suggest these are
+roles an author selects, which is the opposite of what the field says. Politeness has no such escape
+— three cases, all meaningful — so it is the real type.
+
+**The consumer-side obligation, and its exact extent.** `FidelityRow` gains a field, so a
+construction site writing a FULL literal of it stops compiling (`FS0764`) until it adds
+`Intrinsic = []`. **This repo has no such site** — the private `row` helper is the only constructor
+and it fills the field — so no migration note is offered: one would name zero files. An external
+consumer that reads rows (the documented use) is unaffected entirely.
+
+**`render-fidelity.json` gains a per-kind `intrinsic` array**, and the artefact's own `description`
+now says what it carries. `role` / `live` / `condition` are omitted when absent, per the corpus's
+omit-at-default convention; `tier` is always present, because "which pipelines emit this" has no
+default a reader could assume, and a `clientOnly` entry carries its `tierNote`. The array is present
+on every kind, empty included — an absent array and an empty one would be two spellings of one
+meaning.
+
+**What the lock claims, and what it does not.** `RenderFidelityTests.fs` holds the declaration to
+the two per-kind renderer arms over four legs: every declared token reaches the arms that declare
+it; every role either arm emits is declared or is one of two named non-kind emissions; the two arms
+emit the same role set bar one recorded difference; and the census is proven able to go red against
+a synthetic source line. The lock is TOKEN-level, not arm-level — it cannot prove `role="tree"`
+comes from the `Tree` arm specifically, which needs both pipelines' rendered output and lives in the
+SSR-parity suite. Stated here because a reader would otherwise assume more. Two emissions are
+excluded by name and with reasons: the per-node tooltip hint (trait-DRIVEN, so cross-kind and the
+opposite of intrinsic) and the server's depth-exceeded marker (a wire-limit refusal that replaces
+any kind's subtree).
+
+**Two asymmetries the table now RECORDS rather than hides**, found while verifying each arm and
+declared as `ClientOnly` rather than smoothed over. The `DataGrid` drag-status region and pager
+status are client-only because the static floor performs neither transfer nor paging — nothing is
+owed. The `Form` toggle and horizontal segmented choice are client-only because the server floor
+renders those fields through its generic input arm and emits no `switch` / `radiogroup` role, where
+the FILTER twin emits both on both sides. The second is a real SSR accessibility gap; naming it as
+data is what this field is for, and closing it is not this change.
+
+**Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and a
+record widening is not a higher class than the draft already carries — `BindingSources` gained a
+field on this same slot (fuaran#1586). `v0.77.0` is the newest tag.
