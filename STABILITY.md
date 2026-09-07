@@ -6891,3 +6891,62 @@ source — it simply restricts nothing.
 **Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and this
 change is additive, which is not a higher class than the draft already carries. `v0.77.0` is the
 newest tag.
+
+## Recorded change — 0.78.0, `Tabs.activeIndex` becomes omit-at-default (fuaran#1585)
+
+**The second half of 1585, landed once the VALUE MODEL moved. A WIRE-VISIBLE serialisation
+relaxation plus one SOURCE-BREAKING generated smart constructor, and it RIDES the standing 0.78.0
+draft rather than advancing it — the same class, on the same slot, as the `Chart.stacked` entry
+above.**
+
+**Why it is a separate entry.** 1585 declared `Chart.stacked` `omitDefault (VBool false)` and
+STOPPED at `activeIndex`, because its identity default is `Binding.Static (Some 0)` — a union case
+carrying a payload — and the code generator rendered a union default only for a payload-free case.
+The declaration was refused outright as
+`UnsupportedDefault (TUnion ("Binding", [TInt]), VUnion ("Static", [("value", VInt 0)]))`, and
+forcing it would have been worse than stopping: a default the generator cannot render degrades to
+always-emit plus require-on-decode, so the declaration would have stated a rule the layer generated
+from it did not follow. The posture was right the whole time; the literal did not exist. It does
+now — the IDL code generator renders a value-carrying union case in an expression AND a pattern
+position — so the slot takes the declaration it was always owed.
+
+**What changed.** The IDL declares `activeIndex`
+`omitDefault (VUnion ("Static", [("value", VInt 0)]))`. The generated encoder omits the member when
+the binding is exactly `Binding.Static (Some 0)` — the omit test is a pattern match, not `=`, because
+`Binding` reaches a closure and so supports no equality — and emits it for every other binding,
+including a `Static` carrying any other index and every `State` / `Filter` / `Selection` / `Query`
+form. The generated decoder restores `Binding.Static (Some 0)` on absence (`dDef`, previously
+`dReq`). The schema is optional by construction, and `WIRE_FORMAT.md` states the rule in §3.6's
+generated identity-default table and in §10.1, where the two members are now one statement instead
+of two.
+
+**What a consumer pays.**
+
+- **Documents.** Every document a new encoder writes is read identically by every shipped reader:
+  absence already decoded to `Binding.Static (Some 0)` in the F# hand decoder (since Phase 126) and
+  in the TypeScript, Python, Rust and Go hosts. A document carrying an explicit
+  `"activeIndex":{"$type":"Static","value":0}` remains valid and decodes unchanged — it is a §3.6
+  lenient normalisation case now, re-encoding to the omitted form. Three node fixtures in the
+  conformance corpus lost the member; nothing else in the corpus moved, and the `reject/` fixture
+  that spells the member out is untouched standing evidence that the explicit form is still parsed.
+- **Source.** `mkTabs`, the generated smart constructor, loses its `activeIndex` parameter — an
+  omit-at-default field is not a constructor parameter, it takes its identity default — so a call
+  site passing it stops compiling and drops the argument. This repo had no call site. The
+  `TabsSpec.ActiveIndex` record field itself is unchanged: still a plain `Binding<int>`, still
+  required in a full-literal construction, still readable and settable.
+- **Renderers and the write-back default.** Nothing. `TabsSpec.ActiveIndex` reaches the renderer and
+  the Phase 426 write-back path exactly as before; a tabs control whose index binding is `State` or
+  `Filter` still carries that binding on the wire, because it is not the identity.
+- **Provenance stamps.** Nothing moved. The Phase 643 stamp is over a `ChartSpec`'s canonical bytes;
+  no stamped artefact family takes a digest over a `TabsSpec`.
+
+**What the guard says now.** The schema-optionality parity guard's `decoderTolerantOfAbsence`
+residue is EMPTY. Both of its entries left the same way and it is worth naming the pattern: a
+divergence between what the IDL requires and what the schema requires is resolved by changing the
+POSTURE, never by lengthening the exemption list, and the inverse pin is what makes an exemption
+unable to outlive its reason. The set is kept at `Set.empty` rather than deleted — the mechanism is
+the guard, and the next genuine divergence belongs there with its reason.
+
+**Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and it
+already carries breaking-class entries, so a source-breaking constructor arity is not a higher class
+than the draft already holds. `v0.77.0` is the newest tag.

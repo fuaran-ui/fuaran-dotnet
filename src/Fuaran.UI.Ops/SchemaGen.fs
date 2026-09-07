@@ -1752,9 +1752,11 @@ let private defs: (string * J) list =
           [ "children" ]
           [ "children", arrayOf (ref "Node")
             "orientation", ref "Orientation"
-            // `activeIndex` (Phase 126) is carried; optional in the schema to
-            // match the decoder's tolerance of legacy wire that omits it.
-            // `onSelect` / `onSelectTag` (Phase 426) are optional closures —
+            // `activeIndex` (Phase 126) is carried; optional in the schema
+            // because the IDL declares it `omitDefault (Binding.Static (Some 0))`
+            // (Phase 1585) — absence IS the contract, so a `required` entry here
+            // would refuse documents the estate's encoders now deliberately
+            // write. `onSelect` / `onSelectTag` (Phase 426) are optional closures —
             // present as the sentinel when closure-authored, omitted for the
             // declarative (write-back) shape.
             "activeIndex", binding "int"

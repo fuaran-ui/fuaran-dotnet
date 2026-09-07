@@ -32,8 +32,10 @@ module Fuaran.UI.JsonDecode.Tests.SchemaOptionalityParity
 //    2. **An IDL-required field SHOULD be in the schema's `required`** — with a
 //       NAMED residue, pinned inversely. This direction leaves the schema
 //       WEAKER than the contract, which is admissible (it says less), so a
-//       divergence here is a finding rather than a defect, and two of them are
-//       deliberate: see `decoderTolerantOfAbsence` below.
+//       divergence here is a finding rather than a defect, and a deliberate one
+//       is NAMED: see `decoderTolerantOfAbsence` below, which is empty as of
+//       Phase 1585 — both of the entries it once held resolved by taking the
+//       `omitDefault` posture instead of keeping the exemption.
 //
 //  Resolution is structural, driven from the IDL's own type graph rather than
 //  from a name convention, so an INLINE object schema is reached at its use
@@ -446,35 +448,39 @@ let private render (fs: Finding list) (pick: Finding -> string list) =
 /// Named, never counted — a site MOVING onto or off this list is the
 /// interesting event (the `schemaInexpressibleRejects` posture).
 ///
-/// The entry is a case where the two artefacts answer different questions
-/// rather than one of them being wrong. `required` in the IDL says the ENCODER
-/// always emits the field and the F# slot is not an `option`; `required` in the
-/// schema says a document LACKING it is invalid. The decoder here deliberately
-/// reads absence — `Tabs.activeIndex` restores `Binding.Static (Some 0)` — so
-/// requiring it would make the published schema refuse documents every
+/// An entry is a case where the two artefacts answer different questions rather
+/// than one of them being wrong. `required` in the IDL says the ENCODER always
+/// emits the field and the F# slot is not an `option`; `required` in the schema
+/// says a document LACKING it is invalid. Where the decoder deliberately reads
+/// absence, requiring it would make the published schema refuse documents every
 /// conformant host accepts. Saying LESS than the decoder is admissible; saying
 /// something DIFFERENT is the one thing this artefact must not do.
 ///
-/// **`Chart.stacked` left this residue in Phase 1585** — the right resolution
-/// for a divergence of this shape is not a longer exemption list but a change
-/// of posture, so the IDL now declares it `omitDefault false`, the encoder omits
-/// it at the default, the generated decoder restores it, and the divergence is
-/// gone rather than named. `Tabs.activeIndex` could not follow in the same pass
-/// for a reason that is about the VALUE MODEL and not the posture: its identity
-/// default is `Binding.Static (Some 0)`, a union case carrying a field, and the
-/// codegen renders a union default only when the case is nullary — the
-/// declaration is refused outright (`UnsupportedDefault`), and a default the
-/// generator cannot render silently degrades to always-emit-and-require, which
-/// would be a declaration contradicting the code generated from it. So this
-/// entry stays NAMED here until a value-carrying union literal exists to render
-/// it, which is a better state than a half-declared posture.
+/// **The residue is EMPTY, and both its entries left the same way: by ceasing
+/// to diverge.** The right resolution for a divergence of this shape is never a
+/// longer exemption list but a change of posture, and both members took it.
+/// `Chart.stacked` went first, in Phase 1585 — `omitDefault false`, encoder
+/// omits, generated decoder restores. `Tabs.activeIndex` could not follow in
+/// that same pass for a reason about the VALUE MODEL rather than the posture:
+/// its identity default is `Binding.Static (Some 0)`, a union case carrying a
+/// field, and the codegen then rendered a union default only for a NULLARY case,
+/// so the declaration was refused outright (`UnsupportedDefault`) — and a
+/// default the generator cannot render degrades silently to
+/// always-emit-and-require, which would be a declaration contradicting the code
+/// generated from it. Naming it here was the honest interim state. The value
+/// model then moved: `Fuaran.Core.Idl.Codegen` 0.21.0 renders a value-carrying
+/// union case in an expression AND a pattern position, so the slot took the same
+/// posture and the entry went with it.
 ///
-/// Pinned INVERSELY below: if the slot's decoder stops tolerating absence (or
-/// `SchemaGen` starts requiring it), this test fails and the entry goes, rather
-/// than the exemption outliving its reason — which is exactly how `stacked`
-/// left.
-let private decoderTolerantOfAbsence: Set<string * string> =
-    set [ "kind Tabs", "activeIndex" ]
+/// The set is kept rather than deleted, at `Set.empty`, because the mechanism is
+/// what the guard is: direction 2 admits a NAMED divergence, and the next one
+/// belongs here with its reason. An empty residue is the claim that there is no
+/// such divergence today.
+///
+/// Pinned INVERSELY below: an entry whose site stops diverging fails this test
+/// and must be removed, so an exemption cannot outlive its reason — which is
+/// exactly how both of these left.
+let private decoderTolerantOfAbsence: Set<string * string> = Set.empty
 
 /// Records `idl.json` declares but no IDL field type references, so the walk
 /// cannot reach whatever the schema says about them. Both are reached in the

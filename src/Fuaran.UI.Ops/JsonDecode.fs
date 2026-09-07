@@ -8488,9 +8488,13 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
                         | Some v -> decodeOrientation (specPath + ".orientation") v
 
                     // Additive optional decoders.
-                    // `activeIndex` (Phase 126) now round-trips: decode the
-                    // integer-indexed binding (defaults to `Binding.Static 0`
-                    // for legacy wire predating the field). `onSelect` /
+                    // `activeIndex` (Phase 126, restated Phase 1585):
+                    // OMIT-AT-DEFAULT. The IDL declares it
+                    // `omitDefault (Binding.Static (Some 0))`, so the encoder
+                    // emits it only when it differs from that identity and
+                    // absence means `Binding.Static (Some 0)` BY CONTRACT —
+                    // not, as this note read until 1585, by tolerance of legacy
+                    // wire predating the field. `onSelect` /
                     // `onSelectTag` (Phase 426): a present `"<closure>"`
                     // sentinel decodes to the inert placeholder `Some`; an
                     // absent key decodes to `None` — the shape that arms the
