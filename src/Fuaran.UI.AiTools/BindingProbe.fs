@@ -5,30 +5,41 @@ module Fuaran.UI.AiTools.BindingProbe
 //
 //  Resolves a typed `Binding<'T>` against the introspection context's
 //  `Fuaran.UI.BindingSources`, returning a typed `ResolvedBindingResult` the
-//  §4i tools can hand back through the cross-cutting obj-erasure
-//  boundary. The implementation mirrors
-//  `Fuaran.UI.Renderer.BindingResolver.resolve` — same semantics, same
-//  Defaults sentinel handling, same exception-to-typed-error mapping —
-//  but lives here so `Fuaran.UI.AiTools` stays free of `Fuaran.UI.Renderer`
-//  (which pulls in Feliz / Fable / browser substrate the orchestrator
-//  doesn't want).
+//  §4i tools can hand back through the cross-cutting obj-erasure boundary.
 //
-//  Phase 213 closed the SHAPE half of that duplication: the source record is
-//  no longer a hand-copied `BindingProbeSources` but the canonical
-//  `Fuaran.UI.BindingSources` the renderer resolves against, so a field the
-//  renderer gains can never again be silently missing here (it was missing
+//  The duplication that motivated this file is now closed on BOTH halves.
+//
+//  Phase 213 closed the SHAPE half: the source record is no longer a
+//  hand-copied `BindingProbeSources` but the canonical
+//  `Fuaran.UI.BindingSources` the resolver resolves against, so a field the
+//  resolver gains can never again be silently missing here (it was missing
 //  `Locale`, `Now`, `ComputedContext`, `I18nResolver` and `CapabilityInvoker`).
-//  The RESOLUTION half stays deliberately split: the arms below that decline
-//  (`Computed` / `Now` / `I18n` / `Format` / `Transform` / `Invoke`) decline
-//  because their resolution needs renderer-side machinery — the Intl /
-//  Globalization formatter, the dataframe pipeline evaluator, the host
-//  capability dispatcher — not because the probe lacks the data. Reporting
-//  `NotResolvedYet` is the honest answer there; inventing a second
-//  implementation of that machinery here would manufacture exactly the
-//  probe-disagrees-with-the-render defect this file exists to avoid.
+//
+//  Phase 1532 closes the RESOLUTION half. Seven arms — `Computed` / `Now` /
+//  `I18n` / `Format` / `Transform` / `Expr` / `Invoke` — used to DECLINE with
+//  `NotResolvedYet` on the rationale that resolving them needs "renderer-side"
+//  machinery. That rationale was true when it was written and is not true now:
+//  the Intl / Globalization formatter, the dataframe pipeline evaluator, the
+//  host capability dispatcher and the clock all live in
+//  `Fuaran.UI.Renderer.Core` — the EMISSION-AGNOSTIC spine (FSharp.Core +
+//  Fable.Core, no Feliz / React / Browser), not in a renderer. So the probe
+//  DELEGATES those arms to the resolver entry point the slot uses, and reports
+//  what the resolver reports. The remaining arms are kept because delegation
+//  would LOSE information: they carry the probe's own richer
+//  `BindingErrorCode` vocabulary (`SourceUnregistered` vs `NotResolvedYet` vs
+//  `AccessorThrew` vs `TypeMismatch`), where the resolver has one undifferentiated
+//  `NotResolved`.
+//
+//  WHICH resolver entry point is a property of the SLOT, not of the binding, so
+//  it is a parameter here rather than a choice this file makes: a
+//  `Binding.Transform` is its rows in a `DataGrid.Source` and its 1x1 result
+//  cell in a `Metric.Value`, and one answer is wrong in the other slot. The two
+//  entry points below name the two, and `Tools.fs` picks per slot the same way
+//  the renderer does.
 // ============================================================================
 
 open Fuaran.UI.Types
+open Fuaran.UI.Renderer
 open Fuaran.UI.AiTools.Types
 open Fuaran.UI.AiTools.Seams
 
@@ -106,12 +117,18 @@ let textProvenance (text: TextSource) : TextProvenance =
         let source, expression = identify binding
         TextProvenance.Bound(source, expression)
 
-// ─── Mirror of BindingResolver.Resolution<'T> against introspection sources ─
+// ─── Resolution against the introspection sources ───────────────────────────
 
-/// Resolve a typed `Binding<'T>` against the probe's sources and return
-/// a `ResolvedBindingResult`. The typed `'T` value is obj-boxed at the
-/// return; the orchestrator decodes per-slot using its schema.
-let rec tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>) : ResolvedBindingResult =
+/// Resolve a typed `Binding<'T>` through the given resolver entry point and
+/// project the answer onto `ResolvedBindingResult`. `entry` is
+/// `BindingResolver.resolve` for a slot the renderer resolves generally, and
+/// `BindingResolver.resolveScalarWith coerce` for one it resolves as a scalar;
+/// the two public wrappers below name them.
+let rec private resolveThrough<'T>
+    (entry: Fuaran.UI.BindingSources -> Binding<'T> -> BindingResolver.Resolution<'T>)
+    (ctx: IntrospectionContext)
+    (binding: Binding<'T>)
+    : ResolvedBindingResult =
     let source, expression = identify binding
 
     let typeHint =
@@ -238,93 +255,96 @@ let rec tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>)
             | Some d -> resolvedOk d
             | None -> resolvedOk Unchecked.defaultof<'T>
 
-    | Binding.Computed _ ->
-        // Computed bindings carry a `BindingContext -> 'T` function. The seed
-        // `ComputedContext` is on `ctx.Sources` since Phase 213, but resolving
-        // also means reproducing the renderer's live-state merge policy
-        // (`sources.State` authoritative, injected keys underneath) — a second
-        // implementation of a policy, which is the drift class this file's
-        // header warns about. And the closure is an F#-only escape that never
-        // serialises, so a `Computed` value is not wire-traversable in the
-        // first place. v1 surfaces as a NotResolvedYet hint pointing the
-        // orchestrator at a structural workaround.
-        failed
-            BindingErrorCode.NotResolvedYet
-            "Computed bindings are not yet introspectable (the BindingContext is renderer-side)."
-            (Some "Express the same derivation via Binding.Query + a computed-column accessor, then introspect that.")
-
-    | Binding.Now _ ->
-        // Phase 765 — the instant lives in `BindingSources.Now`. Since Phase
-        // 213 that field IS on `ctx.Sources` (the shape is the renderer's), so
-        // the probe no longer lacks the datum; what it lacks is a decision that
-        // the probe should start reporting a value where it has reported
-        // NotResolvedYet since 765. Turning that on is a deliberate
-        // behaviour change to a public tool surface, not a side-effect of the
-        // shape unification, so it stays declined here. Reporting
-        // NotResolvedYet is never WRONG — it is the honest "ask the renderer";
-        // inventing a clock here would be.
-        failed
-            BindingErrorCode.NotResolvedYet
-            "Now bindings resolve against the host-furnished instant (BindingSources.Now), which is renderer-side."
-            (Some "Introspect the rendered value instead, or supply the instant to the renderer and read it there.")
 
     | Binding.Local(_, _, initialFrom, _, _) ->
-        // Local binding's read side is its initialFrom source.
-        // Recurse the resolution so the orchestrator sees the underlying
-        // value; the buffer-overlay state is renderer-only and not part
-        // of the introspection surface.
-        tryResolveBinding<'T> ctx initialFrom
+        // Local binding's read side is its initialFrom source. Recursed rather
+        // than delegated so the underlying source keeps THIS function's richer
+        // error vocabulary; the buffer-overlay state is a render-time concern
+        // and not part of the introspection surface.
+        resolveThrough entry ctx initialFrom
 
-    | Binding.I18n(key, _args) ->
-        // i18n bindings resolve via `BindingSources.I18nResolver` — present on
-        // `ctx.Sources` since Phase 213 — but resolving one also means
-        // resolving its `Binding<JVal>` args and applying the renderer's
-        // placeholder-substitution policy, which is renderer-side machinery.
-        // v1 surfaces as NotResolvedYet with a hint; the orchestrator can ask
-        // the host for catalog state via a separate seam if it cares about the
-        // resolved string.
-        failed
-            BindingErrorCode.NotResolvedYet
-            (sprintf "I18n binding for key '%s' requires the renderer's I18nResolver, not exposed to the probe." key)
-            (Some
-                "Inspect the i18n catalog via a host-supplied tool; the AI probe deliberately stops at the unresolved key.")
+    // ─── Phase 1532 — the delegated arms ────────────────────────────────────
+    //
+    // Every binding whose resolution is a COMPUTATION rather than a store read:
+    // the ComputedContext merge, the host-furnished instant, the i18n resolver
+    // and its argument substitution, the locale formatter, the dataframe
+    // pipeline evaluator, the scalar-expression evaluator, the capability
+    // dispatcher. All of it lives in `Fuaran.UI.Renderer.Core`, so the probe
+    // ASKS it rather than re-deciding — which is what makes the probe's answer
+    // and the rendered value one answer instead of two that can disagree.
+    //
+    // The arms above are NOT delegated, and that is deliberate rather than
+    // residual: each carries a discrimination the resolver does not make. A
+    // `Query` with no registered result is `SourceUnregistered` here and a bare
+    // `NotResolved` there; a `Filter` whose stored value will not unbox is
+    // `TypeMismatch` here and `Errored` there. Delegating them would lose the
+    // vocabulary the §4i tool surface reports through.
+    | Binding.Computed _
+    | Binding.Now _
+    | Binding.I18n _
+    | Binding.Format _
+    | Binding.Transform _
+    | Binding.Expr _
+    | Binding.Invoke _ ->
+        match entry ctx.Sources binding with
+        | BindingResolver.Resolved value -> resolvedOk value
+        | BindingResolver.NotResolved ->
+            // The resolver's single "no value yet" verdict, which spans an
+            // unfurnished host instant, a capability dispatch still pending, a
+            // null result cell and a transform that filtered to nothing. All of
+            // them are the slot's empty state — exactly what `NotResolvedYet`
+            // names, and what the node renders its placeholder for.
+            failed
+                BindingErrorCode.NotResolvedYet
+                (sprintf "%s resolved with no current value." expression)
+                (Some
+                    "The slot's empty state — the renderer shows its placeholder here too. Check what the binding reads: the host instant, a capability's readiness, or the rows a transform filtered to.")
+        | BindingResolver.Errored message ->
+            // `AccessorThrew` rather than a new code. `BindingErrorCode` is a
+            // public four-case DU and widening it would break every exhaustive
+            // consumer match; and every resolver `Errored` IS author-supplied
+            // machinery failing under evaluation — an accessor, a pipeline, a
+            // capability, an unbox at the slot boundary. The resolver's own
+            // message is carried verbatim, which is where the discrimination
+            // between those actually lives.
+            failed
+                BindingErrorCode.AccessorThrew
+                message
+                (Some "The renderer reports this same failure for this binding — repair the declaration, not the probe.")
+        | BindingResolver.I18nUnresolved key ->
+            failed
+                BindingErrorCode.NotResolvedYet
+                (sprintf "I18n key '%s' has no translation in the host's catalogue." key)
+                (Some
+                    "Register the key with the host's I18nResolver; until then the renderer shows the loud `[i18n:<key>]` placeholder.")
 
-    | Binding.Format(_source, _format, _locale) ->
-        // Format bindings format their numeric source via the
-        // renderer's Intl / Globalization formatter, which the probe has no
-        // handle on — the FORMATTER is renderer-side, not the locale. The
-        // ambient `Locale` the formatter reads is on `ctx.Sources` since Phase
-        // 213 (it was the field the old hand-duplicated probe record had
-        // silently dropped), so the gap here is the formatter alone. v1
-        // surfaces as NotResolvedYet with a hint — same posture as
-        // I18n / Computed.
-        failed
-            BindingErrorCode.NotResolvedYet
-            "Format bindings require the renderer's locale formatter, not exposed to the probe."
-            (Some "Introspect the underlying numeric source binding directly; the formatted string is renderer-side.")
-    | Binding.Transform _ ->
-        // Transform bindings (Phase 282) evaluate a `Fuaran.Core.DataFrame` pipeline in the
-        // renderer's resolver, not the probe (the pipeline EVALUATOR is renderer-side; the source
-        // record is shared since Phase 213). v1 surfaces as NotResolvedYet with a hint — same
-        // posture as Format / I18n / Computed.
-        failed
-            BindingErrorCode.NotResolvedYet
-            "Transform bindings evaluate a dataframe pipeline in the renderer's resolver, not the probe."
-            (Some
-                "The transformed rows (or, in a scalar slot, the 1×1 result cell — Phase 632) are renderer-side; introspect the declared source schema + pipeline directly.")
-    | Binding.Expr _ ->
-        // Fuaran-UI Phase 1534 — an `Expr` evaluates through the SAME renderer-side machinery a
-        // scalar `Transform` does (one frame, Core's evaluator, the resolver's param environment),
-        // so it gets the same answer for the same reason: the evaluator is not the probe's, and a
-        // second implementation of it here is the drift class this file's header warns about.
-        failed
-            BindingErrorCode.NotResolvedYet
-            "Expr bindings evaluate a scalar expression in the renderer's resolver, not the probe."
-            (Some "The result cell is renderer-side; introspect the declared expression and its param sources directly.")
-    | Binding.Invoke(capabilityId, _) ->
-        // Invoke bindings (Phase 283) dispatch a host-registered capability in the renderer's
-        // resolver/registry, not the probe. v1 surfaces as NotResolvedYet with a hint.
-        failed
-            BindingErrorCode.NotResolvedYet
-            (sprintf "Invoke binding for capability '%s' is dispatched host-side, not by the probe." capabilityId)
-            (Some "Enumerate the capability registry for its typed signature; the realized value is renderer-side.")
+/// Resolve a typed `Binding<'T>` against the probe's sources and return a
+/// `ResolvedBindingResult`. The typed `'T` value is obj-boxed at the return; the
+/// orchestrator decodes per-slot using its schema.
+///
+/// This is the GENERAL slot: it delegates to `BindingResolver.resolve`, which is
+/// the entry point the renderer uses for every slot but the numeric-scalar ones.
+/// A `Binding.Transform` here is its ROWS.
+let tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>) : ResolvedBindingResult =
+    resolveThrough BindingResolver.resolve ctx binding
+
+/// Fuaran-UI Phase 1532 — the SCALAR-slot twin of `tryResolveBinding`, for a slot
+/// the renderer resolves through `BindingResolver.resolveScalarWith`
+/// (`Metric.Value`, `Metric.Trend`, `LabelValueRow.Value`, and every text slot).
+/// A `Binding.Transform` here is its 1x1 result cell and a `Binding.Expr` its
+/// result cell — the values the reader is actually looking at — where the general
+/// entry point reports the rows failing to unbox to the slot's type.
+///
+/// `coerce` is the slot's OWN cell coercion, and it is a parameter rather than a
+/// generic unbox for the reason the numeric slot makes concrete: a `count`
+/// aggregate yields an `Int` cell into a `Binding&lt;float&gt;` slot, which
+/// `BindingResolver.cellToFloat` reads as `2.0` and a raw unbox throws on. Pass
+/// the same coercion the renderer passes for that slot — `cellToFloat`,
+/// `cellToText`, `cellToBool` — and the probe cannot report a different value
+/// from the one on screen.
+let tryResolveScalarBindingWith<'T>
+    (coerce: Fuaran.Core.Cell -> Result<'T, string>)
+    (ctx: IntrospectionContext)
+    (binding: Binding<'T>)
+    : ResolvedBindingResult =
+    resolveThrough (BindingResolver.resolveScalarWith coerce) ctx binding

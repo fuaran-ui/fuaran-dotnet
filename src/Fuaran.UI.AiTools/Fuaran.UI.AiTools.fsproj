@@ -35,6 +35,16 @@
     <!-- Compute layer (Phase 283): the invocable Capability + registry surface for the
          capability discovery + dispatch glue (Capabilities.fs). -->
     <PackageReference Include="Fuaran.Core.Function" />
+    <!-- Phase 1532 — the binding RESOLVER, so BindingProbe delegates the arms it
+         used to mirror by hand (Computed / Now / I18n / Format / Transform / Expr
+         / Invoke) instead of re-deciding them. Renderer.Core is the
+         EMISSION-AGNOSTIC spine, not a renderer: FSharp.Core + Fable.Core, no
+         Feliz / React / Browser (its own .fsproj states the posture, and
+         BindingSourcesDriftTests asserts the substrate stays out of this
+         assembly's closure rather than assuming it). Fable.Core was already in
+         this package's transitive closure via Fuaran.UI.Ops, so the dependency
+         set is unchanged in kind. -->
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
