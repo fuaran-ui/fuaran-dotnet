@@ -340,6 +340,7 @@
     <Compile Include="RatingModelTests.fs" />
     <Compile Include="TokensModelTests.fs" />
     <Compile Include="TrustedTypesTests.fs" />
+    <Compile Include="StatePersistenceTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
