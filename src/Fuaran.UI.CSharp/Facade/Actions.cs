@@ -18,8 +18,10 @@ namespace Fuaran.UI.CSharp;
 // convenience: an action the veneer can author must survive `encodeNodeForTransport`
 // intact. That admits `Notify`, `Call` with an `into:` target (or with neither an
 // `into:` nor a result closure), `Print` (Phase 1124 — payload-free, so trivially
-// wire-faithful), and a `Chain` of those. It excludes `Dispatch`, whose message is a
-// host closure — see the note on `FuaranAction`.
+// wire-faithful), `Confirm` and `Focus` (Phase 1537 — both wire-representable, and
+// `Confirm` is faithful exactly as far as its continuations are), and a `Chain` of
+// those. It excludes `Dispatch`, whose message is a host closure — see the note on
+// `FuaranAction`.
 
 /// <summary>
 /// A JSON value — the payload a <see cref="FuaranAction.Notify"/> carries. The
@@ -222,6 +224,65 @@ public sealed class FuaranAction
     /// </summary>
     public static FuaranAction Navigate(string route) =>
         new(FsAction.NewNavigate(Text.Literal(route).Inner, FsGen.NavigateTarget.Self));
+
+    /// <summary>
+    /// Ask the reader <paramref name="prompt"/>, then raise
+    /// <paramref name="onConfirm"/> if they accept — <c>Action.Confirm</c>
+    /// (Phase 1537).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The prompt is a <see cref="Text"/> rather than a string, so the question may
+    /// name what the reader has selected — "Delete the 3 selected orders?" — and not
+    /// only a sentence typed at authoring time. It resolves at the moment the reader
+    /// raises the action.
+    /// </para>
+    /// <para>
+    /// The continuation is dispatched through the SAME gate every other action meets,
+    /// so a host that refuses navigation refuses it here too: a confirmation is not a
+    /// way to reach an effect the host declines. Nor is it an authorisation — it is a
+    /// courtesy to the reader, and anything that must not happen without permission is
+    /// refused by the host's policy rather than by the question.
+    /// </para>
+    /// <para>
+    /// A confirm inside a confirm's continuation is refused when the tree is decoded:
+    /// confirmation is bounded at one question.
+    /// </para>
+    /// </remarks>
+    public static FuaranAction Confirm(Text prompt, FuaranAction onConfirm) =>
+        new(FsAction.NewConfirm(prompt.Inner, onConfirm.Inner, Fs.None<FsAction>()));
+
+    /// <summary>
+    /// Ask the reader <paramref name="prompt"/>, then raise
+    /// <paramref name="onConfirm"/> if they accept or <paramref name="onCancel"/> if
+    /// they decline.
+    /// </summary>
+    /// <remarks>
+    /// An author who wants nothing to happen on a decline uses
+    /// <see cref="Confirm(Text, FuaranAction)"/> — an absent cancel branch is how the
+    /// language spells "nothing happens", and passing an empty chain here would say
+    /// the same thing less clearly.
+    /// </remarks>
+    public static FuaranAction Confirm(Text prompt, FuaranAction onConfirm, FuaranAction onCancel) =>
+        new(FsAction.NewConfirm(prompt.Inner, onConfirm.Inner, Fs.Some(onCancel.Inner)));
+
+    /// <summary>
+    /// Move keyboard focus to the node with id <paramref name="nodeId"/> —
+    /// <c>Action.Focus</c> (Phase 1537).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The id is a plain string, never a binding: it addresses a node in this document,
+    /// which the author wrote, so there is nothing here for the tree to compute.
+    /// </para>
+    /// <para>
+    /// What this does not claim: nothing about scrolling (a host may scroll as a
+    /// consequence of focusing, and this neither asks it to nor prevents it) and
+    /// nothing about selection (focus is not a caret position or a text range). A node
+    /// id that addresses nothing warns and moves nothing.
+    /// </para>
+    /// </remarks>
+    public static FuaranAction Focus(string nodeId) => new(FsAction.NewFocus(nodeId));
 
     /// <summary>Raise several actions in order.</summary>
     public static FuaranAction Chain(params FuaranAction[] actions) =>

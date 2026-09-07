@@ -111,7 +111,12 @@ let private allActionCases: (string * Fuaran.UI.Types.Action<Msg>) list =
       // fixture anyway: `describe` still composes a string for it, and a case
       // omitted on the grounds that there is nothing to check is a case whose
       // describer nobody ever looked at.
-      "Print", Action.Print ]
+      "Print", Action.Print
+      // Phase 1537 — the poison rides in the prompt AND in the continuation, the
+      // two positions a recursive case can leak through.
+      "Confirm", Action.Confirm(TextSource.Literal poison, Action.Notify("toast", Fuaran.Core.JStr poison), None)
+      // Author-declared vocabulary, carried in full — the `CommitLocal` shape.
+      "Focus", Action.Focus "search-field" ]
 
 [<Tests>]
 let tests =

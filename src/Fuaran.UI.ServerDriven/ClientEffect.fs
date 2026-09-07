@@ -72,6 +72,22 @@ type ClientEffect =
     /// back: `window.print()` reports neither whether the reader printed nor
     /// what they chose, so unlike `ReadFileBody` there is no result `LiveEvent`.
     | Print
+    /// Ask the reader `prompt` and send the answer back (`Action.Confirm`,
+    /// Phase 1537). `token` names WHICH confirm in the originating gesture is
+    /// being answered, so a `Chain` raising two of them is unambiguous.
+    ///
+    /// **The continuations are deliberately NOT in this instruction.** The shim
+    /// is told what to ask and nothing about what will happen; it answers yes or
+    /// no, and the server — which holds the tree, the gate and the egress policy
+    /// — decides what that answer means. Shipping the branches would move the
+    /// decision to the least trusted party in the system.
+    ///
+    /// The answer round-trips as the ORIGINATING event re-delivered with
+    /// `confirmToken` / `confirmAccepted` in its payload — the `PushState` /
+    /// `popstate` shape, with no new event name and no server-side pending
+    /// state. It is re-validated in full on arrival, exactly as the first
+    /// delivery was.
+    | Confirm of prompt: string * token: string
 
 module ClientEffect =
 
@@ -106,6 +122,7 @@ module ClientEffect =
         | Download _ -> "Download"
         | ReadFileBody _ -> "ReadFileBody"
         | Print -> "Print"
+        | Confirm _ -> "Confirm"
 
     /// Encode one effect as tagged-object camelCase JSON.
     let encode (effect: ClientEffect) : string =
@@ -122,6 +139,7 @@ module ClientEffect =
         | Download(url, name) -> $"""{{"kind":"Download","url":{q url},"name":{q name}}}"""
         | ReadFileBody(nodeId, encoding) -> $"""{{"kind":"ReadFileBody","nodeId":{q nodeId},"encoding":{q encoding}}}"""
         | Print -> """{"kind":"Print"}"""
+        | Confirm(prompt, token) -> $"""{{"kind":"Confirm","prompt":{q prompt},"token":{q token}}}"""
 
     /// Encode an effect list as a JSON array.
     let encodeList (effects: ClientEffect list) : string =

@@ -6326,6 +6326,77 @@ admission gates do not arise. `accessibility.hidden` keeps its meaning exactly. 
 (`autoAdvanceMs`) still rotates the `match` values only — advancing writes a string into the switch's
 own selector key, which a predicate case does not consult — so a when-only switch does not advance,
 which is what FUARAN128 already reports as "a declared interval with nothing for a tick to do".
+---
+
+## Recorded change — 0.78.0, `Action.Confirm` and `Action.Focus` (fuaran#1537)
+
+**Two cases on the closed public `Action<'Msg>` union: source-breaking at every exhaustive `match`
+(`FS0025`), wire-additive, and it RIDES the standing 0.78.0 draft rather than advancing it.**
+
+**The version reasoning, on the draft-slot rule — and the draft moved under this phase.** It was
+authored against the then-standing 0.77.0 draft; `v0.77.0` was tagged while it was in flight, a
+separate commit advanced the draft to 0.78.0, and fuaran#1535 then rode that. The destination is
+0.78.0 either way, and the heading says the slot it shipped in rather than the one it was written
+against — the `ApplyErrorCode.LimitExceeded` entry's convention.
+
+It RIDES rather than advancing again. 0.78.0 is untagged and pinned by no public-path consumer, so
+it is a draft slot, and it already carries breaking-class entries — an `FS0764` record widening and
+a field narrowed to `option`. A DU case addition is that same class rather than a higher one: both
+say to a consumer *adopting this slot costs source edits*. A `v0.79.0` would tell a consumer already
+paying 0.78.0's price that there is a second, separate one. `Directory.Build.props` is not touched.
+
+**What breaks, and where.** Any exhaustive `match` over `Action<'Msg>` in consumer code stops
+compiling with `FS0025` until the two arms are added. That is the whole of the source break — no
+existing case changes arity, no record gains a field, and no member is removed. In this repo the
+compiler named eleven such sites and each was classified rather than wildcarded, which is the point
+of leaving those matches exhaustive.
+
+**The wire does not move.** Both are new `$type` discriminators, so every document written before
+this release encodes and decodes byte-identically; the emit diff is five new fixture files and the
+four generated artefacts, with every pre-1537 fixture unchanged.
+
+**`Action.Confirm of prompt: TextSource * onConfirm: Action<'Msg> * onCancel: Action<'Msg> option`**
+— the SECOND recursive case on this union after `Chain`, and the first that recurses into named
+members rather than a list. `onCancel` is omitted from the wire when absent, and an absent cancel
+branch means *nothing happens*: a host must not substitute one. Confirmation is **bounded at depth
+one** — a `Confirm` reachable from either continuation, through a `Chain` included, is refused at
+decode (`WRONG_TYPE`). The JSON Schema deliberately does not carry that bound; the decoder is the
+authority, recorded in `SchemaConformanceTests.schemaInexpressibleRejects` with its reason.
+
+**`Action.Focus of nodeId: string`** — the `Action` counterpart of `ClientEffect.Focus`, which the
+server-driven tier has carried since Phase 152 with nothing on the wire able to reach it. A bare
+string and never a `TextSource`: it addresses a node in this document, which the author wrote.
+
+**`Runtime.ActionDescriptor` gains `Confirm of prompt: string` and `Focus of nodeId: string`** — the
+same `FS0025` class, on a union a host implementing `CanDispatch` may switch over. `Confirm` carries
+the RESOLVED prompt, deliberately unlike `WriteToClipboard`'s withheld payload: a prompt is a
+question the author wrote and is about to be shown on screen, so a gate logging its descriptor logs
+something already on display, and carrying it is what makes a per-question policy expressible.
+
+**`ServerDriven.ClientEffect` gains `Confirm of prompt: string * token: string`**, and the
+continuations are deliberately NOT in it: the shim is told what to ask and nothing about what a yes
+will do. The answer returns as the originating event re-delivered with `confirmToken` /
+`confirmAccepted`, is re-validated in full, and the continuation then meets its OWN dispatch gate. No
+new event name is admitted, so `Validation.legitimateEvents` is unchanged.
+
+**`StructuralQuery.Act` gains `Confirm of prompt: string` and `Focus of nodeId: string`** — same
+class again. A `Confirm`'s continuations are CARRIED by the query walk, so a search for "does this
+button navigate" answers yes for a button that navigates on the reader's confirmation.
+
+**One dispatch path, gated twice.** `Confirm` itself is gated; on acceptance the continuation
+re-enters the ordinary dispatch entry, so a `Navigate` inside it meets its own egress check and its
+own descriptor. A host that allows dialogues and denies navigation accepts the confirm and still
+refuses the navigate — pinned by test, and falsified against a deliberately broken driver before it
+was believed.
+
+**What this does NOT claim.** A confirmation is a courtesy to the reader, never an authorisation: the
+answer comes from the client, and a hostile client answers yes without asking anyone. `Focus` claims
+nothing about scrolling and nothing about selection. `docs/security/ESCAPE-HATCHES.md` Hatch 1
+carries both entries in the three-part form.
+
+**What did NOT change.** `IFuaranRuntime` gains no member — `window.confirm()` and `.focus()` are the
+browser's own, on the `Print` / `CommitLocal` precedent — so direct implementers are unaffected.
+`DriverServices` gains no field. No existing fixture's bytes move.
 ## Recorded change — 0.78.0, a wire-complete `Binding.Local` and an erroring decoded `Binding.Computed` (fuaran#1538)
 
 **`Generated.Binding<'T>.Local` gains two fields**, appended after the existing five:

@@ -2367,6 +2367,81 @@ let actionNavigateTarget: Node<obj> =
         ))
         None
 
+// Phase 1537 — `Action.Confirm`, and the fixture is chosen for the shape the
+// case exists for: a destructive act behind a question. The prompt is BOUND, so
+// it names what the reader has selected rather than repeating a sentence the
+// author typed — which is why the prompt is a `TextSource` at all — and the
+// continuation is a `Call` into a state slot, an act with a consequence.
+//
+// There is NO `onCancel` here, deliberately: an absent cancel branch is how the
+// language spells "nothing happens", and pairing that shape with the
+// cancel-bearing fixture beside it pins both halves of the omit-when-absent
+// rule, exactly as the `Navigate` target pair does.
+let actionConfirm: Node<obj> =
+    node
+        "action-confirm"
+        (NodeKind.Button(
+            { Defaults.button with
+                Label = TextSource.Literal "Delete"
+                OnClick =
+                    Action.Confirm(
+                        TextSource.Bound(Binding.Selection("orders-grid", (fun _ -> ""), None, Some "reference")),
+                        Action.Call("/orders/delete", None, Some(CallResultTarget.State "delete-result")),
+                        None
+                    ) }
+        ))
+        None
+
+// Phase 1537 — the CANCEL branch, and a LITERAL prompt.
+//
+// The two members are exercised APART from the fixture above, on the Phase 1536
+// rule: a fixture combining a bound prompt and a cancel branch would not
+// distinguish a host that implemented one from a host that implemented the
+// other. The cancel branch is a `SetState` rather than an empty chain, because
+// "put the row back" is what a real cancel does and an empty chain would pin
+// nothing about how a branch's contents encode.
+//
+// It also exercises the ONE structural fact this case adds to the union: the
+// continuations are `Action`s, so the encoder recurses. `Chain` is the only
+// other arm that does, and it recurses into a LIST — a host that special-cased
+// `ops` and nothing else passes every `Chain` fixture and fails this one.
+let actionConfirmCancel: Node<obj> =
+    node
+        "action-confirm-cancel"
+        (NodeKind.Button(
+            { Defaults.button with
+                Label = TextSource.Literal "Discard changes"
+                OnClick =
+                    Action.Confirm(
+                        TextSource.Literal "Discard your unsaved changes?",
+                        Action.Chain
+                            [ Action.SetState("draft", Some(JStr ""), None)
+                              Action.Notify("discarded", JStr "draft") ],
+                        Some(Action.SetState("banner", Some(JStr "Your changes are still here."), None))
+                    ) }
+        ))
+        None
+
+// Phase 1537 — `Action.Focus`, the counterpart of an effect the server-driven
+// tier has carried since Phase 152 with no `Action` to reach it.
+//
+// The chain is the shape a real document reaches for and is why the fixture is
+// a chain rather than a bare `Focus`: "clear the search box, then put the caret
+// back in it" is one gesture with an ordering, and an ordering is the thing a
+// list-encoding host can get wrong.
+//
+// What the fixture cannot say, and what the specification says instead: nothing
+// about scrolling, and nothing about selection. The wire carries a node id.
+let actionFocus: Node<obj> =
+    node
+        "action-focus"
+        (NodeKind.Button(
+            { Defaults.button with
+                Label = TextSource.Literal "Clear search"
+                OnClick = Action.Chain [ Action.SetState("search", Some(JStr ""), None); Action.Focus "search-field" ] }
+        ))
+        None
+
 // Phase 676 — the JSON-payload actions, with payloads worth testing.
 //
 // `Notify` / `SetState` / `AiTool` each carry a `JVal` of arbitrary JSON, and
@@ -7240,6 +7315,12 @@ let allNodes: (string * Node<obj>) list =
       actionNavigateBound
       "Phase 1536 — Input/Button whose Action.Navigate names a Blank target (opened with noopener,noreferrer); `Self` is omitted, so this is the only shape that puts `target` on the wire",
       actionNavigateTarget
+      "Phase 1537 — Input/Button whose Action.Confirm asks a BOUND question (naming the selected row) before a Call; no onCancel, which is how the language spells 'nothing happens'",
+      actionConfirm
+      "Phase 1537 — Input/Button whose Action.Confirm carries a LITERAL prompt and both branches; the only fixture in which the recursive encoder descends into a named continuation rather than a Chain list",
+      actionConfirmCancel
+      "Phase 1537 — Input/Button whose Action.Focus moves the caret to an addressed node, chained after the write that emptied it",
+      actionFocus
       "Input/Button (Action.ReadFileBody base64)", buttonReadFile
       "Input/Button (Notify / SetState / AiTool — JSON payloads)", buttonJsonPayloads
       "Input/FileUpload", fileUpload

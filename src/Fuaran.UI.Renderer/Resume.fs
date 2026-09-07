@@ -264,6 +264,46 @@ let rec private readAction (depth: int) (action: obj) : Result<Action<unit>, str
                 Error
                     "WriteToClipboard carries a bound payload; this node should have been dispositioned 'fallback' and hydrated"
         | Some "Print" -> Ok Action.Print
+        | Some "Focus" ->
+            // Phase 1537 — a node id and nothing else, read exactly as
+            // `CommitLocal`'s is.
+            match readString action "nodeId" with
+            | Some nodeId -> Ok(Action.Focus nodeId)
+            | None -> Error "Focus has no string `nodeId`"
+        | Some "Confirm" ->
+            // Phase 1537 — the prompt is a `TextSource`, whose canonical LITERAL
+            // form is the bare JSON string. A non-string `prompt` is a bound or
+            // i18n question, and THIS PATH HOLDS NO RESOLVER — the server's
+            // `disposition` routes such a node to `fallback` for exactly that
+            // reason — so reaching here with one means the envelope and the
+            // interpreter disagree. It is REFUSED and reported, never coerced:
+            // showing the reader a declaration as the question and then acting
+            // on their answer is worse than hydrating the subtree.
+            //
+            // Both continuations are read through this same reader, so a
+            // continuation the resume path cannot construct (a `Dispatch`, a
+            // `Call`) refuses the WHOLE confirm rather than yielding a dialogue
+            // whose yes branch does nothing.
+            match readString action "prompt" with
+            | None ->
+                Error "Confirm carries a bound prompt; this node should have been dispositioned 'fallback' and hydrated"
+            | Some prompt ->
+                let onConfirmRaw: obj = action?onConfirm
+
+                if isNull onConfirmRaw then
+                    Error "Confirm has no `onConfirm` action"
+                else
+                    match readAction (depth + 1) onConfirmRaw with
+                    | Error e -> Error e
+                    | Ok onConfirm ->
+                        let onCancelRaw: obj = action?onCancel
+
+                        if isNull onCancelRaw then
+                            Ok(Action.Confirm(TextSource.Literal prompt, onConfirm, None))
+                        else
+                            readAction (depth + 1) onCancelRaw
+                            |> Result.map (fun onCancel ->
+                                Action.Confirm(TextSource.Literal prompt, onConfirm, Some onCancel))
         | Some "CommitLocal" ->
             match readString action "nodeId" with
             | Some nodeId -> Ok(Action.CommitLocal nodeId)
@@ -343,6 +383,32 @@ let rec private runResumed (runtime: Runtime.IFuaranRuntime) (denied: string lis
     // no arguments. Gated all the same — a resumed print and a hydrated print
     // are the same act, so they meet the same gate.
     | Action.Print -> gate Runtime.ActionDescriptor.Print (fun () -> Browser.Dom.window.print ())
+    // Phase 1537 — the resumed confirm and the hydrated confirm are the same
+    // act, so they meet the same two gates in the same order: this one asks
+    // whether the tree may raise a dialogue, and the continuation re-enters
+    // `runResumed` from the top, where it meets its own. A refusal of the
+    // dialogue performs NEITHER branch — the reader was never asked.
+    | Action.Confirm(TextSource.Literal prompt, onConfirm, onCancel) ->
+        gate (Runtime.ActionDescriptor.Confirm prompt) (fun () ->
+            if Browser.Dom.window.confirm prompt then
+                runResumed runtime denied onConfirm
+            else
+                onCancel |> Option.iter (runResumed runtime denied))
+    | Action.Focus nodeId ->
+        gate (Runtime.ActionDescriptor.Focus nodeId) (fun () ->
+            let selector =
+                "[data-fuaran-node-id=\""
+                + nodeId.Replace("\\", "\\\\").Replace("\"", "\\\"")
+                + "\"]"
+
+            let el = Browser.Dom.document.querySelector selector
+
+            if isNull el then
+                runtime.Warn(
+                    sprintf "[Fuaran] Action.Focus('%s') addressed no rendered node — focus unchanged." nodeId
+                )
+            else
+                (el :?> Browser.Types.HTMLElement).focus ())
     | Action.CommitLocal nodeId ->
         gate (Runtime.ActionDescriptor.CommitLocal nodeId) (fun () ->
             let eventName = sprintf "fuaran-commit-local-%s" nodeId

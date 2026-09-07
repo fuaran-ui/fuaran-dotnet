@@ -724,6 +724,32 @@ and private encodeAction<'Msg> (a: Action<'Msg>) : Appender =
             // opposite reason — that one has a payload the wire cannot see,
             // this one has none to see.
             appendObject sb (case "Print" ([]: Field list))
+        | Action.Confirm(prompt, onConfirm, onCancel) ->
+            // Phase 1537 — the second RECURSIVE arm on this union, so the
+            // continuations encode through `encodeAction` itself, exactly as
+            // `Chain`'s `ops` do. `prompt` goes through the GENERATED
+            // `TextSource` encoder for the reason the clipboard and navigate
+            // arms state: this encoder feeds the hash chain, and a second
+            // hand-rolled `TextSource` encoder would eventually forget the
+            // bare-string Literal rule and present as an unexplained hash
+            // mismatch. Fields sort to onCancel < onConfirm < prompt;
+            // `onCancel` rides only when present.
+            let optionals =
+                match onCancel with
+                | Some c -> [ "onCancel", encodeAction c ]
+                | None -> []
+
+            appendObject
+                sb
+                (case
+                    "Confirm"
+                    ([ "onConfirm", encodeAction onConfirm
+                       "prompt", encodeJVal (Fuaran.UI.Generated.encodeTextSourceJson prompt) ]
+                     @ optionals))
+        | Action.Focus nodeId ->
+            // Phase 1537 — a node id and nothing else, the `CommitLocal` shape
+            // one arm up.
+            appendObject sb (case "Focus" [ "nodeId", str nodeId ])
         | Action.ReadFileBody(fileRef, _fileHandle, encoding, onRead) ->
             // Phase 136 — file-read intent. Only the wire `fileRef` token
             // + the requested `encoding` cross the wire; the blob is host-held

@@ -664,7 +664,28 @@ let private defs: (string * J) list =
                 [ "type", JStr "object"
                   "properties", JObj [ "$type", JObj [ "const", JStr "Print" ] ]
                   "required", JArr [ JStr "$type" ]
-                  "additionalProperties", JBool false ] ]
+                  "additionalProperties", JBool false ]
+            // Phase 1537 — the second RECURSIVE branch of this union (`Chain` is
+            // the first): both continuations are `$ref`s back to `Action`.
+            //
+            // What the schema does NOT express, stated rather than left to be
+            // inferred: the DEPTH-ONE bound. Refusing a `Confirm` inside a
+            // continuation is a decoder policy, and a recursive `$ref` cannot
+            // say "anything but this branch" without either duplicating the
+            // whole union under a second name or leaning on a negation every
+            // Draft 2020-12 validator implements differently. The decoder is the
+            // authority (`reject/action-confirm-nested`), exactly as it is for
+            // the `href`/`url`/`to` aliases one branch up — a document this
+            // schema admits and the decoder refuses is the same relationship
+            // §16 leniency already has, read the other way round.
+            duCase
+                "Confirm"
+                [ "onConfirm"; "prompt" ]
+                [ "onCancel", ref "Action"
+                  "onConfirm", ref "Action"
+                  "prompt", ref "TextSource" ]
+            // Phase 1537 — a node id, the `CommitLocal` shape one branch up.
+            duCase "Focus" [ "nodeId" ] [ "nodeId", str ] ]
 
       // ── CellFormat / CellValue / ColumnWidth (§3.3) ───────────────────────
       "CellFormat",

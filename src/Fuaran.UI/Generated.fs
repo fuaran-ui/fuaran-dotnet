@@ -492,6 +492,52 @@ type Action<'Msg> =
     /// (`ActionDescriptor.Print`), because a host that renders untrusted
     /// trees must be able to refuse an unbidden dialogue.
     | Print
+    /// Phase 1537 — ask the reader `prompt`, then dispatch `onConfirm` on
+    /// acceptance or `onCancel` (when present) on refusal.
+    ///
+    /// "Delete — are you sure?" is composable today only as `Modal.Open` +
+    /// `SetState` + a second button: a state key, a writer and a control the
+    /// emitter must invent, for an intent every host already owns as a
+    /// dialogue.
+    ///
+    /// **One dispatch path, gated twice.** `Confirm` itself is gated
+    /// (`ActionDescriptor.Confirm`) — a host rendering untrusted trees must
+    /// be able to refuse an unbidden dialogue, exactly the `Print` reasoning.
+    /// On acceptance the continuation re-enters the ORDINARY dispatch entry,
+    /// so a `Navigate` inside it meets its own egress check and a `SetState`
+    /// its own host-reserved-key guard. Nothing here is a second path around
+    /// a gate; a confirm cannot smuggle an action a host would refuse.
+    ///
+    /// **Bounded at depth one.** A `Confirm` anywhere inside either
+    /// continuation — under a `Chain` included — is refused at decode. A
+    /// dialogue that answers a dialogue is a modal stack a reader cannot
+    /// escape, and it expresses no intent a single question does not.
+    ///
+    /// **What this does not claim.** A confirmation is a courtesy to the
+    /// reader, never an authorisation: the answer comes from the client, and
+    /// a hostile client answers yes without asking anyone. Anything that must
+    /// not happen without permission is refused by the gate, not by the
+    /// dialogue.
+    | Confirm of prompt: TextSource * onConfirm: Action<'Msg> * onCancel: Action<'Msg> option
+    /// Phase 1537 — move keyboard focus to the node addressed by `nodeId`.
+    ///
+    /// The server-driven tier has carried `ClientEffect.Focus of nodeId` since
+    /// Phase 152 with no `Action` counterpart; this closes that asymmetry
+    /// rather than opening a new capability.
+    ///
+    /// Gated (`ActionDescriptor.Focus`) on the `Print` reasoning: moving the
+    /// reader's caret — and, with it, the viewport — is host-observable even
+    /// though no `IFuaranRuntime` member backs it. A node id that addresses
+    /// nothing warns and moves nothing.
+    ///
+    /// **What this does not claim.** Nothing about scrolling: a host may
+    /// scroll as a consequence of focusing, and this case does not ask it to
+    /// and cannot stop it. Nothing about selection: focus is not a caret
+    /// position, a text range, or a grid cell selection. And nothing about
+    /// WHICH node — "focus the first invalid field" is this case naming a
+    /// node the author chose; choosing the first invalid one is a
+    /// renderer-owned affordance, not an argument here.
+    | Focus of nodeId: string
 
 and [<RequireQualifiedAccess>] Binding<'T> =
     | Static of value: 'T option
@@ -1977,6 +2023,8 @@ and private encAction<'Msg> (v: Action<'Msg>) : JVal =
     | Action.SetState (key, value, valueFrom) -> Canon.typed "SetState" ([ Some("key", JStr key); (value |> Option.map (fun v -> "value", id v)); (valueFrom |> Option.map (fun v -> "valueFrom", (encBinding id) v)) ] |> List.choose id)
     | Action.AiTool (toolName, args) -> Canon.typed "AiTool" [ "toolName", JStr toolName; "args", id args ]
     | Action.Print -> Canon.typed "Print" [  ]
+    | Action.Confirm (prompt, onConfirm, onCancel) -> Canon.typed "Confirm" ([ Some("prompt", encTextSource prompt); Some("onConfirm", encAction onConfirm); (onCancel |> Option.map (fun v -> "onCancel", encAction v)) ] |> List.choose id)
+    | Action.Focus nodeId -> Canon.typed "Focus" [ "nodeId", JStr nodeId ]
 
 and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     match v with
@@ -2960,6 +3008,14 @@ and private decAction (j: JVal) : Result<Action<obj>, string> =
             dReq "args" __fs dJson |> Result.bind (fun args ->
             Ok(Action.AiTool(toolName, args))))
         | "Print" -> Ok Action.Print
+        | "Confirm" ->
+            dReq "prompt" __fs decTextSource |> Result.bind (fun prompt ->
+            dReq "onConfirm" __fs decAction |> Result.bind (fun onConfirm ->
+            dOpt "onCancel" __fs decAction |> Result.bind (fun onCancel ->
+            Ok(Action.Confirm(prompt, onConfirm, onCancel)))))
+        | "Focus" ->
+            dReq "nodeId" __fs dStr |> Result.bind (fun nodeId ->
+            Ok(Action.Focus(nodeId)))
         | __other -> Error ("unknown Action case: " + __other))
     | _ -> Error "expected a Action object"
 

@@ -63,7 +63,17 @@ let private allTwelveCases: (string * Action<Msg>) list =
       "Notify", Action.Notify("toast", JStr poison)
       "SetState", Action.SetState("draft.body", Some(JStr poison), None)
       "AiTool", Action.AiTool("summarise", JObj [ "text", JStr poison ])
-      "Print", Action.Print ]
+      "Print", Action.Print
+      // Phase 1537 — the poison rides in the PROMPT and in the continuation's
+      // payload, which is the pair a recursive case can leak through: a
+      // describer that named its question would put an authored sentence
+      // (possibly naming what the reader selected) into a durable log, and one
+      // that enumerated its branches would put every nested payload there too.
+      "Confirm", Action.Confirm(TextSource.Literal poison, Action.Notify("toast", JStr poison), None)
+      // A node id is author-declared vocabulary, so it is CARRIED — the fixture
+      // therefore uses a real id rather than the poison, exactly as
+      // `CommitLocal` above does. Present so the describer is exercised at all.
+      "Focus", Action.Focus "search-field" ]
 
 let private site =
     ActionInvocation.clientSite AffordanceProvenance.TreeDeclared (Some "node-1") (Some "interaction-7")
@@ -88,17 +98,18 @@ let private renderedSurface (r: ActionInvocation) : string =
 let redactionTests =
     testList
         "Phase 889 — the redaction default"
-        [ test "the Action vocabulary has TWELVE cases and the fixture covers each exactly once" {
+        [ test "the Action vocabulary has FOURTEEN cases and the fixture covers each exactly once" {
               // Guards the poison test below against the failure mode that
               // makes it useless: a case the fixture forgot is a case whose
               // redaction nobody checked. The phase itself corrected "twelve"
               // to eleven; a fixture out of step with the DU would restore the
               // gap silently. It did its job at Phase 1124, which added
-              // `Print` — the count is reflected off the DU, so the new case
-              // could not be shipped without being covered.
+              // `Print`, and again at Phase 1537's `Confirm` / `Focus` — the
+              // count is reflected off the DU, so a new case cannot be shipped
+              // without being covered.
               let names = allTwelveCases |> List.map fst
-              Expect.equal (List.length names) 12 "twelve cases"
-              Expect.equal (List.length (List.distinct names)) 12 "each named once"
+              Expect.equal (List.length names) 14 "fourteen cases"
+              Expect.equal (List.length (List.distinct names)) 14 "each named once"
 
               let unionCases =
                   Reflection.FSharpType.GetUnionCases(typeof<Action<Msg>>)
@@ -108,7 +119,7 @@ let redactionTests =
               Expect.equal (List.sort names |> Array.ofList) unionCases "the fixture matches the DU exactly"
           }
 
-          test "POISON: no payload value survives the default capture mode, in any of the twelve cases" {
+          test "POISON: no payload value survives the default capture mode, in any of the fourteen cases" {
               for name, action in allTwelveCases do
                   let record =
                       ActionInvocation.record ActionCaptureMode.Redacted site ActionOutcome.Dispatched action
@@ -175,13 +186,35 @@ let optInTests =
                   "Navigate under the opt-in keeps the WHOLE route — that IS the opt-in"
           }
 
-          test "three cases stay payload-free even under the opt-in, each structurally" {
+          test "four cases stay payload-free even under the opt-in, each structurally" {
               let payloadOf (a: Action<Msg>) =
                   ActionInvocation.payloadFor ActionCaptureMode.PayloadBearing a
 
               Expect.isNone (payloadOf (Action.Dispatch(Poke "x"))) "Dispatch is a closure — no wire payload exists"
               Expect.isNone (payloadOf (Action.Call("/api", None, None))) "Call has no payload slot on the wire"
               Expect.isNone (payloadOf (Action.Chain [])) "a Chain is one gesture"
+
+              // Phase 1537 — on the `Chain` reason rather than `Print`'s: a
+              // Confirm HAS wire slots, but two of the three are whole nested
+              // actions, so recording it would enumerate a gesture's
+              // constituents in the one projection that deliberately does not.
+              Expect.isNone
+                  (payloadOf (Action.Confirm(TextSource.Literal poison, Action.Notify("t", JStr poison), None)))
+                  "a Confirm's constituents are a deliberate omission, exactly as a Chain's are"
+          }
+
+          test "Confirm names neither its question nor its branches; Focus names its node" {
+              Expect.equal
+                  (ActionInvocation.describe (
+                      Action.Confirm(TextSource.Literal poison, Action.Notify("toast", JStr poison), None): Action<Msg>
+                  ))
+                  "Confirm"
+                  "an authored question may name what the reader selected, and a branch carries payloads"
+
+              Expect.equal
+                  (ActionInvocation.describe (Action.Focus "search-field": Action<Msg>))
+                  "Focus(search-field)"
+                  "a node id is author-declared vocabulary, carried like CommitLocal's"
           }
 
           test "the shipped default sinks are redacted" {

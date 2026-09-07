@@ -879,6 +879,52 @@ let private action =
           // decoder drops silently is a parameter an emitter believes it sent.
           { Tag = "Print"
             Fields = []
+            Annotations = Annotations.Empty }
+          // Phase 1537 — "delete — are you sure?" as ONE case rather than as a
+          // composition. Today it is spelled `Modal.Open` + `SetState` + a
+          // second button: a state key, a writer and a control the emitter must
+          // invent, for an intent every host already owns as a dialogue.
+          //
+          // `onConfirm` / `onCancel` are `Action`s, so this case RECURSES — the
+          // `Chain` shape, and the second recursive case on this union. The
+          // recursion is bounded at DEPTH ONE by the policy decoder, which
+          // refuses a `Confirm` anywhere inside either continuation (under a
+          // `Chain` included): a dialogue that answers a dialogue is a modal
+          // stack a reader cannot escape, and there is no intent it expresses
+          // that a single question does not.
+          //
+          // The continuation is NOT a second path around the dispatch gate.
+          // `Confirm` itself is gated — a host rendering untrusted trees must be
+          // able to refuse an unbidden dialogue, the `Print` reasoning — and on
+          // acceptance the continuation re-enters the ORDINARY dispatch entry,
+          // so a `Navigate` inside it meets its own egress check and its own
+          // gate exactly as it would outside one.
+          //
+          // `prompt` is a `TextSource` (the 1126 / 1536 spelling), so the
+          // question can name what the reader selected; a literal prompt is the
+          // bare JSON string, so nothing about that spelling is new.
+          { Tag = "Confirm"
+            Fields =
+              [ req "prompt" (TUnion("TextSource", []))
+                req "onConfirm" (TUnion("Action", []))
+                opt "onCancel" (TUnion("Action", [])) ]
+            Annotations = Annotations.Empty }
+          // Phase 1537 — move keyboard focus to an addressed node. The
+          // server-driven tier has carried `ClientEffect.Focus of nodeId` since
+          // Phase 152 with no `Action` counterpart, which Phase 1124's outcome
+          // recorded in passing; this closes that asymmetry rather than opening
+          // a new capability.
+          //
+          // `nodeId` is a bare string and not a `TextSource`: it addresses a
+          // node in THIS document, which the author wrote, so there is nothing
+          // for a binding to compute that the author does not already know —
+          // the `CommitLocal` precedent exactly.
+          //
+          // Gated, on the `Print` reasoning: moving the reader's caret (and,
+          // with it, the viewport) is host-observable even though no
+          // `IFuaranRuntime` member backs it.
+          { Tag = "Focus"
+            Fields = [ req "nodeId" TStr ]
             Annotations = Annotations.Empty } ] }
 
 /// Where a `Call`'s result lands, declaratively. NOTE the wire tags are `State` /

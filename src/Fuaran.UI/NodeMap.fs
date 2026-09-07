@@ -77,6 +77,13 @@ let rec mapAction (f: 'a -> 'b) (action: Action<'a>) : Action<'b> =
     | Action.Invoke(capabilityId, args) -> Action.Invoke(capabilityId, args)
     // Phase 1124 — payload-free, so the relabel is a re-tag at the new 'Msg.
     | Action.Print -> Action.Print
+    // Phase 1537 — both continuations are `Action<'a>`, so they RECURSE through
+    // this same relabel; `Chain`'s arm above is the shape. The prompt is a
+    // `TextSource` and the node id a string, both 'Msg-free data that passes
+    // through unchanged.
+    | Action.Confirm(prompt, onConfirm, onCancel) ->
+        Action.Confirm(prompt, mapAction f onConfirm, onCancel |> Option.map (mapAction f))
+    | Action.Focus nodeId -> Action.Focus nodeId
 
 #warnon "44"
 

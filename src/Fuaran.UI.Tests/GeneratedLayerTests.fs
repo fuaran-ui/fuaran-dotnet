@@ -770,6 +770,21 @@ let generatedLayerTests =
                     "reject-chart-annotation-date-unparseable.json"
                     "reject-chart-annotation-nonfinite.json"
                     "reject-chart-annotation-range-unordered.json"
+                    // Fuaran-UI Phase 1537 — Confirm's depth-one bound. The
+                    // `reject-expr-col-reference` class exactly, one union over:
+                    // an unbounded existential over a recursive structure, since
+                    // `Chain` lets a nested `Confirm` sit at any depth inside a
+                    // continuation. The generated decoder decodes the whole
+                    // shape correctly and has nowhere to state that one arm may
+                    // not appear beneath another. Note its SIBLING
+                    // `reject-confirm-missing-onconfirm` is deliberately NOT
+                    // here: a required member is exactly what structure judges,
+                    // so the two fixtures of one phase land on opposite sides of
+                    // this line — which is the clearest evidence the seam is
+                    // about the KIND of rule and not about the case that carries
+                    // it. It joins `schemaInexpressibleRejects` for the same
+                    // shared reason the ordered-pair class does.
+                    "reject-confirm-nested.json"
                     "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"
                     // Fuaran-UI Phase 1534 — `Binding.Expr`'s two refusals. Both

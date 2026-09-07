@@ -207,6 +207,27 @@ let private schemaInexpressibleRejects: Set<string> =
           "reject-expr-col-reference"
           "reject-expr-unbound-param"
 
+          // ─── Fuaran-UI Phase 1537 — Confirm's depth-one bound ─────────────
+          //
+          // The SAME shape as `reject-expr-col-reference` above, one union over:
+          // "does a `{"$type":"Confirm"}` appear ANYWHERE reachable from this
+          // continuation", where `Chain` lets it nest arbitrarily deep. An
+          // unbounded existential over a recursive structure, and JSON Schema
+          // has no operator for it.
+          //
+          // It is expressible only by DUPLICATING the whole `Action` union under
+          // a second confirm-free name and pointing both continuations at that —
+          // which would double the emitted schema and put two definitions of
+          // every action arm in a published artefact, so that the next case
+          // added to one and not the other is a silent divergence in a document
+          // external tooling reads. The decoder is the authority
+          // (WIRE_FORMAT §3.6.22 says so normatively), exactly as it is for the
+          // §16 field aliases the schema likewise does not carry.
+          //
+          // The MISSING_FIELD sibling `reject-confirm-missing-onconfirm` is NOT
+          // here: `required` expresses it, and the ordinary path asserts it.
+          "reject-confirm-nested"
+
           // Fuaran-UI Phase 1538 — `Binding.Local`'s two refusals. Unlike the
           // two above these ARE expressible in principle, and are filed here for
           // the `reject-int-slot-out-of-range` reason rather than a dialect one:

@@ -297,6 +297,40 @@ type ActionDescriptor =
     /// host-observable however little it discloses — the `CommitLocal`
     /// reasoning, which is likewise backed by no `IFuaranRuntime` member.
     | Print
+    /// A confirm-before-action dialogue (Phase 1537). Carries the RESOLVED
+    /// prompt, so a host policy can be per-question rather than all-or-nothing
+    /// — the `SetState` key / `Export` node-id shape.
+    ///
+    /// Carrying the prompt is a deliberate exception to the `WriteToClipboard`
+    /// withholding rule, and the two cases differ in what the text IS. A
+    /// clipboard payload is the reader's own data by construction; a prompt is
+    /// a question the AUTHOR wrote, and it is about to be shown to the reader
+    /// on screen — so a gate that logs its descriptor logs something already
+    /// on display. It is author-declared vocabulary, grade B in
+    /// `docs/ACTION-LOG-PRIVACY.md`, and it is what makes a per-question policy
+    /// expressible at all.
+    ///
+    /// A BOUND prompt resolves before it reaches here, so a question that names
+    /// what the reader selected can carry the reader's selection into this
+    /// string. A host that persists denials and renders untrusted trees should
+    /// treat it as it treats a rendered label, which is what it is.
+    ///
+    /// Gating it is the first of TWO gates, never the only one: the
+    /// continuation re-enters the ordinary dispatch entry, so the action a
+    /// confirmed dialogue performs meets its own descriptor. A confirm is not a
+    /// way to reach an effect a host refuses.
+    | Confirm of prompt: string
+    /// A focus move to `nodeId` (Phase 1537). In the gated set on the `Print`
+    /// reasoning: moving the reader's caret — and, on most engines, scrolling
+    /// the element into view — is host-observable even though no
+    /// `IFuaranRuntime` member backs it, which is `CommitLocal`'s position
+    /// exactly.
+    ///
+    /// The node id is author-declared, so it is carried in full and a policy
+    /// can be per-node. Nothing is read back: focusing reports neither where
+    /// focus was nor whether it moved, so the tree learns nothing about the
+    /// reader.
+    | Focus of nodeId: string
     /// A grid export (Phase 1125) — the reader has activated a grid's export
     /// control and a file is about to be written to their machine. Carries the
     /// grid's node id, so a host policy can be per-grid rather than
@@ -359,6 +393,11 @@ module ActionDescriptor =
         | ActionDescriptor.WriteToClipboard -> "WriteToClipboard"
         | ActionDescriptor.CommitLocal nodeId -> sprintf "CommitLocal(%s)" nodeId
         | ActionDescriptor.Print -> "Print"
+        // The prompt is author-declared text the reader is about to be shown,
+        // so it is carried in full — see the case's own doc block for why this
+        // differs from the clipboard's withholding.
+        | ActionDescriptor.Confirm prompt -> sprintf "Confirm(%s)" prompt
+        | ActionDescriptor.Focus nodeId -> sprintf "Focus(%s)" nodeId
         | ActionDescriptor.Export nodeId -> sprintf "Export(%s)" nodeId
         // The destination is an author-declared name (grade B), so it is
         // carried in full; nothing the reader chose — not the file's name, not

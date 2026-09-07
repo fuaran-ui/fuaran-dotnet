@@ -261,6 +261,12 @@ let all: Classification list =
       sv "Action.CommitLocal"
       sv "Action.WriteToClipboard"
       sv "Action.Print" // Phase 1124 — payload-free: {"$type":"Print"} is the whole encoding, so nothing can be lost
+      // Phase 1537 — survivable, but only as far as its own members: a `Confirm`
+      // whose continuation is a `Dispatch` is host-only THERE, and the
+      // continuation's own row is what says so. The classification is per case,
+      // and a recursive case cannot be more survivable than what it carries.
+      sv "Action.Confirm"
+      sv "Action.Focus"
       pt "Action.ReadFileBody" None // fileRef.Id + encoding survive; the blob + onRead continuation are host-side
       sv "Action.Invoke"
 
