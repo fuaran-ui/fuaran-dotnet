@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.Ops.JsonDecode
+module Fuaran.UI.Ops.JsonDecode
 
 // ============================================================================
 //  Structural decoder for the canonical-JSON wire form
@@ -1606,19 +1606,31 @@ module private OverClose =
 /// `Reliance.ImpliedNodeClose`); everything else — profile mismatch, ambiguous
 /// nesting, a repair that still fails to parse, `LIMIT_EXCEEDED` — surfaces
 /// the ORIGINAL error unchanged.
-let private tryParseNodeWithRecovery (json: string) : Result<Json, DecodeErrorCode * string> =
+let private tryParseNodeWithRecovery
+    (policy: DecodePolicy)
+    (json: string)
+    : Result<Json * string list, DecodeErrorCode * string> =
     match tryParse json with
-    | Ok j -> Ok j
-    | Error(DecodeErrorCode.INVALID_JSON, _) as original ->
-        match ImpliedNodeClose.tryRecover json with
-        | Some repaired ->
-            match tryParse repaired with
-            | Ok j ->
-                Reliance.record Reliance.ImpliedNodeClose
-                Ok j
-            | Error _ -> original
-        | None -> original
-    | Error _ as e -> e
+    | Ok j -> Ok(j, [])
+    | Error failure ->
+        let original = Error failure
+
+        match failure with
+        // Phase 1532 — `Recovery.Off` declines this repair too. The policy axis
+        // is "does this host want a malformed document repaired at all", and a
+        // host that says no to the enumerating gate has not said yes to the
+        // cheap one.
+        | DecodeErrorCode.INVALID_JSON, _ when not (DecodePolicy.recovers policy) -> original
+        | DecodeErrorCode.INVALID_JSON, _ ->
+            match ImpliedNodeClose.tryRecover json with
+            | Some repaired ->
+                match tryParse repaired with
+                | Ok j ->
+                    Reliance.record Reliance.ImpliedNodeClose
+                    Ok(j, [ Reliance.ImpliedNodeClose ])
+                | Error _ -> original
+            | None -> original
+        | _ -> original
 
 // ─── The recognised NodeKind vocabulary (WIRE_FORMAT.md §3.2) ──────────────
 //
@@ -9809,81 +9821,102 @@ let private parseFailure (code: DecodeErrorCode, message: string) : Result<'a, D
 /// parse boundary would have had to guess exactly where the evidence says it
 /// must not.
 let private tryOverCloseUnique (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> option =
-    match OverClose.profile json with
-    | None -> None // never in the class — not a refusal, so not counted
-    | Some p ->
-        let refuse () =
-            Reliance.record Reliance.OverCloseRefused
-            None
+    if not (DecodePolicy.recovers policy) then
+        // Phase 1532 — `Recovery.Off`. The gate does not run, so nothing is
+        // enumerated and nothing is counted: a document this policy never
+        // examined has not been refused BY THE GATE, it was refused by the
+        // parser, and the reliance counters measure the gate.
+        None
+    else
 
-        match OverClose.candidates json p with
-        | None -> refuse () // past the enumeration bounds
-        | Some cands ->
-            // De-duplicate on the PARSED VALUE: deleting either of two closers
-            // separated only by whitespace yields two different strings and one
-            // document, and counting that as two repairs would refuse a
-            // genuinely-unique cell.
-            let seen = ResizeArray<Json>()
-            let mutable clean = 0
-            let mutable accepted = None
-            let mutable overflow = false
+        match OverClose.profile json with
+        | None -> None // never in the class — not a refusal, so not counted
+        | Some p ->
+            let refuse () =
+                Reliance.record Reliance.OverCloseRefused
+                None
 
-            // `cands` is lazy, so each repaired document is built, parsed and
-            // dropped before the next exists — see `OverClose.candidates`. The
-            // enumerator is stepped by hand rather than with `Seq.iter` because
-            // the overflow guard must stop GENERATION, not merely skip the
-            // remaining items: a `for` over the sequence would go on building
-            // full document copies after the verdict is already settled.
-            use e = cands.GetEnumerator()
-
-            while not overflow && e.MoveNext() do
-                match tryParse e.Current with
-                | Ok j ->
-                    let mutable known = false
-
-                    for k in 0 .. seen.Count - 1 do
-                        if not known && seen[k] = j then
-                            known <- true
-
-                    if not known then
-                        seen.Add j
-
-                        if seen.Count > OverClose.MaxDistinctCandidates then
-                            overflow <- true
-                        else
-                            // The candidate repairs decode under the SAME policy
-                            // as the original document. A recovery path that
-                            // decoded under admit-all would let a malformed
-                            // emission carry in a kind the policy refuses — the
-                            // repair would be the bypass.
-                            match decodeNodeAst (walkRoot policy) "$" j with
-                            | Ok tree ->
-                                clean <- clean + 1
-
-                                if clean = 1 then
-                                    accepted <- Some tree
-                            | Error _ -> ()
-                | Error _ -> ()
-
-            // The whole gate, in one line: exactly one, or nothing.
-            if overflow || clean <> 1 then
+            // Phase 1532 — the document-length ceiling, checked AFTER the profile
+            // scan so only documents genuinely in the class are counted as refused.
+            // The profile scan is one linear pass; the enumeration below is the
+            // amplifier, because every candidate is a full copy of the document plus
+            // a full re-parse of it. Bounding the candidate COUNT without bounding
+            // the document SIZE bounded one factor of a product.
+            if json.Length > DecodePolicy.MaxRecoverableLength then
                 refuse ()
             else
-                Reliance.record Reliance.OverCloseUnique
-                accepted |> Option.map Ok
+
+                match OverClose.candidates json p with
+                | None -> refuse () // past the enumeration bounds
+                | Some cands ->
+                    // De-duplicate on the PARSED VALUE: deleting either of two closers
+                    // separated only by whitespace yields two different strings and one
+                    // document, and counting that as two repairs would refuse a
+                    // genuinely-unique cell.
+                    let seen = ResizeArray<Json>()
+                    let mutable clean = 0
+                    let mutable accepted = None
+                    let mutable overflow = false
+
+                    // `cands` is lazy, so each repaired document is built, parsed and
+                    // dropped before the next exists — see `OverClose.candidates`. The
+                    // enumerator is stepped by hand rather than with `Seq.iter` because
+                    // the overflow guard must stop GENERATION, not merely skip the
+                    // remaining items: a `for` over the sequence would go on building
+                    // full document copies after the verdict is already settled.
+                    use e = cands.GetEnumerator()
+
+                    while not overflow && e.MoveNext() do
+                        match tryParse e.Current with
+                        | Ok j ->
+                            let mutable known = false
+
+                            for k in 0 .. seen.Count - 1 do
+                                if not known && seen[k] = j then
+                                    known <- true
+
+                            if not known then
+                                seen.Add j
+
+                                if seen.Count > OverClose.MaxDistinctCandidates then
+                                    overflow <- true
+                                else
+                                    // The candidate repairs decode under the SAME policy
+                                    // as the original document. A recovery path that
+                                    // decoded under admit-all would let a malformed
+                                    // emission carry in a kind the policy refuses — the
+                                    // repair would be the bypass.
+                                    match decodeNodeAst (walkRoot policy) "$" j with
+                                    | Ok tree ->
+                                        clean <- clean + 1
+
+                                        if clean = 1 then
+                                            accepted <- Some tree
+                                    | Error _ -> ()
+                        | Error _ -> ()
+
+                    // The whole gate, in one line: exactly one, or nothing.
+                    if overflow || clean <> 1 then
+                        refuse ()
+                    else
+                        Reliance.record Reliance.OverCloseUnique
+                        accepted |> Option.map Ok
 
 /// The shared node-decode spine: the ordinary parse, then the fuaran#850
 /// insert-only recovery, then the fuaran#855 uniqueness gate, then the original
 /// error. The two recoveries never contend — 850 fails closed on an over-closed
 /// document, which is precisely the profile 855 requires.
-let private decodeNodeCore (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> =
-    match tryParseNodeWithRecovery json with
-    | Ok j -> decodeNodeAst (walkRoot policy) "$" j
+let private decodeNodeCoreWith (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> * string list =
+    match tryParseNodeWithRecovery policy json with
+    | Ok(j, applied) -> decodeNodeAst (walkRoot policy) "$" j, applied
     | Error((DecodeErrorCode.INVALID_JSON, _) as failure) ->
         match tryOverCloseUnique policy json with
-        | Some decoded -> decoded
-        | None -> parseFailure failure
-    | Error failure -> parseFailure failure
+        | Some decoded -> decoded, [ Reliance.OverCloseUnique ]
+        | None -> parseFailure failure, []
+    | Error failure -> parseFailure failure, []
+
+let private decodeNodeCore (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> =
+    fst (decodeNodeCoreWith policy json)
 
 /// Decode a canonical-JSON encoded `Node<'Msg>` payload into a `WireTree` —
 /// the storage-shape `Node<obj>` marked as wire-originated. The wire format is
@@ -9939,6 +9972,41 @@ let decodeNodeWithPolicy (policy: DecodePolicy) (json: string) : Result<WireTree
 /// `decodeNodeObj` under a host-declared admission policy.
 let decodeNodeObjWithPolicy (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> =
     decodeNodeCore policy json
+
+/// The outcome of one decode: its result, and WHICH decode-time recoveries were
+/// applied to THIS document (Phase 1532).
+///
+/// `Reliance.snapshot` counts recoveries process-wide, which answers "how much
+/// is this deployment leaning on the lenient decoder" and cannot answer "was the
+/// tree I am holding repaired". At the call site those are different questions:
+/// a repaired decode is indistinguishable from a clean one in a plain
+/// `Result`, so a boundary that wants to log it, refuse it, or mark the tree
+/// provenance-suspect had nothing to read. `Recovered` names the applied
+/// recoveries with the same ids `Reliance` counts them under
+/// (`Reliance.ImpliedNodeClose`, `Reliance.OverCloseUnique`), so the per-decode
+/// and the process-wide readings speak one vocabulary.
+///
+/// Empty on every clean decode, and on every failure — a document that did not
+/// decode was not repaired.
+type DecodeOutcome<'T> =
+    { Result: Result<'T, DecodeError>
+      Recovered: string list }
+
+/// `decodeNodeWithPolicy`, plus the per-document recovery record. The `Result`
+/// field is byte-for-byte what `decodeNodeWithPolicy` returns for the same
+/// inputs — this entry point observes the decode, it does not change it.
+let decodeNodeWithOutcome (policy: DecodePolicy) (json: string) : DecodeOutcome<WireTree> =
+    let result, recovered = decodeNodeCoreWith policy json
+
+    { Result = result |> Result.map WireTree.ofDecoded
+      Recovered = recovered }
+
+/// `decodeNodeObjWithPolicy`, plus the per-document recovery record.
+let decodeNodeObjWithOutcome (policy: DecodePolicy) (json: string) : DecodeOutcome<Node<obj>> =
+    let result, recovered = decodeNodeCoreWith policy json
+
+    { Result = result
+      Recovered = recovered }
 
 /// `decodeOp` under a host-declared admission policy. An op carries node kinds
 /// two ways — a node-bearing arm's tree, and `EditNode`'s replacement kind — and

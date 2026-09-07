@@ -47,6 +47,30 @@ type Admission =
     /// Exactly these wire discriminators (`kind.$type`), and no others.
     | AdmitOnly of Set<string>
 
+/// What a policy does with a document the parser refuses (Phase 1532).
+///
+/// Decode-time RECOVERY repairs a malformed document and decodes the repair. It
+/// exists because a model emitting canonical JSON drops a closing brace often
+/// enough to be worth measuring, and the two shipped recoveries are careful:
+/// each is profile-gated, bounded, fails closed, and is counted. What they were
+/// not is OPTIONAL — every failed decode entered them, including one arriving
+/// on an untrusted ingress where a repair is not wanted at any price and the
+/// enumeration is an amplifier: a large over-closed payload had every candidate
+/// repair built and re-parsed, at a cost multiplied by the document's own size.
+///
+/// So recovery becomes an axis a host declares, rather than a behaviour it
+/// cannot decline.
+[<RequireQualifiedAccess>]
+type Recovery =
+    /// Parse, or fail. No repair is attempted, nothing is enumerated, and an
+    /// `INVALID_JSON` document costs one parse. The posture for an ingress
+    /// carrying documents the host did not emit.
+    | Off
+    /// The shipped behaviour: both bounded recoveries run, subject to the
+    /// document-length ceiling below. `Lenient` is the default so that
+    /// declaring a policy does not silently change what decodes.
+    | Lenient
+
 /// A host's declared decode-time kind admission policy.
 ///
 /// `Identity` is a short, stable name for the policy — it is reported in the
@@ -55,21 +79,51 @@ type Admission =
 /// distinguishable evidence; a policy whose refusals are anonymous is one
 /// nobody can audit.
 type DecodePolicy =
-    { Identity: string
-      Admission: Admission }
+    {
+        Identity: string
+        Admission: Admission
+        /// What this policy does with a document the parser refuses (Phase 1532).
+        /// `Recovery.Lenient` in every shipped constructor, so the default is
+        /// unchanged; a host narrows it with `DecodePolicy.withRecovery`.
+        Recovery: Recovery
+    }
 
 module DecodePolicy =
 
-    /// The shipped default: admit every recognised kind. Supplying this is
-    /// byte-for-byte indistinguishable from supplying no policy at all.
+    /// The document-length ceiling above which `Recovery.Lenient` declines to
+    /// enumerate repairs (Phase 1532), in UTF-16 characters of the source text.
+    ///
+    /// **Why a ceiling at all.** The over-close gate's other bounds cap the
+    /// NUMBER of candidates (8,192 deletion sets, 32 distinct parseable
+    /// documents). They do not cap the SIZE of one, and each candidate is a
+    /// fresh copy of the whole document plus a fresh parse of it — so the work
+    /// is `candidates x length`, and only one factor was bounded. A 5 MB payload
+    /// carrying a run of surplus closers was tens of gigabytes of parsing on the
+    /// FAILURE path, reachable by anyone who can post a malformed document.
+    ///
+    /// **Why 64 KiB.** The largest instance in the measured set that motivated
+    /// the gate is a 34 KB document with 286 closers, so this is roughly double
+    /// the largest real case — comfortably inside the class it was built for,
+    /// and it bounds the worst case at about half a gigabyte of parsing rather
+    /// than at whatever the caller sends. A document past it is refused by the
+    /// gate exactly as an out-of-bounds enumeration is, and counted the same
+    /// way, so the refusal stays visible in the reliance measurement.
+    [<Literal>]
+    let MaxRecoverableLength = 65536
+
+    /// The shipped default: admit every recognised kind, recover leniently.
+    /// Supplying this is byte-for-byte indistinguishable from supplying no
+    /// policy at all.
     let admitAll: DecodePolicy =
         { Identity = "admit-all"
-          Admission = Admission.AdmitAll }
+          Admission = Admission.AdmitAll
+          Recovery = Recovery.Lenient }
 
     /// Admit exactly `kinds`, named by their WIRE discriminators (`kind.$type`).
     let admitting (identity: string) (kinds: string seq) : DecodePolicy =
         { Identity = identity
-          Admission = Admission.AdmitOnly(Set.ofSeq kinds) }
+          Admission = Admission.AdmitOnly(Set.ofSeq kinds)
+          Recovery = Recovery.Lenient }
 
     /// Admit everything in `vocabulary` except `excluded` — the exclusion form,
     /// resolved to an allow-list AT CONSTRUCTION against the vocabulary the
@@ -83,7 +137,27 @@ module DecodePolicy =
     /// that.
     let excludingFrom (identity: string) (vocabulary: string seq) (excluded: string seq) : DecodePolicy =
         { Identity = identity
-          Admission = Admission.AdmitOnly(Set.difference (Set.ofSeq vocabulary) (Set.ofSeq excluded)) }
+          Admission = Admission.AdmitOnly(Set.difference (Set.ofSeq vocabulary) (Set.ofSeq excluded))
+          Recovery = Recovery.Lenient }
+
+    /// Set this policy's recovery posture. The narrowing an untrusted ingress
+    /// declares:
+    ///
+    /// ```fsharp
+    /// let ingress = DecodePolicy.admitAll |> DecodePolicy.withRecovery Recovery.Off
+    /// ```
+    ///
+    /// `Off` is a REFUSAL to repair, never a different repair: a document that
+    /// parses decodes identically under both postures, so turning recovery off
+    /// can only turn a would-be recovery into the `INVALID_JSON` the parser
+    /// already produced.
+    let withRecovery (recovery: Recovery) (policy: DecodePolicy) : DecodePolicy = { policy with Recovery = recovery }
+
+    /// Does this policy attempt decode-time recovery at all?
+    let recovers (policy: DecodePolicy) : bool =
+        match policy.Recovery with
+        | Recovery.Off -> false
+        | Recovery.Lenient -> true
 
     /// Does `policy` admit the wire discriminator `kind`?
     let admits (policy: DecodePolicy) (kind: string) : bool =

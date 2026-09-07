@@ -125,6 +125,9 @@
     <Compile Include="DecoderFuzz.fs" />
     <Compile Include="FuzzEvidence.fs" />
     <Compile Include="DecoderFuzzTests.fs" />
+    <!-- Phase 1532 — decode-time recovery is a declared policy axis with a
+         document-length ceiling, and each decode reports what it repaired. -->
+    <Compile Include="RecoveryPolicyTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

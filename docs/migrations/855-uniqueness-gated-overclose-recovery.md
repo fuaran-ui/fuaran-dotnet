@@ -102,6 +102,20 @@ with its own blast radius; it is recorded here and deliberately not folded in.
   repair outside that run. It is used for candidate ordering only, and ordering cannot change a
   verdict that is a count over the whole enumeration.
 - **`decodeOp` is untouched** — the strict parse stands; the class is node emissions.
+- **Declinable, and length-bounded** (added by Phase 1532). `DecodePolicy.Recovery` is `Lenient` in
+  every shipped constructor — the behaviour above, unchanged — and a host declares
+  `DecodePolicy.withRecovery Recovery.Off` on an ingress carrying documents it did not emit. Under
+  `Off` neither this gate nor the Phase 850 recovery runs, nothing is enumerated, and nothing is
+  counted: the parser refused, not the gate. And under `Lenient` a document longer than
+  `DecodePolicy.MaxRecoverableLength` (64 KiB) is refused **before** the enumeration, counted as an
+  ordinary refusal of the class.
+
+  The bounds above cap the NUMBER of candidates and never the SIZE of one, and every candidate is a
+  fresh copy of the whole document plus a fresh parse of it — so the work is `candidates × length`,
+  and until Phase 1532 only one factor was bounded. A multi-megabyte over-closed payload with a
+  modest closer count was gigabytes of parsing on the failure path, reachable by anyone who could
+  post a malformed body. 64 KiB is roughly double the largest instance in the measured set (a 34 KB
+  document with 286 closers), so the class the gate was built for is untouched.
 
 ## Counters
 
@@ -115,6 +129,13 @@ with its own blast radius; it is recorded here and deliberately not folded in.
 A class that is silently recovered stops generating demand signal; a class that is silently refused
 stops generating it too. Both strings are stable identifiers, on the same footing as a `DecodeError`
 code. Read them through the existing `count` / `snapshot` / `reset`.
+
+**Per-document, since Phase 1532.** Those counters are process-wide, which answers "how much is this
+deployment leaning on the lenient decoder" and cannot answer "was the tree I am holding repaired" —
+at a call site a repaired decode was indistinguishable from a clean one.
+`JsonDecode.decodeNodeWithOutcome` / `decodeNodeObjWithOutcome` return the same `Result` alongside a
+`Recovered: string list` naming the recoveries applied to THIS document, in the same vocabulary the
+counters use. Empty on a clean decode and on every failure.
 
 ## The labelled set
 
