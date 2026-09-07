@@ -89,6 +89,95 @@ type BindingSources = Fuaran.UI.BindingSources
 /// `BindingResolver.empty` call site is untouched.
 let empty: BindingSources = Fuaran.UI.BindingSources.empty
 
+/// The evaluation budget one `Binding.Transform` / `Binding.Expr` may spend
+/// (Phase 1532).
+///
+/// A decoded tree declares its own pipeline: `Join`, `Window`, `Pivot`, an
+/// arbitrary chain of steps, over a source the tree also names. On the client
+/// that pipeline is evaluated in the reader's browser on every render AND on
+/// every store notification that touches its channel keys — so a tree that
+/// arrived over the wire decided how much work the reader's machine does, per
+/// keystroke, with nothing between the declaration and the evaluator.
+///
+/// A budget is the thing between them. It is deliberately measured in the two
+/// quantities a tree DECLARES — rows in, steps in the pipeline — rather than in
+/// wall-clock time: elapsed time is a property of the machine, so a
+/// time-budgeted evaluator refuses different trees on a phone and a workstation
+/// and no author can predict which. Rows and steps are the same numbers
+/// everywhere, so a refusal is reproducible and an author can act on it.
+type TransformBudget =
+    {
+        /// Rows admitted into the pipeline.
+        MaxRows: int
+        /// Steps in the pipeline.
+        MaxSteps: int
+        /// `rows x steps` — the product, which is what actually bounds the work
+        /// a chain does. Two limits alone would admit 100,000 rows through 64
+        /// steps; the product is what refuses that while still admitting both a
+        /// wide-and-shallow and a narrow-and-deep pipeline.
+        MaxRowSteps: int
+    }
+
+[<RequireQualifiedAccess>]
+module TransformBudget =
+
+    /// The marker every budget refusal message begins with, so a host can
+    /// recognise one without parsing prose. Named here rather than spelled at
+    /// the raise site, because a message a caller matches on is a contract.
+    [<Literal>]
+    let RefusalMarker = "Transform evaluation budget exceeded"
+
+    /// The shipped budget.
+    ///
+    /// Sized against what a UI can usefully SHOW rather than against what an
+    /// evaluator can survive: a grid a reader scrolls is thousands of rows, not
+    /// hundreds of thousands, and a declared pipeline in a rendered tree is a
+    /// handful of steps. Every fixture in the estate's own corpus is orders of
+    /// magnitude inside it, which is the property that matters — a budget that
+    /// refuses real trees is one a host turns off.
+    let defaults: TransformBudget =
+        { MaxRows = 50_000
+          MaxSteps = 64
+          MaxRowSteps = 500_000 }
+
+    /// A budget that admits everything — the pre-Phase-1532 behaviour, for a
+    /// host evaluating trees it authored itself. Reached BY NAME, so a grep
+    /// finds every host that opted out.
+    let unbounded: TransformBudget =
+        { MaxRows = System.Int32.MaxValue
+          MaxSteps = System.Int32.MaxValue
+          MaxRowSteps = System.Int32.MaxValue }
+
+    /// Refuse, naming the quantity that overran and the limit it overran —
+    /// `Ok ()` when the work is within budget.
+    ///
+    /// Total and pure over its three arguments, so every combination is
+    /// pinnable without an evaluator.
+    let check (budget: TransformBudget) (rows: int) (steps: int) : Result<unit, string> =
+        let refuse (what: string) (observed: int) (limit: int) =
+            Error(sprintf "%s: %s %d exceeds the limit of %d" RefusalMarker what observed limit)
+
+        if rows > budget.MaxRows then
+            refuse "input rows" rows budget.MaxRows
+        elif steps > budget.MaxSteps then
+            refuse "pipeline steps" steps budget.MaxSteps
+        // The product is computed in int64 because the operands are ints a tree
+        // supplies: `50_000 * 50_000` overflows `int` to a NEGATIVE number, and a
+        // negative product passes every `>` comparison. A bound that overflows is
+        // an absent bound with the shape of a present one.
+        elif int64 rows * int64 steps > int64 budget.MaxRowSteps then
+            Error(
+                sprintf
+                    "%s: %d input rows through %d pipeline steps is %d row-steps, over the limit of %d"
+                    RefusalMarker
+                    rows
+                    steps
+                    (int64 rows * int64 steps)
+                    budget.MaxRowSteps
+            )
+        else
+            Ok()
+
 /// Resolution result.  Renderer code treats `NotResolved` as the trigger for
 /// the `OnLoading` state behaviour; `Resolved` flows into the component body;
 /// `Error` flows into `OnError`.
@@ -751,6 +840,19 @@ and private evalTransformFrame
     (pipeline: Fuaran.Core.Transform list)
     (parameters: TransformParam list)
     : Result<Fuaran.Core.Table, string> =
+    evalTransformFrameWithin TransformBudget.defaults sources source pipeline parameters
+
+/// `evalTransformFrame` under an EXPLICIT budget (Phase 1532). The budgeted form
+/// is the real one; the arity above is it at `TransformBudget.defaults`, which
+/// is what keeps "the default is a real limit" a property of the code rather
+/// than a claim about it — there is one evaluation path, entered at two arities.
+and private evalTransformFrameWithin
+    (budget: TransformBudget)
+    (sources: BindingSources)
+    (source: TransformSource)
+    (pipeline: Fuaran.Core.Transform list)
+    (parameters: TransformParam list)
+    : Result<Fuaran.Core.Table, string> =
     // Phase 610 — coerce a resolved LIST source to `Cell list`. Routed through
     // [[jvalOfResolved]], the total store-value lift both pipelines already share (Phase
     // 818/1085), so a browser array, an F# list under Fable, the server store's `obj list`
@@ -817,10 +919,21 @@ and private evalTransformFrame
                     |> List.forall (fun p -> not (Set.contains p unbound))
                 | _ -> true)
 
+        // Phase 1532 — the budget is checked HERE, between the resolved input and
+        // the evaluator, because that is the only place both quantities are
+        // known: the pipeline has been pruned (an unbound filter is gone, so the
+        // step count is the one that will actually run) and the input table has
+        // been resolved (so the row count is the real one, not the tree's claim
+        // about it). Checking earlier would measure a pipeline that is not the
+        // one evaluated; checking inside the evaluator is not available, because
+        // the evaluator is a separately published package this tier consumes.
         let evalTable (inputTable: Fuaran.Core.Table) : Result<Fuaran.Core.Table, string> =
-            match Fuaran.Core.DataFrame.evalPipelineInEnv env pipeline inputTable with
-            | Error e -> Error("Transform evaluation failed: " + Fuaran.Core.DataFrame.errorString e)
-            | Ok result -> Ok result
+            match TransformBudget.check budget (Fuaran.Core.Table.rowCount inputTable) (List.length pipeline) with
+            | Error refusal -> Error refusal
+            | Ok() ->
+                match Fuaran.Core.DataFrame.evalPipelineInEnv env pipeline inputTable with
+                | Error e -> Error("Transform evaluation failed: " + Fuaran.Core.DataFrame.errorString e)
+                | Ok result -> Ok result
 
         match source with
         | TransformSource.Data(Fuaran.Core.Ref name) ->
