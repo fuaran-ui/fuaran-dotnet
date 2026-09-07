@@ -234,7 +234,8 @@ let private renderTreeAfter (tree: Node<unit>) : ReactElement =
           // A host rendering a DECODED tree must not copy this line.
           EgressPolicy = Sanitize.permissiveEgress
           // Phase 1117 — no upload sink: this surface performs no uploads.
-          UploadSink = None }
+          UploadSink = None
+          CustomHashFloor = None }
 
     Render.render ctx tree
 

@@ -374,6 +374,23 @@ type RenderContext<'Msg> =
         /// all, so a permissive sink behind a denying runtime still uploads
         /// nothing.
         UploadSink: Fuaran.UI.Ops.UploadSink.IFuaranUploadSink option
+        /// Phase 1532 — this render's own `Custom` content-hash floor, or `None`
+        /// (the default at every convenience entry point) for the process floor
+        /// `CustomHash.installCustomHashFloor` declared.
+        ///
+        /// The floor was a process global alone, and a process is not a tenant:
+        /// an SSR tier serves every tenant's documents from one, so one
+        /// declaration decided verification strictness for all of them and the
+        /// last writer won. Carrying it here lets a request that needs
+        /// enforcement have it without the host having to make every other
+        /// request enforce too.
+        ///
+        /// **RAISE-ONLY**, like the installer: the effective floor is the
+        /// STRICTER of this and the process floor (`CustomHash.effectiveFloor`).
+        /// A per-request field that could LOWER would hand a tenant the ability
+        /// to switch off the host's verification for its own documents — the
+        /// tree-side bypass the floor exists to close, re-opened one layer up.
+        CustomHashFloor: HashStrictness option
     }
 
 // ─── Text-source rendering — handles i18n + bound text ─────────────────────
@@ -1235,8 +1252,12 @@ let private updateRowField (row: Row) (field: string) (newValue: obj) : Row = Ma
 // so the dispatch body below reads unchanged.
 type private CustomHashOutcome = CustomHash.CustomHashOutcome
 
-let private classifyCustomHash (treeHash: ContentHash option) (registryHash: ContentHash option) : CustomHashOutcome =
-    CustomHash.classify treeHash registryHash
+let private classifyCustomHash
+    (contextFloor: HashStrictness option)
+    (treeHash: ContentHash option)
+    (registryHash: ContentHash option)
+    : CustomHashOutcome =
+    CustomHash.classifyForRender contextFloor treeHash registryHash
 
 /// Structured warn-channel payload for a hash mismatch. Hosts that route
 /// `IFuaranRuntime.Warn` through their observability stack can pattern-
@@ -4424,7 +4445,7 @@ let rec private renderKind
             ctx.Runtime.TryGetCustomRendererInScope(ctx.Scope, moduleId, componentId)
 
         let registryHash = registryProbe |> Option.bind snd
-        let outcome = classifyCustomHash contentHash registryHash
+        let outcome = classifyCustomHash ctx.CustomHashFloor contentHash registryHash
 
         let dispatchToRenderer () : ReactElement =
             match registryProbe with
@@ -4690,7 +4711,15 @@ let rec private renderKind
                       // around. Narrowing for a guest is a host act, available
                       // by constructing the guest context directly.
                       EgressPolicy = ctx.EgressPolicy
-                      UploadSink = ctx.UploadSink }
+                      UploadSink = ctx.UploadSink
+                      // Phase 1532 — the guest inherits the host's declared
+                      // floor. It could not lower it in any case (the effective
+                      // floor is the stricter of context and process), but
+                      // inheriting means a host that raised for this request has
+                      // raised for the guest it mounts, which is the answer a
+                      // reader expects and the one that does not depend on a
+                      // second rule to be safe.
+                      CustomHashFloor = ctx.CustomHashFloor }
 
                 // Route through the late-bound hook (a function *value*), not a
                 // direct call into the recursive `render` group at type obj —
@@ -8009,7 +8038,10 @@ let renderWithSources
           // Phase 1117 — no sink at any convenience entry point: an unwired
           // host uploads nothing, and a declared destination refuses loudly
           // rather than reaching any other route.
-          UploadSink = None }
+          UploadSink = None
+          // Phase 1532 — no per-render floor at a convenience entry point: this
+          // render uses whatever process floor the host installed.
+          CustomHashFloor = None }
         node
 
 /// `renderWithSources` with an EXPLICIT destination policy (Phase 1026) — the
@@ -8059,7 +8091,10 @@ let renderWithSourcesAndEgress
           ActionSink = None
           CurrentNodeId = None
           EgressPolicy = egressPolicy
-          UploadSink = None }
+          UploadSink = None
+          // Phase 1532 — no per-render floor at a convenience entry point: this
+          // render uses whatever process floor the host installed.
+          CustomHashFloor = None }
         node
 
 /// Convenience entry point that pre-wires the optional
@@ -8097,7 +8132,10 @@ let renderWithSourcesAndSink
           // Phase 1117 — no sink at any convenience entry point: an unwired
           // host uploads nothing, and a declared destination refuses loudly
           // rather than reaching any other route.
-          UploadSink = None }
+          UploadSink = None
+          // Phase 1532 — no per-render floor at a convenience entry point: this
+          // render uses whatever process floor the host installed.
+          CustomHashFloor = None }
         node
 
 /// Correlation-aware render entry (Phase 330). As `renderWithSourcesAndSink`,
@@ -8144,7 +8182,10 @@ let renderWithSourcesSinkAndContext
           // Phase 1117 — no sink at any convenience entry point: an unwired
           // host uploads nothing, and a declared destination refuses loudly
           // rather than reaching any other route.
-          UploadSink = None }
+          UploadSink = None
+          // Phase 1532 — no per-render floor at a convenience entry point: this
+          // render uses whatever process floor the host installed.
+          CustomHashFloor = None }
         node
 
 /// User-action-recording render entry (Phase 889). As
@@ -8193,7 +8234,10 @@ let renderWithSourcesSinkContextAndActionSink
           // Phase 1117 — no sink at any convenience entry point: an unwired
           // host uploads nothing, and a declared destination refuses loudly
           // rather than reaching any other route.
-          UploadSink = None }
+          UploadSink = None
+          // Phase 1532 — no per-render floor at a convenience entry point: this
+          // render uses whatever process floor the host installed.
+          CustomHashFloor = None }
         node
 
 /// Scope-aware render entry (Phase 266, §4o). Renders `node` under an explicit
@@ -8236,7 +8280,10 @@ let renderWithSourcesInScope
           // Phase 1117 — no sink at any convenience entry point: an unwired
           // host uploads nothing, and a declared destination refuses loudly
           // rather than reaching any other route.
-          UploadSink = None }
+          UploadSink = None
+          // Phase 1532 — no per-render floor at a convenience entry point: this
+          // render uses whatever process floor the host installed.
+          CustomHashFloor = None }
         node
 
 /// Scope-aware render entry WITH a telemetry sink — `renderWithSourcesInScope`
@@ -8293,7 +8340,10 @@ let renderWithSourcesInScopeAndSink
           // Phase 1117 — no sink at any convenience entry point: an unwired
           // host uploads nothing, and a declared destination refuses loudly
           // rather than reaching any other route.
-          UploadSink = None }
+          UploadSink = None
+          // Phase 1532 — no per-render floor at a convenience entry point: this
+          // render uses whatever process floor the host installed.
+          CustomHashFloor = None }
         node
 
 // ─── State-reactive render (Phase 106) ─────────────────────────────────────

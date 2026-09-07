@@ -56,7 +56,8 @@ let private renderCtx: Render.RenderContext<unit> =
       // A host rendering a DECODED tree must not copy this line.
       EgressPolicy = Sanitize.permissiveEgress
       // Phase 1117 — no upload sink: this surface performs no uploads.
-      UploadSink = None }
+      UploadSink = None
+      CustomHashFloor = None }
 
 /// The mirrored surfaces, in the order they read best stacked. Each id resolves
 /// against `Matrix.entries`, so the harness stays in lockstep with the catalog's

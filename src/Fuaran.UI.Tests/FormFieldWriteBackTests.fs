@@ -58,7 +58,8 @@ let private makeCtx () : Render.RenderContext<Msg> =
       // cases exercise, so the policy is deliberately not the variable.
       EgressPolicy = Sanitize.permissiveEgress
       // Phase 1117 — no upload sink: this surface performs no uploads.
-      UploadSink = None }
+      UploadSink = None
+      CustomHashFloor = None }
 
 // Annotated constructors, not bare record literals: `{ Min = _; Max = _ }`
 // otherwise infers as `NumberFieldConstraints` (same labels, `float option`

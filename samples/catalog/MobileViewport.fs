@@ -58,7 +58,8 @@ let private renderCtx: Render.RenderContext<unit> =
       // A host rendering a DECODED tree must not copy this line.
       EgressPolicy = Sanitize.permissiveEgress
       // Phase 1117 — no upload sink: this surface performs no uploads.
-      UploadSink = None }
+      UploadSink = None
+      CustomHashFloor = None }
 
 let private sample (entry: Matrix.KindEntry) : ReactElement =
     let node = entry.Build(ToneVariant.Brand, StyleWeight.Standard, Emphasis.Normal)

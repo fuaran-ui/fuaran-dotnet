@@ -81,14 +81,57 @@ let mutable private floor: HashStrictness = HashStrictness.AdvisoryWarning
 /// Process-global, like `StateStore`'s default instance and the renderer's
 /// guest seam, and for the same reason: the installing host lives in another
 /// assembly and there is one policy per process.
-let installCustomHashFloor (strictness: HashStrictness) : unit = floor <- strictness
+///
+/// **RAISE-ONLY since Phase 1532, and this is the point of the mechanism rather
+/// than a refinement of it.** The floor exists so a TREE cannot talk its way
+/// underneath the host's choice; until this phase the SETTER could, because it
+/// assigned. On a tier that serves more than one tenant from one process — which
+/// is every SSR deployment — a second `installCustomHashFloor AdvisoryWarning`
+/// anywhere in the process lowered the floor for everyone, and the enforcing
+/// tenant's `Custom` nodes went back to rendering on an unverifiable hash with
+/// nothing logged. A monotone install cannot do that: the strictest declaration
+/// made in this process wins, whatever order the declarations arrive in, which
+/// is also what makes the result independent of host initialisation order.
+///
+/// A host that needs a NARROWER floor for one render declares it on that
+/// render's context instead (`RenderContext.CustomHashFloor`) — where it can
+/// only raise, and where it cannot reach another tenant.
+let installCustomHashFloor (strictness: HashStrictness) : unit =
+    if strictnessRank strictness > strictnessRank floor then
+        floor <- strictness
 
 /// The installed floor. Read-only introspection.
 let currentCustomHashFloor () : HashStrictness = floor
 
-/// Restore the default (`AdvisoryWarning`) floor — host teardown and test
-/// isolation, mirroring `Render.clearGuestSeam`.
-let clearCustomHashFloor () : unit = floor <- HashStrictness.AdvisoryWarning
+/// Restore the default (`AdvisoryWarning`) floor.
+///
+/// **Test isolation only, and the name says so since Phase 1532.** It was
+/// `clearCustomHashFloor`, sitting on the public surface beside the installer
+/// and reading like ordinary host teardown — so the raise-only install above
+/// would have been trivially defeated by the function next to it. There is no
+/// legitimate host use: a process does not stop needing its strictest declared
+/// floor, and a host that wants a narrower one for one render declares it on
+/// that render's context. A suite that installs a floor restores it through
+/// this; nothing else calls it.
+let clearCustomHashFloorForTests () : unit = floor <- HashStrictness.AdvisoryWarning
+
+/// The effective floor for one render: the strictest of the process floor and
+/// whatever that render's context declared. `None` — the default at every
+/// convenience entry point — is the process floor unchanged.
+///
+/// RAISE-ONLY on this axis too, and for the same reason it is raise-only on the
+/// installer: a per-render context is per-REQUEST on an SSR tier, so a context
+/// that could lower would hand every tenant the ability to disable the host's
+/// verification for its own documents, which is precisely the tree-side bypass
+/// the floor exists to close.
+let effectiveFloor (contextFloor: HashStrictness option) : HashStrictness =
+    match contextFloor with
+    | None -> floor
+    | Some declared ->
+        if strictnessRank declared > strictnessRank floor then
+            declared
+        else
+            floor
 
 /// Classify a `Custom` node's hash position under an explicit floor. Total and
 /// pure, so every combination is pinnable in tests without a render.
@@ -125,6 +168,15 @@ let classifyUnder
             else
                 CustomHashOutcome.MismatchAdvisory
 
-/// Classify under the installed floor.
+/// Classify under the installed process floor.
 let classify (treeHash: ContentHash option) (registryHash: ContentHash option) : CustomHashOutcome =
     classifyUnder floor treeHash registryHash
+
+/// Classify under the effective floor for one render — the strictest of the
+/// process floor and the render context's own declaration (Phase 1532).
+let classifyForRender
+    (contextFloor: HashStrictness option)
+    (treeHash: ContentHash option)
+    (registryHash: ContentHash option)
+    : CustomHashOutcome =
+    classifyUnder (effectiveFloor contextFloor) treeHash registryHash

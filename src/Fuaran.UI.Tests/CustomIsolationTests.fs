@@ -148,7 +148,15 @@ let registryScopeTests =
 
 [<Tests>]
 let hashFloorTests =
-    testList
+    // SEQUENCED (Phase 1532). The installed floor is process state, and several
+    // of these tests set it — under the default parallel runner one test's
+    // install races another's `finally`, so a suite whose subject is a global
+    // has to say so. It passed before only because the setter ASSIGNED: a racing
+    // clear happened to produce the value the racing test expected. Making the
+    // setter monotone removed that accident, which is the right way round —
+    // a suite that cannot be made to interleave wrongly cannot detect it either.
+    testSequenced
+    <| testList
         "Phase 783 — Custom content-hash floor"
         [ test "omitting the hash is a REFUSAL under an enforcing floor" {
               // The cheapest bypass: `NoTreeHash` shared a render branch with
@@ -229,7 +237,7 @@ let hashFloorTests =
           }
 
           test "the installed floor defaults to AdvisoryWarning and is restorable" {
-              CustomHash.clearCustomHashFloor ()
+              CustomHash.clearCustomHashFloorForTests ()
 
               Expect.equal
                   (CustomHash.currentCustomHashFloor ())
@@ -244,10 +252,118 @@ let hashFloorTests =
                       CustomHash.CustomHashOutcome.Unverifiable
                       "the installed floor drives the un-parameterised classify"
               finally
-                  CustomHash.clearCustomHashFloor ()
+                  CustomHash.clearCustomHashFloorForTests ()
 
               Expect.equal
                   (CustomHash.classify None None)
                   CustomHash.CustomHashOutcome.NoTreeHash
                   "clearing restores the default"
+          }
+
+          // ─── Phase 1532 — the floor is raise-only, and rides the context ───
+          //
+          //  The floor exists so a TREE cannot talk its way underneath the
+          //  host's choice. Until Phase 1532 the SETTER could, because it
+          //  assigned: on a tier that serves many tenants from one process — an
+          //  SSR deployment, always — a second `installCustomHashFloor
+          //  AdvisoryWarning` anywhere lowered the floor for everyone, and the
+          //  enforcing tenant's `Custom` nodes went back to rendering on an
+          //  unverifiable hash with nothing logged.
+
+          test "installCustomHashFloor cannot LOWER an installed floor" {
+              CustomHash.clearCustomHashFloorForTests ()
+
+              try
+                  CustomHash.installCustomHashFloor HashStrictness.StrictReplay
+                  CustomHash.installCustomHashFloor HashStrictness.AdvisoryWarning
+
+                  Expect.equal
+                      (CustomHash.currentCustomHashFloor ())
+                      HashStrictness.StrictReplay
+                      "a second, weaker declaration must not reach the first tenant's documents"
+
+                  Expect.equal
+                      (CustomHash.classify None None)
+                      CustomHash.CustomHashOutcome.Unverifiable
+                      "so an unverifiable Custom node is still refused"
+              finally
+                  CustomHash.clearCustomHashFloorForTests ()
+          }
+
+          test "the strictest declaration wins whatever order the declarations arrive in" {
+              // Independence from host initialisation order, which is the
+              // property that makes a monotone install usable in a process the
+              // declaring host does not solely own.
+              for first, second in
+                  [ HashStrictness.AdvisoryWarning, HashStrictness.Enforced
+                    HashStrictness.Enforced, HashStrictness.AdvisoryWarning ] do
+                  CustomHash.clearCustomHashFloorForTests ()
+
+                  try
+                      CustomHash.installCustomHashFloor first
+                      CustomHash.installCustomHashFloor second
+
+                      Expect.isTrue
+                          (CustomHash.isEnforcing (CustomHash.currentCustomHashFloor ()))
+                          "the enforcing declaration survives either ordering"
+                  finally
+                      CustomHash.clearCustomHashFloorForTests ()
+          }
+
+          test "a render context RAISES the floor for its own render, and only its own" {
+              CustomHash.clearCustomHashFloorForTests ()
+
+              try
+                  Expect.equal
+                      (CustomHash.classifyForRender (Some HashStrictness.StrictReplay) None None)
+                      CustomHash.CustomHashOutcome.Unverifiable
+                      "a context that declares enforcement refuses an unverifiable node"
+
+                  Expect.equal
+                      (CustomHash.classifyForRender None None None)
+                      CustomHash.CustomHashOutcome.NoTreeHash
+                      "and the render beside it, declaring nothing, is unaffected"
+              finally
+                  CustomHash.clearCustomHashFloorForTests ()
+          }
+
+          test "a render context cannot LOWER the process floor" {
+              CustomHash.clearCustomHashFloorForTests ()
+
+              try
+                  CustomHash.installCustomHashFloor HashStrictness.StrictReplay
+
+                  Expect.equal
+                      (CustomHash.effectiveFloor (Some HashStrictness.AdvisoryWarning))
+                      HashStrictness.StrictReplay
+                      "the effective floor is the STRICTER of the two, never the context's"
+
+                  Expect.equal
+                      (CustomHash.classifyForRender (Some HashStrictness.AdvisoryWarning) None None)
+                      CustomHash.CustomHashOutcome.Unverifiable
+                      "so a per-request declaration cannot switch off the host's verification"
+              finally
+                  CustomHash.clearCustomHashFloorForTests ()
+          }
+
+          test "two contexts with different floors classify one Custom node differently" {
+              // The multi-tenancy statement, end to end: one process, one node,
+              // two renders, two verdicts.
+              CustomHash.clearCustomHashFloorForTests ()
+
+              let declared = Some(hash "abc" HashStrictness.AdvisoryWarning)
+              let registered = Some(hash "xyz" HashStrictness.AdvisoryWarning)
+
+              try
+                  Expect.equal
+                      (CustomHash.classifyForRender None declared registered)
+                      CustomHash.CustomHashOutcome.MismatchAdvisory
+                      "the tenant that declared nothing warns and renders"
+
+                  Expect.equal
+                      (CustomHash.classifyForRender (Some HashStrictness.StrictReplay) declared registered)
+                      CustomHash.CustomHashOutcome.MismatchStrict
+                      "the tenant that declared enforcement refuses"
+              finally
+                  CustomHash.clearCustomHashFloorForTests ()
           } ]

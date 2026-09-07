@@ -172,7 +172,8 @@ let private aiEvalRenderCtx () : Render.RenderContext<obj> =
       // A host rendering a DECODED tree must not copy this line.
       EgressPolicy = Sanitize.permissiveEgress
       // Phase 1117 — no upload sink: this surface performs no uploads.
-      UploadSink = None }
+      UploadSink = None
+      CustomHashFloor = None }
 
 let private aiEvalView (model: AiEvalModel) (dispatch: AiEvalMsg -> unit) : ReactElement =
     React.Fragment
@@ -244,7 +245,8 @@ let private parityView () : ReactElement =
                     // A host rendering a DECODED tree must not copy this line.
                     EgressPolicy = Sanitize.permissiveEgress
                     // Phase 1117 — no upload sink: this surface performs no uploads.
-                    UploadSink = None }
+                    UploadSink = None
+                    CustomHashFloor = None }
 
               Html.div
                   [ prop.id ("parity-fuaran-" + p.Id)

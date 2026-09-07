@@ -90,7 +90,8 @@ let private makeCtx () : Render.RenderContext<Msg> =
       CurrentNodeId = None
       EgressPolicy = Sanitize.permissiveEgress
       // Phase 1117 — no upload sink: this surface performs no uploads.
-      UploadSink = None }
+      UploadSink = None
+      CustomHashFloor = None }
 
 // ─── Site classes ──────────────────────────────────────────────────────────
 //

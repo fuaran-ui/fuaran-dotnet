@@ -92,6 +92,17 @@ type ServerRenderContext =
         /// `Image.src` in a decoded tree becomes a request from each of their
         /// browsers, carrying each of their IP addresses and referers.
         EgressPolicy: Sanitize.EgressPolicy
+        /// Phase 1532 — this render's own `Custom` content-hash floor, the server
+        /// twin of the client's `RenderContext.CustomHashFloor`. `None` (the
+        /// default at every convenience entry point) is the process floor.
+        ///
+        /// It matters more here than on the client. A browser page is one
+        /// tenant; this tier serves every tenant's documents from ONE process,
+        /// so a process-global floor meant one declaration decided verification
+        /// strictness for all of them, and a later `installCustomHashFloor`
+        /// anywhere lowered it for everyone. RAISE-ONLY on both axes: the
+        /// effective floor is the stricter of this and the process floor.
+        CustomHashFloor: HashStrictness option
     }
 
 // ─── Text + value helpers ──────────────────────────────────────────────────
@@ -2228,7 +2239,10 @@ and private renderCustom
         let registeredHash =
             Registry.tryHashInScope ctx.Scope moduleId componentId ctx.Customs
 
-        let floor = CustomHash.currentCustomHashFloor ()
+        // Phase 1532 — the strictest of the process floor and this render's own
+        // declaration. The server tier is where the single-tenant floor hurt
+        // most: one process serves every tenant's documents.
+        let floor = CustomHash.effectiveFloor ctx.CustomHashFloor
 
         let outcome =
             match contentHash, registeredHash with
@@ -3196,7 +3210,11 @@ let mkContextWith
       // (`mkContextWithEgress`). This is the server tier's single context choke
       // point, so the default lands on every entry point below by construction
       // rather than by each one remembering it.
-      EgressPolicy = Sanitize.denyNonLocalEgress }
+      EgressPolicy = Sanitize.denyNonLocalEgress
+      // Phase 1532 — no per-render floor here: this render uses whatever process
+      // floor the host installed. A multi-tenant host that needs one request
+      // enforced sets it on that request's context.
+      CustomHashFloor = None }
 
 /// `mkContextWith` with an EXPLICIT destination policy (Phase 1026) — the named
 /// opt-out from the ambient default-deny, and the server twin of the client's
