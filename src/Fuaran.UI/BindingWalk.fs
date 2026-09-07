@@ -1458,3 +1458,59 @@ let stateSeeds<'Msg> (root: Node<'Msg>) : Map<string, obj> =
         Map.empty
 
 #warnon "44"
+
+// ─── the live-Transform SITE key (Phase 1586) ────────────────────────────────
+
+/// The CHANNEL a binding reads — the part of its identity that survives
+/// everything about how it is spelled. Total over the whole `Binding` DU and
+/// touches no closure payload: `Query`'s accessor, `Selection`'s accessor,
+/// `Computed`'s function and `Local`'s parse/format triple are all skipped,
+/// because a closure has no stable value to read and reading one would make the
+/// key depend on which allocation the tree happened to carry.
+///
+/// Cases that carry no channel of their own answer with their case tag alone.
+/// That is not a defect: see [[liveSiteKey]] on why a shared answer costs
+/// recomputation and never correctness.
+let rec private siteChannelOf<'T> (binding: Binding<'T>) : string =
+    match binding with
+    | Binding.State(key, _) -> "state:" + key
+    | Binding.Query(name, _, _) -> "query:" + name
+    | Binding.Filter(name, _) -> "filter:" + name
+    | Binding.Selection(nodeId, _, _, field) -> "selection:" + nodeId + "/" + defaultArg field ""
+    | Binding.I18n(key, _) -> "i18n:" + key
+    | Binding.Invoke(capabilityId, _) -> "invoke:" + capabilityId
+    | Binding.Format(source, _, _) -> "format(" + siteChannelOf source + ")"
+    | Binding.Local(_, _, initialFrom, _, _, _, commitTo) ->
+        "local:" + defaultArg commitTo "" + "(" + siteChannelOf initialFrom + ")"
+    | Binding.Transform(_, pipeline, _) -> "transform/" + string (List.length pipeline)
+    | Binding.Expr _ -> "expr"
+    | Binding.Now _ -> "now"
+    | Binding.Computed _ -> "computed"
+    | Binding.Static _ -> "static"
+
+/// Phase 1586 — the SITE key of one live-`Transform` reader: the identity a
+/// session-held [[ILiveTransformStore]] keeps that reader's primed state under.
+///
+/// It is derived from the reader's own two halves — the channel its source
+/// binding reads, and the EFFECTIVE pipeline it evaluates (the one that will
+/// actually run: list params substituted, unbound filters pruned). Two grids
+/// over one state key running different pipelines are two sites, which is the
+/// discrimination the store's contract asks for; one grid keeps its key across
+/// every edit to that key, which is the stability that makes the store worth
+/// consulting at all.
+///
+/// **A shared key costs recomputation and never correctness**, and that is what
+/// licenses a derivation this cheap. `Fuaran.Core`'s incremental seam states its
+/// guarantee over the source it is handed — the refreshed table equals a full
+/// evaluation over that source, for every delta and every prior state — and it
+/// re-primes rather than reusing caches whenever the pipeline, the environment,
+/// the identity scheme or the source schema has moved. So two readers that
+/// landed on one key get right answers and pay full price; they do not get each
+/// other's data.
+///
+/// The pipeline is rendered through its own structural string. That form is
+/// stable within a process, which is the whole requirement: the key addresses
+/// an in-memory store held for the life of a session, and it is never written
+/// down, compared across hosts, or carried on any wire.
+let liveSiteKey (source: Binding<JVal>) (pipeline: Fuaran.Core.Transform list) : string =
+    Hashing.sha256Hex (siteChannelOf source + "\n--\n" + string pipeline)

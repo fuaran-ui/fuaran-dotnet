@@ -6783,3 +6783,62 @@ retired rather than re-explained.
 **Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and it
 already carries breaking-class entries, so a source-breaking constructor arity is not a higher class
 than the draft already holds. `v0.77.0` is the newest tag.
+
+## Recorded change — 0.78.0, the renderer's live Transform path gains a store seam (fuaran#1586)
+
+**Additive to `Fuaran.UI`: a new interface `ILiveTransformStore`, and one `BindingSources` slot
+defaulted in `empty`.** Nothing is removed, no signature moves, no wire member changes, and no
+behaviour changes for a host that furnishes nothing.
+
+**What is new.**
+
+- **`Fuaran.UI.ILiveTransformStore`** — a seam over `Fuaran.Core.DataFrame` types alone, with one
+  member: `Evaluate(site: string, pipeline: Transform list, source: Table) : Result<Table, string>`.
+  An implementation promises exactly one thing — the table it returns is the table a full evaluation
+  of `pipeline` over `source` produces, in the empty environment. It does **not** promise to have
+  done less work, which is what makes the contract checkable by comparing two renders rather than by
+  trusting a counter. `Fuaran.UI` takes no new package or project reference to declare it:
+  `Fuaran.Core.DataFrame` is already referenced for `Binding.Transform`.
+- **`BindingSources.LiveTransforms: ILiveTransformStore option`**, defaulted `None` in
+  `BindingSources.empty`. The renderer's `TransformSource.Live` arm consults it before evaluating,
+  and `None` — what every host furnishes until it opts in — is today's evaluate-in-full path
+  unchanged. Absence is therefore not a degraded mode.
+- **`Fuaran.UI.ServerDriven.LiveTransformStore` implements the interface**, and gains a
+  `(capacity, identityColumn)` constructor plus an `IdentityColumn` property. Its existing
+  `Evaluate(site, identityColumn, pipeline, source)` is untouched, and both existing constructors
+  keep their arities and their behaviour: one store type, one key rule — the `site` string — on both
+  paths.
+
+**The consumer-side obligation, and its exact extent.** A record gains a field, so a construction
+site that writes a FULL literal of `BindingSources` stops compiling (`FS0764`) until it adds
+`LiveTransforms = None`. **This repo has no such site** — every construction here is a
+copy-and-update off `BindingSources.empty`, and `empty` is itself the only full literal — so no
+migration note is offered: one would name zero files. An external host that writes a full literal
+adds the one field; a host that copies-and-updates `empty`, which is the documented way to build
+one, is unaffected and needs to do nothing at all.
+
+**What a host gains by furnishing one.** Phase 1179 shipped the incremental-recompute seam
+behind a session-held store but wired it in the server-driven tier only, so a client-rendered tree
+with a live Transform source paid a full pipeline evaluation on every render — the cost that work
+was built to remove. The slot is how a host that already holds a session hands the renderer the
+store it holds.
+
+**Two constraints on the consultation are load-bearing rather than incidental.**
+
+- **A bound scalar param evaluates in full, store or no store.** The seam evaluates in the EMPTY
+  environment (`Incremental.primeOn` / `refreshOn` are `prime` / `refresh` at `Map.empty`), so
+  consulting it under a bound param would be answering a different question. LIST params need no
+  such guard: they resolve by substitution INTO the pipeline, so the effective pipeline carries them
+  and the environment stays empty.
+- **The evaluation budget is checked on both paths, before either evaluates.** A furnished store is
+  not a way to spend past a refusal.
+
+**Row identity is the store's declaration, not the caller's.** Nothing in a rendered tree says which
+column identifies a row, so the interface carries no identity column and the renderer never guesses
+one; a store takes the declaration from whoever constructed it. A store with none declared is still
+correct — `Incremental.prime` evaluates through the reference path when its witness cannot key the
+source — it simply restricts nothing.
+
+**Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and this
+change is additive, which is not a higher class than the draft already carries. `v0.77.0` is the
+newest tag.

@@ -997,7 +997,48 @@ and private evalTransformFrameWithin
                 | Errored m -> Error(sprintf "Transform live source errored: %s" m)
                 | I18nUnresolved k -> Error(sprintf "Transform live source is an unresolved i18n key '%s'" k)
 
-            tableR |> Result.bind evalTable
+            // Phase 1586 — the live path consults the session-held store before
+            // it evaluates. Phase 1179 shipped the incremental seam behind a
+            // store but wired it only in the server-driven tier, so a
+            // client-rendered tree with a live source still paid the whole
+            // pipeline on every render — the cost 1179 was built to remove.
+            //
+            // TWO CONDITIONS, and the second is the load-bearing one.
+            //
+            // A store must be furnished: absence is not a degraded mode, it is
+            // today's path unchanged, which is what makes the slot additive in
+            // behaviour and not only in shape.
+            //
+            // And `env` must be EMPTY. The seam evaluates in the empty
+            // environment (`Incremental.primeOn` / `refreshOn` are `prime` /
+            // `refresh` at `Map.empty`), so under a bound scalar param the
+            // store would be answering a different question from the one
+            // `evalTable` asks — a wrong table, not a slower one. A live source
+            // with bound params therefore evaluates in full whether a store is
+            // furnished or not. LIST params need no such guard: they resolve by
+            // substitution INTO the pipeline above, so the effective pipeline
+            // already carries them and the environment stays empty.
+            //
+            // The budget is checked on both paths and BEFORE either evaluates,
+            // for the Phase-1532 reason: it is the only point where the pruned
+            // pipeline and the resolved input are both known, and the store
+            // path must not be a way to spend past a refusal.
+            let evalLive (inputTable: Fuaran.Core.Table) : Result<Fuaran.Core.Table, string> =
+                match sources.LiveTransforms with
+                | Some store when Map.isEmpty env ->
+                    match
+                        TransformBudget.check budget (Fuaran.Core.Table.rowCount inputTable) (List.length pipeline)
+                    with
+                    | Error refusal -> Error refusal
+                    | Ok() ->
+                        // The site key is the renderer's ONE rule (Phase 1586);
+                        // the store's own key rule is the `site` string it is
+                        // handed, exactly as the server-driven tier hands it.
+                        store.Evaluate(Fuaran.UI.BindingWalk.liveSiteKey binding pipeline, pipeline, inputTable)
+                        |> Result.mapError (fun e -> "Transform evaluation failed: " + e)
+                | _ -> evalTable inputTable
+
+            tableR |> Result.bind evalLive
 
 /// Fuaran-UI Phase 1534 — evaluate a `Binding.Expr` to ONE cell.
 ///

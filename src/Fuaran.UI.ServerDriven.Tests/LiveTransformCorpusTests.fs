@@ -471,3 +471,224 @@ let tests =
 
               Expect.throws (fun () -> stepOf unmodelled |> ignore) "an unmodelled window function is refused by name"
           } ]
+
+// ============================================================================
+//  Phase 1586 — the RENDERER's live-Transform path through the same store.
+//
+//  Phase 1179 put the incremental seam behind a session-held store and wired it
+//  in this tier only, so the renderer's own `TransformSource.Live` arm still
+//  evaluated every pipeline in full on every render. 1586 gives `BindingSources`
+//  a `LiveTransforms` slot over the `ILiveTransformStore` seam and has that arm
+//  consult it. These legs live HERE, beside the corpus reader, because the
+//  question they ask is the corpus's own — does the renderer answer what a full
+//  evaluation answers — and the fixtures that can ask it are already read above.
+//
+//  ── WHAT MAKES THIS A PARITY TEST AND NOT A CACHE TEST ────────────────────
+//  Every leg renders the SAME tree twice: once with the slot `None` (today's
+//  path, unchanged) and once with a store furnished. The two row lists must be
+//  equal element for element. A store that quietly served a stale table would
+//  fail that comparison; a store that evaluated everything on every call would
+//  pass it, which is why the consultation legs below measure the work as well.
+//
+//  ── AND THE ONE THAT IS NEITHER ───────────────────────────────────────────
+//  The `env` guard's leg is the load-bearing one. The seam evaluates in the
+//  EMPTY environment, so consulting it under a bound scalar param would answer
+//  a different question — and it would not answer it quietly: Core's strict
+//  `UnboundParam` would surface as a resolver error. That leg therefore goes red
+//  by construction if the guard is ever dropped, rather than needing an
+//  assertion about which branch ran.
+// ============================================================================
+
+open Fuaran.UI.Types
+open Fuaran.UI.Renderer
+
+/// The state key the live source reads. One key for every leg: the site
+/// discrimination that matters here is the PIPELINE's, which is what a store
+/// keyed only by channel would get wrong.
+let private liveStateKey = "orders"
+
+/// The store value a live source reads. Canonical columnar is one of the two
+/// shapes `liveValueToTable` normalises, and the one that survives a round trip
+/// with no host-shaped ambiguity about how a row was spelled.
+let private liveState (t: Table) : Map<string, obj> =
+    Map.ofList [ liveStateKey, (ColumnCodec.encodeJson (Embedded t) :> obj) ]
+
+/// A live-`Transform` binding over the state key, with an empty initial
+/// snapshot: the state is always present in these legs, so the snapshot is
+/// never the answer and cannot mask one.
+let private liveBinding (pipeline: Transform list) (parameters: TransformParam list option) =
+    Binding.Transform(
+        TransformSource.Live(Binding.State(liveStateKey, None), Embedded { Schema = []; Columns = [] }),
+        pipeline,
+        parameters
+    )
+
+/// Render the binding through the resolver and take its rows. An unresolved or
+/// errored resolution FAILS by name rather than reading as an empty table — the
+/// two are the same list otherwise, and only one of them is a pass.
+let private renderRows
+    (store: Fuaran.UI.ILiveTransformStore option)
+    (parameters: TransformParam list option)
+    (pipeline: Transform list)
+    (table: Table)
+    : Row list =
+    let sources =
+        { Fuaran.UI.BindingSources.empty with
+            State = liveState table
+            LiveTransforms = store }
+
+    match BindingResolver.resolve<Row seq> sources (liveBinding pipeline parameters) with
+    | BindingResolver.Resolved rows -> List.ofSeq rows
+    | BindingResolver.NotResolved -> failwith "the renderer left the live Transform unresolved"
+    | BindingResolver.Errored m -> failwithf "the renderer refused the live Transform: %s" m
+    | BindingResolver.I18nUnresolved k -> failwithf "the renderer read the live Transform as an i18n key '%s'" k
+
+/// A store that keeps every evaluation it performed, so a leg can measure the
+/// work as well as the answer. It delegates to the real `LiveTransformStore`
+/// rather than reimplementing one: what is under test is the renderer's
+/// consultation, not a second incremental evaluator.
+type private RecordingStore(identityColumn: string) =
+    let inner = LiveTransformStore(64, identityColumn)
+    let seen = ResizeArray<LiveTransformEvaluation>()
+
+    member _.Evaluations = List.ofSeq seen
+
+    interface Fuaran.UI.ILiveTransformStore with
+        member _.Evaluate(site: string, pipeline: Transform list, source: Table) =
+            inner.Evaluate(site, identityColumn, pipeline, source)
+            |> Result.map (fun e ->
+                seen.Add e
+                e.Result)
+
+[<Tests>]
+let rendererLiveStoreTests =
+    testList
+        "Phase 1586 — the renderer's live Transform path through a session-held store"
+        [ testList
+              "the rendered rows are the same with the store and without it"
+              (vectors ()
+               |> List.map (fun v ->
+                   test v.Name {
+                       let key = v.Edits.Key |> Option.defaultValue "id"
+                       let store = LiveTransformStore(64, key) :> Fuaran.UI.ILiveTransformStore
+
+                       // Both renders, in the same order, against one store —
+                       // the second is the one that reaches the primed state.
+                       let storedFirst = renderRows (Some store) None v.Pipeline v.Source
+                       let storedSecond = renderRows (Some store) None v.Pipeline v.Changed
+
+                       let plainFirst = renderRows None None v.Pipeline v.Source
+                       let plainSecond = renderRows None None v.Pipeline v.Changed
+
+                       Expect.equal
+                           storedFirst
+                           plainFirst
+                           "the first render through the store is the render without one"
+
+                       Expect.equal
+                           storedSecond
+                           plainSecond
+                           "the render that advances the primed state is the render without one"
+                   }))
+
+          test "the renderer consults the store, and the second render advances rather than re-primes" {
+              // The counter is the store's own — a hit that never arrives is a
+              // site key that is not stable across renders, which is precisely
+              // the caller defect the counts exist to surface.
+              let v = vectors () |> List.find (fun x -> x.Name = "point-edit-row-local")
+              let store = LiveTransformStore(64, "id")
+              let seam = store :> Fuaran.UI.ILiveTransformStore
+
+              renderRows (Some seam) None v.Pipeline v.Source |> ignore
+              Expect.equal store.Misses 1 "the first render primes the site"
+              Expect.equal store.Hits 0 "nothing is primed before the first render"
+
+              renderRows (Some seam) None v.Pipeline v.Changed |> ignore
+              Expect.equal store.Hits 1 "the second render finds the site the first one primed"
+              Expect.equal store.Misses 1 "and does not prime a second site under a second key"
+          }
+
+          test "the advancing render evaluates strictly fewer rows than a full evaluation" {
+              // The recompute counter, read off the seam's own footprint. Stated
+              // one-directionally for the reason the corpus legs above state it
+              // so: an evaluator that recomputed everything and reported it as
+              // restricted would satisfy every other clause in this file.
+              let v = vectors () |> List.find (fun x -> x.Name = "point-edit-row-local")
+              Expect.notEqual v.RecordedRefreshKind "fullRecompute" "the chosen vector's own refresh restricts"
+
+              let store = RecordingStore("id")
+              let seam = store :> Fuaran.UI.ILiveTransformStore
+
+              renderRows (Some seam) None v.Pipeline v.Source |> ignore
+              renderRows (Some seam) None v.Pipeline v.Changed |> ignore
+
+              match store.Evaluations with
+              | [ primed; advanced ] ->
+                  Expect.isTrue primed.Primed "the first consultation primes"
+                  Expect.isFalse advanced.Primed "the second consultation advances the primed state"
+
+                  Expect.isLessThan
+                      (Incremental.rowsEvaluated advanced.Footprint)
+                      v.RecordedFullRows
+                      "the advancing render does less work than the full evaluation it replaces"
+              | other -> failwithf "expected two consultations, one per render — got %d" (List.length other)
+          }
+
+          test "a site keyed to one pipeline is not reused for another under the same source" {
+              // Two grids over ONE state key running DIFFERENT pipelines are two
+              // sites. Keyed by channel alone they would be one, and each render
+              // would advance a state primed for the other question — which the
+              // seam would notice and answer correctly, at full price, forever.
+              let rowLocal = vectors () |> List.find (fun v -> v.Name = "point-edit-row-local")
+              let grouping = vectors () |> List.find (fun v -> v.Name = "chain-edit-group-local")
+
+              let store = LiveTransformStore(64, "id")
+              let seam = store :> Fuaran.UI.ILiveTransformStore
+
+              renderRows (Some seam) None rowLocal.Pipeline rowLocal.Source |> ignore
+              renderRows (Some seam) None grouping.Pipeline grouping.Source |> ignore
+
+              Expect.equal store.Misses 2 "two pipelines over one state key prime two sites"
+              Expect.equal store.Hits 0 "neither pipeline reads the other's primed state"
+
+              // And each keeps its own across a later edit.
+              let rowLocalAgain = renderRows (Some seam) None rowLocal.Pipeline rowLocal.Changed
+              Expect.equal store.Hits 1 "the first grid finds its own site again"
+
+              Expect.equal
+                  rowLocalAgain
+                  (renderRows None None rowLocal.Pipeline rowLocal.Changed)
+                  "and answers what a full evaluation answers"
+          }
+
+          test "a live source under a BOUND scalar param evaluates in full, store or no store" {
+              // The env guard, and the go-red proof for it. `Incremental.primeOn`
+              // / `refreshOn` evaluate at `Map.empty`, so a store consulted here
+              // would meet Core's strict `UnboundParam` and the resolver would
+              // return `Errored` — `renderRows` fails by name on exactly that.
+              // The leg therefore breaks if the guard is dropped, with no
+              // assertion about which branch ran.
+              let v = vectors () |> List.find (fun x -> x.Name = "point-edit-row-local")
+
+              let parameters: TransformParam list option =
+                  Some
+                      [ { Name = "floor"
+                          From = Binding.Static(Some(JInt 1_000_000)) } ]
+
+              let pipeline = v.Pipeline @ [ Filter(Binary(Ge, Col "a", Param "floor")) ]
+
+              let store = LiveTransformStore(64, "id") :> Fuaran.UI.ILiveTransformStore
+              let stored = renderRows (Some store) parameters pipeline v.Source
+              let plain = renderRows None parameters pipeline v.Source
+
+              Expect.equal stored plain "a bound param takes the same path with a store furnished as without one"
+
+              // And the param is not vacuous: it excludes every row the
+              // paramless pipeline keeps, so a leg that quietly dropped the
+              // param — or the filter step with it — could not pass this.
+              Expect.isEmpty stored "the bound floor excludes every row"
+
+              Expect.isNonEmpty
+                  (renderRows None None v.Pipeline v.Source)
+                  "the same pipeline without the param keeps rows, so the filter did the excluding"
+          } ]

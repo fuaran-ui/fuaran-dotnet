@@ -64,13 +64,35 @@ type LiveTransformEvaluation =
 /// pipelines, and one grid keeps its primed state across every edit to that key.
 /// A site whose pipeline or whose source schema has moved is not a defect — the
 /// seam notices and re-primes, recording why in the footprint.
-type LiveTransformStore(capacity: int) =
+///
+/// Phase 1586 — it is also the estate's implementation of
+/// `Fuaran.UI.ILiveTransformStore`, the seam the RENDERER's own
+/// `TransformSource.Live` arm consults. That interface takes no identity
+/// column, because nothing in a rendered tree declares one and the renderer
+/// would have to guess; `identityColumn` is therefore the declaration whoever
+/// CONSTRUCTS the store makes on its behalf, once, for every site it serves.
+/// The default is the empty string — no column of that name exists, so no row
+/// has an identity, and every evaluation runs through the seam's reference path
+/// and answers correctly while restricting nothing. A host that wants the
+/// saving names its key column; a host that names none loses only the saving.
+type LiveTransformStore(capacity: int, identityColumn: string) =
     let states = BoundedLru<IncrementalEval>(capacity)
+
+    /// A store at an explicit bound with no declared row identity — correct on
+    /// every site, restricting on none. Preserved at its original arity: the
+    /// Phase-1179 call sites construct through it and their behaviour is
+    /// unchanged, because the 4-argument `Evaluate` below takes the identity
+    /// column per call and never consults this one.
+    new(capacity: int) = LiveTransformStore(capacity, "")
 
     /// The default bound. Generous relative to the number of live grids one
     /// connection renders, and small enough that a session cycling through many
     /// of them cannot grow without limit.
-    new() = LiveTransformStore(64)
+    new() = LiveTransformStore(64, "")
+
+    /// The row-identity declaration this store applies to the interface-driven
+    /// calls that carry none of their own. Empty means "none declared".
+    member _.IdentityColumn = identityColumn
 
     member _.Capacity = states.Capacity
     member _.Count = states.Count
@@ -138,6 +160,17 @@ type LiveTransformStore(capacity: int) =
             Incremental.refreshOn idw pipeline prior delta source
             |> Result.map (toEvaluation false)
             |> Result.mapError DataFrame.errorString
+
+    /// Phase 1586 — the renderer's seam, served by the same method above under
+    /// the store's own identity declaration. ONE key rule, not two: the `site`
+    /// string is the key on both paths, and the interface adds no second one.
+    /// The footprint and the primed/advanced bit are dropped rather than
+    /// widened onto the seam — a renderer has nowhere to put them, and a seam
+    /// that carried them would oblige every implementation to mint an account
+    /// of work it may not have done.
+    interface Fuaran.UI.ILiveTransformStore with
+        member this.Evaluate(site: string, pipeline: Transform list, source: Table) =
+            this.Evaluate(site, identityColumn, pipeline, source) |> Result.map _.Result
 
 [<RequireQualifiedAccess>]
 module LiveTransform =

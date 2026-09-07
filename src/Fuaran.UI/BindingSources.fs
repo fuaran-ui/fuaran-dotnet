@@ -33,6 +33,48 @@ namespace Fuaran.UI
 
 open Fuaran.UI.Types
 
+/// A session-held store of PRIMED live-`Transform` evaluations — the seam the
+/// renderer's `TransformSource.Live` arm consults before evaluating a pipeline
+/// in full (Phase 1586).
+///
+/// WHY THE INTERFACE IS HERE AND THE IMPLEMENTATION IS NOT. The store needs
+/// somewhere to keep primed state BETWEEN renders, and the render path has
+/// nowhere: a resolver call is a pure function of the sources it is handed, by
+/// design and worth keeping. Whatever holds a session holds the store — a tier
+/// two packages above this one — so the SEAM is declared here, where
+/// `BindingSources` can name it, and the implementation stays where the session
+/// is. Typed over `Fuaran.Core.DataFrame` alone, which this package already
+/// references for `Binding.Transform`, so declaring it adds no dependency.
+///
+/// WHAT AN IMPLEMENTATION MUST PROMISE, AND WHAT IT NEED NOT. It must promise
+/// exactly ONE thing: the table it returns is the table a full evaluation of
+/// `pipeline` over `source` produces, in the empty environment. It need NOT
+/// promise to have done less work — a store that evaluated everything on every
+/// call is a correct (if pointless) implementation, and that is deliberate: it
+/// makes the seam's contract checkable by comparing two renders rather than by
+/// trusting a counter.
+///
+/// THE SITE KEY IS AN IDENTITY, NOT AN ADDRESS. `site` identifies one READER —
+/// two grids over one state key are two sites with two pipelines, and one grid
+/// keeps its primed state across every edit to that key. Because the promise
+/// above is stated over `source` and not over the state, a store may key
+/// however it likes and two readers COLLIDING on one key costs recomputation
+/// and never correctness. The renderer's own derivation is
+/// [[BindingWalk.liveSiteKey]].
+///
+/// ROW IDENTITY IS THE STORE'S, NOT THE CALLER'S. Nothing in a rendered tree
+/// declares which column identifies a row, so the renderer has no such
+/// declaration to pass and would have to guess one. A store that wants to
+/// restrict its recomputation takes the declaration from whoever constructed it
+/// — the host that knows its own data — and one that has none evaluates in full
+/// and is still correct.
+type ILiveTransformStore =
+    /// Evaluate `pipeline` over `source` for the reader identified by `site`,
+    /// reusing and updating whatever primed state the store holds for it.
+    abstract Evaluate:
+        site: string * pipeline: Fuaran.Core.Transform list * source: Fuaran.Core.Table ->
+            Result<Fuaran.Core.Table, string>
+
 /// Data sources the renderer consults when it encounters a binding.
 /// Consumers (consumer apps, a future AI consumer) provide
 /// their own implementation; session 3a ships only the in-memory variant.
@@ -108,6 +150,20 @@ type BindingSources =
         /// surface. That is deliberately LOUD: a host that forgets to supply the
         /// instant must not silently render a plausible wrong date.
         Now: string
+        /// The session-held store of primed live-`Transform` evaluations
+        /// (Phase 1586) the renderer consults before evaluating a
+        /// `TransformSource.Live` pipeline in full.
+        ///
+        /// `None` — the default, and what every host furnishes until it opts in
+        /// — is today's path exactly: every render evaluates the pipeline in
+        /// full. Absence is therefore not a degraded mode, which is what makes
+        /// the slot additive in behaviour as well as in shape.
+        ///
+        /// The renderer consults it ONLY where the two evaluations are the same
+        /// question — a pipeline with no bound scalar params, since the seam
+        /// evaluates in the empty environment. A live source under a bound param
+        /// evaluates in full whether a store is furnished or not.
+        LiveTransforms: ILiveTransformStore option
     }
 
 /// Companion values for [[BindingSources]]. Data-only: the identity defaults
@@ -137,4 +193,5 @@ module BindingSources =
           I18nResolver = passthroughI18nResolver
           Locale = ""
           CapabilityInvoker = (fun _ _ -> Deferred.Pending)
-          Now = "" }
+          Now = ""
+          LiveTransforms = None }

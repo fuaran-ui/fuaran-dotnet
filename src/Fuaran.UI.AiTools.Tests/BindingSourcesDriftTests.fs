@@ -47,7 +47,13 @@ let private canonicalFields =
       "I18nResolver"
       "Locale"
       "CapabilityInvoker"
-      "Now" ]
+      "Now"
+      // Phase 1586 — the session-held live-`Transform` store. It is a HOST
+      // seam, not host data, and the probe declines it for the same reason it
+      // declines `CapabilityInvoker`: there is nothing to read off a function
+      // or an interface, and an introspection surface that reported one as
+      // present would be reporting the wiring rather than the values.
+      "LiveTransforms" ]
 
 let private introspectionSourcesType =
     FSharpType.GetRecordFields(typeof<IntrospectionContext>)
