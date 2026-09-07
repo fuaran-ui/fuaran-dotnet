@@ -675,14 +675,22 @@ let rec closuresOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : Closu
 /// Binding usages carried by an ACTION value, recursing `Chain` — the sibling
 /// of `callsOfAction`, and the arm of the walk that was missing.
 ///
-/// `Action.SetState`'s `valueFrom` (Phase 818) is the only binding-bearing
-/// action slot in the vocabulary: every other arm carries strings, a `JVal`
-/// literal, an `InvokeArg` pair of strings, or a closure the wire cannot see.
-/// So this reads as one arm and a long tail of empties — which is exactly why
-/// it is written as an EXHAUSTIVE match over the DU rather than one case and a
-/// wildcard. Its whole job is to be the place the compiler stops a new
-/// binding-bearing action arm, the way `callsOfAction` beside it does for a new
-/// fetch-bearing one.
+/// THREE action slots are binding-bearing: `SetState`'s `valueFrom` (Phase
+/// 818), `WriteToClipboard`'s `text` and `Navigate`'s `route` — the last two
+/// because a `TextSource` may be `Bound` (Phases 1126 and 1536). Every other arm
+/// carries strings, a `JVal` literal, an `InvokeArg` pair of strings, or a
+/// closure the wire cannot see, so this still reads as a few arms and a long
+/// tail of empties — which is exactly why it is written as an EXHAUSTIVE match
+/// over the DU rather than one case and a wildcard. Its whole job is to be the
+/// place the compiler stops a new binding-bearing action arm, the way
+/// `callsOfAction` beside it does for a new fetch-bearing one.
+///
+/// The exhaustive match did stop 1536 here; it could not stop 1126, which
+/// WIDENED an existing arm rather than adding one, so the clipboard's `text`
+/// went uncounted from that release until this one. That is corrected in the
+/// same change and named rather than quietly folded in: a walk that counted one
+/// widened `TextSource` slot and not the other would be worse than one that
+/// counted neither, because the omission would then look deliberate.
 ///
 /// A `valueFrom` read is a DISPATCH-TIME read: it resolves when the gesture
 /// fires, not at render, which is why the reactive walk deliberately does not
@@ -695,13 +703,18 @@ let rec usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
     | Action.SetState(_, _, Some valueFrom) -> usesOfBinding valueFrom
     | Action.SetState(_, _, None) -> []
     | Action.Chain actions -> actions |> List.collect usesOfAction
+    // Phases 1126 / 1536 — a `TextSource` payload may be `Bound`, and both of
+    // these resolve at DISPATCH time exactly as `valueFrom` does. The same
+    // asymmetry the doc block above records therefore applies: the reactive
+    // walk does not subscribe them, and analysis counts them regardless,
+    // because the tree does read that key.
+    | Action.WriteToClipboard text -> usesOfText text
+    | Action.Navigate(route, _) -> usesOfText route
     | Action.Call _
     | Action.Dispatch _
     | Action.Notify _
-    | Action.Navigate _
     | Action.AiTool _
     | Action.CommitLocal _
-    | Action.WriteToClipboard _
     | Action.ReadFileBody _
     // Phase 1124 — payload-free; nothing to read a binding from.
     | Action.Print

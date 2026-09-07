@@ -1,5 +1,13 @@
 ﻿module Fuaran.UI.Types
 
+#if FABLE_COMPILER
+// `emitJsExpr` in `Binding.coerceCell` — the Fable leg's runtime type test,
+// which is how that leg reaches the parity the .NET leg gets from
+// `Convert.ChangeType`. Scoped to the Fable branch: nothing on the .NET leg
+// references it, and this module otherwise takes FSharp.Core and Fuaran.Core.
+open Fable.Core.JsInterop
+#endif
+
 open Fuaran.Core
 
 // ============================================================================
@@ -1561,6 +1569,18 @@ and FilterSpec<'Msg> = Generated.FilterSpec<'Msg>
 /// `data:<mime>;base64,…` string. Encodes as a bare-string enum on the wire (§3.5).
 and FileReadEncoding = Generated.FileReadEncoding
 
+/// Which browsing context an `Action.Navigate` lands in (Phase 1536;
+/// generated). `Self` is the default and is omitted on the wire, so every
+/// document written before this release keeps its bytes. `Blank` opens a fresh
+/// context, and the renderer — not a host seam — is what guarantees it carries
+/// `noopener,noreferrer`.
+///
+/// A closed enum where `LinkSpec.Target` is a free string, and the difference is
+/// deliberate: `_parent` / `_top` are frame-busting gestures a hosted tree must
+/// not be able to ask for, and a named frame is an addressing scheme this
+/// language does not have. Encodes as a bare-string enum on the wire (§3.5).
+and NavigateTarget = Generated.NavigateTarget
+
 /// An opaque, host-held reference to a user-selected file's blob (Phase 136).
 /// `Id` is a renderer-assigned stable token — the **only** part that
 /// serialises (a blob cannot cross the wire). `Handle` carries the actual
@@ -2388,14 +2408,102 @@ module Binding =
     /// module, per the `Fuaran.fs` obj-erasure precedents.
     #nowarn "3261"
 
-    let projectSelectionField<'T> (field: string) : obj -> 'T =
+#if FABLE_COMPILER
+
+    /// The projected cell, COERCED to the slot's own type or refused.
+    ///
+    /// This is the Fable half of a parity obligation, and it exists because
+    /// `unbox` is a NO-OP under Fable. The .NET leg type-tests and, where the
+    /// boxed representation differs from the slot's type, coerces through an
+    /// invariant `Convert.ChangeType` — so `Binding<float>` over a text cell
+    /// either gets a number or THROWS, and the resolver reports `Errored`. The
+    /// Fable leg used to hand the string straight through, and the first
+    /// arithmetic downstream turned it into `NaN`: the same tree, the same
+    /// data, one host refusing loudly and the other rendering a nonsense value.
+    ///
+    /// `inline` is what makes the target type available at all. Fable erases a
+    /// non-inline function's generic parameter, so `typeof<'T>` inside one has
+    /// nothing to resolve; inlining puts the call site's own instantiation
+    /// here. Every call site already writes the type argument explicitly
+    /// (`projectSelectionField<obj>` on the four decoded paths,
+    /// `projectSelectionField<'T>` from the typed authoring surface), so
+    /// nothing about how it is CALLED changes.
+    ///
+    /// The coercions mirror `Convert.ChangeType`'s and no more: a numeric
+    /// string becomes a number, anything becomes its own string form, and
+    /// "true"/"false" become booleans. A string that is not a number does not
+    /// become `NaN` — it throws, with the same didactic the .NET leg raises,
+    /// because the whole point is that the two hosts answer alike.
+    ///
+    /// `'T = obj` — which is what the decoded paths ask for — wants no
+    /// coercion at all and takes the value as it is. That keeps the wire path
+    /// byte-identical to before this change.
+    let inline private coerceCell<'T> (field: string) (v: obj) : 'T =
+        let target = typeof<'T>
+
+        if target = typeof<obj> then
+            unbox<'T> v
+        else
+            let jsType: string = emitJsExpr v "typeof $0"
+
+            let numeric =
+                target = typeof<float>
+                || target = typeof<float32>
+                || target = typeof<int>
+                || target = typeof<int64>
+                || target = typeof<decimal>
+
+            if numeric then
+                if jsType = "number" then
+                    unbox<'T> v
+                else
+                    // `Number("")` is 0 and `Number(null)` is 0, so the empty
+                    // and absent spellings are rejected before the parse rather
+                    // than silently becoming a zero the reader never entered.
+                    let asText: string = emitJsExpr v "String($0)"
+                    let parsed: float = emitJsExpr asText "Number($0)"
+                    let isNan: bool = emitJsExpr parsed "Number.isNaN($0)"
+
+                    if asText.Trim() = "" || isNan then
+                        failwithf "Selection field '%s': '%s' is not a number" field asText
+                    else
+                        unbox<'T> (box parsed)
+            elif target = typeof<string> then
+                if jsType = "string" then
+                    unbox<'T> v
+                else
+                    let asText: string = emitJsExpr v "String($0)"
+                    unbox<'T> (box asText)
+            elif target = typeof<bool> then
+                if jsType = "boolean" then
+                    unbox<'T> v
+                else
+                    let asText: string = emitJsExpr v "String($0)"
+
+                    match asText.ToLowerInvariant() with
+                    | "true" -> unbox<'T> (box true)
+                    | "false" -> unbox<'T> (box false)
+                    | other -> failwithf "Selection field '%s': '%s' is not a boolean" field other
+            else
+                // A slot type this projection has no coercion for — a date, a
+                // domain record. `Convert.ChangeType` on .NET would refuse most
+                // of these too, and inventing a conversion here would be the
+                // silent-wrong-value failure this whole function exists to
+                // remove. The value passes through, which is exactly what
+                // happened before, and the divergence is named rather than
+                // hidden.
+                unbox<'T> v
+
+#endif
+
+    let inline projectSelectionField<'T> (field: string) : obj -> 'T =
         fun (raw: obj) ->
 #if FABLE_COMPILER
             if isNull raw then
                 failwithf "Selection field '%s': the selected value is null, not a row" field
             else
                 match Map.tryFind field (unbox<Map<string, obj>> raw) with
-                | Some v -> unbox<'T> v
+                | Some v -> coerceCell<'T> field v
                 | None -> failwithf "Selection field '%s' is not present on the selected row" field
 #else
             match raw with

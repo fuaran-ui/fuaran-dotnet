@@ -641,7 +641,7 @@
          change. The entries authored against 0.76.0 in STABILITY.md ship here;
          each says so in place. See STABILITY.md "Recorded change - 0.76.0, the
          op-stream write path". -->
-    <Version>0.77.0</Version>
+    <Version>0.78.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

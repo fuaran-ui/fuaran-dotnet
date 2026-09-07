@@ -147,3 +147,133 @@ module FastPathTests =
                       Expect.exists sources isTransform "the computed dashboard's metric is compute-bound"
                   | None -> failtest "compute-dashboard pattern is missing from the seed bank"
               } ]
+
+// ============================================================================
+//  A bank that would answer wrongly refuses to be built, and a value outside
+//  its hole's declared space refuses to be instantiated.
+//
+//  The two halves of a bank used to skip a duplicate id DIFFERENTLY: the Core
+//  registry declines a re-registration and so kept the FIRST pattern's
+//  signature, while `Map.ofList` takes the last binding and so kept the LAST
+//  pattern's builder. A search matched one pattern's holes; `instantiate` ran
+//  the other pattern's `Build`. Nothing was reported.
+//
+//  And `HoleDecl` declares a `ValueSpace` that nothing checked, so
+//  `IntRange(1, 12)` accepted "purple".
+// ============================================================================
+
+module FastPathRefusalTests =
+
+    open Fuaran.Core
+
+    let private pattern (id: string) (title: string) (holes: HoleDecl list) : FastPath.Pattern =
+        { Id = id
+          Title = title
+          Summary = "test pattern"
+          ResultType = "Metric"
+          Holes = holes
+          Build =
+            fun _ ->
+                { Id = id
+                  Kind =
+                    NodeKind.Heading
+                        { Defaults.heading with
+                            Text = TextSource.Literal title
+                            Level = 1 }
+                  State = None
+                  Style = None
+                  Accessibility = None
+                  Motion = None
+                  ExtraAttributes = None
+                  Tooltip = None } }
+
+    [<Tests>]
+    let tests =
+        testList
+            "the FastPath bank refuses what it cannot serve"
+            [ test "a duplicate id refuses the WHOLE list and names the collision" {
+                  let a = pattern "kpi" "Revenue tile" []
+                  let b = pattern "kpi" "Headcount tile" []
+
+                  match FastPath.tryBank [ a; b ] with
+                  | Ok _ -> failtest "a list with a duplicate id must not build a bank"
+                  | Error [ dup ] ->
+                      Expect.equal dup.Id "kpi" "the colliding id is named"
+
+                      Expect.equal
+                          (List.sort dup.Titles)
+                          [ "Headcount tile"; "Revenue tile" ]
+                          "and both titles, because a duplicate id is nearly always two different patterns"
+                  | Error other -> failtestf "expected exactly one collision, got %A" other
+              }
+
+              test "GO-RED TWIN: the two halves of a bank USED to disagree, and now cannot" {
+                  // The defect, stated as the thing that is no longer
+                  // constructible. Before the refusal, this list built a bank
+                  // whose registry answered for "Revenue tile" and whose
+                  // pattern map built "Headcount tile".
+                  let a = pattern "kpi" "Revenue tile" []
+                  let b = pattern "kpi" "Headcount tile" []
+
+                  Expect.throws
+                      (fun () -> FastPath.bank [ a; b ] |> ignore)
+                      "the ergonomic form raises rather than building a bank that answers wrongly"
+
+                  // And the honest list still builds, so the refusal is not blanket.
+                  match FastPath.tryBank [ a; pattern "headcount" "Headcount tile" [] ] with
+                  | Ok built -> Expect.equal built.Patterns.Count 2 "two distinct ids, two patterns"
+                  | Error e -> failtestf "distinct ids must build: %A" e
+              }
+
+              test "a value outside its hole's declared space refuses" {
+                  let p = pattern "months" "Months" [ FastPath.numberHole "n" "count" 1 12 ]
+
+                  // Every one of these was accepted before: a word, a float
+                  // against an integer range, and an integer outside it.
+                  for bad in [ "purple"; "3.7"; "0"; "13"; "" ] do
+                      Expect.throws
+                          (fun () -> FastPath.instantiate p (Map.ofList [ "n", bad ]) |> ignore)
+                          (sprintf "'%s' is not in IntRange(1, 12)" bad)
+              }
+
+              test "and a value INSIDE it instantiates, at both ends of the range" {
+                  let p = pattern "months" "Months" [ FastPath.numberHole "n" "count" 1 12 ]
+
+                  for good in [ "1"; "6"; "12" ] do
+                      let tree = FastPath.instantiate p (Map.ofList [ "n", good ])
+                      Expect.equal tree.Id "months" (sprintf "'%s' is admitted" good)
+              }
+
+              test "an UNBOUND hole is not a violation — a partial binding still renders" {
+                  // `Build` is contracted to fall back to a default, which is
+                  // what makes a partial binding useful at all. Refusing an
+                  // absent value would break every existing caller that passes
+                  // `Map.empty`.
+                  let p = pattern "months" "Months" [ FastPath.numberHole "n" "count" 1 12 ]
+
+                  let tree = FastPath.instantiate p Map.empty
+                  Expect.equal tree.Id "months" "no value supplied, nothing to violate"
+              }
+
+              test "the violation NAMES the hole, its address and the value" {
+                  let p = pattern "months" "Months" [ FastPath.numberHole "n" "count" 1 12 ]
+
+                  match FastPath.valueViolations p (Map.ofList [ "n", "purple" ]) with
+                  | [ v ] ->
+                      Expect.equal v.Addr "n" "the address binding goes by"
+                      Expect.equal v.Name "count" "the human name"
+                      Expect.equal v.Value "purple" "and the value that was refused"
+                  | other -> failtestf "expected one violation, got %A" other
+              }
+
+              test "AnyString admits anything — the check follows the DECLARED space" {
+                  // The rule is not "validate everything", it is "hold each
+                  // value to the space its own hole declared". A free-text hole
+                  // declares no constraint and must not acquire one here.
+                  let p = pattern "note" "Note" [ FastPath.textHole "t" "text" ]
+
+                  for anything in [ "purple"; ""; "3.7"; "=cmd|'/c calc'!A0" ] do
+                      Expect.isEmpty
+                          (FastPath.valueViolations p (Map.ofList [ "t", anything ]))
+                          (sprintf "AnyString admits '%s'" anything)
+              } ]

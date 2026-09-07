@@ -98,12 +98,14 @@ let nodeMapTests =
           }
 
           test "a non-Msg action case (Navigate) passes through unchanged" {
-              let mapped = Node.mapMsg string (buttonWith "b" (Action.Navigate "/home"))
+              let mapped =
+                  Node.mapMsg string (buttonWith "b" (Action.Navigate(TextSource.Literal "/home", NavigateTarget.Self)))
 
               match mapped.Kind with
               | NodeKind.Button(spec) ->
                   match spec.OnClick with
-                  | Action.Navigate route -> Expect.equal route "/home" "Navigate route preserved"
+                  | Action.Navigate(TextSource.Literal route, _) ->
+                      Expect.equal route "/home" "Navigate route preserved"
                   | other -> failtestf "expected Navigate, got %A" other
               | other -> failtestf "expected a Button, got %A" other
           }

@@ -461,6 +461,10 @@ let private defs: (string * J) list =
       // Phase 1119 — which overlay a `Modal` node is. Omitted at `Modal`, so the
       // member is NOT in `ModalSpec`'s required list.
       "ModalityKind", enumDef [ "Modal"; "Popover" ]
+      // Phase 1536 — `Action.Navigate.target`. Two cases, closed; the HTML
+      // `_self` / `_blank` / `_parent` / `_top` tokens are deliberately NOT in
+      // the set, and the schema says so as flatly as the decoder does.
+      "NavigateTarget", enumDef [ "Self"; "Blank" ]
       // Phase 1116 — closed at the two devices a file picker can stand in front
       // of. A screen is deliberately not a case: the HTML `capture` attribute
       // cannot express one, and the charter rules display capture Host chrome.
@@ -606,7 +610,18 @@ let private defs: (string * J) list =
           [ duCase "Dispatch" [] []
             duCase "Call" [ "endpoint" ] [ "endpoint", str; "onResult", closure; "into", ref "CallResultTarget" ]
             duCase "Notify" [ "channel"; "payload" ] [ "channel", str; "payload", jsonValue ]
-            duCase "Navigate" [ "route" ] [ "route", str ]
+            // Phase 1536 — the route is a `TextSource`, not a bare string, so a
+            // route may be computed from bound state. `TextSource`'s own schema
+            // carries the bare-string Literal shorthand, so the pre-1536
+            // spelling is still valid against this schema. `target` is optional
+            // (omitted at `Self`) and therefore absent from the required list.
+            //
+            // What the schema does NOT express, stated rather than left to be
+            // inferred: the `href` / `url` / `to` aliases the decoder accepts
+            // (§16 leniency is a decoder contract, not a document one — a
+            // schema that admitted them would declare four canonical spellings
+            // where the format has one).
+            duCase "Navigate" [ "route" ] [ "route", ref "TextSource"; "target", ref "NavigateTarget" ]
             // Phase 818 — `value` XOR `valueFrom` (a Binding evaluated at
             // dispatch time): both leave `required`, and the `oneOf` over the
             // two required-lists is the exclusive-or itself — neither-present

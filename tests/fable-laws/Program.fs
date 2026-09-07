@@ -70,11 +70,28 @@ let main _ =
     for line in Laws.deflateLines deflateCases do
         printfn "%s" line
 
+    // ---- law 4: the selection-field projection, on both pipelines ----
+    // The one claim in this repo that is ABOUT two runtimes: a text cell in a
+    // numeric slot raised on .NET and rendered NaN in the browser, and neither
+    // pipeline's own suite could see the other's answer.
+    let selectionCases = Laws.selectionFieldCases ()
+
+    for line in Laws.selectionFieldLines selectionCases do
+        printfn "%s" line
+
+    // ---- law 5: a Format.Date slot never throws, on either pipeline ----
+    let dateCases = Laws.dateSentinelCases ()
+
+    for line in Laws.dateSentinelLines dateCases do
+        printfn "%s" line
+
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
         + List.length mergeAdequacy
         + Laws.deflateViolations deflateCases
+        + Laws.selectionFieldViolations selectionCases
+        + Laws.dateSentinelViolations dateCases
 
     printfn "TOTAL violations=%d" violations
 

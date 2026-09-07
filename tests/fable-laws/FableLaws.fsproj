@@ -52,6 +52,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
     <ProjectReference Include="..\..\src\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <!-- Law 5 formats a date on both pipelines, so the shared formatter is an
+         input to the harness. It is Fable-clean already: the client renderer
+         transpiles through it. -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
     <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
     <!-- The subject of the first law: the three-way merge that runs in the browser. -->
     <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />

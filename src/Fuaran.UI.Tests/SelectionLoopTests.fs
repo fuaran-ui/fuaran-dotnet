@@ -296,7 +296,10 @@ let chartPointSelectionTests =
               let mutable dispatchedActions: Action<obj> list = []
 
               let spec =
-                  chartSpec ChartKind.Bar "region" (Some(fun (r: Row) -> Action.Navigate(regionOf (nn r))))
+                  chartSpec
+                      ChartKind.Bar
+                      "region"
+                      (Some(fun (r: Row) -> Action.Navigate(TextSource.Literal(regionOf (nn r)), NavigateTarget.Self)))
 
               Render.chartPointClick
                   (fun a -> dispatchedActions <- a :: dispatchedActions)
@@ -306,7 +309,8 @@ let chartPointSelectionTests =
                   "sales|East"
 
               match dispatchedActions with
-              | [ Action.Navigate route ] -> Expect.equal route "East" "the closure saw the clicked row"
+              | [ Action.Navigate(TextSource.Literal route, _) ] ->
+                  Expect.equal route "East" "the closure saw the clicked row"
               | other -> failtestf "expected exactly one Navigate from the closure, got %A" other
 
               Expect.isNone
@@ -491,12 +495,16 @@ let adapterSelectionDefaultTests =
               let mutable actions: Action<obj> list = []
 
               let spec =
-                  chartSpec ChartKind.Bar "region" (Some(fun (r: Row) -> Action.Navigate(regionOf (nn r))))
+                  chartSpec
+                      ChartKind.Bar
+                      "region"
+                      (Some(fun (r: Row) -> Action.Navigate(TextSource.Literal(regionOf (nn r)), NavigateTarget.Self)))
 
               Render.chartPointSelected (fun a -> actions <- a :: actions) nodeId spec chartRows[0]
 
               match actions with
-              | [ Action.Navigate route ] -> Expect.equal route "North" "the closure saw the clicked datum"
+              | [ Action.Navigate(TextSource.Literal route, _) ] ->
+                  Expect.equal route "North" "the closure saw the clicked datum"
               | other -> failtestf "expected exactly one Navigate from the closure, got %A" other
 
               Expect.isNone (SelectionStore.get nodeId) "closure wins — it never touches the store"
@@ -529,11 +537,14 @@ let adapterSelectionDefaultTests =
               Render.gridRowSelected
                   (fun a -> actions <- a :: actions)
                   nodeId
-                  (gridSpecWith (Some(fun (r: Row) -> Action.Navigate(regionOf (nn r)))))
+                  (gridSpecWith (
+                      Some(fun (r: Row) -> Action.Navigate(TextSource.Literal(regionOf (nn r)), NavigateTarget.Self))
+                  ))
                   chartRows[0]
 
               match actions with
-              | [ Action.Navigate route ] -> Expect.equal route "North" "the closure saw the clicked row"
+              | [ Action.Navigate(TextSource.Literal route, _) ] ->
+                  Expect.equal route "North" "the closure saw the clicked row"
               | other -> failtestf "expected exactly one Navigate from the closure, got %A" other
 
               Expect.isNone (SelectionStore.get nodeId) "closure wins — it never touches the store"

@@ -105,8 +105,12 @@ let hydrateIslands (renderIsland: string -> ReactElement option) : HydrationRoot
             | Some element ->
                 try
                     roots.Add(hydrate el element)
-                with _ ->
-                    () // error isolation — degrade this island to its static HTML
+                with ex ->
+                    // Error isolation — this island degrades to its static
+                    // HTML and the others still hydrate. Reported because an
+                    // island that stayed static is indistinguishable, from the
+                    // outside, from an island that was never interactive.
+                    Diagnostics.warn ("island hydration failed for '" + islandId + "'") (box ex)
             | None -> ()
 
     List.ofSeq roots

@@ -51,7 +51,7 @@ let private view (m: Model) : Node<Msg> =
                   Fuaran.button
                       "nav"
                       { Defaults.button<Msg> with
-                          OnClick = Action.Navigate "/next" } ] }
+                          OnClick = Action.Navigate(TextSource.Literal "/next", NavigateTarget.Self) } ] }
 
 let private stubRender (n: Node<Msg>) : string =
     let s = n.Id
@@ -95,7 +95,12 @@ let tests =
               let s2, out = step (session ()) (ev "nav" "click")
 
               Expect.equal s2.Model 0 "navigate does not touch the model"
-              Expect.equal out.Effects [ ClientEffect.Navigate "/next" ] "navigate lowered to a ClientEffect"
+
+              Expect.equal
+                  out.Effects
+                  [ ClientEffect.Navigate("/next", NavigateTarget.Self) ]
+                  "navigate lowered to a ClientEffect"
+
               Expect.isEmpty out.Patches "no tree change → no patches"
           }
 

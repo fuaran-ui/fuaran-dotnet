@@ -6104,7 +6104,141 @@ this repo consumes as a pinned package.
 
 ---
 
-## Recorded change — 0.77.0 (riding the draft), a wire-complete `Binding.Local` and an erroring decoded `Binding.Computed` (fuaran#1538)
+## Recorded change — 0.77.0, `Action.Navigate` over a `TextSource`, with a target (fuaran#1536)
+
+**A DU CASE WIDENING (breaking at construction and at every positional match), riding the standing
+0.77.0 draft.** `Action<'Msg>.Navigate` becomes
+`Navigate of route: TextSource * target: NavigateTarget`, wire
+`{"$type":"Navigate","route":…,"target":"Blank"?}` (WIRE_FORMAT §3.6.21). `NavigateTarget` is a new
+closed enum (`Self | Blank`). `ClientEffect.Navigate` widens the same way on the server-driven
+instruction channel.
+
+**Why it RIDES rather than advances.** This is the same class the draft already carries — `FS0764`
+for a full-literal record constructor, plus `Derivation<'Msg>.StructuralKey`'s narrowing — not a
+higher one: a required positional field added to a DU case is the union analogue of a required record
+field, and the draft-slot rule advances only for a higher class. `v0.76.0` remains the newest tag, so
+no released consumer constructs or matches this arity. `Directory.Build.props` was not touched.
+
+**The wire does not move.** `TextSource.Literal`'s canonical form is the bare JSON string (§3.6), so
+`{"$type":"Navigate","route":"/x"}` is emitted and accepted exactly as before, and `target` is
+omitted at `Self`. Every pre-1536 corpus byte is unchanged — the emit diff is five new files plus
+the generated `manifest.json` / `schema.json` / `idl.json` / `WIRE_FORMAT.md`. The §16 `href` /
+`url` / `to` aliases are resolved before the value is decoded and keep working.
+
+**What breaks, and how to fix it.** Construction sites, at compile time:
+`Action.Navigate "/x"` becomes `Action.Navigate(TextSource.Literal "/x", NavigateTarget.Self)`, or
+`Fuaran.navigate "/x"`, whose signature is unchanged and which is the shorter spelling of the
+commonest intent. `Fuaran.navigateTo` is the new general form. Positional matches gain the second
+field; a match that only wants the route reads `Action.Navigate(route, _)`.
+
+**Vocabulary charter (`docs/VOCABULARY.md`).** *Demand*: gap-report finding M-B25 — "open the
+selected order" (`/orders/{selection.id}`) was inexpressible, because the row-click hook is a host
+closure and `Navigate` took a literal. *Irreducibility*: the alternative is a `NavigateBound`
+sibling, which §2.1's 2026-09-03 amendment names as the near-synonym pair the charter exists to
+forbid — the same ruling Phase 1126 took for `WriteToClipboard`, and this phase is that ruling
+applied a second time rather than a new argument. *Cost*: the expensive spelling, acknowledged —
+case arity changes, so every positional match stops compiling; §11 forward coupling across five
+codec hosts, the schema, the corpus and the C# veneer. *Confusion delta*: zero on the kind axis (no
+kind, no variant); `NavigateTarget` adds one enum whose two members are exhaustive on their axis and
+which is NOT `Link.target`'s free string — the two look alike, and the closed set is what stops a
+tree asking for `_parent` or `_top`.
+
+**Resolve, then gate.** A bound route resolves at DISPATCH time and the egress floor, the destination
+policy and the dispatch gate all judge the RESOLVED string. A route that does not resolve navigates
+nowhere rather than degrading to `""`, which is a real navigation. A `Blank` target is opened with
+`noopener,noreferrer` by the renderer on every host, never delegated to a host navigation seam.
+`docs/security/ESCAPE-HATCHES.md` Hatch 1 carries the amended three-part entry.
+
+**What did NOT change.** `IFuaranRuntime` gains no member — a `Blank` reaches
+`window.open` directly, on the `Print` / `CommitLocal` precedent — so direct implementers are
+unaffected. `ActionDescriptor.Navigate` still carries the route alone. `OnRowClick` stays a host
+closure; a per-row action slot is a separate admission. `Action.WriteToClipboard` is untouched apart
+from one correction it should have carried since 1126: `BindingWalk.usesOfAction` now counts the
+bound `TextSource` payloads of BOTH `WriteToClipboard` and `Navigate`, which it counted for neither.
+
+---
+
+## Recorded change — 0.77.0, renderer correctness: uploads, keys, refusals and two host-parity fixes (fuaran#1531)
+
+**Mostly additive; ONE source-breaking change, riding the standing 0.77.0 draft.**
+`v0.76.0` remains the newest tag. The draft already carries an `FS0764` record
+widening and `Derivation<'Msg>.StructuralKey`'s narrowing — both of which say the
+same thing to a consumer, *adopting this slot costs source edits* — so under the
+draft-slot rule the change below RIDES rather than advancing. It is the same class,
+not a higher one.
+
+### The breaking one
+
+**`LocalBindings.dispatchFormCommit : unit -> unit` becomes
+`Browser.Types.Element -> unit`.** The form-submit broadcast was a window-level
+dispatch that every `OnSubmit`-flushing `Binding.Local` input on the page answered,
+so a submit anywhere drained a search box in a header and any other form's fields —
+dispatching their `OnCommit` actions and writing their values into the model on a
+gesture the reader made somewhere else. The event is now dispatched ON the
+submitting form and bubbles; each listener asks whether that form contains its own
+input. **Migration:** pass the submit event's `currentTarget` (the renderer's own
+call site is `LocalBindings.dispatchFormCommit (unbox<Browser.Types.Element> e.currentTarget)`).
+It takes the form ELEMENT rather than a node id because a form's NodeId is its
+wrapper's, so there is nothing addressable to match on, and `contains` is a question
+the DOM already answers for every nesting an author can build.
+
+### Behaviour changes on existing surfaces
+
+- **`GridExport.escapeField` neutralises spreadsheet formulas.** A field beginning
+  `=`, `+`, `-`, `@`, TAB or CR gains OWASP's leading apostrophe and is quoted.
+  **Negative numbers are exempt** — `isPlainNumber` — because `-` leads every
+  negative number and prefixing them would turn a numeric column into text no
+  reader can sum. An ordinary export is byte-identical to before.
+- **`Formatting.format` never throws at a `Format.Date` slot.** `NaN`, the
+  infinities and any value outside `DateTimeOffset`'s span render as
+  `Formatting.unrepresentableInstant` on BOTH pipelines, where .NET used to throw
+  out of an SSR pass and `Intl` used to raise in the browser. The bounds are the
+  narrower, .NET pair on purpose: taking JavaScript's wider range would leave a
+  value one host draws and the other refuses.
+- **`Binding.projectSelectionField` is `inline`, and the Fable leg now coerces.**
+  `unbox` is a no-op under Fable, so a text cell in a `Binding<float>` used to
+  render `NaN` where .NET refused. It now coerces as `Convert.ChangeType` does, and
+  a string that is not a number throws rather than becoming `NaN`. `'T = obj` —
+  every decoded path — coerces nothing, so the wire path is unchanged. `inline` is
+  what makes the target type available: Fable erases a non-inline function's
+  generic parameter.
+- **`Email.renderDocument` takes `lang` / `dir` from the sources**, deriving the
+  direction with the shell's own `Formatting.textDirection`, where it hardcoded
+  `lang="en"`. An absent tag now declares neither attribute.
+- **`FastPath.bank` RAISES on a duplicate pattern id**, where it silently skipped —
+  and skipped inconsistently, so the registry kept one pattern's signature and the
+  pattern map kept another's builder. **`FastPath.instantiate` RAISES on a value its
+  hole's declared `ValueSpace` does not admit**, where `IntRange(1, 12)` accepted
+  `"purple"`. An unbound hole is still not a violation.
+- **The renderer's six silent `with _ -> ()` isolations now report** through
+  `Diagnostics.warn`. The isolation is unchanged; only the silence is.
+- **Both browser observers re-register a same-id element that has changed**, and
+  clear that node's change-detection caches with it.
+- **`StateStore.useStateKeys` / `FilterStore.useFilterKeys` /
+  `QueryStore.useQueryKeys` subscribe once per key set** rather than
+  re-subscribing on every notification. Signatures unchanged.
+
+### Additive surfaces
+
+`Render.reconciliationKey`; `UploadStream.streamSelections`;
+`Fuaran.UI.Renderer.Diagnostics`; `LocalBindings.errorSlotId` /
+`invalidFieldAttributes`; `GridExport.formulaLeadIns` / `isPlainNumber` /
+`neutraliseFormula`; `Formatting.minInstantSeconds` / `maxInstantSeconds` /
+`unrepresentableInstant` / `isRepresentableInstant`; `FastPath.tryBank` /
+`DuplicateId` / `HoleViolation` / `valueViolations`; and
+`ElementRegistration` (type + module) in **both** `Fuaran.UI.LayoutObserver` and
+`Fuaran.UI.StyleObserver` — each package carries its own copy rather than a
+dependency being minted between two deliberately independent packages.
+
+### What did NOT change
+
+No wire byte moves. No `NodeKind`, `Binding`, `Action` or spec-record case is added
+or removed, no corpus fixture changes, and no schema moves. The reject vectors and
+the `PreEmitValidate` rule this phase's M-B1 task proposed are NOT here: a
+count-like bound at `Skeleton.rows` contradicts the shipped §7.1 conformance test
+that every 32-bit integer decodes at an integer slot, so it is a specification
+amendment rather than a host-side refusal. See the phase's outcome.
+## Recorded change — 0.78.0, a wire-complete `Binding.Local` and an erroring decoded `Binding.Computed` (fuaran#1538)
 
 **`Generated.Binding<'T>.Local` gains two fields**, appended after the existing five:
 
@@ -6125,12 +6259,26 @@ deliberate — the wire order is `Canon.typed`'s Ordinal sort and is unaffected 
 leaves every existing binder's POSITION intact and makes the fix mechanical (`, None, None` at a
 construction; `, _, _` at a pattern).
 
-**It rides the standing 0.77.0 draft rather than advancing it**, per the draft-slot rule. That draft is
-untagged, pinned by no public-path consumer, and already carries source-breaking changes of exactly
-this class — `Derivation<'Msg>.StructuralKey`'s narrowing, and an `FS0764` record widening. Adding
-fields to a DU case says the same thing to a consumer that those do: adopting this slot costs source
-edits. A higher class would advance the draft; an equal one does not, and 0.78.0 would tell a consumer
-already paying 0.77.0's price that there is a second, separate one.
+**It ADVANCES the version to 0.78.0, and that is a correction to what this entry said when it was
+first written.** It was authored to ride the 0.77.0 draft, on the draft-slot rule and on the same
+argument the `Action.Navigate` entry above makes: adding a required field to a DU case is the union
+analogue of a required record field, so it is the class 0.77.0 already carried rather than a higher
+one, and re-numbering would tell a consumer already paying that price that there is a second one.
+
+**That argument was correct and its premise stopped being true mid-flight.** `v0.77.0` was TAGGED on
+2026-09-06 (`762097c`, an ancestor of `main`), so 0.77.0 is no longer a draft: it is a released slot
+and somebody's contract. The version-pinning rule is explicit about which half of the draft-slot rule
+then applies — a change to a public contract ships on a version AHEAD of every version that has been
+tagged — and the failure it names is exactly this shape: a slot re-packed over the top so consumers
+get one contract or the other depending only on when their cache was populated. Adding two fields to
+`Binding.Local` is source-breaking at every construction and every positional match, which is not a
+thing to do to a tag.
+
+**A finding this leaves for the estate, stated rather than fixed here.** Two entries already on `main`
+— Phase 1531's surface moves and Phase 1536's `Action.Navigate` widening — were authored against
+0.77.0 while it was still a draft and say so in their own headings, and the tag landed under them. So
+0.78.0 will contain their changes as well as this one, described in this document under the previous
+number. Rewriting another phase's recorded entry is not this phase's to do; naming it is.
 
 **No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
 admission gates for the kind set are not engaged. What changed is the FIELD SET of an existing

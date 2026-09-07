@@ -90,7 +90,7 @@ let firstPaintTree (resolver: RouteResolver<'Msg>) (route: string) : Node<'Msg> 
 /// form-validating step). Handles two routing events:
 ///   • a `popstate` event → swap the tree to the popped route in place, no
 ///     push-state (the browser already moved);
-///   • a legitimate `Action.Navigate route` → in-place swap + `PushState` when
+///   • a legitimate `Action.Navigate` with a `Self` target → in-place swap + `PushState` when
 ///     the resolver knows the route, else a full reload (`ClientEffect.Navigate`).
 /// Every other event delegates to `fallback`.
 ///
@@ -115,7 +115,7 @@ let stepWithRouting
         | FullReload r ->
             session,
             { Patches = []
-              Effects = [ ClientEffect.Navigate r ]
+              Effects = [ ClientEffect.Navigate(r, NavigateTarget.Self) ]
               Rejected = None }
 
     if ev.Event = "popstate" then
@@ -124,5 +124,18 @@ let stepWithRouting
         applyOutcome false (routeOf ev)
     else
         match validate session.Services.CanDispatch session.Tree ev with
-        | Ok { Action = Some(Action.Navigate route) } -> applyOutcome true route
+        // Phase 1536 — in-place navigation is the `Self` case only, and only for
+        // a route that RESOLVES. A `Blank` target is a different browsing
+        // context, so swapping this session's tree for it would be wrong twice
+        // over: the reader would see the current page change AND get a new one.
+        // Both non-cases fall through to the ordinary dispatch path, which
+        // lowers a `ClientEffect` (or, for an unresolved route, nothing) — so
+        // neither is dropped here, only declined for the in-place shortcut.
+        | Ok { Action = Some(Action.Navigate(route, NavigateTarget.Self)) } ->
+            let resolved = session.Services.ResolveText route
+
+            if System.String.IsNullOrWhiteSpace resolved then
+                fallback session ev
+            else
+                applyOutcome true resolved
         | _ -> fallback session ev

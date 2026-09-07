@@ -185,8 +185,13 @@ let emitRenderFailureWithContext
                   PromptId = Map.tryFind promptIdKey sessionContext
                   UserId = Map.tryFind userIdKey sessionContext
                   Timestamp = System.DateTimeOffset.UtcNow }
-        with _ ->
-            ()
+        with ex ->
+            // The isolation is right: a telemetry sink must not be able to turn
+            // a render failure into a render CRASH. But this is the emission of
+            // a failure report, so swallowing it loses the one record anybody
+            // was going to read — a sink that throws here produces a render that
+            // failed and a telemetry stream that says it did not.
+            Diagnostics.warn ("the telemetry sink threw while recording a render failure for '" + nodeId + "'") (box ex)
     | None -> ()
 
     corrId
@@ -397,6 +402,39 @@ let accessibilityAttributes
 /// is shared rather than inlined at the one former emission site.
 let private toProps (pairs: (string * string) list) : IReactProperty list =
     pairs |> List.map (fun (k, v) -> prop.custom (k, v))
+
+// ─── Reconciliation keys for repeated children ─────────────────────────────
+//
+//  React reconciles a list of siblings by POSITION unless each carries a key.
+//  Position is the wrong identity for anything a reader can re-order: the
+//  fifth `<tr>` after a sort is a different row, but React keeps the fifth
+//  child's component instance and only rewrites the props it can see — so
+//  everything the instance holds that the props do NOT carry stays where it
+//  was. That is precisely the state this renderer keeps per instance: a
+//  `Binding.Local` input buffer, a `SwitchStage` timer, a combobox's open
+//  list, an uncommitted cell edit. The half-typed value follows the position
+//  and lands on someone else's row.
+//
+//  So every repeated-children arm below states an identity. Where the tree
+//  declares one it is used — a grid's `RowKey` / `RowKeyField`, a form field's
+//  id, an option's value; where the arm is genuinely positional (a skeleton's
+//  placeholder rows, a static table whose rows are literals in document order)
+//  the index IS the identity and saying so is honest rather than a fallback.
+
+/// The identity of one member of a repeated-children arm.
+///
+/// A declared key wins; anything else falls back to the position, marked so it
+/// can never collide with a real key. Two spellings are refused as identities
+/// even though they are `Some`: the empty string (the "no key contract" answer
+/// a decoded grid gives) and the `"<closure>"` constant a decoded `RowKey`
+/// projects — under the second, EVERY row would answer the same key, which is
+/// worse than positional reconciliation because React would then treat four
+/// different rows as one. `usableKey` in the grid arm applies the same rule to
+/// selection, for the same reason.
+let reconciliationKey (declared: string option) (index: int) : string =
+    match declared with
+    | Some key when key <> "" && key <> "<closure>" -> key
+    | _ -> "#" + string index
 
 // ─── Text-source rendering — handles i18n + bound text ─────────────────────
 
@@ -644,6 +682,33 @@ let treeNavigateOutcome
                 (ActionInvocation.routePath route)
         )
 
+/// Phase 1536 — perform an already-resolved, already-gated navigation into the
+/// browsing context `target` names.
+///
+/// ONE function, shared by the hydrated interpreter and the zero-JS resume
+/// interpreter, because `noopener,noreferrer` is a SECURITY property of the
+/// `Blank` case and a property applied by two functions is a property that
+/// eventually differs between them. Without `noopener` the opened document holds
+/// a live `window.opener` handle back into the host page; without `noreferrer`
+/// the destination is told where the reader came from.
+///
+/// `Blank` deliberately does NOT route through `IFuaranRuntime.Navigate`. That
+/// seam is wired to an SPA router or `location.hash`, neither of which can open
+/// a second browsing context at all — handing it a `Blank` would silently
+/// navigate in place. Reaching `window.open` directly is the `Print` /
+/// `CommitLocal` precedent: the browser's own API, where there is nothing for a
+/// host to configure.
+///
+/// Public so both interpreters can share it, on the same reasoning that made
+/// `applyDispatchGate` public. It performs; it never judges — the caller has
+/// already run the egress check and the dispatch gate on `safeRoute`.
+let performNavigation (runtime: Runtime.IFuaranRuntime) (target: NavigateTarget) (safeRoute: string) : unit =
+    match target with
+    | NavigateTarget.Self -> runtime.Navigate safeRoute
+    | NavigateTarget.Blank ->
+        Browser.Dom.window.``open`` (safeRoute, "_blank", "noopener,noreferrer")
+        |> ignore
+
 let treeNavigate
     (runtime: Runtime.IFuaranRuntime)
     (policy: Sanitize.EgressPolicy)
@@ -774,8 +839,37 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
         gate (Runtime.ActionDescriptor.Notify channel) (fun () -> ctx.Runtime.Notify(channel, payload))
     // Phase 782 — sanitise-then-gate on the ACTION path, not only where an
     // href/src is rendered. See `treeNavigate`.
-    | Action.Navigate route ->
-        note (treeNavigateOutcome ctx.Runtime ctx.EgressPolicy route (fun safe -> ctx.Runtime.Navigate safe))
+    //
+    // Phase 1536 — RESOLVE, THEN GATE, and the order is the whole point. The
+    // route is a `TextSource`, so it may be computed from what the reader is
+    // looking at; the egress check and the dispatch gate then judge the
+    // RESOLVED string. Gating the template would consult the policy about
+    // `/orders/{id}`, a URL nobody navigates to, while the string the host
+    // actually receives went unexamined — which is not a weaker check, it is a
+    // check of the wrong subject.
+    //
+    // A route that does not resolve WARNS and navigates nowhere (FGP 3). It
+    // must not degrade to the empty string the way a bound LABEL does: `""` is
+    // a real navigation (this document, query and fragment stripped), so the
+    // rendering degradation would become a navigation the author never asked
+    // for. `tryResolveTextSource` is the resolution that reports rather than
+    // degrades.
+    | Action.Navigate(route, target) ->
+        // The EMPTY resolution is refused beside the absent one, and on the
+        // same reasoning rather than as a tidy-up: a `State` binding carrying a
+        // declared default of `""` RESOLVES, to a string that is not a
+        // destination. Both are "there is nothing to navigate to".
+        match
+            BindingResolver.tryResolveTextSource ctx.Sources route
+            |> Option.filter (System.String.IsNullOrWhiteSpace >> not)
+        with
+        | None ->
+            ctx.Runtime.Warn
+                "[Fuaran] Action.Navigate route did not resolve to a destination — no navigation performed. A bound route whose source is absent or empty, or an i18n key with no translation, is not a destination."
+
+            note (Error "Action.Navigate refused — route did not resolve to a destination")
+        | Some resolved ->
+            note (treeNavigateOutcome ctx.Runtime ctx.EgressPolicy resolved (performNavigation ctx.Runtime target))
     | Action.SetState(key, value, valueFrom) ->
         // Phase 782 — gated, and host-reserved keys refused. Scope-aware routing
         // (Phase 266): a guest rendered under `Some scopeId` writes to its own
@@ -3005,7 +3099,13 @@ let rec private renderKind
                                           Html.span [ prop.className "fuaran-tab-label"; prop.text t.label ] ]
 
                                     Html.button
-                                        [ prop.id (tabId i)
+                                        [ // The tab's own DOM id, which is what
+                                          // `aria-controls` and `aria-labelledby`
+                                          // already agree on — so the key and the
+                                          // accessibility relationship name the
+                                          // same thing rather than two things.
+                                          prop.key (tabId i)
+                                          prop.id (tabId i)
                                           prop.className cls
                                           prop.role "tab"
                                           prop.custom ("aria-selected", (if isActive then "true" else "false"))
@@ -3118,7 +3218,12 @@ let rec private renderKind
                                     let isActive = i = activeIndex
 
                                     Html.li
-                                        [ prop.className (
+                                        [ // A stepper's steps ARE their positions —
+                                          // the number rendered in each one is the
+                                          // index — so the index is the identity
+                                          // here rather than a fallback.
+                                          prop.key (reconciliationKey None i)
+                                          prop.className (
                                               if isActive then
                                                   "fuaran-stepper-step fuaran-stepper-step-active"
                                               else
@@ -3296,7 +3401,11 @@ let rec private renderKind
     | NodeKind.Skeleton spec ->
         Html.div
             [ prop.className "fuaran-skeleton"
-              prop.children [ for _ in 1 .. spec.Rows -> Html.div [ prop.className "fuaran-skeleton-row" ] ] ]
+              // A skeleton's rows are interchangeable placeholders with no
+              // identity beyond their position, so the index IS the key here.
+              prop.children
+                  [ for i in 1 .. spec.Rows ->
+                        Html.div [ prop.key (reconciliationKey None i); prop.className "fuaran-skeleton-row" ] ] ]
     | NodeKind.Icon spec ->
         // Phase 821 — the standalone icon-only display kind. The glyph NAME
         // rides `data-icon` (the uniform icon-hook contract — no text
@@ -3899,7 +4008,12 @@ let rec private renderKind
                         e.stopPropagation ()
 
                 Html.li (
-                    [ prop.className "fuaran-tree-item"
+                    [ // The item's declared id — the same token `data-fuaran-tree-item`,
+                      // the expansion state and the selection all key on, so a
+                      // branch that opens above this row does not hand its
+                      // expansion to the row that took its position.
+                      prop.key (reconciliationKey (Some item.Id) i)
+                      prop.className "fuaran-tree-item"
                       prop.role "treeitem"
                       // Stated rather than computed from contents: a treeitem
                       // OWNS its child group, so a name derived from the subtree
@@ -3960,7 +4074,12 @@ let rec private renderKind
         // Phase 287 — `<ol>` (ordered) / `<ul>` (unordered) of `<li>` items.
         let items =
             spec.Items
-            |> List.map (fun item -> Html.li [ prop.className "fuaran-list-item"; prop.text (renderText ctx item) ])
+            |> List.mapi (fun i item ->
+                // Literal items in document order: position is the identity.
+                Html.li
+                    [ prop.key (reconciliationKey None i)
+                      prop.className "fuaran-list-item"
+                      prop.text (renderText ctx item) ])
 
         if spec.Ordered then
             Html.ol [ prop.className "fuaran-list fuaran-list-ordered"; prop.children items ]
@@ -4919,7 +5038,8 @@ and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : R
         | None -> []
 
     let optionItems =
-        [ for option in options -> Html.option [ prop.value option.Value; prop.text option.Label ] ]
+        [ for option in options ->
+              Html.option [ prop.key option.Value; prop.value option.Value; prop.text option.Label ] ]
 
     // Phase 130: optional bound disabled-state — emit the HTML `disabled`
     // attribute on the `<select>` when the binding resolves `true`.
@@ -5024,7 +5144,12 @@ and private renderForm (ctx: RenderContext<'Msg>) (spec: FormSpec<'Msg>) : React
               // BEFORE the form's typed OnSubmit fires. Order matters
               // because the typed OnSubmit may dispatch a network call
               // that reads the just-committed values.
-              LocalBindings.dispatchFormCommit ()
+              //
+              // Dispatched on THIS form (the event's currentTarget) rather
+              // than on the window, so the broadcast reaches this form's own
+              // inputs and no longer drains every `OnSubmit` Local input on
+              // the page — a search box in a header included.
+              LocalBindings.dispatchFormCommit (unbox<Browser.Types.Element> e.currentTarget)
               // Phase 820 — submit-payload semantics: the form's current
               // field values (read exactly as this renderer's own controls
               // read them — see `SubmitPayload.harvestFields`) ride the
@@ -5259,7 +5384,8 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
 
             let optionItems =
                 Html.option [ prop.value ""; prop.text "—" ]
-                :: [ for option in opts -> Html.option [ prop.value option.Value; prop.text option.Label ] ]
+                :: [ for option in opts ->
+                         Html.option [ prop.key option.Value; prop.value option.Value; prop.text option.Label ] ]
 
             Html.select
                 [ prop.className "fuaran-form-select"
@@ -5605,7 +5731,12 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                         ) ] ]
 
     Html.div
-        [ prop.className "fuaran-form-field"
+        [ // The field's declared id — the same token `htmlFor`, the unmet-rule
+          // marking and this field's own `Binding.Local` buffer already key on.
+          // A form whose fields are added, removed or re-ordered between
+          // renders must move each field's uncommitted text with the field.
+          prop.key field.Id
+          prop.className "fuaran-form-field"
           prop.children
               [ Html.label
                     [ prop.className "fuaran-form-label"
@@ -5769,7 +5900,8 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
 
             let optionItems =
                 Html.option [ prop.value ""; prop.text "—" ]
-                :: [ for option in opts -> Html.option [ prop.value option.Value; prop.text option.Label ] ]
+                :: [ for option in opts ->
+                         Html.option [ prop.key option.Value; prop.value option.Value; prop.text option.Label ] ]
 
             Html.select
                 [ prop.className "fuaran-filter-select"
@@ -5928,7 +6060,10 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                    commit = fun next -> fieldChange ctx onChange filterWriteBinding (Some(box next)) next |}
 
     Html.label
-        [ prop.className "fuaran-filter"
+        [ // The filter's declared name — the key it writes to `$filters.<name>`
+          // and every `Binding.Filter` reader looks it up by.
+          prop.key spec.Name
+          prop.className "fuaran-filter"
           prop.children
               [ Html.span [ prop.className "fuaran-filter-label"; prop.text labelText ]
                 control ] ]
@@ -5982,7 +6117,11 @@ and private renderSegmentedChoiceCore
             let labelText = option.Label
 
             Html.button
-                [ prop.className "fuaran-segmented-option"
+                [ // The option's VALUE, which is what the choice is stored as
+                  // and compared by — not the position it happens to occupy in
+                  // a list an author or a query can re-order.
+                  prop.key (reconciliationKey (Some option.Value) index)
+                  prop.className "fuaran-segmented-option"
                   prop.type'.button
                   prop.id (optionId index)
                   prop.ariaChecked isActive
@@ -6057,7 +6196,8 @@ and private renderSegmentedChoiceCore
             let isChecked = current = Some option.Value
 
             Html.div
-                [ prop.className "fuaran-segmented-row"
+                [ prop.key (reconciliationKey (Some option.Value) index)
+                  prop.className "fuaran-segmented-row"
                   prop.children
                       [ Html.input
                             [ prop.type'.radio
@@ -6797,6 +6937,13 @@ and private renderGrid
                 // guard + scope-aware store apply exactly as any tree write.
                 // A field-less closure column is not sortable and renders
                 // without the affordance.
+                // A column's identity is the row property it projects, and its
+                // label where it projects none (a button or a checkbox column
+                // names no field). Columns are re-orderable, so this is the
+                // same argument the row key makes one axis over.
+                let columnKey (colIndex: int) (col: ColumnErased<'Msg>) : string =
+                    reconciliationKey (Some(defaultArg col.Field col.Label)) colIndex
+
                 let sortableHeader (colIndex: int) (col: ColumnErased<'Msg>) : ReactElement =
                     // Phase 861 — the column flag NARROWS, never widens: absent
                     // inherits (sortable iff the column has a `field`), `false`
@@ -6826,7 +6973,8 @@ and private renderGrid
                             runSynthesisedAction ctx (Action.SetState(sortKey, Some next, None))
 
                         Html.th
-                            [ prop.className "fuaran-grid-header"
+                            [ prop.key (columnKey colIndex col)
+                              prop.className "fuaran-grid-header"
                               prop.custom ("data-sortable", "")
                               prop.tabIndex 0
                               match active with
@@ -6839,7 +6987,11 @@ and private renderGrid
                                       e.preventDefault ()
                                       dispatchToggle ())
                               prop.text col.Label ]
-                    | _ -> Html.th [ prop.className "fuaran-grid-header"; prop.text col.Label ]
+                    | _ ->
+                        Html.th
+                            [ prop.key (columnKey colIndex col)
+                              prop.className "fuaran-grid-header"
+                              prop.text col.Label ]
 
                 // Phase 862 — the pager. RENDERER-OWNED, which is the whole
                 // point of the Phase-860 rule: because the grid draws it, the
@@ -6973,12 +7125,25 @@ and private renderGrid
                                                               | _ -> None
 
                                                           Html.td
-                                                              [ prop.className "fuaran-grid-cell"
+                                                              [ prop.key (columnKey columnIndex col)
+                                                                prop.className "fuaran-grid-cell"
                                                                 prop.children
                                                                     [ renderGridCell ctx commit paste col row ] ] ]
 
                                                 Html.tr (
-                                                    [ prop.className (
+                                                    [ // The row's own identity, not its position. This
+                                                      // is the arm the key rule exists for: a sort or a
+                                                      // filter re-orders these siblings under the
+                                                      // reader, and every per-row instance the renderer
+                                                      // holds — an uncommitted cell edit, a `Local`
+                                                      // input buffer — must move with its row rather
+                                                      // than stay at its index.
+                                                      prop.key (
+                                                          reconciliationKey
+                                                              (rowKeyOf |> Option.map (fun keyOf -> keyOf row))
+                                                              rowIndex
+                                                      )
+                                                      prop.className (
                                                           if isSelected then
                                                               "fuaran-grid-row fuaran-grid-row-selected"
                                                           else
@@ -7208,9 +7373,10 @@ and private renderGridCell
         Html.span
             [ prop.className "fuaran-grid-cell-button-group"
               prop.children
-                  [ for item in buttons ->
+                  [ for (buttonIndex, item) in List.indexed buttons ->
                         Html.button
-                            [ prop.className "fuaran-grid-cell-button"
+                            [ prop.key (reconciliationKey None buttonIndex)
+                              prop.className "fuaran-grid-cell-button"
                               prop.text (renderText ctx item.Label)
                               prop.onClick (fun e ->
                                   e.stopPropagation ()
@@ -7451,20 +7617,30 @@ and private gridExportControl
 
 and private renderTable (ctx: RenderContext<'Msg>) (printBreak: string) (spec: TableSpec<'Msg>) : ReactElement =
     let headerCells =
-        [ for h in spec.Headers -> Html.th [ prop.className "fuaran-table-header"; prop.text (renderText ctx h) ] ]
+        [ for (headerIndex, h) in List.indexed spec.Headers ->
+              Html.th
+                  [ prop.key (reconciliationKey None headerIndex)
+                    prop.className "fuaran-table-header"
+                    prop.text (renderText ctx h) ] ]
 
     let bodyRows =
         [ for (i, row) in List.indexed spec.Rows ->
               Html.tr
-                  [ prop.className "fuaran-table-row"
+                  [ // A static table's rows are literals in document order and
+                    // nothing re-orders them, so position is the identity.
+                    prop.key (reconciliationKey None i)
+                    prop.className "fuaran-table-row"
                     if spec.OnRowClick.IsSome then
                         prop.onClick (fun _ ->
                             match spec.OnRowClick with
                             | Some f -> runAction ctx (f i)
                             | None -> ())
                     prop.children
-                        [ for cell in row ->
-                              Html.td [ prop.className "fuaran-table-cell"; prop.text (renderText ctx cell) ] ] ] ]
+                        [ for (cellIndex, cell) in List.indexed row ->
+                              Html.td
+                                  [ prop.key (reconciliationKey None cellIndex)
+                                    prop.className "fuaran-table-cell"
+                                    prop.text (renderText ctx cell) ] ] ] ]
 
     Html.table
         [ prop.className ("fuaran-table" + printBreak)
@@ -7533,9 +7709,10 @@ and private renderMap
                         Html.ul
                             [ prop.className "fuaran-map-marker-list"
                               prop.children
-                                  [ for marker in markers ->
+                                  [ for (markerIndex, marker) in List.indexed markers ->
                                         Html.li
-                                            [ prop.className "fuaran-map-marker"
+                                            [ prop.key (reconciliationKey (Some marker.Label) markerIndex)
+                                              prop.className "fuaran-map-marker"
                                               prop.text (
                                                   sprintf
                                                       "%s @ (%.4f, %.4f)"

@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="FlagDerivationTests.fs" />
     <Compile Include="InMemoryLayoutObserverTests.fs" />
+    <Compile Include="ElementRegistrationTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

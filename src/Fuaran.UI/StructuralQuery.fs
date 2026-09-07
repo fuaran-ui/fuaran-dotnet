@@ -360,7 +360,19 @@ let rec private carriedOf (label: 'Msg -> string option) (action: Action<'Msg>) 
     | Action.Chain ops -> ops |> List.collect (carriedOf label)
     | Action.Dispatch msg -> [ { Tag = "Dispatch"; Disc = label msg } ]
     | Action.Call(endpoint, _, _) -> [ { Tag = "Call"; Disc = Some endpoint } ]
-    | Action.Navigate route -> [ { Tag = "Navigate"; Disc = Some route } ]
+    // Phase 1536 — the route is a `TextSource`, so only a LITERAL one carries a
+    // discriminator a structural query can match. A bound route's destination
+    // is not known until dispatch, and answering `Act.Navigate "/orders/42"`
+    // against `Bound(Selection …)` would be a guess — the same "a query that
+    // cannot be answered returns no match rather than a guess" rule the
+    // `Dispatch` arm states. `Act.Navigate` therefore still matches every route
+    // an author typed, and matches no route the tree computes.
+    | Action.Navigate(route, _) ->
+        [ { Tag = "Navigate"
+            Disc =
+              match route with
+              | TextSource.Literal s -> Some s
+              | _ -> None } ]
     | Action.Invoke(capabilityId, _) ->
         [ { Tag = "Invoke"
             Disc = Some capabilityId } ]

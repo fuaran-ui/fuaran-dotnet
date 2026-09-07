@@ -230,6 +230,26 @@ let private modalityKind = Declare.enumOf "ModalityKind" [ "Modal"; "Popover" ]
 let private fileReadEncoding =
     Declare.enumOf "FileReadEncoding" [ "Text"; "Base64"; "DataUrl" ]
 
+/// Fuaran-UI Phase 1536 — `Action.Navigate.target`: which browsing context the
+/// navigation lands in. Omitted at `Self` on the wire, so every document written
+/// before this release keeps its bytes and its behaviour.
+///
+/// A CLOSED enum, deliberately, and NOT the free string `LinkSpec.target` is —
+/// that field takes any `_blank` / `_parent` / `_top` / named-frame token a web
+/// author might type, which is a vocabulary a decoded tree gets to invent. The
+/// axis declared here has two answers: this context, or a fresh one. `_parent`
+/// and `_top` are frame-busting gestures a hosted tree must not be able to ASK
+/// for, and a named frame is an addressing scheme this language does not have.
+///
+/// `Blank` carries a security obligation rather than only a presentation one:
+/// every host opens it with `noopener,noreferrer`, so the opened context cannot
+/// reach back through `window.opener` and the destination is not told where the
+/// reader came from. That obligation is discharged by the RENDERER on each host,
+/// never delegated to a host-supplied navigation seam — a property only holds if
+/// something owns it, and a seam every host must remember to get right is not
+/// owned by anybody.
+let private navigateTarget = Declare.enumOf "NavigateTarget" [ "Self"; "Blank" ]
+
 /// Fuaran-UI Phase 1116 — `FileUpload.capture`: which of the reader's own
 /// recording devices this upload asks the platform to open, instead of the
 /// ordinary file picker. It is the HTML `capture` attribute's semantics and
@@ -792,8 +812,30 @@ let private action =
                 opt "onResult" (fn "obj -> 'Msg" "(r: unknown) => Msg" "(fun (_: obj) -> (\"<closure>\" :> obj))")
                 opt "into" (TUnion("CallResultTarget", [])) ]
             Annotations = Annotations.Empty }
+          // Phase 1536 — `route` is a `TextSource`, not a bare string, so
+          // "open the selected order" (`/orders/{selection.id}`) has a
+          // spelling. The precedent is exact and deliberate: Phase 1126 widened
+          // `WriteToClipboard`'s payload the same way, for the same reason, and
+          // widening the existing case was again chosen over a sibling
+          // `NavigateBound` — two cases for one intent is the permanent
+          // near-synonym pair the vocabulary charter exists to forbid.
+          //
+          // THE WIRE DOES NOT MOVE for a literal route: `TextSource.Literal` is
+          // canonically the BARE JSON STRING (§3.6, §16), so
+          // `{"$type":"Navigate","route":"/x"}` is emitted and accepted exactly
+          // as before. What is new is a `route` carrying a `Bound` / `I18n`
+          // object, RESOLVED AT DISPATCH TIME and gated on its resolved value —
+          // never on its template, which would gate a string nobody navigates
+          // to. The §16 `href` / `url` / `to` aliases still normalise onto this
+          // one canonical field, so there remains no spelling that reaches a
+          // router around the check.
+          //
+          // `target` is omitted at `Self`. See `navigateTarget` for why it is a
+          // closed enum rather than `LinkSpec.target`'s free string.
           { Tag = "Navigate"
-            Fields = [ req "route" TStr ]
+            Fields =
+              [ req "route" (TUnion("TextSource", []))
+                omit "target" (TEnum "NavigateTarget") (VEnum "Self") ]
             Annotations = Annotations.Empty }
           { Tag = "CommitLocal"
             Fields = [ req "nodeId" TStr ]
@@ -3117,6 +3159,7 @@ let uiIdl: Idl =
           buttonVariant
           modalityKind
           fileReadEncoding
+          navigateTarget
           captureSource
           dateVariant
           textFormat
