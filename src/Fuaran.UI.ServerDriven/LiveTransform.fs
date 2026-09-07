@@ -161,13 +161,18 @@ type LiveTransformStore(capacity: int, identityColumn: string) =
             |> Result.map (toEvaluation false)
             |> Result.mapError DataFrame.errorString
 
-    /// Phase 1586 — the renderer's seam, served by the same method above under
-    /// the store's own identity declaration. ONE key rule, not two: the `site`
-    /// string is the key on both paths, and the interface adds no second one.
-    /// The footprint and the primed/advanced bit are dropped rather than
-    /// widened onto the seam — a renderer has nowhere to put them, and a seam
-    /// that carried them would oblige every implementation to mint an account
-    /// of work it may not have done.
+    // Phase 1586 — the renderer's seam, served by the same method above under
+    // the store's own identity declaration. ONE key rule, not two: the `site`
+    // string is the key on both paths, and the interface adds no second one.
+    // The footprint and the primed/advanced bit are dropped rather than
+    // widened onto the seam — a renderer has nowhere to put them, and a seam
+    // that carried them would oblige every implementation to mint an account
+    // of work it may not have done.
+    //
+    // A plain comment, not an XML doc: F# attaches no documentation to an
+    // interface implementation, and `///` here is diagnostic FS3520 rather than
+    // a doc anyone can read. The contract this member serves is documented
+    // where it is DECLARED, on `Fuaran.UI.ILiveTransformStore`.
     interface Fuaran.UI.ILiveTransformStore with
         member this.Evaluate(site: string, pipeline: Transform list, source: Table) =
             this.Evaluate(site, identityColumn, pipeline, source) |> Result.map _.Result
