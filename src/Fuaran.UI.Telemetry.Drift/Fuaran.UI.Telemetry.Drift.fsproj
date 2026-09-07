@@ -3,7 +3,18 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <IsPackable>true</IsPackable>
+    <!-- Phase 1532 — NOT PACKABLE. This project is a console `Exe` whose `main` is
+         a synthetic demo: it fabricates telemetry records, runs the detectors over
+         them and prints the result. That is a manual-run diagnostic, and it was
+         being packed and published to nuget.org as `Fuaran.UI.Telemetry.Drift` —
+         so the public feed carried a package whose entry point analyses data it
+         invented, beside packages that are libraries a consumer composes.
+         Nothing about the detector modules changes: they stay where they are, and
+         the telemetry test suite still project-references them. What stops is the
+         PUBLICATION. Re-packing this is a deliberate act that has to answer what
+         the `Exe` is for on a consumer's machine, and the honest answer today is
+         that it is for nothing there. -->
+    <IsPackable>false</IsPackable>
     <PackageId>Fuaran.UI.Telemetry.Drift</PackageId>
     <Description>Drift detector for Fuaran op-apply telemetry. Computes per-OpKind aggregate metrics (success rate, p50/p95 latency, top decoder-rejection reasons, top NodeNotFound NodeIds) and flags week-on-week success-rate regressions exceeding an operator-tunable threshold (default 10pp). Also ships a deterministic StyleFlag drift detector (Phase 151) — the resolved-style twin that diffs declared-invariant flag sets across two windows of StyleObservation to surface newly-introduced / cleared visual-legibility violations, severity-weighted by the ThemeManifest's invariant weights (semantic visual regression, no pixels, CI-gateable). Manual-run console tool for now (`dotnet run --project src/Fuaran.UI.Telemetry.Drift`); cron-friendly later when an operator-decided threshold is wired into a scheduled job. Companion to Fuaran.UI.Telemetry.Abstractions. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
