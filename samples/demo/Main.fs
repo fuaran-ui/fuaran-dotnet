@@ -30,6 +30,21 @@ importSideEffects "./index.css"
 importSideEffects "ag-grid-community/styles/ag-grid.css"
 importSideEffects "ag-grid-community/styles/ag-theme-alpine.css"
 
+// ─── Debug-global opt-in (Phase 1532) ──────────────────────────────────────
+//
+// The console global / relay opt-in this host passes at `register`, taken from
+// this project's own build rather than hardcoded: `FUARAN_DEBUG_GLOBAL` is
+// defined by the `.fsproj` outside a Release configuration. The renderer gates
+// on the SAME symbol (or `DebugGlobal.enableDebugGlobal ()`) in ITS OWN
+// compilation — symbols do not cross project boundaries, so a Fable build that
+// wants the surface passes `--define FUARAN_DEBUG_GLOBAL` as well.
+let private debugOptIn =
+#if FUARAN_DEBUG_GLOBAL
+    true
+#else
+    false
+#endif
+
 // ─── Domain shape used by the canonical example ────────────────────────────
 
 type Channel =
@@ -489,15 +504,19 @@ let view (model: Model) (dispatch: Msg -> unit) =
           UploadSink = None }
 
     // Phase 90 — register the in-page introspection REPL over the live tree.
-    // `debug = true` here means "opt in"; `DebugGlobal.shouldRegister` still
-    // requires a DEBUG build, so a release Fable build dead-code-eliminates the
-    // registration and `window.__fuaran` is `undefined`. Try it in DevTools:
+    // The host opt-in is read from THIS project's build (Phase 1532), not
+    // hardcoded `true`: `debugOptIn` is the sample's own `FUARAN_DEBUG_GLOBAL`
+    // symbol, which its `.fsproj` defines only outside a Release configuration.
+    // The renderer requires the SAME symbol (or `DebugGlobal.enableDebugGlobal ()`)
+    // in ITS compilation, which for a Fable build means passing
+    // `--define FUARAN_DEBUG_GLOBAL` — symbols do not cross project boundaries.
+    // With neither, `window.__fuaran` is undefined. Try it in DevTools:
     //   > __fuaran.getNodeState("revenue-metric")
     //   > __fuaran.getBindingValue("revenue-metric", "Source")
     //   > console.log(__fuaran.help())
     // No apply handler is wired (this demo's Elmish model is domain-shaped, not
     // a raw Node tree), so `__fuaran.apply(...)` returns the `unwired` envelope.
-    DebugGlobal.register true tree sources fuaranRuntime None
+    DebugGlobal.register debugOptIn tree sources fuaranRuntime None
 
     Render.render ctx tree
 

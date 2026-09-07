@@ -256,10 +256,18 @@ let tests =
                 test "shouldInstall requires the host opt-in" {
                     Expect.isFalse (Relay.shouldInstall false) "no opt-in, no listener"
 
-                    Expect.equal
+                    Expect.isFalse
                         (Relay.shouldInstall true)
-                        DebugGlobal.compiledInDebug
-                        "and a DEBUG build on top, mirroring DebugGlobal.shouldRegister"
+                        "and nothing is installed while the explicit debug-global opt-in is absent"
+
+                    try
+                        DebugGlobal.enableDebugGlobal ()
+
+                        Expect.isTrue
+                            (Relay.shouldInstall true)
+                            "the opt-in is what lifts it, mirroring DebugGlobal.shouldRegister"
+                    finally
+                        DebugGlobal.disableDebugGlobal ()
                 } ]
 
           testList

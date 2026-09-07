@@ -24,7 +24,9 @@ module Fuaran.UI.Renderer.Relay
 //    production posture is ABSENCE — no listener, so a probe gets no answer
 //    whatsoever; the opted-out peer, which answers NOT_OPTED_IN, is the
 //    honest-client posture for a development build. `shouldInstall` adds the
-//    DEBUG-build gate on top, mirroring `DebugGlobal.shouldRegister`.
+//    EXPLICIT opt-in gate on top (Phase 1532), mirroring
+//    `DebugGlobal.shouldRegister`: the `FUARAN_DEBUG_GLOBAL` symbol or the
+//    `enableDebugGlobal ()` switch, never `DEBUG`.
 //  * NO SIDE DOOR (§11.3). Every mutation crosses the host's own decode →
 //    validate → policy path, in the page. This module contributes no apply
 //    engine, no validator, and no policy of its own — the apply seam is the
@@ -1181,13 +1183,22 @@ let withdraw () : unit = publishedSurface <- None
 /// The live-surface lookup a peer installed with no explicit source uses.
 let published () : RelaySurface option = publishedSurface
 
-/// Should a relay listener be installed at all? The host's `relay` opt-in AND a
-/// DEBUG build, mirroring `DebugGlobal.shouldRegister` — a Release build makes
-/// this constant-false, so the installation is dead-code-eliminated and a
-/// production bundle cannot expose the relay even if the flag is set wrongly
-/// (§11.1's "gate it behind a development build in addition to the runtime
-/// opt-in").
-let shouldInstall (relay: bool) : bool = relay && DebugGlobal.compiledInDebug
+/// Should a relay listener be installed at all? The host's `relay` opt-in AND
+/// the EXPLICIT debug-global opt-in, mirroring `DebugGlobal.shouldRegister` —
+/// §11.1's "gate it behind a development build in addition to the runtime
+/// opt-in", with "a development build" made into something a consumer states
+/// rather than something its build configuration implies (Phase 1532).
+///
+/// The claim that stood here until Phase 1532 — "a Release build makes this
+/// constant-false, so the installation is dead-code-eliminated and a production
+/// bundle cannot expose the relay even if the flag is set wrongly" — was untrue
+/// for every build in the estate: the gate was `DEBUG`, which this package's
+/// consumers set by default because it ships Fable source. What holds now is
+/// weaker and true: with neither `FUARAN_DEBUG_GLOBAL` nor `enableDebugGlobal ()`,
+/// no listener is installed however the `relay` flag is set. Elimination is not
+/// claimed; see the gating note at the head of `DebugGlobal.fs`.
+let shouldInstall (relay: bool) : bool =
+    relay && DebugGlobal.debugGlobalEnabled ()
 
 /// Register the console global AND publish the relay surface, in one call from
 /// the host's render path. `relay` is the relay opt-in; leaving it `false` — the

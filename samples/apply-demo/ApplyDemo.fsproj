@@ -4,10 +4,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <!-- Fable client convention: gate every Fable-only path via FABLE_COMPILER
-         + DEBUG so Fable transpiles them and DebugGlobal registers (its
-         `compiledInDebug` is `#if DEBUG`). A Release Fable build drops DEBUG,
-         dead-code-eliminating the `window.__fuaran` registration. -->
-    <DefineConstants Condition="'$(Configuration)' != 'Release'">FABLE_COMPILER;DEBUG</DefineConstants>
+         + DEBUG so Fable transpiles them but `dotnet build` doesn't try to
+         compile Browser.Types-flavoured code on the .NET side.
+         FUARAN_DEBUG_GLOBAL is a SEPARATE, explicit opt-in (Phase 1532) — it is
+         what makes this host pass `debug:true` at `register`. The renderer
+         needs the same symbol in ITS OWN compilation, which for a Fable build
+         means passing that symbol on the fable command line on the command line: symbols do
+         not cross project boundaries. A Release build defines neither, so
+         nothing is registered and no relay listener is installed. -->
+    <DefineConstants Condition="'$(Configuration)' != 'Release'">FABLE_COMPILER;DEBUG;FUARAN_DEBUG_GLOBAL</DefineConstants>
     <DefineConstants Condition="'$(Configuration)' == 'Release'">FABLE_COMPILER</DefineConstants>
     <Nullable>disable</Nullable>
   </PropertyGroup>

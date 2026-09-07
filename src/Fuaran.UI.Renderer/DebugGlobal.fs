@@ -50,12 +50,41 @@ module Fuaran.UI.Renderer.DebugGlobal
 //  apply handler ever decodes the op — a denied op returns the structured deny
 //  envelope and never mutates the tree.
 //
-//  Gating: the global is registered only under a DEBUG build AND an explicit
-//  host opt-in (`register debug:true …`). A release build sets
-//  `compiledInDebug = false`, so `shouldRegister` is constant-false and the
-//  registration is dead-code-eliminated — `window.__fuaran` is `undefined` in
-//  production. The shape is explicitly DEBUG-ONLY / UNSTABLE and excluded from
-//  semver (see `STABILITY.md`).
+//  ── Gating (rewritten in Phase 1532 — read this before trusting any claim
+//     about what a production bundle exposes) ─────────────────────────────────
+//  The global is registered only under an EXPLICIT opt-in: the host's
+//  `register debug:true …` argument AND one of
+//
+//    * the `FUARAN_DEBUG_GLOBAL` compilation symbol, or
+//    * the runtime switch `enableDebugGlobal ()`.
+//
+//  It used to gate on `DEBUG`, and the claim that went with it — "a Release
+//  pack makes the predicate constant-false, so the registration is dead-code-
+//  eliminated and `window.__fuaran` is `undefined` in production" — was FALSE
+//  for every build in the estate. This package ships Fable SOURCE, so the
+//  symbol is decided by the CONSUMER's `dotnet fable` invocation, which does not
+//  inherit the entry project's symbols and defaults to a Debug configuration; a
+//  consumer that never passes `-c Release` compiled the registration in.
+//  `DEBUG` is also the wrong question: every ordinary development build of every
+//  consumer sets it, including builds whose bundle is served publicly, so it
+//  cannot be the switch that decides whether a page exposes its typed tree.
+//
+//  What is claimed NOW, and nothing more:
+//
+//    * With neither the symbol nor the runtime switch, `shouldRegister` is false
+//      for every `debug` argument, so `window.__fuaran` stays undefined. A
+//      consumer opts IN by name; no build configuration opts it in by accident.
+//    * DEAD-CODE ELIMINATION IS NO LONGER CLAIMED. A runtime switch is a value
+//      the compiler cannot fold, so "a production bundle CANNOT expose the
+//      surface" would be exactly the kind of claim this phase found untrue. The
+//      bundle may CONTAIN the code; it does not RUN it unless a host asks by
+//      name. A consumer that wants the stronger, eliminable posture leaves the
+//      symbol undefined and never calls `enableDebugGlobal` — `debugGlobalEnabled`
+//      is then a read of one `false` mutable — and builds `-c Release`, which
+//      additionally drops the Fable-only arms.
+//
+//  The shape is explicitly DEBUG-ONLY / UNSTABLE and excluded from semver (see
+//  `STABILITY.md`).
 // ============================================================================
 
 open Fuaran.UI.Types
@@ -80,21 +109,58 @@ open Fuaran.UI.Telemetry.Abstractions
 [<Literal>]
 let Version = "0.3.0"
 
-/// True iff this assembly was compiled under a DEBUG build. A Release pack
-/// sets it `false`, which makes `shouldRegister` constant-false so the whole
-/// registration is dead-code-eliminated — `window.__fuaran` is `undefined` in
-/// production (the F# counterpart of the TS `import.meta.env.DEV` gate).
-let compiledInDebug =
-#if DEBUG
+/// The compilation symbol that opts a build in to the console global. Named
+/// here so the gate, its documentation and the tests that pin it all quote one
+/// string rather than three copies of it.
+[<Literal>]
+let OptInSymbol = "FUARAN_DEBUG_GLOBAL"
+
+/// True iff this compilation unit was built with the EXPLICIT [[OptInSymbol]]
+/// symbol. Deliberately NOT `DEBUG`: this package ships Fable source, so
+/// `DEBUG` is whatever the consumer's build happens to set — which is "on" for
+/// every ordinary development build, including builds whose bundle is served
+/// publicly. Opting a debugging surface in has to be an act, not a side-effect.
+let compiledWithDebugGlobal =
+#if FUARAN_DEBUG_GLOBAL
     true
 #else
     false
 #endif
 
-/// The registration predicate: register the global only when the host opted
-/// in (`debug = true`) AND the build is a DEBUG build. Pure + identical on
-/// both pipelines, so the .NET test runner pins the gating contract directly.
-let shouldRegister (debug: bool) : bool = debug && compiledInDebug
+/// The runtime half of the opt-in, for a host that cannot pass a compilation
+/// symbol (a pre-built bundle, an environment-driven staging switch). Mutable
+/// process state like the renderer's guest seam and `StateStore`'s default
+/// instance, and for the same reason: the deciding host lives in another
+/// assembly and there is one such decision per process.
+let mutable private runtimeOptIn = false
+
+/// Turn the console global on for this process. The host's own `debug`
+/// argument is still required at `register` — this switch cannot register
+/// anything by itself.
+let enableDebugGlobal () : unit = runtimeOptIn <- true
+
+/// Turn the runtime half back off (host teardown and test isolation, mirroring
+/// `Render.clearGuestSeam`). Does not affect [[compiledWithDebugGlobal]].
+let disableDebugGlobal () : unit = runtimeOptIn <- false
+
+/// Is EITHER half of the opt-in present? Read-only introspection.
+let debugGlobalEnabled () : bool = compiledWithDebugGlobal || runtimeOptIn
+
+/// The registration predicate under an EXPLICIT pair of opt-in facts — total,
+/// pure and free of ambient state, so every combination is pinnable in one test
+/// process (the `CustomHash.classifyUnder` idiom). `compiled` is the symbol,
+/// `runtimeFlag` the switch, `debug` the host's own argument at `register`.
+///
+/// All three axes are ANDed the way they read: the host must ask, and the build
+/// or the operator must have said yes. Neither opt-in registers anything on its
+/// own, and no build configuration supplies one implicitly.
+let shouldRegisterUnder (compiled: bool) (runtimeFlag: bool) (debug: bool) : bool = debug && (compiled || runtimeFlag)
+
+/// The registration predicate against this process's opt-in state. Pure with
+/// respect to its argument and identical on both pipelines, so the .NET test
+/// runner pins the gating contract directly.
+let shouldRegister (debug: bool) : bool =
+    shouldRegisterUnder compiledWithDebugGlobal runtimeOptIn debug
 
 // ─── Console kind tag (NOT the wire discriminator) ───────────────────────────
 //

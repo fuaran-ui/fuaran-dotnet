@@ -18,17 +18,23 @@ open Fuaran.UI.Renderer
 let view (model: Model) (dispatch: Msg -> unit) =
     let tree = root model
     let sources = buildSources model
-    // `debug = true` is the host opt-in; registration still requires a DEBUG
-    // build (`DebugGlobal.shouldRegister`), so a release build leaves the
-    // global `undefined`. `None` = no apply handler (read-only); pass
-    // `Some handler` to enable policy-gated mutation (see `apply` below).
+    // `debug = true` is the host opt-in; registration ALSO requires the
+    // explicit `FUARAN_DEBUG_GLOBAL` symbol in the RENDERER's own compilation,
+    // or `DebugGlobal.enableDebugGlobal ()` at runtime. A build that states
+    // neither leaves the global `undefined` however this argument is set.
+    // `None` = no apply handler (read-only); pass `Some handler` to enable
+    // policy-gated mutation (see `apply` below).
     DebugGlobal.register true tree sources runtime None
     Render.render { ... ; Sources = sources ; Runtime = runtime ; ... } tree
 ```
 
-- `register debug tree sources runtime applyHandler` – registers `window.__fuaran` iff `shouldRegister debug` (host opt-in **and** DEBUG build). No-op otherwise, and a no-op entirely on the .NET pipeline (no `window`).
+- `register debug tree sources runtime applyHandler` – registers `window.__fuaran` iff `shouldRegister debug` (host opt-in **and** the explicit build/runtime opt-in below). No-op otherwise, and a no-op entirely on the .NET pipeline (no `window`).
 - `unregister ()` – removes the global if present (safe to call from an effect cleanup).
-- `shouldRegister debug : bool` – the pure gating predicate (`debug && compiledInDebug`). `compiledInDebug` is `#if DEBUG`-driven, so a release pack forces it `false`.
+- `shouldRegister debug : bool` – the gating predicate: `debug && (compiledWithDebugGlobal || the runtime switch)`. `shouldRegisterUnder compiled runtimeFlag debug` is the same rule with both opt-in facts passed explicitly — total and pure, so every combination is pinnable in one test process.
+- `compiledWithDebugGlobal : bool` – was this compilation unit built with the `FUARAN_DEBUG_GLOBAL` symbol? **Deliberately not `DEBUG`** (Phase 1532): this package ships Fable source, so `DEBUG` is whatever the consumer's build sets, which is "on" for every ordinary development build — including builds whose bundle is served publicly. Symbols do not cross project boundaries, so a Fable consumer that wants the surface passes `--define FUARAN_DEBUG_GLOBAL` explicitly.
+- `enableDebugGlobal () : unit` / `disableDebugGlobal () : unit` / `debugGlobalEnabled () : bool` – the runtime half of the opt-in, for a host that cannot pass a symbol (a pre-built bundle, an environment-driven staging switch).
+
+> **What is and is not claimed.** With neither opt-in, `window.__fuaran` stays undefined — that is the claim, and it holds. **Dead-code elimination is not claimed**: a runtime switch is a value the compiler cannot fold, so the bundle may CONTAIN the registration; it does not RUN it unless a host asks by name. A consumer that wants the stronger, eliminable posture leaves the symbol undefined, never calls `enableDebugGlobal`, and builds `-c Release`.
 
 ## Methods
 
@@ -116,7 +122,7 @@ Relay.registerAndPublish
     { DebugGlobal.DebugOptions.defaults with ApplyHandler = Some handler }
 ```
 
-**Off by default, and default-off is the point.** There are two postures of "off" and the contract prefers the stronger one: without the relay opt-in **no listener is installed at all**, so a probe gets no answer whatsoever — absent, not merely inert. A host that wants the honest development posture instead installs a peer with `OptedIn = false`, which answers `NOT_OPTED_IN` to every message including `hello`, telling a well-behaved client why it cannot proceed at the cost of confirming a host is present. `Relay.shouldInstall` adds the DEBUG-build gate on top, mirroring `shouldRegister`, so a release build installs nothing even if a flag is set wrongly.
+**Off by default, and default-off is the point.** There are two postures of "off" and the contract prefers the stronger one: without the relay opt-in **no listener is installed at all**, so a probe gets no answer whatsoever — absent, not merely inert. A host that wants the honest development posture instead installs a peer with `OptedIn = false`, which answers `NOT_OPTED_IN` to every message including `hello`, telling a well-behaved client why it cannot proceed at the cost of confirming a host is present. `Relay.shouldInstall` adds the explicit debug-global opt-in on top, mirroring `shouldRegister`, so a build that states neither the `FUARAN_DEBUG_GLOBAL` symbol nor the runtime switch installs nothing even if a flag is set wrongly. (Until Phase 1532 that gate read `DEBUG`, and the "a release build installs nothing" sentence was true only of a build nobody in practice made — see the gating note in `DebugGlobal.fs`.)
 
 **The relay has no side door.** Every mutation crosses the host's own decode → validate → policy path, in the page: an op arriving over the relay is the same `ApplyHandler` seam the console uses, behind the same `CanDispatch` gate. The relay contributes no apply engine, no validator and no policy of its own — it maps the outcome onto a refusal class and nothing more. Consequently a relay client cannot construct a tree state the host would not accept from its own code, and no message in the closed set adjusts policy or raises a client's privilege.
 

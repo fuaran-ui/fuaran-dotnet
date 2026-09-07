@@ -17,7 +17,9 @@ module Fuaran.UI.Tests.DebugGlobal
 //   - `childNodes` / `walkNodes` / `findNode` / `findNodesByKind` traverse the
 //     console shape (incl. ErrorBoundary arms + FragmentDecl body).
 //   - `resolveSlot` resolves a single slot against live `BindingSources`.
-//   - `shouldRegister` is the gating predicate (host opt-in AND DEBUG build).
+//   - `shouldRegister` / `shouldRegisterUnder` are the gating predicate (the
+//     host's opt-in AND an explicit `FUARAN_DEBUG_GLOBAL` symbol or the
+//     `enableDebugGlobal ()` switch — never `DEBUG`, Phase 1532).
 //   - `applyGateDecision` enforces the default-deny policy gate (FGP 3).
 //
 //  The live cross-host browser assertion of `window.__fuaran` is the
@@ -31,6 +33,21 @@ open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
 open Fuaran.UI.Renderer.Runtime
+
+/// One client-tier renderer source file, read from the copy this build put in
+/// the test output (the `renderer-sources` Content items), so a source scan
+/// cannot read a different checkout's sources than the ones it compiled
+/// against. Mirrors `HotPathVocabularyTests.sourceText`.
+let private readRendererSource (file: string) : string =
+    let path =
+        IO.Path.Combine(AppContext.BaseDirectory, "renderer-sources", "client", file)
+
+    if not (IO.File.Exists path) then
+        failwithf
+            "renderer source not found at %s — the test project copies the renderer sources into its output; check the Content items. A shape scan with no source to scan reports every call site as clean."
+            path
+
+    IO.File.ReadAllText path
 
 // ─── A tree exercising the representative kinds + binding slots ─────────────
 
@@ -261,14 +278,69 @@ let tests =
               | other -> failtestf "expected NotResolved, got %A" other
           }
 
-          test "shouldRegister gates on host opt-in (and the DEBUG build flag)" {
-              // Opt-out is always false regardless of build configuration.
-              Expect.isFalse (DebugGlobal.shouldRegister false) "debug=false → never register"
-              // Opt-in registers iff this is a DEBUG build (release → dead-code-eliminated).
-              Expect.equal
+          test "shouldRegisterUnder: the host opt-in AND one explicit build/runtime opt-in" {
+              // The total predicate, every combination. Neither opt-in registers
+              // anything on its own, and the host's own argument is required by
+              // all of them.
+              Expect.isFalse (DebugGlobal.shouldRegisterUnder false false false) "nothing set"
+              Expect.isFalse (DebugGlobal.shouldRegisterUnder true false false) "symbol, but the host did not ask"
+              Expect.isFalse (DebugGlobal.shouldRegisterUnder false true false) "switch, but the host did not ask"
+
+              Expect.isFalse
+                  (DebugGlobal.shouldRegisterUnder false false true)
+                  "host asked, but nothing opted the build in"
+
+              Expect.isTrue (DebugGlobal.shouldRegisterUnder true false true) "host asked + symbol"
+              Expect.isTrue (DebugGlobal.shouldRegisterUnder false true true) "host asked + runtime switch"
+              Expect.isTrue (DebugGlobal.shouldRegisterUnder true true true) "both"
+          }
+
+          test "DEBUG does not opt this build in — the symbol is FUARAN_DEBUG_GLOBAL" {
+              // THE Phase 1532 assertion. This test assembly is compiled Debug
+              // (the repo's default configuration and what the gate runs), so
+              // under the pre-1532 `#if DEBUG` gate `shouldRegister true` was
+              // TRUE here — and, for the same reason, in every consumer bundle
+              // built without an explicit `-c Release`.
+              Expect.isFalse
+                  DebugGlobal.compiledWithDebugGlobal
+                  "a Debug-configured build must NOT carry the debug-global opt-in"
+
+              Expect.isFalse
                   (DebugGlobal.shouldRegister true)
-                  DebugGlobal.compiledInDebug
-                  "debug=true → register iff DEBUG build"
+                  "so a host that asks still gets nothing until the build or the operator says yes"
+          }
+
+          test "the runtime switch is the other half of the opt-in, and it reverses" {
+              // Ambient process state, so it is set and cleared inside one test
+              // rather than left on for the suite (the `clearGuestSeam` idiom).
+              Expect.isFalse (DebugGlobal.debugGlobalEnabled ()) "not enabled to begin with"
+
+              try
+                  DebugGlobal.enableDebugGlobal ()
+                  Expect.isTrue (DebugGlobal.debugGlobalEnabled ()) "enabled"
+                  Expect.isTrue (DebugGlobal.shouldRegister true) "host asked and the operator said yes"
+                  Expect.isFalse (DebugGlobal.shouldRegister false) "the host opt-in is still required"
+              finally
+                  DebugGlobal.disableDebugGlobal ()
+
+              Expect.isFalse (DebugGlobal.debugGlobalEnabled ()) "and it reverses"
+          }
+
+          test "the gate quotes one symbol name, and the source gates on that symbol" {
+              // A source pin: the registration gate must not be reachable from
+              // `#if DEBUG`. Read off the shipped source rather than asserted
+              // from memory, because the defect this replaces was invisible in
+              // every .NET test run — `DEBUG` was on in all of them.
+              Expect.equal DebugGlobal.OptInSymbol "FUARAN_DEBUG_GLOBAL" "the symbol is named once"
+
+              let source = readRendererSource "DebugGlobal.fs"
+
+              Expect.stringContains
+                  source
+                  ("#if " + DebugGlobal.OptInSymbol)
+                  "the compile-time half gates on the explicit symbol"
+
+              Expect.isFalse (source.Contains "#if DEBUG") "and nothing in this module is gated on DEBUG"
           }
 
           test "applyGateDecision allows when the policy gate permits" {

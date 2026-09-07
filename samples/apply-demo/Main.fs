@@ -32,6 +32,21 @@ open Fuaran.UI.Ops
 
 importSideEffects "./index.css"
 
+// ─── Debug-global opt-in (Phase 1532) ──────────────────────────────────────
+//
+// The console global / relay opt-in this host passes at `register`, taken from
+// this project's own build rather than hardcoded: `FUARAN_DEBUG_GLOBAL` is
+// defined by the `.fsproj` outside a Release configuration. The renderer gates
+// on the SAME symbol (or `DebugGlobal.enableDebugGlobal ()`) in ITS OWN
+// compilation — symbols do not cross project boundaries, so a Fable build that
+// wants the surface passes `--define FUARAN_DEBUG_GLOBAL` as well.
+let private debugOptIn =
+#if FUARAN_DEBUG_GLOBAL
+    true
+#else
+    false
+#endif
+
 // ─── Authored Node<obj> base tree ───────────────────────────────────────────
 //
 // A dashboard with one Metric: a `TextSource.Literal` label (the UpdateProp
@@ -126,9 +141,11 @@ let view (model: Model) (dispatch: Msg -> unit) =
             | Error err -> DebugGlobal.ApplyOutcome.RejectedWith(err.Message, string err.Code)
 
     // Phase 90 — register the in-page REPL over the live Node<obj> tree WITH a
-    // real apply handler (the samples/demo host passes None). `debug = true` is
-    // the opt-in; `shouldRegister` still requires a DEBUG build, so a release
-    // Fable build dead-code-eliminates the registration.
+    // real apply handler (the samples/demo host passes None). `debugOptIn` is
+    // this project's own `FUARAN_DEBUG_GLOBAL` symbol (Phase 1532); the renderer
+    // requires the same symbol in ITS compilation — for a Fable build, an
+    // explicit `--define FUARAN_DEBUG_GLOBAL` — or `enableDebugGlobal ()`.
+    // With neither, nothing is registered and no relay listener is installed.
     //
     // Phase 739 — the same call also PUBLISHES the relay surface for the peer
     // installed at boot, so a browser extension speaking `relay@1.0` reads (and,
@@ -137,8 +154,8 @@ let view (model: Model) (dispatch: Msg -> unit) =
     // nothing, and never calling `Relay.install` at all means no listener exists
     // to probe — the contract's preferred production posture.
     Relay.registerAndPublish
-        true
-        true
+        debugOptIn
+        debugOptIn
         model.Tree
         sources
         runtime

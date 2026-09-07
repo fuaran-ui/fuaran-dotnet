@@ -95,11 +95,14 @@ on the fallback path).
   the correct typed value and re-rendered. Malformed JSON → `decodeFailed`
   envelope; unknown target → `rejected` envelope; both left the tree unchanged.
 
-  > **Reproduction caveat:** build with `dotnet fable … --define DEBUG`. The
-  > renderer's `DebugGlobal.compiledInDebug` is `#if DEBUG`, and Fable does
-  > **not** inherit the entry project's `DEBUG` symbol into referenced projects,
-  > so without the explicit `--define` the `window.__fuaran` registration is
-  > dead-code-eliminated even from a debug-intent host.
+  > **Reproduction caveat:** build with
+  > `dotnet fable … --define DEBUG --define FUARAN_DEBUG_GLOBAL`. Fable does
+  > **not** inherit the entry project's symbols into referenced projects, so
+  > without the explicit `--define` the renderer compiles with the debug global
+  > gated off and `window.__fuaran` is never registered. *(At the time of Phase
+  > 191 the gate was `DEBUG` alone; Phase 1532 replaced it with the explicit
+  > `FUARAN_DEBUG_GLOBAL` symbol, because `DEBUG` is set by every ordinary
+  > development build and so gated nothing.)*
 
 ## Follow-up (fast-follow, tracked in `roadmap/TIDY-UP.md`)
 

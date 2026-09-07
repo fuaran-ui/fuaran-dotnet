@@ -6,7 +6,13 @@
     <!-- Fable client convention: gate every Fable-only file via FABLE_COMPILER
          + DEBUG so Fable transpiles them but `dotnet build` doesn't try to
          compile Browser.Types-flavoured code on .NET-side. -->
-    <DefineConstants Condition="'$(Configuration)' != 'Release'">FABLE_COMPILER;DEBUG</DefineConstants>
+    <!-- FUARAN_DEBUG_GLOBAL is a SEPARATE, explicit opt-in (Phase 1532): it is
+         what makes this host pass `debug:true` at `register`. The renderer needs
+         the same symbol in ITS OWN compilation — for a Fable build, an explicit
+         define of that symbol on the fable command line — because symbols do not cross project
+         boundaries. A Release build defines neither, so `window.__fuaran` is
+         undefined. -->
+    <DefineConstants Condition="'$(Configuration)' != 'Release'">FABLE_COMPILER;DEBUG;FUARAN_DEBUG_GLOBAL</DefineConstants>
     <DefineConstants Condition="'$(Configuration)' == 'Release'">FABLE_COMPILER</DefineConstants>
     <!-- Same pre-F#-10-nullness escape the renderer uses: Feliz / Fable.Elmish
          pre-date the F# 10 nullness checker; this project consumes them, so

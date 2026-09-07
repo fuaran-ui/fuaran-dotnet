@@ -15,11 +15,18 @@ decoder yields `TreeOp<obj>`, so a `Node<'Msg>` model would type-clash), and the
 ## Run it
 
 ```powershell
-# 1. Transpile to JS. NOTE the --define DEBUG: window.__fuaran only registers
-#    when the renderer's DebugGlobal was compiled under DEBUG (its
-#    `compiledInDebug` is `#if DEBUG`). Fable does NOT inherit the entry
-#    project's DEBUG symbol into referenced projects, so pass it explicitly.
-dotnet fable ApplyDemo.fsproj -o output --define DEBUG
+# 1. Transpile to JS. NOTE the --define FUARAN_DEBUG_GLOBAL: window.__fuaran
+#    only registers when the renderer's DebugGlobal was compiled with that
+#    EXPLICIT symbol (it is deliberately not DEBUG, which every ordinary
+#    development build sets — see the gating note in DebugGlobal.fs). Fable does
+#    NOT inherit the entry project's symbols into referenced projects, so pass
+#    it on the command line.
+#
+#    A PRODUCTION bundle passes neither this symbol nor -c Release's opposite:
+#    it simply omits --define FUARAN_DEBUG_GLOBAL, and window.__fuaran is
+#    undefined however this host's `debug` argument is set. Prefer
+#    `-c Release` as well, which also drops the Fable-only development arms.
+dotnet fable ApplyDemo.fsproj -o output --define DEBUG --define FUARAN_DEBUG_GLOBAL
 
 # 2. Serve (port 24020 per the workspace port-allocation table).
 npm install
