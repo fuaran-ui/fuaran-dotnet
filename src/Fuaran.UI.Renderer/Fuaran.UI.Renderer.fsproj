@@ -46,6 +46,9 @@
     <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
   </ItemGroup>
   <ItemGroup>
+<!-- The last-resort diagnostic line every deliberately-isolated failure in
+         this tier reports through. Compiled first: it depends on nothing. -->
+    <Compile Include="Diagnostics.fs" />
     <Compile Include="FragmentApply.fs" />
     <Compile Include="Runtime.fs" />
     <Compile Include="StateStore.fs" />

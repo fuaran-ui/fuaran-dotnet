@@ -228,7 +228,13 @@ let enumerate (moduleId: string option) : AffordanceEnumeration =
         |> List.collect (fun (_, provider) ->
             try
                 (provider moduleId).Modules
-            with _ ->
+            with ex ->
+                // Skipped, and the remaining providers still answer. Reported
+                // because a provider that threw contributes nothing, which is
+                // the same observation as a module that declares nothing — and
+                // the isolation is exactly what stops an agent telling them
+                // apart from the outside.
+                Diagnostics.warn "an affordance provider threw and was skipped" (box ex)
                 [])
 
     // First declaration of an id wins; `List.fold` keeps the order stable

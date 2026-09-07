@@ -6158,16 +6158,104 @@ bound `TextSource` payloads of BOTH `WriteToClipboard` and `Navigate`, which it 
 
 ---
 
+## Recorded change — 0.77.0, renderer correctness: uploads, keys, refusals and two host-parity fixes (fuaran#1531)
+
+**Mostly additive; ONE source-breaking change, riding the standing 0.77.0 draft.**
+`v0.76.0` remains the newest tag. The draft already carries an `FS0764` record
+widening and `Derivation<'Msg>.StructuralKey`'s narrowing — both of which say the
+same thing to a consumer, *adopting this slot costs source edits* — so under the
+draft-slot rule the change below RIDES rather than advancing. It is the same class,
+not a higher one.
+
+### The breaking one
+
+**`LocalBindings.dispatchFormCommit : unit -> unit` becomes
+`Browser.Types.Element -> unit`.** The form-submit broadcast was a window-level
+dispatch that every `OnSubmit`-flushing `Binding.Local` input on the page answered,
+so a submit anywhere drained a search box in a header and any other form's fields —
+dispatching their `OnCommit` actions and writing their values into the model on a
+gesture the reader made somewhere else. The event is now dispatched ON the
+submitting form and bubbles; each listener asks whether that form contains its own
+input. **Migration:** pass the submit event's `currentTarget` (the renderer's own
+call site is `LocalBindings.dispatchFormCommit (unbox<Browser.Types.Element> e.currentTarget)`).
+It takes the form ELEMENT rather than a node id because a form's NodeId is its
+wrapper's, so there is nothing addressable to match on, and `contains` is a question
+the DOM already answers for every nesting an author can build.
+
+### Behaviour changes on existing surfaces
+
+- **`GridExport.escapeField` neutralises spreadsheet formulas.** A field beginning
+  `=`, `+`, `-`, `@`, TAB or CR gains OWASP's leading apostrophe and is quoted.
+  **Negative numbers are exempt** — `isPlainNumber` — because `-` leads every
+  negative number and prefixing them would turn a numeric column into text no
+  reader can sum. An ordinary export is byte-identical to before.
+- **`Formatting.format` never throws at a `Format.Date` slot.** `NaN`, the
+  infinities and any value outside `DateTimeOffset`'s span render as
+  `Formatting.unrepresentableInstant` on BOTH pipelines, where .NET used to throw
+  out of an SSR pass and `Intl` used to raise in the browser. The bounds are the
+  narrower, .NET pair on purpose: taking JavaScript's wider range would leave a
+  value one host draws and the other refuses.
+- **`Binding.projectSelectionField` is `inline`, and the Fable leg now coerces.**
+  `unbox` is a no-op under Fable, so a text cell in a `Binding<float>` used to
+  render `NaN` where .NET refused. It now coerces as `Convert.ChangeType` does, and
+  a string that is not a number throws rather than becoming `NaN`. `'T = obj` —
+  every decoded path — coerces nothing, so the wire path is unchanged. `inline` is
+  what makes the target type available: Fable erases a non-inline function's
+  generic parameter.
+- **`Email.renderDocument` takes `lang` / `dir` from the sources**, deriving the
+  direction with the shell's own `Formatting.textDirection`, where it hardcoded
+  `lang="en"`. An absent tag now declares neither attribute.
+- **`FastPath.bank` RAISES on a duplicate pattern id**, where it silently skipped —
+  and skipped inconsistently, so the registry kept one pattern's signature and the
+  pattern map kept another's builder. **`FastPath.instantiate` RAISES on a value its
+  hole's declared `ValueSpace` does not admit**, where `IntRange(1, 12)` accepted
+  `"purple"`. An unbound hole is still not a violation.
+- **The renderer's six silent `with _ -> ()` isolations now report** through
+  `Diagnostics.warn`. The isolation is unchanged; only the silence is.
+- **Both browser observers re-register a same-id element that has changed**, and
+  clear that node's change-detection caches with it.
+- **`StateStore.useStateKeys` / `FilterStore.useFilterKeys` /
+  `QueryStore.useQueryKeys` subscribe once per key set** rather than
+  re-subscribing on every notification. Signatures unchanged.
+
+### Additive surfaces
+
+`Render.reconciliationKey`; `UploadStream.streamSelections`;
+`Fuaran.UI.Renderer.Diagnostics`; `LocalBindings.errorSlotId` /
+`invalidFieldAttributes`; `GridExport.formulaLeadIns` / `isPlainNumber` /
+`neutraliseFormula`; `Formatting.minInstantSeconds` / `maxInstantSeconds` /
+`unrepresentableInstant` / `isRepresentableInstant`; `FastPath.tryBank` /
+`DuplicateId` / `HoleViolation` / `valueViolations`; and
+`ElementRegistration` (type + module) in **both** `Fuaran.UI.LayoutObserver` and
+`Fuaran.UI.StyleObserver` — each package carries its own copy rather than a
+dependency being minted between two deliberately independent packages.
+
+### What did NOT change
+
+No wire byte moves. No `NodeKind`, `Binding`, `Action` or spec-record case is added
+or removed, no corpus fixture changes, and no schema moves. The reject vectors and
+the `PreEmitValidate` rule this phase's M-B1 task proposed are NOT here: a
+count-like bound at `Skeleton.rows` contradicts the shipped §7.1 conformance test
+that every 32-bit integer decodes at an integer slot, so it is a specification
+amendment rather than a host-side refusal. See the phase's outcome.
+
+---
+
 ## Recorded change — 0.78.0, `Node.Visible` and the predicate `SwitchCase` (fuaran#1535)
 
-**One record widening and one field narrowed to `option`, ADVANCING the draft to 0.78.0.** This entry
-was first authored against a then-standing *untagged* 0.77.0 draft, on the draft-slot rule that a
-change of no higher class than the draft already carries RIDES it rather than moving the number.
-**`v0.77.0` was tagged while this phase was in flight**, which makes 0.77.0 a released slot rather
-than a draft — and a released slot is some consumer's contract, so a change that costs them source
-edits cannot be repacked into it. Both classes here are `FS0764`-shaped (a full-literal constructor
-stops compiling), which the [Semver](#semver) section prices as a pre-1.0 MINOR, so the draft advances
-to **0.78.0**. `v0.77.0` is the newest tag.
+**One record widening and one field narrowed to `option`, riding the standing 0.78.0 draft — this
+change did not move the number, and the distinction matters.** The entry was authored against a
+then-standing *untagged* 0.77.0 draft, on the draft-slot rule that a change of no higher class than
+the draft already carries RIDES it. **`v0.77.0` was tagged while this phase was in flight**, and a
+separate commit (`6f290c0`, "advance the draft to 0.78.0 — v0.77.0 is tagged") moved the draft for
+that reason rather than for this one: a released slot is some consumer's contract, so a change
+costing them source edits cannot be repacked into it. This phase then rides 0.78.0 rather than
+bumping again, which is the "ride their bump with a note" half of the same rule — two phases moving
+the counter for one release would tell a consumer there were two prices to pay.
+
+Both classes here are pre-1.0 MINOR by the [Semver](#semver) section's own definitions: `FS0764` for
+a full-literal constructor, and a narrowed field type. 0.78.0 already carries changes of that class,
+so nothing here is a higher class than the slot it rides. `v0.77.0` is the newest tag.
 
 **What changed on the types.**
 
@@ -6182,8 +6270,9 @@ to **0.78.0**. `v0.77.0` is the newest tag.
 
 **The wire is ADDITIVE, and that is checkable rather than asserted.** `visible` and `when` are
 omitted when absent, and the corpus diff for this change contains only new files plus
-`manifest.json` / `schema.json` / `idl.json` / `WIRE_FORMAT.md` — every pre-1535 fixture byte is
-unchanged, `switch-1.json` / `switch-carousel-1.json` / `switch-on-selection.json` included.
+`manifest.json` / `schema.json` / `idl.json` / `WIRE_FORMAT.md` / `validator/defect-vocabulary.json`
+— every pre-1535 fixture byte is unchanged, `switch-1.json` / `switch-carousel-1.json` /
+`switch-on-selection.json` included.
 
 **Two RENDERING changes that are wire-neutral, and are the point of the phase.** `Switch.on` and
 `Accessibility.hidden` now resolve through the SCALAR path (`resolveScalarText` /

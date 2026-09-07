@@ -102,10 +102,12 @@ let createWith (schedule: (unit -> unit) -> unit) : ChangeHub =
             for (_, listener) in List.ofSeq listeners do
                 try
                     listener change
-                with _ ->
+                with ex ->
                     // A failing subscriber never breaks the notification of the
-                    // others — the hub is a signal, not a dispatch chain.
-                    ()
+                    // others — the hub is a signal, not a dispatch chain. It is
+                    // reported because a subscriber that has stopped hearing
+                    // looks exactly like a tree that has stopped changing.
+                    Diagnostics.warn "a tree-change subscriber threw" (box ex)
 
     { Revision = fun () -> current
       Subscribe =

@@ -54,6 +54,73 @@ open Fuaran.UI.Types
 [<Import("createElement", "react")>]
 let private reactCreateElement (componentFn: obj) (props: obj) : ReactElement = jsNative
 
+// ─── Form-scope test for the submit broadcast ──────────────────────────
+//
+// `fuaran-form-commit` is dispatched ON THE SUBMITTING FORM and bubbles, so the
+// window-level listener every Local input already holds still hears it — and the
+// event's own `target` is the form that fired it. An input is in scope exactly
+// when that form CONTAINS the input's element. `contains` is the DOM's own
+// answer, so a nested fieldset, a wrapper or a re-parented control is handled by
+// the browser rather than by a shape assumed here.
+//
+// Written as an `Emit` rather than through `Browser.Dom` because it must answer
+// FALSE for three different absences — no such element, no target at all, and a
+// target that is not an element (a window-level dispatch) — and a listener that
+// threw on any of them would take the whole submit down.
+[<Emit("(function(ev, id){ var el = document.getElementById(id); var t = ev && ev.target; return !!(el && t && typeof t.contains === 'function' && t.contains(el)); })($0, $1)")>]
+let private eventTargetContains (ev: obj) (elementId: string) : bool = jsNative
+
+// ─── Surfacing a parse refusal ─────────────────────────────────────
+//
+// A `Binding.Local` parse failure used to set a piece of component state that
+// nothing rendered: no class, no attribute, no message. The reader typed
+// something the field could not accept, the value was silently not committed,
+// and the only observable difference was that the model did not change.
+//
+// The markers are the ones the form gate ALREADY uses — `data-fuaran-field-error`
+// carrying the message and `aria-invalid="true"` (`FieldRules.markUnmet`, which
+// takes them from the server-driven tier's field-error patches). Reusing them is
+// the point: a host's existing CSS hook and a screen reader treat a client-side
+// parse refusal and a validation failure identically, and NO new class enters
+// the vocabulary that is parity-locked with the other renderers.
+//
+// The message itself is rendered in a `.fuaran-form-help` element — the field's
+// own help slot, styled by the reference sheet already — with `role="alert"` so
+// it is announced when it appears, and `aria-describedby` tying it to the input
+// so a reader arriving at the field later is told why it is invalid.
+
+/// The id of the element carrying a field's refusal message.
+let errorSlotId (fieldId: string) : string = fieldId + "-error"
+
+/// The attribute PAIRS a refusal puts on the input, as data — the same split
+/// `Accessibility.accessibilityAttributes` / `Render.toProps` already make, and
+/// for the same reason: the pairs are assertable off a browser where an
+/// `IReactProperty` is not, so what the DOM ends up carrying is a fact a test
+/// can read rather than one only a rendered page can.
+///
+/// Empty when nothing is wrong, so a valid field emits byte-identical DOM to
+/// before this change.
+let invalidFieldAttributes (fieldId: string) (parseError: string option) : (string * string) list =
+    match parseError with
+    | None -> []
+    | Some message ->
+        [ "aria-invalid", "true"
+          "data-fuaran-field-error", message
+          "aria-describedby", errorSlotId fieldId ]
+
+/// The same pairs as Feliz props.
+let private invalidInputProps (fieldId: string) (parseError: string option) : IReactProperty list =
+    invalidFieldAttributes fieldId parseError
+    |> List.map (fun (name, value) -> prop.custom (name, value))
+
+/// The message element itself, beside the input.
+let private errorSlot (fieldId: string) (message: string) : ReactElement =
+    Html.div
+        [ prop.id (errorSlotId fieldId)
+          prop.className "fuaran-form-help"
+          prop.role "alert"
+          prop.text message ]
+
 // ─── Resolved-value sniff for the InitialFrom side ──────────────────────────
 //
 // The component takes the *already resolved* `InitialFrom` value as a prop
@@ -78,6 +145,31 @@ let private renderLocalText (props: LocalTextProps) : ReactElement =
     let buffer, setBuffer = React.useState (props.formatter props.externalValue)
     let parseError, setParseError = React.useState (None: string option)
 
+    // Has the READER touched this input since it was last seeded or committed?
+    //
+    // A ref rather than state, deliberately: the answer must not itself cause a
+    // render, and it must be readable from inside an effect scheduled before it
+    // changed. `OnDebounce` is the arm that needs it — that effect runs on mount
+    // and on every external re-seed, so without this flag a debounced input
+    // commits its own opening value the moment it appears and commits again
+    // every time an unrelated model update re-seeds it. Each of those is a
+    // dispatch, an op-stream entry and possibly a network call for a value
+    // nobody typed.
+    let dirty = React.useRef false
+
+    /// Parse the buffer and either commit it or surface the refusal. One
+    /// definition because five call sites need it to behave identically — the
+    /// four flush triggers and the blur handler — and a parse failure must set
+    /// the error state on every one of them rather than on whichever arms were
+    /// remembered.
+    let commitBuffer () =
+        match props.parser buffer with
+        | Ok parsed ->
+            setParseError None
+            dirty.current <- false
+            props.commit parsed
+        | Error msg -> setParseError (Some msg)
+
     // Re-sync invariant — runs when externalValue changes; re-seeds the
     // buffer only when the buffer's `Parse` result does not already equal
     // the new external value. Mid-edit typing survives unrelated re-renders.
@@ -89,6 +181,11 @@ let private renderLocalText (props: LocalTextProps) : ReactElement =
                 | Error _ -> true
 
             if shouldResync then
+                // An external re-seed is not the reader's edit, so it clears
+                // both the dirty flag and any refusal the discarded buffer was
+                // carrying — that message described text no longer in the field.
+                dirty.current <- false
+                setParseError None
                 setBuffer (props.formatter props.externalValue)),
         [| box props.externalValue |]
     )
@@ -102,13 +199,7 @@ let private renderLocalText (props: LocalTextProps) : ReactElement =
             | LocalFlushTrigger.OnCommitAction ->
                 let eventName = "fuaran-commit-local-" + props.nodeId
 
-                let handler =
-                    System.Func<Browser.Types.Event, unit>(fun _ ->
-                        match props.parser buffer with
-                        | Ok parsed ->
-                            setParseError None
-                            props.commit parsed
-                        | Error msg -> setParseError (Some msg))
+                let handler = System.Func<Browser.Types.Event, unit>(fun _ -> commitBuffer ())
 
                 Browser.Dom.window.addEventListener (eventName, unbox handler)
 
@@ -117,13 +208,15 @@ let private renderLocalText (props: LocalTextProps) : ReactElement =
 
                 cleanup
             | LocalFlushTrigger.OnSubmit ->
+                // Scoped to the SUBMITTING form. The broadcast used to drain
+                // EVERY `OnSubmit` Local input on the page, so a search box in a
+                // header or another form's fields committed — dispatching an
+                // action and writing the model — on a gesture the reader made
+                // somewhere else entirely.
                 let handler =
-                    System.Func<Browser.Types.Event, unit>(fun _ ->
-                        match props.parser buffer with
-                        | Ok parsed ->
-                            setParseError None
-                            props.commit parsed
-                        | Error msg -> setParseError (Some msg))
+                    System.Func<Browser.Types.Event, unit>(fun ev ->
+                        if eventTargetContains (box ev) props.fieldId then
+                            commitBuffer ())
 
                 Browser.Dom.window.addEventListener ("fuaran-form-commit", unbox handler)
 
@@ -132,21 +225,17 @@ let private renderLocalText (props: LocalTextProps) : ReactElement =
 
                 cleanup
             | LocalFlushTrigger.OnDebounce ms ->
-                let timeoutId =
-                    Browser.Dom.window.setTimeout (
-                        (fun () ->
-                            match props.parser buffer with
-                            | Ok parsed ->
-                                setParseError None
-                                props.commit parsed
-                            | Error msg -> setParseError (Some msg)),
-                        ms
-                    )
+                if not dirty.current then
+                    // Mount, or an external re-seed. Neither is an edit, so
+                    // there is nothing to debounce and nothing to commit.
+                    ignore
+                else
+                    let timeoutId = Browser.Dom.window.setTimeout ((fun () -> commitBuffer ()), ms)
 
-                let cleanup () =
-                    Browser.Dom.window.clearTimeout timeoutId
+                    let cleanup () =
+                        Browser.Dom.window.clearTimeout timeoutId
 
-                cleanup
+                    cleanup
             | LocalFlushTrigger.OnBlur ->
                 // Wired inline on the input's `prop.onBlur` — nothing to
                 // listen for at the window level.
@@ -155,35 +244,26 @@ let private renderLocalText (props: LocalTextProps) : ReactElement =
     )
 
     let inputElement =
-        Html.input
+        Html.input (
             [ prop.className props.className
               prop.type'.text
               prop.id props.fieldId
               prop.required props.required
               prop.value buffer
               prop.onChange (fun (v: string) ->
+                  dirty.current <- true
                   setBuffer v
                   setParseError None)
               prop.onBlur (fun _ ->
                   match props.flushOn with
-                  | LocalFlushTrigger.OnBlur ->
-                      match props.parser buffer with
-                      | Ok parsed ->
-                          setParseError None
-                          props.commit parsed
-                      | Error msg -> setParseError (Some msg)
+                  | LocalFlushTrigger.OnBlur -> commitBuffer ()
                   | _ -> ()) ]
+            @ invalidInputProps props.fieldId parseError
+        )
 
     match parseError with
     | None -> inputElement
-    | Some _ ->
-        // Parse-error path. The renderer's existing field-help slot
-        // surfaces the message; here we only mark the input with an
-        // error class so CSS can highlight it. The Help slot itself is
-        // rendered by `renderFormField` upstream — the parseError
-        // message stays inside this component and is reflected via the
-        // class hook.
-        React.Fragment [ inputElement ]
+    | Some message -> React.Fragment [ inputElement; errorSlot props.fieldId message ]
 
 // ─── Number-side Local input ────────────────────────────────────────────────
 
@@ -203,6 +283,18 @@ let private renderLocalNumber (props: LocalNumberProps) : ReactElement =
     let buffer, setBuffer = React.useState (props.formatter props.externalValue)
     let parseError, setParseError = React.useState (None: string option)
 
+    // See `renderLocalText` for why this is a ref, and for what `OnDebounce`
+    // does without it.
+    let dirty = React.useRef false
+
+    let commitBuffer () =
+        match props.parser buffer with
+        | Ok parsed ->
+            setParseError None
+            dirty.current <- false
+            props.commit parsed
+        | Error msg -> setParseError (Some msg)
+
     React.useEffect (
         (fun () ->
             let shouldResync =
@@ -211,6 +303,8 @@ let private renderLocalNumber (props: LocalNumberProps) : ReactElement =
                 | Error _ -> true
 
             if shouldResync then
+                dirty.current <- false
+                setParseError None
                 setBuffer (props.formatter props.externalValue)),
         [| box props.externalValue |]
     )
@@ -221,13 +315,7 @@ let private renderLocalNumber (props: LocalNumberProps) : ReactElement =
             | LocalFlushTrigger.OnCommitAction ->
                 let eventName = "fuaran-commit-local-" + props.nodeId
 
-                let handler =
-                    System.Func<Browser.Types.Event, unit>(fun _ ->
-                        match props.parser buffer with
-                        | Ok parsed ->
-                            setParseError None
-                            props.commit parsed
-                        | Error msg -> setParseError (Some msg))
+                let handler = System.Func<Browser.Types.Event, unit>(fun _ -> commitBuffer ())
 
                 Browser.Dom.window.addEventListener (eventName, unbox handler)
 
@@ -236,13 +324,15 @@ let private renderLocalNumber (props: LocalNumberProps) : ReactElement =
 
                 cleanup
             | LocalFlushTrigger.OnSubmit ->
+                // Scoped to the SUBMITTING form. The broadcast used to drain
+                // EVERY `OnSubmit` Local input on the page, so a search box in a
+                // header or another form's fields committed — dispatching an
+                // action and writing the model — on a gesture the reader made
+                // somewhere else entirely.
                 let handler =
-                    System.Func<Browser.Types.Event, unit>(fun _ ->
-                        match props.parser buffer with
-                        | Ok parsed ->
-                            setParseError None
-                            props.commit parsed
-                        | Error msg -> setParseError (Some msg))
+                    System.Func<Browser.Types.Event, unit>(fun ev ->
+                        if eventTargetContains (box ev) props.fieldId then
+                            commitBuffer ())
 
                 Browser.Dom.window.addEventListener ("fuaran-form-commit", unbox handler)
 
@@ -251,21 +341,17 @@ let private renderLocalNumber (props: LocalNumberProps) : ReactElement =
 
                 cleanup
             | LocalFlushTrigger.OnDebounce ms ->
-                let timeoutId =
-                    Browser.Dom.window.setTimeout (
-                        (fun () ->
-                            match props.parser buffer with
-                            | Ok parsed ->
-                                setParseError None
-                                props.commit parsed
-                            | Error msg -> setParseError (Some msg)),
-                        ms
-                    )
+                if not dirty.current then
+                    // Mount, or an external re-seed. Neither is an edit, so
+                    // there is nothing to debounce and nothing to commit.
+                    ignore
+                else
+                    let timeoutId = Browser.Dom.window.setTimeout ((fun () -> commitBuffer ()), ms)
 
-                let cleanup () =
-                    Browser.Dom.window.clearTimeout timeoutId
+                    let cleanup () =
+                        Browser.Dom.window.clearTimeout timeoutId
 
-                cleanup
+                    cleanup
             | LocalFlushTrigger.OnBlur -> ignore),
         [| box buffer; box props.flushOn |]
     )
@@ -291,27 +377,29 @@ let private renderLocalNumber (props: LocalNumberProps) : ReactElement =
     // Numeric-formatted inputs render as `type=text` (not `type=number`)
     // so the consumer's `formatter` thousands-separator survives — a
     // `type=number` input rejects non-numeric characters like commas.
-    Html.input (
-        [ prop.className props.className
-          prop.type'.text
-          prop.inputMode.numeric
-          prop.id props.fieldId
-          prop.required props.required
-          prop.value buffer
-          prop.onChange (fun (v: string) ->
-              setBuffer v
-              setParseError None)
-          prop.onBlur (fun _ ->
-              match props.flushOn with
-              | LocalFlushTrigger.OnBlur ->
-                  match props.parser buffer with
-                  | Ok parsed ->
-                      setParseError None
-                      props.commit parsed
-                  | Error msg -> setParseError (Some msg)
-              | _ -> ()) ]
-        @ constraintAttrs
-    )
+    let inputElement =
+        Html.input (
+            [ prop.className props.className
+              prop.type'.text
+              prop.inputMode.numeric
+              prop.id props.fieldId
+              prop.required props.required
+              prop.value buffer
+              prop.onChange (fun (v: string) ->
+                  dirty.current <- true
+                  setBuffer v
+                  setParseError None)
+              prop.onBlur (fun _ ->
+                  match props.flushOn with
+                  | LocalFlushTrigger.OnBlur -> commitBuffer ()
+                  | _ -> ()) ]
+            @ constraintAttrs
+            @ invalidInputProps props.fieldId parseError
+        )
+
+    match parseError with
+    | None -> inputElement
+    | Some message -> React.Fragment [ inputElement; errorSlot props.fieldId message ]
 
 // ─── Public surface — Render.fs invokes these ──────────────────────────────
 
@@ -323,15 +411,27 @@ let localNumberInput (props: LocalNumberProps) : ReactElement =
 
 // ─── Form-submit broadcast ──────────────────────────────────────────────────
 //
-// Render.fs's form `onSubmit` calls this after running the form's typed
-// `OnSubmit` action. Every Local-bound input whose `FlushOn = OnSubmit`
-// hears the event and drains its buffer through `OnCommit`. The event
-// name is global rather than per-form because forms are not addressable
-// by NodeId at the `OnSubmit` callsite (the form's NodeId IS the wrapper);
-// scoping per-form is a future refinement if intra-page Local-input
-// pollution becomes a real concern.
+// Render.fs's form `onSubmit` calls this before running the form's typed
+// `OnSubmit` action, so every Local-bound input whose `FlushOn = OnSubmit`
+// drains its buffer through `OnCommit` first — the order matters, because the
+// typed handler may dispatch a network call that reads the just-committed
+// values.
+//
+// SCOPED TO THE SUBMITTING FORM. It used to be a window-level dispatch that
+// every `OnSubmit` input on the page answered, so a submit anywhere drained a
+// search box in the header and any other form's fields — dispatching their
+// `OnCommit` actions and writing their values into the model on a gesture the
+// reader made somewhere else. The event is now dispatched ON the form and
+// BUBBLES, so the window-level listeners still hear it and each one asks
+// whether the form that fired it contains its own input.
+//
+// The form ELEMENT rather than a node id: a form's NodeId is its wrapper's, so
+// there is nothing addressable to match on, and `contains` is a question the
+// DOM already answers correctly for every nesting an author can build.
 
-let dispatchFormCommit () : unit =
+let dispatchFormCommit (formElement: Browser.Types.Element) : unit =
     let evt = Browser.Dom.window.document.createEvent "CustomEvent"
-    evt.initEvent ("fuaran-form-commit", false, true)
-    Browser.Dom.window.dispatchEvent (evt) |> ignore
+    // bubbles = true: the listeners sit on `window` and this is dispatched on
+    // the form, so without bubbling nothing would hear it at all.
+    evt.initEvent ("fuaran-form-commit", true, true)
+    formElement.dispatchEvent (evt) |> ignore

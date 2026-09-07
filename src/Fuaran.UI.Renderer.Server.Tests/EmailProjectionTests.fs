@@ -578,3 +578,79 @@ let emailProjectionTests =
               Expect.stringEnds doc "</html>" "the document must be closed"
               Expect.isEmpty (Email.lint doc) "the document wrapper introduced an email-hostile construct"
           } ]
+
+// ============================================================================
+//  The document's declared language.
+//
+//  `renderDocument` hardcoded `lang="en"` — an assertion about a document
+//  nobody had made a statement about, and the assertion Phase 1114 removed
+//  from the SSR shell for exactly this reason. A mail client reads `lang` for
+//  hyphenation, spell-checking and pronunciation and `dir` for the entire
+//  layout, so an Arabic digest declared English lays out left-to-right in the
+//  reader's inbox.
+//
+//  The rule is the shell's, unchanged: the tag comes from the sources, the
+//  direction is DERIVED from the tag, and an empty tag declares nothing.
+// ============================================================================
+
+[<Tests>]
+let documentLanguageTests =
+    let withLocale (tag: string) =
+        { BindingResolver.empty with
+            Locale = tag }
+
+    let documentFor (tag: string) =
+        Email.renderDocument liveOpts "Monday briefing" (withLocale tag) briefing
+
+    testList
+        "the email document declares the locale it was given"
+        [ test "a right-to-left tag carries both the language and the direction" {
+              let doc = documentFor "ar-EG"
+
+              Expect.stringContains
+                  doc
+                  "<html lang=\"ar-EG\" dir=\"rtl\">"
+                  "the tag verbatim, and the direction it implies"
+          }
+
+          test "a left-to-right tag carries the same pair the other way" {
+              Expect.stringContains (documentFor "fr-CA") "<html lang=\"fr-CA\" dir=\"ltr\">" "the tag verbatim"
+          }
+
+          test "the direction is DERIVED, never a second input that could disagree" {
+              // One tag, one answer. `textDirection` is the shell's own
+              // function, so a document and a page rendered for the same reader
+              // cannot lay out in opposite directions.
+              for tag in [ "he"; "ar"; "fa-IR"; "ur-PK"; "az-Arab-IR" ] do
+                  Expect.stringContains
+                      (documentFor tag)
+                      ("dir=\"" + Formatting.textDirection tag + "\"")
+                      (sprintf "%s takes the direction Formatting derives" tag)
+          }
+
+          test "an ABSENT tag declares NOTHING — no lang, no dir, no default" {
+              // The defect being removed is an assertion nobody made. Replacing
+              // one wrong default with another would leave it in place.
+              let doc =
+                  Email.renderDocument liveOpts "Monday briefing" BindingResolver.empty briefing
+
+              Expect.stringContains doc "<html>" "a bare html element"
+              Expect.isFalse (doc.Contains "lang=") "no language is asserted"
+              Expect.isFalse (doc.Contains " dir=") "and no direction"
+          }
+
+          test "the tag is ESCAPED — it reaches an attribute value" {
+              // `Locale` is host-supplied and, on the ambient path, can come
+              // from a request header.
+              let doc = documentFor "en\"><script>alert(1)</script>"
+
+              Expect.isFalse (doc.Contains "<script>alert(1)") "no unescaped markup reaches the document"
+          }
+
+          test "the document still lints clean and is still a document" {
+              let doc = documentFor "ar-EG"
+
+              Expect.stringStarts doc "<!DOCTYPE html>" "a sendable email is a document"
+              Expect.stringEnds doc "</html>" "and it is closed"
+              Expect.isEmpty (Email.lint doc) "the locale attributes introduced no email-hostile construct"
+          } ]

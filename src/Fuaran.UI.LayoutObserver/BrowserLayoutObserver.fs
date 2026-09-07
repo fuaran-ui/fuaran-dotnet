@@ -138,6 +138,27 @@ module private Internals =
     [<Emit("document.body")>]
     let documentBody () : obj = jsNative
 
+    // ─── Diagnostics ───────────────────────────────────────────
+
+    [<Emit("console.error($0, $1)")>]
+    let private consoleError (message: string) (detail: obj) : unit = jsNative
+
+    /// A subscriber threw. The observer isolates it — one broken subscriber must
+    /// not stop the others, or the observer itself — but the failure is now SAID
+    /// rather than swallowed: a subscriber that has silently stopped receiving
+    /// observations looks exactly like a page whose layout never changes, and
+    /// nothing else in the system will ever mention it.
+    ///
+    /// `console.error` rather than a diagnostic seam, deliberately: this package
+    /// takes FSharp.Core and the browser and nothing else, and a Warn channel
+    /// plumbed through the options record would be a new host obligation on every
+    /// consumer for a case none of them configure. The node id goes in the message
+    /// so the report names WHICH element's subscriber failed, and the exception
+    /// rides as the second argument so the browser renders its own stack rather
+    /// than a stringified copy.
+    let reportSubscriberFailure (nodeId: string) (ex: exn) : unit =
+        consoleError ("[fuaran] observer subscriber threw for node '" + nodeId + "'") (box ex)
+
     // ─── Element → LayoutInput conversion ───────────────────────
 
     let parseStylePx (style: obj) (prop: string) : float option =
@@ -269,11 +290,16 @@ type BrowserLayoutObserver(options: LayoutObserverOptions) =
         for subscriber in subscribers do
             try
                 subscriber (nodeId, observation)
-            with _ ->
-                // A subscriber throwing must not poison sibling
-                // subscribers. Browser console already surfaces the
-                // exception trace; the observer stays running.
-                ()
+            with ex ->
+                // A subscriber throwing must not poison sibling subscribers,
+                // so the isolation stays. What used to be here beside it was
+                // the claim that "the browser console already surfaces the
+                // exception trace" — which this very `with` clause is what
+                // makes untrue: a caught exception reaches no console at all.
+                // A subscriber that has silently stopped receiving layout is
+                // indistinguishable from a layout that never changes, so the
+                // failure is now REPORTED, with the node it was carrying.
+                reportSubscriberFailure nodeId ex
 
     let flush () =
         rafHandle <- None
@@ -346,9 +372,34 @@ type BrowserLayoutObserver(options: LayoutObserverOptions) =
                 | None -> ())
 
     let registerElement (nodeId: string) (element: obj) =
-        if not (registry.ContainsKey(nodeId)) then
+        let existing =
+            match registry.TryGetValue(nodeId) with
+            | true, held -> Some held
+            | false, _ -> None
+
+        match ElementRegistration.classify existing element with
+        | ElementRegistration.Unchanged ->
+            // The rescan re-offering an element already registered under this
+            // id, which is the overwhelmingly common case on any mutation.
+            ()
+        | ElementRegistration.Fresh ->
             registry[nodeId] <- element
             resizeObserverObserve resizeObserver element
+            scheduleFlush nodeId
+        | ElementRegistration.Remounted ->
+            // A node came back under the same id as a DIFFERENT element. The
+            // old one is detached: it will never resize again, and reading it
+            // reports 0x0 forever. Swap it out, and drop the change-detection
+            // state with it — those flags and that timestamp describe a node
+            // that no longer exists, and keeping them would let the change
+            // filter suppress the FIRST emission from the element that
+            // replaced it, which is the one a reader most needs.
+            existing |> Option.iter (fun old -> resizeObserverUnobserve resizeObserver old)
+            registry[nodeId] <- element
+            resizeObserverObserve resizeObserver element
+            lastFlagSet.Remove(nodeId) |> ignore
+            lastEmitAt.Remove(nodeId) |> ignore
+            lastObservation.Remove(nodeId) |> ignore
             scheduleFlush nodeId
 
     let unregisterElement (nodeId: string) =

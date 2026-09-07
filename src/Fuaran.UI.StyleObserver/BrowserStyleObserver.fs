@@ -93,6 +93,27 @@ module private Internals =
     [<Emit("document.body")>]
     let documentBody () : obj = jsNative
 
+    // ─── Diagnostics ───────────────────────────────────────────
+
+    [<Emit("console.error($0, $1)")>]
+    let private consoleError (message: string) (detail: obj) : unit = jsNative
+
+    /// A subscriber threw. The observer isolates it — one broken subscriber must
+    /// not stop the others, or the observer itself — but the failure is now SAID
+    /// rather than swallowed: a subscriber that has silently stopped receiving
+    /// observations looks exactly like a page whose layout never changes, and
+    /// nothing else in the system will ever mention it.
+    ///
+    /// `console.error` rather than a diagnostic seam, deliberately: this package
+    /// takes FSharp.Core and the browser and nothing else, and a Warn channel
+    /// plumbed through the options record would be a new host obligation on every
+    /// consumer for a case none of them configure. The node id goes in the message
+    /// so the report names WHICH element's subscriber failed, and the exception
+    /// rides as the second argument so the browser renders its own stack rather
+    /// than a stringified copy.
+    let reportSubscriberFailure (nodeId: string) (ex: exn) : unit =
+        consoleError ("[fuaran] observer subscriber threw for node '" + nodeId + "'") (box ex)
+
     // ─── CSS colour parsing ─────────────────────────────────────
     //
     // Computed `color` / `background-color` always come back as
@@ -207,10 +228,12 @@ type BrowserStyleObserver(options: StyleObserverOptions, manifest: Fuaran.UI.The
         for subscriber in subscribers do
             try
                 subscriber (nodeId, observation)
-            with _ ->
-                // A subscriber throwing must not poison siblings; the
-                // browser console already surfaces the trace.
-                ()
+            with ex ->
+                // The isolation stays; the claim that went with it does not.
+                // A caught exception reaches no console, so a subscriber that
+                // has stopped receiving style was indistinguishable from a
+                // style that never changes. See the layout observer's `emit`.
+                reportSubscriberFailure nodeId ex
 
     let flush () =
         rafHandle <- None
@@ -260,8 +283,25 @@ type BrowserStyleObserver(options: StyleObserverOptions, manifest: Fuaran.UI.The
         | None -> rafHandle <- Some(requestAnimationFrame flush)
 
     let registerElement (nodeId: string) (element: obj) =
-        if not (registry.ContainsKey(nodeId)) then
+        let existing =
+            match registry.TryGetValue(nodeId) with
+            | true, held -> Some held
+            | false, _ -> None
+
+        match ElementRegistration.classify existing element with
+        | ElementRegistration.Unchanged -> ()
+        | ElementRegistration.Fresh ->
             registry[nodeId] <- element
+            scheduleFlush nodeId
+        | ElementRegistration.Remounted ->
+            // Same id, different element — the node remounted. The registry
+            // held the detached one, so `getComputedStyle` was reading a node
+            // that is no longer in the document. The change-detection state
+            // goes with it: it describes the node that left.
+            registry[nodeId] <- element
+            lastFlagSet.Remove(nodeId) |> ignore
+            lastEmitAt.Remove(nodeId) |> ignore
+            lastObservation.Remove(nodeId) |> ignore
             scheduleFlush nodeId
 
     let unregisterElement (nodeId: string) =
