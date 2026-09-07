@@ -218,7 +218,7 @@ let private readyRef (nodeId: string) (hook: obj -> unit) : obj -> unit =
 /// by the host when it constructs the adapter ([AgAdapter.fs](AgAdapter.fs)),
 /// so no decoded tree can carry it, reach it or trigger it. That is a
 /// structural guarantee rather than the weaker "a callback cannot cross the
-/// wire" argument `spec.OnPointClick` rests on: the slot is not a member of any
+/// wire" argument `ChartSpec.OnPointClick` rests on: it is not a member of any
 /// wire type, so there is nothing for a decoder to fill.
 ///
 /// The handle is passed on exactly as React yields it, unwrapped and

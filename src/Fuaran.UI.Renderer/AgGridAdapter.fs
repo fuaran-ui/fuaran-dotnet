@@ -379,7 +379,7 @@ let private buildColumnDef<'Msg>
 /// the host when it constructs the adapter ([AgAdapter.fs](AgAdapter.fs)), so no
 /// decoded tree can carry it, reach it or trigger it. That is a structural
 /// guarantee rather than the weaker "a closure cannot cross the wire" argument
-/// that `spec.OnRowClick` rests on: the slot is not a member of any wire type,
+/// that `GridSpec.OnRowClick` rests on: it is not a member of any wire type,
 /// so there is nothing for a decoder to fill.
 ///
 /// Once-per-instance comes from AG Grid itself: `onGridReady` is raised when the
