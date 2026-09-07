@@ -455,15 +455,24 @@ module LocalCodec =
         if not ok then
             None
         else
-            match
-                System.Double.TryParse(
-                    s,
-                    System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture
-                )
-            with
-            | true, v -> Some v
-            | _ -> None
+            // `float` on a string, NOT `Double.TryParse` with a NumberStyles and
+            // a culture: Fable refuses both of those arguments outright (it
+            // reports "NumberStyle 167 is ignored" as an ERROR, not a warning),
+            // and this file compiles on both pipelines. F#'s own conversion is
+            // invariant-culture on .NET and `parseFloat` under Fable, and it
+            // cannot throw here because the grammar above has already accepted
+            // the text.
+            //
+            // The finite check is the same one the TypeScript tier applies: the
+            // JSON grammar admits `1e400`, which every IEEE host reads as
+            // infinity, and a buffer whose parse answers infinity has not read
+            // what the reader typed.
+            let v = float s
+
+            if System.Double.IsNaN v || System.Double.IsInfinity v then
+                None
+            else
+                Some v
 
     /// The scalar a piece of buffer text denotes, when it denotes one. `true` /
     /// `false` and the JSON number grammar only — an empty string is NOT `null`

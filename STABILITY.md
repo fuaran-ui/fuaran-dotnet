@@ -6347,26 +6347,29 @@ deliberate — the wire order is `Canon.typed`'s Ordinal sort and is unaffected 
 leaves every existing binder's POSITION intact and makes the fix mechanical (`, None, None` at a
 construction; `, _, _` at a pattern).
 
-**It ADVANCES the version to 0.78.0, and that is a correction to what this entry said when it was
-first written.** It was authored to ride the 0.77.0 draft, on the draft-slot rule and on the same
-argument the `Action.Navigate` entry above makes: adding a required field to a DU case is the union
-analogue of a required record field, so it is the class 0.77.0 already carried rather than a higher
-one, and re-numbering would tell a consumer already paying that price that there is a second one.
+**It rides the standing 0.78.0 draft, and getting there took a correction this entry records rather
+than hides.** It was authored to ride 0.77.0, on the draft-slot rule and on the same argument the
+`Action.Navigate` entry above makes: adding a required field to a DU case is the union analogue of a
+required record field, so it is the class that draft already carried rather than a higher one.
 
-**That argument was correct and its premise stopped being true mid-flight.** `v0.77.0` was TAGGED on
-2026-09-06 (`762097c`, an ancestor of `main`), so 0.77.0 is no longer a draft: it is a released slot
-and somebody's contract. The version-pinning rule is explicit about which half of the draft-slot rule
-then applies — a change to a public contract ships on a version AHEAD of every version that has been
-tagged — and the failure it names is exactly this shape: a slot re-packed over the top so consumers
-get one contract or the other depending only on when their cache was populated. Adding two fields to
-`Binding.Local` is source-breaking at every construction and every positional match, which is not a
-thing to do to a tag.
+**The premise stopped being true mid-flight.** `v0.77.0` was TAGGED on 2026-09-06 (`762097c`, an
+ancestor of `main`), so 0.77.0 stopped being a draft and became a released slot — somebody's contract.
+The version-pinning rule is explicit about which half of the draft-slot rule then applies: a change to
+a public contract ships on a version AHEAD of every version that has been tagged, and the failure it
+names is exactly this shape — a slot re-packed over the top, so consumers get one contract or the
+other depending only on when their NuGet cache was populated. Adding two fields to `Binding.Local` is
+source-breaking at every construction and every positional match, which is not a thing to do to a tag.
+
+**Phase 1535 reached the same conclusion independently and advanced the draft first** (`6f290c0`), so
+this change rides 0.78.0 rather than advancing again. Two source-breaking changes of one class on one
+draft is the rule working; 0.79.0 would tell a consumer already paying 0.78.0's price that there is a
+second, separate one.
 
 **A finding this leaves for the estate, stated rather than fixed here.** Two entries already on `main`
 — Phase 1531's surface moves and Phase 1536's `Action.Navigate` widening — were authored against
-0.77.0 while it was still a draft and say so in their own headings, and the tag landed under them. So
-0.78.0 will contain their changes as well as this one, described in this document under the previous
-number. Rewriting another phase's recorded entry is not this phase's to do; naming it is.
+0.77.0 while it was still a draft, say so in their own headings, and had the tag land under them. So
+0.78.0 carries their changes too, described in this document under the previous number. Rewriting
+another phase's recorded entry is not this phase's to do; naming it is.
 
 **No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
 admission gates for the kind set are not engaged. What changed is the FIELD SET of an existing
