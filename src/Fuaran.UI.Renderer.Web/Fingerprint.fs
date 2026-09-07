@@ -141,9 +141,38 @@ let toJson (fp: EmbeddedFingerprint) : string =
 
     "{\n" + body + "\n}\n"
 
+/// One hex digit's value, or `None` for anything else.
+let private hexDigit (c: char) : int option =
+    if c >= '0' && c <= '9' then Some(int c - int '0')
+    elif c >= 'a' && c <= 'f' then Some(int c - int 'a' + 10)
+    elif c >= 'A' && c <= 'F' then Some(int c - int 'A' + 10)
+    else None
+
+/// The character a `\uXXXX` escape denotes, given the index of its `u`. `None`
+/// when the four that follow are not hex digits: a sidecar reading `\uZZZZ` is
+/// corrupt, and guessing at it is worse than refusing it.
+let private unicodeEscape (json: string) (i: int) : char option =
+    if i + 4 >= json.Length then
+        None
+    else
+        let digits = [ for d in 1..4 -> hexDigit json[i + d] ]
+
+        if List.exists Option.isNone digits then
+            None
+        else
+            digits |> List.fold (fun acc d -> acc * 16 + d.Value) 0 |> char |> Some
+
 /// Read one `"key": "value"` pair out of the sidecar. Deliberately narrow — it
 /// reads a file this package wrote, in the shape above, and anything else is a
 /// tampered or hand-edited sidecar that should fail rather than half-parse.
+///
+/// EVERY escape `toJson` can emit is decoded here, which is what this used not
+/// to do. The writer escapes a control character in the six-character
+/// backslash-u form; the reader dropped the backslash and kept the rest, so a
+/// value came back carrying the five literal characters `u0001` in place of
+/// the one character they encoded. That sidecar was neither rejected nor read correctly —
+/// it was read as something ELSE and then compared against the authoring
+/// surface, which produces a drift report about a value nobody ever wrote.
 let private readField (json: string) (key: string) : string option =
     let marker = "\"" + key + "\""
     let ki = json.IndexOf(marker, StringComparison.Ordinal)
@@ -164,26 +193,51 @@ let private readField (json: string) (key: string) : string option =
                 let sb = StringBuilder()
                 let mutable i = oq + 1
                 let mutable closed = false
+                let mutable corrupt = false
 
-                while not closed && i < json.Length do
+                while not closed && not corrupt && i < json.Length do
                     match json[i] with
-                    | '"' -> closed <- true
-                    | '\\' when i + 1 < json.Length ->
-                        (match json[i + 1] with
-                         | 'n' -> sb.Append '\n' |> ignore
-                         | 't' -> sb.Append '\t' |> ignore
-                         | c -> sb.Append c |> ignore)
-
+                    | '"' ->
+                        closed <- true
                         i <- i + 1
-                    | c -> sb.Append c |> ignore
+                    | '\\' when i + 1 < json.Length ->
+                        match json[i + 1] with
+                        | 'n' ->
+                            sb.Append '\n' |> ignore
+                            i <- i + 2
+                        | 't' ->
+                            sb.Append '\t' |> ignore
+                            i <- i + 2
+                        | 'r' ->
+                            sb.Append '\r' |> ignore
+                            i <- i + 2
+                        | 'b' ->
+                            sb.Append '\b' |> ignore
+                            i <- i + 2
+                        | 'f' ->
+                            sb.Append '\f' |> ignore
+                            i <- i + 2
+                        | 'u' ->
+                            match unicodeEscape json (i + 1) with
+                            | Some c ->
+                                sb.Append c |> ignore
+                                i <- i + 6
+                            | None -> corrupt <- true
+                        // `"`, `\` and `/`, plus anything else a hand edit
+                        // left: the escaped character stands for itself.
+                        | c ->
+                            sb.Append c |> ignore
+                            i <- i + 2
+                    | c ->
+                        sb.Append c |> ignore
+                        i <- i + 1
 
-                    i <- i + 1
+                if closed && not corrupt then Some(sb.ToString()) else None
 
-                if closed then Some(sb.ToString()) else None
-
-/// Parse a sidecar. `Error` names the FIRST missing key rather than failing
-/// generically: a sidecar is generated, so a missing key means the generator
-/// and this reader have drifted, and which key is the whole diagnosis.
+/// Parse a sidecar. `Error` names the FIRST key that is missing or unreadable
+/// rather than failing generically: a sidecar is generated, so either means the
+/// generator and this reader have drifted, and which key is the whole
+/// diagnosis.
 let parse (json: string) : Result<EmbeddedFingerprint, string> =
     let missing =
         [ "rendererPackage"
@@ -198,7 +252,7 @@ let parse (json: string) : Result<EmbeddedFingerprint, string> =
     | Some k ->
         Error(
             sprintf
-                "the embedded renderer fingerprint is missing the '%s' field — it is generated by scripts/sync-renderer-web.ps1, so this means the generator and the reader have drifted"
+                "the embedded renderer fingerprint is missing the '%s' field, or carries a value this reader cannot decode — it is generated by scripts/sync-renderer-web.ps1, so either means the generator and the reader have drifted"
                 k
         )
     | None ->

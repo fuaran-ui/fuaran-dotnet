@@ -133,18 +133,45 @@ function Read-VocabularyFingerprint {
     $m.Groups[1].Value
 }
 
+# Escape one value for a JSON string literal. MUST agree with `jsonEscape` in
+# Fingerprint.fs: a quote, a backslash, and every control character in the
+# six-character backslash-u form with four lower-case hex digits.
+#
+# This function did not exist, and the writer interpolated raw values straight
+# between quotes. No field carries a quote or a backslash TODAY, which is
+# exactly why the omission was invisible - but every one of them is fed from
+# somewhere else (an npm package name, a version string, a fingerprint, a hash),
+# and the first that ever carries a backslash writes a file the reader beside it
+# cannot parse, on a sync that reports success. Two writers of one format have to
+# agree about the whole format, not about the part today's data occupies.
+function ConvertTo-JsonStringValue([string] $value) {
+    $sb = [System.Text.StringBuilder]::new()
+    foreach ($ch in $value.ToCharArray()) {
+        if ($ch -eq '"') { [void] $sb.Append('\"') }
+        elseif ($ch -eq '\') { [void] $sb.Append('\\') }
+        elseif ([int] $ch -lt 32) { [void] $sb.Append(('\u{0:x4}' -f [int] $ch)) }
+        else { [void] $sb.Append($ch) }
+    }
+    $sb.ToString()
+}
+
 # The sidecar's canonical text. MUST agree byte for byte with
 # Fingerprint.toJson in the F# package - the same six keys, the same order, two
-# spaces of indent, a trailing newline. Two writers of one format is a drift
-# hazard, and the package's own round-trip test is what holds them together.
+# spaces of indent, a trailing newline, and the same escaping. Two writers of
+# one format is a drift hazard, and the package's own round-trip test is what
+# holds them together.
+#
+# The KEYS are literal identifiers here rather than escaped, because they are
+# literal identifiers: the F# writer escapes them because it takes them as an
+# argument, and this one cannot be handed a key at all.
 function Format-Fingerprint($fp) {
     $lines = @(
-        "  `"rendererPackage`": `"$($fp.rendererPackage)`"",
-        "  `"rendererVersion`": `"$($fp.rendererVersion)`"",
-        "  `"bundleVersion`": `"$($fp.bundleVersion)`"",
-        "  `"wireProfile`": `"$($fp.wireProfile)`"",
-        "  `"vocabularyFingerprint`": `"$($fp.vocabularyFingerprint)`"",
-        "  `"bundleSha256`": `"$($fp.bundleSha256)`""
+        "  `"rendererPackage`": `"$(ConvertTo-JsonStringValue $fp.rendererPackage)`"",
+        "  `"rendererVersion`": `"$(ConvertTo-JsonStringValue $fp.rendererVersion)`"",
+        "  `"bundleVersion`": `"$(ConvertTo-JsonStringValue $fp.bundleVersion)`"",
+        "  `"wireProfile`": `"$(ConvertTo-JsonStringValue $fp.wireProfile)`"",
+        "  `"vocabularyFingerprint`": `"$(ConvertTo-JsonStringValue $fp.vocabularyFingerprint)`"",
+        "  `"bundleSha256`": `"$(ConvertTo-JsonStringValue $fp.bundleSha256)`""
     )
     "{`n" + ($lines -join ",`n") + "`n}`n"
 }

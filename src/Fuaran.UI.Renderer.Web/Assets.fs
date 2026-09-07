@@ -102,3 +102,31 @@ let fingerprint () : Result<Fingerprint.EmbeddedFingerprint, string> =
 /// always does. Quoted per RFC 9110.
 let etag (bytes: byte[]) : string =
     "\"" + System.Convert.ToHexString(SHA256.HashData bytes).Substring(0, 32) + "\""
+
+// ─── The per-process read ─────────────────────────────────────────────────
+
+let private cache =
+    System.Collections.Concurrent.ConcurrentDictionary<string, byte[] * string>()
+
+/// An asset's bytes and its ETag, read out of the assembly and hashed ONCE per
+/// process.
+///
+/// The serving path used to call `read` and `etag` per REQUEST, so every hit on
+/// the renderer bundle copied half a megabyte out of the manifest stream into a
+/// fresh `MemoryStream`, grew that by doubling, copied it out again as an
+/// array, and SHA-256'd the result — to answer a question whose answer cannot
+/// change, because the bytes are compiled into this assembly. The conditional
+/// requests were the worst of it: a 304 did every bit of that and then sent no
+/// body, so the cheapest response on the route was the one paying most per
+/// useful byte.
+///
+/// The array is SHARED, not copied per caller — that is the point of caching
+/// it. Nothing in this package writes to it, and a consumer holding one must
+/// not either.
+let content (asset: Asset) : byte[] * string =
+    cache.GetOrAdd(
+        asset.ResourceName,
+        fun _ ->
+            let bytes = read asset
+            bytes, etag bytes
+    )

@@ -341,6 +341,7 @@
     <Compile Include="TokensModelTests.fs" />
     <Compile Include="TrustedTypesTests.fs" />
     <Compile Include="StatePersistenceTests.fs" />
+    <Compile Include="ReferenceTablesEnhancementTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
