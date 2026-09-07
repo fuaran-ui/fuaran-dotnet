@@ -769,6 +769,17 @@ let private registerTargets (args: string array) =
     // guide or prompt pack diverged from the wire-format-fixtures corpus. No HARD Build
     // dep — it is a pure fsi pass over docs/ + wire-format-fixtures/, and `-- AuthoringPack`
     // on its own should stay a seconds-long check rather than a solution build.
+    //
+    // Phase 1570 — this target also carries the signature catalogue's TEACHING
+    // assertions (`assertCatalogueTeaching`, beside the generator): no field is taught
+    // as `any` unless its schema is literally `true` or the row is pinned; that
+    // assertion is proved able to go red against a scratch schema on every run; and the
+    // emitted row count per kind matches idl.json, so a silently dropped field is red
+    // too. No target of its own — the script gates BOTH --check and --write from inside,
+    // on the assertLenientPartition pattern, so running it here is already running them.
+    // The reference-CSS principle applies: the gate runs from the AUTHORING side, so a
+    // regeneration that reintroduces the class fails for the author who made it rather
+    // than surfacing as somebody else's decode failure a fortnight later.
     Target.create "AuthoringPack" (fun _ ->
         dotnet
             [ "fsi"

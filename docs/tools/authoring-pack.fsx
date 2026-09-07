@@ -384,8 +384,20 @@ let reconcileFile (label: string) (path: string) (expected: string) =
 //   * Emission order is deterministic: Node, the kind unions, TreeOp, then payload
 //     unions / records / enums alphabetically — only defs actually referenced by
 //     name are emitted, so the block cannot carry dead vocabulary.
-let buildSignatureCatalogue () =
-    let schemaText = File.ReadAllText schemaSrcPath
+/// One row the catalogue emitted, recorded as it was rendered (Phase 1570).
+/// `Owner` is declaration-qualified (`NodeKind.Switch`, `GridColumn`) because four
+/// case tags are carried by more than one union — `Custom`, `Button`, `Link` and
+/// `Progress` — so a bare field name cannot name a row. `Depth` is 1 for a case's
+/// own fields and deeper inside an inline object. `SchemaIsTrue` records the ONE
+/// shape whose `any` is a deliberate teaching rather than a renderer fallthrough.
+type CatalogueRow =
+    { Owner: string
+      Field: string
+      Rendered: string
+      Depth: int
+      SchemaIsTrue: bool }
+
+let buildSignatureCatalogueFrom (schemaText: string) : string * CatalogueRow list =
     use doc = JsonDocument.Parse schemaText
     let defs = doc.RootElement.GetProperty "$defs"
     let getDef (name: string) = defs.GetProperty name
@@ -422,6 +434,20 @@ let buildSignatureCatalogue () =
 
     // Defs that must be declared by name because some rendered type referenced them.
     let namedRefs = System.Collections.Generic.HashSet<string>()
+
+    // Phase 1570 — every emitted row, recorded AS RENDERED. The assertions that guard
+    // this generator are stated over what it actually taught rather than over a second
+    // walk of the schema, so they cannot drift from the renderer they guard.
+    let fieldAudit = ResizeArray<CatalogueRow>()
+    let mutable auditDecl = ""
+    let mutable auditCase = ""
+    let mutable auditDepth = 0
+
+    let auditOwner () =
+        if auditCase = "" then
+            auditDecl
+        else
+            auditDecl + "." + auditCase
 
     let rec renderType (el: JsonElement) : string =
         if el.ValueKind = JsonValueKind.True then
@@ -563,11 +589,18 @@ let buildSignatureCatalogue () =
             renderType case
 
     and renderCase (name: string) (record: JsonElement) : string =
-        match renderFields record with
+        let savedCase = auditCase
+        auditCase <- name
+        let rendered = renderFields record
+        auditCase <- savedCase
+
+        match rendered with
         | "" -> name
         | fields -> name + " { " + fields + " }"
 
     and renderFields (record: JsonElement) : string =
+        auditDepth <- auditDepth + 1
+
         let required =
             match record.TryGetProperty "required" with
             | true, r ->
@@ -594,23 +627,53 @@ let buildSignatureCatalogue () =
             |> List.filter (fun n -> not (List.contains n required))
             |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
 
+        // Renders a field and records its row (Phase 1570). `renderType` runs FIRST,
+        // so a nested inline object has already pushed and popped `auditDepth` by the
+        // time the row is stamped with its own.
+        let audited (n: string) (el: JsonElement) =
+            let ty = renderType el
+
+            fieldAudit.Add(
+                { Owner = auditOwner ()
+                  Field = n
+                  Rendered = ty
+                  Depth = auditDepth
+                  SchemaIsTrue = el.ValueKind = JsonValueKind.True }
+            )
+
+            ty
+
         // No space after the colon: measured in the o200k reference tokenizer, the
         // colon-dense form saves ~135 tokens over the whole catalogue while the
         // `; ` field separator saves almost nothing — so density is spent exactly
         // where the tokenizer pays for it (the Phase 839 minification argument).
-        [ for n in required do
-              if byName.ContainsKey n then
-                  $"{n}:{renderType byName.[n]}"
-              else
-                  $"{n}:any"
-          for n in optional do
-              // Optional closure fields are suppressed: host-side handler slots the
-              // self-wiring rules forbid authoring (see the module doc). Required
-              // closure fields stay — the author must emit the sentinel there.
-              match renderType byName.[n] with
-              | "closure" -> ()
-              | ty -> $"{n}?:{ty}" ]
-        |> String.concat "; "
+        let rendered =
+            [ for n in required do
+                  if byName.ContainsKey n then
+                      $"{n}:{audited n byName.[n]}"
+                  else
+                      // A required field the record declares no schema for. Recorded as
+                      // the `any` it is taught as, so the audit sees this route too.
+                      fieldAudit.Add(
+                          { Owner = auditOwner ()
+                            Field = n
+                            Rendered = "any"
+                            Depth = auditDepth
+                            SchemaIsTrue = false }
+                      )
+
+                      $"{n}:any"
+              for n in optional do
+                  // Optional closure fields are suppressed: host-side handler slots the
+                  // self-wiring rules forbid authoring (see the module doc). Required
+                  // closure fields stay — the author must emit the sentinel there.
+                  match audited n byName.[n] with
+                  | "closure" -> ()
+                  | ty -> $"{n}?:{ty}" ]
+            |> String.concat "; "
+
+        auditDepth <- auditDepth - 1
+        rendered
 
     // Nested `oneOf` wrappers flatten into the parent union (TextSource's inner DU).
     let rec altsOf (el: JsonElement) : JsonElement seq =
@@ -621,6 +684,8 @@ let buildSignatureCatalogue () =
 
     let renderDecl (name: string) =
         let d = getDef name
+        auditDecl <- name
+        auditCase <- ""
 
         if isStringEnum d then
             name + " = " + enumInline d
@@ -670,7 +735,208 @@ let buildSignatureCatalogue () =
 
     let ordered = roots @ (rest |> List.sortBy (fun n -> classOf n)) // stable: keeps alpha within class
 
-    ordered |> List.map (fun n -> decls.[n]) |> String.concat "\n"
+    (ordered |> List.map (fun n -> decls.[n]) |> String.concat "\n"), List.ofSeq fieldAudit
+
+let buildSignatureCatalogue () =
+    buildSignatureCatalogueFrom (File.ReadAllText schemaSrcPath) |> fst
+
+// ── Taught-field assertions (Phase 1570) ─────────────────────────────────────────
+// THE CLASS THESE GUARD, AND WHY NOTHING ELSE COULD SEE IT.
+// `renderType` had a `oneOf` branch and no `anyOf` branch while SchemaGen types every
+// float slot as `anyOf [number, enum NaN/Infinity/-Infinity]`, so from the 2026-08-27
+// regeneration onward thirty-four catalogue rows — `weight`, `x`, `y`, `width`,
+// `height`, `cx`, `cy`, `r`, `min`, `max`, `step` … — were taught as `any`, and a
+// measured rerun lost five of its nine decode failures to `weight` emitted as a STRING
+// on exactly that teaching. Both guards standing over this pack were blind to it BY
+// CONSTRUCTION: the drift check compares the committed pack to the generator's own
+// output, so a wrong rendering matches itself; and the slimming census quantifies over
+// what the teaching NAMES, and a field taught as `any` is named. A schema shape the
+// renderer has no branch for therefore degrades silently, in the one artefact whose
+// whole job is to be believed.
+//
+// So the rule, stated over what was TAUGHT rather than over a second walk of the schema
+// (a second walk would be a second renderer, free to drift from the first): a catalogue
+// row mentions `any` only when its schema is literally `true`, or when it is one of the
+// shapes pinned below by name. A new fallthrough introduces a row the pin does not
+// carry and goes red; a deliberate `true` never does.
+let private idlPath = Path.Combine(fixturesDir, "idl.json")
+
+/// `any` as a whole token — `any`, `any[]` and `{ [key]:any }` all mention it; a def
+/// whose NAME merely contains those three letters does not.
+let private mentionsAny (rendered: string) =
+    Regex.Split(rendered, "[^A-Za-z0-9_]") |> Array.contains "any"
+
+/// The five unions whose cases are the taught node kinds — the `kinds` array of the
+/// IDL, on the other side of the count assertion below.
+let private kindUnions =
+    [ "NodeKind"; "LayoutKind"; "DisplayKind"; "InputKind"; "VisKind" ]
+
+/// Every row that mentions `any` for a reason other than a schema of literally `true`.
+let private untaughtAny (rows: CatalogueRow list) =
+    rows
+    |> List.filter (fun r -> mentionsAny r.Rendered && not r.SchemaIsTrue)
+    |> List.map (fun r -> r.Owner + "." + r.Field)
+    |> Set.ofList
+
+/// The rows whose `any` is accepted, each earned by one of exactly two shapes. Every
+/// OTHER `any` in the catalogue comes from a schema of literally `true` and is filtered
+/// out before this set is consulted — five `Static.value` / `defaultValue` slots per
+/// Binding union, plus `Range.value` and `DateRange.value`, all of which really are
+/// unconstrained.
+///
+/// Owner-qualified because four case tags are carried by more than one union
+/// (`Custom`, `Button`, `Link`, `Progress`), so a bare field name cannot name a row.
+/// Shrinking this set is a one-line edit; growing it is a reviewed one, because a new
+/// entry is this assertion being told to stop looking at something.
+let private pinnedAny: Set<string> =
+    set
+        [
+          // `{ "not": { "type": "null" } }` — anything EXCEPT null. `any` is the honest
+          // rendering: the slot really does take any JSON value, and the non-null half is
+          // a refusal the catalogue has no spelling for. The last two carry it at the
+          // MAP-VALUE position (`additionalProperties`), rendering `{ [key]:any }`.
+          "Action.AiTool.args"
+          "Action.Notify.payload"
+          "Action.SetState.value"
+          "TreeOp.UpdateProp.value"
+          "NodeKind.Custom.props"
+          "TextSource.I18n.args"
+
+          // An `allOf` INTERSECTION whose first member carries no `$type` const — a shape
+          // `renderType` genuinely does not model, and the only instance in the corpus.
+          // A `Switch` case item is `[record; anyOf[required match | required when];
+          // not[required match + when]]`: an exclusive-choice CONSTRAINT over a record
+          // rather than a type, so there is no declaration-style spelling to render it
+          // as. It is pinned rather than fixed because inventing one would teach a shape
+          // the wire format does not have.
+          "NodeKind.Switch.cases" ]
+
+/// The IDL's field count per kind, with the closure family removed. The catalogue never
+/// emits an optional closure slot and renders a required one as the `closure` sentinel,
+/// so dropping `type.$type = "fn"` from both sides is the one normalisation this needs
+/// — and it is symmetric, which a requiredness-based rule would not be: `idl.json`
+/// calls `Mount.onBubble` and `FileUpload.onSelect` optional where `schema.json`
+/// requires them, and reading requiredness off the schema would make this check partly
+/// a restatement of the thing it checks.
+let private idlKindFieldCounts () =
+    use doc = JsonDocument.Parse(File.ReadAllText idlPath)
+
+    let isClosure (f: JsonElement) =
+        match f.TryGetProperty "type" with
+        | true, t ->
+            match t.TryGetProperty "$type" with
+            | true, k -> k.GetString() = "fn"
+            | _ -> false
+        | _ -> false
+
+    doc.RootElement.GetProperty("kinds").EnumerateArray()
+    |> Seq.map (fun k ->
+        let tag = k.GetProperty("tag").GetString()
+
+        let n =
+            k.GetProperty("fields").EnumerateArray()
+            |> Seq.filter (isClosure >> not)
+            |> Seq.length
+
+        tag, n)
+    |> Map.ofSeq
+
+/// The catalogue's count for the same kinds: a case's OWN rows (Depth 1, so an inline
+/// object's members are not counted twice), minus the closure family, keyed by the case
+/// tag under one of the five kind unions.
+let private catalogueKindFieldCounts (rows: CatalogueRow list) =
+    rows
+    |> List.filter (fun r ->
+        r.Depth = 1
+        && r.Rendered <> "closure"
+        && (let parts = r.Owner.Split '.' in parts.Length = 2 && List.contains parts.[0] kindUnions))
+    |> List.countBy (fun r -> r.Owner.Split('.').[1])
+    |> Map.ofList
+
+let private assertCatalogueTeaching () =
+    let _, rows = buildSignatureCatalogueFrom (File.ReadAllText schemaSrcPath)
+
+    // 1. No taught field is rendered `any` unless its schema is literally `true`.
+    let offenders = untaughtAny rows
+    let unpinned = Set.difference offenders pinnedAny
+    let stale = Set.difference pinnedAny offenders
+
+    if not (Set.isEmpty unpinned) then
+        failwith (
+            "CATALOGUE-TEACHING: field(s) taught as `any` that no accepted shape earns. A schema shape"
+            + " renderType has no branch for degrades to `any` SILENTLY — neither the drift check nor the"
+            + " census can see it. Give renderType the branch, or pin the row with the shape that earns it: "
+            + sprintf "%A" (Set.toList unpinned)
+        )
+
+    if not (Set.isEmpty stale) then
+        failwith (
+            "CATALOGUE-TEACHING: pinned row(s) no longer taught as `any`. The pin has outlived its reason"
+            + " and now hides a future fallthrough on the same row — remove them: "
+            + sprintf "%A" (Set.toList stale)
+        )
+
+    // 2. The go-red partner, and it RUNS rather than being described. A scratch copy of
+    //    the schema disguises every `anyOf` as an `allOf` intersection — a shape
+    //    renderType has no branch for, which is the 2026-08-27 regression's exact class
+    //    (the float-or-sentinel slots stop being recognised) reached without touching the
+    //    corpus or the renderer. If assertion 1 cannot name `SplitPanel.weight` on that
+    //    copy then it cannot go red at all, and its silence over the real schema is
+    //    evidence of nothing.
+    let dq = string (char 34)
+
+    let scratchSchema =
+        (File.ReadAllText schemaSrcPath).Replace(dq + "anyOf" + dq, dq + "allOf" + dq)
+
+    let _, scratchRows = buildSignatureCatalogueFrom scratchSchema
+    let planted = Set.difference (untaughtAny scratchRows) pinnedAny
+    let canary = "LayoutKind.SplitPanel.weight"
+
+    if not (Set.contains canary planted) then
+        failwith (
+            "CATALOGUE-TEACHING: the taught-`any` assertion cannot go red. Rendering a scratch schema whose"
+            + " `anyOf` shapes are disguised as unhandled `allOf` intersections did not name "
+            + canary
+            + sprintf " (it named %d unpinned row(s))." (Set.count planted)
+        )
+
+    // 3. A field silently DROPPED is not a mistyped field, and assertion 1 cannot see
+    //    one: a row that is never emitted mentions nothing. So the emitted row count per
+    //    kind is measured against idl.json's field count for the same kind — a second,
+    //    independently generated description of the same vocabulary.
+    let idlCounts = idlKindFieldCounts ()
+    let catCounts = catalogueKindFieldCounts rows
+
+    let mismatched =
+        idlCounts
+        |> Map.toList
+        |> List.choose (fun (tag, n) ->
+            match Map.tryFind tag catCounts with
+            | Some m when m = n -> None
+            | Some m -> Some(sprintf "%s: idl %d, catalogue %d" tag n m)
+            | None -> Some(sprintf "%s: idl %d, absent from the catalogue" tag n))
+
+    let extra =
+        catCounts
+        |> Map.toList
+        |> List.filter (fun (tag, _) -> not (Map.containsKey tag idlCounts))
+        |> List.map (fun (tag, m) -> sprintf "%s: catalogue %d, absent from the IDL" tag m)
+
+    match mismatched @ extra with
+    | [] -> ()
+    | rs ->
+        failwith (
+            "CATALOGUE-TEACHING: the catalogue and wire-format-fixtures/idl.json disagree on how many fields"
+            + " a kind has (closure slots excluded on both sides). A field the renderer drops is taught to"
+            + " nobody and named by nothing: "
+            + sprintf "%A" rs
+        )
+
+    printfn
+        "  catalogue teaching: %d rows, %d pinned `any` row(s), %d kind(s) agree with idl.json"
+        rows.Length
+        (Set.count pinnedAny)
+        (Map.count idlCounts)
 
 // ── Managed marker blocks ────────────────────────────────────────────────────────
 // <!-- fuaran:example fixture=ID -->
@@ -4002,6 +4268,13 @@ elif dialectMode then
         (Path.Combine(dialectPackDir, "schema.json"))
         (File.ReadAllText schemaSrcPath)
 else
+    // 0. The signature catalogue's teaching assertions (Phase 1570). Deliberately ahead
+    //    of the reconcile and gating BOTH --check and --write, on the
+    //    assertLenientPartition pattern: a renderer fallthrough must fail for the author
+    //    who regenerates, not reconcile happily against its own wrong output and surface
+    //    as somebody else's decode failure a fortnight later.
+    assertCatalogueTeaching ()
+
     // 1. Corpus-derived marker examples (+ the schema-derived required-fields table) in
     //    the managed markdown. Only the pack system prompt carries the catalogue.
     reconcileMarkdown "AI_AUTHORING_GUIDE.md" false false
