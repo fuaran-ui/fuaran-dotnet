@@ -204,6 +204,84 @@ with
 // default and remains accepted so older invocations keep working unchanged.
 let minifyExamples = not (argv |> Array.contains "--pretty-examples")
 
+// ── The corpus this generator derives from ───────────────────────────────────────
+//
+// Every surface below is DERIVED from the sibling wire-format-fixtures corpus, so a
+// checkout without it can generate nothing and can verify nothing. Until Phase 1572
+// that fact reached the caller as an unhandled FileNotFoundException from the first
+// `File.ReadAllText manifestPath` — a stack trace that reads as a defect in the
+// generator when it is a statement about the checkout.
+//
+// The distinction is the reference-CSS one (Build.fs `CssCopyState`), and it is
+// load-bearing in both directions:
+//
+//   * ABSENT — the sibling is not cloned. A single-repo checkout (the publish
+//     workflow) legitimately has no siblings at all, so a `--check` reports NOT
+//     CHECKED, names every check it did not run and the path it looked at, and
+//     exits 0. "Nothing to check here" and "everything checked" must not read
+//     alike; that is the whole reason the line is printed rather than the check
+//     silently passing.
+//   * MISSING — the sibling IS checked out but carries no manifest / schema. That
+//     is a finding, not a narrower checkout, and it fails in every mode.
+//
+// `--write` and `--mine` refuse on ABSENT too: writing corpus-derived artefacts
+// without the corpus would replace them with whatever a missing input produces, and
+// the miner would report a coverage figure over nothing.
+type private CorpusState =
+    | Absent
+    | Incomplete of file: string
+    | Present
+
+let private corpusState () =
+    if not (Directory.Exists fixturesDir) then
+        Absent
+    elif not (File.Exists manifestPath) then
+        Incomplete "manifest.json"
+    elif not (File.Exists schemaSrcPath) then
+        Incomplete "schema.json"
+    else
+        Present
+
+/// The corpus-derived checks this run would have performed. Named individually so an
+/// absent-corpus run says what was skipped rather than one undifferentiated line.
+let private corpusDerivedChecks =
+    [ "corpus drift", "every corpus-derived example block, few-shot tree and schema copy"
+      "catalogue teaching", "no field taught as `any` unless its schema earns it; row counts vs idl.json"
+      "leniency partition", "every lenient-accept fixture claimed by exactly one classified family" ]
+
+match corpusState () with
+| Present -> ()
+| Incomplete file ->
+    eprintfn
+        "authoring pack — the wire-format-fixtures sibling is checked out at %s but carries no %s."
+        fixturesDir
+        file
+
+    eprintfn
+        "  That is a finding, not a narrower checkout: a corpus missing its own %s cannot say what the wire format is."
+        file
+
+    exit 1
+| Absent when writeMode || mineMode ->
+    eprintfn "authoring pack — %s mode needs the wire-format-fixtures corpus, and it is absent from this checkout." mode
+
+    eprintfn "  Expected at: %s" fixturesDir
+
+    eprintfn
+        "  Every generated surface derives from it, so a %s run here would emit artefacts built from a missing input."
+        mode
+
+    exit 1
+| Absent ->
+    printfn "Fuaran authoring pack — check mode"
+    printfn "  corpus absent from this checkout — expected at %s" fixturesDir
+
+    for name, what in corpusDerivedChecks do
+        printfn "  %-20s NOT CHECKED — %s" name what
+
+    printfn "  (a single-repo checkout has no siblings; clone wire-format-fixtures beside this repo to check them)"
+    exit 0
+
 // ── Corpus index ─────────────────────────────────────────────────────────────────
 type FixtureMeta = { File: string; Decoder: string }
 
@@ -1590,21 +1668,16 @@ let toDialect (raw: string) : string =
 
 // ── The leniency-surface classification (the generated appendix's data) ──────────
 
+/// The classification a leniency family carries. Each case's criterion is authored
+/// ONCE, in `Criterion` below, rather than in a doc comment beside the case: the
+/// partition refusal prints the criteria to the author who has to choose between them
+/// (Phase 1572), and a doc comment cannot be read at run time — two copies of the same
+/// sentence would drift, and the copy that drifted would be the one nobody read.
 type private DialectClass =
-    /// Total, loss-free, token-positive — taught as the primary emission dialect.
     | TaughtPrimary
-    /// Total and loss-free, but buys no tokens (or contradicts the taught
-    /// catalogue spelling) — accepted, never taught.
     | SafeNotTaught
-    /// The terse side of the pair IS the canonical form — the leniency accepts the
-    /// VERBOSE spelling, so there is nothing to teach beyond the canonical rule.
     | AlreadyCanonical
-    /// Partial, heuristic, or contextual — never taught; stays a decode-side
-    /// safety net. A leniency whose normalisation cannot be proved loss-free for
-    /// every legal input is in this class by default.
     | NeverTaught
-    /// A composite fixture exercising several taught families at once (the pack's
-    /// own compact exemplars).
     | Composite
 
     member this.Label =
@@ -1614,6 +1687,22 @@ type private DialectClass =
         | AlreadyCanonical -> "already-canonical"
         | NeverTaught -> "never-taught"
         | Composite -> "composite"
+
+    /// One line, in the shape the judgement is actually made in.
+    member this.Criterion =
+        match this with
+        | TaughtPrimary ->
+            "total, loss-free AND token-positive — taught as the primary emission dialect (costs a pack transform + a decoder proof)"
+        | SafeNotTaught ->
+            "total and loss-free, but buys no tokens (or contradicts the taught catalogue spelling) — accepted, never taught"
+        | AlreadyCanonical ->
+            "the TERSE side of the pair is already the canonical form; the leniency accepts the VERBOSE spelling, so there is nothing to teach beyond the canonical rule (Δ bytes is negative)"
+        | NeverTaught ->
+            "partial, heuristic or contextual — normalisation cannot be proved loss-free for every legal input; a decode-side safety net only"
+        | Composite -> "a fixture exercising several already-taught families at once (the pack's own compact exemplars)"
+
+    /// Every case, in the order the appendix and the refusal present them.
+    static member All = [ TaughtPrimary; SafeNotTaught; AlreadyCanonical; NeverTaught; Composite ]
 
 /// One leniency family: its corpus pins + the classification judgement + the
 /// evidence the judgement rests on. The FixtureIds partition is asserted total
@@ -1886,15 +1975,17 @@ let private leniencyFamilies: LeniencyFamily list =
           "Contextual synthesis — the decoder inserts cols:1 beside a templateColumns; loss-free only "
           + "when the intended cols was 1, which the input cannot state. Safety net only." }
       { Name = "Integral float at an int slot (Phase 1521)"
-        Class = NeverTaught
+        Class = AlreadyCanonical
         FixtureIds = [ "lenient-1521-int-slot-integral-float" ]
         Evidence =
-          "DEFAULT CLASS, not a judgement — the fixture landed 2026-09-05 unclassified and this table "
-          + "refuses to render until it is claimed. §7.1: `3.0` at an int slot canonicalises to `3`; "
-          + "`2.5` refuses. The pack teaches `int` slots and the integer spelling is the canonical one, "
-          + "so nothing is lost by not teaching the fractional spelling. Whether it is AlreadyCanonical "
-          + "or SafeNotTaught is the 1521 author's call; never-taught is the generator's stated default "
-          + "for an unproved leniency and changes no taught text." }
+          "JUDGEMENT (Phase 1572, replacing the never-taught default 1521 left standing): the integer "
+          + "spelling IS the canonical form and the leniency accepts the VERBOSE one — `3.0` at an int "
+          + "slot canonicalises to `3` (§7.1), so Δ is negative, the accepted-not-preferred direction. "
+          + "That is the already-canonical shape exactly, and the same shape as the navigate `target: "
+          + "\"Self\"` family below. Loss-free on its whole domain rather than merely unproved: §7.1 "
+          + "widens the accept set by exactly the values an integer slot can hold, and `2.5` stays a "
+          + "WRONG_TYPE, so no accepted input has a fractional part to lose. Nothing to teach — the pack "
+          + "already teaches `int` slots and the catalogue already spells the integer form." }
       { Name = "Integer payload beyond ±(2^53−1) decodes to the nearest double (Phase 1521)"
         Class = NeverTaught
         FixtureIds = [ "lenient-1521-payload-integer-beyond-int53" ]
@@ -1952,6 +2043,23 @@ let private lenientFixtureFiles: Map<string, string * string> =
         (f.GetProperty("inputFile").GetString(), f.GetProperty("expectedFile").GetString()))
     |> Map.ofSeq
 
+/// The manifest's own one-line account of what each lenient-accept fixture pins. It is
+/// the corpus author's statement of the leniency, so it is the first input to the
+/// classification judgement and the refusal below prints it verbatim (Phase 1572) —
+/// the alternative is a bare id, which sends the reader to a different repo to find out
+/// what they are being asked to judge.
+let private lenientFixtureDescriptions: Map<string, string> =
+    use doc = JsonDocument.Parse(File.ReadAllText manifestPath)
+
+    doc.RootElement.GetProperty("fixtures").EnumerateArray()
+    |> Seq.filter (fun f -> f.GetProperty("kind").GetString() = "lenient-accept")
+    |> Seq.map (fun f ->
+        f.GetProperty("id").GetString(),
+        match f.TryGetProperty "description" with
+        | true, d -> d.GetString()
+        | _ -> "(the manifest entry carries no description)")
+    |> Map.ofSeq
+
 /// Every manifest lenient-accept id must be claimed by exactly one family — the
 /// mechanism that makes the appendix track decoder/corpus changes by construction:
 /// a new leniency fixture fails BOTH --write and --check until it is classified.
@@ -1968,11 +2076,36 @@ let private assertLenientPartition () =
     let unclaimed = Set.difference manifestSet claimedSet
     let phantom = Set.difference claimedSet manifestSet
 
+    // The refusal carries the judgement's INPUTS, not just its subject (Phase 1572).
+    // What an author meeting this needs is the corpus author's account of the leniency
+    // and the classes to choose between — both of which otherwise live in two other
+    // files, one of them in another repo. A stack trace naming an id sends them looking;
+    // this hands them the same thing the reviewer of the resulting Evidence line reads.
     if not (Set.isEmpty unclaimed) then
-        failwithf
-            "DIALECT-APPENDIX: new lenient-accept fixture(s) with no classification — judge and classify them \
-             in leniencyFamilies (a leniency you cannot prove loss-free is never-taught by default): %A"
-            (Set.toList unclaimed)
+        let subjects =
+            unclaimed
+            |> Set.toList
+            |> List.map (fun id ->
+                sprintf "  %s\n      %s" id (Map.tryFind id lenientFixtureDescriptions |> Option.defaultValue ""))
+            |> String.concat "\n"
+
+        let classes =
+            DialectClass.All
+            |> List.map (fun c -> sprintf "  %-18s %s" c.Label c.Criterion)
+            |> String.concat "\n"
+
+        failwith (
+            "DIALECT-APPENDIX: new lenient-accept fixture(s) with no classification. A leniency and its\n"
+            + "classification land in the SAME change-set (WIRE_FORMAT.md §11) — add each to `leniencyFamilies`\n"
+            + "in this file, either joining a family that already states the identical judgement or minting one.\n\n"
+            + "UNCLASSIFIED (id, then the manifest's own description of what it pins):\n"
+            + subjects
+            + "\n\nCLASSES:\n"
+            + classes
+            + "\n\nThe `Evidence` field records what the judgement RESTS ON — the rule and the property, not a\n"
+            + "restatement of the class. A leniency you cannot prove loss-free for every legal input is\n"
+            + "never-taught by default; that default is a floor, not an answer, so say so if you take it."
+        )
 
     if not (Set.isEmpty phantom) then
         failwithf "DIALECT-APPENDIX: classified fixture id(s) not in the manifest: %A" (Set.toList phantom)

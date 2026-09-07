@@ -780,6 +780,16 @@ let private registerTargets (args: string array) =
     // The reference-CSS principle applies: the gate runs from the AUTHORING side, so a
     // regeneration that reintroduces the class fails for the author who made it rather
     // than surfacing as somebody else's decode failure a fortnight later.
+    //
+    // Phase 1572 — and it is a corpus-DEPENDENT step in a repo that also builds without
+    // the corpus, so the script now answers that case itself rather than throwing a
+    // FileNotFoundException the caller reads as a generator defect. On a checkout with no
+    // wire-format-fixtures sibling (the publish workflow's single-repo checkout) a
+    // `--check` prints NOT CHECKED against each corpus-derived check by name and exits 0
+    // — the `CssCheck` posture below, for the same reason: "nothing to check here" must
+    // not read as "everything checked". A sibling that IS present but carries no
+    // manifest/schema fails, which is the `CssCopyState.Missing` half of the same
+    // distinction, and `--write` refuses in both cases.
     Target.create "AuthoringPack" (fun _ ->
         dotnet
             [ "fsi"
