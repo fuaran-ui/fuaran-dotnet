@@ -6397,3 +6397,105 @@ carries both entries in the three-part form.
 **What did NOT change.** `IFuaranRuntime` gains no member — `window.confirm()` and `.focus()` are the
 browser's own, on the `Print` / `CommitLocal` precedent — so direct implementers are unaffected.
 `DriverServices` gains no field. No existing fixture's bytes move.
+## Recorded change — 0.78.0, renderer tenancy, the debug-global gate, persisted state and an evaluation budget (fuaran#1532)
+
+Rides the standing untagged 0.78.0 draft. It carries breaking classes already, and this change adds
+more of the same kind; nothing here is tagged, and no consumer on a published version is affected
+until the draft is released.
+
+**The debug global gates on an EXPLICIT opt-in, never `DEBUG`.** `DebugGlobal.compiledInDebug` is
+**removed** and replaced by `compiledWithDebugGlobal` (the `FUARAN_DEBUG_GLOBAL` symbol),
+`enableDebugGlobal ()` / `disableDebugGlobal ()` / `debugGlobalEnabled ()` (the runtime half),
+`shouldRegisterUnder` (the total predicate) and the `OptInSymbol` literal. `Relay.shouldInstall`
+follows. The module is declared DEBUG-ONLY / UNSTABLE and excluded from semver, which is why the
+removal is a rename rather than a deprecation — but say plainly what changed for a consumer: **a
+Debug-configured build that used to register `window.__fuaran` now registers nothing** until the
+symbol or the switch says otherwise. That is the documented intent made true; the claim that a
+Release build dead-code-eliminated the registration held for no build in the estate, because this
+package ships Fable source and the symbol was the consumer's to set. **Dead-code elimination is no
+longer claimed** — see the gating note at the head of `DebugGlobal.fs` for what is.
+
+**`FuaranGiraffeOptions` gains `SourcesKey: string option`** (additive to `create`; a full-literal
+construction breaks). The ETag now covers the binding sources and the server `Custom` registry as
+well as the theme, egress policy and locale. Three behaviour changes follow, all deliberate: every
+ETag VALUE moves once, so a cache keyed by ETag misses through the first request after the upgrade;
+a request whose sources carry host data and whose variant is unnamed is served with **no `ETag` and
+`Cache-Control: no-store`**; and constructing a handler that wires a render `Cache` in that state
+**raises**, naming the field that fixes it. `Etag.compute`'s second parameter is the options identity
+rather than the theme CSS alone. New public `RenderInputs` module (`sourcesCanonical` /
+`sourcesOpaque` / `customsIdentity` / `Separator`) and `FuaranGiraffeOptions.cacheConfigured` /
+`sourcesIdentity` / `validate`.
+
+**`DecodePolicy` gains `Recovery`** and a `Recovery` DU (`Off` | `Lenient`) — a required record field,
+so a full-literal construction breaks; every shipped constructor supplies `Lenient`, so nothing that
+decodes today decodes differently. New `DecodePolicy.withRecovery` / `recovers` /
+`MaxRecoverableLength`. New `JsonDecode.DecodeOutcome<'T>` and `decodeNodeWithOutcome` /
+`decodeNodeObjWithOutcome`, carrying `Recovered: string list` — which recoveries repaired THIS
+document, in the vocabulary `Reliance` counts them under. **Behaviour change:** under `Lenient` a
+document longer than 64 KiB is refused by the over-close gate before the enumeration (counted as an
+ordinary refusal of the class), because the gate's existing bounds capped the number of candidate
+repairs and never the size of one.
+
+**`CustomHash.installCustomHashFloor` is raise-only**, and `clearCustomHashFloor` is **renamed**
+`clearCustomHashFloorForTests`. Both are behaviour and source breaks on purpose: the floor exists so
+a tree cannot talk its way underneath the host's choice, and the setter could, because it assigned —
+on a tier serving many tenants from one process a second, weaker install lowered the floor for
+everyone. New `CustomHash.effectiveFloor` / `classifyForRender`.
+
+**`Render.RenderContext` and `Renderer.Server.Render.ServerRenderContext` each gain
+`CustomHashFloor: HashStrictness option`** — required record fields, so a full-literal construction
+breaks (the record is normally built through the convenience entry points, which supply `None`).
+Raise-only: the effective floor is the stricter of the context's and the process's.
+
+**New `BindingResolver.TransformBudget`** with `defaults` / `unbounded` / `check` / `RefusalMarker`.
+**Behaviour change:** a `Binding.Transform` or `Binding.Expr` whose pruned pipeline exceeds 50,000
+input rows, 64 steps, or 500,000 row-steps resolves `Errored` naming the budget instead of
+evaluating. A decoded tree declared how much work the reader's browser did, per render and per store
+notification, with nothing between the declaration and the evaluator.
+
+**`StateStore` persistence is host-declared.** New `StatePersistence` port, `defaultPersistence`,
+`inMemoryPersistence ()`, a `StateStoreInstance(prefix, persistence)` constructor, and
+`declarePersistent` / `isPersistent` / `persistentKeys` / `disposeScope` (module and instance forms).
+**Behaviour change, and the significant one:** `SetState` no longer persists by default — a key
+persists only if the host declared it, and hydration is gated the same way. `Remove` and `Reset` now
+clear the persisted value; `Reset` also clears the declaration. Quota exhaustion warns instead of
+throwing out of the action interpreter. `BrowserRuntime`'s header said `sessionStorage` and the code
+used `localStorage`; the doc is now true.
+
+**`Renderer.Web.Snippet.MountOptions` gains `AntiforgeryHeader: (string * string) option`** —
+source-breaking for positional or full-literal construction (both in-repo samples were updated). The
+emitted mount script changes: `NotifyEndpoint` and `ElementId` are JS-string-escaped rather than
+HTML-escaped (an `&` in an endpoint reached the network as `&amp;`, and a backslash broke the script
+silently), the notify fetch reports a rejected promise **and** a non-`ok` response through the
+snippet's own `onError`, and the page-global `window.fuaranHandle` becomes `window.fuaranHandles[id]`
+so two mounts on one page no longer clobber each other. New `Assets.content`, which reads and hashes
+the embedded bundle once per process rather than per request. `Fingerprint.parse` now decodes every
+escape the writer emits and returns `Error` for a malformed unicode escape rather than half-reading
+it.
+
+**`Fuaran.UI.AiTools` references `Fuaran.UI.Renderer.Core`** and `BindingProbe` delegates `Computed` /
+`Now` / `I18n` / `Format` / `Transform` / `Expr` / `Invoke` to the binding resolver. **Behaviour
+change:** those seven returned `Failed NotResolvedYet` and now return the resolver's answer, so
+`getBindingValue` / `getNodeState` report values where they previously reported an absence. New
+`BindingProbe.tryResolveScalarBindingWith`. The store-reading arms are deliberately not delegated —
+they carry error discriminations the resolver's single `NotResolved` cannot express.
+
+**The C# authoring veneer grows 18 members** across `Binding`, `FuaranAction`, `LocaleFormat` and
+`CellFormat` (`Now`, `I18n`, `Local`, `Invoke`, `Transform`, `Expr`, `SetState`, `SetStateFrom`,
+`CommitLocal`, `Invoke`, `ReadFileBody`, `AiTool`, `Duration`, `Since`, `RelativeTime`), with new
+public types `LocalFlush`, `TransformSource`, `TimeGrain`, `DurationUnit`, `DurationStyle`,
+`FileEncoding`. Additive, with one consequence worth naming: `Binding.Transform` / `Binding.Expr`
+expose `Fuaran.Core.Transform` / `ColExpr` / `DataSource` on the public signature, so the veneer now
+carries a transitive public-surface dependency on `Fuaran.Core.DataFrame` / `.Column`. A second
+C#-shaped spelling of that algebra would be two vocabularies for one evaluator, with the drift
+landing on authors as pipelines that evaluate differently from the ones the corpus certifies. A
+conformance pin now asserts the veneer covers every case of the wire `Binding` / `Action` / `Format`
+/ `CellFormat` vocabularies, with a three-entry exclusion table asserted in both directions.
+
+**`Site.Export` refuses rather than skips.** `sitemapXml` XML-escapes; new public
+`Export.tryResolveTarget`; `writePage` / `writeAll` **raise** on a route that resolves outside
+`outDir` where they previously wrote it. **`Telemetry.Default.ConsoleSink` redacts by default** — new
+public `ConsoleDisclosure` DU, a one-argument constructor and `createVerbose`; the parameterless
+constructor and `create ()` now withhold user ids and truncate free text.
+**`Fuaran.UI.Telemetry.Drift` is `IsPackable=false`** and ships no new versions; existing published
+versions are unaffected.
