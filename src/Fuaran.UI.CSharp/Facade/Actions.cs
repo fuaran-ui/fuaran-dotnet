@@ -20,6 +20,15 @@ namespace Fuaran.UI.CSharp;
 // `into:` nor a result closure), `Print` (Phase 1124 — payload-free, so trivially
 // wire-faithful), and a `Chain` of those. It excludes `Dispatch`, whose message is a
 // host closure — see the note on `FuaranAction`.
+//
+// SPEC-CONSTRUCTION-TRIPWIRE — the `new FsGen.InvokeArg(…)` call below (Phase
+// 1532) is positional on purpose. C# has no copy-and-update over an F# record,
+// so an additive slot on that record lands here as CS7036, at the one site that
+// decides whether the veneer exposes the new slot or passes the F# default
+// explicitly. That is the mechanism, not churn to be routed around; the VB tier
+// authors through this veneer, so it is the tripwire for both languages. Pinned
+// in both directions, this marker included, by
+// src/Fuaran.UI.Tests/SpecConstructionTests.fs ("The C# authoring veneer").
 
 /// <summary>
 /// A JSON value — the payload a <see cref="FuaranAction.Notify"/> carries. The

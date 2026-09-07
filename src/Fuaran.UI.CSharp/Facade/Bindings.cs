@@ -8,6 +8,16 @@ using FsCore = global::Fuaran.Core;
 
 namespace Fuaran.UI.CSharp;
 
+// SPEC-CONSTRUCTION-TRIPWIRE — the `new FsGen.<X>(…)` calls below (Phase 1532:
+// `InvokeArg`, `TransformParam`) are positional on purpose. C# has no
+// copy-and-update over an F# record, so an additive slot on one of those records
+// lands here as CS7036, at the one site that decides whether the veneer exposes
+// the new slot or passes the F# default explicitly. That is the mechanism, not
+// churn to be routed around; the VB tier authors through this veneer, so it is
+// the tripwire for both languages. Pinned in both directions, this marker
+// included, by src/Fuaran.UI.Tests/SpecConstructionTests.fs ("The C# authoring
+// veneer").
+
 /// <summary>
 /// A C#-native binding — the authoring facade over the F# <c>Binding&lt;'T&gt;</c>.
 /// A plain value implicitly converts to a static binding, so
@@ -267,7 +277,7 @@ public static class Binding
                 : Fs.Some(Fs.List(parameters.Select(TransformParameter)))));
 
     private static FsGen.TransformParam TransformParameter((string Name, Binding<Payload> From) p) =>
-        new(Fs.MapBinding(p.From.Inner, (Payload v) => v.Inner), p.Name);
+        new FsGen.TransformParam(Fs.MapBinding(p.From.Inner, (Payload v) => v.Inner), p.Name);
 }
 
 /// <summary>
