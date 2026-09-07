@@ -201,6 +201,16 @@ public static class Binding
     /// both are <c>&lt;closure&gt;</c> sentinels on the wire, and a veneer whose
     /// trees ARE serialised supplies the identity pair rather than minting host
     /// behaviour that cannot survive the wire.
+    /// <para>
+    /// The case's two WIRE-CARRIED slots — a declared <c>codec</c> and a
+    /// <c>commitTo</c> destination (Phase 1538) — are passed absent here, which
+    /// is the string field's own shape: no re-parse to declare, and the commit
+    /// goes where the field's own binding says. A veneer member that exposed
+    /// them would be a different member, taking them as arguments, and is not
+    /// this one. This construction is positional on purpose (see the
+    /// SPEC-CONSTRUCTION-TRIPWIRE note in <c>Facade/Actions.cs</c>): a further
+    /// slot on the case lands here as CS7036, at the site that decides.
+    /// </para>
     /// </remarks>
     public static Binding<string> Local(Binding<string> initialFrom, LocalFlush flushOn) =>
         new(FsGen.Binding<string>.NewLocal(
@@ -209,7 +219,9 @@ public static class Binding
             initialFrom.Inner,
             Fs.None<Microsoft.FSharp.Core.FSharpFunc<string, object>>(),
             Fs.Func<string, Microsoft.FSharp.Core.FSharpResult<string, string>>(
-                Microsoft.FSharp.Core.FSharpResult<string, string>.NewOk)));
+                Microsoft.FSharp.Core.FSharpResult<string, string>.NewOk),
+            Fs.None<FsGen.Format>(),
+            Fs.None<string>()));
 
     /// <summary>
     /// A value produced by a host-registered CAPABILITY (Phase 283) —
