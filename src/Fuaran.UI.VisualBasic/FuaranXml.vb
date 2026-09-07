@@ -122,7 +122,13 @@ Public Module FuaranXml
     ''' <c>$name</c> bound-query spelling every other text attribute here takes.
     ''' <c>direction</c> (Fuaran-UI Phase 1472) is the second — a bounded enum
     ''' rather than text, so it takes the <c>OptEnum</c> spelling, and an unknown
-    ''' token is refused here rather than coerced to the default.</summary>
+    ''' token is refused here rather than coerced to the default.
+    '''
+    ''' <c>visible</c> (Fuaran-UI Phase 1535) is the third — a boolean BINDING,
+    ''' so it takes the <c>OptBoolBinding</c> spelling every other bound flag in
+    ''' this dialect takes (<c>open</c> on a modal, for instance). Its resolved
+    ''' <c>False</c> removes the element from the output entirely; a predicate
+    ''' that does not resolve renders it.</summary>
     Private Function ApplyNodeTraits(el As XElement, node As Csharp.FuaranNode) As Csharp.FuaranNode
         Dim result = node
 
@@ -131,6 +137,9 @@ Public Module FuaranXml
 
         Dim direction = OptEnum(Of Csharp.TextDirection)(el, "direction")
         If direction IsNot Nothing Then result = result.WithDirection(direction.Value)
+
+        Dim visible = OptBoolBinding(el, "visible")
+        If visible IsNot Nothing Then result = result.WithVisible(visible)
 
         Return result
     End Function

@@ -38,7 +38,8 @@ let private fragment: ParamFragment<unit> =
                         Accessibility = None
                         Motion = None
                         ExtraAttributes = None
-                        Tooltip = None } ] }
+                        Tooltip = None
+                        Visible = None } ] }
 
     { Defaults.fragmentDecl with
         Name = "card"
@@ -66,7 +67,8 @@ let private sameNameOtherBody: ParamFragment<unit> =
                         Accessibility = None
                         Motion = None
                         ExtraAttributes = None
-                        Tooltip = None } ] }
+                        Tooltip = None
+                        Visible = None } ] }
 
     { fragment with Body = body }
 
@@ -100,7 +102,8 @@ let private closureBodied (hidden: string) : ParamFragment<unit> =
                         Accessibility = None
                         Motion = None
                         ExtraAttributes = None
-                        Tooltip = None } ] }
+                        Tooltip = None
+                        Visible = None } ] }
 
     { fragment with
         Body =

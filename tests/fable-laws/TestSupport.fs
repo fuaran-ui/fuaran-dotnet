@@ -132,7 +132,8 @@ let mkBox (id: string) (kids: EqNode list) : EqNode =
           Accessibility = Option.None
           Motion = Option.None
           ExtraAttributes = Option.None
-          Tooltip = None }
+          Tooltip = None
+          Visible = None }
 
 /// A leaf carrying CONTENT (Phase 1497). Two branches that insert the same id
 /// must be distinguishable by what they inserted, or the same-id-different-content
@@ -148,7 +149,8 @@ let mkLeafText (id: string) (text: string) : EqNode =
           Accessibility = Option.None
           Motion = Option.None
           ExtraAttributes = Option.None
-          Tooltip = None }
+          Tooltip = None
+          Visible = None }
 
 let mkLeaf (id: string) : EqNode = mkLeafText id ""
 

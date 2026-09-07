@@ -1186,7 +1186,8 @@ module Fuaran =
           Accessibility = accessibility
           Motion = Defaults.Motion.none
           ExtraAttributes = Option.None
-          Tooltip = Option.None }
+          Tooltip = Option.None
+          Visible = Option.None }
 
     // ─── Layout ─────────────────────────────────────────────────────────
 

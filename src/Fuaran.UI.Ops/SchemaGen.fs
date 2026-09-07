@@ -1749,7 +1749,30 @@ let private defs: (string * J) list =
                       [ duCase
                             "Switch"
                             [ "cases"; "default" ]
-                            [ "cases", arrayOf (record [ "child"; "match" ] [ "child", ref "Node"; "match", str ])
+                            // Fuaran-UI Phase 1535 — a case selects on a literal
+                            // `match` XOR a `when` predicate, and BOTH halves of
+                            // that XOR are expressed here rather than one being
+                            // left to the decoder: `anyOf` requires at least one
+                            // (as the selector below already does), and `not` +
+                            // `required` forbids the pair. Spelled that way and
+                            // not as `oneOf` over two full case schemas, which
+                            // would duplicate the property block and give it two
+                            // places to drift.
+                            [ "cases",
+                              arrayOf (
+                                  JObj
+                                      [ "allOf",
+                                        JArr
+                                            [ record
+                                                  [ "child" ]
+                                                  [ "child", ref "Node"; "match", str; "when", binding "bool" ]
+                                              JObj
+                                                  [ "anyOf",
+                                                    JArr
+                                                        [ JObj [ "required", JArr [ JStr "match" ] ]
+                                                          JObj [ "required", JArr [ JStr "when" ] ] ] ]
+                                              JObj [ "not", JObj [ "required", JArr [ JStr "match"; JStr "when" ] ] ] ] ]
+                              )
                               "default", ref "Node"
                               "stateKey", str
                               "on", binding "str"
@@ -1854,7 +1877,13 @@ let private defs: (string * J) list =
             // bare-string shorthand the decoder also accepts is a lenient
             // profile this artefact deliberately does not widen to (the same
             // call every other `TextSource` slot already made).
-            "tooltip", ref "TextSource" ]
+            "tooltip", ref "TextSource"
+            // Fuaran-UI Phase 1535 — the node-level visibility predicate,
+            // optional and omitted when absent. A `Binding<bool>` like any
+            // other; the RULE it carries (a resolved `false` removes the node,
+            // an unresolved one renders it) is renderer semantics, which no
+            // schema can state and \§3.1 does.
+            "visible", binding "bool" ]
 
       // ── TreeOp (§3.4) ─────────────────────────────────────────────────────
       "TreeOp",

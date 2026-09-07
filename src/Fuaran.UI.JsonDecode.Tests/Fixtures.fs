@@ -57,7 +57,8 @@ let private node (id: string) (kind: NodeKind<obj>) (accessibility: Accessibilit
       Accessibility = accessibility
       Motion = None
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 /// Phase 695 — a sample child reused in two slots of one composite fixture needs
 /// a distinct id in each: NodeIds are unique WITHIN a tree (`WIRE_FORMAT.md` §8),
@@ -5565,7 +5566,8 @@ let switchOnSelection: Node<obj> =
                                       Some "status"
                                   )
                               Cases =
-                                  [ { Match = "critical"
+                                  [ { Match = Some "critical"
+                                      When = None
                                       Child =
                                         node
                                             "ward-critical"
@@ -5615,19 +5617,22 @@ let switchAutoAdvance: Node<obj> =
                 On = Binding.State("slide", None)
                 AutoAdvanceMs = Some 5000
                 Cases =
-                    [ { Match = "one"
+                    [ { Match = Some "one"
+                        When = None
                         Child =
                           node
                               "switch-carousel-panel-one"
                               (NodeKind.Markdown({ Text = TextSource.Literal "Built for the long term" }))
                               None }
-                      { Match = "two"
+                      { Match = Some "two"
+                        When = None
                         Child =
                           node
                               "switch-carousel-panel-two"
                               (NodeKind.Markdown({ Text = TextSource.Literal "Typed all the way down" }))
                               None }
-                      { Match = "three"
+                      { Match = Some "three"
+                        When = None
                         Child =
                           node
                               "switch-carousel-panel-three"
@@ -5640,6 +5645,247 @@ let switchAutoAdvance: Node<obj> =
                         None })
         None
 
+/// Fuaran-UI Phase 1535 — the WIRE-NEUTRAL half of H-42, made checkable.
+///
+/// A `Switch` whose `on` is a `Binding.Transform` yielding exactly one cell: the
+/// one wire spelling of "count > 3 ⇒ 'busy'". Before 1535 both F# renderers
+/// resolved `on` through the generic `tryResolve`, whose `Transform` arm is
+/// row-only — it evaluates to a `Row seq` and `unbox`es that at `string`, which
+/// threw on .NET and silently rendered the rows array under Fable, so the switch
+/// fell through to `Default` either way with nothing anywhere saying why.
+///
+/// The pipeline is the canonical scalar terminal the Phase-632 rule names: a
+/// global `groupBy [] [count]`, then a `derive` folding the count into the branch
+/// label, then a `project` to that one column. Nothing here is new vocabulary —
+/// what the fixture pins is that an EXISTING document renders what its author
+/// meant.
+let switchOnTransformScalar: Node<obj> =
+    let source =
+        Fuaran.Core.Embedded
+            { Schema = [ "id", Fuaran.Core.StringType ]
+              Columns =
+                [ Fuaran.Core.Column.create
+                      "id"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "a"
+                        Fuaran.Core.Str "b"
+                        Fuaran.Core.Str "c"
+                        Fuaran.Core.Str "d" ] ] }
+
+    node
+        "switch-on-transform-scalar"
+        (NodeKind.Switch
+            { Defaults.switch with
+                On =
+                    Binding.Transform(
+                        TransformSource.Data source,
+                        [ Fuaran.Core.GroupBy(
+                              [],
+                              [ { Name = "n"
+                                  Fn = Fuaran.Core.AggFn.Count
+                                  Of = "id" } ]
+                          )
+                          Fuaran.Core.Derive(
+                              "label",
+                              Fuaran.Core.Case(
+                                  [ Fuaran.Core.Binary(
+                                        Fuaran.Core.Gt,
+                                        Fuaran.Core.Col "n",
+                                        Fuaran.Core.Lit(Fuaran.Core.Int 3)
+                                    ),
+                                    Fuaran.Core.Lit(Fuaran.Core.Str "busy") ],
+                                  Fuaran.Core.Lit(Fuaran.Core.Str "quiet")
+                              )
+                          )
+                          Fuaran.Core.Project [ "label", "label" ] ],
+                        None
+                    )
+                Cases =
+                    [ { Match = Some "busy"
+                        When = None
+                        Child =
+                          node
+                              "switch-scalar-busy"
+                              (NodeKind.Markdown({ Text = TextSource.Literal "Plenty of rows" }))
+                              None }
+                      { Match = Some "quiet"
+                        When = None
+                        Child =
+                          node
+                              "switch-scalar-quiet"
+                              (NodeKind.Markdown({ Text = TextSource.Literal "Not many rows" }))
+                              None } ]
+                Default =
+                    node
+                        "switch-scalar-default"
+                        (NodeKind.Markdown({ Text = TextSource.Literal "Could not tell" }))
+                        None })
+        None
+
+/// Fuaran-UI Phase 1535 — the PREDICATE case.
+///
+/// `when` selects a branch by evaluating a `Binding<bool>` rather than by
+/// comparing the switch's `on` selector against a literal, which is what makes
+/// "show the badge when the grid has rows" authorable at all. First-match-wins is
+/// unchanged and the two kinds of case interleave in ONE ordered list — the
+/// fixture deliberately MIXES them, because a corpus carrying only the pure
+/// predicate form would let a host that evaluates every predicate before any
+/// match pass.
+///
+/// The first case's predicate is a bare `State` bool; the second is an `Expr`
+/// over a State param (Phase 1534). Both spellings ride the same slot, which is
+/// the point of routing `when` through the ordinary binding decoder rather than
+/// giving it a vocabulary of its own.
+let switchPredicate: Node<obj> =
+    node
+        "switch-predicate"
+        (NodeKind.Switch
+            { Defaults.switch with
+                On = Binding.State("view", None)
+                Cases =
+                    [ { Match = None
+                        When = Some(Binding.State("cart.empty", None))
+                        Child =
+                          node
+                              "switch-predicate-empty"
+                              (NodeKind.Markdown({ Text = TextSource.Literal "Your basket is empty" }))
+                              None }
+                      { Match = None
+                        When =
+                          Some(
+                              Binding.Expr(
+                                  Fuaran.Core.Binary(
+                                      Fuaran.Core.Gt,
+                                      Fuaran.Core.Param "itemCount",
+                                      Fuaran.Core.Lit(Fuaran.Core.Int 3)
+                                  ),
+                                  Some
+                                      [ { From = Binding.State("cart.itemCount", None)
+                                          Name = "itemCount" } ]
+                              )
+                          )
+                        Child =
+                          node
+                              "switch-predicate-many"
+                              (NodeKind.Markdown({ Text = TextSource.Literal "Plenty in your basket" }))
+                              None }
+                      { Match = Some "summary"
+                        When = None
+                        Child =
+                          node
+                              "switch-predicate-summary"
+                              (NodeKind.Markdown({ Text = TextSource.Literal "Summary view" }))
+                              None } ]
+                Default =
+                    node
+                        "switch-predicate-default"
+                        (NodeKind.Markdown({ Text = TextSource.Literal "A few things in your basket" }))
+                        None })
+        None
+
+/// Fuaran-UI Phase 1535 — a switch selected ENTIRELY by predicate, carrying no
+/// selector at all.
+///
+/// This is the shape that makes `when` more than sugar: the branch is chosen by
+/// evaluating bindings, so there is no state key for anything to write and
+/// nothing for FUARAN103 to report as unwritable. The wire carries
+/// `"stateKey":""` because the F# selector is a total `Binding` and the empty
+/// State key is its canonical "no selector" spelling — which is exactly what
+/// FUARAN083 reports on a MATCH switch and deliberately does not report here.
+let switchPredicateOnly: Node<obj> =
+    node
+        "switch-predicate-only"
+        (NodeKind.Switch
+            { Defaults.switch with
+                On = Binding.State("", None)
+                Cases =
+                    [ { Match = None
+                        When = Some(Binding.State("form.valid", None))
+                        Child =
+                          node
+                              "switch-predicate-only-ready"
+                              (NodeKind.Markdown({ Text = TextSource.Literal "Ready to send" }))
+                              None } ]
+                Default =
+                    node
+                        "switch-predicate-only-default"
+                        (NodeKind.Markdown({ Text = TextSource.Literal "Fill in the form to continue" }))
+                        None })
+        None
+
+/// Fuaran-UI Phase 1535 — CONDITIONAL PRESENCE on the node envelope.
+///
+/// `visible` removes a node from the output on a resolved `false`: no element,
+/// no placeholder, no `aria-hidden`, nothing in the layout and nothing in the
+/// accessibility tree. It is deliberately NOT `accessibility.hidden`, which is
+/// `aria-hidden` over a node that IS drawn — and the fixture carries BOTH on
+/// sibling nodes, so a host that conflated them fails on the pair rather than on
+/// an argument.
+///
+/// The three predicate spellings a host has to get right are each here: a bare
+/// `State` bool (the ordinary case), an `Expr` over a param (the computed one),
+/// and a `State` key with no writer anywhere in the tree — the last is the
+/// UNRESOLVED case, and the rule it pins is that it RENDERS. A missing source
+/// silently hiding content is the one failure a reader cannot see, cannot report
+/// and cannot work around.
+let nodeVisible: Node<obj> =
+    let visibleNode (id: string) (text: string) (predicate: Binding<bool>) : Node<obj> =
+        { node id (NodeKind.Markdown({ Text = TextSource.Literal text })) None with
+            Visible = Some predicate }
+
+    node
+        "node-visible"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+              Role = BoxRole.Group
+              Heading = None
+              Children =
+                [ visibleNode "visible-state-flag" "Shown while the flag is set" (Binding.State("banner.shown", None))
+                  visibleNode
+                      "visible-computed"
+                      "Shown once the basket has more than three things in it"
+                      (Binding.Expr(
+                          Fuaran.Core.Binary(
+                              Fuaran.Core.Gt,
+                              Fuaran.Core.Param "itemCount",
+                              Fuaran.Core.Lit(Fuaran.Core.Int 3)
+                          ),
+                          Some
+                              [ { From = Binding.State("cart.itemCount", None)
+                                  Name = "itemCount" } ]
+                      ))
+                  // The DEFAULT-VISIBLE spelling, and the reason it is spelled
+                  // rather than assumed: `visible` is an ordinary `Binding<bool>`
+                  // and follows the shared `Binding.State` rule, under which a
+                  // key nothing has written resolves to the slot default —
+                  // `false` for a bool, which HIDES. An author who means
+                  // "visible unless something says otherwise" declares the
+                  // default, exactly as `Modal.open` and `Disclosure.open`
+                  // already require. FUARAN148 reports the shape that omits it.
+                  visibleNode
+                      "visible-until-dismissed"
+                      "Shown until the reader dismisses it"
+                      (Binding.State("banner.dismissed", Some true))
+                  // GENUINELY unresolved: a query result the host has not
+                  // furnished. The rule this pins is that the node RENDERS —
+                  // absence of a verdict is not a `false`.
+                  visibleNode
+                      "visible-unresolved"
+                      "Rendered, because nothing could say whether to hide it"
+                      (Binding.Query("flags.betaEnabled", (fun (o: obj) -> unbox<bool> o), None))
+                  // The CONTRAST, on a sibling rather than in prose: `hidden` is
+                  // `aria-hidden` over a node that is drawn and occupies layout.
+                  node
+                      "aria-hidden-decoration"
+                      (NodeKind.Markdown({ Text = TextSource.Literal "*" }))
+                      (Some
+                          { Defaults.Accessibility.empty with
+                              Hidden = Some(Binding.Static(Some true)) }) ]
+              KeepTogether = false
+              BreakBefore = false }
+        ))
+        None
+
 let switchBasic: Node<obj> =
     node
         "switch-1"
@@ -5647,10 +5893,12 @@ let switchBasic: Node<obj> =
             { Defaults.switch with
                 On = Binding.State("view", None)
                 Cases =
-                    [ { Match = "details"
+                    [ { Match = Some "details"
+                        When = None
                         Child =
                           node "switch-details" (NodeKind.Markdown({ Text = TextSource.Literal "Details view" })) None }
-                      { Match = "summary"
+                      { Match = Some "summary"
+                        When = None
                         Child =
                           node "switch-summary" (NodeKind.Markdown({ Text = TextSource.Literal "Summary view" })) None } ]
                 Default =
@@ -7090,6 +7338,13 @@ let allNodes: (string * Node<obj>) list =
       "Meta/Switch (Phase 1122 — an auto-advancing carousel: `autoAdvanceMs` over an index key)", switchAutoAdvance
       "Meta/Switch (Phase 768 — the selector widened: `on` takes a Selection, the branch follows the clicked row)",
       switchOnSelection
+      "Meta/Switch (Phase 1535 — a computed selector: a Transform yielding one cell, read through the scalar path)",
+      switchOnTransformScalar
+      "Meta/Switch (Phase 1535 — predicate cases: a State bool and an Expr, MIXED with a match case in one ordered list)",
+      switchPredicate
+      "Meta/Switch (Phase 1535 — selected entirely by predicate: no selector, nothing to write)", switchPredicateOnly
+      "Node envelope (Phase 1535 — visible: removal from flow, three predicate spellings, beside an aria-hidden sibling)",
+      nodeVisible
       "FragmentDecl (named template with Markdown body)", fragmentDecl
       "FragmentRef (name-only wire shape)", fragmentRef
       "FragmentDecl (parameterised — value/slot/repeat holes + effect class)", fragmentDeclParam

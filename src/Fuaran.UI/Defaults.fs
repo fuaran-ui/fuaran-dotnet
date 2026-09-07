@@ -590,7 +590,8 @@ let private errorBoundaryPlaceholder<'Msg> : Node<'Msg> =
       Accessibility = Option.None
       Motion = Option.None
       ExtraAttributes = Option.None
-      Tooltip = Option.None }
+      Tooltip = Option.None
+      Visible = Option.None }
 
 let errorBoundary<'Msg> : ErrorBoundarySpec<'Msg> =
     { Child = errorBoundaryPlaceholder<'Msg>
@@ -631,7 +632,8 @@ let private fragmentPlaceholder<'Msg> : Node<'Msg> =
       Accessibility = Option.None
       Motion = Option.None
       ExtraAttributes = Option.None
-      Tooltip = Option.None }
+      Tooltip = Option.None
+      Visible = Option.None }
 
 let fragmentDecl<'Msg> : FragmentDeclSpec<'Msg> =
     // `Holes = None` / `Effect = None` since the swap — ≡ the old `[]` /

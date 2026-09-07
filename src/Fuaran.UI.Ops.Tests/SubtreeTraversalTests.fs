@@ -57,7 +57,8 @@ let private switchNode: Node<Msg> =
         { Defaults.switch<Msg> with
             On = Binding.State("mode", None)
             Cases =
-                [ { Match = "compact"
+                [ { Match = Some "compact"
+                    When = None
                     Child = inSwitchCase } ]
             Default = inSwitchDefault }
 

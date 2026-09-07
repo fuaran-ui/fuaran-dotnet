@@ -108,7 +108,8 @@ let private sampleTree: Node<obj> =
       Motion = None
       State = None
       Style = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 [<Tests>]
 let tests =

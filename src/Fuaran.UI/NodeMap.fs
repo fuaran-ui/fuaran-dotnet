@@ -81,8 +81,8 @@ let rec mapAction (f: 'a -> 'b) (action: Action<'a>) : Action<'b> =
 #warnon "44"
 
 /// Relabel a whole `Node<'a>` to `Node<'b>`. The `'Msg`-free traits (`Style`,
-/// `Accessibility`, `Motion`, `ExtraAttributes`) pass through; `Kind` + `State`
-/// recurse.
+/// `Accessibility`, `Motion`, `ExtraAttributes`, `Tooltip`, `Visible`) pass
+/// through; `Kind` + `State` recurse.
 let rec mapMsg (f: 'a -> 'b) (node: Node<'a>) : Node<'b> =
     { Id = node.Id
       Kind = mapKind f node.Kind
@@ -91,7 +91,8 @@ let rec mapMsg (f: 'a -> 'b) (node: Node<'a>) : Node<'b> =
       Accessibility = node.Accessibility
       Motion = node.Motion
       ExtraAttributes = node.ExtraAttributes
-      Tooltip = node.Tooltip }
+      Tooltip = node.Tooltip
+      Visible = node.Visible }
 
 and mapState (f: 'a -> 'b) (state: StateBehaviour<'a>) : StateBehaviour<'b> =
     { OnLoading = state.OnLoading |> Option.map (mapMsg f)
@@ -219,6 +220,7 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
                 spec.Cases
                 |> List.map (fun c ->
                     { Match = c.Match
+                      When = c.When
                       Child = mapMsg f c.Child })
               Default = mapMsg f spec.Default
               AutoAdvanceMs = spec.AutoAdvanceMs }

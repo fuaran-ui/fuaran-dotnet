@@ -848,7 +848,8 @@ let private genGridColumns: Gen<ColumnErased<obj> list> =
                     Accessibility = None
                     Motion = None
                     ExtraAttributes = None
-                    Tooltip = None }) ]
+                    Tooltip = None
+                    Visible = None }) ]
 
         return
             cellKinds
@@ -1311,7 +1312,8 @@ and private placeholderErrorNode: Node<obj> =
       Accessibility = None
       Motion = None
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 and private genNodeSized (size: int) : Gen<Node<obj>> =
     gen {
@@ -1329,7 +1331,8 @@ and private genNodeSized (size: int) : Gen<Node<obj>> =
               Accessibility = accessibility
               Motion = None
               ExtraAttributes = None
-              Tooltip = None }
+              Tooltip = None
+              Visible = None }
     }
 
 /// Top-level Node generator — depth capped at 4 regardless of the FsCheck size.

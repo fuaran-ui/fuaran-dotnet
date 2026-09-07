@@ -131,7 +131,8 @@ let private mkStack (id: string) (kids: EqNode list) : EqNode =
           Accessibility = Option.None
           Motion = Option.None
           ExtraAttributes = Option.None
-          Tooltip = None }
+          Tooltip = None
+          Visible = None }
 
 let private mkSpacer (id: string) : EqNode =
     wrap
@@ -144,7 +145,8 @@ let private mkSpacer (id: string) : EqNode =
           Accessibility = Option.None
           Motion = Option.None
           ExtraAttributes = Option.None
-          Tooltip = None }
+          Tooltip = None
+          Visible = None }
 
 // ---- a mixed (leaf-bearing) tree generator + the container capability ----
 
@@ -573,7 +575,8 @@ module Columnar =
           Accessibility = None
           Motion = Fuaran.UI.Defaults.Motion.none
           ExtraAttributes = None
-          Tooltip = None }
+          Tooltip = None
+          Visible = None }
 
     let private dashboardOf (children: Fuaran.UI.Types.Node<obj> list) =
         Fuaran.UI.Fuaran.dashboard

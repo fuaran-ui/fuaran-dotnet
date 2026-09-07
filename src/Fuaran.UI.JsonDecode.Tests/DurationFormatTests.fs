@@ -112,7 +112,8 @@ let wireRoundTrips =
                     Accessibility = None
                     Motion = None
                     ExtraAttributes = None
-                    Tooltip = None }
+                    Tooltip = None
+                    Visible = None }
 
               let _, decoded = roundTripped grid
 
@@ -142,7 +143,8 @@ let wireRoundTrips =
                     Accessibility = None
                     Motion = None
                     ExtraAttributes = None
-                    Tooltip = None }
+                    Tooltip = None
+                    Visible = None }
 
               let wire, decoded = roundTripped n
 
@@ -190,7 +192,8 @@ let wireRoundTrips =
                     Accessibility = None
                     Motion = None
                     ExtraAttributes = None
-                    Tooltip = None }
+                    Tooltip = None
+                    Visible = None }
 
               let wire, decoded = roundTripped labelled
 
