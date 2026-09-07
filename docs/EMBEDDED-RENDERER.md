@@ -82,7 +82,11 @@ serialised.**
 
 - **`Action.Notify(channel, payload)`** — a channel name and a JSON payload. The standalone
   bundle surfaces it through its `onNotify` mount option; set `MountOptions.NotifyEndpoint` and
-  the emitted snippet POSTs `{"channel": …, "payload": …}` there.
+  the emitted snippet POSTs `{"channel": …, "payload": …}` there. The POST is same-origin and
+  carries the host's cookies, so an endpoint that mutates anything also wants
+  `MountOptions.AntiforgeryHeader` — the header's name and value, stated by the host, because a
+  token this package invented would fail every request while looking like protection. A delivery
+  failure and a refusing 4xx/5xx both reach the snippet's `onError`.
 - **`Action.Call(endpoint, into: …)`** — the wire-native round trip. The response is written into
   a `$state` slot or a named query result, and every reader of that binding re-renders. Note
   `into:` and **not** `onResult`: `onResult` is a closure and does not survive either.

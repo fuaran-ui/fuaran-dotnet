@@ -5,8 +5,19 @@ module Fuaran.UI.Renderer.BrowserRuntime
 //
 //  Default in-browser implementation of `IFuaranRuntime`. Wraps `fetch` for
 //  `Action.Call`, `window.dispatchEvent` for `Action.Notify`, hash-based
-//  routing for `Action.Navigate`, `sessionStorage` for `Action.SetState`,
+//  routing for `Action.Navigate`, the `StateStore` for `Action.SetState`,
 //  and `console.warn` for `Action.AiTool` + `Warn`.
+//
+//  `SetState` reaches `localStorage`, NOT `sessionStorage` — this header said
+//  the latter and had said it since the module was written, while the store it
+//  names has always written localStorage. Those are different lifetimes (past
+//  the tab, not just the visit) and different quotas, so the line was not a
+//  wording slip; it was the wrong answer to the question a reader comes here
+//  with. Corrected towards the code rather than the reverse, because surviving
+//  a reload is what the channel is for. Since Phase 1532 a value reaches
+//  storage only for keys the HOST has declared persistent
+//  (`StateStore.declarePersistent`); an undeclared key lives in memory for the
+//  session, which is the default and covers most of them.
 //
 //  Consumer apps will replace this with an adapter that routes
 //  `Notify` to `INotificationChannel`, `Navigate` to the SDK router,

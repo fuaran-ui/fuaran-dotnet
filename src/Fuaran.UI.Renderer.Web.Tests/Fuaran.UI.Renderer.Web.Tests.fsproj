@@ -7,6 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="RendererWebTests.fs" />
+    <Compile Include="SnippetHygieneTests.fs" />
+    <Compile Include="ServingAndFingerprintTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

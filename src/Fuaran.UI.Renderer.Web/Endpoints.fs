@@ -42,9 +42,13 @@ module private Serving =
             "no-cache"
 
     /// Serve one embedded asset, honouring a conditional request.
+    ///
+    /// The bytes and the ETag come from `Assets.content`, which reads them out
+    /// of the assembly and hashes them once per process. Both used to be
+    /// recomputed per request — including on the 304 path, which then sent
+    /// neither.
     let serve (asset: Assets.Asset) (ctx: HttpContext) : Threading.Tasks.Task =
-        let bytes = Assets.read asset
-        let tag = Assets.etag bytes
+        let bytes, tag = Assets.content asset
         let headers = ctx.Response.Headers
         headers.CacheControl <- Microsoft.Extensions.Primitives.StringValues(cacheHeader asset)
         headers.ETag <- Microsoft.Extensions.Primitives.StringValues tag

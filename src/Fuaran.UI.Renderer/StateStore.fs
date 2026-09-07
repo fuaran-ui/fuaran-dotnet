@@ -8,17 +8,40 @@ module Fuaran.UI.Renderer.StateStore
 //  channel that previously dangled:
 //
 //    - WRITE: `Action.SetState(key, value)` -> `IFuaranRuntime.SetState` ->
-//      `StateStore.set` (here), which persists string values to localStorage
-//      and notifies subscribers.
+//      `StateStore.set` (here), which notifies subscribers and — for a string
+//      value under a key the host declared persistent — writes localStorage.
 //    - READ:  `Binding.State(key, default)` reads `BindingSources.State`; the
 //      host merges `StateStore.snapshot ()` into that map per render.
 //    - REACT: `useStateValue key default` subscribes a rendered surface so it
 //      re-paints when the value changes (e.g. a global Cash/Real toggle).
 //
 //  Browser builds persist string values to localStorage so the value
-//  survives reloads; the .NET build keeps an in-memory map (enough for
-//  tests). Non-string state is in-memory only for v1 — string keys cover the
-//  global-control use case (terms mode, theme, locale) the channel exists for.
+//  survives reloads; the .NET build persists nothing by default. Non-string
+//  state is in-memory only for v1 — string keys cover the global-control use
+//  case (terms mode, theme, locale) the channel exists for.
+//
+//  ── WHAT PERSISTS IS DECLARED, NOT INFERRED (Phase 1532) ───────────────────
+//  A key persists only when the HOST has declared it persistent
+//  (`declarePersistent`). Everything else — which is everything, until a host
+//  says otherwise — lives for the session and no longer.
+//
+//  This NARROWS an existing path rather than adding one: `Action.SetState`
+//  still reaches `set` through the same Phase 782 dispatch gate, and the
+//  in-memory write, the notification and the `Binding.State` read are all
+//  unchanged. What changed is the far side of that write. A tree-originated
+//  `SetState` used to put a string in localStorage forever — no expiry, no
+//  budget, and no way for the host to say which of its keys were meant to
+//  outlive the tab — and a tree is not the thing that can know whether a value
+//  should survive a reload on someone else's machine. The host knows; now it
+//  says.
+//
+//  Two consequences follow from the declaration, and both are the point.
+//  HYDRATION is gated by it too, so a key the host has stopped declaring stops
+//  being read back rather than serving a value from a previous release
+//  forever. And `Remove` / `Reset` CLEAR the persisted value rather than
+//  leaving it for the next reload to resurrect — the old behaviour meant a
+//  cleared filter came back on refresh, which reads as the clear not having
+//  worked.
 // ============================================================================
 
 open System.Collections.Generic
@@ -55,29 +78,109 @@ open System.Collections.Generic
 open Fable.Core
 open Fable.Core.JsInterop
 open Feliz
+#endif
 
+/// The persistent half of a state store, as a PORT rather than a hard-wired
+/// `localStorage` call.
+///
+/// Every function takes the FULL storage key — an instance's `persistPrefix`
+/// is already applied — so scoped stores namespace beneath their own prefix and
+/// `RemovePrefix` can evict a whole scope in one call.
+///
+/// A port rather than only a compile-time platform split, because the readers
+/// want different backings and one of them cannot be reached otherwise: the
+/// browser wants `localStorage`, a .NET build wants nothing (the default
+/// below), and a test — or a server host that means to persist somewhere real
+/// — wants to say. The quota arm in particular is a browser fact with no .NET
+/// twin, so without a port it is a path no test can enter.
+type StatePersistence =
+    {
+        /// The value stored under `storageKey`, or `None` when absent or empty.
+        Read: string -> string option
+        /// Store `value` under `storageKey`. MAY THROW — a browser at its
+        /// storage quota does exactly that, and the caller treats it as a
+        /// diagnostic rather than as a failure of the write it was asked for.
+        Write: string -> string -> unit
+        /// Drop `storageKey`, if present.
+        Remove: string -> unit
+        /// Drop every stored key beginning with `prefix` — how a disposed
+        /// scope's whole namespace leaves the backing store.
+        RemovePrefix: string -> unit
+    }
+
+/// Ordinal prefix test, written out rather than taken from the BCL: this file
+/// is Fable-compiled, and the culture-carrying `StartsWith` overloads are not
+/// worth the portability question for two lines.
+let private hasPrefix (prefix: string) (s: string) : bool =
+    s.Length >= prefix.Length && s.Substring(0, prefix.Length) = prefix
+
+#if FABLE_COMPILER
 [<Emit("(typeof localStorage !== 'undefined') ? localStorage.getItem($0) : null")>]
 let private lsGet (key: string) : string = jsNative
 
 [<Emit("(typeof localStorage !== 'undefined') ? (localStorage.setItem($0, $1), undefined) : undefined")>]
 let private lsSet (key: string) (value: string) : unit = jsNative
 
-// `storageKey` is the FULL localStorage key (prefix already applied by the
-// instance) so scoped stores namespace beneath their own prefix.
-let private persistTo (storageKey: string) (value: obj) : unit =
-    match value with
-    | :? string as s -> lsSet storageKey s
-    | _ -> () // non-string state is in-memory only for v1
+[<Emit("(typeof localStorage !== 'undefined') ? (localStorage.removeItem($0), undefined) : undefined")>]
+let private lsRemove (key: string) : unit = jsNative
 
-let private hydrateFrom (storageKey: string) : obj option =
-    match lsGet storageKey with
-    | null -> None
-    | "" -> None
-    | s -> Some(box s)
+// Backwards, because `removeItem` renumbers the indices ahead of it: a forward
+// loop skips the key that slides into the slot just vacated.
+[<Emit("(function(p){ if (typeof localStorage === 'undefined') { return; } for (var i = localStorage.length - 1; i >= 0; i--) { var k = localStorage.key(i); if (k !== null && k.indexOf(p) === 0) { localStorage.removeItem(k); } } })($0)")>]
+let private lsRemovePrefix (prefix: string) : unit = jsNative
+
+/// The browser default: `localStorage`, which is what "survives a reload"
+/// means. `Write` is left free to throw — a browser at its quota does, and the
+/// store above turns that into a diagnostic.
+let defaultPersistence: StatePersistence =
+    { Read =
+        fun key ->
+            match lsGet key with
+            | null -> None
+            | "" -> None
+            | s -> Some s
+      Write = lsSet
+      Remove = lsRemove
+      RemovePrefix = lsRemovePrefix }
 #else
-let private persistTo (_storageKey: string) (_value: obj) : unit = ()
-let private hydrateFrom (_storageKey: string) : obj option = None
+/// The .NET default: nothing is persisted and nothing is read back. There is no
+/// localStorage off the browser, and inventing a process-lifetime map here
+/// would make a server host's "persistent" key mean something it did not ask
+/// for. A server host that wants real persistence supplies its own port.
+let defaultPersistence: StatePersistence =
+    { Read = fun _ -> None
+      Write = fun _ _ -> ()
+      Remove = ignore
+      RemovePrefix = ignore }
 #endif
+
+/// A `StatePersistence` over a fresh in-memory map. Every call returns an
+/// independent one, so two of them cannot see each other's keys.
+///
+/// This is what a .NET test drives the persistence contract with — the default
+/// on that leg stores nothing, so the contract would otherwise be observable
+/// only in a browser — and it is a serviceable backing for a host that wants
+/// process-lifetime persistence and no more.
+let inMemoryPersistence () : StatePersistence =
+    let map = Dictionary<string, string>()
+
+    { Read =
+        fun key ->
+            match map.TryGetValue key with
+            | true, "" -> None
+            | true, v -> Some v
+            | _ -> None
+      Write = fun key value -> map[key] <- value
+      Remove = fun key -> map.Remove key |> ignore
+      RemovePrefix =
+        fun prefix ->
+            let doomed =
+                [ for kv in map do
+                      if hasPrefix prefix kv.Key then
+                          kv.Key ]
+
+            for k in doomed do
+                map.Remove k |> ignore }
 
 /// An isolated state store: its own value map, subscriber structures, and
 /// localStorage namespace. The process-global default (the `get` / `set` / …
@@ -94,8 +197,18 @@ let private hydrateFrom (_storageKey: string) : obj option = None
 /// (`SubscribeKeys`) are indexed by key and fire ONLY when a key they watch is
 /// written. This replaces the prior single-list fan-out that invoked every
 /// keyed subscriber on every write and let it filter internally.
-type StateStoreInstance(persistPrefix: string) =
+///
+/// `persistence` is the backing store the declared keys reach (Phase 1532);
+/// the one-argument constructor takes `defaultPersistence`, so every existing
+/// construction site compiles and behaves unchanged.
+type StateStoreInstance(persistPrefix: string, persistence: StatePersistence) =
     let store = Dictionary<string, obj>()
+
+    // The host's declared persistent-key allow-list. EMPTY by default, so a
+    // store persists nothing until a host names what it meant to keep — the
+    // same posture as the Phase 782 dispatch gate, for the same reason: the
+    // safe default is the one a host has to opt out of, not into.
+    let mutable declared = Set.empty<string>
 
     // Keyless subscribers: fire on every `Set` (backward-compatible contract,
     // pinned by an Expecto case). `useStateValue` registers here.
@@ -118,31 +231,97 @@ type StateStoreInstance(persistPrefix: string) =
                 cb ()
         | _ -> ()
 
+    /// Persist one declared string value. An undeclared key, and any non-string
+    /// value, never reaches the backing store at all.
+    ///
+    /// A refusal from the backing store is a DIAGNOSTIC, not an exception. The
+    /// browser throws `QuotaExceededError` from `setItem` when its origin
+    /// budget is full (and in Safari's private mode from the first write), and
+    /// that throw used to leave the action interpreter mid-chain: the value was
+    /// already in memory and already notified, so the visible result was a
+    /// half-run action chain caused by something no part of the tree can see or
+    /// influence. The write it was asked for — the in-memory one — succeeded;
+    /// what failed is the extra durability, and saying so on the renderer's
+    /// diagnostic line is the whole of the correct response.
+    let persistDeclared (key: string) (value: obj) : unit =
+        if declared.Contains key then
+            match value with
+            | :? string as s ->
+                try
+                    persistence.Write (persistPrefix + key) s
+                with e ->
+                    Diagnostics.warn
+                        (sprintf
+                            "state key '%s' could not be persisted; its value stands for this session but will not survive a reload (the usual cause is the browser's storage quota)"
+                            key)
+                        e
+            | _ -> () // non-string state is in-memory only for v1
+
     /// Current value for `key`, hydrating from persistent storage on first read.
+    ///
+    /// Hydration is gated by the same declaration as the write: a key the host
+    /// does not declare is not read back, so retiring a key retires its stored
+    /// value rather than leaving it to be served indefinitely.
     member _.Get(key: string) : obj option =
         match store.TryGetValue key with
         | true, v -> Some v
         | _ ->
-            match hydrateFrom (persistPrefix + key) with
-            | Some v ->
-                store[key] <- v
-                Some v
-            | None -> None
+            if declared.Contains key then
+                match persistence.Read(persistPrefix + key) with
+                | Some v ->
+                    let boxed = box v
+                    store[key] <- boxed
+                    Some boxed
+                | None -> None
+            else
+                None
 
-    /// Write `key`, persist (string values), and notify subscribers.
+    /// Write `key`, persist it when the host declared it persistent, and notify
+    /// subscribers. The in-memory write and the notification are unconditional
+    /// — the declaration governs durability, never visibility.
     member _.Set(key: string, value: obj) : unit =
         store[key] <- value
-        persistTo (persistPrefix + key) value
+        persistDeclared key value
         notify key
 
-    /// Remove `key` from the in-memory store (if present) and notify its watchers,
-    /// so readers fall back to their default/host source (Phase 423 — a cleared
-    /// `ChoiceFilter` choice removes the key rather than writing an empty value).
-    /// Persisted (localStorage) values are intentionally left intact, matching
-    /// `Reset`'s persistence policy.
+    /// Remove `key` from the in-memory store AND from persistent storage, then
+    /// notify its watchers so readers fall back to their default/host source
+    /// (Phase 423 — a cleared `ChoiceFilter` choice removes the key rather than
+    /// writing an empty value).
+    ///
+    /// The persisted value goes too (Phase 1532). Leaving it meant a cleared
+    /// value came back on the next reload, which is indistinguishable from the
+    /// clear never having happened.
     member _.Remove(key: string) : unit =
-        if store.Remove key then
+        let hadValue = store.Remove key
+
+        let hadPersisted =
+            if declared.Contains key then
+                let storageKey = persistPrefix + key
+                let existed = (persistence.Read storageKey).IsSome
+                persistence.Remove storageKey
+                existed
+            else
+                false
+
+        if hadValue || hadPersisted then
             notify key
+
+    /// Declare which keys this store may persist. Additive and idempotent — a
+    /// host states its whole set once at startup, or names keys as the surfaces
+    /// that own them are composed.
+    ///
+    /// Declaring a key does not read it; the next `Get` does that.
+    member _.DeclarePersistent(keys: seq<string>) : unit =
+        for k in keys do
+            declared <- Set.add k declared
+
+    /// The declared persistent keys, for a host that wants to show or check its
+    /// own declaration.
+    member _.PersistentKeys: Set<string> = declared
+
+    /// Whether `key` is declared persistent on this store.
+    member _.IsPersistent(key: string) : bool = declared.Contains key
 
     /// Subscribe to any state change; returns an unsubscribe thunk. The
     /// callback fires on every `Set`, regardless of which key changed —
@@ -214,14 +393,34 @@ type StateStoreInstance(persistPrefix: string) =
 
             acc
 
-    /// Clear this instance's in-memory store + live subscriber lists. Persisted
-    /// (localStorage) values are intentionally NOT cleared, so a reload
-    /// re-hydrates them; `Reset` clears only the in-memory store + live
-    /// subscriptions.
+    /// Clear this instance's in-memory store, its live subscriber lists, the
+    /// persisted value of every key it was told to persist, and the declaration
+    /// itself.
+    ///
+    /// The persisted half goes too (Phase 1532), which is what makes this a
+    /// usable isolation seam: a `Reset` that left storage populated left the
+    /// next case's first `Get` hydrating the previous case's value. Only
+    /// DECLARED keys are removed — exact keys, never a prefix sweep, because
+    /// the default store's prefix is a prefix of every scope's and a sweep from
+    /// here would take their values with it.
     member _.Reset() : unit =
+        for k in declared do
+            persistence.Remove(persistPrefix + k)
+
+        declared <- Set.empty
         store.Clear()
         keylessSubscribers.Clear()
         keyedSubscribers.Clear()
+
+    /// Drop every persisted value under this instance's prefix, declared or
+    /// not — how a disposed scope's namespace leaves the backing store
+    /// (`disposeScope`). Safe as a prefix sweep because a scope prefix ends in
+    /// its own separator, so no scope's prefix is a prefix of another's.
+    member _.EvictPersisted() : unit = persistence.RemovePrefix persistPrefix
+
+    /// The persistence-defaulted constructor: every pre-1532 construction site
+    /// compiles unchanged and gets the platform default.
+    new(persistPrefix: string) = StateStoreInstance(persistPrefix, defaultPersistence)
 
 // ── Process-global default store + module facade ────────────────────────────
 //  The module-level functions delegate to a single process-global instance, so
@@ -240,10 +439,28 @@ let get (key: string) : obj option = defaultInstance.Get key
 /// Write `key`, persist (string values), and notify subscribers.
 let set (key: string) (value: obj) : unit = defaultInstance.Set(key, value)
 
-/// Remove `key` from the default store and notify its watchers, so readers
-/// fall back to their binding default (Phase 426 — the write-back default's
-/// cleared-choice path; the State-channel twin of `FilterStore.clear`).
+/// Remove `key` from the default store — in memory and, when it was declared
+/// persistent, in storage — and notify its watchers, so readers fall back to
+/// their binding default (Phase 426 — the write-back default's cleared-choice
+/// path; the State-channel twin of `FilterStore.clear`).
 let remove (key: string) : unit = defaultInstance.Remove key
+
+/// Declare which state keys the default store may persist (Phase 1532).
+///
+/// THE HOST'S CALL, and the only way a key outlives the session. A tree can
+/// write any key it is allowed to dispatch; whether that write survives a
+/// reload on the reader's machine is a decision about the reader's storage,
+/// which the host makes and the tree cannot. Additive and idempotent.
+///
+/// A host with no such keys calls nothing: the default is that state is
+/// session-lived.
+let declarePersistent (keys: seq<string>) : unit = defaultInstance.DeclarePersistent keys
+
+/// Whether `key` is declared persistent on the default store.
+let isPersistent (key: string) : bool = defaultInstance.IsPersistent key
+
+/// The default store's declared persistent keys.
+let persistentKeys () : Set<string> = defaultInstance.PersistentKeys
 
 /// Subscribe to any state change; returns an unsubscribe thunk. The callback
 /// fires on every `set`, regardless of which key changed.
@@ -273,9 +490,10 @@ let overlayOnto (target: Map<string, obj>) : Map<string, obj> = defaultInstance.
 /// singleton (see the assumption note above), so a .NET test runner sharing
 /// one process must reset between cases that assert on store contents or
 /// notification counts to avoid cross-bleed. Not intended for the steady-state
-/// browser path — persisted (localStorage) values are intentionally NOT cleared
-/// here, so a reload re-hydrates them. Does NOT touch scoped instances created
-/// via `forScope` — use `resetScope` / `resetAllScopes` for those.
+/// browser path — it also clears the persisted value of every DECLARED key and
+/// the declaration itself (Phase 1532), so a host that resets at runtime
+/// re-declares afterwards. Does NOT touch scoped instances created via
+/// `forScope` — use `resetScope` / `disposeScope` / `resetAllScopes` for those.
 let reset () : unit = defaultInstance.Reset()
 
 // ── Scope-keyed instances (Phase 128, task 3) ───────────────────────────────
@@ -307,20 +525,44 @@ let forScope (scopeId: string) : StateStoreInstance =
         scopes[scopeId] <- inst
         inst
 
-/// Reset a single scope's instance (clear its in-memory store + live
-/// subscriptions), if one exists. Like `reset ()`, persisted values are left
-/// intact. No-op when the scope was never created.
+/// Reset a single scope's instance (clear its in-memory store, live
+/// subscriptions, declared keys and their persisted values), if one exists. The
+/// instance stays in the registry — `disposeScope` is what retires it. No-op
+/// when the scope was never created.
 let resetScope (scopeId: string) : unit =
     match scopes.TryGetValue scopeId with
     | true, inst -> inst.Reset()
     | _ -> ()
 
-/// Drop every scoped instance (resetting each first). The process-global
-/// default store is untouched — use `reset ()` for that. Primarily a
-/// test-isolation seam for suites that exercise scope creation.
+/// Retire a scope: reset its instance, drop everything persisted under its
+/// prefix, and REMOVE IT FROM THE REGISTRY (Phase 1532).
+///
+/// `forScope` creates on first use and nothing ever removed, so an SSR host
+/// resolving one scope per request accumulated one `StateStoreInstance` — with
+/// its value map and its subscriber lists — per request served, for the life of
+/// the process. That is a leak whose size is the traffic, and no amount of
+/// `resetScope` reclaims it, because reset empties an instance rather than
+/// releasing it.
+///
+/// A later `forScope` with the same id mints a FRESH instance, which is the
+/// right answer for a per-request scope and the reason the prefix is swept:
+/// otherwise the new instance would hydrate the retired request's values.
+let disposeScope (scopeId: string) : unit =
+    match scopes.TryGetValue scopeId with
+    | true, inst ->
+        inst.Reset()
+        inst.EvictPersisted()
+        scopes.Remove scopeId |> ignore
+    | _ -> ()
+
+/// Drop every scoped instance, disposing each as `disposeScope` would (reset,
+/// then evict its persisted prefix). The process-global default store is
+/// untouched — use `reset ()` for that. Primarily a test-isolation seam for
+/// suites that exercise scope creation.
 let resetAllScopes () : unit =
     for kv in scopes do
         kv.Value.Reset()
+        kv.Value.EvictPersisted()
 
     scopes.Clear()
 

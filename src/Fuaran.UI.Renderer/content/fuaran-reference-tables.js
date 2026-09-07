@@ -96,11 +96,34 @@
    ES5, dependency-free, no build step, no globals: one IIFE, no exports, no
    polyfills required. Safe to load with `defer`, at the end of `<body>`, or
    dynamically after load (the ready-state guard below covers all three).
-   Loading it twice is not supported and would double the click handlers.
+
+   IDEMPOTENT, and loading it twice is safe. Enhancement is marked on the table
+   itself and checked before anything is bound, so a second pass over a table
+   that already sorts does nothing — where it used to bind a second click and
+   keydown handler to every header, and a click then sorted twice.
+
+   AND IT KEEPS LOOKING. The single pass at load left a table that arrived
+   afterwards — a revealed tab panel, a fragment the host swapped in, a
+   server-driven patch — static forever, with nothing to say so and no exported
+   function to call. A mutation observer covers those without a global, and the
+   per-table marker is what makes re-scanning cheap enough to do that way.
    ============================================================================ */
 
 (function () {
   'use strict';
+
+  /* The enhancement marker, set on a table once its headers are wired.
+
+     An ATTRIBUTE rather than a property or a WeakSet: it survives whatever the
+     host does to the element, it is visible in a DOM inspector to whoever is
+     asking why a table does or does not sort, and it needs nothing this file's
+     ES5 baseline does not have. */
+  var ENHANCED = 'data-fuaran-table-enhanced';
+
+  /* The document-level marker, so a page that loads this file twice observes
+     once rather than twice. The per-table marker already makes the second
+     observer harmless; this makes it absent. */
+  var OBSERVED = 'data-fuaran-tables-observed';
 
   /* Parse one cell's text into a sort key.
 
@@ -153,6 +176,14 @@
   }
 
   function enhance(table) {
+    /* Already wired: return without binding a second set of handlers. This is
+       what makes the file safe to load twice and cheap to re-run, and it is
+       checked first because it is the answer for every table on every pass
+       after the first. */
+    if (table.getAttribute(ENHANCED) === 'true') {
+      return;
+    }
+
     /* The declared per-table opt-out, checked BEFORE anything is touched: an
        exempted table gets no handlers and no affordance markers, so it cannot
        advertise a sort it will not perform. Only the explicit "false" exempts —
@@ -170,6 +201,12 @@
     if (!thead || !thead.rows.length || !tbody || tbody.rows.length < 2) {
       return;
     }
+
+    /* Marked here and not earlier: a table that fell out above — exempted, or
+       without a header row, or with nothing to order yet — is NOT enhanced, and
+       marking it would mean a later re-scan skipped it after the rows it needed
+       had arrived. */
+    table.setAttribute(ENHANCED, 'true');
 
     var ths = thead.rows[0].cells;
 
@@ -291,13 +328,72 @@
     Array.prototype.forEach.call(document.querySelectorAll('.fuaran-table'), enhance);
   }
 
+  /* Is this added node a table, or does it carry one? Checked before a re-scan
+     so an ordinary chatty page — including this file's own row reordering,
+     which the observer sees as additions — does not pay for a document-wide
+     query on every mutation batch.
+
+     `className` is read as a string rather than through `classList` because an
+     SVG element's is an object; that comparison simply fails, and the
+     `querySelector` line below still answers correctly. */
+  function isOrContainsTable(node) {
+    if (node.nodeType !== 1) {
+      return false;
+    }
+
+    if (typeof node.className === 'string' && (' ' + node.className + ' ').indexOf(' fuaran-table ') >= 0) {
+      return true;
+    }
+
+    return !!(node.querySelector && node.querySelector('.fuaran-table'));
+  }
+
+  /* Keep looking. Every table the observer reaches has already been enhanced
+     or has not; `enhance` decides which, so this needs no bookkeeping of its
+     own beyond not asking too often.
+
+     Guarded on the observer's existence: where there is none, the single
+     initial pass is the whole of the behaviour, which is what this file did
+     everywhere until now. */
+  function observe() {
+    if (typeof MutationObserver === 'undefined' || !document.body) {
+      return;
+    }
+
+    if (document.documentElement.getAttribute(OBSERVED) === 'true') {
+      return;
+    }
+
+    document.documentElement.setAttribute(OBSERVED, 'true');
+
+    var observer = new MutationObserver(function (records) {
+      for (var i = 0; i < records.length; i++) {
+        var added = records[i].addedNodes;
+
+        for (var j = 0; j < added.length; j++) {
+          if (isOrContainsTable(added[j])) {
+            enhanceAll();
+            return;
+          }
+        }
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function start() {
+    enhanceAll();
+    observe();
+  }
+
   /* Run once the document is parsed. The ready-state guard covers the case a
      plain `DOMContentLoaded` listener misses: a host that injects this file
      dynamically after load would otherwise wait for an event that has already
      fired, and every table would silently stay static. */
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', enhanceAll);
+    document.addEventListener('DOMContentLoaded', start);
   } else {
-    enhanceAll();
+    start();
   }
 })();

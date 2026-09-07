@@ -120,6 +120,11 @@ app.MapGet("/", (IWebHostEnvironment env) =>
         // Where a `Notify` is POSTed as {"channel": …, "payload": …}. Stated
         // rather than defaulted: a read-only page leaves it None on purpose.
         FSharpOption<string>.Some("/notify"),
+        // An antiforgery header for that POST, as (name, value). None here
+        // because this sample's /notify only logs. An endpoint that MUTATES
+        // wants ASP.NET's IAntiforgery token instead: the POST is same-origin
+        // and the browser sends the app's cookies with it.
+        FSharpOption<Tuple<string, string>>.None,
         FSharpOption<string>.None, // no CSP nonce in the sample
         // Development only: warns when the embedded bundle and the authoring
         // packages this app restored have parted company.
