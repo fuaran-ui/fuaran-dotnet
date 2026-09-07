@@ -130,7 +130,7 @@ let mkBox (id: string) (kids: EqNode list) : EqNode =
         { Id = id
           Kind =
             NodeKind.Box(
-                { Layout = LayoutMode.Flex(Orientation.Vertical, false, None)
+                { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
                   Role = BoxRole.Group
                   Heading = None
                   Children = kids |> List.map unwrap

@@ -8357,7 +8357,7 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
                                         | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
 
                                     match dirR, wrapR, gapR with
-                                    | Ok d, Ok w, Ok g -> Ok(LayoutMode.Flex(d, w, g))
+                                    | Ok d, Ok w, Ok g -> Ok(BoxLayout.Flex(d, w, g))
                                     | Error e, _, _
                                     | _, Error e, _
                                     | _, _, Error e -> Error e
@@ -8395,7 +8395,7 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
                                         | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
 
                                     match colsR, tcR, gapR with
-                                    | Ok c, Ok tc, Ok g -> Ok(LayoutMode.Grid(c, tc, g))
+                                    | Ok c, Ok tc, Ok g -> Ok(BoxLayout.Grid(c, tc, g))
                                     | Error e, _, _
                                     | _, Error e, _
                                     | _, _, Error e -> Error e
@@ -8436,7 +8436,7 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
                                         | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
 
                                     match colsR, gapR with
-                                    | Ok c, Ok g -> Ok(LayoutMode.Masonry(c, g))
+                                    | Ok c, Ok g -> Ok(BoxLayout.Masonry(c, g))
                                     | Error e, _
                                     | _, Error e -> Error e
                                 | "Auto" -> Ok BoxLayout.Auto

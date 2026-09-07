@@ -5,7 +5,7 @@ using Microsoft.FSharp.Core;
 using static Fuaran.UI.Types;
 
 // Stage-4b swap: the tree envelope (Node / NodeKind / the Spec records /
-// StateBehaviour / LayoutMode) is IDL-generated too — the Types names are
+// StateBehaviour / BoxLayout) is IDL-generated too — the Types names are
 // abbreviations, erased in metadata, so import the generated declarations
 // directly alongside the surviving Types imports.
 using static Fuaran.UI.Generated;
@@ -185,14 +185,14 @@ internal sealed class CardBuilder : NodeBuilder
     public CardBuilder Children(params NodeBuilder[] kids) { _children.AddRange(kids); return this; }
 
     // Generated BoxSpec ctor is Generated.fs declaration order (Children,
-    // Heading, Layout, Role, KeepTogether, BreakBefore); LayoutMode cases are
+    // Heading, Layout, Role, KeepTogether, BreakBefore); BoxLayout cases are
     // positional since the swap.
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewBox(
             new BoxSpec<object>(
                 Fs.List(_children.Select(c => c.Build()).ToArray()),
                 _heading,
-                LayoutMode.NewFlex(Orientation.Vertical, false, Fs.None<int>()),
+                BoxLayout.NewFlex(Orientation.Vertical, false, Fs.None<int>()),
                 BoxRole.Card,
                 // Phase 1473 - the print-break declarations; a builder declares neither.
                 false,
@@ -216,7 +216,7 @@ internal sealed class StackBuilder : NodeBuilder
             new BoxSpec<object>(
                 Fs.List(_children.Select(c => c.Build()).ToArray()),
                 Fs.None<TextSource>(),
-                LayoutMode.NewFlex(_orientation, _wrap, Fs.None<int>()),
+                BoxLayout.NewFlex(_orientation, _wrap, Fs.None<int>()),
                 BoxRole.Group,
                 // Phase 1473 - the print-break declarations; a builder declares neither.
                 false,
@@ -238,7 +238,7 @@ internal sealed class GridBuilder : NodeBuilder
             new BoxSpec<object>(
                 Fs.List(_children.Select(c => c.Build()).ToArray()),
                 Fs.None<TextSource>(),
-                LayoutMode.NewGrid(_cols, Fs.None<string>(), Fs.None<int>()),
+                BoxLayout.NewGrid(_cols, Fs.None<string>(), Fs.None<int>()),
                 BoxRole.Group,
                 // Phase 1473 - the print-break declarations; a builder declares neither.
                 false,
@@ -258,7 +258,7 @@ internal sealed class DashboardBuilder : NodeBuilder
             new BoxSpec<object>(
                 Fs.List(_children.Select(c => c.Build()).ToArray()),
                 Fs.None<TextSource>(),
-                LayoutMode.Auto,
+                BoxLayout.Auto,
                 BoxRole.Dashboard,
                 // Phase 1473 - the print-break declarations; a builder declares neither.
                 false,

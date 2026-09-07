@@ -1013,8 +1013,8 @@ let private localFlushTrigger =
 /// `Box.layout` — the container-layout mode (Fuaran-UI 0.2.0 Box unification). `Auto`
 /// (was `Dashboard`), `Flex` (was `Stack`, carries `direction` + `wrap`), `Grid` (was
 /// `GridLayout`, carries `cols` + an optional `templateColumns`), `Masonry` (column-fill).
-let private layoutMode =
-    { Name = "LayoutMode"
+let private boxLayout =
+    { Name = "BoxLayout"
       Params = []
       Cases =
         [ { Tag = "Auto"
@@ -2352,7 +2352,7 @@ let displayKinds: IdlKind list =
 // is the dominant new class.
 let layoutKinds: IdlKind list =
     [ // Fuaran-UI 0.2.0 Box unification: Dashboard / Card / Stack / GridLayout collapsed
-      // into one `Box` kind carrying `role` (BoxRole) + `layout` (LayoutMode). The other
+      // into one `Box` kind carrying `role` (BoxRole) + `layout` (BoxLayout). The other
       // container kinds (SplitPanel / SummaryList / Disclosure / Modal / ScrollArea /
       // Tabs / Stepper) were NOT unified.
       { Tag = "Box"
@@ -2371,7 +2371,7 @@ let layoutKinds: IdlKind list =
         Fields =
           [ req "children" (TList TNode)
             opt "heading" TS
-            req "layout" (TUnion("LayoutMode", []))
+            req "layout" (TUnion("BoxLayout", []))
             req "role" (TEnum "BoxRole")
             omit "keepTogether" TBool (VBool false)
             omit "breakBefore" TBool (VBool false) ] }
@@ -3179,7 +3179,7 @@ let uiIdl: Idl =
           formatUnion
           localeSource
           localFlushTrigger
-          layoutMode
+          boxLayout
           formFieldKind
           mediaKind
           columnWidth

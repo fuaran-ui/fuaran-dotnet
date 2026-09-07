@@ -757,8 +757,8 @@ and ChannelDirection = Generated.ChannelDirection
 /// script at all and a screen rendering is completely unchanged.
 and BoxSpec<'Msg> = Generated.BoxSpec<'Msg>
 
-/// How a `Box` arranges its children (generated — `LayoutMode`; `BoxLayout`
-/// survives as the established host name for the same union). Cases are
+/// How a `Box` arranges its children (generated — `BoxLayout`; `LayoutMode`
+/// survives as a compatibility alias for the same union). Cases are
 /// POSITIONAL since the swap (the hand `FlexLayout` / `GridTemplate` payload
 /// records are retired):
 ///  - `Flex(direction, wrap, gap)` — flex flow, the retired `Stack`. `gap`
@@ -767,10 +767,15 @@ and BoxSpec<'Msg> = Generated.BoxSpec<'Msg>
 ///  - `Grid(cols, templateColumns, gap)` — explicit grid, the retired
 ///    `GridLayout`. `Some templateColumns` emits verbatim and `cols` is ignored.
 ///  - `Auto` — responsive auto-tile, the retired `Dashboard` behaviour.
-and BoxLayout = Generated.LayoutMode
+and BoxLayout = Generated.BoxLayout
 
-/// The generated name for `BoxLayout` (both names are the same union).
-and LayoutMode = Generated.LayoutMode
+/// The retired name for `BoxLayout`, kept as a compatibility alias so no
+/// consumer source breaks (both names are the same union). The IDL named this
+/// union `LayoutMode` until Phase 1555's two-surface parity test pinned it as
+/// the one place the artefact disagreed with every host — the F# type, the
+/// JSON schema, `WIRE_FORMAT.md` and the TypeScript / Python / Rust type
+/// models all said `BoxLayout` — so the artefact followed the hosts.
+and LayoutMode = Generated.BoxLayout
 
 /// What a `Box` means — drives the emitted element, ARIA landmark, and chrome.
 and BoxRole = Generated.BoxRole

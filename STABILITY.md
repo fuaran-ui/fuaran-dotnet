@@ -6591,3 +6591,36 @@ public `ConsoleDisclosure` DU, a one-argument constructor and `createVerbose`; t
 constructor and `create ()` now withhold user ids and truncate free text.
 **`Fuaran.UI.Telemetry.Drift` is `IsPackable=false`** and ships no new versions; existing published
 versions are unaffected.
+
+## Recorded change — 0.78.0, the Box layout union is named `BoxLayout` in the IDL (fuaran#1555)
+
+**A rename of one generated type, source-breaking only for a consumer that named it through
+`Fuaran.UI.Generated`, and it RIDES the standing 0.78.0 draft rather than advancing it.**
+
+**What changed.** The IDL declared the Box layout union `LayoutMode`. Every other surface calls the
+same closed set `BoxLayout`: the F# public type in `Fuaran.UI.Types`, the generated JSON schema and
+both `schema.json` copies, `WIRE_FORMAT.md`, the generated authoring pack, and the TypeScript,
+Python and Rust type models — none of which uses the name `LayoutMode` anywhere. The vocabulary
+declaration, `idl.json` and the emitted `Generated.fs` now say `BoxLayout` too, so the artefact
+follows the hosts rather than the hosts carrying a translation.
+
+**Nothing about the wire moved, and that is why this is a rename and not a migration.** A union's
+NAME is not on the wire — the encoded object carries the case tag (`Auto` / `Flex` / `Grid` /
+`Masonry`) and its fields, and nothing else. Every fixture in the conformance corpus is byte
+unchanged, and a document written before this release decodes to the same value it always did.
+
+**What a consumer pays.** For the hand-type surface, nothing: `Fuaran.UI.Types.BoxLayout` resolves
+as it always has, and `Fuaran.UI.Types.LayoutMode` is kept as a compatibility alias for the same
+union, so no F# source breaks. What moves is the METADATA name of the generated type —
+`Fuaran.UI.Generated.LayoutMode` is now `Fuaran.UI.Generated.BoxLayout` — because F# type
+abbreviations are erased in metadata and a CLR consumer that reached past `Types` to the generated
+declaration named the old one. That is a source edit for a C# or VB consumer of
+`Fuaran.UI.Generated` (in this repo, the C# veneer's `FsGen.BoxLayout` and the authoring sample),
+and nothing at all for an F# consumer.
+
+**Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and it
+already carries breaking-class entries: an `FS0764` record widening, a field narrowed to `option`,
+two cases added to the closed `Action<'Msg>` union, and a removed `DebugGlobal` member. A rename
+that costs a generated-layer consumer a source edit is that same class rather than a higher one —
+both say *adopting this slot costs source edits* — so a `v0.79.0` would tell a consumer already
+paying 0.78.0's price that there is a second, separate one. `v0.77.0` is the newest tag.

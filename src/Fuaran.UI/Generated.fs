@@ -558,6 +558,12 @@ and [<RequireQualifiedAccess>] Binding<'T> =
     | Expr of expr: Fuaran.Core.ColExpr * ``params``: TransformParam list option
     | Invoke of capabilityId: string * args: InvokeArg list
 
+and [<RequireQualifiedAccess>] BoxLayout =
+    | Auto
+    | Flex of direction: Orientation * wrap: bool * gap: int option
+    | Grid of cols: int * templateColumns: string option * gap: int option
+    | Masonry of cols: int * gap: int option
+
 and [<RequireQualifiedAccess>] CallResultTarget =
     | State of key: string
     | Query of name: string
@@ -662,12 +668,6 @@ and [<RequireQualifiedAccess>] HoleValueSpace =
     | StringLen of minLen: int * maxLen: int
     | Enum of choices: string list
     | AnyString
-
-and [<RequireQualifiedAccess>] LayoutMode =
-    | Auto
-    | Flex of direction: Orientation * wrap: bool * gap: int option
-    | Grid of cols: int * templateColumns: string option * gap: int option
-    | Masonry of cols: int * gap: int option
 
 and [<RequireQualifiedAccess>] LocalFlushTrigger =
     | OnBlur
@@ -944,7 +944,7 @@ and BoxSpec<'Msg> =
     {
       Children: Node<'Msg> list
       Heading: TextSource option
-      Layout: LayoutMode
+      Layout: BoxLayout
       Role: BoxRole
       // Phase 1473 — the box and everything under it stay on ONE page when the
       // rendering is paged: `break-inside: avoid`, and nothing at all on a
@@ -2042,6 +2042,13 @@ and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     | Binding.Expr (expr, ``params``) -> Canon.typed "Expr" ([ Some("expr", Fuaran.Core.DataFrameCodec.encodeExpr expr); (``params`` |> Option.map (fun v -> "params", JArr(List.map encTransformParam v))) ] |> List.choose id)
     | Binding.Invoke (capabilityId, args) -> Canon.typed "Invoke" [ "capabilityId", JStr capabilityId; "args", JArr(List.map encInvokeArg args) ]
 
+and private encBoxLayout (v: BoxLayout) : JVal =
+    match v with
+    | BoxLayout.Auto -> Canon.typed "Auto" [  ]
+    | BoxLayout.Flex (direction, wrap, gap) -> Canon.typed "Flex" ([ Some("direction", encOrientation direction); Some("wrap", JBool wrap); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
+    | BoxLayout.Grid (cols, templateColumns, gap) -> Canon.typed "Grid" ([ Some("cols", JInt cols); (templateColumns |> Option.map (fun v -> "templateColumns", JStr v)); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
+    | BoxLayout.Masonry (cols, gap) -> Canon.typed "Masonry" ([ Some("cols", JInt cols); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
+
 and private encCallResultTarget (v: CallResultTarget) : JVal =
     match v with
     | CallResultTarget.State key -> Canon.typed "State" [ "key", JStr key ]
@@ -2153,13 +2160,6 @@ and private encHoleValueSpace (v: HoleValueSpace) : JVal =
     | HoleValueSpace.StringLen (minLen, maxLen) -> Canon.typed "StringLen" [ "minLen", JInt minLen; "maxLen", JInt maxLen ]
     | HoleValueSpace.Enum choices -> Canon.typed "Enum" [ "choices", JArr(List.map JStr choices) ]
     | HoleValueSpace.AnyString -> Canon.typed "AnyString" [  ]
-
-and private encLayoutMode (v: LayoutMode) : JVal =
-    match v with
-    | LayoutMode.Auto -> Canon.typed "Auto" [  ]
-    | LayoutMode.Flex (direction, wrap, gap) -> Canon.typed "Flex" ([ Some("direction", encOrientation direction); Some("wrap", JBool wrap); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
-    | LayoutMode.Grid (cols, templateColumns, gap) -> Canon.typed "Grid" ([ Some("cols", JInt cols); (templateColumns |> Option.map (fun v -> "templateColumns", JStr v)); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
-    | LayoutMode.Masonry (cols, gap) -> Canon.typed "Masonry" ([ Some("cols", JInt cols); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
 
 and private encLocalFlushTrigger (v: LocalFlushTrigger) : JVal =
     match v with
@@ -2291,7 +2291,7 @@ and private encBadgeSpec (s: BadgeSpec) : JVal =
     Canon.typed "Badge" ([ Some("label", encTextSource s.Label); Some("variant", encBadgeVariant s.Variant) ] |> List.choose id)
 
 and private encBoxSpec<'Msg> (s: BoxSpec<'Msg>) : JVal =
-    Canon.typed "Box" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); Some("layout", encLayoutMode s.Layout); Some("role", encBoxRole s.Role); (if s.KeepTogether = false then None else Some("keepTogether", JBool s.KeepTogether)); (if s.BreakBefore = false then None else Some("breakBefore", JBool s.BreakBefore)) ] |> List.choose id)
+    Canon.typed "Box" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); Some("layout", encBoxLayout s.Layout); Some("role", encBoxRole s.Role); (if s.KeepTogether = false then None else Some("keepTogether", JBool s.KeepTogether)); (if s.BreakBefore = false then None else Some("breakBefore", JBool s.BreakBefore)) ] |> List.choose id)
 
 and private encButtonSpec<'Msg> (s: ButtonSpec<'Msg>) : JVal =
     Canon.typed "Button" ([ Some("label", encTextSource s.Label); Some("onClick", encAction s.OnClick); Some("variant", encButtonVariant s.Variant); (s.Icon |> Option.map (fun v -> "icon", JStr v)); None; (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
@@ -3098,6 +3098,29 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
         | __other -> Error ("unknown Binding case: " + __other))
     | _ -> Error "expected a Binding object"
 
+and private decBoxLayout (j: JVal) : Result<BoxLayout, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "Auto" -> Ok BoxLayout.Auto
+        | "Flex" ->
+            dReq "direction" __fs decOrientation |> Result.bind (fun direction ->
+            dReq "wrap" __fs dBool |> Result.bind (fun wrap ->
+            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
+            Ok(BoxLayout.Flex(direction, wrap, gap)))))
+        | "Grid" ->
+            dReq "cols" __fs dInt |> Result.bind (fun cols ->
+            dOpt "templateColumns" __fs dStr |> Result.bind (fun templateColumns ->
+            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
+            Ok(BoxLayout.Grid(cols, templateColumns, gap)))))
+        | "Masonry" ->
+            dReq "cols" __fs dInt |> Result.bind (fun cols ->
+            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
+            Ok(BoxLayout.Masonry(cols, gap))))
+        | __other -> Error ("unknown BoxLayout case: " + __other))
+    | _ -> Error "expected a BoxLayout object"
+
 and private decCallResultTarget (j: JVal) : Result<CallResultTarget, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
@@ -3479,29 +3502,6 @@ and private decHoleValueSpace (j: JVal) : Result<HoleValueSpace, string> =
         | __other -> Error ("unknown HoleValueSpace case: " + __other))
     | _ -> Error "expected a HoleValueSpace object"
 
-and private decLayoutMode (j: JVal) : Result<LayoutMode, string> =
-    match j with
-    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
-        dTag __fs |> Result.bind (fun __t ->
-        match __t with
-        | "Auto" -> Ok LayoutMode.Auto
-        | "Flex" ->
-            dReq "direction" __fs decOrientation |> Result.bind (fun direction ->
-            dReq "wrap" __fs dBool |> Result.bind (fun wrap ->
-            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
-            Ok(LayoutMode.Flex(direction, wrap, gap)))))
-        | "Grid" ->
-            dReq "cols" __fs dInt |> Result.bind (fun cols ->
-            dOpt "templateColumns" __fs dStr |> Result.bind (fun templateColumns ->
-            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
-            Ok(LayoutMode.Grid(cols, templateColumns, gap)))))
-        | "Masonry" ->
-            dReq "cols" __fs dInt |> Result.bind (fun cols ->
-            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
-            Ok(LayoutMode.Masonry(cols, gap))))
-        | __other -> Error ("unknown LayoutMode case: " + __other))
-    | _ -> Error "expected a LayoutMode object"
-
 and private decLocalFlushTrigger (j: JVal) : Result<LocalFlushTrigger, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
@@ -3862,7 +3862,7 @@ and private decBoxSpec (j: JVal) : Result<BoxSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
     dOpt "heading" __fs decTextSource |> Result.bind (fun heading ->
-    dReq "layout" __fs decLayoutMode |> Result.bind (fun layout ->
+    dReq "layout" __fs decBoxLayout |> Result.bind (fun layout ->
     dReq "role" __fs decBoxRole |> Result.bind (fun role ->
     dDef "keepTogether" __fs dBool (false) |> Result.bind (fun keepTogether ->
     dDef "breakBefore" __fs dBool (false) |> Result.bind (fun breakBefore ->
@@ -4405,7 +4405,7 @@ let runValidator (reg: Validator.Registry<Node<'Msg>, string>) (root: Node<'Msg>
 let mkBadge (id: string) (label: TextSource) (variant: BadgeVariant) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Badge { Label = label; Variant = variant }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkBox (id: string) (children: Node<'Msg> list) (layout: LayoutMode) (role: BoxRole) : Node<'Msg> =
+let mkBox (id: string) (children: Node<'Msg> list) (layout: BoxLayout) (role: BoxRole) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Box { Children = children; Heading = None; Layout = layout; Role = role; KeepTogether = false; BreakBefore = false }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkButton (id: string) (label: TextSource) (onClick: Action<'Msg>) (variant: ButtonVariant) : Node<'Msg> =

@@ -578,7 +578,7 @@ module TreeOpDiff =
             // Stack/GridLayout diffs) + Heading. Propose-then-verify (below)
             // makes this safe: a mode or role change these granular ops can't
             // reproduce falls back to the EditNode floor, so replay stays exact.
-            // `LayoutMode` cases are POSITIONAL since the swap —
+            // `BoxLayout` cases are POSITIONAL since the swap —
             // `Flex(direction, wrap, gap)` / `Grid(cols, templateColumns, gap)`.
             // Field coverage is unchanged (Direction→"Orientation", Wrap, Cols,
             // TemplateColumns); a `gap` drift is uncovered here, so it fails the

@@ -487,7 +487,7 @@
           "type": {
             "$type": "union",
             "args": [],
-            "name": "LayoutMode"
+            "name": "BoxLayout"
           }
         },
         {
@@ -5800,6 +5800,104 @@
     {
       "cases": [
         {
+          "fields": [],
+          "tag": "Auto"
+        },
+        {
+          "fields": [
+            {
+              "name": "direction",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "enum",
+                "name": "Orientation"
+              }
+            },
+            {
+              "name": "wrap",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "bool"
+              }
+            },
+            {
+              "name": "gap",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "int"
+              }
+            }
+          ],
+          "tag": "Flex"
+        },
+        {
+          "fields": [
+            {
+              "name": "cols",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "int"
+              }
+            },
+            {
+              "name": "templateColumns",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "str"
+              }
+            },
+            {
+              "name": "gap",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "int"
+              }
+            }
+          ],
+          "tag": "Grid"
+        },
+        {
+          "fields": [
+            {
+              "name": "cols",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "int"
+              }
+            },
+            {
+              "name": "gap",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "int"
+              }
+            }
+          ],
+          "tag": "Masonry"
+        }
+      ],
+      "name": "BoxLayout",
+      "params": []
+    },
+    {
+      "cases": [
+        {
           "fields": [
             {
               "name": "key",
@@ -7755,104 +7853,6 @@
         }
       ],
       "name": "HoleValueSpace",
-      "params": []
-    },
-    {
-      "cases": [
-        {
-          "fields": [],
-          "tag": "Auto"
-        },
-        {
-          "fields": [
-            {
-              "name": "direction",
-              "optionality": {
-                "$type": "required"
-              },
-              "type": {
-                "$type": "enum",
-                "name": "Orientation"
-              }
-            },
-            {
-              "name": "wrap",
-              "optionality": {
-                "$type": "required"
-              },
-              "type": {
-                "$type": "bool"
-              }
-            },
-            {
-              "name": "gap",
-              "optionality": {
-                "$type": "optional"
-              },
-              "type": {
-                "$type": "int"
-              }
-            }
-          ],
-          "tag": "Flex"
-        },
-        {
-          "fields": [
-            {
-              "name": "cols",
-              "optionality": {
-                "$type": "required"
-              },
-              "type": {
-                "$type": "int"
-              }
-            },
-            {
-              "name": "templateColumns",
-              "optionality": {
-                "$type": "optional"
-              },
-              "type": {
-                "$type": "str"
-              }
-            },
-            {
-              "name": "gap",
-              "optionality": {
-                "$type": "optional"
-              },
-              "type": {
-                "$type": "int"
-              }
-            }
-          ],
-          "tag": "Grid"
-        },
-        {
-          "fields": [
-            {
-              "name": "cols",
-              "optionality": {
-                "$type": "required"
-              },
-              "type": {
-                "$type": "int"
-              }
-            },
-            {
-              "name": "gap",
-              "optionality": {
-                "$type": "optional"
-              },
-              "type": {
-                "$type": "int"
-              }
-            }
-          ],
-          "tag": "Masonry"
-        }
-      ],
-      "name": "LayoutMode",
       "params": []
     },
     {

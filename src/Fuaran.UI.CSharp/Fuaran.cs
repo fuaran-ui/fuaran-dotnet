@@ -74,14 +74,14 @@ public static partial class Fuaran
     /// <see cref="Card"/> are Box-emitting conveniences over this.</summary>
     public static FuaranNode Box(BoxOptions options)
     {
-        // LayoutMode cases are positional since the swap: Flex(direction, wrap, gap)
+        // BoxLayout cases are positional since the swap: Flex(direction, wrap, gap)
         // / Grid(cols, templateColumns, gap) — the FlexLayout / GridTemplate
         // payload records are retired.
-        FsGen.LayoutMode layout = options.Layout switch
+        FsGen.BoxLayout layout = options.Layout switch
         {
-            BoxLayoutMode.Grid => FsGen.LayoutMode.NewGrid(options.Cols, Fs.None<string>(), Fs.None<int>()),
-            BoxLayoutMode.Auto => FsGen.LayoutMode.Auto,
-            _ => FsGen.LayoutMode.NewFlex(options.Orientation.ToFs(), options.Wrap, Fs.None<int>()),
+            BoxLayoutMode.Grid => FsGen.BoxLayout.NewGrid(options.Cols, Fs.None<string>(), Fs.None<int>()),
+            BoxLayoutMode.Auto => FsGen.BoxLayout.Auto,
+            _ => FsGen.BoxLayout.NewFlex(options.Orientation.ToFs(), options.Wrap, Fs.None<int>()),
         };
 
         FsGen.BoxRole role = options.Role switch

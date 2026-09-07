@@ -412,8 +412,8 @@ let tests =
               match node.Kind with
               | NodeKind.Box(spec) ->
                   match spec.Layout with
-                  | LayoutMode.Flex(_, wrap, _) -> Expect.equal wrap true "Wrap = true propagated"
-                  | other -> failtestf "Expected LayoutMode.Flex, got %A" other
+                  | BoxLayout.Flex(_, wrap, _) -> Expect.equal wrap true "Wrap = true propagated"
+                  | other -> failtestf "Expected BoxLayout.Flex, got %A" other
               | other -> failtestf "Expected NodeKind.Box, got %A" other
           }
 
@@ -510,10 +510,10 @@ let tests =
               match node.Kind with
               | NodeKind.Box(spec) ->
                   match spec.Layout with
-                  | LayoutMode.Grid(cols, templateColumns, _) ->
+                  | BoxLayout.Grid(cols, templateColumns, _) ->
                       Expect.equal cols 3 "Cols overridden"
                       Expect.equal templateColumns None "TemplateColumns defaults to None"
-                  | other -> failtestf "Expected LayoutMode.Grid, got %A" other
+                  | other -> failtestf "Expected BoxLayout.Grid, got %A" other
               | other -> failtestf "Expected NodeKind.Box, got %A" other
           }
 
@@ -532,12 +532,12 @@ let tests =
               match node.Kind with
               | NodeKind.Box(spec) ->
                   match spec.Layout with
-                  | LayoutMode.Grid(_, templateColumns, _) ->
+                  | BoxLayout.Grid(_, templateColumns, _) ->
                       Expect.equal
                           templateColumns
                           (Some "100px repeat(3, minmax(30px, 1fr))")
                           "TemplateColumns wired verbatim"
-                  | other -> failtestf "Expected LayoutMode.Grid, got %A" other
+                  | other -> failtestf "Expected BoxLayout.Grid, got %A" other
               | other -> failtestf "Expected NodeKind.Box, got %A" other
           }
 
@@ -556,8 +556,8 @@ let tests =
               match node.Kind with
               | NodeKind.Box(spec) ->
                   match spec.Layout with
-                  | LayoutMode.Grid(_, templateColumns, _) ->
+                  | BoxLayout.Grid(_, templateColumns, _) ->
                       Expect.equal templateColumns (Some "1fr 2fr") "Explicit smart-ctor arg overrides the spec field"
-                  | other -> failtestf "Expected LayoutMode.Grid, got %A" other
+                  | other -> failtestf "Expected BoxLayout.Grid, got %A" other
               | other -> failtestf "Expected NodeKind.Box, got %A" other
           } ]

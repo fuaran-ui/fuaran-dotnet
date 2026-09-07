@@ -369,7 +369,7 @@ The validator does NOT walk the typed tree's record-with bypass (`{ node with Ex
 ## The emission grammar for string-typed slots (Phase 1523)
 
 A handful of wire slots are typed `string` and carry a grammar the type does not state: a CSS
-track-list (`LayoutMode.Grid.templateColumns`), a CSS colour or paint (`DrawStyle.fill` / `.stroke`),
+track-list (`BoxLayout.Grid.templateColumns`), a CSS colour or paint (`DrawStyle.fill` / `.stroke`),
 a raw CSS value (a theme's `ColorVar.CssRaw`), a URL (`Link.href`, `Image.src`, `Action.Navigate`'s
 route), and the two anchor token slots (`Link.target`, `Link.rel`). Nothing about `string` says which
 of those a value is, so nothing about `string` refuses a value that is the wrong one.

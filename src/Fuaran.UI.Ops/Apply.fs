@@ -602,52 +602,52 @@ let private updateBox (field: string) (v: obj) (spec: BoxSpec<'Msg>) : UpdateRes
     let updated (s: BoxSpec<'Msg>) = Updated(NodeKind.Box(s))
 
     match field, spec.Layout with
-    | "Orientation", LayoutMode.Flex(_, wrap, gap) ->
+    | "Orientation", BoxLayout.Flex(_, wrap, gap) ->
         match coerceField JsonDecode.Coerce.tryOrientation v with
         | Ok x ->
             updated
                 { spec with
-                    Layout = LayoutMode.Flex(x, wrap, gap) }
+                    Layout = BoxLayout.Flex(x, wrap, gap) }
         | Error msg -> TypeMismatch msg
-    | "Wrap", LayoutMode.Flex(direction, _, gap) ->
+    | "Wrap", BoxLayout.Flex(direction, _, gap) ->
         match coerceField JsonDecode.Coerce.tryBool v with
         | Ok x ->
             updated
                 { spec with
-                    Layout = LayoutMode.Flex(direction, x, gap) }
+                    Layout = BoxLayout.Flex(direction, x, gap) }
         | Error msg -> TypeMismatch msg
-    | "Cols", LayoutMode.Grid(_, templateColumns, gap) ->
+    | "Cols", BoxLayout.Grid(_, templateColumns, gap) ->
         match coerceField JsonDecode.Coerce.tryInt v with
         | Ok x ->
             updated
                 { spec with
-                    Layout = LayoutMode.Grid(x, templateColumns, gap) }
+                    Layout = BoxLayout.Grid(x, templateColumns, gap) }
         | Error msg -> TypeMismatch msg
     // `Masonry` carries the same column count and so takes the same field name.
     // Without this arm `availableFields` would advertise `Cols` on a masonry box
     // and `UpdateProp` would answer `UnknownField` — an introspection surface
     // that names a field it cannot set.
-    | "Cols", LayoutMode.Masonry(_, gap) ->
+    | "Cols", BoxLayout.Masonry(_, gap) ->
         match coerceField JsonDecode.Coerce.tryInt v with
         | Ok x ->
             updated
                 { spec with
-                    Layout = LayoutMode.Masonry(x, gap) }
+                    Layout = BoxLayout.Masonry(x, gap) }
         | Error msg -> TypeMismatch msg
-    | "TemplateColumns", LayoutMode.Grid(cols, _, gap) ->
+    | "TemplateColumns", BoxLayout.Grid(cols, _, gap) ->
         // Additive optional `string option` field. Accepts either a raw string
         // (sugar — wraps in `Some`) or an explicit `string option` payload.
         match coerceField JsonDecode.Coerce.tryStringOption v with
         | Ok x ->
             updated
                 { spec with
-                    Layout = LayoutMode.Grid(cols, x, gap) }
+                    Layout = BoxLayout.Grid(cols, x, gap) }
         | Error _ ->
             match coerceField JsonDecode.Coerce.tryString v with
             | Ok x ->
                 updated
                     { spec with
-                        Layout = LayoutMode.Grid(cols, Some x, gap) }
+                        Layout = BoxLayout.Grid(cols, Some x, gap) }
             | Error msg -> TypeMismatch msg
     | "Heading", _ ->
         match coerceField JsonDecode.Coerce.tryTextSourceOption v with
