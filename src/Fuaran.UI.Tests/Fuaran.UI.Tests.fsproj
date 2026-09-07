@@ -327,6 +327,7 @@
     <Compile Include="RatingModelTests.fs" />
     <Compile Include="TokensModelTests.fs" />
     <Compile Include="TrustedTypesTests.fs" />
+    <Compile Include="LocalWireTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

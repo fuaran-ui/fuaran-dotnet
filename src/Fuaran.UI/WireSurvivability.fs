@@ -224,7 +224,20 @@ let all: Classification list =
           (Some
               "Binding.Expr for scalar logic over bound values (AND/OR/NOT, concat, arithmetic, null tests, membership); Binding.State / Binding.Filter(for, None) reactive values; Binding.Transform for row derivation; Binding.Format for formatting")
       sv "Binding.I18n"
-      pt "Binding.Local" (Some "Binding.Format is the declarative twin of the Local format/parse closures") // the Phase 62 buffered-commit closures erase
+      // Fuaran-UI Phase 1538 — still PARTIAL, but for a much smaller reason than
+      // before, and the alternative names what actually closes the gap rather
+      // than the nearest neighbour. The three closure slots now have declared
+      // twins on the wire: `format` / `parse` restore to the identity (so a
+      // decoded buffer round-trips its value instead of emptying the field),
+      // `codec` declares a locale-free edit-buffer codec, and `commitTo` names
+      // the State key the flush writes. What is still host-only, and what keeps
+      // the grade at `pt`, is an ARBITRARY format or parse function and an
+      // arbitrary commit effect — a host closure still wins over the declaration
+      // when the tree was built in process, and none of it crosses the wire.
+      pt
+          "Binding.Local"
+          (Some
+              "`codec` (a locale-free edit-buffer codec) and `commitTo` (the State key the flush writes) are the declarative twins of the format/parse/onCommit closures; a decoded Local without them uses the identity codec and commits nowhere")
       sv "Binding.Format"
       sv "Binding.Transform" // serialised as data via Fuaran.Core codecs — no closure on the wire
       // Fuaran-UI Phase 1534 — the expression and its params are data through

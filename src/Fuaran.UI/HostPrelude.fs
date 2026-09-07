@@ -533,6 +533,27 @@ module LocalCodec =
         | :? int64 as i -> Some(float i)
         | _ -> None
 
+    /// The JSON scalar a parsed buffer value IS. Used where a flush has to be
+    /// expressed as data rather than run as a closure — the server-driven tier
+    /// turns a declared commit into an `Action.SetState`, and a state write is
+    /// a JSON value everywhere in this language.
+    ///
+    /// An unrecognised runtime shape becomes its identity TEXT: the buffer is a
+    /// text control, so the text is the thing that was actually observed, and
+    /// discarding a value the reader typed on the strength of a type test this
+    /// function got wrong would be the worse answer. There is no null arm to
+    /// reach for in any case — `JVal` is a no-null wire model — so a null
+    /// buffered value is the empty text it was typed as.
+    let jvalOf (v: objnull) : JVal =
+        match v with
+        | null -> JStr ""
+        | :? string as s -> JStr s
+        | :? bool as b -> JBool b
+        | :? float as f -> JFloat f
+        | :? int as i -> JInt i
+        | :? int64 as i -> JInt(int i)
+        | other -> JStr(identityFormat other)
+
     /// The `Format.Number` codec's rendition: fixed-point at the declared
     /// decimals, or the identity when the codec declares none.
     ///

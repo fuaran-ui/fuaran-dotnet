@@ -6101,3 +6101,80 @@ consumer switching exhaustively over `WireSurvivability.byCase` gains a row.
 `SortKey.col` is NOT part of this change — those slots are `Fuaran.Core.Transform`'s own DU, which
 this repo consumes as a pinned package.
 
+
+---
+
+## Recorded change — 0.77.0 (riding the draft), a wire-complete `Binding.Local` and an erroring decoded `Binding.Computed` (fuaran#1538)
+
+**`Generated.Binding<'T>.Local` gains two fields**, appended after the existing five:
+
+```fsharp
+| Local of
+    flushOn: LocalFlushTrigger *
+    format: ('T -> string) *
+    initialFrom: Binding<'T> *
+    onCommit: ('T -> obj) option *
+    parse: (string -> Result<'T, string>) *
+    codec: Format option *          // new
+    commitTo: string option         // new
+```
+
+This is **source-breaking**: every positional construction and every positional pattern over the case
+needs two more slots. Appending rather than sorting the new fields into alphabetical position is
+deliberate — the wire order is `Canon.typed`'s Ordinal sort and is unaffected either way, so appending
+leaves every existing binder's POSITION intact and makes the fix mechanical (`, None, None` at a
+construction; `, _, _` at a pattern).
+
+**It rides the standing 0.77.0 draft rather than advancing it**, per the draft-slot rule. That draft is
+untagged, pinned by no public-path consumer, and already carries source-breaking changes of exactly
+this class — `Derivation<'Msg>.StructuralKey`'s narrowing, and an `FS0764` record widening. Adding
+fields to a DU case says the same thing to a consumer that those do: adopting this slot costs source
+edits. A higher class would advance the draft; an equal one does not, and 0.78.0 would tell a consumer
+already paying 0.77.0's price that there is a second, separate one.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates for the kind set are not engaged. What changed is the FIELD SET of an existing
+`Binding` case, and the charter's demand question is answered by the finding this closes rather than
+by a new capability: the fixture `wire-format-fixtures/nodes/form-local-debounce.json` carried three
+`"<closure>"` sentinels that decoded to a `format` returning `""`, a `parse` returning
+`Error "<closure>"` and an `onCommit` returning a sentinel object, so a wire-authored debounced input
+rendered empty and could never commit a keystroke.
+
+### Behavioural changes (the point of the phase, and not expressible as a version alone)
+
+1. **A decoded `Local` uses the IDENTITY codec.** `format` restores to the value's own text rendition
+   and `parse` to reading that text back through the slot's OWN decoder. A tree that previously
+   rendered an empty field and refused every edit now round-trips its value. **Every corpus fixture's
+   bytes are unchanged**; what changed is what a conforming host does with them.
+2. **`codec` declares a locale-free edit-buffer codec**, and only `Format.Number` is admitted — the
+   one case with a total, locale-independent inverse. Every other case is a decode refusal
+   (`WRONG_TYPE` at the `codec` path). `Percent` is refused too, for a narrower reason recorded in
+   `WIRE_FORMAT.md` §3.3.3: its inverse needs a ×100 scale whose IEEE round-trip is not exact.
+3. **`commitTo` declares the State key the flush writes**, through the same path
+   `Action.SetState` and the Phase 426 write-back default use — so it inherits their scope routing and
+   their refusal of host-reserved keys. It is mutually exclusive with `onCommit`; both together is a
+   decode refusal (`WRONG_TYPE` at the `commitTo` path).
+4. **A decoded `Binding.Computed` now ERRORS.** The stand-in raises
+   `HostPrelude.WireSurvivabilityError` and the resolver surfaces the message verbatim as `Errored`.
+   Previously it returned `Unchecked.defaultof<'T>` and the resolver answered `Resolved` — so a
+   decoded `Computed` rendered `0` / `""` / `false` as though the computation had run, which is a
+   wrong answer indistinguishable at the slot from a right one. **This is a TIGHTENING**: a consumer
+   relying on the silent default now sees the slot's error surface. That is the intended remedy, not
+   a regression; the case is host-only by design and `Binding.Expr` / `Transform` / `State` are the
+   wire-carried replacements the message names.
+5. **The policy decoder no longer invents an `onCommit`.** It used to restore `Some sentinel`
+   unconditionally; it now reads presence, so a document that never wrote the key does not re-encode
+   with one.
+
+### New public helpers
+
+`Fuaran.UI.HostPrelude` gains `WireSurvivabilityError`, `decodedComputedMessage`, `decodedComputed`
+and the `LocalCodec` module (`identityFormat` / `identityParse` / `tryNumberText` / `scalarOfText` /
+`fixedText` / `tryFloat` / `numberText` / `jvalOf`). `Fuaran.binding.localDeclared` is the authoring
+entry point for the declarative shape. All additive.
+
+### What did NOT change
+
+No fixture byte moves; the schema gains two optional members and drops `onCommit` from the `Local`
+case's `required` list, where it never belonged (the IDL has always marked it optional). `Format`
+itself is untouched — the codec REFERENCES it and narrows the admitted set at decode.

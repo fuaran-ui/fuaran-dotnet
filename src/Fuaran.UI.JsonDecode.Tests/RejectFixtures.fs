@@ -1641,6 +1641,39 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a Binding.Expr whose expression reads `param quantity` while its own `params` binds only `unitPrice`. Unlike Binding.Transform — where an unbound filter param prunes its step, the deliberate unset-chip leniency — an Expr has no step to prune and no rows to fall back on, so the reference has no value it could ever take. Refused at decode, where the missing name can be named (Phase 1534)" }
+      // Fuaran-UI Phase 1538 — the two refusals `Binding.Local`'s declarative
+      // half carries. Both are WRONG_TYPE on the `SetState` value/valueFrom
+      // precedent: the shape is well-formed JSON of a recognised kind, and what
+      // is wrong is the COMBINATION.
+      //
+      // A codec whose case has no total, locale-independent inverse. The `Local`
+      // codec is an edit-buffer codec, not a display formatter: whatever it
+      // renders it must also parse back from what the reader typed, so a
+      // locale-rendered format has nothing to invert. Admitted silently it would
+      // give a buffer that formats one way and parses another — the round-trip
+      // hole the case was widened to close, reintroduced by the feature meant to
+      // close it.
+      { Id = "reject-local-codec-no-inverse"
+        Json =
+          """{"id":"x","kind":{"$type":"Form","fields":[{"id":"amount","kind":{"$type":"Number","value":{"$type":"Local","codec":{"$type":"Currency","isoCode":"GBP"},"commitTo":"order.amount","flushOn":{"$type":"OnBlur"},"format":"<closure>","initialFrom":{"$type":"State","defaultValue":0,"key":"order.amount"},"parse":"<closure>"}},"label":"Amount","required":false}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Save"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.fields[0].kind.value.codec"
+        IsOp = false
+        Description =
+          "a Binding.Local declaring a `Currency` codec. `Binding.Format` carries a LocaleSource because it renders for reading; a Local codec carries none, because whatever it renders it must be able to parse back from the reader's keystrokes — and a currency symbol, a locale decimal mark and a grouping separator are all chosen by the reader's locale, not by the document. `Number` is the one case with a total, locale-independent inverse. Refused at decode rather than left to format one way and parse another (Fuaran-UI Phase 1538)" }
+      // Two commit destinations. Not resolved by a precedence rule, because the
+      // wire cannot carry the closure at all: a host that honoured `onCommit`
+      // and a host that honoured `commitTo` would write to different places from
+      // identical bytes, which is the one thing a canonical wire format exists
+      // to prevent.
+      { Id = "reject-local-oncommit-and-committo"
+        Json =
+          """{"id":"x","kind":{"$type":"Form","fields":[{"id":"email","kind":{"$type":"Text","value":{"$type":"Local","commitTo":"form.email","flushOn":{"$type":"OnBlur"},"format":"<closure>","initialFrom":{"$type":"Static","value":"a@b.c"},"onCommit":"<closure>","parse":"<closure>"}},"label":"Email","required":false}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Save"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.fields[0].kind.value.commitTo"
+        IsOp = false
+        Description =
+          "a Binding.Local carrying BOTH an `onCommit` closure sentinel and a declared `commitTo` key. The SetState value/valueFrom law, applied to the buffer's flush: exactly one commit destination. A decoding host can honour only the declared one — the closure is `\"<closure>\"` and nothing more — so admitting the pair would make the same bytes commit to two different places depending on who read them (Fuaran-UI Phase 1538)" }
       { Id = "reject-limit-json-depth-at-max"
         Json =
           String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "["

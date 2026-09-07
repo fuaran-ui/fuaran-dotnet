@@ -5940,6 +5940,43 @@ let formLocalDebounce: Node<obj> =
         ))
         None
 
+// Fuaran-UI Phase 1538 — the DECLARED local buffer: the same case with nothing
+// host-only left in it. `codec` says how the buffered number is rendered and
+// read back, `commitTo` says where the flush writes, and `onCommit` is absent
+// (the two are mutually exclusive on the wire). Compare with the two fixtures
+// above, whose three `"<closure>"` sentinels are the hole this closes: this one
+// decodes on every host to a buffer that round-trips a value and commits it.
+let formLocalDeclared: Node<obj> =
+    let localDeclared: Binding<float> =
+        Binding.Local(
+            LocalFlushTrigger.OnBlur,
+            (fun (v: float) -> Fuaran.UI.HostPrelude.LocalCodec.numberText (Some 2) (box v)),
+            Binding.State("order.unitPrice", Some 0.0),
+            None,
+            (fun (raw: string) ->
+                match Fuaran.UI.HostPrelude.LocalCodec.tryNumberText raw with
+                | Some f -> Ok f
+                | None -> Error raw),
+            Some(Format.Number(Some 2)),
+            Some "order.unitPrice"
+        )
+
+    let priceField: FormField<obj> =
+        { Defaults.formField with
+            Id = "unit-price"
+            Label = TextSource.Literal "Unit price"
+            Kind = FormFieldKind.Number(Some localDeclared, None) }
+
+    node
+        "form-local-declared"
+        (NodeKind.Form(
+            { Defaults.form with
+                Fields = [ priceField ]
+                OnSubmit = placeholderChain
+                SubmitLabel = TextSource.Literal "Save" }
+        ))
+        None
+
 // Action.CommitLocal fixture for the TreeOp round-trip suite.
 let opUpdatePropCommitLocal: TreeOp<obj> =
     // A typical "Apply" button shape: an UpdateStyle on a button whose
@@ -6879,6 +6916,7 @@ let allNodes: (string * Node<obj>) list =
       "Input/Form (RangedNumber — all/min-only/no bounds)", formRangedNumber
       "Input/Form (Local-bound text, OnBlur)", formLocalText
       "Input/Form (Local-bound text, OnDebounce 250)", formLocalDebounce
+      "Input/Form (Fuaran-UI Phase 1538 — a DECLARED Local: codec + commitTo, no closure)", formLocalDeclared
       "Input/Filters (text + choice)", filtersBoth
       "Input/Filters (declarative — omitted onChange + typed range bounds)", filtersDeclarative
       "Input/Form (SegmentedChoice horizontal + vertical)", formSegmentedChoice
