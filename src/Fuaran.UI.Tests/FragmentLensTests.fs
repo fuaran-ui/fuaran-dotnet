@@ -39,7 +39,8 @@ let private bare (id: string) (kind: NodeKind<unit>) : Node<unit> =
       Accessibility = None
       Motion = None
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 /// An unbound `FragmentRef` — the marker form a slot takes inside a body.
 let private marker (id: string) (name: string) : Node<unit> =
@@ -88,7 +89,10 @@ let tests =
                           "sw"
                           (NodeKind.Switch
                               { Defaults.switch<unit> with
-                                  Cases = [ { Match = "a"; Child = slot } ]
+                                  Cases =
+                                      [ { Match = Some "a"
+                                          When = None
+                                          Child = slot } ]
                                   Default = Fuaran.markdown "sw-default" "none" }))
 
               match applied fragment slotArg with
@@ -108,7 +112,8 @@ let tests =
                           (NodeKind.Switch
                               { Defaults.switch<unit> with
                                   Cases =
-                                      [ { Match = "a"
+                                      [ { Match = Some "a"
+                                          When = None
                                           Child = Fuaran.markdown "sw-a" "a" } ]
                                   Default = slot }))
 
@@ -207,7 +212,8 @@ let tests =
                       (NodeKind.Switch
                           { Defaults.switch<unit> with
                               Cases =
-                                  [ { Match = "a"
+                                  [ { Match = Some "a"
+                                      When = None
                                       Child = marker "loop" "card" } ]
                               Default = Fuaran.markdown "d" "d" })
 
@@ -246,7 +252,8 @@ let tests =
                       (NodeKind.Switch
                           { Defaults.switch<unit> with
                               Cases =
-                                  [ { Match = "a"
+                                  [ { Match = Some "a"
+                                      When = None
                                       Child = Fuaran.markdown "inner" "text" } ]
                               Default = Fuaran.markdown "d" "d" })
 
