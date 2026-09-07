@@ -34,34 +34,155 @@ type FragmentApplication<'Msg> =
 
 module FragmentApply =
 
-    // ── generic children lens (the only place the Layout arms are enumerated) ─
+    // ── the child lens (the ONE place a subtree slot is enumerated) ────────
+    //
+    // Every recursion in this module runs on this lens, so a slot it cannot see
+    // is a slot that is not namespaced, not substituted, and not checked for
+    // totality — three different symptoms of one omission. It used to see only
+    // the eight straightforward containers plus the two error-boundary arms, so
+    // a `Fragment.slot` marker inside a `Switch` case, inside a nested
+    // `FragmentDecl` body, or inside a node's `OnLoading` / `OnEmpty` alternative
+    // rendered as an unbound `FragmentRef` (the marker itself, drawn), and a
+    // self-reference hidden in any of them defeated the totality refusal that
+    // exists to stop unbounded expansion.
+    //
+    // GET AND SET ARE ONE FUNCTION on purpose. As two enumerations they can
+    // disagree — one reads a slot the other cannot write back — and that
+    // disagreement is silent: the traversal descends, rewrites, and the rewrite
+    // is dropped on the way out. A lens returns the children and the rebuilder
+    // that consumes exactly those children, in exactly that order.
+    //
+    // THE MATCH IS EXHAUSTIVE, matching `StructuralQuery.children`. A new
+    // `NodeKind` case must declare its subtrees here in the same change that
+    // adds the case, or this file stops compiling — which is the whole reason
+    // the omission above was possible under the old wildcard.
+    //
+    // Two subtrees are deliberately NOT children, and both are stated rather
+    // than forgotten:
+    //   * a `Mount` guest's interior — a separate scope with its own ids, and
+    //     hygienic namespacing across it would rewrite ids the guest owns;
+    //   * `StateBehaviour.OnError`, which is a FUNCTION `exn -> Node` rather
+    //     than a node. There is no subtree to visit until it is applied, so a
+    //     slot marker inside one cannot be substituted by any traversal. The
+    //     two alternative arms that ARE nodes (`OnLoading` / `OnEmpty`) are
+    //     visited.
 
-    let private getChildren<'Msg> (node: Node<'Msg>) : Node<'Msg> list option =
-        match node.Kind with
-        | NodeKind.Box s -> Some s.Children
-        | NodeKind.SplitPanel s -> Some s.Children
-        | NodeKind.Tabs s -> Some s.Children
-        | NodeKind.Stepper s -> Some s.Children
-        | NodeKind.SummaryList s -> Some s.Children
-        | NodeKind.Disclosure s -> Some s.Children
-        | NodeKind.Modal s -> Some s.Children
-        | NodeKind.ScrollArea s -> Some s.Children
-        | _ -> None
-
-    let private setChildren<'Msg> (children: Node<'Msg> list) (node: Node<'Msg>) : Node<'Msg> =
-        let kind =
+    let private childLens<'Msg> (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg> list -> Node<'Msg>) =
+        let kindChildren, rebuildKind: Node<'Msg> list * (Node<'Msg> list -> NodeKind<'Msg>) =
             match node.Kind with
-            | NodeKind.Box s -> NodeKind.Box { s with Children = children }
-            | NodeKind.SplitPanel s -> NodeKind.SplitPanel { s with Children = children }
-            | NodeKind.Tabs s -> NodeKind.Tabs { s with Children = children }
-            | NodeKind.Stepper s -> NodeKind.Stepper { s with Children = children }
-            | NodeKind.SummaryList s -> NodeKind.SummaryList { s with Children = children }
-            | NodeKind.Disclosure s -> NodeKind.Disclosure { s with Children = children }
-            | NodeKind.Modal s -> NodeKind.Modal { s with Children = children }
-            | NodeKind.ScrollArea s -> NodeKind.ScrollArea { s with Children = children }
-            | other -> other
+            | NodeKind.Box s -> s.Children, (fun cs -> NodeKind.Box { s with Children = cs })
+            | NodeKind.SplitPanel s -> s.Children, (fun cs -> NodeKind.SplitPanel { s with Children = cs })
+            | NodeKind.Tabs s -> s.Children, (fun cs -> NodeKind.Tabs { s with Children = cs })
+            | NodeKind.Stepper s -> s.Children, (fun cs -> NodeKind.Stepper { s with Children = cs })
+            | NodeKind.SummaryList s -> s.Children, (fun cs -> NodeKind.SummaryList { s with Children = cs })
+            | NodeKind.Disclosure s -> s.Children, (fun cs -> NodeKind.Disclosure { s with Children = cs })
+            | NodeKind.Modal s -> s.Children, (fun cs -> NodeKind.Modal { s with Children = cs })
+            | NodeKind.ScrollArea s -> s.Children, (fun cs -> NodeKind.ScrollArea { s with Children = cs })
+            | NodeKind.ErrorBoundary s ->
+                [ s.Child; s.Fallback ],
+                (fun cs ->
+                    match cs with
+                    | [ child; fallback ] -> NodeKind.ErrorBoundary { Child = child; Fallback = fallback }
+                    | _ -> node.Kind)
+            | NodeKind.Switch s ->
+                // Cases in declaration order, then the default — so the
+                // rebuilder can split at the case count and cannot mis-pair a
+                // case with another case's subtree.
+                (s.Cases |> List.map _.Child) @ [ s.Default ],
+                (fun cs ->
+                    let caseCount = List.length s.Cases
 
-        { node with Kind = kind }
+                    if List.length cs = caseCount + 1 then
+                        NodeKind.Switch
+                            { s with
+                                Cases =
+                                    List.map2
+                                        (fun (c: SwitchCase<'Msg>) child -> { c with Child = child })
+                                        s.Cases
+                                        (List.truncate caseCount cs)
+                                Default = List.item caseCount cs }
+                    else
+                        node.Kind)
+            | NodeKind.FragmentDecl s ->
+                [ s.Body ],
+                (fun cs ->
+                    match cs with
+                    | [ body ] -> NodeKind.FragmentDecl { s with Body = body }
+                    | _ -> node.Kind)
+            | NodeKind.Heading _
+            | NodeKind.Markdown _
+            | NodeKind.Metric _
+            | NodeKind.Badge _
+            | NodeKind.Sparkline _
+            | NodeKind.Callout _
+            | NodeKind.Progress _
+            | NodeKind.Skeleton _
+            | NodeKind.Icon _
+            | NodeKind.LabelValueRow _
+            | NodeKind.Fact _
+            | NodeKind.Link _
+            | NodeKind.Image _
+            | NodeKind.Media _
+            | NodeKind.Embed _
+            | NodeKind.List _
+            | NodeKind.Tree _
+            | NodeKind.Toast _
+            | NodeKind.CodeBlock _
+            | NodeKind.Math _
+            | NodeKind.Drawing _
+            | NodeKind.Form _
+            | NodeKind.Filters _
+            | NodeKind.Button _
+            | NodeKind.FileUpload _
+            | NodeKind.Select _
+            | NodeKind.DataGrid _
+            | NodeKind.Chart _
+            | NodeKind.Map _
+            | NodeKind.Custom _
+            | NodeKind.FragmentRef _
+            | NodeKind.Mount _ -> [], (fun _ -> node.Kind)
+
+        // The alternative arms that are NODES. Present-only, so the rebuilder
+        // puts back exactly the arms that were there — a `None` arm must not
+        // become `Some` because the list happened to be long enough.
+        let onLoading = node.State |> Option.bind _.OnLoading
+        let onEmpty = node.State |> Option.bind _.OnEmpty
+        let stateArms = [ onLoading; onEmpty ] |> List.choose id
+
+        let all = kindChildren @ stateArms
+
+        let rebuild (replacements: Node<'Msg> list) : Node<'Msg> =
+            if List.length replacements <> List.length all then
+                // A rebuilder is only ever called with the list this lens
+                // returned. Answering the unchanged node rather than throwing
+                // keeps a future misuse a no-op instead of a crash inside a
+                // render.
+                node
+            else
+                let kindCount = List.length kindChildren
+                let kindPart = replacements |> List.truncate kindCount
+                let statePart = replacements |> List.skip kindCount
+
+                let newOnLoading, afterLoading =
+                    match onLoading, statePart with
+                    | Some _, head :: tail -> Some head, tail
+                    | _ -> None, statePart
+
+                let newOnEmpty =
+                    match onEmpty, afterLoading with
+                    | Some _, head :: _ -> Some head
+                    | _ -> None
+
+                { node with
+                    Kind = rebuildKind kindPart
+                    State =
+                        node.State
+                        |> Option.map (fun st ->
+                            { st with
+                                OnLoading = newOnLoading
+                                OnEmpty = newOnEmpty }) }
+
+        all, rebuild
 
     /// The slot name a node is an unbound marker for (a bare `FragmentRef`),
     /// when it is one.
@@ -75,36 +196,17 @@ module FragmentApply =
     let rec private referencesFragment<'Msg> (fragmentName: string) (node: Node<'Msg>) : bool =
         match slotMarker node with
         | Some n when n = fragmentName -> true
-        | _ ->
-            match getChildren node with
-            | Some kids -> kids |> List.exists (referencesFragment fragmentName)
-            | None ->
-                match node.Kind with
-                | NodeKind.ErrorBoundary spec ->
-                    referencesFragment fragmentName spec.Child
-                    || referencesFragment fragmentName spec.Fallback
-                | _ -> false
+        | _ -> fst (childLens node) |> List.exists (referencesFragment fragmentName)
 
     /// Rewrite every interior NodeId by `prefix` (hygienic namespacing of an
     /// inserted slot subtree).
     let rec private namespaceIds<'Msg> (prefix: string) (node: Node<'Msg>) : Node<'Msg> =
         let renamed = { node with Id = prefix + node.Id }
-
-        match getChildren renamed with
-        | Some kids -> setChildren (kids |> List.map (namespaceIds prefix)) renamed
-        | None ->
-            match renamed.Kind with
-            | NodeKind.ErrorBoundary spec ->
-                { renamed with
-                    Kind =
-                        NodeKind.ErrorBoundary
-                            { Child = namespaceIds prefix spec.Child
-                              Fallback = namespaceIds prefix spec.Fallback } }
-            | _ -> renamed
+        let children, rebuild = childLens renamed
+        rebuild (children |> List.map (namespaceIds prefix))
 
     /// Substitute bound slots in `body`, replacing each unbound `FragmentRef`
-    /// slot-marker with its (namespaced) argument subtree. Recurses into
-    /// containers + error boundaries.
+    /// slot-marker with its (namespaced) argument subtree.
     let rec private substituteSlots<'Msg>
         (refPrefix: string)
         (boundSlots: Map<string, Node<'Msg>>)
@@ -115,17 +217,8 @@ module FragmentApply =
             // Replace the marker with the namespaced argument subtree.
             namespaceIds (refPrefix + ".") (Map.find slot boundSlots)
         | _ ->
-            match getChildren body with
-            | Some kids -> setChildren (kids |> List.map (substituteSlots refPrefix boundSlots)) body
-            | None ->
-                match body.Kind with
-                | NodeKind.ErrorBoundary spec ->
-                    { body with
-                        Kind =
-                            NodeKind.ErrorBoundary
-                                { Child = substituteSlots refPrefix boundSlots spec.Child
-                                  Fallback = substituteSlots refPrefix boundSlots spec.Fallback } }
-                | _ -> body
+            let children, rebuild = childLens body
+            rebuild (children |> List.map (substituteSlots refPrefix boundSlots))
 
     /// Apply `pf` at ref site `refId`, binding `valueArgs` (validated against
     /// each hole's value-space) and `slotArgs` (bound subtrees). All REQUIRED

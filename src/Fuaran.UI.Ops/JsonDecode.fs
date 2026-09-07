@@ -2278,7 +2278,8 @@ let private placeholderClosureNode: Node<obj> =
       Accessibility = None
       Motion = None
       ExtraAttributes = None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 // ─── Variant DU decoders ─────────────────────────────────────────────────
 
@@ -8815,16 +8816,42 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
                             match requireObject casePath item with
                             | Error e -> Error e
                             | Ok caseFields ->
-                                let matchR =
-                                    requireField casePath caseFields "match" "Switch case match string"
-                                    |> Result.bind (requireString (casePath + ".match"))
+                                // Fuaran-UI Phase 1535 — a case selects on a string
+                                // `match` XOR a predicate `when` (a `Binding<bool>`
+                                // evaluated at render time). Exactly one; both and
+                                // neither are refused, naming both fields, on the
+                                // Phase 818 `value` / `valueFrom` precedent.
+                                //
+                                // The refusal is here rather than left to the
+                                // renderer because "neither" has no rendering: a case
+                                // that names no condition is not a case that never
+                                // matches, it is a document whose author meant
+                                // something the wire cannot say.
+                                let selectorR: Result<string option * Binding<bool> option, DecodeError> =
+                                    match tryField caseFields "match", tryField caseFields "when" with
+                                    | Some _, Some _ ->
+                                        err
+                                            DecodeErrorCode.WRONG_TYPE
+                                            (casePath + ".when")
+                                            "Switch case carries both 'match' and 'when' — exactly one is allowed"
+                                            (Some
+                                                "either 'match' (a literal string compared against the switch's `on` selector) or 'when' (a Binding<bool> predicate evaluated at render time, needing no selector); remove one")
+                                    | None, None ->
+                                        missingField
+                                            casePath
+                                            "match"
+                                            "a literal string under 'match' (compared against the switch's `on` selector), or a Binding<bool> under 'when' (a predicate evaluated at render time)"
+                                    | Some mJ, None ->
+                                        requireString (casePath + ".match") mJ |> Result.map (fun m -> Some m, None)
+                                    | None, Some wJ ->
+                                        decodeBindingBool (casePath + ".when") wJ |> Result.map (fun b -> None, Some b)
 
                                 let childR =
                                     requireField casePath caseFields "child" "Switch case child Node"
                                     |> Result.bind (decodeNodeAst (descend w) (casePath + ".child"))
 
-                                match matchR, childR with
-                                | Ok m, Ok child -> Ok({ Match = m; Child = child }: SwitchCase<obj>)
+                                match selectorR, childR with
+                                | Ok(m, w'), Ok child -> Ok({ Match = m; When = w'; Child = child }: SwitchCase<obj>)
                                 | Error e, _
                                 | _, Error e -> Error e)
 
@@ -9320,8 +9347,18 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
             | None -> Ok None
             | Some v -> decodeTextSource (path + ".tooltip") v |> Result.map Some
 
-        match idR, kindR, stateR, styleR, accessibilityR, tooltipR with
-        | Ok id, Ok kind, Ok state, Ok style, Ok accessibility, Ok tooltip ->
+        // Fuaran-UI Phase 1535 — the node-level visibility predicate. An
+        // ordinary optional `Binding<bool>`, decoded by the shared binding
+        // decoder for the reason the tooltip above states: the one time a host
+        // read a node-envelope slot as its own narrower thing it took two hosts
+        // and a ruling to unwind.
+        let visibleR =
+            match tryField fields "visible" with
+            | None -> Ok None
+            | Some v -> decodeBindingBool (path + ".visible") v |> Result.map Some
+
+        match idR, kindR, stateR, styleR, accessibilityR, tooltipR, visibleR with
+        | Ok id, Ok kind, Ok state, Ok style, Ok accessibility, Ok tooltip, Ok visible ->
             // Motion / ExtraAttributes are not emitted by the encoder
             // (see Types.fs lines 213-218 — ExtraAttributes is "the §4d
             // JSON wire shape omits it on emit"; Motion follows the same
@@ -9334,13 +9371,15 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
                   Accessibility = accessibility
                   Motion = None
                   ExtraAttributes = None
-                  Tooltip = tooltip }
-        | Error e, _, _, _, _, _
-        | _, Error e, _, _, _, _
-        | _, _, Error e, _, _, _
-        | _, _, _, Error e, _, _
-        | _, _, _, _, Error e, _
-        | _, _, _, _, _, Error e -> Error e
+                  Tooltip = tooltip
+                  Visible = visible }
+        | Error e, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _
+        | _, _, Error e, _, _, _, _
+        | _, _, _, Error e, _, _, _
+        | _, _, _, _, Error e, _, _
+        | _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, Error e -> Error e
 
 // ─── TreeOp decoder ─────────────────────────────────────────────────────
 

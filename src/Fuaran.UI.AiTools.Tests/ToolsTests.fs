@@ -413,7 +413,8 @@ let private bareNode (id: string) (kind: NodeKind<Msg>) : Node<Msg> =
       Accessibility = Option.None
       Motion = Defaults.Motion.none
       ExtraAttributes = Option.None
-      Tooltip = None }
+      Tooltip = None
+      Visible = None }
 
 /// One representative node per binding-bearing NodeKind. Kinds with no
 /// Binding-typed slot (every other Layout / Display / Input / Visualisation /

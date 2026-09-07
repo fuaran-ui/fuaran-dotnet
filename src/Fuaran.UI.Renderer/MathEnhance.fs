@@ -131,8 +131,11 @@ let private renderInto (el: Element) (tex: string) (displayMode: bool) : unit =
         // policy's floor finds nothing to remove; what it adds is the trusted
         // value a host requiring the directive needs at this assignment.
         el.innerHTML <- TrustedTypes.html (unbox<string> (katex?renderToString (tex, opts)))
-    with _ ->
-        ()
+    with ex ->
+        // The container keeps its source text, which is the honest fallback.
+        // Reported because unrendered LaTeX and LaTeX a reader chose to show
+        // as source look the same on the page.
+        Diagnostics.warn "KaTeX upgrade failed; the container keeps its source" (box ex)
 
 /// Upgrade the explicit `Math` nodes (Phase 658: the `.fuaran-math` CONTAINER,
 /// MathML or source variant alike). Reads the LaTeX from `data-fuaran-math-src`

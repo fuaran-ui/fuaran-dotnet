@@ -45,6 +45,7 @@
     <Compile Include="FormatBindingTests.fs" />
     <Compile Include="NowGrainTests.fs" />
     <Compile Include="ExprBindingTests.fs" />
+    <Compile Include="ConditionalVisibilityTests.fs" />
     <Compile Include="AccessibilityTests.fs" />
     <!-- IdsTests pins Phase 138's deterministic correlation-id swap
          (Ids.deterministicCorrelationId) — same-seed-stable, the unit floor
@@ -62,6 +63,9 @@
     <Compile Include="CustomContractTests.fs" />
     <Compile Include="CustomRegistryTests.fs" />
     <Compile Include="LocalBindingTests.fs" />
+    <!-- The parse-refusal markers a Local input puts on its own field, and the
+         source-read pin that both components still gate OnDebounce on an edit. -->
+    <Compile Include="LocalBindingErrorTests.fs" />
     <Compile Include="ClipboardActionTests.fs" />
     <Compile Include="ReadFileBodyActionTests.fs" />
     <!-- DispatchGateTests pins Phase 119's IFuaranRuntime.CanDispatch seam
@@ -70,6 +74,13 @@
     <!-- Phase 1117: the upload seam, its default-deny refusals, and the
          op-stream discipline the destination member exists to enforce. -->
     <Compile Include="UploadSinkTests.fs" />
+    <!-- The ORDERING contract of a multi-file transfer, driven against a sink
+         that completes LATER — the only shape that can tell a chained caller
+         from an eager one. -->
+    <Compile Include="UploadChainTests.fs" />
+    <!-- The reconciliation-key rule, the row-key-follows-the-row property, and
+         the source scan that pins every repeated-children emission site. -->
+    <Compile Include="ReconciliationKeyTests.fs" />
     <!-- Phase 889: the client-side gate OUTCOMES the user-action record is
          built from, plus the cross-tier correlation-key pin. -->
     <Compile Include="ActionInvocationClientTests.fs" />
@@ -121,6 +132,9 @@
          validation, currying, totality, effect-class join. -->
     <Compile Include="ParamFragmentTests.fs" />
     <Compile Include="FragmentApplyTests.fs" />
+    <!-- The subtree slots the fragment child lens reaches: switch cases and
+         default, a nested declaration body, and the two state arms. -->
+    <Compile Include="FragmentLensTests.fs" />
     <!-- FragmentMemoTests pins Phase 183's incremental re-derivation engine
          (Fuaran.UI.Memo): cache hit/miss, effecting-bypass, incremental
          value-parameter recompute (only the changed hole-address), disjoint-

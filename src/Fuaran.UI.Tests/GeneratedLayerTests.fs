@@ -749,6 +749,20 @@ let generatedLayerTests =
               //    parser are one parser, not by a refinement to the IDL — and
               //    an entry leaving this list is then evidence of that, rather
               //    than of a new refined type.
+              //  - the two Phase-1535 `SwitchCase` selector fixtures are the
+              //    SIBLING-ABSENCE class `reject-fieldrule-empty` opened, now
+              //    reached from both ends: `neither` is that class exactly (a
+              //    relation over the ABSENCE of two siblings), and
+              //    `match-and-when` is its mirror (a relation over their joint
+              //    PRESENCE). The IDL declares both members Optional and has no
+              //    vocabulary for a cross-field constraint, so the generated
+              //    decoder reads whichever is there and accepts either count.
+              //    Both are schema-EXPRESSIBLE and expressed — `anyOf` over the
+              //    two `required` for one, `not: { required: [both] }` for the
+              //    other — so like the near misses they stay OUT of
+              //    `schemaInexpressibleRejects`. That is the discriminator worth
+              //    noting: this pair is structure-inexpressible and
+              //    schema-expressible, where 725's ordered pair was neither.
               Expect.equal
                   policyOwned
                   [ "reject-action-print-with-payload.json"
@@ -806,6 +820,8 @@ let generatedLayerTests =
                     "reject-nearmiss-grid-behaviour-record.json"
                     "reject-nearmiss-grid-current-page.json"
                     "reject-nearmiss-grid-sortable.json"
+                    "reject-switch-case-match-and-when.json"
+                    "reject-switch-case-neither.json"
                     "reject-upload-destination-empty.json"
                     "reject-wrongtype-grid-default-sort-column.json"
                     "reject-wrongtype-grid-page-size-zero.json"

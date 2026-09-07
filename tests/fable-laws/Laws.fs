@@ -48,6 +48,7 @@ open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Merge
+open Fuaran.UI.Renderer
 open FableLaws.TestSupport
 
 module FoldConfluence = Fuaran.Core.FoldConfluence
@@ -656,4 +657,189 @@ let deflateLines (cases: DeflateCase list) : string list =
         |> List.map (fun c -> "DEFLATEFAIL " + c.Name + " " + sanitise c.Detail))
 
 let deflateViolations (cases: DeflateCase list) : int =
+    cases |> List.filter (fun c -> not c.Passed) |> List.length
+
+// ---------------------------------------------------------------------------
+//  Law 4 — the selection-field projection answers the same on both pipelines.
+// ---------------------------------------------------------------------------
+//
+//  `Binding.projectSelectionField` reads a named cell off the clicked row and
+//  hands it to a slot of a declared type. The two legs got there differently:
+//  .NET type-tests and, where the boxed representation differs from the slot's
+//  type, coerces through an invariant `Convert.ChangeType`; Fable's `unbox` is a
+//  NO-OP, so it used to hand whatever was in the cell straight through. A text
+//  cell in a `Binding<float>` therefore raised on .NET — the resolver's loud
+//  `Errored` — and rendered `NaN` in the browser. Same tree, same data, one host
+//  refusing and the other showing a nonsense number.
+//
+//  This is the only place that claim can be certified, because it is a claim
+//  about TWO RUNTIMES and neither pipeline's own suite can see the other. Each
+//  case declares its expected outcome, so a leg that drifts fails locally; and
+//  the lines are byte-compared across the two runs, so a leg that drifts in a
+//  way both would accept fails the diff.
+//
+//  The rows are `Map<string, obj>` — the Transform-produced shape a real click
+//  puts in the SelectionStore.
+
+type SelectionCase =
+    { Name: string
+      Passed: bool
+      Outcome: string }
+
+let private row () : Map<string, obj> =
+    Map.ofList
+        [ "amount", (box 42.0 |> Unchecked.nonNull)
+          "amountText", (box "42" |> Unchecked.nonNull)
+          "label", (box "abc" |> Unchecked.nonNull)
+          "flagText", (box "true" |> Unchecked.nonNull) ]
+
+/// Run one projection and reduce it to a two-valued outcome. Deliberately
+/// `ok` / `refused` and nothing else: the exception TEXT is a host's own and
+/// the two runtimes do not word it alike, so comparing it would report a
+/// message difference as an algebra divergence.
+let private outcomeOf (project: unit -> unit) : string =
+    try
+        project ()
+        "ok"
+    with _ ->
+        "refused"
+
+let private selectionCase (name: string) (expected: string) (project: unit -> unit) : SelectionCase =
+    let actual = outcomeOf project
+
+    { Name = name
+      Passed = actual = expected
+      Outcome = actual }
+
+let selectionFieldCases () : SelectionCase list =
+    let r: obj = box (row ()) |> Unchecked.nonNull
+
+    [ // A number in a numeric slot: the ordinary case, and the one that must
+      // stay untouched by any coercion added for the others.
+      selectionCase "float-from-number" "ok" (fun () -> Binding.projectSelectionField<float> "amount" r |> ignore)
+
+      // The finding, in one line: a TEXT cell in a numeric slot. .NET coerces
+      // it; Fable used to pass the string through and render NaN.
+      selectionCase "float-from-numeric-text" "ok" (fun () ->
+          Binding.projectSelectionField<float> "amountText" r |> ignore)
+
+      // And its refusal twin. `Number("abc")` is NaN, which is a value, not an
+      // error — so a leg that merely converts and does not CHECK passes this
+      // string through as a number and renders NaN.
+      selectionCase "float-from-non-numeric-text" "refused" (fun () ->
+          Binding.projectSelectionField<float> "label" r |> ignore)
+
+      // The other direction: a number in a text slot renders as its own
+      // decimal spelling rather than as an unconverted number object.
+      selectionCase "string-from-number" "ok" (fun () -> Binding.projectSelectionField<string> "amount" r |> ignore)
+
+      selectionCase "bool-from-text" "ok" (fun () -> Binding.projectSelectionField<bool> "flagText" r |> ignore)
+
+      // `obj` is what every DECODED path asks for, and it must coerce nothing
+      // at all — the wire path's behaviour is unchanged by any of the above.
+      selectionCase "obj-passthrough" "ok" (fun () -> Binding.projectSelectionField<obj> "label" r |> ignore)
+
+      // The two structural refusals, which both legs already agreed on and
+      // which are here so a change to the coercion cannot quietly swallow them.
+      selectionCase "missing-field" "refused" (fun () -> Binding.projectSelectionField<obj> "nope" r |> ignore)
+
+      // `Unchecked.defaultof<obj>` rather than a `null` literal: the F# 10
+      // nullness checker refuses `null` at a non-nullable `obj`, and
+      // `Unchecked.unbox` is outside Fable's supported subset.
+      selectionCase "null-row" "refused" (fun () ->
+          Binding.projectSelectionField<obj> "amount" Unchecked.defaultof<obj> |> ignore) ]
+
+let selectionFieldLines (cases: SelectionCase list) : string list =
+    let failures = cases |> List.filter (fun c -> not c.Passed)
+
+    // Every case's OUTCOME is printed, not just the failures: the two runs are
+    // byte-compared, so a divergence both legs individually accept is caught
+    // only if the per-case answer is in the output.
+    ("SELECTIONFIELD cases="
+     + string (List.length cases)
+     + " failed="
+     + string (List.length failures))
+    :: (cases |> List.map (fun c -> "SELECTIONFIELD " + c.Name + " " + c.Outcome))
+
+let selectionFieldViolations (cases: SelectionCase list) : int =
+    cases |> List.filter (fun c -> not c.Passed) |> List.length
+
+
+// ---------------------------------------------------------------------------
+//  Law 5 -- a `Format.Date` slot never throws, on either pipeline.
+// ---------------------------------------------------------------------------
+//
+//  The wire admits every double a JSON number can spell, `NaN` and the
+//  infinities included, and a `Format.Date` slot then receives one. The two
+//  hosts failed differently and both failed badly: `FromUnixTimeSeconds` THREW
+//  out of an SSR render pass, so one bad cell took the whole page down with a
+//  500, and `Intl.DateTimeFormat` raised on an invalid time value in the
+//  browser. Neither is a rendering.
+//
+//  Certified here rather than in either tier's own suite for the same reason
+//  law 4 is: the claim is that TWO RUNTIMES answer alike, and each pipeline's
+//  suite can only see its own. The bounds are the narrower, .NET pair, so a
+//  value JavaScript could have drawn and .NET could not is refused on both --
+//  which is the divergence, not a limitation.
+
+type DateSentinelCase =
+    { Name: string
+      Passed: bool
+      Outcome: string }
+
+/// Format one value and reduce it to a three-valued outcome. `threw` is a
+/// failure however it is spelt: the point of the guard is that neither runtime
+/// is ever asked a question it answers with an exception.
+let private dateOutcome (value: float) : string =
+    try
+        let rendered = Formatting.format "en-GB" (Format.Date DateStyle.Short) value
+
+        if rendered = Formatting.unrepresentableInstant then
+            "refused"
+        else
+            "rendered"
+    with _ ->
+        "threw"
+
+let private dateCase (name: string) (expected: string) (value: float) : DateSentinelCase =
+    let actual = dateOutcome value
+
+    { Name = name
+      Passed = actual = expected
+      Outcome = actual }
+
+let dateSentinelCases () : DateSentinelCase list =
+    [ // The three float sentinels the wire admits and no calendar can hold.
+      dateCase "nan" "refused" nan
+      dateCase "positive-infinity" "refused" infinity
+      dateCase "negative-infinity" "refused" (-infinity)
+
+      // Outside `DateTimeOffset`'s span in both directions. The second is the
+      // value from the finding: a large positive double that reads as a
+      // plausible timestamp and is not one.
+      dateCase "far-future" "refused" 1e15
+      dateCase "far-past" "refused" -1e15
+
+      // The bounds themselves, which must be INSIDE. A guard that is off by one
+      // second at either end silently refuses a date that is representable.
+      dateCase "min-bound" "rendered" Formatting.minInstantSeconds
+      dateCase "max-bound" "rendered" Formatting.maxInstantSeconds
+      dateCase "just-past-max" "refused" (Formatting.maxInstantSeconds + 1.0)
+      dateCase "just-before-min" "refused" (Formatting.minInstantSeconds - 1.0)
+
+      // And the ordinary case, which the guard must leave completely alone --
+      // 2026-09-06T00:00:00Z.
+      dateCase "an-ordinary-instant" "rendered" 1788652800.0
+      dateCase "the-epoch" "rendered" 0.0 ]
+
+let dateSentinelLines (cases: DateSentinelCase list) : string list =
+    let failures = cases |> List.filter (fun c -> not c.Passed)
+
+    ("DATESENTINEL cases="
+     + string (List.length cases)
+     + " failed="
+     + string (List.length failures))
+    :: (cases |> List.map (fun c -> "DATESENTINEL " + c.Name + " " + c.Outcome))
+
+let dateSentinelViolations (cases: DateSentinelCase list) : int =
     cases |> List.filter (fun c -> not c.Passed) |> List.length

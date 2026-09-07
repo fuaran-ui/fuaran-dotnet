@@ -135,7 +135,46 @@ public sealed class FuaranNode
             Inner.Motion,
             Inner.State,
             Inner.Style,
-            Fs.Some(hint.Inner)));
+            Fs.Some(hint.Inner),
+            Inner.Visible));
+
+    /// <summary>
+    /// Attach the node-level visibility predicate (Fuaran-UI Phase 1535) — a
+    /// <c>Binding&lt;bool&gt;</c> whose resolved <c>false</c> removes this node
+    /// from the rendered output entirely.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Removal, not concealment: no element, no placeholder, no
+    /// <c>aria-hidden</c>, nothing in the layout and nothing in the
+    /// accessibility tree. It is NOT the same as
+    /// <see cref="Accessibility.Hidden"/>, which is <c>aria-hidden</c> over a
+    /// node that IS drawn and DOES occupy space — the right spelling for
+    /// decorative content a screen reader should skip.
+    /// </para>
+    /// <para>
+    /// A predicate that does not resolve renders the node. A missing source
+    /// silently hiding content is the one failure a reader cannot see, cannot
+    /// report and cannot work around.
+    /// </para>
+    /// <para>
+    /// A decoration on a built node rather than an option on the factory that
+    /// built it, for the reason <see cref="WithTooltip"/> gives: the slot is
+    /// uniform across every kind. Returns a new handle; the receiver is
+    /// unchanged.
+    /// </para>
+    /// </remarks>
+    public FuaranNode WithVisible(Binding<bool> predicate) =>
+        new(new FsNode(
+            Inner.Id,
+            Inner.Kind,
+            Inner.Accessibility,
+            Inner.ExtraAttributes,
+            Inner.Motion,
+            Inner.State,
+            Inner.Style,
+            Inner.Tooltip,
+            Fs.Some(predicate.Inner)));
 
     /// <summary>Declare the base direction of the value this node carries
     /// (Fuaran-UI Phase 1472). Returns a new handle; the receiver is unchanged.</summary>
@@ -176,7 +215,8 @@ public sealed class FuaranNode
             updated.Equals(global::Fuaran.UI.Defaults.style)
                 ? Fs.None<FsGen.SemanticStyle>()
                 : Fs.Some(updated),
-            Inner.Tooltip));
+            Inner.Tooltip,
+            Inner.Visible));
     }
 }
 

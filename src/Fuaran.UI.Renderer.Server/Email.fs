@@ -648,16 +648,16 @@ and private renderKind
                     | None -> id
 
                 BindingResolver.tryResolve ctx.Sources (Binding.Selection(nodeId, projector, dv |> Option.map box, fld))
-            | on -> BindingResolver.tryResolve ctx.Sources on |> Option.map box
+            // Phase 1535 — the scalar resolver, matching both renderers.
+            | on -> BindingResolver.tryResolveScalarText ctx.Sources on |> Option.map box
 
+        // Phase 1535 — the one shared case-selection definition, so the email
+        // projection cannot drift from what the page renders.
         let matched =
-            match currentValue with
-            | Some v ->
-                let valueStr = if isNull v then "" else string v
+            let selector =
+                currentValue |> Option.map (fun v -> if isNull v then "" else string v)
 
-                spec.Cases
-                |> List.tryPick (fun c -> if c.Match = valueStr then Some c.Child else None)
-            | None -> None
+            BindingResolver.selectSwitchCase ctx.Sources selector spec.Cases
 
         renderNode opts (depth + 1) ctx (matched |> Option.defaultValue spec.Default)
 
@@ -1264,8 +1264,36 @@ let renderDocument
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : string =
+    // The document's language and direction come from the SOURCES, exactly as
+    // the SSR shell's do (`DocumentShell.Locale`, Phase 1114). This was a
+    // hardcoded `lang="en"` — an assertion about a document nobody had made a
+    // statement about, and wrong for every non-English digest. A mail client
+    // reads `lang` for hyphenation, spell-checking and pronunciation, and `dir`
+    // for the whole layout, so an Arabic digest declared English lays out
+    // left-to-right.
+    //
+    // An EMPTY tag emits NEITHER attribute rather than falling back to one. The
+    // shell's ruling applies unchanged: a host that wants a language declared
+    // says which one, and asserting a language nobody stated is the defect
+    // being removed rather than a default worth keeping.
+    //
+    // The direction is DERIVED from the tag by the same `Formatting.textDirection`
+    // the shell uses, never taken as a second input — one tag, one answer, and
+    // no way for the two attributes to disagree.
+    let localeAttributes =
+        if System.String.IsNullOrWhiteSpace sources.Locale then
+            ""
+        else
+            " lang=\""
+            + Render.htmlView (Html.text sources.Locale)
+            + "\" dir=\""
+            + Formatting.textDirection sources.Locale
+            + "\""
+
     let head =
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
+        "<!DOCTYPE html>\n<html"
+        + localeAttributes
+        + ">\n<head>\n"
         + "<meta charset=\"utf-8\" />\n"
         + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n"
         + "<title>"

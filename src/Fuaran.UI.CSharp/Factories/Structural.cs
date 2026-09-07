@@ -91,10 +91,13 @@ public static partial class Fuaran
             // Generated SwitchSpec ctor is Generated.fs declaration order (Cases,
             // Default, StateKey), not the old StateKey-first hand order. Each case
             // is now a generated SwitchCase record — its ctor is declaration order
-            // (Child, Match), i.e. child-first, the reverse of the old tuple.
+            // (Child, Match, When), i.e. child-first, the reverse of the old tuple.
             new FsGen.SwitchSpec<object>(
                 Fs.List((options.Cases ?? Enumerable.Empty<SwitchCase>())
-                    .Select(c => new FsGen.SwitchCase<object>(c.Child.Inner, c.Match))),
+                    .Select(c => new FsGen.SwitchCase<object>(
+                        c.Child.Inner,
+                        c.Match is null ? Fs.None<string>() : Fs.Some(c.Match),
+                        c.When is null ? Fs.None<FsGen.Binding<bool>>() : Fs.Some(c.When.Inner)))),
                 options.Default.Inner,
                 // Phase 768 — the F# selector is now any Binding; the C#
                 // authoring surface keeps the compact StateKey string and wraps
@@ -187,13 +190,29 @@ public sealed record MountOptions
     public IEnumerable<string>? Capabilities { get; init; }
 }
 
-/// <summary>One <c>(match, child)</c> case of a <see cref="Fuaran.Switch"/>.</summary>
+/// <summary>One case of a <see cref="Fuaran.Switch"/> — selected either by a
+/// literal <see cref="Match"/> against the switch's state value, or by a
+/// <see cref="When"/> predicate.</summary>
+/// <remarks>
+/// Exactly one of <see cref="Match"/> and <see cref="When"/>; both or neither is
+/// refused by the decoder and reported pre-emit as FUARAN142. They are both
+/// optional rather than one being <c>required</c> because that is what the shape
+/// is — the "exactly one" rule is a policy the validator states, not something a
+/// C# record can express.
+/// </remarks>
 public sealed record SwitchCase
 {
-    /// <summary>The value (string form of the state) that selects this case.</summary>
-    public required string Match { get; init; }
+    /// <summary>The value (string form of the state) that selects this case.
+    /// Mutually exclusive with <see cref="When"/>.</summary>
+    public string? Match { get; init; }
 
-    /// <summary>The child rendered when the state value matches.</summary>
+    /// <summary>A predicate evaluated at render time (Fuaran-UI Phase 1535); the
+    /// first case whose predicate resolves <c>true</c> is selected. Needs no
+    /// state key on the switch at all. Mutually exclusive with
+    /// <see cref="Match"/>.</summary>
+    public Binding<bool>? When { get; init; }
+
+    /// <summary>The child rendered when this case is selected.</summary>
     public required FuaranNode Child { get; init; }
 }
 

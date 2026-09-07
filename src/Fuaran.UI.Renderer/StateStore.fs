@@ -354,15 +354,27 @@ let useStateValue (key: string) (defaultValue: string) : string =
 ///
 /// Subscription lifecycle: the `useEffect` cleanup thunk unsubscribes on
 /// unmount and re-subscribes when the key set changes (so a surface that
-/// stops reading a key drops its subscription — no leak). `tick` is folded
-/// into the effect deps deliberately: each notification bumps it, which
-/// re-runs the effect (unsub + resub) with a fresh closure, sidestepping a
-/// stale-`tick` capture without a functional-update setter overload.
+/// stops reading a key drops its subscription — no leak).
+///
+/// SUBSCRIBED ONCE PER KEY SET. The effect deps are the key set alone. `tick`
+/// used to sit beside it, so every notification re-ran the effect: unsubscribe,
+/// re-subscribe, on every single write. That was churn rather than a leak — the
+/// cleanup did run — but it is churn proportional to write volume on every
+/// subscribed surface, and it made a subscription's lifetime depend on how often
+/// the value changed rather than on what the surface reads.
+///
+/// `tick` was in the deps to sidestep a stale-closure capture: the effect's
+/// `setTick (tick + 1)` closes over the `tick` of the render that created it, so
+/// a subscription that outlived one notification would keep incrementing from a
+/// stale base and stop advancing. `useStateWithUpdater` removes the capture
+/// instead of refreshing it — the updater is handed the CURRENT value, so the
+/// closure never reads a stale one and the subscription can live as long as the
+/// key set does.
 let useStateKeys (keys: Set<string>) : int =
     let depKey = keys |> Set.toSeq |> String.concat " "
-    let tick, setTick = React.useState 0
+    let tick, setTick = React.useStateWithUpdater 0
 
-    React.useEffect ((fun () -> subscribeKeys keys (fun () -> setTick (tick + 1))), [| box depKey; box tick |])
+    React.useEffect ((fun () -> subscribeKeys keys (fun () -> setTick (fun current -> current + 1))), [| box depKey |])
 
     tick
 #endif

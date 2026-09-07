@@ -6013,11 +6013,11 @@ empty, because an empty paint INHERITS the enclosing group's rather than clearin
 CSS ident (which is how every named colour, keyword and SVG2 paint keyword is spelled) and the named
 colour functions, so `steelblue` and `currentColor` are unaffected; the CSS rule is a character
 denylist, so `var(…)`, `clamp(…)` and `color-mix(…)` all pass. What is refused is a value that could
-close its own declaration or fetch. FUARAN143 / FUARAN145 name either case pre-emit.
+close its own declaration or fetch. FUARAN148 / FUARAN145 name either case pre-emit.
 
 ### The new advisory codes
 
-`FUARAN142` unsafe URL scheme · `FUARAN143` a CSS value that leaves its declaration · `FUARAN144` a
+`FUARAN147` unsafe URL scheme · `FUARAN148` a CSS value that leaves its declaration · `FUARAN144` a
 safe but malformed track-list (the value renders and the BROWSER discards it, so only a shape check
 catches it) · `FUARAN145` a paint outside the colour grammar · `FUARAN146` an anchor token outside
 the closed sets. All Warning, all judged only under a `Binding.Static` — a bound value resolves at
@@ -6155,19 +6155,195 @@ unaffected. `ActionDescriptor.Navigate` still carries the route alone. `OnRowCli
 closure; a per-row action slot is a separate admission. `Action.WriteToClipboard` is untouched apart
 from one correction it should have carried since 1126: `BindingWalk.usesOfAction` now counts the
 bound `TextSource` payloads of BOTH `WriteToClipboard` and `Navigate`, which it counted for neither.
+
 ---
 
-## Recorded change — 0.77.0, `Action.Confirm` and `Action.Focus` (fuaran#1537)
+## Recorded change — 0.77.0, renderer correctness: uploads, keys, refusals and two host-parity fixes (fuaran#1531)
+
+**Mostly additive; ONE source-breaking change, riding the standing 0.77.0 draft.**
+`v0.76.0` remains the newest tag. The draft already carries an `FS0764` record
+widening and `Derivation<'Msg>.StructuralKey`'s narrowing — both of which say the
+same thing to a consumer, *adopting this slot costs source edits* — so under the
+draft-slot rule the change below RIDES rather than advancing. It is the same class,
+not a higher one.
+
+### The breaking one
+
+**`LocalBindings.dispatchFormCommit : unit -> unit` becomes
+`Browser.Types.Element -> unit`.** The form-submit broadcast was a window-level
+dispatch that every `OnSubmit`-flushing `Binding.Local` input on the page answered,
+so a submit anywhere drained a search box in a header and any other form's fields —
+dispatching their `OnCommit` actions and writing their values into the model on a
+gesture the reader made somewhere else. The event is now dispatched ON the
+submitting form and bubbles; each listener asks whether that form contains its own
+input. **Migration:** pass the submit event's `currentTarget` (the renderer's own
+call site is `LocalBindings.dispatchFormCommit (unbox<Browser.Types.Element> e.currentTarget)`).
+It takes the form ELEMENT rather than a node id because a form's NodeId is its
+wrapper's, so there is nothing addressable to match on, and `contains` is a question
+the DOM already answers for every nesting an author can build.
+
+### Behaviour changes on existing surfaces
+
+- **`GridExport.escapeField` neutralises spreadsheet formulas.** A field beginning
+  `=`, `+`, `-`, `@`, TAB or CR gains OWASP's leading apostrophe and is quoted.
+  **Negative numbers are exempt** — `isPlainNumber` — because `-` leads every
+  negative number and prefixing them would turn a numeric column into text no
+  reader can sum. An ordinary export is byte-identical to before.
+- **`Formatting.format` never throws at a `Format.Date` slot.** `NaN`, the
+  infinities and any value outside `DateTimeOffset`'s span render as
+  `Formatting.unrepresentableInstant` on BOTH pipelines, where .NET used to throw
+  out of an SSR pass and `Intl` used to raise in the browser. The bounds are the
+  narrower, .NET pair on purpose: taking JavaScript's wider range would leave a
+  value one host draws and the other refuses.
+- **`Binding.projectSelectionField` is `inline`, and the Fable leg now coerces.**
+  `unbox` is a no-op under Fable, so a text cell in a `Binding<float>` used to
+  render `NaN` where .NET refused. It now coerces as `Convert.ChangeType` does, and
+  a string that is not a number throws rather than becoming `NaN`. `'T = obj` —
+  every decoded path — coerces nothing, so the wire path is unchanged. `inline` is
+  what makes the target type available: Fable erases a non-inline function's
+  generic parameter.
+- **`Email.renderDocument` takes `lang` / `dir` from the sources**, deriving the
+  direction with the shell's own `Formatting.textDirection`, where it hardcoded
+  `lang="en"`. An absent tag now declares neither attribute.
+- **`FastPath.bank` RAISES on a duplicate pattern id**, where it silently skipped —
+  and skipped inconsistently, so the registry kept one pattern's signature and the
+  pattern map kept another's builder. **`FastPath.instantiate` RAISES on a value its
+  hole's declared `ValueSpace` does not admit**, where `IntRange(1, 12)` accepted
+  `"purple"`. An unbound hole is still not a violation.
+- **The renderer's six silent `with _ -> ()` isolations now report** through
+  `Diagnostics.warn`. The isolation is unchanged; only the silence is.
+- **Both browser observers re-register a same-id element that has changed**, and
+  clear that node's change-detection caches with it.
+- **`StateStore.useStateKeys` / `FilterStore.useFilterKeys` /
+  `QueryStore.useQueryKeys` subscribe once per key set** rather than
+  re-subscribing on every notification. Signatures unchanged.
+
+### Additive surfaces
+
+`Render.reconciliationKey`; `UploadStream.streamSelections`;
+`Fuaran.UI.Renderer.Diagnostics`; `LocalBindings.errorSlotId` /
+`invalidFieldAttributes`; `GridExport.formulaLeadIns` / `isPlainNumber` /
+`neutraliseFormula`; `Formatting.minInstantSeconds` / `maxInstantSeconds` /
+`unrepresentableInstant` / `isRepresentableInstant`; `FastPath.tryBank` /
+`DuplicateId` / `HoleViolation` / `valueViolations`; and
+`ElementRegistration` (type + module) in **both** `Fuaran.UI.LayoutObserver` and
+`Fuaran.UI.StyleObserver` — each package carries its own copy rather than a
+dependency being minted between two deliberately independent packages.
+
+### What did NOT change
+
+No wire byte moves. No `NodeKind`, `Binding`, `Action` or spec-record case is added
+or removed, no corpus fixture changes, and no schema moves. The reject vectors and
+the `PreEmitValidate` rule this phase's M-B1 task proposed are NOT here: a
+count-like bound at `Skeleton.rows` contradicts the shipped §7.1 conformance test
+that every 32-bit integer decodes at an integer slot, so it is a specification
+amendment rather than a host-side refusal. See the phase's outcome.
+
+---
+
+## Recorded change — 0.78.0, `Node.Visible` and the predicate `SwitchCase` (fuaran#1535)
+
+**One record widening and one field narrowed to `option`, riding the standing 0.78.0 draft — this
+change did not move the number, and the distinction matters.** The entry was authored against a
+then-standing *untagged* 0.77.0 draft, on the draft-slot rule that a change of no higher class than
+the draft already carries RIDES it. **`v0.77.0` was tagged while this phase was in flight**, and a
+separate commit (`6f290c0`, "advance the draft to 0.78.0 — v0.77.0 is tagged") moved the draft for
+that reason rather than for this one: a released slot is some consumer's contract, so a change
+costing them source edits cannot be repacked into it. This phase then rides 0.78.0 rather than
+bumping again, which is the "ride their bump with a note" half of the same rule — two phases moving
+the counter for one release would tell a consumer there were two prices to pay.
+
+Both classes here are pre-1.0 MINOR by the [Semver](#semver) section's own definitions: `FS0764` for
+a full-literal constructor, and a narrowed field type. 0.78.0 already carries changes of that class,
+so nothing here is a higher class than the slot it rides. `v0.77.0` is the newest tag.
+
+**What changed on the types.**
+
+- `Node<'Msg>` gains `Visible: Binding<bool> option` — `FS0764` for anyone constructing a node by
+  full literal. The `Fuaran.*` smart constructors, `Defaults`, the C# `FuaranNode` handle and the VB
+  translator all fill it, so authoring through any of those is unaffected.
+- `SwitchCase<'Msg>.Match` narrows from `string` to `string option`, and the record gains
+  `When: Binding<bool> option`. This is the Phase 818 `SetState` shape exactly — `value` became
+  optional in the same change that added `valueFrom`, and for the same reason: the two are siblings
+  in one slot, so "exactly one" is a policy the decoder and the validator state rather than something
+  a record can express.
+
+**The wire is ADDITIVE, and that is checkable rather than asserted.** `visible` and `when` are
+omitted when absent, and the corpus diff for this change contains only new files plus
+`manifest.json` / `schema.json` / `idl.json` / `WIRE_FORMAT.md` / `validator/defect-vocabulary.json`
+— every pre-1535 fixture byte is unchanged, `switch-1.json` / `switch-carousel-1.json` /
+`switch-on-selection.json` included.
+
+**Two RENDERING changes that are wire-neutral, and are the point of the phase.** `Switch.on` and
+`Accessibility.hidden` now resolve through the SCALAR path (`resolveScalarText` /
+`resolveScalarBool`) rather than the generic `tryResolve`. The generic arm evaluates a
+`Binding.Transform` to a `Row seq` and `unbox`es it at the slot type — which threw on .NET and
+silently produced the rows array under Fable — so the one wire spelling of "count > 3 ⇒ `busy`"
+rendered `Default`, and a computed `hidden` never hid. **A document that worked before works
+identically**: every other binding case resolves exactly as it did, and only the shape that could not
+work at all changes behaviour.
+
+**`Node.Visible` is REMOVAL, not concealment**, and it is deliberately not `accessibility.hidden`. A
+resolved `false` emits no element, no placeholder, no `aria-hidden`, nothing in the layout and nothing
+in the accessibility tree; `hidden` remains `aria-hidden` over a node that IS drawn and DOES occupy
+space. Absent, unresolved and errored predicates all RENDER — a missing source silently hiding content
+is the one failure a reader cannot see, cannot report and cannot work around. `WIRE_FORMAT.md` §3.1
+carries the side-by-side table and the one-line rule for which to emit.
+
+**A consequence worth reading before adopting the slot.** `visible` is an ordinary `Binding<bool>` and
+follows the shared `Binding.State` rule unchanged: a default-less `State` binding on a key nothing has
+written resolves to the slot default, which at `bool` is `false` — so it HIDES. That is the same rule
+`Modal.Open` and `Disclosure.Open` already follow, and carving `visible` out of it would have made one
+slot the exception to a position-independent rule (the 2026-08-25 accessibility-trait ruling's
+reasoning, applied). The spelling for "visible unless something says otherwise" is therefore an
+explicit `Some true`, and the new **FUARAN148** (Warning) reports the omission.
+
+**Three new validator surfaces**, all reached through the existing `PreEmitDefect` union, so a
+consumer matching exhaustively over it gains three cases:
+
+- **FUARAN147** (Error) — `SwitchCaseSelectorShape`: a case carrying both `match` and `when`, or
+  neither. The pre-emit twin of the decoder's own refusal, which a tree authored in F# never meets.
+- **FUARAN148** (Warning) — `VisibleStateNoWriter`: the silent hide described above. Stands down
+  under a declared default, under a writer anywhere in the tree, and under any opaque writer, exactly
+  as FUARAN103 and FUARAN105 do.
+- **FUARAN082** narrows to the `match` cases: two predicate cases are not duplicates of each other.
+
+**Two existing rules changed their answer, both narrowing.** FUARAN103 no longer reports a switch
+whose cases are ALL predicates — such a switch never consults its selector, so "one branch renders
+forever" is false there; it still fires on a mixed switch, which does. FUARAN069's inert-control walk
+is unaffected by `visible` and a test now pins that: deciding whether a control appears is not an
+affordance that makes it live.
+
+**Consumer-visible beyond the types.** `BindingResolver` gains `nodeVisibility`, `isNodeVisible` and
+`selectSwitchCase` — the three rules stated once, so the two reference renderers cannot drift on
+them. `Fuaran.UI.CSharp.FuaranNode.WithVisible` joins `WithTooltip` / `WithDirection` on the same
+decoration-on-a-built-node terms, the C# `SwitchCase` record gains `When` (and its `Match` is no
+longer `required`), and the VB XML dialect admits `visible` as its third universal node-trait
+attribute beside `tooltip` and `direction`.
+
+**What did NOT change.** No `NodeKind` is added, merged or retired, so the vocabulary charter's
+admission gates do not arise. `accessibility.hidden` keeps its meaning exactly. The timed carousel
+(`autoAdvanceMs`) still rotates the `match` values only — advancing writes a string into the switch's
+own selector key, which a predicate case does not consult — so a when-only switch does not advance,
+which is what FUARAN128 already reports as "a declared interval with nothing for a tick to do".
+---
+
+## Recorded change — 0.78.0, `Action.Confirm` and `Action.Focus` (fuaran#1537)
 
 **Two cases on the closed public `Action<'Msg>` union: source-breaking at every exhaustive `match`
-(`FS0025`), wire-additive, and it RIDES the standing 0.77.0 draft rather than advancing it.**
+(`FS0025`), wire-additive, and it RIDES the standing 0.78.0 draft rather than advancing it.**
 
-**The version reasoning, on the draft-slot rule.** `v0.76.0` is the newest tag; 0.77.0 is untagged
-and pinned by no public-path consumer, so it is a draft slot. It already carries breaking-class
-entries — an `FS0764` record widening and a narrowed field type — and a DU case addition is that same
-class rather than a higher one: both say to a consumer *adopting this slot costs source edits*. A
-`v0.78.0` would tell a consumer already paying 0.77.0's price that there is a second, separate one.
-`Directory.Build.props` is not touched.
+**The version reasoning, on the draft-slot rule — and the draft moved under this phase.** It was
+authored against the then-standing 0.77.0 draft; `v0.77.0` was tagged while it was in flight, a
+separate commit advanced the draft to 0.78.0, and fuaran#1535 then rode that. The destination is
+0.78.0 either way, and the heading says the slot it shipped in rather than the one it was written
+against — the `ApplyErrorCode.LimitExceeded` entry's convention.
+
+It RIDES rather than advancing again. 0.78.0 is untagged and pinned by no public-path consumer, so
+it is a draft slot, and it already carries breaking-class entries — an `FS0764` record widening and
+a field narrowed to `option`. A DU case addition is that same class rather than a higher one: both
+say to a consumer *adopting this slot costs source edits*. A `v0.79.0` would tell a consumer already
+paying 0.78.0's price that there is a second, separate one. `Directory.Build.props` is not touched.
 
 **What breaks, and where.** Any exhaustive `match` over `Action<'Msg>` in consumer code stops
 compiling with `FS0025` until the two arms are added. That is the whole of the source break — no

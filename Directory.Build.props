@@ -640,8 +640,21 @@
          number's job is to say what adopting the slot costs, which does not
          change. The entries authored against 0.76.0 in STABILITY.md ship here;
          each says so in place. See STABILITY.md "Recorded change - 0.76.0, the
-         op-stream write path". -->
-    <Version>0.77.0</Version>
+         op-stream write path".
+
+         (0.78.0) - `Node<'Msg>` gains `Visible: Binding<bool> option`, and
+         `SwitchCase<'Msg>.Match` narrows to `string option` as the record gains
+         `When: Binding<bool> option`. Both are FS0764-shaped for a full-literal
+         constructor, and a narrowed field breaks readers too, but both are one
+         pre-1.0 MINOR by the "Semver" section above. It ADVANCES rather than
+         riding 0.77.0 because v0.77.0 is tagged - that slot is released, not a
+         draft, so a change costing consumers source edits cannot be repacked
+         into it. The entry was authored against the untagged 0.77.0 draft and
+         says so in place. The wire is additive: `visible` and `when` are omitted
+         when absent and every pre-existing fixture byte is unchanged. See
+         STABILITY.md "Recorded change - 0.78.0, `Node.Visible` and the predicate
+         `SwitchCase`". -->
+    <Version>0.78.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

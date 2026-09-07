@@ -142,7 +142,8 @@ let mkBox (id: string) (kids: EqNode list) : EqNode =
           Accessibility = Option.None
           Motion = Option.None
           ExtraAttributes = Option.None
-          Tooltip = None }
+          Tooltip = None
+          Visible = None }
 
 let mkLeaf (id: string) : EqNode =
     wrap
@@ -153,7 +154,8 @@ let mkLeaf (id: string) : EqNode =
           Accessibility = Option.None
           Motion = Option.None
           ExtraAttributes = Option.None
-          Tooltip = None }
+          Tooltip = None
+          Visible = None }
 
 // ---------------------------------------------------------------------------
 //  the skeleton-op generator (footprint / conflict / reconcile / concurrency /

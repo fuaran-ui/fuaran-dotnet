@@ -168,7 +168,8 @@ internal abstract class NodeBuilder
             Fs.None<Motion>(),
             Fs.None<StateBehaviour<object>>(),
             Fs.None<SemanticStyle>(),
-            Fs.None<TextSource>());
+            Fs.None<TextSource>(),
+            Fs.None<Binding<bool>>());
 }
 
 // ─── Layout builders ────────────────────────────────────────────────────────

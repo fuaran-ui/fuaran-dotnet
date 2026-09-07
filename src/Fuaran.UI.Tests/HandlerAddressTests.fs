@@ -106,7 +106,8 @@ let rec private nodesUnder (op: TreeOp<obj>) : Node<obj> list =
             Accessibility = None
             Motion = None
             ExtraAttributes = None
-            Tooltip = None } ]
+            Tooltip = None
+            Visible = None } ]
     | _ -> []
 
 let private duplicateIdDefectsInOp (json: string) : (string * int) list =

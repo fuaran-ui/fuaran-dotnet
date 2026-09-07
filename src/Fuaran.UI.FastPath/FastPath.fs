@@ -115,23 +115,80 @@ module FastPath =
 
     // ── build + search ───────────────────────────────────────────────────────
 
-    /// Build a searchable bank from a pattern list. Each pattern becomes a
-    /// pure/deterministic, client-declarative artifact-function keyed by its result
-    /// type + required holes; a duplicate id is skipped so the registry stays
-    /// consistent (the same default-deny posture as the Core registry).
+    /// Two patterns claiming one id.
+    ///
+    /// Both titles are carried because a duplicate id is nearly always two
+    /// DIFFERENT patterns rather than the same one listed twice, and the titles
+    /// are what tells a reader which two.
+    type DuplicateId = { Id: string; Titles: string list }
+
+    /// Build a searchable bank from a pattern list, or refuse the list.
+    ///
+    /// Each pattern becomes a pure/deterministic, client-declarative
+    /// artifact-function keyed by its result type + required holes.
+    ///
+    /// ── Why a duplicate id cannot be "skipped" ─────────────────────────
+    ///
+    /// It used to be, and the two halves of a bank skipped DIFFERENTLY. The
+    /// registry refuses a re-registration, so it kept the FIRST pattern's
+    /// signature; `Map.ofList` takes the last binding, so the pattern map kept
+    /// the LAST pattern's builder. A search then matched one pattern's holes and
+    /// `instantiate` ran the other pattern's `Build` — a bank that answers a
+    /// question about A by producing B, with nothing reported anywhere.
+    ///
+    /// That is not a default-deny posture, which is what the old comment claimed
+    /// it was: default-deny REFUSES the thing it will not serve. A bank built
+    /// from a list with a duplicate id is not a smaller bank, it is a wrong one,
+    /// so the whole list is refused and the caller is told which ids collided.
+    let tryBank (patterns: Pattern list) : Result<Bank, DuplicateId list> =
+        let duplicates =
+            patterns
+            |> List.groupBy _.Id
+            |> List.filter (fun (_, ps) -> List.length ps > 1)
+            |> List.map (fun (id, ps) ->
+                { Id = id
+                  Titles = ps |> List.map _.Title })
+
+        if not (List.isEmpty duplicates) then
+            Error duplicates
+        else
+            let registry =
+                (FunctionRegistry.empty, patterns)
+                ||> List.fold (fun r p ->
+                    let cap =
+                        Capability.create p.Id (signatureOf p.Title p.Holes) Placement.ClientDeclarative
+
+                    match FunctionRegistry.register (FunctionRegistry.entry p.ResultType cap) r with
+                    | Ok next -> next
+                    // Unreachable for a duplicate id, which is refused above.
+                    // A registration the Core registry declines for its OWN
+                    // reasons leaves the entry out rather than the bank
+                    // unbuilt — unchanged behaviour, and the pattern map
+                    // cannot disagree with it because the search side is what
+                    // decides what is findable.
+                    | Error _ -> r)
+
+            Ok
+                { Registry = registry
+                  Patterns = patterns |> List.map (fun p -> p.Id, p) |> Map.ofList }
+
+    /// `tryBank`, raising on a refused list.
+    ///
+    /// Kept as the ergonomic form because a bank is almost always built from a
+    /// literal list at start-up, where a duplicate id is a programming error and
+    /// the only useful moment to hear about it is immediately. A caller
+    /// assembling a bank from data — a host merging its own patterns into the
+    /// seed catalogue — uses `tryBank` and handles the refusal.
     let bank (patterns: Pattern list) : Bank =
-        let registry =
-            (FunctionRegistry.empty, patterns)
-            ||> List.fold (fun r p ->
-                let cap =
-                    Capability.create p.Id (signatureOf p.Title p.Holes) Placement.ClientDeclarative
+        match tryBank patterns with
+        | Ok b -> b
+        | Error duplicates ->
+            let described =
+                duplicates
+                |> List.map (fun d -> d.Id + " (" + String.concat ", " d.Titles + ")")
+                |> String.concat "; "
 
-                match FunctionRegistry.register (FunctionRegistry.entry p.ResultType cap) r with
-                | Ok next -> next
-                | Error _ -> r)
-
-        { Registry = registry
-          Patterns = patterns |> List.map (fun p -> p.Id, p) |> Map.ofList }
+            failwith ("FastPath.bank: duplicate pattern id(s) — " + described)
 
     /// Find every pattern whose signature matches the query under `mode` — the real
     /// Core `findBySignature`, mapped back to the instantiable patterns (id-stable).
@@ -153,8 +210,61 @@ module FastPath =
     /// Look a pattern up by id.
     let tryPattern (id: string) (b: Bank) : Pattern option = Map.tryFind id b.Patterns
 
+    /// A supplied value that its hole's declared space does not admit.
+    type HoleViolation =
+        { Addr: string
+          Name: string
+          Value: string }
+
+    /// Check every supplied value against the space its hole declares.
+    ///
+    /// A `HoleDecl` names a `ValueSpace` — `IntRange`, `FloatRange`, `StringLen`,
+    /// `Enum`, `AnyString` — and nothing was checking it: `IntRange(1, 12)`
+    /// accepted `"purple"` and `"3.7"` alike, and the pattern's `Build` then
+    /// parsed the string itself or fell back to a default, so a caller could
+    /// hand a bank a nonsense value and get a plausible-looking tree.
+    ///
+    /// `Space.validate` is Core's own predicate — the one the registry's
+    /// signature search is defined against — so a value this admits is a value
+    /// that space admits everywhere, rather than a second opinion that can drift
+    /// from it.
+    ///
+    /// Only SUPPLIED values are checked. An unbound hole is not a violation:
+    /// `Build` is contracted to fall back to a sensible default, which is what
+    /// makes a partial binding render at all.
+    let valueViolations (p: Pattern) (values: Map<string, string>) : HoleViolation list =
+        p.Holes
+        |> List.choose (fun h ->
+            match h.Kind, Map.tryFind h.Addr values with
+            | ValueHole space, Some v
+            | RepeatHole space, Some v when not (Space.validate space v) ->
+                Some
+                    { Addr = h.Addr
+                      Name = h.Name
+                      Value = v }
+            | _ -> None)
+
     /// Instantiate a chosen pattern into a real Fuaran tree from hole values.
-    let instantiate (p: Pattern) (values: Map<string, string>) : Types.Node<unit> = p.Build values
+    ///
+    /// RAISES on a value its hole's space does not admit. That is the same
+    /// judgement `bank` makes about a duplicate id and for the same reason: a
+    /// tree built from a value outside its declared space is not a smaller
+    /// answer, it is a wrong one, and the caller supplied it.
+    ///
+    /// "Unchecked" in the sense `tryInstantiate` contrasts with still holds and
+    /// is about the produced TREE — the pre-emit gate. The hole VALUES are the
+    /// caller's own input against a contract the pattern published, which is a
+    /// different question with a different owner.
+    let instantiate (p: Pattern) (values: Map<string, string>) : Types.Node<unit> =
+        match valueViolations p values with
+        | [] -> p.Build values
+        | violations ->
+            let described =
+                violations
+                |> List.map (fun v -> v.Addr + " ('" + v.Name + "') = '" + v.Value + "'")
+                |> String.concat "; "
+
+            failwith ("FastPath.instantiate: value(s) outside the declared hole space — " + described)
 
     /// Instantiate, then re-cross the language-tier pre-emit gate before the tree
     /// leaves the bank (FGP 7 egress — only valid Fuaran enters *or* leaves the
