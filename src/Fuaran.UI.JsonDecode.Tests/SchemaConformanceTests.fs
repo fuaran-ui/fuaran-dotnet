@@ -205,7 +205,28 @@ let private schemaInexpressibleRejects: Set<string> =
           // §3.3.2 of the specification is the enforcement point, and every
           // host's decoder is where it is enforced.
           "reject-expr-col-reference"
-          "reject-expr-unbound-param" ]
+          "reject-expr-unbound-param"
+
+          // ─── Fuaran-UI Phase 1537 — Confirm's depth-one bound ─────────────
+          //
+          // The SAME shape as `reject-expr-col-reference` above, one union over:
+          // "does a `{"$type":"Confirm"}` appear ANYWHERE reachable from this
+          // continuation", where `Chain` lets it nest arbitrarily deep. An
+          // unbounded existential over a recursive structure, and JSON Schema
+          // has no operator for it.
+          //
+          // It is expressible only by DUPLICATING the whole `Action` union under
+          // a second confirm-free name and pointing both continuations at that —
+          // which would double the emitted schema and put two definitions of
+          // every action arm in a published artefact, so that the next case
+          // added to one and not the other is a silent divergence in a document
+          // external tooling reads. The decoder is the authority
+          // (WIRE_FORMAT §3.6.22 says so normatively), exactly as it is for the
+          // §16 field aliases the schema likewise does not carry.
+          //
+          // The MISSING_FIELD sibling `reject-confirm-missing-onconfirm` is NOT
+          // here: `required` expresses it, and the ordinary path asserts it.
+          "reject-confirm-nested" ]
 
 // Phase 1068 — `schemaTypeErasedBindingRejects` is GONE, and its deletion is the
 // point rather than a tidy-up. Phase 1064 found four reject fixtures the emitted

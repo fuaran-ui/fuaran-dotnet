@@ -741,6 +741,38 @@ let all: RejectFixture list =
         Description =
           "Print carrying a member — the payload-free action takes none; page range, size, margins and copies are the host's page setup and the reader's dialogue, so a member here is refused rather than dropped (Phase 1124)" }
 
+      // ─── Phase 1537 — Confirm's two refusals ─────────────────────────
+      //
+      // A `Confirm` with no `onConfirm` is a question with no answer. It is
+      // MISSING_FIELD rather than a policy refusal because the member is
+      // genuinely required by the shape, and it is worth a vector because the
+      // OTHER two members are optional-looking to an emitter: `onCancel` may be
+      // absent and `prompt` may be a bare string, so "some members are optional
+      // here" is exactly the wrong generalisation to leave untested.
+      { Id = "reject-confirm-missing-onconfirm"
+        Json =
+          """{"id":"b-confirm","kind":{"$type":"Button","label":{"$type":"Literal","text":"Delete"},"onClick":{"$type":"Confirm","prompt":"Delete this order?"},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick"
+        IsOp = false
+        Description =
+          "Confirm with no 'onConfirm' — a question with no answer. The other two members are absent-legal (`onCancel`) or shorthand-legal (`prompt` as a bare string), so this vector is what keeps an emitter from generalising 'optional' across the case (Phase 1537)" }
+
+      // The DEPTH-ONE bound, and the vector puts the nested confirm inside a
+      // `Chain` rather than directly under `onConfirm` on purpose: the direct
+      // shape is caught by any check written against the continuation's own
+      // `$type`, while this one is caught only by a check that walks the
+      // DECODED continuation. A host that implements the first and not the
+      // second passes a naive vector and still admits the modal stack.
+      { Id = "reject-confirm-nested"
+        Json =
+          """{"id":"b-confirm","kind":{"$type":"Button","label":{"$type":"Literal","text":"Delete"},"onClick":{"$type":"Confirm","prompt":"Delete this order?","onConfirm":{"$type":"Chain","ops":[{"$type":"Notify","channel":"audit","payload":"delete"},{"$type":"Confirm","prompt":"Really?","onConfirm":{"$type":"Print"}}]}},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.onClick.onConfirm.ops[1]"
+        IsOp = false
+        Description =
+          "A Confirm inside a Confirm's continuation, reached through a Chain — confirmation is bounded at one question, and the check walks the DECODED continuation so a chain cannot hide the nesting (Phase 1537)" }
+
       // ─── WRONG_NODE_KIND ─────────────────────────────────────────────
       { Id = "reject-wrongnodekind-widget"
         Json =

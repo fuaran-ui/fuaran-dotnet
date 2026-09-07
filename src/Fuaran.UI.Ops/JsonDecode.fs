@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.Ops.JsonDecode
+module Fuaran.UI.Ops.JsonDecode
 
 // ============================================================================
 //  Structural decoder for the canonical-JSON wire form
@@ -4186,6 +4186,79 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                 match requireField path fields "text" "clipboard payload TextSource" with
                 | Error e -> Error e
                 | Ok v -> decodeTextSource (path + ".text") v |> Result.map Action.WriteToClipboard
+            | Ok "Confirm" ->
+                // Phase 1537 — ask, then act. `prompt` is a `TextSource` (so the
+                // question can name what the reader selected), `onConfirm` is
+                // required and `onCancel` optional — an author who declares no
+                // cancel branch means "nothing happens", which is exactly what
+                // an absent action expresses.
+                //
+                // THE DEPTH-ONE REFUSAL is the substance of this arm. A
+                // `Confirm` reachable from either continuation is refused, and
+                // the check runs on the DECODED continuation rather than on its
+                // JSON, so `Chain [ …, Confirm … ]` is caught by the same line
+                // that catches a bare nested one. A dialogue that answers a
+                // dialogue is a modal stack a reader cannot escape, and it
+                // expresses no intent one question does not.
+                //
+                // `WRONG_TYPE` follows the `SetState` value/valueFrom and
+                // `Print`-with-payload precedents: a decoder POLICY refusal
+                // reuses it, where a code of its own would be a wire-visible
+                // widening every host in the §11.0 roster would owe an adoption
+                // for, to name a refusal that already has a home.
+                //
+                // `Dispatch` inside a continuation is NOT refused here, and that
+                // is deliberate rather than an omission: it decodes to the
+                // closure sentinel exactly as it does anywhere else, and the
+                // transport refusal (FUARAN112) is what stops it from being
+                // SENT. One rule, one place.
+                let rec nestedConfirmPath (p: string) (a: Action<obj>) : string option =
+                    match a with
+                    | Action.Confirm _ -> Some p
+                    | Action.Chain ops ->
+                        ops
+                        |> List.mapi (fun i o -> nestedConfirmPath (sprintf "%s.ops[%d]" p i) o)
+                        |> List.tryPick id
+                    | _ -> None
+
+                let refuseNested (p: string) (a: Action<obj>) : Result<Action<obj>, DecodeError> =
+                    match nestedConfirmPath p a with
+                    | Some found ->
+                        err
+                            DecodeErrorCode.WRONG_TYPE
+                            found
+                            "a Confirm may not appear inside another Confirm's continuation — confirmation is bounded at one question. A dialogue that answers a dialogue is a modal stack the reader cannot escape, and it says nothing a single question does not."
+                            (Some "any action but Confirm")
+                    | None -> Ok a
+
+                match requireField path fields "prompt" "confirm prompt TextSource" with
+                | Error e -> Error e
+                | Ok promptJ ->
+                    match decodeTextSource (path + ".prompt") promptJ with
+                    | Error e -> Error e
+                    | Ok prompt ->
+                        match requireField path fields "onConfirm" "Action to dispatch on acceptance" with
+                        | Error e -> Error e
+                        | Ok confirmJ ->
+                            match
+                                decodeAction (path + ".onConfirm") confirmJ
+                                |> Result.bind (refuseNested (path + ".onConfirm"))
+                            with
+                            | Error e -> Error e
+                            | Ok onConfirm ->
+                                match tryField fields "onCancel" with
+                                | None -> Ok(Action.Confirm(prompt, onConfirm, None))
+                                | Some cancelJ ->
+                                    decodeAction (path + ".onCancel") cancelJ
+                                    |> Result.bind (refuseNested (path + ".onCancel"))
+                                    |> Result.map (fun onCancel -> Action.Confirm(prompt, onConfirm, Some onCancel))
+            | Ok "Focus" ->
+                // Phase 1537 — a bare node id, the `CommitLocal` shape. It
+                // addresses a node in THIS document, so there is nothing for a
+                // binding to compute and no `TextSource` here.
+                match requireField path fields "nodeId" "NodeId string of the node to focus" with
+                | Error e -> Error e
+                | Ok v -> requireString (path + ".nodeId") v |> Result.map Action.Focus
             | Ok "Print" ->
                 // Phase 1124 — payload-free. `{"$type":"Print"}` and nothing else.
                 //
