@@ -2438,21 +2438,22 @@ let layoutKinds: IdlKind list =
         // No corpus fixture is Vertical, which is how the byte gate missed it
         // (found by the stage-4b swap, the stage-3b BoxRole.Separator class).
         Fields =
-          // Phase 1585 — `activeIndex` STAYS `req`, and the reason is the value
-          // model rather than the posture. Its identity default is
-          // `Binding.Static (Some 0)`, a union case CARRYING a field, and the
-          // codegen renders a union default only when the case is nullary
-          // (`fsDefaultLit` / `tsDefaultLit` / `defaultExpr`: `VUnion (tag, [])`).
-          // Declaring it here is refused outright — `UnsupportedDefault
-          // (TUnion ("Binding", [TInt]), VUnion ("Static", [("value", VInt 0)]))` —
-          // and the near-miss is worse than the refusal: a default `fsDefaultLit`
-          // cannot render makes the encoder fall back to always-emit and the
-          // decoder to `dReq`, so the declaration would say omit-at-default while
-          // the generated layer did neither. `Chart.stacked` (a `VBool`) is
-          // renderable and took the posture; this slot waits on a value-carrying
-          // union literal in the codegen, and until then its schema/IDL divergence
-          // stays NAMED on the parity guard's residue rather than half-declared.
-          [ req "activeIndex" (bindingOf TInt)
+          // Phase 1585 — omit-when-`Binding.Static (Some 0)`, the identity default
+          // the hand decoder has restored on absence since Phase 126 and every
+          // conformant host tolerates. It could not take the posture in 1585's own
+          // pass: the default is a union case CARRYING a field, and the codegen
+          // then rendered a union default only for a NULLARY case, so declaring it
+          // was refused outright as `UnsupportedDefault (TUnion ("Binding", [TInt]),
+          // VUnion ("Static", [("value", VInt 0)]))` — and a default the generator
+          // cannot render degrades to always-emit plus `dReq`, which would be a
+          // declaration contradicting the layer generated from it. The value model
+          // moved instead of the posture bending: the codegen renders the
+          // value-carrying union case now, in an expression AND a pattern position
+          // (`Fuaran.Core.Idl.Codegen` 0.21.0), so the encoder's omit test is
+          // `match … with | Binding.Static(Some(0)) -> None | _ -> …` and the
+          // decoder's restore is `dDef`. The parity guard's `decoderTolerantOfAbsence`
+          // residue is empty as a result — the divergence is GONE rather than named.
+          [ omit "activeIndex" (bindingOf TInt) (VUnion("Static", [ "value", VInt 0 ]))
             req "children" (TList TNode)
             omit "orientation" (TEnum "Orientation") (VEnum "Horizontal")
             opt "onSelect" (handlerOf "int" "number")

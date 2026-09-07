@@ -2411,7 +2411,7 @@ and private encSwitchSpec<'Msg> (s: SwitchSpec<'Msg>) : JVal =
     Canon.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); (match s.On with | Binding.State (key, None) -> Some("stateKey", JStr key) | on -> Some("on", (encBinding JStr) on)); (s.AutoAdvanceMs |> Option.map (fun v -> "autoAdvanceMs", JInt v)) ] |> List.choose id)
 
 and private encTabsSpec<'Msg> (s: TabsSpec<'Msg>) : JVal =
-    Canon.typed "Tabs" ([ Some("activeIndex", (encBinding JInt) s.ActiveIndex); Some("children", JArr(List.map encNode s.Children)); (if s.Orientation = Orientation.Horizontal then None else Some("orientation", encOrientation s.Orientation)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.OnSelectTag |> Option.map (fun v -> "onSelectTag", JStr "<closure>")); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
+    Canon.typed "Tabs" ([ (match s.ActiveIndex with | Binding.Static(Some(0)) -> None | _ -> Some("activeIndex", (encBinding JInt) s.ActiveIndex)); Some("children", JArr(List.map encNode s.Children)); (if s.Orientation = Orientation.Horizontal then None else Some("orientation", encOrientation s.Orientation)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.OnSelectTag |> Option.map (fun v -> "onSelectTag", JStr "<closure>")); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
 
 and private encToastSpec (s: ToastSpec) : JVal =
     Canon.typed "Toast" ([ (if s.Dismissable = true then None else Some("dismissable", JBool s.Dismissable)); Some("message", encTextSource s.Message); Some("open", (encBinding JBool) s.Open); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)) ] |> List.choose id)
@@ -4232,7 +4232,7 @@ and private decSwitchSpec (j: JVal) : Result<SwitchSpec<obj>, string> =
 
 and private decTabsSpec (j: JVal) : Result<TabsSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "activeIndex" __fs (decBinding dInt) |> Result.bind (fun activeIndex ->
+    dDef "activeIndex" __fs (decBinding dInt) (Binding.Static(Some(0))) |> Result.bind (fun activeIndex ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
     dDef "orientation" __fs decOrientation (Orientation.Horizontal) |> Result.bind (fun orientation ->
     (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: int) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
@@ -4522,8 +4522,8 @@ let mkSummaryList (id: string) (children: Node<'Msg> list) : Node<'Msg> =
 let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None); AutoAdvanceMs = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkTabs (id: string) (activeIndex: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; Orientation = Orientation.Horizontal; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+let mkTabs (id: string) (children: Node<'Msg> list) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = Binding.Static(Some(0)); Children = children; Orientation = Orientation.Horizontal; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkToast (id: string) (message: TextSource) (``open``: Binding<bool>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Toast { Dismissable = true; Message = message; Open = ``open``; Tone = ToneVariant.Default }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }

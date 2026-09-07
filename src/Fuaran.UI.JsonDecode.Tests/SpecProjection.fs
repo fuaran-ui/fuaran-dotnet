@@ -154,7 +154,19 @@ let rec renderType (t: JsonElement) : string =
     | other -> failwithf "idl.json: unrecognised type shape '%s'" other
 
 /// Render an omit-at-default VALUE as it reads in the spec.
-let renderDefault (d: JsonElement) : string =
+///
+/// Phase 1585 — a union default may CARRY a payload (`Tabs.activeIndex` is
+/// omitted at `Static` carrying `value: 0`), so the tag alone is no longer the
+/// whole value. A reader of a normative table cannot tell `Static` carrying `0`
+/// from `Static` carrying `5`, and the spelling is what a second host implements
+/// its omit test against — so the authored members are rendered beside the tag,
+/// `Static{value=0}`. A NULLARY case still renders as the bare tag, so every
+/// pre-1585 row of the §3.6 table is byte-identical.
+///
+/// The members rendered are the ones the artefact AUTHORS, not the ones the case
+/// declares: an optional member the default leaves out is absent from the value,
+/// and inventing `None` for it here would state something the IDL does not.
+let rec renderDefault (d: JsonElement) : string =
     match str "$type" d with
     | "bool" ->
         match prop "value" d with
@@ -162,7 +174,24 @@ let renderDefault (d: JsonElement) : string =
         | Some v when v.ValueKind = JsonValueKind.False -> "false"
         | _ -> failwith "idl.json: bool default with no boolean 'value'"
     | "enum" -> str "case" d
-    | "union" -> str "tag" d
+    | "union" -> str "tag" d + renderDefaultFields d
+    // The scalar leaves. Unreachable as a TOP-LEVEL default (a scalar-typed
+    // field's default is rendered by its own arm above, and `int`/`str`/`float`
+    // never stood alone in this table), but reachable as a union or record
+    // PAYLOAD since Phase 1585 — which is the whole reason they are here.
+    | "int" ->
+        match prop "value" d with
+        | Some v -> v.GetRawText()
+        | None -> failwith "idl.json: int default with no 'value'"
+    | "float" ->
+        match prop "value" d with
+        | Some v -> v.GetRawText()
+        | None -> failwith "idl.json: float default with no 'value'"
+    | "str" -> "\"" + str "value" d + "\""
+    | "record" ->
+        match renderDefaultFields d with
+        | "" -> "{}"
+        | fields -> fields
     // Phase 1080 — the empty list. The only list default the IDL admits is the
     // EMPTY one (a non-empty list default would be content, not an identity), so
     // the spelling is `[]` and a populated `items` array is an IDL defect rather
@@ -172,6 +201,21 @@ let renderDefault (d: JsonElement) : string =
         | Some items when items.ValueKind = JsonValueKind.Array && items.GetArrayLength() = 0 -> "[]"
         | _ -> failwith "idl.json: list default with a non-empty 'items' — only the empty list is an identity default"
     | other -> failwithf "idl.json: unrecognised default shape '%s'" other
+
+/// The authored `fields` of a union-case or record default, in artefact order,
+/// as `{name=value, …}` — or the empty string when there are none, which is what
+/// keeps a nullary union case rendering as its bare tag.
+and private renderDefaultFields (d: JsonElement) : string =
+    match prop "fields" d with
+    | Some fs when fs.ValueKind = JsonValueKind.Array && fs.GetArrayLength() > 0 ->
+        fs.EnumerateArray()
+        |> Seq.map (fun f ->
+            match prop "value" f with
+            | Some v -> str "name" f + "=" + renderDefault v
+            | None -> failwithf "idl.json: default field '%s' has no 'value'" (str "name" f))
+        |> String.concat ", "
+        |> sprintf "{%s}"
+    | _ -> ""
 
 /// The compact field spelling used in the §3.2 table:
 ///   `name`      required
