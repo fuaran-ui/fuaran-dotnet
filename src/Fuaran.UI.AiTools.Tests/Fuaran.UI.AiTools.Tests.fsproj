@@ -17,6 +17,10 @@
          provenance is, which provenances derive `untrusted`, and the drift
          guard that fails when a text prop ships unmarked. -->
     <Compile Include="TextProvenanceTests.fs" />
+    <!-- Phase 1591 — the kind-intrinsic ARIA query surface, asserted as a
+         PROJECTION of Fuaran.UI.RenderFidelity rather than against a literal
+         beside it. -->
+    <Compile Include="FidelityTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

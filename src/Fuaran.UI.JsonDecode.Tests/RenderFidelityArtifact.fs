@@ -89,6 +89,43 @@ let private writeVocabulary (w: Utf8JsonWriter) : unit =
 
     w.WriteEndArray()
 
+/// The kind-intrinsic ARIA emissions (Phase 1591) — the roles and live regions
+/// the renderer pins for a kind WHATEVER the node's `Accessibility` trait says.
+///
+/// An empty array is a positive statement, exactly as it is in the declaration:
+/// the kind announces nothing of itself, so what it announces is exactly what
+/// its trait declares. `role` / `live` / `condition` are omitted when absent,
+/// per the corpus's omit-at-default convention; `tier` is always present
+/// because "which pipelines emit this" has no default a reader could assume.
+let private writeIntrinsic (w: Utf8JsonWriter) (entries: IntrinsicAria list) : unit =
+    w.WriteStartArray("intrinsic")
+
+    for a in entries do
+        w.WriteStartObject()
+        w.WriteString("element", a.Element)
+
+        match a.Role with
+        | Some r -> w.WriteString("role", r)
+        | None -> ()
+
+        match a.Live with
+        | Some l -> w.WriteString("live", liveRegionToken l)
+        | None -> ()
+
+        match a.Condition with
+        | Some c -> w.WriteString("condition", c)
+        | None -> ()
+
+        match a.Tier with
+        | IntrinsicTier.BothPipelines -> w.WriteString("tier", "bothPipelines")
+        | IntrinsicTier.ClientOnly why ->
+            w.WriteString("tier", "clientOnly")
+            w.WriteString("tierNote", why)
+
+        w.WriteEndObject()
+
+    w.WriteEndArray()
+
 let private writeObligations (w: Utf8JsonWriter) (obligations: Obligation list) : unit =
     w.WriteStartArray("obligations")
 
@@ -129,7 +166,12 @@ let toJson () : string =
         + "Each kind also declares the checkable render obligations it owes, drawn from the closed "
         + "obligationVocabulary and bound to the spec section that states each one; a host render "
         + "suite asserts every obligation for the kinds it renders and REPORTS any it cannot check, "
-        + "because not checked is not passed. See WIRE_FORMAT.md 13."
+        + "because not checked is not passed. Each kind also declares its INTRINSIC ARIA: the roles "
+        + "and live regions the renderer emits whatever the node's accessibility trait says, with the "
+        + "condition where the emission turns on the kind's own spec and the tier that emits it. A "
+        + "consumer reads that to know whether a kind is already announced before authoring a trait "
+        + "it does not need; an empty array means the kind announces nothing of itself. "
+        + "See WIRE_FORMAT.md 13."
     )
 
     w.WriteStartArray("tiers")
@@ -167,6 +209,7 @@ let toJson () : string =
         w.WriteEndArray()
 
         writeObligations w r.Obligations
+        writeIntrinsic w r.Intrinsic
 
         w.WriteString("contract", r.Contract)
         w.WriteEndObject()
