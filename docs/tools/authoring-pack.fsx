@@ -459,6 +459,37 @@ let buildSignatureCatalogue () =
             el.GetProperty("oneOf").EnumerateArray()
             |> Seq.map renderAlternative
             |> String.concat " | "
+        elif hasProp "anyOf" el then
+            // `anyOf` had no branch and fell through to `any`, so every float slot
+            // that admits the §7 quoted sentinels — `weight`, `x`, `y`, `width`,
+            // `height`, `cx`, `cy`, `r`, `min`, `max`, `step` … — was taught as
+            // typeless. The 2026-09-07 terra rerun lost five of its nine decode
+            // failures to `weight` emitted as a STRING on exactly that teaching.
+            // The number-or-sentinel union renders as `num`: the sentinel spelling
+            // is a §7 escape the prose already carries, and a slot named `num`
+            // is what stops a string arriving in it. Any other `anyOf` renders
+            // like `oneOf`.
+            let alternatives = el.GetProperty("anyOf").EnumerateArray() |> Seq.toList
+
+            let isNumberOrSentinel =
+                alternatives.Length = 2
+                && alternatives
+                   |> List.exists (fun a ->
+                       match a.TryGetProperty "type" with
+                       | true, t -> t.ValueKind = JsonValueKind.String && t.GetString() = "number"
+                       | _ -> false)
+                && alternatives
+                   |> List.exists (fun a ->
+                       hasProp "enum" a
+                       && (a.GetProperty("enum").EnumerateArray()
+                           |> Seq.forall (fun v ->
+                               v.ValueKind = JsonValueKind.String
+                               && (let s = v.GetString() in s = "NaN" || s = "Infinity" || s = "-Infinity"))))
+
+            if isNumberOrSentinel then
+                "num"
+            else
+                alternatives |> Seq.map renderAlternative |> String.concat " | "
         elif hasProp "enum" el then
             enumInline el
         else
@@ -1587,7 +1618,32 @@ let private leniencyFamilies: LeniencyFamily list =
         FixtureIds = [ "lenient-shape-grid-template-no-cols" ]
         Evidence =
           "Contextual synthesis — the decoder inserts cols:1 beside a templateColumns; loss-free only "
-          + "when the intended cols was 1, which the input cannot state. Safety net only." } ]
+          + "when the intended cols was 1, which the input cannot state. Safety net only." }
+      { Name = "Integral float at an int slot (Phase 1521)"
+        Class = NeverTaught
+        FixtureIds = [ "lenient-1521-int-slot-integral-float" ]
+        Evidence =
+          "DEFAULT CLASS, not a judgement — the fixture landed 2026-09-05 unclassified and this table "
+          + "refuses to render until it is claimed. §7.1: `3.0` at an int slot canonicalises to `3`; "
+          + "`2.5` refuses. The pack teaches `int` slots and the integer spelling is the canonical one, "
+          + "so nothing is lost by not teaching the fractional spelling. Whether it is AlreadyCanonical "
+          + "or SafeNotTaught is the 1521 author's call; never-taught is the generator's stated default "
+          + "for an unproved leniency and changes no taught text." }
+      { Name = "Integer payload beyond ±(2^53−1) decodes to the nearest double (Phase 1521)"
+        Class = NeverTaught
+        FixtureIds = [ "lenient-1521-payload-integer-beyond-int53" ]
+        Evidence =
+          "JUDGEMENT: lossy by construction — §2 rule 5: one past the limit has no representation every "
+          + "host holds exactly and decodes to the nearest double. A normalisation that changes the value "
+          + "is the definition of not loss-free. Safety net only; the pack never teaches it." }
+      { Name = "Navigate target Self stated explicitly (Phase 1536)"
+        Class = AlreadyCanonical
+        FixtureIds = [ "lenient-navigate-target-self" ]
+        Evidence =
+          "JUDGEMENT: the omit-every-default rule, at one more position — `Self` is the default and the "
+          + "canonical form carries no `target` member; an explicit `target: \"Self\"` normalises away "
+          + "with nothing to lose. The dialect passage already states the rule for every optional "
+          + "field, so this fixture needs no teaching of its own." } ]
 
 // ── The taught dialect passage (generated into the dialect variant's prompt) ─────
 

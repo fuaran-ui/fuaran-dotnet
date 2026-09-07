@@ -9,7 +9,7 @@
 # The lenient-dialect appendix — Phase 840
 
 Classification of the ENTIRE decoder-leniency surface, as pinned by the corpus's
-`lenient-accept` fixture family (66 fixtures — `manifest.json` authoritative). Every
+`lenient-accept` fixture family (69 fixtures — `manifest.json` authoritative). Every
 fixture id is claimed by exactly one family below (asserted at generation, so a
 new leniency cannot land unclassified). Classes:
 
@@ -62,6 +62,9 @@ pins, not the pack — the pack-level ledger lives in the census.
 | null accepted for absence (two positions) | never-taught | -42 | `lenient-null-static-options` | null in a Binding slot is refused in general (ambiguous with absence, §3.6); the two accepted positions normalise to empty. Omission is the taught form; emitting null teaches the refused shape everywhere else. |
 | Bare Grid (no cols) → Auto | safe-not-taught | 0 | `lenient-shape-grid-no-cols` | Total (accept-and-canonicalise across kinds, the CSS auto-grid prior) but token-neutral: emitting {"$type":"Auto"} costs the same and matches the catalogue. |
 | Grid templateColumns without cols (cols synthesised) | never-taught | +9 | `lenient-shape-grid-template-no-cols` | Contextual synthesis — the decoder inserts cols:1 beside a templateColumns; loss-free only when the intended cols was 1, which the input cannot state. Safety net only. |
+| Integral float at an int slot (Phase 1521) | never-taught | -2 | `lenient-1521-int-slot-integral-float` | DEFAULT CLASS, not a judgement — the fixture landed 2026-09-05 unclassified and this table refuses to render until it is claimed. §7.1: `3.0` at an int slot canonicalises to `3`; `2.5` refuses. The pack teaches `int` slots and the integer spelling is the canonical one, so nothing is lost by not teaching the fractional spelling. Whether it is AlreadyCanonical or SafeNotTaught is the 1521 author's call; never-taught is the generator's stated default for an unproved leniency and changes no taught text. |
+| Integer payload beyond ±(2^53−1) decodes to the nearest double (Phase 1521) | never-taught | 0 | `lenient-1521-payload-integer-beyond-int53` | JUDGEMENT: lossy by construction — §2 rule 5: one past the limit has no representation every host holds exactly and decodes to the nearest double. A normalisation that changes the value is the definition of not loss-free. Safety net only; the pack never teaches it. |
+| Navigate target Self stated explicitly (Phase 1536) | already-canonical | -43 | `lenient-navigate-target-self` | JUDGEMENT: the omit-every-default rule, at one more position — `Self` is the default and the canonical form carries no `target` member; an explicit `target: "Self"` normalises away with nothing to lose. The dialect passage already states the rule for every optional field, so this fixture needs no teaching of its own. |
 
 ## What the dialect variant does with this
 
