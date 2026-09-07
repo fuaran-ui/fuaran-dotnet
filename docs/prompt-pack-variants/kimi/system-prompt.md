@@ -217,7 +217,7 @@ section), so omit it or emit the sentinel string `"<closure>"`.
 
 <!-- fuaran:signature-catalogue -->
 ```ts
-Node { id:str; kind:NodeKind; accessibility?:Accessibility; state?:StateBehaviour; style?:SemanticStyle; tooltip?:TextSource }
+Node { id:str; kind:NodeKind; accessibility?:Accessibility; state?:StateBehaviour; style?:SemanticStyle; tooltip?:TextSource; visible?:Binding_bool }
 NodeKind =
 | LayoutKind
 | DisplayKind
@@ -225,7 +225,7 @@ NodeKind =
 | VisKind
 | Custom { componentId:str; moduleId:str; props:{ [key]:any }; contentHash?:ContentHash; exposedNodeIds?:str[] }
 | ErrorBoundary { child:Node; fallback:Node }
-| Switch { cases:{ child:Node; match:str }[]; default:Node; autoAdvanceMs?:int; on?:Binding_str; stateKey?:str }
+| Switch { cases:any[]; default:Node; autoAdvanceMs?:int; on?:Binding_str; stateKey?:str }
 | FragmentDecl { body:Node; name:str; effect?:EffectClass; holes?:HoleDecl[] }
 | FragmentRef { name:str; args?:{ [key]:FragmentArg } }
 | Mount { capabilities:str[]; channel:GuestChannel; onBubble:closure; scopeId:str; inputs?:{ [key]:FragmentArg } }
@@ -286,7 +286,7 @@ Action =
 | Dispatch
 | Call { endpoint:str; into?:CallResultTarget }
 | Notify { channel:str; payload:any }
-| Navigate { route:str }
+| Navigate { route:TextSource; target?:"Self"|"Blank" }
 | SetState { key:str; value?:any; valueFrom?:Binding_json }
 | AiTool { args:any; toolName:str }
 | Chain { ops:Action[] }
@@ -295,6 +295,8 @@ Action =
 | ReadFileBody { encoding:"Text"|"Base64"|"DataUrl"; fileRef:str; onRead:closure }
 | Invoke { args:object[]; capabilityId:str }
 | Print
+| Confirm { onConfirm:Action; prompt:TextSource; onCancel?:Action }
+| Focus { nodeId:str }
 Binding_bool =
 | Static { value:bool }
 | Query { name:str; dependsOn?:str[] }
@@ -302,11 +304,12 @@ Binding_bool =
 | Selection { nodeId:str; defaultValue?:bool; field?:str }
 | State { key:str; defaultValue?:bool }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_bool; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_bool; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_float =
 | Static { value:any }
@@ -315,11 +318,12 @@ Binding_float =
 | Selection { nodeId:str; defaultValue?:any; field?:str }
 | State { key:str; defaultValue?:any }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_float; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_float; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_hosted =
 | Static { value?:any }
@@ -328,11 +332,12 @@ Binding_hosted =
 | Selection { nodeId:str; defaultValue?:any; field?:str }
 | State { key:str; defaultValue?:any }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_hosted; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_hosted; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_int =
 | Static { value:int }
@@ -341,11 +346,12 @@ Binding_int =
 | Selection { nodeId:str; defaultValue?:int; field?:str }
 | State { key:str; defaultValue?:int }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_int; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_int; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_json =
 | Static { value?:any }
@@ -354,11 +360,12 @@ Binding_json =
 | Selection { nodeId:str; defaultValue?:any; field?:str }
 | State { key:str; defaultValue?:any }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_json; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_json; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_list_MapMarker =
 | Static { value?:MapMarker[] }
@@ -367,11 +374,12 @@ Binding_list_MapMarker =
 | Selection { nodeId:str; defaultValue?:MapMarker[]; field?:str }
 | State { key:str; defaultValue?:MapMarker[] }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_MapMarker; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_MapMarker; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_list_SelectOption =
 | Static { value?:SelectOption[] }
@@ -380,11 +388,12 @@ Binding_list_SelectOption =
 | Selection { nodeId:str; defaultValue?:SelectOption[]; field?:str }
 | State { key:str; defaultValue?:SelectOption[] }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_SelectOption; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_SelectOption; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_list_float =
 | Static { value?:any[] }
@@ -393,11 +402,12 @@ Binding_list_float =
 | Selection { nodeId:str; defaultValue?:any[]; field?:str }
 | State { key:str; defaultValue?:any[] }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_float; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_float; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_list_str =
 | Static { value?:str[] }
@@ -406,11 +416,12 @@ Binding_list_str =
 | Selection { nodeId:str; defaultValue?:str[]; field?:str }
 | State { key:str; defaultValue?:str[] }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_str; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_str; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_str =
 | Static { value:str }
@@ -419,11 +430,12 @@ Binding_str =
 | Selection { nodeId:str; defaultValue?:str; field?:str }
 | State { key:str; defaultValue?:str }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 Binding_str_choice =
 | Static { value?:str }
@@ -432,11 +444,12 @@ Binding_str_choice =
 | Selection { nodeId:str; defaultValue?:str; field?:str }
 | State { key:str; defaultValue?:str }
 | Computed { fn:closure }
-| Now
+| Now { grain?:TimeGrain }
 | I18n { key:str; args?:{ [key]:Binding_json } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str_choice; onCommit:closure; parse:closure }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str_choice; parse:closure; codec?:Format; commitTo?:str }
 | Format { format:Format; locale:LocaleSource; source:Binding_float }
 | Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 BoxLayout =
 | Flex { direction:Orientation; wrap:bool; gap?:int }
@@ -512,6 +525,7 @@ Format =
 | Date { dateStyle:"Short"|"Medium"|"Long"|"Full" }
 | RelativeTime { unit:RelativeTimeUnit }
 | Duration { style:DurationStyle; unit:DurationUnit }
+| Since { unit?:RelativeTimeUnit }
 FragmentArg =
 | Int { value:int }
 | Float { value:any }
@@ -587,6 +601,7 @@ ImageAspect = "Natural"|"Square"|"FourThree"|"ThreeTwo"|"SixteenNine"
 Orientation = "Vertical"|"Horizontal"
 RelativeTimeUnit = "Second"|"Minute"|"Hour"|"Day"|"Week"|"Month"|"Year"
 StyleWeight = "Compact"|"Standard"|"Spacious"
+TimeGrain = "Second"|"Minute"|"Hour"|"Day"
 ToneVariant = "Default"|"Subdued"|"Brand"|"Success"|"Warning"|"Critical"|"Info"
 ```
 <!-- /fuaran:signature-catalogue -->
