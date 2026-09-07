@@ -88,10 +88,17 @@ Module Program
 
                             Dim env = ctx.RequestServices.GetService(GetType(IWebHostEnvironment))
 
+                            ' The arguments are, in order: the mount element's id, the prefix
+                            ' MapFuaranRenderer was mounted at, the notify endpoint, the
+                            ' antiforgery header for that POST as (name, value), a CSP nonce,
+                            ' and the development flag. The third and fourth are None twice
+                            ' over here: this page wires no notify endpoint at all, so there is
+                            ' no POST for a token to travel on.
                             Dim options As New Global.Fuaran.UI.Renderer.Web.Snippet.MountOptions(
                                 "fuaran-root",
                                 "/_fuaran",
                                 FSharpOption(Of String).None,
+                                FSharpOption(Of Tuple(Of String, String)).None,
                                 FSharpOption(Of String).None,
                                 CType(env, IWebHostEnvironment).IsDevelopment())
 

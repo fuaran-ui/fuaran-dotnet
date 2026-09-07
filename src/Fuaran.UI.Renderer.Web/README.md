@@ -80,6 +80,13 @@ What does cross:
 
 - **`Action.Notify(channel, payload)`** — a channel name and a JSON payload. Set
   `MountOptions.NotifyEndpoint` and the snippet POSTs `{"channel": …, "payload": …}` there.
+  That POST is same-origin, so the browser sends your cookies with it: **if the endpoint mutates
+  anything, set `MountOptions.AntiforgeryHeader` as well.** It takes the header's name and value
+  — `Some("RequestVerificationToken", tokens.RequestToken)` for ASP.NET's default — and nothing
+  is guessed for you, because a token this package invented would be one your validator has never
+  seen, and would fail every request while looking exactly like protection. A POST that cannot be
+  delivered, or that your host refuses with a 4xx or 5xx, is reported on the same `onError`
+  channel as a render error rather than passing silently.
 - **`Action.Call(endpoint, into: …)`** — the wire-native round trip, writing the response into a
   state slot or a query result. Note `into:` and not `onResult`: `onResult` is a closure and does
   not survive either.
@@ -89,6 +96,10 @@ What does cross:
 **Typed dispatch is obtained host-side**, by binding a handler table to the artifact's declared
 action holes — checked against the artifact's signature, uniform across hosts, and needing no
 per-language mechanism. This package deliberately invents nothing of its own for it.
+
+**The handle a mount returns is keyed by element id**: `window.fuaranHandles["fuaran-root"]`,
+using whatever `MountOptions.ElementId` you passed. Two trees on one page — a dashboard beside a
+filter panel — each keep their own, which a single page-global handle could not.
 
 **Encode with `CanonicalJson.encodeNodeForTransport`**, which returns `Error` naming every node
 and slot whose interaction would be lost, rather than `encodeNode`, whose closure-blindness is
