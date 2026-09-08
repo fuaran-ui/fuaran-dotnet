@@ -596,25 +596,25 @@ let all: FidelityRow list =
           ))
           []
           "docs/SSR.md (Input - rendered inert)"
+      // Phase 1605 - all three entries are BothPipelines now. Phase 1591
+      // declared them `ClientOnly` and named the reason as a real SSR
+      // accessibility gap rather than a posture: the server floor rendered both
+      // controls through its generic input arm, so a screen reader on the
+      // static form heard a text box where the FILTER twin announced a switch
+      // and a radiogroup. 1605 gave the floor its own arms - the toggle's
+      // checkbox with `role`/`aria-checked`, and the segmented core the filter
+      // side already used - so the tier moved because the emission did.
       |> announces
           [ { pinsRole "the toggle field's checkbox input" "switch" with
                 Condition =
                     Some
-                        "a `Toggle` field - the same boolean data as a checkbox, announced as on/off rather than checked"
-                Tier =
-                    IntrinsicTier.ClientOnly
-                        "the server floor renders the field through its generic input arm and emits no role, where the FILTER twin emits one on both sides - a recorded asymmetry, not a claim that the floor is complete" }
+                        "a `Toggle` field - the same boolean data as a checkbox, announced as on/off rather than checked" }
             { pinsRole "the segmented field's group container" "radiogroup" with
                 Condition =
                     Some
-                        "a `SegmentedChoice` field in `Horizontal` orientation; the `Vertical` form floors on native radio inputs and emits no hand-written role"
-                Tier =
-                    IntrinsicTier.ClientOnly
-                        "the server floor renders the field through its generic input arm and emits no group role - the same asymmetry as the toggle above" }
+                        "a `SegmentedChoice` field in `Horizontal` orientation; the `Vertical` form floors on native radio inputs and emits no hand-written role" }
             { pinsRole "each segmented option button" "radio" with
-                Condition = Some "a `SegmentedChoice` field in `Horizontal` orientation"
-                Tier =
-                    IntrinsicTier.ClientOnly "the server floor emits no option buttons for a form-side segmented choice" } ]
+                Condition = Some "a `SegmentedChoice` field in `Horizontal` orientation" } ]
 
       plain
           "FragmentDecl"
