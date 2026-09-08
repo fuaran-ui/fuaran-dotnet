@@ -21,6 +21,7 @@
     <Compile Include="HitRate.fs" />
     <Compile Include="OpStreamBenchmarks.fs" />
     <Compile Include="AppendRate.fs" />
+    <Compile Include="Capture.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

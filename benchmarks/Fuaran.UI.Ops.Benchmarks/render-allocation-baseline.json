@@ -1,191 +1,191 @@
 {
   "schema_version": 1,
   "artifact": "render-allocation",
-  "status": "pending",
-  "captured_at_utc": "",
+  "status": "captured",
+  "captured_at_utc": "2026-09-08T18:47:20Z",
   "runtime": {
-    "dotnet": "",
-    "os": "",
-    "cpu": ""
+    "dotnet": ".NET 10.0.8",
+    "os": "Microsoft Windows 10.0.26200",
+    "cpu": "Intel64 Family 6 Model 204 Stepping 2, GenuineIntel (X64), 16lp"
   },
   "metrics": [
     {
       "id": "render.state_keys.Small.mean_ns",
-      "value": null,
+      "value": 1044.305,
       "unit": "ns",
       "note": "Render.collectStateKeys over the whole tree — the reactive subscription walk, once per frame."
     },
     {
       "id": "render.live_state_merge.Small.mean_ns",
-      "value": null,
+      "value": 186.32,
       "unit": "ns",
       "note": "StateStore overlayOnto — the live-store read view merged over the host sources, once per channel per frame."
     },
     {
       "id": "render.class_vocabulary.Small.mean_ns",
-      "value": null,
+      "value": 534.145,
       "unit": "ns",
       "note": "Theme.nodeClassName + the Css / Ids builders, once per node of the tree."
     },
     {
       "id": "render.state_keys.Small.alloc_b",
-      "value": null,
+      "value": 992.002,
       "unit": "B",
       "note": "Allocated bytes per key walk. The pre-207 walk allocated a Set per node and unioned bottom-up."
     },
     {
       "id": "render.live_state_merge.Small.alloc_b",
-      "value": null,
+      "value": 576.002,
       "unit": "B",
       "note": "Allocated bytes per store merge. The pre-207 path materialised a whole snapshot Map first."
     },
     {
       "id": "render.class_vocabulary.Small.alloc_b",
-      "value": null,
+      "value": 3640.002,
       "unit": "B",
       "note": "Allocated bytes per tree's worth of class/id construction. The pre-207 path parsed a format string per node."
     },
     {
       "id": "render.fragment_expand_uncached.Small.mean_ns",
-      "value": null,
+      "value": 344.355,
       "unit": "ns",
       "note": "Render.expandFragmentUncached — the id-rewriting deep copy a FragmentRef paid per render before the memo."
     },
     {
       "id": "render.fragment_expand_memo.Small.mean_ns",
-      "value": null,
+      "value": 76.67,
       "unit": "ns",
       "note": "Render.expandFragment — the same walk through the process-global memo, body instance and prefix stable across renders."
     },
     {
       "id": "render.fragment_expand_uncached.Small.alloc_b",
-      "value": null,
+      "value": 928.002,
       "unit": "B",
       "note": "Allocated bytes per uncached expansion: a whole namespaced copy of the fragment body."
     },
     {
       "id": "render.fragment_expand_memo.Small.alloc_b",
-      "value": null,
+      "value": 72.002,
       "unit": "B",
       "note": "Allocated bytes per memoised expansion. A hit copies nothing; this is the number the memo exists to move."
     },
     {
       "id": "render.state_keys.Medium.mean_ns",
-      "value": null,
+      "value": 3382.79,
       "unit": "ns",
       "note": "Render.collectStateKeys over the whole tree — the reactive subscription walk, once per frame."
     },
     {
       "id": "render.live_state_merge.Medium.mean_ns",
-      "value": null,
+      "value": 1421.565,
       "unit": "ns",
       "note": "StateStore overlayOnto — the live-store read view merged over the host sources, once per channel per frame."
     },
     {
       "id": "render.class_vocabulary.Medium.mean_ns",
-      "value": null,
+      "value": 1879.62,
       "unit": "ns",
       "note": "Theme.nodeClassName + the Css / Ids builders, once per node of the tree."
     },
     {
       "id": "render.state_keys.Medium.alloc_b",
-      "value": null,
+      "value": 4616.002,
       "unit": "B",
       "note": "Allocated bytes per key walk. The pre-207 walk allocated a Set per node and unioned bottom-up."
     },
     {
       "id": "render.live_state_merge.Medium.alloc_b",
-      "value": null,
+      "value": 3872.002,
       "unit": "B",
       "note": "Allocated bytes per store merge. The pre-207 path materialised a whole snapshot Map first."
     },
     {
       "id": "render.class_vocabulary.Medium.alloc_b",
-      "value": null,
+      "value": 12432.002,
       "unit": "B",
       "note": "Allocated bytes per tree's worth of class/id construction. The pre-207 path parsed a format string per node."
     },
     {
       "id": "render.fragment_expand_uncached.Medium.mean_ns",
-      "value": null,
+      "value": 1112.425,
       "unit": "ns",
       "note": "Render.expandFragmentUncached — the id-rewriting deep copy a FragmentRef paid per render before the memo."
     },
     {
       "id": "render.fragment_expand_memo.Medium.mean_ns",
-      "value": null,
+      "value": 66.74,
       "unit": "ns",
       "note": "Render.expandFragment — the same walk through the process-global memo, body instance and prefix stable across renders."
     },
     {
       "id": "render.fragment_expand_uncached.Medium.alloc_b",
-      "value": null,
+      "value": 2992.002,
       "unit": "B",
       "note": "Allocated bytes per uncached expansion: a whole namespaced copy of the fragment body."
     },
     {
       "id": "render.fragment_expand_memo.Medium.alloc_b",
-      "value": null,
+      "value": 72.002,
       "unit": "B",
       "note": "Allocated bytes per memoised expansion. A hit copies nothing; this is the number the memo exists to move."
     },
     {
       "id": "render.state_keys.Large.mean_ns",
-      "value": null,
+      "value": 12683.54,
       "unit": "ns",
       "note": "Render.collectStateKeys over the whole tree — the reactive subscription walk, once per frame."
     },
     {
       "id": "render.live_state_merge.Large.mean_ns",
-      "value": null,
+      "value": 5768.72,
       "unit": "ns",
       "note": "StateStore overlayOnto — the live-store read view merged over the host sources, once per channel per frame."
     },
     {
       "id": "render.class_vocabulary.Large.mean_ns",
-      "value": null,
+      "value": 4507.02,
       "unit": "ns",
       "note": "Theme.nodeClassName + the Css / Ids builders, once per node of the tree."
     },
     {
       "id": "render.state_keys.Large.alloc_b",
-      "value": null,
+      "value": 26664.002,
       "unit": "B",
       "note": "Allocated bytes per key walk. The pre-207 walk allocated a Set per node and unioned bottom-up."
     },
     {
       "id": "render.live_state_merge.Large.alloc_b",
-      "value": null,
+      "value": 25584.002,
       "unit": "B",
       "note": "Allocated bytes per store merge. The pre-207 path materialised a whole snapshot Map first."
     },
     {
       "id": "render.class_vocabulary.Large.alloc_b",
-      "value": null,
+      "value": 47760.002,
       "unit": "B",
       "note": "Allocated bytes per tree's worth of class/id construction. The pre-207 path parsed a format string per node."
     },
     {
       "id": "render.fragment_expand_uncached.Large.mean_ns",
-      "value": null,
+      "value": 1930.94,
       "unit": "ns",
       "note": "Render.expandFragmentUncached — the id-rewriting deep copy a FragmentRef paid per render before the memo."
     },
     {
       "id": "render.fragment_expand_memo.Large.mean_ns",
-      "value": null,
+      "value": 140.055,
       "unit": "ns",
       "note": "Render.expandFragment — the same walk through the process-global memo, body instance and prefix stable across renders."
     },
     {
       "id": "render.fragment_expand_uncached.Large.alloc_b",
-      "value": null,
+      "value": 11367.4196,
       "unit": "B",
       "note": "Allocated bytes per uncached expansion: a whole namespaced copy of the fragment body."
     },
     {
       "id": "render.fragment_expand_memo.Large.alloc_b",
-      "value": null,
+      "value": 72.002,
       "unit": "B",
       "note": "Allocated bytes per memoised expansion. A hit copies nothing; this is the number the memo exists to move."
     }

@@ -116,6 +116,46 @@ let main argv =
 
         printRenderAllocations count
         0
+    // Phase 1613 — fold a BenchmarkDotNet run into a baseline artifact. This is
+    // the step the README called "the operator step" and the Phase 201 CI
+    // workflow carried as a commented placeholder; automating it is what lets a
+    // FRESH measurement be produced the same way the committed baseline was,
+    // which is the precondition for comparing them honestly.
+    //
+    //   capture apply  <bdn-artifacts-dir> [out]
+    //   capture op     <bdn-artifacts-dir> [out] [--appends N]
+    //   capture render [out] [--count N]
+    | "capture" :: which :: rest ->
+        // Split `rest` into positional paths and `--flag value` pairs in one
+        // pass, so a path that happens to look like a number is still a path.
+        let rec split (positional: string list) (flags: Map<string, string>) =
+            function
+            | [] -> List.rev positional, flags
+            | (f: string) :: v :: tail when f.StartsWith "--" -> split positional (Map.add f v flags) tail
+            | f :: tail when f.StartsWith "--" -> split positional flags tail
+            | p :: tail -> split (p :: positional) flags tail
+
+        let positional, flags = split [] Map.empty rest
+
+        let flagValue (name: string) (fallback: int) =
+            match Map.tryFind name flags |> Option.map Int32.TryParse with
+            | Some(true, n) -> n
+            | _ -> fallback
+
+        let at i fallback =
+            positional |> List.tryItem i |> Option.defaultValue fallback
+
+        match which with
+        | "apply" ->
+            let reports = at 0 (Path.Combine(__SOURCE_DIRECTORY__, "BenchmarkDotNet.Artifacts"))
+            Capture.write (at 1 defaultBaselinePath) (Capture.captureApply reports)
+        | "op" ->
+            let reports = at 0 (Path.Combine(__SOURCE_DIRECTORY__, "BenchmarkDotNet.Artifacts"))
+            Capture.write (at 1 defaultOpBaselinePath) (Capture.captureOp reports (flagValue "--appends" 20000))
+        | "render" -> Capture.write (at 0 defaultRenderBaselinePath) (Capture.captureRender (flagValue "--count" 20000))
+        | other ->
+            eprintfn "unknown capture target '%s' — expected apply | op | render" other
+            2
     | "append-rate" :: rest ->
         let count =
             rest

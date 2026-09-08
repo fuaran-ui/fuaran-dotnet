@@ -16,7 +16,7 @@ change is a cross-repo breaking change.
 ```json
 {
   "schema_version": 1,
-  "artifact": "apply-rederivation" | "render-latency" | "op-append",
+  "artifact": "apply-rederivation" | "render-latency" | "op-append" | "render-allocation" | "bundle-size",
   "status": "pending" | "captured",
   "captured_at_utc": "<ISO-8601 UTC, or \"\" while pending>",
   "runtime": { "dotnet": "<sdk>", "os": "<os>", "cpu": "<cpu>" },
@@ -34,7 +34,7 @@ change is a cross-repo breaking change.
 | `artifact` | Which producer emitted it. The gate's budget table is keyed per artifact. |
 | `status` | `pending` = IDs/units declared, no numbers captured yet. The gate treats `pending` as **"no baseline" → hard fail** (Phase 201's no-silent-pass discipline). `captured` = a real run filled every `value`. |
 | `captured_at_utc` | When the capturing run happened. Empty while `pending`. |
-| `runtime` | The machine the numbers were captured on — load-bearing: a baseline captured on a different CPU is not comparable, so the gate surfaces a mismatch rather than comparing blind. |
+| `runtime` | The machine the numbers were captured on — load-bearing: a baseline captured on a different CPU is not comparable, so the gate surfaces a mismatch rather than comparing blind. **This is enforced since Phase 1613 and was not before:** the gate reads `cpu` + `os`, and when they disagree — or when either side leaves them blank, which is *unknown*, not *matching* — every metric whose unit is host-sensitive (`ns`, `ms`) is reported with its delta and NOT enforced. Producers must stamp it; `Capture.fs` does so from the run itself so it cannot be forgotten. |
 | `metrics[].id` | The stable key the Phase 201 **budget table** keys against. Dotted, lowercase, scenario-suffixed. |
 | `metrics[].value` | The captured number, or JSON `null` while `pending` (JSON has no `NaN`). |
 | `metrics[].unit` | `ns` (mean wall-time/op), `B` (allocated bytes/op), `ms` (render/TTFP latency), `ratio` (unit-free fraction, e.g. memo hit-rate). |
@@ -83,7 +83,25 @@ encode → SHA-256 hash-chain → durable append. Metrics are keyed per op shape
 - `opstream.build_record.<Shape>.mean_ns` / `.alloc_b` — hash + materialise the `OpRecord`.
 - `opstream.append.<Shape>.mean_ns` / `.alloc_b` — `InMemorySink.Append` per op (measured off the BenchmarkDotNet hot path by `AppendRate.measure`).
 
-**Framing (pre-publication):** this baseline's value is **absolute** — confirm
-the generated codec + the hash pre-image are cheap and catch pathological
-allocation. It is not (yet) wired into the Phase 201 regression gate; arming a
-regression budget is a publication-time concern.
+**Framing:** this baseline's first value was **absolute** — confirm the generated
+codec + the hash pre-image are cheap and catch pathological allocation. Since
+Phase 1613 it is also **wired into the regression gate**, recaptured on the x64
+reference host. (It had been captured on an ARM64 Snapdragon; joining that to the
+enforced set would have compared two laptops, which is the instance that made the
+gate's host-comparability rule mechanical rather than advisory.)
+
+## Declared metric IDs (browser bundle size, Phase 1613)
+
+A third producer artifact, `bundle-size`, shares this envelope and is emitted by
+`fuaran-ts/dev-scripts/measure-bundle-size.mjs`. It is the gate's only
+**browser-artefact** axis — the packages a stranger downloads — and the only one
+that is genuinely host-independent, so it is enforced wherever it is measured.
+
+- `bundle.renderer.esm.gzip_b` / `.cjs.gzip_b` — the renderer package build.
+- `bundle.renderer.standalone.gzip_b` — the minified self-contained IIFE bundle.
+- `bundle.renderer_server.esm.gzip_b` / `.cjs.gzip_b` — the server renderer.
+
+Unit `B`, gzip level 9, summed per file over a file set the producer pins in
+source. An empty file set is an ERROR there, never a zero: a measurement taken
+before the build has run would otherwise report a large improvement and arm a
+budget nothing could breach again.

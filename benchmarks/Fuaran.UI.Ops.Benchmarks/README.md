@@ -66,55 +66,67 @@ catalogue change:
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- emit-template
 ```
 
-## Capture the baseline (DEFERRED — a benchmark run)
+## Capture the baselines (Phase 1613 — automated, no longer a hand transcription)
 
-> Capturing numbers is a benchmark **run**: minutes of optimised execution on a
-> fixed machine. It is out of scope for the build-only Wave T opener and must be
-> done deliberately on a stable host.
+> Capturing numbers is a benchmark **run**: minutes of optimised execution. Do it
+> deliberately on a stable host, and know which host it was — the gate compares
+> `runtime` and declines to compare a wall-time metric across two machines.
 
 ```powershell
-# Full suite — fills the mean_ns + alloc_b metrics:
-dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- --filter *
+# 1. Run BenchmarkDotNet over both classes, exporting the JSON the capture reads.
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- --filter '*' --exporters json
 
-# Memo hit-rate over the edit session:
-dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- hit-rate
+# 2. Fold the run into the committed artifacts. Each `capture` reads the same
+#    artifacts directory; `op` and `render` additionally run their off-hot-path
+#    measurements in-process.
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- capture apply  benchmarks/Fuaran.UI.Ops.Benchmarks/BenchmarkDotNet.Artifacts
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- capture op     benchmarks/Fuaran.UI.Ops.Benchmarks/BenchmarkDotNet.Artifacts
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- capture render
 
-# Op-stream write path — encode + hash (BenchmarkDotNet), then durable append:
-dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- --filter *OpStream*
-dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- append-rate 20000
-
-# Render spine — the Phase 207 per-node / per-frame allocators:
-dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- render-alloc 20000
+# A second positional argument writes elsewhere — that is how CI produces a
+# CURRENT measurement to gate against the committed baseline:
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- capture apply <artifacts> /tmp/apply-current.json
 ```
 
-The render-spine baseline ships its own artifact,
-`render-allocation-baseline.json` (regenerate the pending template with
-`-- emit-render-template`). Fill its `render.state_keys.*` /
-`render.live_state_merge.*` / `render.class_vocabulary.*` metrics from the
-`render-alloc` output, which prints them already keyed by metric id.
+`capture` sets `status`, stamps `captured_at_utc` and stamps `runtime` **from the run
+itself**, so the host can never be mis-transcribed or forgotten. A metric the run did
+not produce stays `null` and the artifact stays `pending`, with the unfilled ids
+listed and a non-zero exit — a partial capture is never dressed up as a full one.
 
-Those three families are the allocators [Phase 207](../../../../roadmap/phases/207-renderer-hot-path-allocation-reduction.md)
-removed from the render path: the reactive subscription walk, the live-store
-merge that precedes it, and the per-node class + ARIA-id vocabulary. Every edit
-that phase made is OUTPUT-IDENTICAL, so the test suite cannot see a regression
-in any of them — `alloc_b` is the number that can. (The SHAPE of those call
-sites is locked separately, by `Fuaran.UI.Tests/HotPathVocabularyTests.fs`.)
+The individual sub-measurements remain available for inspection, and print already
+keyed by metric id:
 
-The op-stream baseline ships its own artifact, `op-append-baseline.json`
-(regenerate the pending template with `-- emit-op-template`). Fill its
-`opstream.encode.*` / `opstream.hash.*` / `opstream.build_record.*` metrics from
-the `*OpStream*` BenchmarkDotNet summary (`Mean` → `mean_ns`, `Allocated` →
-`alloc_b`) and its `opstream.append.*` metrics from the `append-rate` output.
+```powershell
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- hit-rate
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- render-alloc 20000
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- append-rate 20000
+```
 
-Then refresh `apply-rederivation-baseline.json`:
+The pending templates are regenerated with `-- emit-template` / `-- emit-op-template` /
+`-- emit-render-template` after a catalogue change.
 
-1. Set `status` → `captured`, stamp `captured_at_utc` (UTC ISO-8601) and
-   `runtime` (`dotnet --version`, OS, CPU).
-2. Fill each metric's `value` from the BenchmarkDotNet summary
-   (`Mean` → `mean_ns`, `Allocated` → `alloc_b`) and the `hit-rate` output
-   (`memo.hit_rate.edit_session`).
-3. Commit the refreshed artifact. The [Phase 201](../../../../roadmap/phases/201-performance-release-gate.md)
-   gate consumes it on every release.
+Those three render families are the allocators [Phase 207](../../../../roadmap/phases/207-renderer-hot-path-allocation-reduction.md)
+removed from the render path: the reactive subscription walk, the live-store merge
+that precedes it, and the per-node class + ARIA-id vocabulary. Every edit that phase
+made is OUTPUT-IDENTICAL, so the test suite cannot see a regression in any of them —
+`alloc_b` is the number that can. (The SHAPE of those call sites is locked separately,
+by `Fuaran.UI.Tests/HotPathVocabularyTests.fs`.)
+
+## What the captured numbers are worth — read this before setting a budget
+
+The baselines committed here were captured on a **fixed x64 reference host**, recorded
+in each artifact's `runtime`. Two things about them are load-bearing downstream:
+
+- **Wall-time is reproducible to about 20%, allocation to about 0%.** Two runs of this
+  unchanged tree, minutes apart on the reference host, differ by up to 19.1% on
+  `mean_ns` and by 0.000% on `alloc_b`. BenchmarkDotNet's own reported standard
+  deviation (0.3–2.7%) is *within*-run scatter and is not the figure a gate has to
+  clear. The consuming gate budgets the two units separately for exactly this reason;
+  the full measurement is in that gate's `BUDGETS.md`.
+- **A baseline is a claim about a machine.** `capture` stamps the host, and the gate
+  refuses to compare a wall-time metric across two of them. Recapturing on different
+  hardware is a legitimate act — recapturing without saying so was not possible any
+  more.
 
 The artifact shape is the cross-repo contract in
 [`PERF_BASELINE_SCHEMA.md`](PERF_BASELINE_SCHEMA.md).
