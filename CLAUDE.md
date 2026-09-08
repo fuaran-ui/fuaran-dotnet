@@ -106,12 +106,26 @@ share of this gate's wall-clock, so a pre-merge lane that leaves it in is not fa
 — declared once, called by both, the same posture `test-suites.json` takes for the test roster. It
 does two things, and they answer different questions:
 
-1. **Portability.** The three client-tier projects that ship their `.fs` sources in the package
-   (`Fuaran.UI`, `Fuaran.UI.StyleObserver`, `Fuaran.UI.ServerDriven`) are Fable-compiled **under
-   their own MSBuild properties**, with `--noCache`. Under Fable it is the ENTRY project's
-   properties that govern the whole transpiled source graph, so a compile entered through a
-   `<Nullable>disable</Nullable>` sample proves nothing about a nullable-enabled consumer. A
-   server-only API leaking into a Fable-consumed file fails here, naming the file.
+1. **Portability.** The client-tier projects that ship their `.fs` sources in the package are
+   Fable-compiled **under their own MSBuild properties**, with `--noCache`. Under Fable it is the
+   ENTRY project's properties that govern the whole transpiled source graph, so a compile entered
+   through a `<Nullable>disable</Nullable>` sample proves nothing about a nullable-enabled
+   consumer. A server-only API leaking into a Fable-consumed file fails here, naming the file.
+
+   **Which projects is DERIVED, not listed** (Phase 1606). The set is every `src/**/*.fsproj`
+   packing `.fs` under `PackagePath="fable\"` — so a new package is gated on its first commit with
+   no edit anywhere — minus any project declaring `<FablePortabilityExemption>reason</...>` in its
+   OWN fsproj, which the stage echoes by name on every run. Of those, the ones compiled *directly*
+   are the roots of the reference graph (which makes coverage total, since project references are
+   acyclic) plus every project holding a `#if FABLE_COMPILER` arm (which compiles it under its own
+   properties rather than an entry's). `pwsh ./tests/fable-laws/fable-check.ps1 -List` prints the
+   answer with the reason beside each entry and compiles nothing; CI's `fable-portability` job runs
+   the same script rather than mirroring its result. Before 1606 the list was hand-kept in two
+   places, and 0.78.0 shipped a Renderer whose Fable arm neither of them named.
+
+   The derivation's own go-red proof is `tests/fable-laws/fable-check.tests.ps1` — it builds a
+   scratch package tree, puts the 0.78.0 defect shape into it, and asserts the gate fails with no
+   list edited. It is not part of the gate; run it when the derivation changes.
 2. **The laws.** [`tests/fable-laws/`](tests/fable-laws/) is a Fable-compilable law project. It runs
    on both pipelines and its output is compared byte for byte, so two pipelines that are each
    internally lawful and disagree about a result still fail. Its `.NET` leg is also a rostered suite

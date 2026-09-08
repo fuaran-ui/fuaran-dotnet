@@ -122,13 +122,16 @@ jobs:
   # This job compiles the packages that ship `Content Include="**\*.fs"
   # PackagePath="fable\"` UNDER THEIR OWN SETTINGS — i.e. nullness ON, per
   # Directory.Build.props — so a consumer's transpile cannot break in a way our
-  # own CI never sees. `Fuaran.UI` is the root of the graph; `ServerDriven` and
-  # `StyleObserver` are the two nullable-enabled entry points that transitively
-  # pull in Renderer.Core / ThemeManifest / StyleObserver.Abstractions, which is
-  # how those get covered without a job each.
+  # own CI never sees.
   #
-  # ONLY ADD PROJECTS THAT PASS. A guard that is red on known-open work trains
-  # everyone to ignore it, which is worse than not having it.
+  # It carries NO LIST (Phase 1606). It runs `tests/fable-laws/fable-check.ps1`,
+  # the same script `run.ps1` and the FAKE `FableCheck` target call, which
+  # DERIVES the set from the tree: every package packing `.fs` under `fable\`,
+  # minus any declaring `<FablePortabilityExemption>` in its own fsproj. This job
+  # used to mirror a list the script also held, and the pair had to be extended
+  # by hand whenever a project gained a conditional arm — which is how 0.78.0
+  # shipped a Renderer whose `#if FABLE_COMPILER` arm compiled nowhere. One
+  # computation, two callers; a new package is gated on its first commit.
   fable-portability:
     runs-on: ubuntu-latest
     steps:
@@ -152,22 +155,19 @@ jobs:
       - name: Restore .NET tools
         run: dotnet tool restore
 
-      - name: Fable-compile Fuaran.UI under its own settings
-        run: dotnet fable src/Fuaran.UI/Fuaran.UI.fsproj -o "$RUNNER_TEMP/fable-guard/ui" --noCache
+      # Printed before it is acted on, so the log says which packages this run
+      # held responsible and why — a derived set is only as trustworthy as its
+      # visibility, and "the guard passed" must not be able to mean "the guard
+      # selected nothing".
+      - name: Show the derived portability set
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/fable-laws/fable-check.ps1 -List
 
-      - name: Fable-compile Fuaran.UI.ServerDriven under its own settings
-        run: dotnet fable src/Fuaran.UI.ServerDriven/Fuaran.UI.ServerDriven.fsproj -o "$RUNNER_TEMP/fable-guard/server-driven" --noCache
-
-      - name: Fable-compile Fuaran.UI.StyleObserver under its own settings
-        run: dotnet fable src/Fuaran.UI.StyleObserver/Fuaran.UI.StyleObserver.fsproj -o "$RUNNER_TEMP/fable-guard/style-observer" --noCache
-
-      # On its own account, not transitively: the three above reach Renderer.Core but never
-      # Renderer, and a `#if FABLE_COMPILER` arm is compiled by no .NET build and by no Fable
-      # compile that does not enter its project. Resume.fs's arm shipped in 0.78.0 naming four
-      # types it never opened, past a green build and a green gate. Keep in step with
-      # `tests/fable-laws/fable-check.ps1`'s `$portabilityProjects`, whose header carries the rule.
-      - name: Fable-compile Fuaran.UI.Renderer under its own settings
-        run: dotnet fable src/Fuaran.UI.Renderer/Fuaran.UI.Renderer.fsproj -o "$RUNNER_TEMP/fable-guard/renderer" --noCache
+      # `-SkipLaws` because the law harness is the `run.ps1` gate's business; this
+      # job is the portability half, which is what the guard's own header is about.
+      - name: Fable-compile every gated package under its own settings
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/fable-laws/fable-check.ps1 -SkipLaws
 
   # ── The out-of-solution project guard ─────────────────────────────────────
   #

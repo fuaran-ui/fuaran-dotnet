@@ -17,6 +17,13 @@
   <ItemGroup>
     <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
   </ItemGroup>
+  <!-- Phase 1606 — the Fable portability gate derives its set from the pack path
+       above, so this project is in it by default. It is held out, and the reason
+       is the property's value so that an exemption without one cannot be written.
+       tests/fable-laws/fable-check.ps1 prints every exemption on every run. -->
+  <PropertyGroup>
+    <FablePortabilityExemption>Ships fable/ sources but does not compile as a Fable ENTRY project as it stands: BrowserLayoutObserver.fs's #if FABLE_COMPILER arm opens Browser.Dom / Browser.Types while this project references no Fable.Browser.Dom (a consumer supplies it), and the same arm carries three F# 10 nullness errors under this project's own nullness-ON settings. Adding that PackageReference changes the published dependency set, so it is a deliberate versioned act rather than a gate fix. Phase 1606.</FablePortabilityExemption>
+  </PropertyGroup>
   <ItemGroup>
     <!-- The three-way meaning of registering one node id: fresh, unchanged,
          or a REMOUNT under the same id. Outside the observer's

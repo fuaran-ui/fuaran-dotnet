@@ -33,6 +33,13 @@
   <ItemGroup>
     <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
   </ItemGroup>
+  <!-- Phase 1606 — the Fable portability gate derives its set from the pack path
+       above, so this project is in it by default. It is held out, and the reason
+       is the property's value so that an exemption without one cannot be written.
+       tests/fable-laws/fable-check.ps1 prints every exemption on every run. -->
+  <PropertyGroup>
+    <FablePortabilityExemption>Ships fable/ sources but does not compile as a Fable ENTRY project: ResponseRender.fs writes through System.Text.Json's Utf8JsonWriter over a MemoryStream, and BindingProbe.fs / Tools.fs read runtime type information Fable erases. Those are .NET-only constructs rather than a settings mismatch, so the same errors reach any consumer transpiling this package - which puts the fable/ pack path itself in question. Phase 1606 found it; answering it is its own work.</FablePortabilityExemption>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />

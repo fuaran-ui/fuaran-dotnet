@@ -18,6 +18,13 @@
   <ItemGroup>
     <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
   </ItemGroup>
+  <!-- Phase 1606 — the Fable portability gate derives its set from the pack path
+       above, so this project is in it by default. It is held out, and the reason
+       is the property's value so that an exemption without one cannot be written.
+       tests/fable-laws/fable-check.ps1 prints every exemption on every run. -->
+  <PropertyGroup>
+    <FablePortabilityExemption>Ships fable/ sources but does not compile as a Fable ENTRY project: it references Fuaran.UI.Renderer, which sets Nullable=disable for ITSELF precisely because Feliz 3.3.3 and Fable.React are pre-F#-10-nullness libraries. Entering here compiles Renderer and Feliz under THIS project's nullness-ON settings and they fail. The wider question Phase 1606 surfaced - that a nullable-enabled consumer of the Renderer meets the same wall, so the Renderer's own entry proves less than it looks - is larger than this gate.</FablePortabilityExemption>
+  </PropertyGroup>
   <ItemGroup>
     <Compile Include="FragmentKey.fs" />
     <!-- Phase 360 — the caller-supplied content-addressed store (portable across
