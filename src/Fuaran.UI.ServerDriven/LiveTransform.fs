@@ -49,6 +49,26 @@ open Fuaran.UI.FragmentMemo
 //  re-primes and produces the same table, having paid for it.
 // ============================================================================
 
+/// The bound and the row-identity declaration a store takes when its
+/// constructor is given neither. Named rather than repeated: the same two
+/// values seed the parameterless `LiveTransformStore()` below and
+/// [[LiveTransformOptions.defaults]], and a second literal is a second place
+/// for them to disagree.
+[<RequireQualifiedAccess>]
+module LiveTransformDefaults =
+
+    /// The default bound, in SITES. Generous relative to the number of live
+    /// grids one connection renders, and small enough that a session cycling
+    /// through many of them cannot grow without limit.
+    [<Literal>]
+    let Capacity = 64
+
+    /// "no row identity declared" — no column is named, so no row has an
+    /// identity and every evaluation runs through the seam's reference path.
+    /// Correct on every site, restricting on none.
+    [<Literal>]
+    let IdentityColumn = ""
+
 /// What one evaluation of a live Transform site produced, and the account of the
 /// work that produced it. `Primed` says which of the two paths ran, so a caller
 /// can tell a first render from an advance without decoding the footprint.
@@ -88,7 +108,7 @@ type LiveTransformStore(capacity: int, identityColumn: string) =
     /// The default bound. Generous relative to the number of live grids one
     /// connection renders, and small enough that a session cycling through many
     /// of them cannot grow without limit.
-    new() = LiveTransformStore(64, "")
+    new() = LiveTransformStore(LiveTransformDefaults.Capacity, LiveTransformDefaults.IdentityColumn)
 
     /// The row-identity declaration this store applies to the interface-driven
     /// calls that carry none of their own. Empty means "none declared".
@@ -177,6 +197,49 @@ type LiveTransformStore(capacity: int, identityColumn: string) =
         member this.Evaluate(site: string, pipeline: Transform list, source: Table) =
             this.Evaluate(site, identityColumn, pipeline, source) |> Result.map _.Result
 
+/// What a HOST declares, once, about the live-Transform store one of its
+/// sessions will hold (Phase 1604).
+///
+/// Two values and no more, because two is what the store cannot derive for
+/// itself. `Capacity` bounds how many SITES one session keeps primed at a time;
+/// `IdentityColumn` names the column whose value identifies a row, which is the
+/// declaration [[LiveTransformStore]] applies to every seam-driven call — see
+/// its own documentation for why row identity is the store's and not the
+/// renderer's.
+///
+/// It is a record rather than two arguments so that a later declaration is a
+/// field and not a new arity on every composition site.
+type LiveTransformOptions =
+    {
+        /// How many sites one session keeps primed. At the bound the least
+        /// recently used site is evicted, which is correctness-neutral: the next
+        /// evaluation of an evicted site re-primes and answers the same table,
+        /// having paid for it.
+        Capacity: int
+
+        /// The column whose value identifies a row, or the empty string for "none
+        /// declared". A store with none declared is CORRECT and simply restricts
+        /// nothing, so a host that does not know its key column loses the saving
+        /// and never the answer.
+        IdentityColumn: string
+    }
+
+/// Companion values for [[LiveTransformOptions]].
+[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
+module LiveTransformOptions =
+
+    /// The bound the parameterless store takes, with no row identity declared —
+    /// the shape a host gets by opting in and declaring nothing else.
+    let defaults: LiveTransformOptions =
+        { Capacity = LiveTransformDefaults.Capacity
+          IdentityColumn = LiveTransformDefaults.IdentityColumn }
+
+    /// [[defaults]] with the host's key column named — the one-line opt-in for a
+    /// host that knows how its rows are identified.
+    let identifiedBy (column: string) : LiveTransformOptions =
+        { defaults with
+            IdentityColumn = column }
+
 [<RequireQualifiedAccess>]
 module LiveTransform =
 
@@ -193,3 +256,90 @@ module LiveTransform =
     let reference (pipeline: Transform list) (source: Table) : Result<Table, string> =
         DataFrame.evalPipelineInEnv Map.empty pipeline source
         |> Result.mapError DataFrame.errorString
+
+    // ── Phase 1604 — the session composition ────────────────────────────────
+    //
+    //  Phase 1179 built the store and Phase 1586 gave the RENDERER a seam that
+    //  consults one, but nothing constructed a store and threaded it through a
+    //  session — so `BindingSources.LiveTransforms` was `None` on every path
+    //  this tier served, and a live source still paid full evaluation in
+    //  practice. This is that wiring, and it is one function on purpose.
+    //
+    //  ── WHO OWNS THE STORE, AND WHEN IT GOES AWAY ─────────────────────────
+    //  The SESSION owns it. `initSession` mints one store per call and it is
+    //  reachable from exactly two places: the render closure inside the
+    //  session's own `DriverServices`, and the handle returned to the caller.
+    //  There is no registry, no static, no `Map<sessionId, store>` — and that
+    //  absence is the design rather than an omission, because such a map is
+    //  precisely how a per-session cache becomes a cross-tenant one and how it
+    //  outlives the session it was minted for. Drop the session and the store
+    //  is unreachable with it.
+    //
+    //  It holds no unmanaged resource, no handle and no thread, so it is not
+    //  `IDisposable` and adding that would promise a teardown with nothing to
+    //  tear down. What an explicit session-end has is `Clear()`, which releases
+    //  the primed tables early and is correctness-neutral. The ONE way to leak
+    //  a store is for a caller to keep the returned handle past its session's
+    //  end, which is why the handle is returned for OBSERVATION — the bound,
+    //  the counts, an early `Clear()` — and never as something to pass to a
+    //  second session.
+    //
+    //  ── WHY IT BUILDS THE WHOLE SESSION ───────────────────────────────────
+    //  The smaller function — hand back the store and the render, let the
+    //  caller call `Driver.init` — is hoistable, and the sample host in this
+    //  repo already hoists its `renderFragment` to a module-level value shared
+    //  by every connection. Hoisted, that smaller function gives every session
+    //  ONE store: a cross-tenant cache, silently, from a change that looks like
+    //  tidying. Building the session is the gesture that cannot be hoisted,
+    //  because a session cannot be.
+    //
+    //  ── WHY THE SOURCES ARE A THUNK ───────────────────────────────────────
+    //  Read PER RENDER, never captured — the shape `DriverServices`'
+    //  `CorrelationContext` already takes, and for the same reason. Services
+    //  are built once per connection while a host's binding sources move with
+    //  its state, so a `BindingSources` taken by value here would freeze the
+    //  state a session renders against, which is a REGRESSION relative to what
+    //  a host can do today by closing over its own cell.
+    //
+    //  ── WHY THIS TIER SETS THE SLOT, RATHER THAN THE HOST ─────────────────
+    //  The host supplies its render as a function OF sources (`Render.render`
+    //  already has that shape) and its own sources; the slot is set here, on
+    //  every render this session serves. A seam that handed the host a store
+    //  and trusted it to put it in the record would be satisfied by a host that
+    //  quietly did not, and the failure would be invisible: a correct answer at
+    //  full price, forever.
+
+    /// Compose one server-driven session that holds its OWN live-`Transform`
+    /// store, and return both.
+    ///
+    /// `sources` is read once per render; `render` is the host's renderer as a
+    /// function of the sources it resolves against (server-side, `Render.render`);
+    /// `servicesFrom` is how the host builds its `DriverServices` from a
+    /// `renderFragment` — `DriverServices.create`, `DriverServices.createPermissive`,
+    /// or its own lambda closing over a dispatch gate. The remaining three
+    /// arguments are `Driver.init`'s own.
+    ///
+    /// The returned store is the session's, for as long as the session lives —
+    /// see the note above on ownership. Call this once per session; passing one
+    /// session's store to another is not possible through this surface, which is
+    /// the point of it.
+    let initSession
+        (options: LiveTransformOptions)
+        (sources: unit -> Fuaran.UI.BindingSources)
+        (render: Fuaran.UI.BindingSources -> Fuaran.UI.Types.Node<'Msg> -> string)
+        (servicesFrom: (Fuaran.UI.Types.Node<'Msg> -> string) -> Driver.DriverServices<'Msg>)
+        (update: 'Msg -> 'Model -> 'Model)
+        (view: 'Model -> Fuaran.UI.Types.Node<'Msg>)
+        (model: 'Model)
+        : Driver.LiveSession<'Model, 'Msg> * LiveTransformStore =
+
+        let store = LiveTransformStore(options.Capacity, options.IdentityColumn)
+        let seam = store :> Fuaran.UI.ILiveTransformStore
+
+        let renderFragment (node: Fuaran.UI.Types.Node<'Msg>) : string =
+            render
+                { sources () with
+                    LiveTransforms = Some seam }
+                node
+
+        Driver.init (servicesFrom renderFragment) update view model, store

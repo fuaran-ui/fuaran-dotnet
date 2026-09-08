@@ -7287,3 +7287,69 @@ what `Fuaran.UI.Tests.AgGridParity` runs over the corpus's grid fixtures to make
 one is of a HIGHER class — a required field on a public record — so under the draft-slot rule the
 number should advance to a breaking cut before release. That act is deliberately left to whoever
 takes the release rather than performed here.
+
+
+
+## 0.79.0 — a server-driven session holds its own live-`Transform` store (Phase 1604)
+
+**Additive, on `Fuaran.UI.ServerDriven`'s composition surface.** Nothing existing changes shape,
+nothing existing changes behaviour, and a host that does not call the new function renders exactly
+as it did.
+
+| New surface | What it is |
+|---|---|
+| `LiveTransformOptions` (record: `Capacity: int`, `IdentityColumn: string`) | What a host declares, once, about the store one of its sessions will hold. |
+| `LiveTransformOptions.defaults` / `.identifiedBy` | The bound and "no row identity declared"; and that with the host's key column named. |
+| `LiveTransformDefaults.Capacity` / `.IdentityColumn` | `64` and `""` — the values the parameterless `LiveTransformStore()` already took, named rather than repeated so the constructor and the options record cannot disagree. |
+| `LiveTransform.initSession` | Compose one session that holds its own `LiveTransformStore`, and return both. |
+
+**What it closes.** Phase 1179 built `LiveTransformStore`; Phase 1586 minted `ILiveTransformStore` and
+taught the renderer's `TransformSource.Live` arm to consult one through `BindingSources.LiveTransforms`.
+Neither constructed a store and threaded it through a session — the slot was `None` on every path this
+tier served — so a live source still paid full evaluation in practice, which the 1586 outcome recorded
+as a host-wiring phase of its own. This is that phase.
+
+**This tier sets the slot; the host does not.** `initSession` takes the host's renderer as a function
+of the sources it resolves against (`Render.render` already has that shape) plus the host's own
+sources, and puts the store in the record itself, on every render the session serves. A seam that
+handed the host a store and trusted it to set the slot would be satisfied by a host that quietly did
+not, and the failure would be invisible: a correct answer at full price, forever.
+
+**The sources are read PER RENDER, not captured** — the shape `DriverServices.CorrelationContext`
+already takes, for the same reason. Services are built once per connection while a host's binding
+sources move with its state, so a `BindingSources` taken by value would freeze the state a session
+renders against — a regression relative to what a host can do today by closing over its own cell.
+
+**Ownership, plainly, because a session-held store is a lifetime question.** The session owns it.
+`initSession` mints one store per call and it is reachable from exactly two places: the render closure
+inside that session's own `DriverServices`, and the handle returned to the caller. There is no
+registry, no static and no shared default — that absence is the design, because such a map is
+precisely how a per-session cache becomes a cross-tenant one and how it outlives the session it was
+minted for. Drop the session and the store is unreachable with it. It holds no unmanaged resource, no
+handle and no thread, so it is **not** `IDisposable`; adding that would promise a teardown with
+nothing to tear down. What an explicit session end has is `store.Clear()`, which releases the primed
+tables early and is correctness-neutral — the next evaluation of any site re-primes and answers the
+same table, having paid for it. The one way to leak a store is for a caller to keep the returned
+handle past its session's end, which is why that handle is returned for OBSERVATION — the bound, the
+counts, an early `Clear()` — and never as something to hand to a second session.
+
+**Why the function builds the whole session rather than handing back a store and a render.** The
+smaller shape is hoistable, and this repo's own server-driven sample already hoists its
+`renderFragment` to a module-level value shared by every connection. Hoisted, the smaller function
+would give every session ONE store — a cross-tenant cache, silently, from a change that looks like
+tidying. Building the session is the gesture that cannot be hoisted, because a session cannot be.
+
+**Consumer obligation: none.** No existing signature moves, `BindingSources` is untouched, and the
+wire is unchanged. A host adopting the store gets one behaviour change and it is the intended one: a
+live `Transform` source recomputes once per input change instead of once per render. Absence remains
+the default, so not adopting is not a degraded mode.
+
+**Version.** Additive, so it rides the standing untagged 0.79.0 draft under the draft-slot rule. The
+draft already carries a higher-class change (Phase 1611's required `VisualisationContext` field), and
+the decision about which number the release is finally cut on stays with whoever takes it.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged; this is host composition over shipped vocabulary. No escape hatch is
+created, widened or relaxed either: the store is reachable only from the session that minted it, it
+executes no host-supplied behaviour, and its one promise — the table it returns is the table a full
+evaluation produces — is the seam's, unchanged.

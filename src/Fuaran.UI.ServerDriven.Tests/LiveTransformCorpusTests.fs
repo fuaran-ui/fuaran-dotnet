@@ -692,3 +692,265 @@ let rendererLiveStoreTests =
                   (renderRows None None v.Pipeline v.Source)
                   "the same pipeline without the param keeps rows, so the filter did the excluding"
           } ]
+
+// ============================================================================
+//  Phase 1604 — a SESSION holds the store, and every render it serves has it.
+//
+//  1179 built the store; 1586 gave the renderer a seam that consults one. What
+//  neither did was CONSTRUCT one and thread it through a session, so
+//  `BindingSources.LiveTransforms` was `None` on every path this tier served
+//  and a live source paid full evaluation in practice. These legs are about
+//  that wiring, and they ask three questions the 1586 legs above cannot:
+//
+//   1. Does a SESSION's render carry the store — including a render the DRIVER
+//      serves through the lowering, not only one a test calls directly?
+//   2. Does N renders cost one prime plus N-1 advances, so the work tracks
+//      INPUT CHANGES rather than render count?
+//   3. Is the store the session's ALONE — two sessions, one site key, two
+//      answers, neither reading the other's primed state?
+//
+//  ── WHY THE RENDERER HERE IS A STAND-IN AND THAT IS NOT A WEAKNESS ────────
+//  `DriverServices.RenderFragment` is `Node -> string` and the host wires the
+//  real HTML renderer into it; this tier deliberately depends on no renderer.
+//  What the stand-in below reproduces is the only part that matters to the
+//  question: it RESOLVES a live binding out of the `BindingSources` it is
+//  handed, exactly as a real renderer does while rendering. A session that
+//  failed to set the slot would hand it `None`, and the counts below would read
+//  zero rather than one.
+// ============================================================================
+
+open Fuaran.UI
+open Fuaran.UI.ServerDriven.Driver
+
+type private SessionMsg = Bump
+
+let private sessionUpdate (_: SessionMsg) (m: int) : int = m + 1
+
+/// One markdown node whose text moves with the model — so a driver step
+/// produces a content op, and the lowering renders a fragment through the
+/// session's own `RenderFragment`. That is the render this phase is about.
+let private sessionView (m: int) : Node<SessionMsg> = Fuaran.markdown "live" (string m)
+
+/// The host's renderer, stood in for: it resolves the live binding out of the
+/// sources it is handed and records what it resolved, so a leg can compare the
+/// session's answer against the store-less path above.
+let private recordingRender (pipeline: Transform list) =
+    let rendered = ResizeArray<Row list>()
+
+    let render (sources: Fuaran.UI.BindingSources) (node: Node<SessionMsg>) : string =
+        match BindingResolver.resolve<Row seq> sources (liveBinding pipeline None) with
+        | BindingResolver.Resolved rows ->
+            let rows = List.ofSeq rows
+            rendered.Add rows
+            sprintf "<f id='%s'>%d</f>" node.Id (List.length rows)
+        | BindingResolver.NotResolved -> failwith "the session's render left the live Transform unresolved"
+        | BindingResolver.Errored m -> failwithf "the session's render refused the live Transform: %s" m
+        | BindingResolver.I18nUnresolved k ->
+            failwithf "the session's render read the live Transform as an i18n key '%s'" k
+
+    render, (fun () -> List.ofSeq rendered)
+
+/// Compose one session over `current` — the host's own state cell, read per
+/// render through the sources thunk, which is what a host with moving state
+/// actually holds.
+let private composeSession
+    (pipeline: Transform list)
+    (identity: string)
+    (current: Table ref)
+    (servicesFrom: (Node<SessionMsg> -> string) -> DriverServices<SessionMsg>)
+    =
+    let render, rendered = recordingRender pipeline
+
+    let session, store =
+        LiveTransform.initSession
+            (LiveTransformOptions.identifiedBy identity)
+            (fun () ->
+                { Fuaran.UI.BindingSources.empty with
+                    State = liveState current.Value })
+            render
+            servicesFrom
+            sessionUpdate
+            sessionView
+            0
+
+    session, store, rendered
+
+let private rowLocalVector () =
+    vectors () |> List.find (fun x -> x.Name = "point-edit-row-local")
+
+[<Tests>]
+let sessionHeldStoreTests =
+    testList
+        "Phase 1604 — a session-held live-Transform store, threaded through the composition"
+        [ test "N renders of a live source cost one prime and then one advance apiece" {
+              // The recompute counter is the store's own. `Misses` counts PRIMES,
+              // so the claim "recompute once per input change" is the claim that
+              // this number does not move with the render count.
+              let v = rowLocalVector ()
+              let current = ref v.Source
+
+              let session, store, rendered =
+                  composeSession v.Pipeline "id" current DriverServices.createPermissive
+
+              Expect.equal store.Count 0 "a freshly composed session holds nothing primed"
+
+              for _ in 1..5 do
+                  session.Services.RenderFragment session.Tree |> ignore
+
+              Expect.equal store.Misses 1 "the session primes the site once, however many renders it serves"
+              Expect.equal store.Hits 4 "every later render advances the primed state rather than re-priming"
+
+              // One input change, then five more renders of it.
+              current.Value <- v.Changed
+
+              for _ in 1..5 do
+                  session.Services.RenderFragment session.Tree |> ignore
+
+              Expect.equal store.Misses 1 "an input change advances the primed site — it does not prime a second"
+              Expect.equal store.Hits 9 "and every render after the change advances it too"
+
+              // The answer is the one a full evaluation gives, at both inputs —
+              // a counter with a wrong table under it would be worse than no
+              // counter at all.
+              let seen = rendered ()
+              Expect.hasLength seen 10 "every render resolved the binding"
+
+              Expect.equal
+                  (List.head seen)
+                  (renderRows None None v.Pipeline v.Source)
+                  "the session's first render is the render without a store"
+
+              Expect.equal
+                  (List.last seen)
+                  (renderRows None None v.Pipeline v.Changed)
+                  "and so is the render that follows the input change"
+          }
+
+          test "the store reaches a render the DRIVER serves, not only one the test calls" {
+              // `initSession` puts the store in the render closure inside the
+              // session's own `DriverServices`, so the lowering's fragment
+              // render carries it. A wiring that only worked when a test called
+              // `RenderFragment` by hand would pass every other leg here.
+              let v = rowLocalVector ()
+              let current = ref v.Source
+
+              let session, store, rendered =
+                  composeSession v.Pipeline "id" current (fun render ->
+                      { DriverServices.createPermissive render with
+                          InterpretHostEffect = fun _ -> Some Bump })
+
+              let _, out = applyResolvedActions session "live" [ Action.Notify("bump", JObj []) ]
+
+              Expect.isNonEmpty out.Patches "the step changed the tree, so the lowering rendered a fragment"
+              Expect.equal store.Misses 1 "the render the driver served consulted the session's own store"
+
+              Expect.equal
+                  (List.last (rendered ()))
+                  (renderRows None None v.Pipeline v.Source)
+                  "and answered what a full evaluation answers"
+          }
+
+          test "two sessions never observe each other's cached results" {
+              // Same site key — same channel, same pipeline — over two different
+              // sources. Sharing one store would let the second session read a
+              // table primed for the first one's data, which is the cross-tenant
+              // failure the per-session construction exists to make impossible.
+              let v = rowLocalVector ()
+              let a = ref v.Source
+              let b = ref v.Changed
+
+              let aSession, aStore, aRendered =
+                  composeSession v.Pipeline "id" a DriverServices.createPermissive
+
+              let bSession, bStore, bRendered =
+                  composeSession v.Pipeline "id" b DriverServices.createPermissive
+
+              Expect.isFalse (System.Object.ReferenceEquals(aStore, bStore)) "each composition minted its own store"
+
+              aSession.Services.RenderFragment aSession.Tree |> ignore
+              bSession.Services.RenderFragment bSession.Tree |> ignore
+
+              Expect.equal aStore.Misses 1 "the first session primed its own site"
+              Expect.equal bStore.Misses 1 "the second primed its own rather than finding the first's"
+              Expect.equal bStore.Hits 0 "and read nothing the first session had primed"
+              Expect.equal aStore.Count 1 "each store holds exactly the one site its own session rendered"
+              Expect.equal bStore.Count 1 "and neither holds the other's"
+
+              let aRows = List.last (aRendered ())
+              let bRows = List.last (bRendered ())
+
+              Expect.equal aRows (renderRows None None v.Pipeline v.Source) "the first session rendered ITS source"
+              Expect.equal bRows (renderRows None None v.Pipeline v.Changed) "the second rendered ITS source"
+
+              // Without this the isolation claim would be vacuous: two sessions
+              // rendering identical tables agree whether they are isolated or not.
+              Expect.notEqual aRows bRows "the two sources render differently, so the isolation is measurable"
+          }
+
+          test "an explicit session end releases the primed tables, and the next render re-primes" {
+              // The store holds no unmanaged resource, so it is not disposable —
+              // `Clear` is what an explicit session end has, and it is
+              // correctness-neutral by the store's own contract. This is the leg
+              // that says so rather than the comment claiming it.
+              let v = rowLocalVector ()
+              let current = ref v.Source
+
+              let session, store, rendered =
+                  composeSession v.Pipeline "id" current DriverServices.createPermissive
+
+              session.Services.RenderFragment session.Tree |> ignore
+              Expect.equal store.Count 1 "the render primed one site"
+
+              store.Clear()
+              Expect.equal store.Count 0 "the explicit release forgot it"
+
+              session.Services.RenderFragment session.Tree |> ignore
+              Expect.equal store.Count 1 "the next render primed the site again"
+
+              // `Clear` resets the hit/miss counters with the entries — its own
+              // documented contract — so the re-prime reads as a FIRST miss
+              // rather than a second. What says it re-primed rather than read a
+              // released state is that no hit was recorded at all.
+              Expect.equal store.Hits 0 "it read nothing the release had dropped"
+              Expect.equal store.Misses 1 "and primed afresh"
+
+              Expect.equal
+                  (List.last (rendered ()))
+                  (renderRows None None v.Pipeline v.Source)
+                  "and answers the same table, having paid for it"
+          }
+
+          test "the composed store carries the options the host declared" {
+              // `capacity` and `identityColumn` are the two things the store
+              // cannot derive for itself, so a composition that dropped either
+              // would be a store that is merely correct — full price, forever,
+              // or unbounded.
+              let v = rowLocalVector ()
+              let current = ref v.Source
+              let render, _ = recordingRender v.Pipeline
+
+              let _, store =
+                  LiveTransform.initSession
+                      { Capacity = 7; IdentityColumn = "id" }
+                      (fun () ->
+                          { Fuaran.UI.BindingSources.empty with
+                              State = liveState current.Value })
+                      render
+                      DriverServices.createPermissive
+                      sessionUpdate
+                      sessionView
+                      0
+
+              Expect.equal store.Capacity 7 "the declared bound reached the store"
+              Expect.equal store.IdentityColumn "id" "and so did the declared row identity"
+
+              Expect.equal
+                  LiveTransformOptions.defaults.Capacity
+                  LiveTransformDefaults.Capacity
+                  "the documented default is the store's own"
+
+              Expect.equal
+                  LiveTransformOptions.defaults.IdentityColumn
+                  ""
+                  "and declaring nothing means no row identity, which restricts nothing and is still correct"
+          } ]
