@@ -87,6 +87,13 @@ param(
     # Fable leg is a stage, not a lane. A pre-merge invocation names both, because on measurement
     # the Fable stage is ~65% of this gate's wall-clock and a "fast" lane that leaves it in is not
     # fast.
+    #
+    # Phase 1619 narrowed that last point rather than retiring it. The lane now also reaches the
+    # FABLE STAGE, where a narrow lane may skip a compile whose CONTENT ADDRESS matches its last
+    # recorded green - a named skip, address printed, so an unchanged tree costs seconds there
+    # instead of minutes. `full` writes the address and never consults one, so the skip is
+    # structurally unreachable on the lane a release cites, and `-SkipFable` remains the right
+    # switch for a loop that wants no Fable stage at all rather than a cheap one.
     [ValidateSet('pure', 'fast', 'full')]
     [string] $Lane = 'full'
 )
@@ -255,7 +262,18 @@ if (-not $SkipFable) {
         Write-Error "Fable stage script not found at $fableCheck"
         exit 1
     }
-    & $fableCheck
+    # The lane reaches the stage through the SAME variable the test stage sets (Phase 1619), so the
+    # Fable stage cannot run under a lane the rest of this gate did not. In a narrow lane it may
+    # skip a compile whose content address matches its last recorded green, naming every skip; in
+    # `full` it writes the address and never reads one, so the skip is structurally unreachable on
+    # the only lane a release may cite. See `tests/fable-laws/fable-check.ps1`.
+    $env:FUARAN_TEST_LANE = $Lane
+    try {
+        & $fableCheck
+    }
+    finally {
+        Remove-Item Env:FUARAN_TEST_LANE -ErrorAction SilentlyContinue
+    }
     if ($LASTEXITCODE -ne 0) { Write-Error "Fable stage failed (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
 }
 
