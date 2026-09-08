@@ -165,7 +165,8 @@
   WHAT WAS MEASURED, on Fable 5.0.0, 2026-09-08, this machine. `dotnet fable` was run against a
   subject twice: once cold with `--noCache`, and once re-entering an out directory a previous
   non-`--noCache` run had left a `fable_modules/project_cracked.json` in, with one source touched
-  so the emit could not be skipped. Two subjects, chosen for the two ends of the graph-size range:
+  so the emit could not be skipped. Two subjects, both at the expensive end of the range below,
+  because that is where the question is:
 
                                      parsed      emitted    wall
     FableLaws (10-project closure)
@@ -180,10 +181,20 @@
   saving shows up in the wall clock. Whatever else `parsed` may cover, essentially all of it is
   work a persisted crack removes — and the compile still does everything it did before. `--noRestore`
   is NOT the lever: it took `parsed` to 43.1s / 45.9s, ~10%, so the cost is the per-project MSBuild
-  design-time builds themselves. The cost scales with the PROJECT GRAPH, steeply and not linearly:
-  `Fuaran.UI` has a closure of one project and Phase 1620 measured its parse at 1,500ms, against
-  ~46s for a closure of eight. So the `parsed` column is a graph-size meter, not a source-size one,
-  and a stage that grows a reference edge grows here.
+  design-time builds themselves.
+
+  AND THE COST IS A FUNCTION OF THE PROJECT GRAPH, not of the source. Every entry in one full-lane
+  run of this stage, against the size of its transitive `ProjectReference` closure:
+
+    closure   1     2     2     2     3      4      4      4      5      6      7      8      10
+    parsed   2.3s  3.9s  4.9s  5.1s  12.6s  23.6s  23.7s  24.3s  41.2s  54.5s  38.6s  76.2s  115.3s
+
+  Steeply, and not linearly. Those are the CONTENDED figures — one run at degree 4, 731.2s of
+  compile inside 330.8s of wall-clock — so read the shape and not the absolute values; the
+  uncontended pair above puts the same eight-project closure at 46.4s rather than 76.2s. The
+  `parsed` column is therefore a graph-size meter, and a package that gains a reference EDGE grows
+  this stage more than one that gains a thousand lines. (`Fuaran.UI.Renderer`, closure 7 at 38.6s,
+  sits below its neighbours — the relation is a shape, not a formula.)
 
   THE PHASE'S PREMISE WAS THAT THIS FIGURE WAS THE CRACK **PLUS** THE FCS PARSE, and that the split
   decided whether caching the crack was worth anything. The split is ~100/0, so it is worth a great
