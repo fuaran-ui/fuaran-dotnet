@@ -100,6 +100,14 @@
     <Compile Include="SwitchStage.fs" />
     <Compile Include="GridTransfer.fs" />
     <Compile Include="GridExport.fs" />
+    <!-- Phase 1611 — every judgement the AG Grid adapter makes about a
+         DECLARED grid behaviour, as pure functions the .NET runner can call.
+         The adapter itself is Fable-only (npm imports, React elements), so a
+         parity claim written inside it could only be asserted; here it can
+         fail. Before Render.fs, which reads its source-shape rule for the
+         renderer-owned export chrome it wraps an adapter's grid in.
+         Depends on Renderer.Core's BindingResolver and nothing in this project. -->
+    <Compile Include="AgGridPlan.fs" />
     <Compile Include="GridPaste.fs" />
     <!-- Phase 1546: the `fuaran-renderer` Trusted Types policy. Every raw-HTML
          sink in this project mints through it, so it compiles before the two

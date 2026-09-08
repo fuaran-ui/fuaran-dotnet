@@ -6471,10 +6471,68 @@ and private renderGrid
           RecurseRender = render ctx
           RunAction = runAction ctx
           NodeId = parentNodeId
-          EgressPolicy = ctx.EgressPolicy }
+          EgressPolicy = ctx.EgressPolicy
+          // Phase 1611 — the whole-rows write, supplied rather than reachable.
+          // `writeBackTo` is where Phase 266's scope routing and Phase 782's
+          // host-reserved-key refusal live, and an adapter holds neither the
+          // runtime nor the scope; handing it the WRITE rather than the store
+          // is what keeps an adapter-backed edit crossing the same guards a
+          // first-party one does.
+          WriteRows = fun destination rows -> writeBackTo ctx destination (Some(box rows)) }
 
     match ctx.VisAdapter.RenderGrid(spec, visCtx) with
-    | Some rendered -> rendered
+    | Some rendered ->
+        // Phase 1611 — `exportable` is honoured on BOTH backends by ONE
+        // implementation, and it is this one. The export control is chrome
+        // AROUND whatever drew the grid — exactly where it sits on the
+        // first-party leg, outside the `<table>` — so the adapter needs no copy
+        // of the serialiser, the scope rule, the filename rule or the dispatch
+        // gate, and the two backends cannot come to disagree about any of them.
+        // A grid that declares nothing emits byte-identical output to before.
+        if not spec.Exportable then
+            rendered
+        else
+            let rows =
+                match BindingResolver.resolve<Row seq> ctx.Sources spec.Source with
+                | BindingResolver.Resolved seq -> Seq.toList seq
+                | _ -> []
+
+            // The rows in the order the DECLARATION puts them in — the same
+            // descriptor the adapter hands its own backend, through the same
+            // Phase-861 sorter the first-party leg uses. What differs between
+            // the backends is only the tie order within equal keys, which each
+            // library settles for itself; the declared order is the same file.
+            let sorted =
+                rows
+                |> BindingResolver.sortRowsByDescriptor
+                    spec.Columns
+                    (BindingResolver.effectiveSortDescriptor spec.SortStateKey spec.DefaultSort ctx.Sources)
+
+            let project () =
+                let cellText (col: ColumnErased<'Msg>) (row: Row) : string =
+                    let value =
+                        match col.Value with
+                        | Some accessor -> accessor row
+                        | None ->
+                            match col.Field with
+                            | Some field -> BindingResolver.projectRowFieldValue row field
+                            | None -> CellValue.Empty
+
+                    renderCellValue col.Format value
+
+                (spec.Columns |> List.map _.Label),
+                (sorted
+                 |> List.map (fun row -> spec.Columns |> List.map (fun col -> cellText col row)))
+
+            Html.div
+                [ prop.className "fuaran-grid-exportable"
+                  prop.children
+                      [ rendered
+                        gridExportControl
+                            ctx
+                            parentNodeId
+                            (GridExport.scope (AgGridPlan.hostPages spec) (List.length sorted))
+                            project ] ]
     | None ->
 
         let resolution = BindingResolver.resolve<Row seq> ctx.Sources spec.Source
@@ -7564,7 +7622,13 @@ and private renderChart
           RecurseRender = render ctx
           RunAction = runAction ctx
           NodeId = parentNodeId
-          EgressPolicy = ctx.EgressPolicy }
+          EgressPolicy = ctx.EgressPolicy
+          // Phase 1611 — the same write path the grid leg supplies. A chart has
+          // no whole-rows destination of its own, so this is the identity of
+          // `writeBackTo` and nothing on the chart path calls it; supplying it
+          // here rather than making the field optional keeps ONE context shape
+          // across the seam, which is what lets a single adapter serve both.
+          WriteRows = fun destination rows -> writeBackTo ctx destination (Some(box rows)) }
 
     match ctx.VisAdapter.RenderChart(spec, visCtx) with
     | Some rendered -> rendered

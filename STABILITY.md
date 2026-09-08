@@ -7185,3 +7185,58 @@ it. `src/Fuaran.UI.Tests/RelayCorpusTests.fs` reads the corpus's new per-fixture
 and reports a fixture addressing a peer shape this host cannot present as out of reach **with a
 reason** rather than skipping it: this host's tree is in the page by construction — it IS the
 renderer — so an upstream-tree fixture is not a gap here and never becomes one.
+
+## 0.79.0 — the AG Grid adapter honours the declarative grid vocabulary (Phase 1611)
+
+**BREAKING, on `Fuaran.UI.Renderer`'s visualisation-adapter seam.**
+`VisAdapter.VisualisationContext<'Msg>` gains one field:
+
+| Member | What it is |
+|---|---|
+| `WriteRows: Binding<Row seq> -> Row seq -> unit` | The whole-rows write a grid's declared commit destination takes, performed by the renderer on the adapter's behalf. |
+
+Every consumer that CONSTRUCTS a `VisualisationContext` by hand must supply it; a consumer that
+only *receives* one — which is every `IVisualisationAdapter` implementation, and therefore the
+overwhelmingly common case — is unaffected, and the two adapters this package ships were adapted in
+the same change.
+
+**Why a field on the context rather than something an adapter could reach itself.** It is the third
+instance of the shape `NodeId` (Phase 427) and `EgressPolicy` (Phase 1523) already record on that
+record: the adapter path was STRUCTURALLY unable to do what the first-party path does. A grid's
+edited cell and its reordered row are both writes of the same collection to the destination Phase
+863's `editDestination` resolves, and that write crosses `writeBackTo` — where Phase 266's scope
+routing and Phase 782's refusal of host-reserved keys live. An adapter holds neither the runtime nor
+the scope, so it could only have reached a store by going around both guards. Handing it the WRITE
+rather than the address is what keeps an adapter-backed edit crossing the same floor a first-party
+one does.
+
+**What the adapter now does, and it is the whole point of the release.** Six declarative grid
+behaviours reached the wire between Phases 861 and 1125 and `AgGridAdapter` read none of them:
+`sortable` was boxed `true` on every column it emitted, and `pageSize` / `pageStateKey` /
+`editStateKey` / `reorderable` / `transferInKey` / `transferOutKey` / `exportable` did not appear in
+the file at all. So the same decoded tree behaved differently on the two grid backends, and which
+behaviour a reader got depended only on whether the host happened to have wired an adapter.
+
+Each field is now either honoured or **refused by name at render time**; the adapter's own header
+carries the table. `defaultSort` / `sortStateKey` / per-column `sortable`, `pageSize` /
+`pageStateKey`, `editStateKey` / per-column `editable`, `reorderable` and `exportable` are honoured;
+`transferInKey` / `transferOutKey` are refused (cross-grid transfer needs a drop-zone registry
+across grid instances, and the adapter is invoked once per grid with no handle to its siblings), and
+so is `pageStateKey` over a **host-paged** source (AG's client-side row model derives its pager from
+the rows it holds, so it would report a one-page total over a host's page).
+
+**Behaviour change for an existing consumer, stated plainly:** a grid that declares
+`sortStateKey` on no column, or `sortable: false` on one, will stop offering the sort affordance
+there. That is the wire's declaration being honoured rather than a regression, and it is the only
+visible change to a grid that declares none of the six.
+
+**Additive, on `Fuaran.UI.Renderer`.** A new public module `AgGridPlan` — the per-field disposition
+for both backends, the concrete AG decisions, and the named refusal reasons — as pure functions over
+`FSharp.Core` and the shipped `BindingResolver` predicates. It exists at that visibility on purpose:
+the adapter is Fable-only, so a parity claim written inside it could only be asserted, and this is
+what `Fuaran.UI.Tests.AgGridParity` runs over the corpus's grid fixtures to make it fail.
+
+**Version.** The release already stood at an untagged 0.79.0 draft carrying additive changes. This
+one is of a HIGHER class — a required field on a public record — so under the draft-slot rule the
+number should advance to a breaking cut before release. That act is deliberately left to whoever
+takes the release rather than performed here.

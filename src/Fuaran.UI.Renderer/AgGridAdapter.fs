@@ -44,6 +44,60 @@
 //  takes since a callback cannot cross the wire).
 //  ColumnWidth: Auto leaves AG Grid's auto-sizing; Fixed sets `width`;
 //  Flex sets `flex`.
+//
+//  ── The declarative grid vocabulary (Phase 1611) ──────────────────────────
+//  Six behaviours reached the wire between Phases 861 and 1125 and this
+//  adapter read none of them, so the same decoded tree behaved differently on
+//  the two grid backends. Every one of them is now either HONOURED here or
+//  REFUSED BY NAME at render time through `Diagnostics.warn`; nothing is
+//  dropped silently. The judgement itself is made in
+//  [AgGridPlan.fs](AgGridPlan.fs), over the same shipped `BindingResolver`
+//  predicates the first-party leg calls, because this file is Fable-only and
+//  no test in this repo can reach it.
+//
+//    HONOURED
+//      defaultSort         seeds AG's sort model through the effective
+//      sortStateKey        descriptor (state decides, defaultSort fills the
+//                          not-yet-sorted case); `onSortChanged` writes the
+//                          descriptor back with the same `Action.SetState`,
+//                          key and shape the first-party sortable header uses.
+//                          The ORDER is the runtime's on both backends: a
+//                          comparator pinned to "equal" keeps AG from
+//                          re-sorting rows Phase 861's sorter already ordered.
+//      columns[].sortable  narrows per column — `sortable` was boxed `true`
+//                          unconditionally before this phase, so the affordance
+//                          appeared on columns the wire had opted out and on
+//                          grids naming no sort state key at all.
+//      pageSize            AG's own pagination; the bar is on ONLY where both
+//      pageStateKey        are declared, the opening page is applied on ready,
+//                          and the reader's page round-trips through the key.
+//      editStateKey        per-column `editable` + a `valueSetter` committing
+//      columns[].editable  the whole updated rows value to Phase 863's declared
+//                          destination, through the renderer's own write path
+//                          — so the commit crosses the same scope routing and
+//                          host-reserved-key refusal a first-party edit does.
+//      reorderable         AG row drag on the first column; the move is
+//                          `BindingResolver.moveRow` and the commit is the same
+//                          whole-rows write, to the same destination.
+//      exportable          honoured by RENDERER-OWNED chrome around whatever
+//                          drew the grid (`Render.fs`), which is where it sits
+//                          on the first-party leg too — so the serialiser, the
+//                          scope rule, the filename rule and the dispatch gate
+//                          have exactly one implementation.
+//
+//    REFUSED BY NAME (the reason is carried in `AgGridPlan`, printed with the
+//    field name and the node id)
+//      pageStateKey        over a HOST-PAGED source only: AG's client-side row
+//                          model derives its pager from the rows it holds, so
+//                          it would report a one-page total over a host's page.
+//      transferInKey       cross-grid transfer needs a drop-zone registry
+//      transferOutKey      across grid instances, and this adapter is invoked
+//                          once per grid with no handle to its siblings.
+//
+//  `keepRowsTogether` / `repeatHeader` are PAGED-MEDIA declarations the
+//  first-party leg carries as CSS on a semantic `<table>`; AG renders its own
+//  DOM, so they are not this adapter's to place and are deliberately outside
+//  the set above rather than refused within it.
 // ============================================================================
 
 #nowarn "1182" // unused values for Fable imports
@@ -122,6 +176,50 @@ let private textOf (text: TextSource) : string =
 // stable + SSR/hydration-parity-safe), matching the core renderer's posture.
 let private correlationId (seed: string) : string = Ids.deterministicCorrelationId seed
 
+/// Coerce AG Grid's `newValue` into a `CellValue` matching the shape the cell
+/// currently holds.
+///
+/// Hoisted by Phase 1611 because there are now TWO edit paths through this
+/// adapter — the authored `CellKindErased.Editable` closure, and the
+/// DECLARATIVE `editable` + `editStateKey` path a decoded grid takes — and two
+/// copies of a coercion rule is how one grid comes to parse its numbers two
+/// ways depending on which spelling its author reached for.
+let private coerceToCellShape (currentVal: CellValue) (newVal: obj) : CellValue =
+    match currentVal with
+    | CellValue.Numeric _ ->
+        match newVal with
+        | :? float as f -> CellValue.Numeric f
+        | :? int as i -> CellValue.Numeric(float i)
+        | _ ->
+            let s = string newVal
+
+            // Invariant on the .NET leg — see `GridPaste`: an edited cell is
+            // canonically encoded, so the pipelines must agree, and the
+            // single-argument BCL overload reads CurrentCulture.
+            let parsed =
+#if FABLE_COMPILER
+                System.Double.TryParse s
+#else
+                System.Double.TryParse(
+                    s,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture
+                )
+#endif
+
+            match parsed with
+            | true, f -> CellValue.Numeric f
+            | _ -> CellValue.Text s
+    | CellValue.Bool _ ->
+        match newVal with
+        | :? bool as b -> CellValue.Bool b
+        | _ -> CellValue.Bool(string newVal = "true")
+    | CellValue.Date _ ->
+        match newVal with
+        | :? System.DateTimeOffset as d -> CellValue.Date d
+        | _ -> CellValue.Text(string newVal)
+    | _ -> CellValue.Text(string newVal)
+
 // ─── Per-column AG Grid columnDef builder ───────────────────────────
 
 let private buildColumnDef<'Msg>
@@ -131,6 +229,19 @@ let private buildColumnDef<'Msg>
     // `VisualisationContext` so this adapter's `Link` cell gates identically to
     // the first-party simple table's.
     (egressPolicy: Sanitize.EgressPolicy)
+    // Phase 1611 — this column's DECLARED dispositions, decided in
+    // [AgGridPlan.fs](AgGridPlan.fs) rather than here. `sortable` was boxed
+    // `true` on every column before this phase, so a column that declared
+    // `sortable: false`, and every column of a grid that named no sort state
+    // key at all, offered a sort affordance the wire refused. `editable` is
+    // Phase 863's narrowing, and `commit` the destination the whole updated
+    // rows value goes to.
+    (colId: string)
+    (sortable: bool)
+    (initialSort: string option)
+    (rowDrag: bool)
+    (editable: bool)
+    (commit: (int -> string -> obj -> unit) option)
     (col: ColumnErased<'Msg>)
     : obj =
     // Phase 425 — the closure wins; else the declarative `Field` projects the row property; else empty.
@@ -164,12 +275,39 @@ let private buildColumnDef<'Msg>
         renderCellValue col.Format (cellValueOf p)
 
     let baseProps: (string * obj) list =
-        [ "headerName", box col.Label
+        [ // A stable, index-derived column id. AG derives one from `field`
+          // otherwise, and this adapter sets no `field` (it projects through
+          // `valueGetter`), so the ids would be positional strings AG chose —
+          // which the sort round trip has to parse back into the column INDEX
+          // the wire's descriptor carries. Setting it makes that mapping ours.
+          "colId", box colId
+          "headerName", box col.Label
           "valueGetter", box valueGetter
           "valueFormatter", box valueFormatter
-          "sortable", box true
+          // Phase 1611 — the DECLARATION decides, not the adapter. `sortable`
+          // was boxed `true` on every column before this phase, so a column
+          // declaring `sortable: false`, and every column of a grid naming no
+          // `sortStateKey` at all, offered a sort affordance the wire refused.
+          "sortable", box sortable
           "filter", box true
           "resizable", box true ]
+        @ (match initialSort with
+           | Some direction when sortable -> [ "sort", box direction ]
+           | _ -> [])
+        // Phase 1611 — the ORDER is the runtime's, on both backends. AG's
+        // header raises the gesture and shows the indicator; the descriptor it
+        // produces is written to `sortStateKey`, the re-render re-resolves it
+        // through Phase 861's `sortRowsByDescriptor`, and the rows arrive here
+        // already in that order. A comparator that says "these are equal" keeps
+        // AG's stable sort from re-ordering them on top — so there is ONE
+        // sorting implementation across the two backends rather than two that
+        // agree about the column and disagree about everything else (empties,
+        // ties, mixed cell types).
+        @ (if sortable then
+               [ "comparator", box (fun (_: obj) (_: obj) -> 0) ]
+           else
+               [])
+        @ (if rowDrag then [ "rowDrag", box true ] else [])
 
     let widthProps: (string * obj) list =
         match col.Width with
@@ -195,42 +333,7 @@ let private buildColumnDef<'Msg>
                 let newVal: obj = p?newValue
                 let currentVal = cellValueOf p
 
-                let coerced =
-                    match currentVal with
-                    | CellValue.Numeric _ ->
-                        match newVal with
-                        | :? float as f -> CellValue.Numeric f
-                        | :? int as i -> CellValue.Numeric(float i)
-                        | _ ->
-                            let s = string newVal
-
-                            // Invariant on the .NET leg — see `GridPaste`: an
-                            // edited cell is canonically encoded, so the pipelines
-                            // must agree, and the single-argument BCL overload
-                            // reads CurrentCulture.
-                            let parsed =
-#if FABLE_COMPILER
-                                System.Double.TryParse s
-#else
-                                System.Double.TryParse(
-                                    s,
-                                    System.Globalization.NumberStyles.Float,
-                                    System.Globalization.CultureInfo.InvariantCulture
-                                )
-#endif
-
-                            match parsed with
-                            | true, f -> CellValue.Numeric f
-                            | _ -> CellValue.Text s
-                    | CellValue.Bool _ ->
-                        match newVal with
-                        | :? bool as b -> CellValue.Bool b
-                        | _ -> CellValue.Bool(string newVal = "true")
-                    | CellValue.Date _ ->
-                        match newVal with
-                        | :? System.DateTimeOffset as d -> CellValue.Date d
-                        | _ -> CellValue.Text(string newVal)
-                    | _ -> CellValue.Text(string newVal)
+                let coerced = coerceToCellShape currentVal newVal
 
                 match onEdit with
                 | Some onEdit -> runAction (onEdit (row, coerced))
@@ -367,7 +470,43 @@ let private buildColumnDef<'Msg>
 
             [ "cellRenderer", box cellRenderer ]
 
-    createObj (baseProps @ widthProps @ kindProps)
+    // Phase 1611 — the DECLARATIVE edit path, and the one this phase exists
+    // for. `CellKindErased.Editable` above is the AUTHORED shape: a closure,
+    // which cannot cross the wire, so it is `None` on every decoded grid. A
+    // decoded grid says it is editable by declaring `editable` on the grid and
+    // naming its destination with `editStateKey` (Phase 863) — and neither name
+    // appeared in this file, so the adapter rendered exactly the read-only grid
+    // the first-party leg rendered as a set of inputs.
+    //
+    // Which columns take a value, and where the value goes, are both decided in
+    // [AgGridPlan.fs](AgGridPlan.fs) off the shipped rules, so this arm holds no
+    // rule of its own. `false` is returned for the same reason the authored arm
+    // returns it: the commit goes to the declared destination and the re-render
+    // brings the new rows back, so AG must not also mutate its own row object.
+    let declaredEditProps: (string * obj) list =
+        match editable, commit, col.Field with
+        | true, Some commit, Some field ->
+            let valueSetter (p: obj) : bool =
+                let rowIndex: int = p?node?rowIndex
+                let coerced = coerceToCellShape (cellValueOf p) (p?newValue: obj)
+
+                match coerced with
+                | CellValue.Numeric f -> commit rowIndex field (box f)
+                | CellValue.Text s -> commit rowIndex field (box s)
+                | CellValue.Bool b -> commit rowIndex field (box b)
+                | CellValue.Date d -> commit rowIndex field (box d)
+                | CellValue.Empty -> ()
+
+                false
+
+            [ "editable", box true; "valueSetter", box valueSetter ]
+        | _ -> []
+
+    // The authored arm's own `editable` / `valueSetter` win where both apply:
+    // `createObj` takes the LAST value for a repeated key, and a column that is
+    // both `CellKindErased.Editable` and declaratively editable was authored
+    // in-process with a handler that must not be bypassed.
+    createObj (baseProps @ widthProps @ declaredEditProps @ kindProps)
 
 // ─── Top-level Grid render ──────────────────────────────────────────
 
@@ -421,9 +560,72 @@ let renderGridWithReady<'Msg>
         match rows, context.State.OnEmpty with
         | [], Some emptyNode -> Some(context.RecurseRender emptyNode)
         | _ ->
+            // ── Phase 1611 — the declarative grid vocabulary ───────────────
+            //
+            // Every judgement below is made in [AgGridPlan.fs](AgGridPlan.fs),
+            // over the SAME shipped predicates the first-party leg calls, and
+            // is proven there against the corpus's grid fixtures. This file
+            // applies the result to AG's props and holds no rule of its own,
+            // because it is Fable-only and therefore unreachable by any test in
+            // this repo.
+            let plan = AgGridPlan.plan context.Sources (List.length rows) spec
+
+            // Named refusals, at render time. A grid whose declarations this
+            // backend acts on in full reports nothing, so an ordinary grid's
+            // console is exactly as quiet as it was before this phase; a grid
+            // that declares something this backend cannot reach says so, with
+            // the field name, the node id and the reason. That line is the
+            // whole difference between a refusal and the silent drop this
+            // phase found.
+            for refusal in plan.Refusals do
+                Diagnostics.warn (AgGridPlan.refusalLine context.NodeId refusal) null
+
+            // The rows in the order the declaration puts them in — Phase 861's
+            // sorter, the same call `Render.fs` makes. AG's own comparator is
+            // pinned to "equal" on every sortable column (see `buildColumnDef`)
+            // so the header raises the gesture while this stays the single
+            // ordering implementation across both backends.
+            let sortedRows = rows |> BindingResolver.sortRowsByDescriptor spec.Columns plan.Sort
+
+            // Phase 863's whole-rows commit, through the renderer's own write
+            // path (`VisualisationContext.WriteRows`) rather than a store this
+            // adapter reached itself — so an adapter-backed edit crosses Phase
+            // 266's scope routing and Phase 782's host-reserved-key refusal
+            // exactly as a first-party one does.
+            let editCommit: (int -> string -> obj -> unit) option =
+                plan.EditCommit
+                |> Option.map (fun destination ->
+                    fun (rowIndex: int) (field: string) (newValue: obj) ->
+                        let newRows =
+                            sortedRows
+                            |> List.mapi (fun i row -> if i = rowIndex then Map.add field newValue row else row)
+
+                        context.WriteRows destination (Seq.ofList newRows))
+
             let columnDefs =
                 spec.Columns
-                |> List.map (buildColumnDef context.RunAction context.RecurseRender context.EgressPolicy)
+                |> List.mapi (fun index col ->
+                    let initialSort =
+                        match plan.Sort with
+                        | Some(c, SortDirection.Asc) when c = index -> Some "asc"
+                        | Some(c, SortDirection.Desc) when c = index -> Some "desc"
+                        | _ -> None
+
+                    buildColumnDef
+                        context.RunAction
+                        context.RecurseRender
+                        context.EgressPolicy
+                        (string index)
+                        (List.item index plan.ColumnSortable)
+                        initialSort
+                        // Phase 934 — the drag handle rides the FIRST column, the
+                        // one position every grid has. It is drawn only where a
+                        // reorder has somewhere to commit, which is the same
+                        // `reorderDestination` test the first-party handle makes.
+                        (plan.ReorderCommit.IsSome && index = 0)
+                        (List.item index plan.ColumnEditable)
+                        editCommit
+                        col)
                 |> List.toArray
 
             // Phase 425 — the row-key closure wins; else the declarative `RowKeyField` projects the
@@ -449,24 +651,138 @@ let renderGridWithReady<'Msg>
             let onRowClicked (p: obj) =
                 Render.gridRowSelected context.RunAction context.NodeId spec (p?data: Row)
 
-            // Phase 1594 — the escape valve. Attached only when the host asked
-            // for it, so a composition that supplied no hook emits exactly the
-            // props it emitted before. The handle passed on is AG Grid's own
-            // grid API (`GridReadyEvent.api`) — unwrapped, unvalidated and
-            // unmediated; see the escape-hatch inventory's Hatch 14.
-            let readyProps =
-                match onReady with
-                | Some hook -> [ "onGridReady" ==> (fun (p: obj) -> hook (p?api: obj)) ]
+            // Phase 861/818 — the sort ROUND TRIP. AG's header raises the
+            // gesture; the descriptor it produces is written to the grid's own
+            // `sortStateKey` through the same `Action.SetState` the first-party
+            // sortable header dispatches, to the same key, in Phase 818's fixed
+            // shape. So the two backends drive one state slot, and a `Binding`
+            // reading that slot cannot tell which grid wrote it.
+            //
+            // The write is guarded on the descriptor having actually MOVED. AG
+            // raises `onSortChanged` while applying the state we handed it, so
+            // an unguarded write would set the slot to what it already holds and
+            // re-render on every mount.
+            let sortProps =
+                match spec.SortStateKey with
                 | None -> []
+                | Some sortKey ->
+                    let onSortChanged (p: obj) =
+                        let api: obj = p?api
+
+                        let next: (int * SortDirection) option =
+                            if isNull api then
+                                plan.Sort
+                            else
+                                let states: obj[] = api?getColumnState ()
+
+                                states
+                                |> Array.tryFind (fun st -> not (isNull (st?sort: obj)))
+                                |> Option.bind (fun st ->
+                                    let colId: string = st?colId
+                                    let direction: string = st?sort
+
+                                    match System.Int32.TryParse colId with
+                                    | true, index ->
+                                        Some(
+                                            index,
+                                            (if direction = "desc" then
+                                                 SortDirection.Desc
+                                             else
+                                                 SortDirection.Asc)
+                                        )
+                                    | _ -> None)
+
+                        if next <> plan.Sort then
+                            context.RunAction(Action.SetState(sortKey, Some(AgGridPlan.sortDescriptorJVal next), None))
+
+                    [ "onSortChanged" ==> onSortChanged ]
+
+            // Phase 862 — the pagination bar is on ONLY where the spec declares
+            // it, which is what `plan.Pagination` being `None` says. AG owns the
+            // slicing on this backend (the runtime does not slice as well —
+            // `rowData` is the whole sorted set), and the page the reader is on
+            // round-trips through `pageStateKey` in Phase 862's fixed shape,
+            // guarded against the mount-time echo exactly as the sort write is.
+            let paginationProps =
+                match plan.Pagination with
+                | None -> []
+                | Some(pageKey, pageSize, page) ->
+                    let onPaginationChanged (p: obj) =
+                        let api: obj = p?api
+
+                        if not (isNull api) then
+                            let current: int = api?paginationGetCurrentPage ()
+
+                            if current + 1 <> page then
+                                context.RunAction(
+                                    Action.SetState(pageKey, Some(AgGridPlan.pageDescriptorJVal (current + 1)), None)
+                                )
+
+                    [ "pagination" ==> true
+                      "paginationPageSize" ==> pageSize
+                      "onPaginationChanged" ==> onPaginationChanged ]
+
+            // Phase 934 — the reorder commit. The handle is on the first column
+            // (see `columnDefs`); the move itself is `BindingResolver.moveRow`,
+            // the same function the first-party handle calls, over the same
+            // SORTED list, writing the same whole-rows value to the same
+            // destination. `rowDragManaged` stays OFF deliberately: a managed
+            // drag would have AG reorder its own copy while the destination
+            // write reorders the tree's, and the two orders would then differ
+            // for exactly as long as the re-render took.
+            let reorderProps =
+                match plan.ReorderCommit with
+                | None -> []
+                | Some destination ->
+                    let onRowDragEnd (p: obj) =
+                        let fromIndex: int = p?node?rowIndex
+                        let toIndex: int = p?overIndex
+
+                        context.WriteRows
+                            destination
+                            (BindingResolver.moveRow fromIndex toIndex sortedRows |> Seq.ofList)
+
+                    [ "rowDragManaged" ==> false; "onRowDragEnd" ==> onRowDragEnd ]
+
+            // Phase 1594 — the escape valve, now sharing `onGridReady` with the
+            // one thing AG's pagination cannot be told declaratively: which page
+            // to open on. The host's hook is invoked with AG Grid's own grid API
+            // (`GridReadyEvent.api`) — unwrapped, unvalidated and unmediated;
+            // see the escape-hatch inventory's Hatch 14 — after the opening page
+            // is applied, so a host that moves the grid on ready has the last
+            // word rather than being silently overridden.
+            let readyProps =
+                let openingPage =
+                    match plan.Pagination with
+                    | Some(_, _, page) when page > 1 -> Some page
+                    | _ -> None
+
+                match onReady, openingPage with
+                | None, None -> []
+                | _ ->
+                    [ "onGridReady"
+                      ==> (fun (p: obj) ->
+                          let api: obj = p?api
+
+                          match openingPage with
+                          | Some page when not (isNull api) -> api?paginationGoToPage (page - 1)
+                          | _ -> ()
+
+                          match onReady with
+                          | Some hook -> hook api
+                          | None -> ()) ]
 
             let gridProps =
                 createObj (
                     [ "columnDefs" ==> columnDefs
-                      "rowData" ==> List.toArray rows
+                      "rowData" ==> List.toArray sortedRows
                       "getRowId" ==> getRowId
                       "onRowClicked" ==> onRowClicked
                       "domLayout" ==> "autoHeight"
                       "animateRows" ==> true ]
+                    @ sortProps
+                    @ paginationProps
+                    @ reorderProps
                     @ readyProps
                 )
 

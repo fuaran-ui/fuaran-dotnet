@@ -353,6 +353,7 @@
     <Compile Include="ReferenceTablesEnhancementTests.fs" />
     <!-- Phase 1594 — the AG adapters' OnReady valve is authoring-only by construction. -->
     <Compile Include="AdapterOptionsIsolationTests.fs" />
+    <Compile Include="AgGridParityTests.fs" />
     <!-- Phase 1553 - the gate lanes' own contract: the filter's go-red proof, the roster's
          suite-level declarations, and the two entry points' shared lane vocabulary. -->
     <Compile Include="LaneTests.fs" />

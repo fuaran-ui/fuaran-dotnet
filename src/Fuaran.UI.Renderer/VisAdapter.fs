@@ -131,6 +131,27 @@ type VisualisationContext<'Msg> =
         /// emits one per row: it is the highest-volume egress surface the
         /// renderer has, and it was the one place the policy could not reach.
         EgressPolicy: Sanitize.EgressPolicy
+        /// Phase 1611 — the WHOLE-ROWS write a grid's declared destination
+        /// takes, supplied by the renderer because only it holds the write
+        /// path.
+        ///
+        /// It is here for exactly the reason `NodeId` and `EgressPolicy` above
+        /// are, one axis over. A grid's edited cell and its reordered row are
+        /// both writes of the same collection to the destination Phase 863's
+        /// `editDestination` resolves, and that write crosses the renderer's
+        /// `writeBackTo` — which carries Phase 266's scope routing and Phase
+        /// 782's refusal of host-reserved keys. An adapter has neither the
+        /// runtime nor the scope, so it could reach a store only by going
+        /// AROUND both guards, which is why this is a callback rather than an
+        /// address: the renderer performs the write, the adapter says which
+        /// destination and with what rows.
+        ///
+        /// `Binding<Row seq>` rather than a bare key because the destination is
+        /// a binding in the shipped rule — the Phase-663 floor writes to the
+        /// grid's own `source` when that source is a direct `Binding.State`,
+        /// and flattening it to a key here would be a second spelling of a rule
+        /// that already has one.
+        WriteRows: Binding<Row seq> -> Row seq -> unit
     }
 
 /// Adapter contract for the two Visualisation kinds whose author surface
