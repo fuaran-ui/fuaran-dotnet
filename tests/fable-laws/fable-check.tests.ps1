@@ -39,6 +39,26 @@
     8. A RED compile clears the record, so restoring the tree to a state that once passed still
        recompiles rather than standing on the earlier green.
 
+  THE CONCURRENCY, THE TIMINGS AND THE BUDGET (Phase 1620) are proved here too, and the claim
+  worth falsifying is again not the cheerful one. That compiles run at once is easy to assert and
+  says nothing; what matters is that a RED compile is still named when its output arrives
+  interleaved with three others', that the stage's cost is reported per compile, and that the
+  declared budget can actually go off — a budget nothing can breach is not a budget:
+
+    9.  The stage names the degree it ran at, and two independent entries run concurrently.
+    10. Every compile appears in the timing table with its wall-clock and Fable's own `parsed`
+        figure, under a coverage line saying how many ran and how many were skipped.
+    11. A compile that fails UNDER CONCURRENCY is still named, and the stage exits non-zero —
+        while its concurrent sibling is still reported as having compiled. Asserted over the
+        run that already carries a defective entry, which is a genuinely concurrent one now.
+    12. A stage past its budget WARNS, names the largest contributors, says which budget it read,
+        and STILL EXITS 0. Driven through `FUARAN_FABLE_BUDGET_SECONDS`, which exists for exactly
+        this: the alternative to an override is a warning nobody can reach.
+    13. `FUARAN_FABLE_PARALLELISM=1` runs the compiles in sequence — the lane the
+        before/after measurement recorded beside the budget was taken on — and an UNREADABLE
+        value falls back to the default rather than to one, because the safety direction here is
+        "run the stage", never "fail deciding how to".
+
   The go-red proof for the ADDRESS FUNCTION itself — that the hash moves with the sources, the
   Fable tool version and the entry's properties — is `fable-check.ps1 -ProveAddressing`, which
   compiles nothing, costs milliseconds, and therefore runs inside the gate on every invocation
@@ -121,9 +141,18 @@ function Invoke-Gate {
     # `run.ps1` sets around the stage — rather than through a parameter this script would be the
     # only caller of. Default `full`, so the derivation assertions below run under the lane that
     # never skips and read exactly as they did before Phase 1619.
-    param([string[]] $extraArguments = @(), [string] $lane = 'full')
+    #
+    # `$environment` carries the stage's other two knobs the same way — `FUARAN_FABLE_BUDGET_SECONDS`
+    # and `FUARAN_FABLE_PARALLELISM`, which `run.ps1` and a workflow would also set through the
+    # environment. Each is restored afterwards, so no assertion can condition the next one.
+    param([string[]] $extraArguments = @(), [string] $lane = 'full', [hashtable] $environment = @{})
     $previousLane = $env:FUARAN_TEST_LANE
     $env:FUARAN_TEST_LANE = $lane
+    $previousEnvironment = @{}
+    foreach ($name in $environment.Keys) {
+        $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+        [Environment]::SetEnvironmentVariable($name, $environment[$name])
+    }
     try {
         # Never piped — the same rule the gate itself states about `dotnet fable`: a pipe would
         # report the last command's status and a red gate would read as a pass, which is the one
@@ -132,6 +161,9 @@ function Invoke-Gate {
         $exit = $LASTEXITCODE
     }
     finally {
+        foreach ($name in $previousEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name])
+        }
         if ($null -eq $previousLane) { Remove-Item Env:FUARAN_TEST_LANE -ErrorAction SilentlyContinue }
         else { $env:FUARAN_TEST_LANE = $previousLane }
     }
@@ -327,6 +359,62 @@ try {
     finally {
         Remove-Item -Recurse -Force $otherTree -ErrorAction SilentlyContinue
     }
+
+    # ── 9-13. Concurrency, timings and the declared budget (Phase 1620) ──
+    #
+    # `$full` and `$red` above are re-read rather than re-run: both were full-lane runs over the
+    # two-entry scratch tree, which is exactly a concurrent run, and `$red` is the one that carries
+    # a defective entry. Re-running them to assert a second property of the same run would cost two
+    # more real Fable compiles and prove less, since the interesting claim is about THAT run.
+
+    Write-Host ''
+    Write-Host '── fable-check concurrency, timings, budget: go-red proof ──' -ForegroundColor Cyan
+
+    $degree = if ($full.Text -match '(?m)^\s+parallelism (\d+) over (\d+) compile') { [int] $Matches[1] } else { 0 }
+    Assert 'the stage names the degree it ran at' ($degree -gt 0) $full.Text
+    Assert 'two independent entries run concurrently' ($degree -ge 2) "parallelism $degree"
+
+    Assert 'every compile gets a timing row carrying Fable own parse figure' `
+    (($full.Text -match '(?m)^\s+[\d.]+s\s+parsed\s+\d+ms\s+emitted\s+\d+ms\s+compiled\s+.*SelfTest\.Root') -and
+        ($full.Text -match '(?m)^\s+[\d.]+s\s+parsed\s+\d+ms\s+emitted\s+\d+ms\s+compiled\s+.*SelfTest\.Armed')) $full.Text
+    Assert 'the timing table carries a coverage line' `
+    ($full.Text -match '2 compile\(s\) performed, 0 skipped') $full.Text
+    Assert 'a run inside its budget says so and warns about nothing' `
+    (($full.Text -match 'within the declared budget of 480s') -and ($full.Text -cnotmatch 'BUDGET EXCEEDED')) $full.Text
+
+    # 11. The property concurrency puts at risk: a red compile whose output arrived interleaved.
+    Assert 'a compile that fails under concurrency is named in the failure list' `
+    ($red.Text -match 'Fable portability compile FAILED for .*SelfTest\.Root') $red.Text
+    Assert 'and the stage still exits non-zero' ($red.Exit -ne 0) $red.Text
+    Assert 'while its concurrent sibling is still reported as compiled' `
+    ($red.Text -match '(?m)^\s+[\d.]+s\s+parsed.*compiled\s+.*SelfTest\.Armed') $red.Text
+    Assert 'and the failing compile is a FAILED row rather than a missing one' `
+    ($red.Text -match '(?m)^\s+[\d.]+s\s+parsed.*FAILED\s+.*SelfTest\.Root') $red.Text
+
+    # 12. The budget, made to go off. Warn-only is the whole posture, so BOTH halves are asserted:
+    # the warning appears AND the stage is still green.
+    $overBudget = Invoke-Gate -lane 'full' -environment @{ FUARAN_FABLE_BUDGET_SECONDS = '0.5' }
+    Assert 'a stage past its budget WARNS' ($overBudget.Text -match 'BUDGET EXCEEDED') $overBudget.Text
+    # Both of these are anchored INSIDE the warning block, not merely somewhere in the output: the
+    # budget figure also appears in the `within the ... budget` line and a bare `<n>s SelfTest...`
+    # matches every row of the timing table, so the loose spellings passed with the warning
+    # suppressed. A budget assertion that holds when the budget cannot fire is the vacuous green
+    # this whole file exists to refuse.
+    Assert 'the warning says which budget it read' `
+    ($overBudget.Text -match 'BUDGET EXCEEDED.*FUARAN_FABLE_BUDGET_SECONDS budget of 0\.5s') $overBudget.Text
+    Assert 'the warning names the largest contributors' `
+    ($overBudget.Text -match '(?s)BUDGET EXCEEDED.*rather than as a grown one\):\s+[\d.]+s\s+\S*SelfTest\.') $overBudget.Text
+    Assert 'the budget is warn-only: the stage is still green' ($overBudget.Exit -eq 0) $overBudget.Text
+
+    # 13. The parallelism override, and its unreadable-value fallback.
+    $sequential = Invoke-Gate -lane 'full' -environment @{ FUARAN_FABLE_PARALLELISM = '1' }
+    Assert 'FUARAN_FABLE_PARALLELISM=1 runs the compiles in sequence' `
+    (($sequential.Exit -eq 0) -and ($sequential.Text -match '(?m)^\s+parallelism 1 over 2 compile')) $sequential.Text
+
+    $garbled = Invoke-Gate -lane 'full' -environment @{ FUARAN_FABLE_PARALLELISM = 'not-a-number' }
+    $garbledDegree = if ($garbled.Text -match '(?m)^\s+parallelism (\d+) over (\d+) compile') { [int] $Matches[1] } else { 0 }
+    Assert 'an unreadable parallelism override falls back to the default, not to one' `
+    (($garbled.Exit -eq 0) -and ($garbledDegree -eq $degree)) "parallelism $garbledDegree, default was $degree"
 }
 finally {
     if (-not $KeepScratch) {

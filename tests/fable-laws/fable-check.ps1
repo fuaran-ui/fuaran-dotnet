@@ -121,12 +121,51 @@
   the FULL lane compiles with a matching record present — needs a real end-to-end run and lives in
   `fable-check.tests.ps1` beside this file, with the rest of the derivation's go-red proof.
 
+  THE CONCURRENT COMPILES, THE TIMINGS AND THE BUDGET (Phase 1620). The compiles above are
+  independent by construction — each enters a different project, each emits into its own output
+  directory, and `--noCache` means none of them reads another's leavings — so they are run
+  CONCURRENTLY, at a bounded degree (the compile count, capped; see `Get-CompileParallelism`).
+  Everything that is not `dotnet fable` itself stays in this runspace: the address is derived here,
+  the skip decision is taken here, the record is written here. A parallel runspace holds none of
+  this script's functions or state, so keeping it to the one process invocation is what makes the
+  concurrency a change of SCHEDULING rather than a second implementation of the stage.
+
+  A JOB THAT RETURNS NOTHING IS A FAILURE, NOT AN ABSENCE. Results are collated back in derivation
+  order and matched to the queue by name; a queued compile with no result is named and fails, the
+  same as one that exited non-zero. That property is worth stating because the obvious way to write
+  this loses a failure quietly: interleaved live output makes a red compile hard to find, and a
+  dropped job makes it impossible.
+
+  THE OUTPUT DIRECTORIES ARE PER-COMPILE, AND WERE ALREADY. The scratch ROOT is per tree
+  (`Get-TreeScratchRoot`, after two separate incidents where concurrent gates wiped each other's
+  output mid-compile); each entry emits into its own leaf beneath it. Concurrency here is the same
+  hazard one level down, and it is answered the same way — by never pointing two compiles at one
+  directory, rather than by serialising them.
+
+  THE TIMINGS ARE PRINTED because the stage's cost was invisible: it is ~65% of this repo's gate and
+  nothing said so until someone measured a whole run by hand. Every compile reports its wall-clock
+  beside Fable's OWN two figures — `parsed in Nms` (cracking the project graph) and `compilation
+  finished in Nms` (emitting) — read out of its captured output, because the split between them is
+  what says whether a stage grew by gaining a project or by growing one.
+
+  THE BUDGET IS DECLARED, AND IT WARNS. `$FableStageBudgetSeconds` below carries its measurement and
+  its date; a run past it prints a WARNING naming the largest contributors. Warn-only, deliberately:
+  a gate that goes red because a machine is slow is a gate people learn to step over, and this
+  number is a tripwire for a stage that GREW — Phase 1606 derives the entry set from the tree, so a
+  new Fable-shipping package adds a full parse with no edit here and nothing else would say so. What
+  it cannot do is ATTRIBUTE the growth: no per-compile baseline is stored, so it names the biggest
+  contributors and says plainly that is what it is naming. `FUARAN_FABLE_BUDGET_SECONDS` overrides
+  the number — which is also how the warning itself is falsified end to end, in
+  `fable-check.tests.ps1`.
+
   METHOD NOTES — both learned the hard way, both recorded in `CLAUDE.md` under "Fable method
   traps", and both binding on anything added here:
 
     * `dotnet fable`'s exit code is read DIRECTLY from `$LASTEXITCODE`. It is never piped — a pipe
       reports the LAST command's status, so `dotnet fable ... | tail` reports `tail`'s success and a
-      failed compile reads as a pass.
+      failed compile reads as a pass. CAPTURING is not piping: `$out = & dotnet fable ...` leaves
+      `$LASTEXITCODE` carrying Fable's own status, and capture is what concurrency forces — a dozen
+      interleaved live streams cannot be read.
     * The output directory is never `obj/`. Fable writes beside the project's own build
       intermediates there, re-parses part of the project, and reports errors against files the
       change never touched — an hour of looking in the wrong place.
@@ -168,7 +207,124 @@ $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
+$scriptRoot = $PSScriptRoot
 $failures = New-Object System.Collections.Generic.List[string]
+$stageClock = [Diagnostics.Stopwatch]::StartNew()
+
+# ── The declared cost of this stage (Phase 1620) ────────────────────────────
+#
+# MEASURED 2026-09-08 on the machine this was written on: 16 logical cores, warm NuGet and MSBuild
+# caches, the 12 portability entries the derivation then produced plus the law harness, full lane,
+# nothing skipped by address.
+#
+#   portability, strictly sequential (FUARAN_FABLE_PARALLELISM=1)   288.9s   (12 compiles)
+#   portability, concurrent at the default degree of 4              134.1s   2.15x
+#   the law harness: .NET run 43.4s + Fable compile 131.5s + node 1.9s      176.8s
+#   stage wall-clock, concurrent                                    310.8s
+#
+# Two things that measurement says and the headline number does not. The portability half is where
+# the concurrency is, and it is now the SMALLER half: the law harness runs three legs in sequence
+# and its own `--noCache` compile alone is 131.5s, so a stage-level budget is mostly a statement
+# about the laws. And per-compile wall-clocks INFLATE under contention — 427.9s of compile in 134.1s
+# of wall-clock, against 288.9s of compile when nothing contends — so the rows in the table below
+# are what each compile cost ON THIS RUN, never what it would cost alone.
+#
+# The budget is the stage's WALL CLOCK, because that is what a person waits for and what grew
+# unnoticed. It is set with headroom over the measurement above — loose enough that an ordinarily
+# slower machine does not trip it, tight enough that a stage which has GAINED a compile does. A
+# budget nobody can breach and a budget everybody breaches are the same artefact. 480s is ~1.55x
+# the measurement: headroom for a machine appreciably slower than this one, NOT for one half its
+# speed. On such a machine the warning fires and is a true statement about that machine's cost,
+# which is information rather than noise — and it is warn-only precisely so that reading stays
+# available instead of becoming a red gate somebody has to route around.
+#
+# The one other host that runs this stage is CI's `fable-portability` job, and it runs it
+# `-SkipLaws` — the portability half only, 134.1s of the 310.8s above — so a runner around
+# twice this machine's cost still sits inside 480s. If it stops doing so the honest answer is
+# to raise the number here WITH a fresh measurement beside it, never to widen it silently:
+# a budget whose provenance has been edited away is a number, not a measurement.
+$FableStageBudgetSeconds = 480
+
+# How many `dotnet fable` processes may run at once. Each runs MSBuild and fsc and holds the whole
+# project graph in memory; the estate has already recorded a gate killed for memory (`verify-all`
+# exit 143), so this cap is load-bearing rather than tidy. The effective degree is also held at or
+# below the machine's logical core count — see `Get-CompileParallelism`.
+$FableStageMaxParallelCompiles = 4
+
+# One row per compile this run performed, skipped, or failed — in the order it met them.
+$timings = New-Object System.Collections.Generic.List[object]
+
+function Add-Timing {
+    param(
+        [string] $label,
+        [string] $state,
+        [double] $seconds,
+        [object] $parsedMs = $null,
+        [object] $emittedMs = $null
+    )
+    $timings.Add([pscustomobject]@{
+            Label     = $label
+            State     = $state
+            Seconds   = $seconds
+            ParsedMs  = $parsedMs
+            EmittedMs = $emittedMs
+        })
+}
+
+function Get-FableTiming {
+    <#
+      Fable's own two figures, read out of a captured compile's output: `... parsed in 7319ms` (the
+      project graph cracked) and `Fable compilation finished in 15124ms` (the emit). Either may be
+      absent — a compile that failed while cracking never reaches the second — and an absent figure
+      is `$null`, printed as `-`. Never zero: a zero is a measurement, and nobody made this one.
+    #>
+    param([string[]] $lines)
+    $parsed = $null
+    $emitted = $null
+    foreach ($line in $lines) {
+        if ($line -match 'parsed in (\d+)ms') { $parsed = [int] $Matches[1] }
+        elseif ($line -match 'compilation finished in (\d+)ms') { $emitted = [int] $Matches[1] }
+    }
+    return [pscustomobject]@{ ParsedMs = $parsed; EmittedMs = $emitted }
+}
+
+function Get-CompileParallelism {
+    <#
+      The degree for this run: the compile count, capped by `$FableStageMaxParallelCompiles` and by
+      the machine's logical core count, so a two-core CI runner does not inherit the dev box's
+      number.
+
+      `FUARAN_FABLE_PARALLELISM` overrides it, and `1` is the sequential lane. That override is not a
+      convenience: it is what makes the sequential-versus-concurrent measurement recorded beside the
+      budget above REPRODUCIBLE by someone who did not take it, rather than a number to be believed.
+      An unparseable or non-positive value falls back to the default — the safety direction here is
+      "run the stage", never "fail deciding how to".
+    #>
+    param([int] $count)
+    if ($count -le 0) { return 1 }
+    if ($env:FUARAN_FABLE_PARALLELISM) {
+        $requested = 0
+        if ([int]::TryParse($env:FUARAN_FABLE_PARALLELISM.Trim(), [ref] $requested) -and $requested -ge 1) {
+            return [Math]::Min($count, $requested)
+        }
+    }
+    $cap = [Math]::Min($FableStageMaxParallelCompiles, [Math]::Max(1, [Environment]::ProcessorCount))
+    return [Math]::Min($count, $cap)
+}
+
+function Get-BudgetSeconds {
+    # The declared literal, unless the environment names another. Anything unreadable falls back to
+    # the literal rather than disabling the check.
+    if ($env:FUARAN_FABLE_BUDGET_SECONDS) {
+        $requested = 0.0
+        $styles = [Globalization.NumberStyles]::Float
+        $invariant = [Globalization.CultureInfo]::InvariantCulture
+        if ([double]::TryParse($env:FUARAN_FABLE_BUDGET_SECONDS.Trim(), $styles, $invariant, [ref] $requested) -and $requested -gt 0) {
+            return $requested
+        }
+    }
+    return [double] $FableStageBudgetSeconds
+}
 
 function Write-Stage {
     param([string] $message)
@@ -876,8 +1032,12 @@ if (-not $SkipPortability) {
 
     $skipped = 0
 
+    # The address is derived, and the skip decided, HERE — in this runspace, before anything runs
+    # concurrently. A parallel runspace carries none of this script's functions, caches or record
+    # store, so what the concurrency below covers is exactly one thing: invoking `dotnet fable`.
+    $queue = New-Object System.Collections.Generic.List[object]
+
     foreach ($project in $entries) {
-        $outDir = Join-Path $portabilityRoot $project.Name
         $address = Get-CompileAddress $project.Path $portabilitySemantics
 
         # The full lane never reaches the second operand: `$laneMaySkip` is false there, so the
@@ -891,26 +1051,109 @@ if (-not $SkipPortability) {
             Write-Host "  SKIPPED BY ADDRESS $($project.Relative)" -ForegroundColor Yellow
             Write-Host "    address $address" -ForegroundColor DarkGray
             Write-Host "    recorded green in lane '$($recorded.lane)' at $($recorded.recordedUtc)" -ForegroundColor DarkGray
+            Add-Timing $project.Relative 'skipped' 0
             continue
         }
 
-        Write-Host "  fable $($project.Relative)  [$(Get-EntryReason $project)]" -ForegroundColor DarkGray
+        $queue.Add([pscustomobject]@{
+                Name     = $project.Name
+                Relative = $project.Relative
+                Reason   = (Get-EntryReason $project)
+                Path     = $project.Path
+                Address  = $address
+                # Its OWN leaf under the per-tree root. Two compiles must never share one directory:
+                # that is the collision `Get-TreeScratchRoot` answers between gates, met again here
+                # between the compiles of a single gate.
+                OutDir   = (Join-Path $portabilityRoot $project.Name)
+            })
+    }
 
-        # --noCache is mandatory: a stale .fable cache can serve a compile that no longer reflects
-        # the sources, which is the one answer this stage must never give. The address above does
-        # not soften that — it decides whether to INVOKE Fable at all, and it moves with every byte
-        # Fable would read.
-        dotnet fable $project.Path -o $outDir --noCache
+    $degree = Get-CompileParallelism $queue.Count
+    $completed = @()
 
-        if ($LASTEXITCODE -ne 0) {
-            $failures.Add("Fable portability compile FAILED for $($project.Relative) (exit $LASTEXITCODE)")
-            Write-Host "  FAILED: $($project.Relative)" -ForegroundColor Red
-            Clear-RecordedGreen $project.Name
+    if ($queue.Count -gt 0) {
+        Write-Host "  parallelism $degree over $($queue.Count) compile(s)" -ForegroundColor DarkGray
+
+        try {
+            $completed = @($queue | ForEach-Object -ThrottleLimit $degree -Parallel {
+                    # A parallel runspace starts with its own preference variables and its own
+                    # location. `Continue` so that a native command writing to stderr under `2>&1`
+                    # cannot terminate the runspace before its exit code is read — the exit code is
+                    # what decides a compile, never the stream. The location is set so the compile
+                    # runs from exactly where it ran when it ran in sequence: Fable prints paths
+                    # relative to it, and every argument below is absolute regardless.
+                    $ErrorActionPreference = 'Continue'
+                    Set-Location $using:scriptRoot
+
+                    $job = $_
+                    $clock = [Diagnostics.Stopwatch]::StartNew()
+
+                    # ASSIGNMENT, not a pipe. The standing rule is that `dotnet fable` is never
+                    # piped, because a pipeline reports its LAST command's status and a failed
+                    # compile then reads as a pass. Capturing does not move `$LASTEXITCODE`; it
+                    # still carries Fable's own. And capture is what concurrency forces — a dozen
+                    # interleaved live streams cannot be read, so each compile's output is replayed
+                    # whole, in derivation order, by the collation below.
+                    #
+                    # --noCache is mandatory: a stale .fable cache can serve a compile that no
+                    # longer reflects the sources, which is the one answer this stage must never
+                    # give. The address does not soften that — it decides whether to INVOKE Fable at
+                    # all, and it moves with every byte Fable would read.
+                    $output = & dotnet fable $job.Path -o $job.OutDir --noCache 2>&1
+                    $exit = $LASTEXITCODE
+                    $clock.Stop()
+
+                    [pscustomobject]@{
+                        Name    = $job.Name
+                        Exit    = $exit
+                        Seconds = $clock.Elapsed.TotalSeconds
+                        Output  = @($output | ForEach-Object { [string] $_ })
+                    }
+                })
         }
-        else {
-            # Written on EVERY lane, consulted on the narrow ones only — so the full lane's greens
-            # are what the next narrow run stands on.
-            Write-RecordedGreen $project.Name $address $portabilitySemantics
+        catch {
+            # A runspace that died takes its result with it. Recorded as a failure of the stage
+            # rather than rethrown, so the collation below still names every compile that has no
+            # result — which is more useful than one exception naming none of them.
+            $failures.Add("the concurrent portability compiles raised: $($_.Exception.Message)")
+        }
+
+        $byName = @{}
+        foreach ($result in $completed) { $byName[$result.Name] = $result }
+
+        # Collated in DERIVATION order, not completion order, so the stage reads the same way it did
+        # when it ran in sequence and two runs of an unchanged tree print the same thing.
+        foreach ($job in $queue) {
+            Write-Host "  fable $($job.Relative)  [$($job.Reason)]" -ForegroundColor DarkGray
+
+            $result = $byName[$job.Name]
+
+            if (-not $result) {
+                # A queued compile with NO result is a failure, never an absence. Nothing proves it
+                # succeeded, and the record is cleared for the same reason a red compile clears it.
+                $failures.Add("Fable portability compile for $($job.Relative) returned no result — the job did not complete")
+                Write-Host "  NO RESULT: $($job.Relative)" -ForegroundColor Red
+                Clear-RecordedGreen $job.Name
+                Add-Timing $job.Relative 'NO RESULT' 0
+                continue
+            }
+
+            foreach ($line in $result.Output) { Write-Host "    $line" }
+
+            $figures = Get-FableTiming $result.Output
+
+            if ($result.Exit -ne 0) {
+                $failures.Add("Fable portability compile FAILED for $($job.Relative) (exit $($result.Exit))")
+                Write-Host "  FAILED: $($job.Relative)" -ForegroundColor Red
+                Clear-RecordedGreen $job.Name
+                Add-Timing $job.Relative 'FAILED' $result.Seconds $figures.ParsedMs $figures.EmittedMs
+            }
+            else {
+                # Written on EVERY lane, consulted on the narrow ones only — so the full lane's greens
+                # are what the next narrow run stands on.
+                Write-RecordedGreen $job.Name $job.Address $portabilitySemantics
+                Add-Timing $job.Relative 'compiled' $result.Seconds $figures.ParsedMs $figures.EmittedMs
+            }
         }
     }
 
@@ -941,13 +1184,17 @@ if (-not $SkipLaws) {
     $lawsFailuresBefore = $failures.Count
     $nodePresent = [bool] (Get-Command node -CommandType Application -ErrorAction SilentlyContinue)
 
+    $lawsLabel = ConvertTo-RepoRelative $lawsProject
+
     if ($lawsRecorded) {
+        Add-Timing $lawsLabel 'skipped' 0
         Write-Host "  SKIPPED BY ADDRESS $(ConvertTo-RepoRelative $lawsProject)" -ForegroundColor Yellow
         Write-Host "    address $lawsAddress" -ForegroundColor DarkGray
         Write-Host "    recorded green in lane '$($lawsRecorded.lane)' at $($lawsRecorded.recordedUtc)" -ForegroundColor DarkGray
         Write-Host "    (the full lane runs both legs and byte-compares them regardless)" -ForegroundColor DarkGray
     }
     elseif (-not $nodePresent) {
+        Add-Timing $lawsLabel 'no node' 0
         # A NAMED skip, never a silent one — the posture `test-suites.json`'s corpus gate takes.
         # The portability stage above needed no Node and has already run, so the compile half of
         # this gate is intact on a machine that has never installed one.
@@ -957,20 +1204,45 @@ if (-not $SkipLaws) {
     else {
         Remove-Item -Recurse -Force $lawsOut -ErrorAction SilentlyContinue
 
+        # The three legs are timed separately because they answer different cost questions: the
+        # .NET run is a build plus an execution, the Fable compile is one more `--noCache` parse of
+        # the same shape the portability stage measures, and the Node run is the only figure in this
+        # stage that is a JS runtime's. A single laws number would hide which of them grew.
+
         # The .NET leg. Filtered to the harness's own line shapes so build chatter can never enter
         # the comparison.
+        $dotnetClock = [Diagnostics.Stopwatch]::StartNew()
         $dotnetOut = @(dotnet run --project (Join-Path $PSScriptRoot 'FableLaws.fsproj') -c Release |
             Where-Object { $_ -match $lineShape })
         $dotnetExit = $LASTEXITCODE
+        $dotnetClock.Stop()
+        Add-Timing "$lawsLabel (.NET run)" 'ran' $dotnetClock.Elapsed.TotalSeconds
 
-        dotnet fable (Join-Path $PSScriptRoot 'FableLaws.fsproj') -o $lawsOut --noCache
+        # Captured rather than streamed, so Fable's own `parsed in Nms` can be read out of it —
+        # the same figure the portability compiles report. Assignment is not a pipe, so
+        # `$LASTEXITCODE` still carries Fable's status; the output is echoed immediately below so
+        # nothing a live stream would have shown is lost.
+        $lawsFableClock = [Diagnostics.Stopwatch]::StartNew()
+        $lawsFableOutput = & dotnet fable (Join-Path $PSScriptRoot 'FableLaws.fsproj') -o $lawsOut --noCache 2>&1
+        $lawsFableExit = $LASTEXITCODE
+        $lawsFableClock.Stop()
 
-        if ($LASTEXITCODE -ne 0) {
-            $failures.Add("Fable compile of the law harness FAILED (exit $LASTEXITCODE)")
+        $lawsFableOutput = @($lawsFableOutput | ForEach-Object { [string] $_ })
+        foreach ($line in $lawsFableOutput) { Write-Host "  $line" }
+
+        $lawsFigures = Get-FableTiming $lawsFableOutput
+        Add-Timing "$lawsLabel (Fable compile)" $(if ($lawsFableExit -eq 0) { 'compiled' } else { 'FAILED' }) `
+            $lawsFableClock.Elapsed.TotalSeconds $lawsFigures.ParsedMs $lawsFigures.EmittedMs
+
+        if ($lawsFableExit -ne 0) {
+            $failures.Add("Fable compile of the law harness FAILED (exit $lawsFableExit)")
         }
         else {
+            $nodeClock = [Diagnostics.Stopwatch]::StartNew()
             $fableOut = @(node (Join-Path $lawsOut 'Program.js') | Where-Object { $_ -match $lineShape })
             $fableExit = $LASTEXITCODE
+            $nodeClock.Stop()
+            Add-Timing "$lawsLabel (Node run)" 'ran' $nodeClock.Elapsed.TotalSeconds
 
             if ($dotnetOut.Count -eq 0) {
                 $failures.Add('the law harness produced no output on .NET — it did not run to completion')
@@ -1032,7 +1304,67 @@ if (-not $SkipLaws) {
     }
 }
 
-# ── 3. Verdict ──────────────────────────────────────────────────────────────
+# ── 3. Timings and the declared budget (Phase 1620) ─────────────────────────
+#
+# What this reports and what it does NOT. It reports where the stage's wall-clock went, split per
+# compile and split again into Fable's own cracking and emitting figures, and whether the total sat
+# inside the number declared at the top of this file. It does not compare any of that to a previous
+# run: nothing here stores a per-compile baseline, so "the compile that grew" is not a question this
+# can answer, and it says so rather than naming the largest contributor as though it were.
+
+if ($timings.Count -gt 0) {
+    Write-Stage 'timings'
+
+    $performed = @($timings | Where-Object { $_.State -notin @('skipped', 'no node') })
+    $stageSeconds = $stageClock.Elapsed.TotalSeconds
+    $budget = Get-BudgetSeconds
+    $budgetSource = if ($env:FUARAN_FABLE_BUDGET_SECONDS -and ($budget -ne [double] $FableStageBudgetSeconds)) {
+        'FUARAN_FABLE_BUDGET_SECONDS'
+    }
+    else { 'declared' }
+
+    foreach ($row in ($timings | Sort-Object -Property @{ Expression = 'Seconds'; Descending = $true })) {
+        $parsed = if ($null -ne $row.ParsedMs) { '{0,7}ms' -f $row.ParsedMs } else { '{0,9}' -f '-' }
+        $emitted = if ($null -ne $row.EmittedMs) { '{0,7}ms' -f $row.EmittedMs } else { '{0,9}' -f '-' }
+        $colour = switch ($row.State) {
+            'skipped' { 'Yellow' }
+            'no node' { 'Yellow' }
+            'compiled' { 'Gray' }
+            'ran' { 'Gray' }
+            default { 'Red' }
+        }
+        Write-Host ("  {0,7:F1}s  parsed {1}  emitted {2}  {3,-9} {4}" -f `
+                $row.Seconds, $parsed, $emitted, $row.State, $row.Label) -ForegroundColor $colour
+    }
+
+    $compileSeconds = [double] (($timings | Measure-Object -Property Seconds -Sum).Sum)
+    Write-Host ""
+    Write-Host ("  {0} compile(s) performed, {1} skipped; {2:F1}s of compile in {3:F1}s of wall-clock" -f `
+            $performed.Count, ($timings.Count - $performed.Count), $compileSeconds, $stageSeconds)
+
+    # ALWAYS assessed, and the coverage line above is what keeps that honest: a narrow lane that
+    # skipped most of the stage sits far inside the budget and says so beside the count that
+    # explains why. Suppressing the verdict on a partial run would make the one instrument that can
+    # go off unreachable from any run a test can drive — and a budget nothing can breach is not a
+    # budget.
+    if ($stageSeconds -gt $budget) {
+        Write-Host ""
+        Write-Host ("  BUDGET EXCEEDED — {0:F1}s against a {1} budget of {2:0.###}s." -f $stageSeconds, $budgetSource, $budget) -ForegroundColor Yellow
+        Write-Host "  This is a WARNING and not a failure: a gate that goes red because a machine is slow" -ForegroundColor Yellow
+        Write-Host "  is a gate people learn to step over. What it is for is a stage that GREW." -ForegroundColor Yellow
+        Write-Host "  The largest contributors to this run (NOT a comparison — nothing here holds a" -ForegroundColor Yellow
+        Write-Host "  previous run to compare against; a stage that gained a compile shows up as a new" -ForegroundColor Yellow
+        Write-Host "  row rather than as a grown one):" -ForegroundColor Yellow
+        foreach ($row in ($performed | Sort-Object -Property Seconds -Descending | Select-Object -First 3)) {
+            Write-Host ("    {0,7:F1}s  {1}" -f $row.Seconds, $row.Label) -ForegroundColor Yellow
+        }
+    }
+    else {
+        Write-Host ("  within the {0} budget of {1:0.###}s." -f $budgetSource, $budget) -ForegroundColor DarkGray
+    }
+}
+
+# ── 4. Verdict ──────────────────────────────────────────────────────────────
 
 Write-Host ""
 
