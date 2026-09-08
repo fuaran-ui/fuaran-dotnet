@@ -52,10 +52,14 @@
   Re-test after a code edit (skip format + build for ~10s loop).
 
 .EXAMPLE
-  pwsh ./run.ps1 -Lane fast -SkipFable
+  pwsh ./run.ps1 -Lane fast
 
-  The pre-merge lane: format + build + every suite but the slow ones, without
-  the Fable stage.
+  The pre-merge lane: format + build + every suite but the slow ones, AND the
+  Fable stage with Phase 1619's content-addressed skip armed. Measured 2026-09-08
+  on this repo: 86.4s without the stage against 90.6s with it on an unchanged
+  tree, and 80.8s against 116.2s after editing one file in Fuaran.UI.Renderer.
+  `-SkipFable` is still the switch for a loop that wants no Fable stage at all;
+  it is no longer what the pre-merge lane is declared as.
 
 .EXAMPLE
   pwsh ./run.ps1 -Demo
@@ -84,9 +88,9 @@ param(
     # The lane rides the recorded gate COMMAND STRING, so a result says which lane produced it
     # rather than leaving a reader to assume the full one - which is what makes a lane honest where
     # a dropped stage is not. `-SkipFable` composes with it and is NOT implied by any lane: the
-    # Fable leg is a stage, not a lane. A pre-merge invocation names both, because on measurement
-    # the Fable stage is ~65% of this gate's wall-clock and a "fast" lane that leaves it in is not
-    # fast.
+    # Fable leg is a stage, not a lane. A pre-merge invocation used to name both, because on
+    # measurement the Fable stage was ~65% of this gate's wall-clock and a "fast" lane that left it
+    # in was not fast.
     #
     # Phase 1619 narrowed that last point rather than retiring it. The lane now also reaches the
     # FABLE STAGE, where a narrow lane may skip a compile whose CONTENT ADDRESS matches its last
@@ -94,6 +98,23 @@ param(
     # instead of minutes. `full` writes the address and never consults one, so the skip is
     # structurally unreachable on the lane a release cites, and `-SkipFable` remains the right
     # switch for a loop that wants no Fable stage at all rather than a cheap one.
+    #
+    # Phase 1623 measured the WHOLE LANE rather than the stage, and the side's declared fast lane
+    # dropped `-SkipFable` on the result. On this repo, 2026-09-08: `-Lane fast -SkipFable` 86.4s
+    # against `-Lane fast` 90.6s on an unchanged tree - the Fable stage itself 3.0s, 13 subjects
+    # skipped by name - and 80.8s against 116.2s after editing one file in Fuaran.UI.Renderer, the
+    # stage 35.2s for one recompile and twelve skips. So the pre-merge lane buys back the coverage a
+    # worker most needs before a merge (a client-tier break, a law divergence) for ~4s on an
+    # unchanged tree, which is inside this gate's own run-to-run noise. The FIRST run in a fresh
+    # clone or worktree still pays the stage in full - 145.1s against 291.2s with no record to
+    # match - once.
+    #
+    # WHAT A LANE DECIDES IS WHETHER THE SKIP IS ARMED, NEVER WHICH HALF RUNS. Both halves of the
+    # stage - the client-tier portability compiles and the law harness - are reached by every lane,
+    # and 1619's address makes each of them seconds on an unchanged tree, so there is nothing left
+    # for a half-dropping lane to buy. Selecting a half is what the stage script's own
+    # `-SkipPortability` / `-SkipLaws` are for: they stay switches, named in whatever command a
+    # result quotes, for exactly the reason `-SkipFable` is not a lane.
     [ValidateSet('pure', 'fast', 'full')]
     [string] $Lane = 'full'
 )

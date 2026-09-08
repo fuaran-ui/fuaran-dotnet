@@ -3,7 +3,7 @@ module Fuaran.UI.Tests.LaneTests
 // ============================================================================
 //  Phase 1553 — the gate lanes' own contract.
 //
-//  Three things are asserted here, and they are three DIFFERENT claims:
+//  Four things are asserted here, and they are four DIFFERENT claims:
 //
 //   1. The FILTER does what it says. A slow-marked leaf is absent from `fast`
 //      and from `pure`, an unmarked one is present in both, and every leaf is
@@ -23,6 +23,11 @@ module Fuaran.UI.Tests.LaneTests
 //      each read `test-suites.json`, and a lane spelling recognised by one and
 //      not the other would make the FAKE gate and the script gate run different
 //      sets — the exact drift `test-suites.json` was introduced to end.
+//
+//   4. The lane reaches the FABLE STAGE, and the FULL lane never arms its
+//      content-addressed skip (Phase 1623, over Phase 1619's mechanism).
+//      Those two are what let the declared pre-merge lane name the Fable
+//      stage instead of dropping it; see the block at the foot of this file.
 // ============================================================================
 
 open System.IO
@@ -292,4 +297,157 @@ let entryPointTests =
                   Expect.stringContains build (sprintf "\"%s\"" lane) (sprintf "Build.fs names the `%s` lane" lane)
 
               Expect.stringContains build "FUARAN_TEST_LANE" "Build.fs reads the lane from the environment"
+          } ]
+
+// ---------------------------------------------------------------------------
+//  4. the lane reaches the FABLE STAGE — and the full lane never arms the skip
+//     (Phase 1623)
+// ---------------------------------------------------------------------------
+//
+//  Phase 1619 made the Fable stage cheap on an unchanged tree by keying every
+//  compile on a content address and letting a NARROW lane skip a match. Phase
+//  1623 is what made that reachable from the declared pre-merge lane: the fast
+//  lane now names the Fable stage instead of dropping it with `-SkipFable`.
+//
+//  That turns two facts about the WIRING into load-bearing ones, so they are
+//  pinned here in the shape of the entry-point tests above:
+//
+//    * `run.ps1` forwards the lane into the Fable STAGE, not only into the test
+//      suites. Lose that line and the stage silently runs as `full` inside a
+//      `fast` invocation — minutes where the declaration promises seconds, and
+//      nothing says so.
+//
+//    * the FULL lane can never arm the skip. That is 1619's whole safety
+//      argument: the lane a release cites writes addresses and consults none,
+//      so a stale record cannot reach it. Every read that DECIDES a skip is
+//      guarded by the narrow-lane allow-list, and the guard is withdrawn
+//      outright if the address function's own go-red proof fails.
+//
+//  Both are source reads, for the same reason the tests above are: the claim is
+//  about what the gate is wired to do, and the only artefact that answers it is
+//  the script.
+
+let private runScript =
+    lazy (File.ReadAllText(Path.Combine(repoRoot.Value, "run.ps1")))
+
+let private fableCheckPath =
+    lazy (Path.Combine(repoRoot.Value, "tests", "fable-laws", "fable-check.ps1"))
+
+let private fableCheckSource = lazy (File.ReadAllText fableCheckPath.Value)
+
+let private fableCheckLines = lazy (File.ReadAllLines fableCheckPath.Value)
+
+/// The `-SkipFable`-guarded block in `run.ps1`, from its own `if` to the invocation of the stage
+/// script. Failing to locate it FAILS rather than returning an empty region: a pin that cannot find
+/// its subject has proved nothing, and an empty string would satisfy every negative assertion below.
+let private fableStageBlock =
+    lazy
+        (let script = runScript.Value
+         let start = script.IndexOf("if (-not $SkipFable)", System.StringComparison.Ordinal)
+         let finish = script.IndexOf("& $fableCheck", System.StringComparison.Ordinal)
+
+         if start < 0 || finish <= start then
+             failwith
+                 "LaneTests: run.ps1 no longer holds a `-SkipFable`-guarded block invoking the Fable stage script — the lane-forwarding pin could not be located, which is a failure, not a pass."
+
+         script.Substring(start, finish - start))
+
+/// The `-Addresses` REPORT region of `fable-check.ps1` — it prints each subject's address and record
+/// state and then exits, so the record read inside it decides nothing and is deliberately unguarded.
+/// Located as a range so the guard scan below excludes exactly it, rather than excluding by a pattern
+/// that would also excuse a real skip decision.
+let private addressReportRange =
+    lazy
+        (let lines = fableCheckLines.Value
+
+         match
+             lines
+             |> Array.tryFindIndex (fun l -> l.TrimStart().StartsWith "if ($Addresses)")
+         with
+         | None -> None
+         | Some start ->
+             lines
+             |> Array.skip start
+             |> Array.tryFindIndex (fun l -> l.Trim() = "exit 0")
+             |> Option.map (fun offset -> start, start + offset))
+
+[<Tests>]
+let fableStageLaneTests =
+    testList
+        "Phase 1623 — gate lanes: the Fable stage"
+        [ test "run.ps1 forwards the lane INTO the Fable stage, not only into the suites" {
+              // The go-red edge: delete the assignment beside `& $fableCheck` and the stage runs as
+              // `full` inside a `fast` invocation — minutes where the declaration promises seconds.
+              Expect.stringContains
+                  fableStageBlock.Value
+                  "$env:FUARAN_TEST_LANE = $Lane"
+                  "the Fable stage is invoked with the lane in scope"
+
+              // Counted as well as located, so widening the block search above cannot make the
+              // assertion pass on the test stage's assignment.
+              let assignments =
+                  Regex.Matches(runScript.Value, @"\$env:FUARAN_TEST_LANE = \$Lane").Count
+
+              Expect.isTrue (assignments >= 2) "run.ps1 sets the lane for BOTH the suites and the Fable stage"
+          }
+
+          test "the Fable stage reads the lane from the SAME variable run.ps1 sets" {
+              // One variable, so the stage cannot be handed a lane the rest of the gate did not run
+              // under — the reason the stage takes no lane parameter of its own.
+              Expect.stringContains
+                  fableCheckSource.Value
+                  "$env:FUARAN_TEST_LANE"
+                  "fable-check.ps1 reads the lane from the environment"
+          }
+
+          test "only the NARROW lanes arm the skip — the full lane is absent from the allow-list" {
+              let m =
+                  Regex.Match(fableCheckSource.Value, @"\$laneMaySkip\s*=\s*\$lane\s+-in\s+@\(([^)]*)\)")
+
+              Expect.isTrue m.Success "fable-check.ps1 decides the skip with a positive lane allow-list"
+
+              let allowed = m.Groups[1].Value
+              Expect.stringContains allowed "'pure'" "pure may skip"
+              Expect.stringContains allowed "'fast'" "fast may skip"
+
+              // The claim 1619 rests on, as an assertion rather than a comment: the lane a release
+              // cites is not in the list, so the skip is unreachable there by construction.
+              Expect.isFalse (allowed.Contains "full") "the FULL lane can never arm the skip"
+          }
+
+          test "every record read that DECIDES a skip is guarded by that allow-list" {
+              let report = addressReportRange.Value
+              Expect.isSome report "the -Addresses report region could be located in fable-check.ps1"
+              let reportStart, reportEnd = report.Value
+
+              let calls =
+                  fableCheckLines.Value
+                  |> Array.mapi (fun i line -> i, line)
+                  |> Array.filter (fun (i, line) ->
+                      line.Contains "Test-RecordedGreen"
+                      && not (line.TrimStart().StartsWith "function ")
+                      && not (i >= reportStart && i <= reportEnd))
+
+              // Vacuity guard, asserted BEFORE the contents: a rename that emptied `calls` would
+              // satisfy the emptiness assertion below while measuring nothing at all.
+              Expect.isTrue
+                  (calls.Length >= 2)
+                  "both addressed subjects — the portability entries and the law harness — consult a record"
+
+              let unguarded =
+                  calls
+                  |> Array.filter (fun (_, line) -> not (line.Contains "$laneMaySkip"))
+                  |> Array.map (fun (i, line) -> sprintf "line %d: %s" (i + 1) (line.Trim()))
+
+              Expect.isEmpty unguarded "a record read outside the -Addresses report must be guarded by $laneMaySkip"
+          }
+
+          test "a failed address proof WITHDRAWS skipping rather than reporting it" {
+              // The narrow lane runs the address function's own go-red proof before consulting
+              // anything. If that proof fails, skipping is turned OFF for the whole run — a broken
+              // address function must not be a warning beside a stage that went on skipping.
+              Expect.stringContains
+                  fableCheckSource.Value
+                  "$laneMaySkip = $false"
+                  "a failed addressing proof clears the skip for the whole run"
           } ]

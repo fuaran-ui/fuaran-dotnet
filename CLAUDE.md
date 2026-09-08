@@ -77,8 +77,8 @@ is byte-identical to the pre-lane gate and is the only lane a shipping claim may
 
 ```powershell
 pwsh ./run.ps1                             # full — the ship lane (unchanged)
-pwsh ./run.ps1 -Lane fast -SkipFable       # the pre-merge lane
-pwsh ./run.ps1 -Lane pure -SkipFable       # the per-commit lane, seconds
+pwsh ./run.ps1 -Lane fast                  # the pre-merge lane — Fable stage IN, skip armed
+pwsh ./run.ps1 -Lane pure -SkipFable       # the tightest per-commit loop, seconds
 ```
 
 A lane is decided at two granularities, because the two costs live at different granularities:
@@ -96,9 +96,11 @@ A test runs in lane L iff its suite admits L and it is not slow-marked. Both rea
 unrecognised `lane` value, and a narrow lane that would admit no test raises rather than running
 nothing and exiting 0.
 
-**`-SkipFable` is not implied by any lane** — the Fable leg is a stage, not a lane. It is named
-explicitly in the fast-lane invocations above because on measurement it was the single largest
-share of this gate's wall-clock, so a pre-merge lane that left it in was not fast.
+**`-SkipFable` is not implied by any lane** — the Fable leg is a stage, not a lane. It used to be
+named explicitly in the fast-lane invocation above because on measurement it was the single largest
+share of this gate's wall-clock, so a pre-merge lane that left it in was not fast. It still is what
+the tightest per-commit loop reaches for; it is no longer what the **declared** fast lane is, for
+the measured reason below.
 
 **Phase 1619 narrowed that last point rather than retiring it: the lane now reaches the Fable stage
 too**, where a narrow lane may skip a compile whose CONTENT ADDRESS matches its last recorded green.
@@ -109,6 +111,30 @@ invalidates most entries and approaches the cold figure; the skip is worth what 
 `full` writes addresses and consults none, so the skip is structurally unreachable on the lane a
 release cites, and `-SkipFable` remains the right switch for a loop that wants no Fable stage at
 all rather than a cheap one. See "The Fable stage" below.
+
+**Phase 1623 measured the WHOLE LANE rather than the stage, and the side's declared fast lane
+(`gates.verify.fastLane`) dropped `-SkipFable` on the result.** On this repo, 2026-09-08, 16 logical
+cores, warm caches, one run each:
+
+| `pwsh ./run.ps1 …` | unchanged tree | one file edited in `Fuaran.UI.Renderer` |
+|---|---|---|
+| `-Lane fast -SkipFable` | 86.4s | 80.8s |
+| `-Lane fast` | **90.6s** (stage 3.0s, 0 compiled / 13 skipped) | **116.2s** (stage 35.2s, 1 compiled / 12 skipped) |
+
+So the pre-merge lane buys back the Fable coverage a worker most needs before a merge — a
+client-tier break, a law divergence — for **~4s** on an unchanged tree, which is inside this gate's
+own run-to-run noise (the two `-SkipFable` rows differ by 5.6s for no reason but the machine), and
+for ~35s when the edit is one that actually reaches the client tier. The FIRST run in a fresh clone
+or worktree, with no record to match, still pays the stage in full: 145.1s against 291.2s, once.
+
+**What a lane decides is whether the skip is ARMED, never which half runs.** Both halves —
+portability and the laws — are reached by every lane, and 1619's address makes each of them seconds
+on an unchanged tree, so there is nothing left for a half-dropping lane to buy. Selecting a half is
+what the stage script's own `-SkipPortability` / `-SkipLaws` are for; they stay switches, named in
+whatever command a result quotes, for exactly the reason `-SkipFable` is not a lane. The wiring both
+statements rest on — that `run.ps1` forwards the lane into the STAGE, and that the full lane can
+never arm the skip — is pinned as a source read in
+[`LaneTests.fs`](src/Fuaran.UI.Tests/LaneTests.fs), claim 4.
 
 ## The Fable stage
 

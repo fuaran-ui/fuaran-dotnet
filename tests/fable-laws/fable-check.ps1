@@ -121,6 +121,25 @@
   the FULL lane compiles with a matching record present — needs a real end-to-end run and lives in
   `fable-check.tests.ps1` beside this file, with the rest of the derivation's go-red proof.
 
+  AND SINCE PHASE 1623 THE SKIP IS ON THE DEFAULT PRE-MERGE PATH rather than an opt-in curiosity.
+  The side's declared fast lane named `-SkipFable` until the WHOLE LANE was measured rather than
+  this stage: `run.ps1 -Lane fast` costs 90.6s against 86.4s with the stage dropped on an unchanged
+  tree — this stage 3.0s of it, 13 subjects skipped by name — and 116.2s against 80.8s after one
+  file in `Fuaran.UI.Renderer` changed, this stage 35.2s for one recompile and twelve skips
+  (2026-09-08, this machine, one run each). The declaration dropped the switch on that result, and
+  the consequence for anything edited here is worth stating plainly: an address that is wrong is now
+  wrong on the run a worker makes before EVERY merge, not only on a lane somebody opted into. That
+  is why the go-red proof above runs in-gate and WITHDRAWS skipping rather than warning, and why
+  every uncertainty below resolves to "compile" rather than to "skip".
+
+  WHAT A LANE DECIDES IS WHETHER THE SKIP IS ARMED, NEVER WHICH HALF OF THIS STAGE RUNS. Both halves
+  are reached by every lane. Phase 1620 measured them at 134.1s (portability, concurrent) and 176.8s
+  (the laws), so a lane that dropped one would have looked like the obvious economy — but the
+  address makes each of them seconds on an unchanged tree, which leaves a half-dropping lane nothing
+  to buy and costs it the coverage. Selecting a half is what `-SkipPortability` / `-SkipLaws` are
+  for: switches, named in whatever command a result quotes, for exactly the reason `-SkipFable` is
+  not a lane.
+
   THE CONCURRENT COMPILES, THE TIMINGS AND THE BUDGET (Phase 1620). The compiles above are
   independent by construction — each enters a different project, each emits into its own output
   directory, and `--noCache` means none of them reads another's leavings — so they are run
