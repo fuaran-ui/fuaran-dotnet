@@ -54,9 +54,14 @@ let rec private mentions (t: Type) : Type seq =
             yield! t.GetGenericArguments() |> Seq.collect mentions
 
         if t.IsArray then
-            match t.GetElementType() with
-            | null -> ()
-            | element -> yield! mentions element
+            // `Option.ofObj` rather than a `null` pattern: under the 10.0.3xx compiler the
+            // identifier branch of `match … with | null -> … | element -> …` is not narrowed for
+            // `Type | null`, so the recursive call is a nullness error (FS3261) under this repo's
+            // `TreatWarningsAsErrors`. `global.json` rolls forward on the feature band, so the
+            // stricter compiler is in scope for every machine that has one.
+            match Option.ofObj (t.GetElementType()) with
+            | None -> ()
+            | Some element -> yield! mentions element
     }
 
 /// The declared field types of a record or union case; empty for anything else.
