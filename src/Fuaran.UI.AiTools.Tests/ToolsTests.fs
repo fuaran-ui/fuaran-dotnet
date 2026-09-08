@@ -673,4 +673,84 @@ let bindingSlotConsistencyTests =
               for node in nodes do
                   expectReplaceable node "Disabled"
                   expectResolvable node "Disabled"
+          }
+
+          // ── Phase 1615 — the live-Transform sites, off the shared walk ──
+          //
+          // The 424 / 421 deferral discharged: a host asks WHICH live sources a
+          // node holds, and on WHICH key each of them recomputes, without
+          // reimplementing the analysis walk it cannot keep in step with.
+
+          test "Phase 1615 getNodeState reports a live-Transform site under the binding block" {
+              let pipeline: Fuaran.Core.Transform list =
+                  [ Fuaran.Core.Transform.Project [ "n", "n" ] ]
+
+              let source: Binding<Fuaran.Core.Row seq> =
+                  Binding.Transform(
+                      TransformSource.Live(
+                          Binding.State("rows", None),
+                          Fuaran.Core.Embedded { Schema = []; Columns = [] }
+                      ),
+                      pipeline,
+                      None
+                  )
+
+              // Built off the shared `channelGrid` fixture: only the source slot
+              // and the row identity move, so the assertions below are about
+              // those two and not about a second grid shape.
+              let node =
+                  match channelGrid.Kind with
+                  | NodeKind.DataGrid spec ->
+                      { channelGrid with
+                          Id = "live-grid"
+                          Kind =
+                              NodeKind.DataGrid
+                                  { spec with
+                                      Source = source
+                                      RowKeyField = Some "id" } }
+                  | other -> failtestf "expected a DataGrid fixture, got %A" other
+
+              match Tools.getNodeState (freshContext ()) [ IncludeKey.Bindings ] node (NodeId "live-grid") with
+              | Error e -> failtestf "getNodeState failed: %A" e
+              | Ok state ->
+                  match state.LiveTransforms with
+                  | None -> failtest "the binding block was requested, so the live-Transform block must be present"
+                  | Some [ site ] ->
+                      Expect.equal
+                          site.StateKey
+                          (Some "rows")
+                          "the site names the key a write to which makes it recompute"
+
+                      Expect.equal site.Slot (Some "source") "the site names the reader's slot"
+
+                      Expect.equal
+                          site.IdentityColumn
+                          (Some "id")
+                          "the site carries the grid's declared row identity — what a live-Transform store's identityColumn wants"
+
+                      Expect.equal
+                          site.Pipeline
+                          [ "project" ]
+                          "the site carries what it recomputes, in canonical wire spellings"
+
+                      Expect.isSome site.SiteKey "an unparameterised live source names the site key the store keys on"
+                  | Some many -> failtestf "expected exactly one live site, got %d" (List.length many)
+          }
+
+          test "Phase 1615 a node with no live Transform reports an empty list, not an absent block" {
+              match
+                  Tools.getNodeState (freshContext ()) [ IncludeKey.Bindings ] dashboard (NodeId "revenue-metric")
+              with
+              | Error e -> failtestf "getNodeState failed: %A" e
+              | Ok state ->
+                  Expect.equal
+                      state.LiveTransforms
+                      (Some [])
+                      "asked-and-none must be distinguishable from not-asked without a second include key"
+          }
+
+          test "Phase 1615 the live-Transform block is omitted when the binding block was not asked for" {
+              match Tools.getNodeState (freshContext ()) [ IncludeKey.Props ] dashboard (NodeId "revenue-metric") with
+              | Error e -> failtestf "getNodeState failed: %A" e
+              | Ok state -> Expect.equal state.LiveTransforms None "a Props-only poll must not pay for a binding walk"
           } ]

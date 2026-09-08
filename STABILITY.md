@@ -7353,3 +7353,85 @@ admission gates are not engaged; this is host composition over shipped vocabular
 created, widened or relaxed either: the store is reachable only from the session that minted it, it
 executes no host-supplied behaviour, and its one promise — the table it returns is the table a full
 evaluation produces — is the seam's, unchanged.
+
+## 0.79.0 — the binding walk carries the live-`Transform` site (Phase 1615)
+
+**Additive on `Fuaran.UI` and `Fuaran.UI.AiTools`, with one consumer WARNING named below.**
+
+Phase 1179's outcome recorded `BindingWalk.fs` as deliberately untouched: the walk enumerated a
+live-`Transform` site as `BindingUse.TransformStateSource(key, hasDefault)`, which carries no
+pipeline, so — in that phase's own words — a refresh site could not be identified statically. Three
+consumers re-derived the enumeration for themselves. This phase gives the walk a case that carries
+it, so the enumeration is one implementation the tier owns.
+
+| New surface | What it is |
+|---|---|
+| `BindingWalk.TransformSiteFacts` (record) | One `Binding.Transform` site: `SiteKey`, `IsLive`, `StateKey`, `Source`, `Pipeline`, `Slot`, `IdentityColumn`. |
+| `BindingWalk.TransformSiteDecl` (record: `Reader`, `Site`) | The same, tagged with the id of the node whose spec carries it. |
+| `BindingWalk.BindingUse.TransformSite of site: TransformSiteFacts` | The new union case. |
+| `BindingWalk.TreeBindingFacts.TransformSites: TransformSiteDecl list` | Every site in the tree, live or not, in walk order. |
+| `BindingWalk.StateKeyFacts.LiveTransformSites: Map<string, TransformSiteDecl list>` | Per state key, the live sites that read it — a projection of the list above, derived where the walk assembles its facts so the two cannot disagree. |
+| `AiTools.Types.LiveTransformSite` (record) | The introspection projection: `StateKey`, `SiteKey`, `Slot`, `IdentityColumn`, `Pipeline` (verbs). |
+| `AiTools.Types.NodeState.LiveTransforms: LiveTransformSite list option` | The block `getNodeState` fills, under the EXISTING `IncludeKey.Bindings`. |
+
+**The consumer warning this introduces, stated plainly because it is the whole cost.**
+`BindingUse` is a public union, and a consumer that matches it EXHAUSTIVELY — no wildcard arm —
+gains an `FS0025` incomplete-match **warning** at its own `match`, on the new `TransformSite` case.
+It is a warning and not an error, so a consumer builds unchanged unless it runs warnings-as-errors;
+the repair is one arm. A consumer with a wildcard arm sees nothing, and the case is deliberately
+one such a consumer can ignore: it names no channel, so a consumption-union rule reasoning over
+`Uses` gets the right answer by dropping it — which is exactly what the two arms in this package's
+own `StructuralQuery.useMatches` now say in words. The same class of warning applies to a consumer
+constructing a `TreeBindingFacts`, a `StateKeyFacts` or a `NodeState` by full record literal, where
+the added field is an `FS0764` **error**; in practice nothing outside this repo constructs those —
+they are walk OUTPUT, and `NodeState` is built only by `getNodeState`.
+
+**What does NOT move, which is the more important half.** `BindingUse.TransformStateSource` stays
+exactly as it is, in the same projections, deciding the same verdicts: it is FUARAN105's subject
+and its `hasDefault` bit is what that rule reads. The new case is emitted BESIDE it, is kept OUT of
+`TreeBindingFacts.Uses` on the `StateSeed` / `InlineTable` reasoning (a site is a fact about a slot,
+not a second consumption edge beside the read that slot already contributes), and no shipped
+validator's verdict changes. The wire is untouched — nothing here is encoded or decoded.
+
+**FUARAN086 and FUARAN114 now read their `(source, pipeline)` pair off the walk** rather than
+re-matching the reader's own `source` slot for the third time in `PreEmitValidate.fs`. The window is
+unchanged by construction: the walk tags a site with its slot only when the slot's binding is ITSELF
+a `Binding.Transform`, which is precisely what those rules matched, so a Transform reached through a
+`Format` or a `Local` is a site the walk enumerates and neither rule sees. That equality is
+measured, not asserted — `TransformSiteWalkTests` compares the walk's enumeration against an
+independent restatement of the pre-1615 pattern over every corpus `nodes/` fixture, and reddens when
+the tagging is disabled.
+
+**Three things the walk declines to say, each because saying them would be a guess.** A
+parameterised live source reports **no** site key: the effective pipeline (list params substituted,
+unbound filters pruned) is decided at render time, and a key derived from the pipeline as carried
+would name a site the store never sees. A reader that declares no row identity reports `None` rather
+than a default. And a LIVE source is not admitted to FUARAN086 / FUARAN114's window at all: its
+`initial` snapshot is a decode-time table, and refusing a field name on the strength of it would be
+a false accusation about rows a later write puts under the key.
+
+**`IsLive` is carried, not inferred**, and the field exists for one reason: a parameterised live
+source declines its site key, so `SiteKey.IsSome` reads it as a `Data` source — which would put a
+live site inside the schema rules' window. Perturbing the field to that inference reddens the
+suite's parameterised-live test.
+
+**The introspection block is gated on `IncludeKey.Bindings`, not on a sixth include key.** A
+live-`Transform` site is a fact about a binding slot, so it belongs in the binding block; and the
+five include keys are §4i's own enumeration, which a language-tier phase does not widen on its own
+authority. `None` means the caller did not ask, an empty list means it asked and the node holds
+none, so the two stay distinguishable without a second key. The block carries the pipeline's VERBS
+and no table: the site's source data is a runtime fact the walk sees only as a decode-time snapshot,
+and reporting a snapshot as if it were the live rows is the same false statement the schema rules
+decline to make.
+
+**Version.** Additive, so it rides the standing untagged 0.79.0 draft under the draft-slot rule. The
+draft already carries a higher-class change (Phase 1611's required `VisualisationContext` field), so
+the release class does not move on this entry's account; which number the release is finally cut on
+stays with whoever takes it.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged — `BindingUse` is an analysis projection, not tree vocabulary, and
+nothing here is authorable, encodable or decodable. **No escape hatch is created, widened or
+relaxed**: the walk executes nothing, registers nothing, and every value it reports is read off the
+tree the caller already holds. What the introspection block exposes is strictly a projection of that
+same tree, to a caller that could already have walked it.

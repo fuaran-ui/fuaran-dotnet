@@ -166,6 +166,10 @@
          assertion that makes a slot wired into one walk and not the other a
          red test rather than a comment violation. -->
     <Compile Include="WalkConformanceTests.fs" />
+    <!-- TransformSiteWalkTests is Phase 1615's evidence: the walk's one
+         Transform-site enumeration equals, on every corpus fixture, the
+         hand derivation FUARAN086/FUARAN114 used to make for themselves. -->
+    <Compile Include="TransformSiteWalkTests.fs" />
     <!-- FilterReactiveTests pins Phase 423's collectFilterKeys / filterKeysOfBinding
          walk + the FilterStore ($filters twin of StateStore) — the .NET-testable
          half of the filter-channel live re-render. -->

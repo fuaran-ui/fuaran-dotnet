@@ -251,19 +251,71 @@ type GeometryTree =
       Geometry: Geometry option
       Children: GeometryTree list }
 
+// ─── Live-Transform sites (Phase 1615) ─────────────────────────────────────
+
+/// Phase 1615 — one live-`Transform` site the addressed node holds: a slot
+/// whose source is a `Binding.Transform` over a LIVE binding, so a write to
+/// that binding's channel makes this reader recompute.
+///
+/// The question it answers is the one a host previously had to mirror the
+/// analysis walk to ask: *when something writes `$state.k`, which readers
+/// re-evaluate, and what do they run?* `Fuaran.UI.BindingWalk` has enumerated
+/// this since Phase 1615; this record is that enumeration projected to the
+/// introspection envelope, so an orchestrator reads it off `getNodeState`
+/// rather than reimplementing a walk it cannot keep in step.
+///
+/// It carries no table. The site's SOURCE data is a runtime fact the walk sees
+/// only as a decode-time snapshot, and reporting a snapshot as if it were the
+/// live rows is exactly the false statement the language tier's schema rules
+/// decline to make.
+type LiveTransformSite =
+    {
+        /// The state key the source reads, when its channel is `$state`.
+        /// `None` when the source reads another channel (a query, a
+        /// selection) — such a site recomputes, but not on a state write.
+        StateKey: string option
+        /// The key a session-held live-`Transform` store keeps this site's
+        /// primed state under. `None` when the walk declines it — a
+        /// parameterised pipeline evaluates an effective form decided at
+        /// render time, and a key derived from the pipeline as carried would
+        /// name a site the store never sees.
+        SiteKey: string option
+        /// The reader's slot, when the node's own arm named one (`"source"`
+        /// on a grid / chart / map row feed).
+        Slot: string option
+        /// The row-identity column the reader declares — a grid's
+        /// `rowKeyField`. `None` on a reader that declares none.
+        IdentityColumn: string option
+        /// The pipeline's verbs in order, in their canonical wire spellings
+        /// (`filter`, `groupBy`, …) — what this site recomputes.
+        Pipeline: string list
+    }
+
 // ─── Top-level NodeState envelope (§4i lines 1145–1175) ────────────────────
 
 /// The full per-node observable state envelope. Field-by-field optionality
 /// matches `IncludeKey` filtering — when the caller asks for only `[Props]`
 /// the other four blocks are `None`. `Id` and `Kind` are always populated.
+///
+/// Phase 1615 added `LiveTransforms`, gated on the EXISTING
+/// `IncludeKey.Bindings` rather than on a sixth include key. A live-Transform
+/// site is a fact about a binding slot, so it belongs in the binding block;
+/// and the five include keys are §4i's own enumeration, which a language-tier
+/// phase does not widen on its own authority.
 type NodeState =
-    { Id: NodeId
-      Kind: string
-      Props: PropEntry list option
-      Bindings: Map<string, ResolvedBindingResult> option
-      CurrentState: CurrentState option
-      StateDetail: StateDetail option
-      Geometry: Geometry option }
+    {
+        Id: NodeId
+        Kind: string
+        Props: PropEntry list option
+        Bindings: Map<string, ResolvedBindingResult> option
+        CurrentState: CurrentState option
+        StateDetail: StateDetail option
+        Geometry: Geometry option
+        /// Phase 1615 — the live-`Transform` sites the addressed node's own spec
+        /// holds, in walk order. Populated under `IncludeKey.Bindings`; an empty
+        /// list means the node holds none, `None` means the caller did not ask.
+        LiveTransforms: LiveTransformSite list option
+    }
 
 /// A single prop-block entry. `Value` is `obj`-boxed at the introspection
 /// boundary; the orchestrator's schema knows the typed `'T` expected per

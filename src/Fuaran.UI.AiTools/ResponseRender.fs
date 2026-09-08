@@ -281,6 +281,44 @@ let private writeNodeState (jw: Utf8JsonWriter) (state: NodeState) =
         if Option.isSome state.CurrentState then
             jw.WriteNull "stateDetail"
 
+    // Phase 1615 — the live-`Transform` sites, under the binding block's own
+    // include key. Omitted entirely when the caller did not ask; an empty array
+    // when it asked and the node holds none, so "asked and there are none" is
+    // distinguishable from "not asked" without a second key.
+    match state.LiveTransforms with
+    | Some sites ->
+        jw.WriteStartArray "liveTransforms"
+
+        for site in sites do
+            jw.WriteStartObject()
+
+            match site.StateKey with
+            | Some k -> jw.WriteString("stateKey", k)
+            | None -> jw.WriteNull "stateKey"
+
+            match site.SiteKey with
+            | Some k -> jw.WriteString("siteKey", k)
+            | None -> jw.WriteNull "siteKey"
+
+            match site.Slot with
+            | Some slot -> jw.WriteString("slot", slot)
+            | None -> jw.WriteNull "slot"
+
+            match site.IdentityColumn with
+            | Some col -> jw.WriteString("identityColumn", col)
+            | None -> jw.WriteNull "identityColumn"
+
+            jw.WriteStartArray "pipeline"
+
+            for verb in site.Pipeline do
+                jw.WriteStringValue verb
+
+            jw.WriteEndArray()
+            jw.WriteEndObject()
+
+        jw.WriteEndArray()
+    | None -> ()
+
     match state.Geometry with
     | Some g ->
         jw.WritePropertyName "geometry"
