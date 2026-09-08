@@ -158,6 +158,74 @@
   the number — which is also how the warning itself is falsified end to end, in
   `fable-check.tests.ps1`.
 
+  THE PROJECT CRACK, AND WHY `--noCache` STAYS (Phase 1622 — a spike, closed as a no-op). The
+  `parsed` column above is the biggest single item in this stage, and it is worth knowing exactly
+  what it is before anyone tries to remove it.
+
+  WHAT WAS MEASURED, on Fable 5.0.0, 2026-09-08, this machine. `dotnet fable` was run against a
+  subject twice: once cold with `--noCache`, and once re-entering an out directory a previous
+  non-`--noCache` run had left a `fable_modules/project_cracked.json` in, with one source touched
+  so the emit could not be skipped. Two subjects, chosen for the two ends of the graph-size range:
+
+                                     parsed      emitted    wall
+    FableLaws (10-project closure)
+      cold, --noCache                48,756ms    18,680ms   68.4s
+      crack served from cache            116ms   20,200ms   21.8s
+    Fuaran.UI.ServerDriven (8)
+      cold, --noCache                46,358ms    17,095ms   64.2s
+      crack served from cache            105ms   19,032ms   20.5s
+
+  Read that as an observation and not as a theory of Fable's internals: with the crack served from
+  disk the `parsed` figure falls by ~99.8% while the EMIT figure does not move, and the whole
+  saving shows up in the wall clock. Whatever else `parsed` may cover, essentially all of it is
+  work a persisted crack removes — and the compile still does everything it did before. `--noRestore`
+  is NOT the lever: it took `parsed` to 43.1s / 45.9s, ~10%, so the cost is the per-project MSBuild
+  design-time builds themselves. The cost scales with the PROJECT GRAPH, steeply and not linearly:
+  `Fuaran.UI` has a closure of one project and Phase 1620 measured its parse at 1,500ms, against
+  ~46s for a closure of eight. So the `parsed` column is a graph-size meter, not a source-size one,
+  and a stage that grows a reference edge grows here.
+
+  THE PHASE'S PREMISE WAS THAT THIS FIGURE WAS THE CRACK **PLUS** THE FCS PARSE, and that the split
+  decided whether caching the crack was worth anything. The split is ~100/0, so it is worth a great
+  deal — which is why the answer below is a refusal on safety grounds rather than on value.
+
+  WHY IT IS NOT DONE. Two findings, and either alone is decisive.
+
+    * FABLE 5.0.0 EXPOSES NO SEAM THAT SEPARATES THE CRACK FROM THE OUTPUT. It already persists the
+      crack — `CacheInfo.TryRead`/`Write` over `fable_modules/project_cracked.json`, invalidated by
+      `isOlderThanCache` — and `--noCache` is the ONE flag that suppresses it, the same flag that
+      suppresses reuse of emitted files ("Recompile all files, including sources from packages",
+      per `--help`). The CLI carries no argument that injects a crack, names a pre-computed one, or
+      selects a resolver; the `ProjectCrackerResolver` interface is a LIBRARY seam, reachable only
+      by a bespoke host that references `Fable.Compiler` and reimplements the compile pipeline. That
+      host would no longer be the `dotnet fable` a consumer runs, which is the one thing this stage
+      exists to be. (`--noCache` is a real, validated flag, not a tolerated unknown: Fable rejects
+      `--zzzNotAFlag` by name, and a `--noCache` run demonstrably writes no `project_cracked.json`.)
+
+    * THE PERSISTED CRACK IS INSEPARABLE FROM `fable_modules`, AND REUSING THAT DIRECTORY
+      REINTRODUCES A STALE-GREEN CLASS THIS ESTATE HAS ALREADY RECORDED. The record is bound by
+      absolute path to the `fable_modules` inside its own out directory, so reusing it means
+      persisting that directory — which also holds the COPIED PACKAGE SOURCES and their emitted
+      JavaScript, in version-named folders that a same-version repack off the local feed does not
+      rename. Fable copies such a folder only if it is absent. So a repacked `Fuaran.Core.*` at an
+      unchanged version would be compiled from the OLD copied sources, silently and green. Phase
+      1619's content address does not see it either: it hashes the PIN in
+      `Directory.Packages.props`, which a same-version repack does not move.
+
+  WHAT A LATER PHASE WOULD HAVE TO SETTLE, stated so it is a decision and not a rediscovery. It
+  would need its own content address over the CRACK's inputs alone (the fsproj graph, the governing
+  MSBuild files, the package versions, the tool version) deciding whether to keep or destroy
+  `project_cracked.json`; an answer to the same-version-repack hole above, which no file hash in
+  this repo can currently supply; a reconciliation with `Get-TreeScratchRoot`'s wipe-at-start
+  invariant, which exists because two gates once deleted each other's output mid-compile; and — the
+  part that is a policy call rather than an engineering one — a deliberate decision to let the FULL
+  lane consult a cache, which Phase 1619 made structurally unreachable there on purpose. Three of
+  those are work; the fourth is not this script's to take.
+
+  SO THE RULE STANDS UNCHANGED: every compile here passes `--noCache`, and the only mechanism that
+  avoids paying for one is Phase 1619's skip, which declines to INVOKE Fable at all and never asks
+  Fable to trust anything.
+
   METHOD NOTES — both learned the hard way, both recorded in `CLAUDE.md` under "Fable method
   traps", and both binding on anything added here:
 
@@ -1099,6 +1167,12 @@ if (-not $SkipPortability) {
                     # longer reflects the sources, which is the one answer this stage must never
                     # give. The address does not soften that — it decides whether to INVOKE Fable at
                     # all, and it moves with every byte Fable would read.
+                    #
+                    # It also costs almost all of the `parsed` figure below, and that was
+                    # investigated rather than assumed: see "THE PROJECT CRACK, AND WHY `--noCache`
+                    # STAYS" in the header for the measurement and for the two findings that closed
+                    # Phase 1622 as a no-op. Do not drop this flag to recover that time without
+                    # answering both of them.
                     $output = & dotnet fable $job.Path -o $job.OutDir --noCache 2>&1
                     $exit = $LASTEXITCODE
                     $clock.Stop()
@@ -1208,6 +1282,10 @@ if (-not $SkipLaws) {
         # .NET run is a build plus an execution, the Fable compile is one more `--noCache` parse of
         # the same shape the portability stage measures, and the Node run is the only figure in this
         # stage that is a JS runtime's. A single laws number would hide which of them grew.
+        #
+        # This compile is the stage's largest UN-OVERLAPPED item — the portability compiles run
+        # concurrently and this one does not — and its `parsed` figure is the project crack almost
+        # in full. Phase 1622 measured that and declined to cache it; the header says why.
 
         # The .NET leg. Filtered to the harness's own line shapes so build chatter can never enter
         # the comparison.
