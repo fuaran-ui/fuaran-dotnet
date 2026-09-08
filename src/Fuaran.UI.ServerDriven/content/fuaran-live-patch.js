@@ -107,7 +107,9 @@
       p[i].removeAttribute(OPTIMISTIC_ACTIVE);
     }
   }
-  function setConnectionState(connected) {                            // QW2
+  var connected = false;
+  function setConnectionState(isConnected) {                          // QW2
+    connected = !!isConnected;
     var root = document.documentElement;
     if (connected) root.removeAttribute("data-fuaran-disconnected");
     else root.setAttribute("data-fuaran-disconnected", "");
@@ -485,7 +487,40 @@
     sseAdapter: sseAdapter,
     applyPatches: applyPatches,
     applyPatch: applyPatch,
-    performEffects: performEffects
+    performEffects: performEffects,
+
+    // ── What an inspecting relay peer may read (DEVTOOLS_RELAY relay@1.4) ──
+    //
+    // This page holds NO TREE. The session tree lives on the server and this
+    // shim applies pushed patches to the DOM, so a relay page peer over it
+    // declares `treeSource: "upstream"` (DEVTOOLS_RELAY section 6.5) and
+    // advertises `read.renderedDom` alone — the one read that asks the rendered
+    // element a geometry question rather than asking the tree.
+    //
+    // These two members are the peer's INPUTS, published deliberately rather
+    // than inferred. Before them a peer had to key off this global merely
+    // EXISTING and read the QW2 styling attribute on <html>, which made a
+    // reconnecting-banner hook load-bearing for a protocol decision; either
+    // could have been renamed by someone with every reason to think it was
+    // presentation. Naming them here is what makes the coupling a contract.
+    //
+    // What is deliberately NOT here is a tree. A peer MUST NOT answer a tree
+    // read by encoding a tree reconstructed from the patches this shim has
+    // applied (section 6.5 rule 2, section 7.7 rule 1): that would carry the
+    // shim's idea of the tree rather than the host's, and no client could
+    // detect that it had received one. There is nothing to expose that would
+    // not be that.
+    treeSource: "upstream",
+
+    // Whether the stream to the side holding the tree is up, RIGHT NOW.
+    //
+    // This is what lets a peer raise `UPSTREAM_UNAVAILABLE` (section 9.3) with
+    // no correlated response leg at all: the class is restricted to the case
+    // the peer can assert — the request never left — and "no channel is
+    // established" is a fact held locally, needing no answer from anywhere.
+    // Never a promise that a dispatched request will be answered, which is a
+    // different claim and one this shim cannot make.
+    isConnected: function () { return connected; }
   };
 
   // Auto-start when the host supplies config via a <script data-fuaran-live-*>

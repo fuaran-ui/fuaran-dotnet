@@ -6,9 +6,22 @@ _Phase 741 re-scope. Written against the substrate as shipped 2026-07-29._
 > connection, so the "there is no page to run against" verdict below no longer holds. Read the
 > [B1 closed](#b1-closed--where-it-landed-and-why-not-here) section at the foot before acting on the
 > blocker table: the row's *destination repo* was wrong, for a reason that also constrains B2.
-> Everything else in this note stands as written — B2 and B3 are open, and the two architectural
-> findings (a server-driven page holds no tree; relay `apply` is coherent on the bounded driver only)
-> were findings about the tier, not about missing work.
+> Everything else in this note stands as written — the two architectural findings (a server-driven
+> page holds no tree; relay `apply` is coherent on the bounded driver only) were findings about the
+> tier, not about missing work.
+>
+> **Update 2026-09-08 — B3 is CLOSED, and B3's own framing below is superseded.** The relay contract
+> answers the treeless peer normatively at `relay@1.4`: `hello.ok` carries an optional `treeSource`
+> (`"page"` | `"upstream"`, absent meaning `"page"`), §6.5 states what `"upstream"` obliges, §8.1
+> says where the three gates run for such a peer, and §9.3 adds `UPSTREAM_UNAVAILABLE`. **No request
+> type, no capability token and no payload shape changed**, which is the part the B3 row below did
+> not anticipate and which decides several of its questions by dissolving them — see
+> [B3 closed](#b3-closed--what-the-contract-actually-says) at the foot.
+>
+> **B2 remains open**, and the page side no longer waits on it. A treeless peer declares itself,
+> advertises `read.renderedDom` — the one read that asks the DOM rather than the tree — and is
+> rendered correctly by a client; the proxied reads arrive later as a capability set that GROWS,
+> which is exactly what §5.3 and §6.3 are built to absorb.
 
 The [DevTools relay contract](../../wire-format-fixtures/DEVTOOLS_RELAY.md) (`relay@1.0`) lets a
 browser extension read and edit a Fuaran page in place. It was specified (Phase 734) and implemented
@@ -234,7 +247,7 @@ The blocking order is B1 → (B2, B3) → the phase:
 |---|---|---|
 | **B1** | `BoundedConnection` — the bounded tier has no channel connection, so a bounded page cannot be served. Prior to everything else. | `fuaran-dotnet` |
 | **B2** | No correlated response leg on the channel — typed refusals (and proxied reads) have nowhere to ride. | `fuaran-dotnet` |
-| **B3** | `relay@1.0` does not describe a treeless / server-held-tree peer; needs a minor bump and corpus cases. | specification repo |
+| **B3** | ~~`relay@1.0` does not describe a treeless / server-held-tree peer; needs a minor bump and corpus cases.~~ **CLOSED at `relay@1.4`** — see [B3 closed](#b3-closed--what-the-contract-actually-says). | specification repo |
 
 Only once those land does Phase 741's own work — a page peer in the shim, an inbound op kind, the
 `RelayApplyGate` call at the bounded connection, and the demo — become a phase-sized piece of work.
@@ -299,6 +312,67 @@ consumer able to see it. Worth knowing before scheduling it, and it is why B1 wa
 in the one form that needed nothing from this side.
 
 B3 is untouched and remains the specification repository's, on the reasoning already given.
+
+---
+
+## B3 closed — what the contract actually says
+
+_Added 2026-09-08 (Phase 1598), against `DEVTOOLS_RELAY.md` at `relay@1.4`._
+
+The B3 row above asked for "capability semantics for a treeless page, whether reads may be
+asynchronous, and what `treeRevision` means when the revision is authoritative on the server". The
+contract answered the first and **dissolved the other two**, which is worth reading rather than
+skimming, because both were framed as design questions and neither turned out to be one.
+
+**The peer declares where its tree is, and nothing else changes.** `hello.ok` gains one optional
+field, `treeSource`, with values `"page"` and `"upstream"`; absent means `"page"`, on the §8.2.1
+`actorClass` precedent, so a peer whose tree IS in the page omits it and its handshake stays
+byte-identical to one a pre-1.4 peer would have sent. §6.5 states what `"upstream"` obliges: the
+declaration gates nothing (`capabilities` is still the whole authorisation surface), every advertised
+tree read is **proxied and never reconstructed** from the patches the page applied (§7.7 rule 1's
+"no second projection" — this is the rule that makes §6.5 normative rather than advisory), the fact
+is stable for the session, and it is emitted whatever profile the session settled on.
+
+**Capability semantics for a treeless page: unchanged, and that is the answer.** §6.4 already made a
+narrow peer fully conformant. An upstream-tree peer advertises what it can serve; today that is
+`read.renderedDom` (§7.4) alone, because it is the one read that asks the DOM a geometry question
+rather than asking the tree. Everything else is `CAPABILITY_ABSENT` — the entry point exists, this
+peer does not offer it — which is §10.1's distinction doing an unchanged job.
+
+**"May reads be asynchronous" was never a contract question.** Every request already has a
+correlation id and a response; the contract never promised a latency. What was missing was a way to
+say the request COULD NOT BE SENT, and §9.3's `UPSTREAM_UNAVAILABLE` is that — restricted to the case
+the peer can assert, namely that the request never left. A request that WAS dispatched and went
+unanswered gets no response at all and the client's own timeout governs, because §8.3's "a refused op
+MUST leave the tree unchanged" is a promise a peer in that position cannot make.
+
+**`treeRevision` needed no new meaning.** §5.4 already makes it opaque — compared, never parsed — so
+the upstream tree's revision is a revision like any other, and a `changed` event from a server push
+carries `cause: "host"` (a push is the host changing its own tree) with no new `cause` value.
+
+### What this repository owes, and what it does not
+
+The page side does **not** need a peer in this shim to work: a client that injects its own page peer
+reads `window.FuaranLive` — this tier's existing public surface — and speaks the contract over it. So
+what this tier owes is the two FACTS such a peer needs, published deliberately rather than inferred,
+and `content/fuaran-live-patch.js` now publishes both on `FuaranLive`:
+
+- `treeSource: "upstream"` — the declaration itself, so a peer does not have to key off this global
+  merely existing;
+- `isConnected()` — whether the stream is up right now. This is what makes `UPSTREAM_UNAVAILABLE`
+  raisable here with **no correlated response leg at all**, and it is the one part of §6.5 that does
+  not wait on B2: "no channel is established" is a fact held locally. Before it, a peer had to read
+  the QW2 `data-fuaran-disconnected` attribute on `<html>` — a reconnecting-banner styling hook, and
+  a poor thing to make load-bearing for a protocol decision.
+
+Deliberately NOT exposed: anything tree-shaped. §6.5 rule 2 forbids answering a tree read from a
+reconstruction of the patches this shim has applied, and there is nothing else this shim could offer
+that would not be that.
+
+**What remains for a host-registered peer of this tier's own** — one that exists without a client
+injecting one, and that advertises the proxied reads — is B2-shaped and stays 741's: it needs the
+correlated response leg, and per the B1 section above that is a change here, a version cut, a
+publish, and only then a consumer able to see it.
 
 ---
 
