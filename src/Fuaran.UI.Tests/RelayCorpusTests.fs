@@ -463,12 +463,40 @@ let private expectString (path: string) (value: RelayValue option) : string =
 // ─── The suite ──────────────────────────────────────────────────────────────
 
 type private Fixture =
-    { Id: string
-      Kind: string
-      Request: RelayValue option
-      Response: RelayValue option
-      Event: RelayValue option
-      ExpectedClass: string option }
+    {
+        Id: string
+        Kind: string
+        /// The PEER SHAPE this fixture addresses (§12.2, since `relay@1.4`) —
+        /// `"page"` or `"upstream"`; `None` on the wire means `"page"`.
+        ///
+        /// Since §6.5 the contract describes two of them, and this host presents
+        /// only the first: its tree is in the page, because it IS the renderer.
+        /// An `"upstream"` fixture is therefore not a gap here and never becomes
+        /// one — `treeSource` is by construction absent from this peer's
+        /// handshake, and the "every declared field is present" assertion below
+        /// would be right to fail it.
+        Peer: string option
+        Request: RelayValue option
+        Response: RelayValue option
+        Event: RelayValue option
+        ExpectedClass: string option
+    }
+
+/// The peer shape this host can present (§12.2). Only ever `"page"`.
+[<Literal>]
+let private ServedPeer = "page"
+
+/// Does this fixture address a peer shape this host can present?
+///
+/// An UNRECOGNISED value is out of reach too, deliberately: §10.3 does not
+/// license reading a shape this build does not know as the default, and reading
+/// it as `"page"` is the one direction that is actively wrong — it would drive
+/// an upstream-tree fixture against a page-tree peer and report the mismatch as
+/// a conformance failure of this implementation.
+let private addressesThisHost (fixture: Fixture) : bool =
+    match fixture.Peer with
+    | None -> true
+    | Some peer -> peer = ServedPeer
 
 let private loadFixtures (dir: string) : Fixture list =
     let manifest =
@@ -483,6 +511,10 @@ let private loadFixtures (dir: string) : Fixture list =
     [ for element in manifest.RootElement.GetProperty("fixtures").EnumerateArray() ->
           { Id = element.GetProperty("id").GetString()
             Kind = element.GetProperty("kind").GetString()
+            Peer =
+              match element.TryGetProperty "peer" with
+              | true, value -> Some(value.GetString())
+              | _ -> None
             Request = read element "requestFile"
             Response = read element "responseFile"
             Event = read element "eventFile"
@@ -664,12 +696,36 @@ let tests =
                   Expect.isTrue true "wire-format-fixtures/devtools-relay/ not found; RelayTests still pin the contract"
               } ]
     | Some dir ->
-        let fixtures = loadFixtures dir
+        let allFixtures = loadFixtures dir
+        let fixtures = allFixtures |> List.filter addressesThisHost
+        let outOfReach = allFixtures |> List.filter (addressesThisHost >> not)
 
         testList
             "DevTools relay corpus (cross-host gate)"
             [ test "the corpus is non-empty" {
                   Expect.isGreaterThan (List.length fixtures) 0 "devtools-relay/manifest.json must enumerate fixtures"
+              }
+
+              test "fixtures addressing a peer shape this host cannot present are named, not skipped" {
+                  // §12.3: out of reach, WITH A REASON — never a pass and never
+                  // a failure. Silently skipping is the one thing forbidden,
+                  // because a conformance run whose coverage can shrink without
+                  // anyone noticing is not a conformance run. So the partition
+                  // is asserted total here: every fixture is either driven
+                  // below or named on this line with the shape it addresses.
+                  Expect.equal
+                      (List.length fixtures + List.length outOfReach)
+                      (List.length allFixtures)
+                      "every fixture is either served or explicitly out of reach"
+
+                  for fixture in outOfReach do
+                      Expect.notEqual
+                          fixture.Peer
+                          (Some ServedPeer)
+                          (sprintf
+                              "%s is out of reach for this host: it addresses a '%s' peer, and this host's tree is in the page by construction — it IS the renderer"
+                              fixture.Id
+                              (defaultArg fixture.Peer "<unrecognised>"))
               }
 
               test "every message type in the closed set has a fixture" {

@@ -7141,3 +7141,47 @@ notice was a consumer's build.
 `tests/fable-laws/fable-check.ps1` and in CI's `fable-portability` job, so the arm is compiled under
 its own settings on every gate run. The refutation was observed before the fix landed: with the
 `open` reverted the gate exits 1 naming exactly those four positions.
+
+---
+
+## 0.79.0 — the server-driven shim declares what an inspecting relay peer may read
+
+**Additive, on `Fuaran.UI.ServerDriven`'s packaged browser shim.** `global.FuaranLive` — the shim's
+public surface, shipped as package content at `content/fuaran-live-patch.js` — gains two members. No
+existing member changes, no argument or return shape moves, and nothing a consumer wrote against
+0.78.1 needs changing.
+
+| Member | What it is |
+|---|---|
+| `treeSource` | The string `"upstream"`. The DevTools relay contract's §6.5 declaration (`relay@1.4`): the session tree lives on the server, and this page holds only a renderer applying pushed patches. |
+| `isConnected()` | Whether the stream to the side holding the tree is up **right now**. Never a promise that a dispatched request will be answered — a different claim, and one this shim cannot make. |
+
+**Why the surface at all, since this shim serves no relay traffic itself.** A client that injects
+its own relay page peer speaks the contract over this global. Both facts above are that peer's
+INPUTS, and before this they had to be inferred: the peer keyed off `FuaranLive` merely EXISTING,
+and read the QW2 `data-fuaran-disconnected` attribute on `<html>` to decide reachability. That
+attribute's declared job is styling a reconnecting banner, and making a presentation hook
+load-bearing for a protocol decision is a coupling nobody would find before renaming it. Publishing
+the two members turns an inference into a contract.
+
+`isConnected()` is what lets such a peer raise the contract's `UPSTREAM_UNAVAILABLE` refusal
+(§9.3) **with no correlated response leg at all**. That class is restricted to the case a peer can
+assert — the request never left — and "no channel is established" is a fact held locally.
+
+**What is deliberately NOT exposed: anything tree-shaped.** §6.5 rule 2 forbids answering a tree read
+from a tree reconstructed out of the patches this shim has applied — it would carry the shim's idea
+of the tree rather than the host's, and no client could detect that it had received one — and there
+is nothing else this shim could offer that would not be that.
+
+**Version — it OPENS 0.79.0 rather than riding 0.78.1.** `v0.78.1` is tagged, so that slot is
+released rather than a draft, and the draft-slot rule's other arm applies: a public-surface addition
+against a released slot advances the number. Additive, so a minor.
+
+**Also in this release, and carrying no version weight because no shipped surface moved:**
+`docs/devtools-relay-server-driven.md` records blocker **B3 as closed** — the relay contract answers
+the treeless peer normatively at `relay@1.4` — and corrects the parts of that note's framing which
+the answer superseded rather than confirmed. B2 remains open and the note says what still waits on
+it. `src/Fuaran.UI.Tests/RelayCorpusTests.fs` reads the corpus's new per-fixture `peer` declaration
+and reports a fixture addressing a peer shape this host cannot present as out of reach **with a
+reason** rather than skipping it: this host's tree is in the page by construction — it IS the
+renderer — so an upstream-tree fixture is not a gap here and never becomes one.
