@@ -656,6 +656,42 @@ let private hasInclude (keys: IncludeKey list) (key: IncludeKey) : bool =
 
 // ─── getNodeState ──────────────────────────────────────────────────────────
 
+/// Phase 1615 — the canonical wire spelling of one pipeline step, read off the
+/// step's own encoder rather than transcribed. `DataFrameCodec.encodeTransform`
+/// writes each case as a `$type`-discriminated object whose tag IS the wire
+/// spelling (`Filter` → `filter`, `GroupBy` → `groupBy`), so a case added to
+/// `Fuaran.Core.Transform` arrives here without an edit.
+///
+/// The fallback is empty rather than invented: a step that did not encode with
+/// a string `$type` is a codec defect to report where codecs are certified,
+/// and naming it something plausible here would hide it.
+let private transformVerb (step: Fuaran.Core.Transform) : string =
+    match Fuaran.Core.DataFrameCodec.encodeTransform step with
+    | Fuaran.Core.JObj fields ->
+        fields
+        |> List.tryPick (fun (k, v) ->
+            match k, v with
+            | "$type", Fuaran.Core.JStr tag -> Some tag
+            | _ -> None)
+        |> Option.defaultValue ""
+    | _ -> ""
+
+/// Phase 1615 — the live-`Transform` sites the ADDRESSED node's own spec
+/// holds, projected from the one shared analysis walk.
+///
+/// `BindingWalk.collect` walks the node's whole subtree; the reader filter cuts
+/// it back to this node, which is what every other block on `NodeState` reports
+/// about. A descendant's sites are that descendant's `getNodeState` answer.
+let private liveTransformsOf (node: Node<'Msg>) : LiveTransformSite list =
+    (Fuaran.UI.BindingWalk.collect node).TransformSites
+    |> List.filter (fun (d: Fuaran.UI.BindingWalk.TransformSiteDecl) -> d.Reader = node.Id && d.Site.IsLive)
+    |> List.map (fun d ->
+        { StateKey = d.Site.StateKey
+          SiteKey = d.Site.SiteKey
+          Slot = d.Site.Slot
+          IdentityColumn = d.Site.IdentityColumn
+          Pipeline = d.Site.Pipeline |> List.map transformVerb })
+
 /// `fuaran.getNodeState(nodeId, options?)` — returns the full per-node
 /// observable state envelope. `includeKeys = []` returns every block
 /// (matches the §4i default); a non-empty list filters to those blocks.
@@ -677,6 +713,16 @@ let getNodeState
         let bindings =
             if hasInclude includeKeys IncludeKey.Bindings then
                 Some(extractBindings ctx node.Kind)
+            else
+                None
+
+        // Phase 1615 — gated on the SAME key as the binding block, for the
+        // reason recorded on `NodeState`: a live-Transform site is a fact about
+        // a binding slot, and §4i's five include keys are not a language-tier
+        // phase's to widen.
+        let liveTransforms =
+            if hasInclude includeKeys IncludeKey.Bindings then
+                Some(liveTransformsOf node)
             else
                 None
 
@@ -722,7 +768,8 @@ let getNodeState
               Bindings = bindings
               CurrentState = currentState
               StateDetail = stateDetail
-              Geometry = geometry }
+              Geometry = geometry
+              LiveTransforms = liveTransforms }
 
 // ─── getBindingValue ───────────────────────────────────────────────────────
 

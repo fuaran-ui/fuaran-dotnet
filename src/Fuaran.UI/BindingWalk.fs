@@ -35,6 +35,72 @@ open Fuaran.Core
 /// plain `Filter` value read (a display read a host may legitimately feed
 /// without a chip). `TransformParam` records each declared param name with
 /// whether the pipeline's `paramsOf` derivation actually references it.
+/// Phase 1615 — one `Binding.Transform` SITE: everything about a reader's
+/// recompute that the tree already says, gathered where the walk sees it
+/// rather than re-derived by each consumer that needs it.
+///
+/// Three consumers used to re-derive this by hand — the renderer's live path
+/// (which rebuilds the site key from the source binding and the pipeline), the
+/// schema-grounding rules FUARAN086 / FUARAN114 (which re-match the reader's
+/// own `source` slot to reach `SchemaWalk`), and any diagnostic that wants to
+/// say WHICH live sources a tree holds. Phase 1179's outcome recorded the walk
+/// as deliberately untouched, on the ground that
+/// `BindingUse.TransformStateSource(key, hasDefault)` carries no pipeline and
+/// so "a refresh site cannot be identified statically". This record is that
+/// deferral discharged; the existing case stays exactly as it is.
+type TransformSiteFacts =
+    {
+        /// The identity a session-held `ILiveTransformStore` keeps this
+        /// reader's primed state under — `BindingWalk.liveSiteKey` over the
+        /// site's own two halves.
+        ///
+        /// `None` in the two cases where the walk cannot know it, and the
+        /// distinction is deliberate rather than an omission:
+        ///
+        ///  - a `TransformSource.Data` source is not a live site at all —
+        ///    nothing re-evaluates it on a state write, so nothing keys it;
+        ///  - a Transform declaring `params` evaluates an EFFECTIVE pipeline
+        ///    (list params substituted, unbound filters pruned) that is a
+        ///    render-time fact, so a key derived from the pipeline as carried
+        ///    would name a site the store never sees. The walk declines rather
+        ///    than guesses, exactly as `SchemaKnowledge` declines an open
+        ///    schema.
+        SiteKey: string option
+        /// True when the source is `TransformSource.Live` — a slot something
+        /// writes and this reader re-evaluates.
+        ///
+        /// It is carried rather than inferred from `SiteKey.IsSome`, because
+        /// that inference is WRONG: a parameterised live source declines its
+        /// key (see above) and would read as a `Data` one. The schema-grounding
+        /// rules switch on this, and a `Data` source read as live — or the
+        /// reverse — is a rule firing on a tree it was never meant to see.
+        IsLive: bool
+        /// The state key a LIVE source reads, when its channel is
+        /// `Binding.State`. `None` for every other channel (`Query`,
+        /// `Selection`, …) and for a `Data` source.
+        StateKey: string option
+        /// The `DataSource` the pipeline runs over — the `Data` arm's own
+        /// source, or the `Live` arm's decode-time initial snapshot.
+        Source: Fuaran.Core.DataSource
+        /// The pipeline as the tree carries it.
+        Pipeline: Fuaran.Core.Transform list
+        /// The reader's SLOT, when the reading node's own arm named it —
+        /// `Some "source"` on a grid / chart / map row feed. `None` on every
+        /// other binding-bearing slot, and on a Transform nested inside
+        /// another binding (a `Format`'s source, a `Local`'s `initialFrom`):
+        /// such a site is real and is enumerated, but it is not the SLOT's
+        /// site, and a rule asking "what does this grid's source produce" must
+        /// not be answered about a binding one level in.
+        Slot: string option
+        /// The row-identity column the READING NODE declares — a grid's
+        /// `rowKeyField`, which is the column whose value identifies a row and
+        /// therefore exactly what `LiveTransformStore.Evaluate`'s
+        /// `identityColumn` argument wants. `None` on every reader that
+        /// declares none; the store's own default is "none declared", which is
+        /// correct on every site and restricting on none.
+        IdentityColumn: string option
+    }
+
 [<RequireQualifiedAccess>]
 type BindingUse =
     | State of key: string
@@ -115,9 +181,35 @@ type BindingUse =
     ///
     /// Also filtered out of `Uses`.
     | InlineTable of table: Fuaran.Core.Table * seedKey: string option
+    /// Phase 1615 — a `Binding.Transform` site, carrying the pipeline the
+    /// existing `TransformStateSource` case does not. See
+    /// [[TransformSiteFacts]] for what it holds and what it declines to guess.
+    ///
+    /// Emitted BESIDE `TransformStateSource`, never instead of it: that case is
+    /// FUARAN105's subject and its `hasDefault` bit decides that rule's
+    /// verdict, so nothing about it moves. This one is the SITE, which is a
+    /// different fact about the same slot — and it fires on a `Data` source
+    /// too, where `TransformStateSource` cannot, because the enumeration the
+    /// schema-grounding rules consume has to cover both arms or it is not the
+    /// enumeration.
+    ///
+    /// Filtered OUT of `TreeBindingFacts.Uses`, on the `StateSeed` /
+    /// `InlineTable` reasoning: `Uses` records CONSUMPTION EDGES, one per
+    /// binding read, and every consumer of it (FUARAN070–076,
+    /// `AffordanceInertness.bindingFindings`) matches specific cases and drops
+    /// the rest. A site is a fact about a slot, not a second edge beside the
+    /// read the same slot already contributes, and admitting it would record
+    /// one reader against one channel twice.
+    | TransformSite of site: TransformSiteFacts
 
 /// One observed usage tagged with the id of the node whose spec reads it.
 type NodeBindingUse = { Reader: string; Use: BindingUse }
+
+/// Phase 1615 — one `Binding.Transform` site, tagged with the id of the node
+/// whose spec carries it.
+type TransformSiteDecl =
+    { Reader: string
+      Site: TransformSiteFacts }
 
 /// Phase 1075 — one `Binding.State` declaration that seeds its slot.
 type StateSeedDecl =
@@ -323,6 +415,26 @@ type StateKeyFacts =
         /// Phase 1075 — every inline table the tree carries, normalised to the
         /// canonical columnar shape. FUARAN107's subjects.
         InlineTables: InlineTableDecl list
+        /// Phase 1615 — per STATE KEY, the LIVE `Binding.Transform` sites that
+        /// read it, with the pipeline each of them will recompute.
+        ///
+        /// This is the question a host asks and could not previously have
+        /// answered without mirroring the walk: *when something writes
+        /// `$state.k`, which readers re-evaluate, and what do they run?* It is
+        /// the read projection's own shape — `Reads` says a key is read,
+        /// `TransformInertSources` says a Transform reads it without a
+        /// default, and this says which sites those are and what they compute.
+        ///
+        /// A pure projection of [[TreeBindingFacts.TransformSites]] — the
+        /// live-with-a-state-key subset, grouped — derived once where the
+        /// walk assembles its facts, so the two can never disagree. Sites in
+        /// walk order within each key.
+        ///
+        /// A live site over any OTHER channel (a `Query`, a `Selection`) is
+        /// absent here and present in `TransformSites`: it recomputes on that
+        /// channel, not on a state write, and folding it under a key it does
+        /// not read would be a false edge.
+        LiveTransformSites: Map<string, TransformSiteDecl list>
     }
 
 /// The tree-wide facts `PreEmitValidate`'s cross-tree checks run on.
@@ -359,6 +471,18 @@ type TreeBindingFacts =
         /// surface that belongs in one and not the other says so in its own
         /// case's doc comment, with the measurement.
         StateKeys: StateKeyFacts
+        /// Phase 1615 — every `Binding.Transform` site in the tree, live or
+        /// not, reader-tagged and in walk order.
+        ///
+        /// The ONE enumeration of "where does this tree transform data, over
+        /// what, running what". `Uses` cannot serve it (a site is not a
+        /// consumption edge — see `BindingUse.TransformSite`), and
+        /// `StateKeys.TransformInertSources` answers a narrower question about
+        /// a subset. The schema-grounding rules FUARAN086 / FUARAN114 read
+        /// their `(source, pipeline)` pair off this list rather than
+        /// re-matching the reader's own `source` slot, which is what makes the
+        /// derivation one implementation rather than three.
+        TransformSites: TransformSiteDecl list
     }
 
 /// Binding usages read by a single binding, recursing into a `Local` binding's
@@ -418,6 +542,62 @@ let private tableOfRows (rows: Fuaran.Core.Row seq) : Fuaran.Core.Table option =
     | Ok(Fuaran.Core.Embedded t) -> Some t
     | Ok(Fuaran.Core.Ref _)
     | Error _ -> None
+
+// ─── the live-Transform SITE key (Phase 1586) ────────────────────────────────
+
+/// The CHANNEL a binding reads — the part of its identity that survives
+/// everything about how it is spelled. Total over the whole `Binding` DU and
+/// touches no closure payload: `Query`'s accessor, `Selection`'s accessor,
+/// `Computed`'s function and `Local`'s parse/format triple are all skipped,
+/// because a closure has no stable value to read and reading one would make the
+/// key depend on which allocation the tree happened to carry.
+///
+/// Cases that carry no channel of their own answer with their case tag alone.
+/// That is not a defect: see [[liveSiteKey]] on why a shared answer costs
+/// recomputation and never correctness.
+let rec private siteChannelOf<'T> (binding: Binding<'T>) : string =
+    match binding with
+    | Binding.State(key, _) -> "state:" + key
+    | Binding.Query(name, _, _) -> "query:" + name
+    | Binding.Filter(name, _) -> "filter:" + name
+    | Binding.Selection(nodeId, _, _, field) -> "selection:" + nodeId + "/" + defaultArg field ""
+    | Binding.I18n(key, _) -> "i18n:" + key
+    | Binding.Invoke(capabilityId, _) -> "invoke:" + capabilityId
+    | Binding.Format(source, _, _) -> "format(" + siteChannelOf source + ")"
+    | Binding.Local(_, _, initialFrom, _, _, _, commitTo) ->
+        "local:" + defaultArg commitTo "" + "(" + siteChannelOf initialFrom + ")"
+    | Binding.Transform(_, pipeline, _) -> "transform/" + string (List.length pipeline)
+    | Binding.Expr _ -> "expr"
+    | Binding.Now _ -> "now"
+    | Binding.Computed _ -> "computed"
+    | Binding.Static _ -> "static"
+
+/// Phase 1586 — the SITE key of one live-`Transform` reader: the identity a
+/// session-held [[ILiveTransformStore]] keeps that reader's primed state under.
+///
+/// It is derived from the reader's own two halves — the channel its source
+/// binding reads, and the EFFECTIVE pipeline it evaluates (the one that will
+/// actually run: list params substituted, unbound filters pruned). Two grids
+/// over one state key running different pipelines are two sites, which is the
+/// discrimination the store's contract asks for; one grid keeps its key across
+/// every edit to that key, which is the stability that makes the store worth
+/// consulting at all.
+///
+/// **A shared key costs recomputation and never correctness**, and that is what
+/// licenses a derivation this cheap. `Fuaran.Core`'s incremental seam states its
+/// guarantee over the source it is handed — the refreshed table equals a full
+/// evaluation over that source, for every delta and every prior state — and it
+/// re-primes rather than reusing caches whenever the pipeline, the environment,
+/// the identity scheme or the source schema has moved. So two readers that
+/// landed on one key get right answers and pay full price; they do not get each
+/// other's data.
+///
+/// The pipeline is rendered through its own structural string. That form is
+/// stable within a process, which is the whole requirement: the key addresses
+/// an in-memory store held for the life of a session, and it is never written
+/// down, compared across hosts, or carried on any wire.
+let liveSiteKey (source: Binding<JVal>) (pipeline: Fuaran.Core.Transform list) : string =
+    Hashing.sha256Hex (siteChannelOf source + "\n--\n" + string pipeline)
 
 let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     match binding with
@@ -479,7 +659,46 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
             | TransformSource.Live _
             | TransformSource.Data _ -> []
 
-        sourceUse
+        // Phase 1615 — the SITE, emitted FIRST and unconditionally, on both
+        // arms. Head position is load-bearing rather than cosmetic: a reading
+        // node's own arm tags the site with its slot and its row identity by
+        // rewriting the FIRST `TransformSite` its slot's uses carry (see
+        // `tagSourceSite`), and that is sound only because this arm puts the
+        // slot's OWN site there, ahead of any nested one a param source might
+        // contribute.
+        let site =
+            let liveHalves =
+                match source with
+                | TransformSource.Live(b, initial) ->
+                    let stateKey =
+                        match b with
+                        | Binding.State(key, _) -> Some key
+                        | _ -> None
+
+                    // A parameterised pipeline's effective form is decided at
+                    // render time, so the key is declined rather than guessed
+                    // — see `TransformSiteFacts.SiteKey`.
+                    let siteKey =
+                        match parameters with
+                        | None
+                        | Some [] -> Some(liveSiteKey b pipeline)
+                        | Some _ -> None
+
+                    siteKey, stateKey, initial, true
+                | TransformSource.Data ds -> None, None, ds, false
+
+            let siteKey, stateKey, dataSource, isLive = liveHalves
+
+            BindingUse.TransformSite
+                { SiteKey = siteKey
+                  IsLive = isLive
+                  StateKey = stateKey
+                  Source = dataSource
+                  Pipeline = pipeline
+                  Slot = None
+                  IdentityColumn = None }
+
+        (site :: sourceUse)
         @ (defaultArg parameters []
            |> List.collect (fun (p: TransformParam) ->
                let sourceUses =
@@ -564,6 +783,49 @@ let private rowFeedUses (binding: Binding<Fuaran.Core.Row seq>) : BindingUse lis
         | _ -> []
 
     normalised @ inline_
+
+/// Phase 1615 — name the SLOT and the row identity on a site the reading node
+/// knows more about than the binding does.
+///
+/// `usesOfBinding` sees a binding and nothing else, so the two facts a
+/// consumer most needs — *which slot is this the source of* and *what column
+/// identifies a row here* — are invisible to it. They are properties of the
+/// READER, so the reader's own arm supplies them, and only for a slot it can
+/// name.
+///
+/// It tags the FIRST `TransformSite` in the slot's uses, and it tags one only
+/// when the slot's binding is ITSELF a `Binding.Transform`. Both restrictions
+/// are load-bearing:
+///
+///  - the `Transform` arm of `usesOfBinding` emits the slot's own site in HEAD
+///    position, ahead of the source's seeds and of every param source's uses,
+///    so the first is the slot's and never a nested one;
+///  - a Transform reached THROUGH another binding (a `Format`'s source, a
+///    `Local`'s `initialFrom`) is a real site and stays enumerated, but it is
+///    not the slot's site — and the schema-grounding rules that read the tag
+///    match the reader's `source` slot directly today, so tagging a nested one
+///    would silently widen a shipped Error.
+let private tagSourceSite
+    (slot: string)
+    (identityColumn: string option)
+    (source: Binding<'T>)
+    (found: BindingUse list)
+    : BindingUse list =
+    match source with
+    | Binding.Transform _ ->
+        let rec tag (rest: BindingUse list) =
+            match rest with
+            | BindingUse.TransformSite site :: tl ->
+                BindingUse.TransformSite
+                    { site with
+                        Slot = Some slot
+                        IdentityColumn = identityColumn }
+                :: tl
+            | head :: tl -> head :: tag tl
+            | [] -> []
+
+        tag found
+    | _ -> found
 
 let private usesOfBindingOpt (binding: Binding<'T> option) : BindingUse list =
     match binding with
@@ -879,6 +1141,8 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
     //    FUARAN107) ──
     let seeds = ResizeArray<StateSeedDecl>()
     let inlineTables = ResizeArray<InlineTableDecl>()
+    // Phase 1615 — every `Binding.Transform` site, in walk order.
+    let transformSites = ResizeArray<TransformSiteDecl>()
 
     /// An EMPTY table is not a copy of anything. `TransformLive.emptySource` is
     /// what a live source with no data decodes to and what `[]` normalises to,
@@ -948,6 +1212,12 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                         { Reader = readerId
                           SeedKey = seedKey
                           Table = table }
+            // Phase 1615 — the site projection. It folds HERE, beside the
+            // seeding one and for the same reason: every read surface reaches
+            // `recordStateOf`, including the ones deliberately kept out of
+            // `Uses`, so the enumeration is slot-complete rather than complete
+            // only where `Uses` happens to be.
+            | BindingUse.TransformSite site -> transformSites.Add { Reader = readerId; Site = site }
             | _ -> ()
 
     // `inUses` is false while walking a subtree that contributes STATE facts but
@@ -967,7 +1237,12 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 // a consumption edge, and widening `Uses` would move five
                 // shipped Error-severity rules' verdicts as a side effect.
                 | BindingUse.StateSeed _
-                | BindingUse.InlineTable _ -> ()
+                | BindingUse.InlineTable _
+                // Phase 1615 — the same posture, for the reason recorded on
+                // `BindingUse.TransformSite`: a site is a fact about a slot,
+                // not a second consumption edge beside the read that slot
+                // already contributes.
+                | BindingUse.TransformSite _ -> ()
                 | _ -> uses.Add { Reader = readerId; Use = u }
 
     /// Every `SetState` reachable from a wire-survivable action slot: the WRITE
@@ -1308,7 +1583,11 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 let uses =
                     // Phase 393 — a static read-only grid carries its cells as `TextSource`
                     // in `StaticRows`; a data-bound grid carries a `Source` binding.
-                    rowFeedUses g.Source
+                    // Phase 1615 — the grid's `rowKeyField` IS the row-identity
+                    // column: the column whose value identifies a row, which is
+                    // exactly what a live-Transform store's `identityColumn`
+                    // wants and what nothing in a rendered tree previously said.
+                    tagSourceSite "source" g.RowKeyField g.Source (rowFeedUses g.Source)
                     @ (match g.StaticRows with
                        | Some sr ->
                            (sr.Headers |> List.collect usesOfText)
@@ -1316,8 +1595,13 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                        | None -> [])
 
                 uses, []
-            | NodeKind.Chart c -> rowFeedUses c.Source @ usesOfTextOpt c.Title, []
-            | NodeKind.Map m -> usesOfBinding m.Source, []
+            // Phase 1615 — a chart and a map declare no row identity, so the
+            // slot is named and the identity column is honestly absent.
+            | NodeKind.Chart c ->
+                tagSourceSite "source" None c.Source (rowFeedUses c.Source)
+                @ usesOfTextOpt c.Title,
+                []
+            | NodeKind.Map m -> tagSourceSite "source" None m.Source (usesOfBinding m.Source), []
             // ── Structural ──
             | NodeKind.ErrorBoundary spec -> [], [ spec.Child; spec.Fallback ]
             // Phase 932 — the branch SELECTOR is a BINDING since Phase 768; the comment
@@ -1400,6 +1684,19 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
 
     walk true root
 
+    let allTransformSites = List.ofSeq transformSites
+
+    // Phase 1615 — the per-state-key projection, derived HERE and only here so
+    // it cannot disagree with the list it projects. `List.groupBy` preserves
+    // walk order inside each group, which is the order every other list on
+    // these facts is in.
+    let liveTransformSitesByKey =
+        allTransformSites
+        |> List.choose (fun (d: TransformSiteDecl) -> d.Site.StateKey |> Option.map (fun k -> k, d))
+        |> List.groupBy fst
+        |> List.map (fun (k, ds) -> k, ds |> List.map snd)
+        |> Map.ofList
+
     { Uses = List.ofSeq uses
       DeclaredFilters = List.ofSeq declaredFilters
       Calls = List.ofSeq calls
@@ -1415,7 +1712,9 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
           TransformInertSources = List.ofSeq transformInertSources
           VisibleStateSources = List.ofSeq visibleStateSources
           Seeds = List.ofSeq seeds
-          InlineTables = List.ofSeq inlineTables } }
+          InlineTables = List.ofSeq inlineTables
+          LiveTransformSites = liveTransformSitesByKey }
+      TransformSites = allTransformSites }
 
 /// Phase 1075 — the SEED MAP for a tree: the value each `$state.<key>` slot
 /// carries before anything else has said anything.
@@ -1458,59 +1757,3 @@ let stateSeeds<'Msg> (root: Node<'Msg>) : Map<string, obj> =
         Map.empty
 
 #warnon "44"
-
-// ─── the live-Transform SITE key (Phase 1586) ────────────────────────────────
-
-/// The CHANNEL a binding reads — the part of its identity that survives
-/// everything about how it is spelled. Total over the whole `Binding` DU and
-/// touches no closure payload: `Query`'s accessor, `Selection`'s accessor,
-/// `Computed`'s function and `Local`'s parse/format triple are all skipped,
-/// because a closure has no stable value to read and reading one would make the
-/// key depend on which allocation the tree happened to carry.
-///
-/// Cases that carry no channel of their own answer with their case tag alone.
-/// That is not a defect: see [[liveSiteKey]] on why a shared answer costs
-/// recomputation and never correctness.
-let rec private siteChannelOf<'T> (binding: Binding<'T>) : string =
-    match binding with
-    | Binding.State(key, _) -> "state:" + key
-    | Binding.Query(name, _, _) -> "query:" + name
-    | Binding.Filter(name, _) -> "filter:" + name
-    | Binding.Selection(nodeId, _, _, field) -> "selection:" + nodeId + "/" + defaultArg field ""
-    | Binding.I18n(key, _) -> "i18n:" + key
-    | Binding.Invoke(capabilityId, _) -> "invoke:" + capabilityId
-    | Binding.Format(source, _, _) -> "format(" + siteChannelOf source + ")"
-    | Binding.Local(_, _, initialFrom, _, _, _, commitTo) ->
-        "local:" + defaultArg commitTo "" + "(" + siteChannelOf initialFrom + ")"
-    | Binding.Transform(_, pipeline, _) -> "transform/" + string (List.length pipeline)
-    | Binding.Expr _ -> "expr"
-    | Binding.Now _ -> "now"
-    | Binding.Computed _ -> "computed"
-    | Binding.Static _ -> "static"
-
-/// Phase 1586 — the SITE key of one live-`Transform` reader: the identity a
-/// session-held [[ILiveTransformStore]] keeps that reader's primed state under.
-///
-/// It is derived from the reader's own two halves — the channel its source
-/// binding reads, and the EFFECTIVE pipeline it evaluates (the one that will
-/// actually run: list params substituted, unbound filters pruned). Two grids
-/// over one state key running different pipelines are two sites, which is the
-/// discrimination the store's contract asks for; one grid keeps its key across
-/// every edit to that key, which is the stability that makes the store worth
-/// consulting at all.
-///
-/// **A shared key costs recomputation and never correctness**, and that is what
-/// licenses a derivation this cheap. `Fuaran.Core`'s incremental seam states its
-/// guarantee over the source it is handed — the refreshed table equals a full
-/// evaluation over that source, for every delta and every prior state — and it
-/// re-primes rather than reusing caches whenever the pipeline, the environment,
-/// the identity scheme or the source schema has moved. So two readers that
-/// landed on one key get right answers and pay full price; they do not get each
-/// other's data.
-///
-/// The pipeline is rendered through its own structural string. That form is
-/// stable within a process, which is the whole requirement: the key addresses
-/// an in-memory store held for the life of a session, and it is never written
-/// down, compared across hosts, or carried on any wire.
-let liveSiteKey (source: Binding<JVal>) (pipeline: Fuaran.Core.Transform list) : string =
-    Hashing.sha256Hex (siteChannelOf source + "\n--\n" + string pipeline)

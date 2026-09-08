@@ -2957,6 +2957,47 @@ let private validateCore
     // otherwise emit thousands of identical entries and bury the real report.
     let mutable depthReported = false
 
+    // ── Phase 1615 — the ONE enumeration of this tree's Transform sites ──
+    //
+    // `BindingWalk.collect` was already run once per validation, below the
+    // per-node walk, for the cross-tree checks. It is hoisted here — the same
+    // single call over the same tree, moved earlier — so the per-node rules
+    // that need a site can read it instead of re-matching the reader's own
+    // `source` slot for the third time in this file.
+    //
+    // Indexed by READER, restricted to the sites the reading node's own arm
+    // named as its `source` slot. That restriction is what keeps the window
+    // exactly where it was: the rules below matched `spec.Source` DIRECTLY, so
+    // a Transform nested inside a `Format` or a `Local` was never their
+    // subject, and the walk declines to tag one for that reason (see
+    // `BindingWalk.tagSourceSite`).
+    //
+    // First-wins on a repeated id, matching the tree order the rules read in;
+    // a duplicated node id is FUARAN's own defect (`DuplicateNodeId`) and not
+    // this index's to re-report.
+    let treeFacts = BindingWalk.collect node
+
+    let sourceSites =
+        treeFacts.TransformSites
+        |> List.filter (fun (d: BindingWalk.TransformSiteDecl) -> d.Site.Slot = Some "source")
+        |> List.fold
+            (fun acc d ->
+                if Map.containsKey d.Reader acc then
+                    acc
+                else
+                    Map.add d.Reader d.Site acc)
+            Map.empty
+
+    /// The schema a reader's `source` slot PRODUCES, when the walk enumerated a
+    /// non-live Transform there. `None` on every other shape — a live source
+    /// (whose `initial` snapshot is a decode-time table, not a statement about
+    /// the rows a later write will put under the key), a plain binding, or a
+    /// reader whose slot the walk does not name.
+    let producedSchemaOf (readerId: string) : SchemaKnowledge option =
+        match Map.tryFind readerId sourceSites with
+        | Some site when not site.IsLive -> Some(producedSchema site.Source site.Pipeline)
+        | _ -> None
+
     /// FUARAN120 (Phase 1113) — a combobox whose option source is a STATIC and
     /// EMPTY list. One helper because a filter chip carries the same control as
     /// a form field since the 0.2.0 unification, and one rule spelt twice is one
@@ -3261,10 +3302,14 @@ let private validateCore
             // OPEN walk — an unresolvable `Ref`, a pivot whose value columns are
             // named by the data — is an ignorance and stands down, exactly as the
             // empty-pipeline pattern did for everything it could not see.
-            (match spec.Source with
-             | Binding.Transform(TransformSource.Data source, pipeline, _) ->
-                 let produced = producedSchema source pipeline
-
+            // Phase 1615 — the `(source, pipeline)` pair comes off the shared
+            // walk's site enumeration rather than from a third re-match of
+            // `spec.Source` in this file. Same window, same restraint, one
+            // derivation: `producedSchemaOf` answers only where the walk named
+            // a non-live Transform at this reader's `source` slot, which is
+            // exactly the shape this arm matched itself.
+            (match producedSchemaOf nodeIdStr with
+             | Some produced ->
                  if SchemaWalk.isClosed produced then
                      let schemaColumns = SchemaWalk.names produced
 
@@ -3996,10 +4041,10 @@ let private validateCore
             // it grounds FUARAN086 and is silent for FUARAN087/097 — reporting a
             // type mismatch about a type nobody can name would be a guess, and the
             // walk declines to guess precisely so this rule need not either.
-            (match spec.Source with
-             | Binding.Transform(TransformSource.Data source, pipeline, _) ->
-                 let produced = producedSchema source pipeline
-
+            // Phase 1615 — as at the grid rule below: the pair comes off the
+            // shared walk's site enumeration, not a re-match of `spec.Source`.
+            (match producedSchemaOf nodeIdStr with
+             | Some produced ->
                  if SchemaWalk.isClosed produced then
                      // The produced set, read once and carried on every finding —
                      // the same shape the grid rule takes, so the two twins say
@@ -4178,7 +4223,9 @@ let private validateCore
     // existing node (error), and that node should be a selection-producing
     // kind (warn) — `Binding.Selection` reaches parity with the declared-edge
     // checks the filter channel got in 421/424.
-    let facts = BindingWalk.collect node
+    // Phase 1615 — the ONE walk, hoisted above so the per-node schema rules
+    // could read it too. It was already a single call; only its position moved.
+    let facts = treeFacts
 
     for u in facts.Uses do
         match u.Use with

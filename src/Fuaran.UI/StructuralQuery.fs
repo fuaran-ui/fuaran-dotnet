@@ -490,6 +490,14 @@ let private useMatches (channel: Channel) (name: string) (usage: BindingWalk.Bin
     // `InlineTable` names nothing at all. Both are kept out of `Uses` by
     // `collect`, so both arms are unreachable today, stated for the same reason
     // the arm above it is.
+    // Phase 1615 — a SITE names no channel of its own either. The site's own
+    // source read is already answered: a live `State` source by the
+    // `TransformStateSource` arm above, every other channel by that binding's
+    // own use. Answering here would record one node against one name twice,
+    // which is the `StateSeed` argument on a second slot. It is kept out of
+    // `Uses` by `collect` too, so the arm is unreachable today and is stated
+    // for the same reason the two above it are.
+    | BindingWalk.BindingUse.TransformSite _
     | BindingWalk.BindingUse.StateSeed _
     | BindingWalk.BindingUse.InlineTable _
     | BindingWalk.BindingUse.TransformParam _
