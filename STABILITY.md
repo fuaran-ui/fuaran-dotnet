@@ -7106,3 +7106,38 @@ data is what this field is for, and closing it is not this change.
 **Version — it RIDES 0.78.0.** The draft is untagged and pinned by no public-path consumer, and a
 record widening is not a higher class than the draft already carries — `BindingSources` gained a
 field on this same slot (fuaran#1586). `v0.77.0` is the newest tag.
+
+---
+
+## Recorded fix — 0.78.1, `Fuaran.UI.Renderer` Fable-compiles again
+
+**No API moved.** No type, member, case, default or emitted byte differs from 0.78.0 on either
+pipeline; nothing a consumer wrote against 0.78.0 needs changing. By the [Semver](#semver) section's
+own definitions that is a **patch**, and it takes 0.78.1 rather than riding 0.78.0 because
+`v0.78.0` is tagged — the slot is released, not a draft.
+
+**Why a released-package version at all, for a change with no contract in it.** The same reason
+0.76.1 took one: `Fuaran.UI.Renderer` ships its `.fs` **sources** in the package under `fable/`, for
+Fable consumers to transpile. The delivered content moved, and the consequence for a consumer is not
+cosmetic — **0.78.0 does not transpile at all**. Every Fable consumer of the renderer tier is broken
+on that version, and no pin change or workaround on the consumer's side can help, because Fable
+compiles the package's own packed sources.
+
+**What was wrong.** `Resume.fs`'s `#if FABLE_COMPILER` arm names `JVal` (the envelope reader's
+return type) and `JStr` (its three empty defaults) unqualified, and that arm opened neither the
+namespace they live in nor anything re-exporting it — four unresolved names, at 178, 239, 250 and
+375. The fix is one `open` inside that arm.
+
+**Why it survived to a release, which is the part worth keeping.** The `#else` arm mentions neither
+name, so `dotnet build` compiled a file that had nothing wrong with it and reported 0 errors — and
+the repo's Fable stage never entered this project. Its portability list carried `Fuaran.UI`,
+`Fuaran.UI.StyleObserver` and `Fuaran.UI.ServerDriven`, which reach `Renderer.Core` transitively but
+never `Renderer`. Reaching a project through another's graph covers only what that graph reaches,
+and a conditional arm is reached by no .NET build and by no Fable compile that does not enter its
+own project. So the arm was compiled by nothing, on either pipeline, and the first thing able to
+notice was a consumer's build.
+
+**What now certifies it.** `Fuaran.UI.Renderer` is on the portability list in
+`tests/fable-laws/fable-check.ps1` and in CI's `fable-portability` job, so the arm is compiled under
+its own settings on every gate run. The refutation was observed before the fix landed: with the
+`open` reverted the gate exits 1 naming exactly those four positions.
