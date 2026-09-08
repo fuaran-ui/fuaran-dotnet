@@ -152,6 +152,10 @@ let installActionSink (sink: IActionInvocationSink option) : unit = resumeAction
 let envelopeMaxDepth = 32
 
 #if FABLE_COMPILER
+// `JVal` / `JStr` — the envelope reader below returns and defaults to them. This arm is the only
+// one that names them (the `#else` arm mentions neither), so the open belongs here rather than at
+// the top of the file.
+open Fuaran.Core
 open Fable.Core
 open Fable.Core.JsInterop
 
