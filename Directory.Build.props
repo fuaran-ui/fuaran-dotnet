@@ -1,4 +1,4 @@
-﻿<Project>
+<Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -668,7 +668,7 @@
          `Binding.Computed` now raises where it used to answer the slot's zero.
          See STABILITY.md "Recorded change - 0.78.0, a wire-complete
          `Binding.Local`". -->
-    <Version>0.78.0</Version>
+    <Version>0.78.1</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
