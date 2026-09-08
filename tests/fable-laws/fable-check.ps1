@@ -237,6 +237,82 @@
   avoids paying for one is Phase 1619's skip, which declines to INVOKE Fable at all and never asks
   Fable to trust anything.
 
+  ONE ENTRY PER PROPERTY SIGNATURE, AND WHY IT IS NOT DONE (Phase 1621 — a spike, closed as a
+  no-op). Phase 1622 above established that the `parsed` column is a GRAPH-SIZE meter, so the
+  remaining headroom in this stage is in entering fewer projects rather than in parsing each one
+  faster. The obvious lever is this stage's own rule (b): a project is entered on its own account
+  for the PROPERTIES it is compiled under, so entries sharing a property signature appear to be
+  re-proving one settled question. Compile one synthetic entry per distinct signature, carrying
+  that signature and project-referencing every member, and twelve compiles become two.
+
+  THE SIGNATURE SET, read from the tree on 2026-09-08. Four Fable-relevant properties resolved
+  through the repo's single governing `Directory.Build.props` (there is no other — no `src/` or
+  `tests/` override exists, which is why a synthetic entry could have lived anywhere in the repo):
+
+    Nullable=enable  LangVersion=latest  DefineConstants=  TargetFramework=net10.0   10 entries
+      Fuaran.UI, .Ops, .Ops.CleanRoom, .OpStream.Abstractions, .OpStream.Dag.Abstractions,
+      .OpStream.Replay, .ServerDriven, .StyleObserver, .ThemeManifest, .FastPath
+    Nullable=disable LangVersion=latest  DefineConstants=  TargetFramework=net10.0    2 entries
+      Fuaran.UI.Renderer, Fuaran.UI.Renderer.Core
+
+  Note which projects those are, because the roadmap phase that proposed this named a different
+  pair: `ServerDriven` declares NO `Nullable` and inherits `enable` — its own fsproj says so, in
+  the comment recording that Renderer.Core "failed with 31 FS3261s via THIS project (nullness on,
+  per Directory.Build.props)". The two nullable-disabled entries are the two Renderers. The union
+  reference closures the grouping would have produced are 14 projects (enable) and 7 (disable),
+  against per-entry closures of 1 to 8 today.
+
+  WHAT WAS MEASURED, on Fable 5.0.0, 2026-09-08, this machine. Three scratch packages: `Borrowed`
+  exporting a value; `User`, whose `#if FABLE_COMPILER` arm names `Probe.Borrowed.value` while
+  declaring NO ProjectReference to it — the shape of a Fable arm that has not declared its own
+  dependency; and a synthetic group entry referencing both, exactly as the grouping would generate.
+
+    User compiled ALONE, as its own entry                            FAILS  — "'Probe' is not defined"
+    the same User inside a group entry listing (User, Borrowed)      PASSES — the failure is masked
+    the same User inside a group entry listing (Borrowed, User)      FAILS
+    a group entry with <Nullable>disable</Nullable> over a member
+      whose source is a nullness offence                             PASSES
+    the same member under a group entry with <Nullable>enable</...>  FAILS  — FS3261 on the MEMBER
+
+  The last pair is the good news and it is worth keeping: it demonstrates directly, rather than by
+  inference from a comment, that a multi-reference ENTRY's properties govern a MEMBER's sources —
+  the premise this stage's whole rule (b) rests on and which had never been executed anywhere.
+
+  THE FIRST THREE ARE THE REFUSAL. Fable flattens the whole reference graph into ONE compilation,
+  and per-project reference boundaries are NOT enforced within it: whether a member can see another
+  member's namespace is decided purely by flattened SOURCE ORDER, which tracks the group entry's
+  reference declaration order (inverted — the two group rows above differ in nothing else). So a
+  member's undeclared borrow is caught or masked depending on an ordering that the derivation would
+  pick arbitrarily and that no author controls.
+
+  WHY THAT IS DECISIVE RATHER THAN A CAVEAT. It re-opens the exact hole this stage was built to
+  close. Fuaran.UI 0.78.0's Renderer arm did not compile because four bare `JVal` / `JStr` uses had
+  no `open Fuaran.Core` — a MISSING-DEPENDENCY defect inside a `#if FABLE_COMPILER` arm, which
+  `dotnet build` cannot see because it compiles only the `#else` arm. Under grouping, a sibling
+  member that did bring that namespace into scope earlier in the flattened order would have made
+  that defect compile green. The isolated per-entry compile is what proves a package's Fable arm
+  declares its own dependencies, which is the question a CONSUMER transpiling that package alone
+  asks — and it is not redundant with anything else in this repo's gate.
+
+  AND THE NARROWING CANNOT BE ENGINEERED AWAY BY GROUPING LESS. Member `M` keeps its isolation only
+  when the group's union closure equals `C(M)`, which can hold for at most the ONE member whose
+  closure already contains every other's. Read against the sets above that is not a hedge, it is
+  the whole result: the enable group's largest member closure is 8 against a union of 14, so all
+  ten of its members lose their isolation; the disable group's union is 7, which IS `Renderer`'s
+  own closure, so `Renderer` keeps its isolation and `Renderer.Core` — entered on its own account
+  precisely BECAUSE it carries a conditional arm — is the one that loses. That group is also the
+  one worth the least: collapsing it saves exactly one compile of twelve. A member that IS spared
+  is by construction the graph root the derivation would have entered anyway. So the sound group
+  size is one, which is the derivation this stage already has.
+
+  WHAT A LATER PHASE WOULD HAVE TO SETTLE, stated so it is a decision and not a rediscovery: a way
+  to enforce reference boundaries INSIDE one Fable compilation (Fable 5.0.0 offers none, and the
+  ordering above is not a documented contract to build on); or a second, cheap per-member check
+  that the Fable arm's dependencies are declared, at which point grouping becomes a pure scheduling
+  question again. The assertions that would falsify this note if Fable's semantics change live in
+  `fable-check.tests.ps1` beside this file — a masking that stops masking turns those red and sends
+  the reader back here, rather than leaving this paragraph to age quietly into being wrong.
+
   METHOD NOTES — both learned the hard way, both recorded in `CLAUDE.md` under "Fable method
   traps", and both binding on anything added here:
 

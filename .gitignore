@@ -53,3 +53,7 @@ tests/pure-tier-laws/laws-fable.txt
 # The go-red proof for the Fable portability derivation builds a scratch package tree here
 # (tests/fable-laws/fable-check.tests.ps1). Regenerated on every run; never committed.
 tests/fable-laws/.selftest/
+
+# The Fable-semantics probe tree (tests/fable-laws/fable-check.tests.ps1, Phase 1621).
+# Regenerated on every run; never committed.
+tests/fable-laws/.selftest-semantics/

@@ -59,6 +59,25 @@
         value falls back to the default rather than to one, because the safety direction here is
         "run the stage", never "fail deciding how to".
 
+  FABLE'S OWN COMPILATION SEMANTICS, AND THE GROUPING REFUSAL (Phase 1621). Two properties of
+  `dotnet fable` that this stage's DESIGN rests on and that nothing had ever executed. They are
+  compiled directly rather than through the gate, over their own scratch root, because the claims
+  are about Fable and not about the derivation:
+
+    14. An ENTRY's `Nullable` governs a MEMBER's sources, OVERRIDING the member's own setting. This
+        is the premise of the derivation's rule (b) and of the whole portability stage, and it had
+        lived only in a comment in `Fuaran.UI.ServerDriven.fsproj` since 2026-07-29.
+    15. A package whose `#if FABLE_COMPILER` arm borrows a namespace it has not declared a
+        reference to FAILS when that package is entered ALONE — the Fuaran.UI 0.78.0 shape, and
+        exactly what the per-entry compile buys.
+    16. The SAME member is MASKED inside a multi-reference entry, and CAUGHT by the same entry with
+        its members declared the other way round. Fable flattens the graph into one compilation
+        that does not enforce boundaries between members, so the outcome turns on source order
+        alone. That is why Phase 1621 shipped no grouping of entries by property signature: it
+        would have re-opened the hole this stage exists to close. If either half ever flips,
+        Fable's semantics have changed and grouping may have become sound — which is the point of
+        asserting it rather than writing it down.
+
   The go-red proof for the ADDRESS FUNCTION itself — that the hash moves with the sources, the
   Fable tool version and the entry's properties — is `fable-check.ps1 -ProveAddressing`, which
   compiles nothing, costs milliseconds, and therefore runs inside the gate on every invocation
@@ -84,6 +103,14 @@ Set-Location $PSScriptRoot
 
 $gate = Join-Path $PSScriptRoot 'fable-check.ps1'
 $scratch = Join-Path $PSScriptRoot '.selftest'
+# A SECOND scratch root, for the Fable-semantics assertions (Phase 1621). Separate from
+# `$scratch` because the derivation RECURSES: a probe project under `.selftest/` would join
+# the gated set and move the counts the assertions above pin.
+$semantics = Join-Path $PSScriptRoot '.selftest-semantics'
+# A SECOND scratch root, for the Fable-semantics assertions (Phase 1621). Separate from
+# `$scratch` because the derivation recurses: a probe project under `.selftest/` would join the
+# gated set and move the counts the assertions above pin.
+$semantics = Join-Path $PSScriptRoot '.selftest-semantics'
 $failures = New-Object System.Collections.Generic.List[string]
 
 function New-ScratchProject {
@@ -134,6 +161,136 @@ $referenceItems
 "@ | Set-Content -Path (Join-Path $dir "$name.fsproj") -Encoding utf8NoBOM
 
     $source | Set-Content -Path (Join-Path $dir 'Library.fs') -Encoding utf8NoBOM
+}
+
+function New-SemanticsProject {
+    <#
+      One project for the Fable-semantics assertions at the end of this script. IN-REPO on purpose:
+      these must resolve the SAME governing `Directory.Build.props` and central package versions the
+      real entries do, or the property claim they make is about a tree nothing in this repo has. In
+      their OWN directory rather than `.selftest/`, so they never join the derivation the assertions
+      above count over.
+    #>
+    param(
+        [string] $name,
+        [string] $source,
+        [string[]] $references = @(),
+        [string] $properties = ''
+    )
+
+    $dir = Join-Path $semantics $name
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+    $referenceItems = ($references | ForEach-Object {
+            "    <ProjectReference Include=`"..\$_\$_.fsproj`" />"
+        }) -join "`n"
+
+    @"
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+$properties
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Library.fs" />
+  </ItemGroup>
+  <ItemGroup>
+$referenceItems
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>
+"@ | Set-Content -Path (Join-Path $dir "$name.fsproj") -Encoding utf8NoBOM
+
+    $source | Set-Content -Path (Join-Path $dir 'Library.fs') -Encoding utf8NoBOM
+}
+
+function Invoke-FableDirect {
+    <#
+      `dotnet fable` on one project, WITHOUT the gate. The claim under test is a property of Fable
+      itself rather than of the derivation, and routing it through `fable-check.ps1` would put the
+      gate's own selection between the question and the answer. Assignment, never a pipe — the
+      standing rule, because a pipe reports the last command's status and a red compile then reads
+      as a pass, which is the one answer an assertion like this must never give.
+    #>
+    param([string] $name)
+
+    $out = Join-Path ([IO.Path]::GetTempPath()) "fable-semantics-$name"
+    Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
+    try {
+        $text = & dotnet fable (Join-Path (Join-Path $semantics $name) "$name.fsproj") -o $out --noCache 2>&1
+        $exit = $LASTEXITCODE
+    }
+    finally {
+        Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
+    }
+    [pscustomobject]@{ Exit = $exit; Text = (@($text | ForEach-Object { [string] $_ }) -join "`n") }
+}
+
+function New-SemanticsProject {
+    <#
+      One project for the Fable-semantics assertions at the end of this script. IN-REPO on purpose:
+      these must resolve the SAME governing `Directory.Build.props` and central package versions the
+      real entries do, or the property claim they make is about a tree nothing in this repo has. In
+      their OWN directory rather than `.selftest/`, so they never join the derivation the assertions
+      above count over.
+    #>
+    param(
+        [string] $name,
+        [string] $source,
+        [string[]] $references = @(),
+        [string] $properties = ''
+    )
+
+    $dir = Join-Path $semantics $name
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+    $referenceItems = ($references | ForEach-Object {
+            "    <ProjectReference Include=`"..\$_\$_.fsproj`" />"
+        }) -join "`n"
+
+    @"
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+$properties
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Library.fs" />
+  </ItemGroup>
+  <ItemGroup>
+$referenceItems
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>
+"@ | Set-Content -Path (Join-Path $dir "$name.fsproj") -Encoding utf8NoBOM
+
+    $source | Set-Content -Path (Join-Path $dir 'Library.fs') -Encoding utf8NoBOM
+}
+
+function Invoke-FableDirect {
+    <#
+      `dotnet fable` on one project, WITHOUT the gate. The claim under test is a property of Fable
+      itself rather than of the derivation, and routing it through `fable-check.ps1` would put the
+      gate's own selection between the question and the answer. Assignment, never a pipe — the
+      standing rule, because a pipe reports the last command's status and a red compile then reads
+      as a pass, which is the one answer an assertion like this must never give.
+    #>
+    param([string] $name)
+
+    $out = Join-Path ([IO.Path]::GetTempPath()) "fable-semantics-$name"
+    Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
+    try {
+        $text = & dotnet fable (Join-Path (Join-Path $semantics $name) "$name.fsproj") -o $out --noCache 2>&1
+        $exit = $LASTEXITCODE
+    }
+    finally {
+        Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
+    }
+    [pscustomobject]@{ Exit = $exit; Text = (@($text | ForEach-Object { [string] $_ }) -join "`n") }
 }
 
 function Invoke-Gate {
@@ -415,10 +572,102 @@ try {
     $garbledDegree = if ($garbled.Text -match '(?m)^\s+parallelism (\d+) over (\d+) compile') { [int] $Matches[1] } else { 0 }
     Assert 'an unreadable parallelism override falls back to the default, not to one' `
     (($garbled.Exit -eq 0) -and ($garbledDegree -eq $degree)) "parallelism $garbledDegree, default was $degree"
+    # ── 14-16. Fable's own compilation semantics, and the grouping refusal (Phase 1621) ──
+    #
+    # Two properties of `dotnet fable` that this stage's DESIGN rests on, executed here rather than
+    # asserted in prose. See "ONE ENTRY PER PROPERTY SIGNATURE" in `fable-check.ps1`'s header for
+    # the measurement these came from.
+    #
+    # Compiled directly rather than through the gate, and over their own scratch root: the claims
+    # are about Fable, not about the derivation, and a probe routed through `-SrcRoot` would put the
+    # gate's own selection between the question and the answer.
+
+    Write-Host ''
+    Write-Host '── fable compilation semantics: the grouping refusal ─────' -ForegroundColor Cyan
+
+    # A member that declares nullness OFF for itself and offends against nullness. Under `dotnet
+    # build` it compiles; the only thing that can make it fail is an ENTRY that overrides it.
+    New-SemanticsProject -name 'Semantics.Offender' -properties '    <Nullable>disable</Nullable>' -source @'
+module Semantics.Offender
+
+let takes (s: string) = s.Length
+let call () = takes (null: string)
+'@
+
+    New-SemanticsProject -name 'Semantics.EntryOff' -references @('Semantics.Offender') `
+        -properties '    <Nullable>disable</Nullable>' -source "module Semantics.EntryOff`n`nlet marker = `"off`"`n"
+
+    New-SemanticsProject -name 'Semantics.EntryOn' -references @('Semantics.Offender') `
+        -properties '    <Nullable>enable</Nullable>' -source "module Semantics.EntryOn`n`nlet marker = `"on`"`n"
+
+    # 14. The premise of the derivation's rule (b), and of this whole stage: an ENTRY's properties
+    # govern a MEMBER's sources. It has been in this repo's comments since 2026-07-29 (the
+    # Renderer.Core-via-ServerDriven note in `Fuaran.UI.ServerDriven.fsproj`) and nothing ran it.
+    # The member here declares `disable` FOR ITSELF, so a pass under `EntryOn` would mean the
+    # member's own setting won — which is the reading this stage would be worthless under.
+    $entryOff = Invoke-FableDirect 'Semantics.EntryOff'
+    $entryOn = Invoke-FableDirect 'Semantics.EntryOn'
+
+    Assert 'a member compiles under an entry whose Nullable agrees with its own' `
+    ($entryOff.Exit -eq 0) $entryOff.Text
+    Assert "an ENTRY's Nullable governs a MEMBER's sources, overriding the member's own setting" `
+    (($entryOn.Exit -ne 0) -and ($entryOn.Text -match 'Semantics\.Offender.*3261')) $entryOn.Text
+
+    # A member whose `#if FABLE_COMPILER` arm names a namespace it has NOT declared a reference to
+    # — the Fuaran.UI 0.78.0 shape (four bare `JVal` / `JStr` uses with no `open Fuaran.Core`),
+    # reduced. `dotnet build` cannot see it: it compiles only the `#else` arm.
+    New-SemanticsProject -name 'Semantics.Borrowed' -source "module Semantics.Borrowed`n`nlet value = 42`n"
+
+    New-SemanticsProject -name 'Semantics.Borrower' -source @'
+module Semantics.Borrower
+
+#if FABLE_COMPILER
+let describe () = string Semantics.Borrowed.value
+#else
+let describe () = "dotnet"
+#endif
+'@
+
+    # The two synthetic group entries a signature-grouping would have generated, differing in
+    # NOTHING but the order their members are declared in.
+    New-SemanticsProject -name 'Semantics.GroupMasking' -references @('Semantics.Borrower', 'Semantics.Borrowed') `
+        -source "module Semantics.GroupMasking`n`nlet marker = `"m`"`n"
+    New-SemanticsProject -name 'Semantics.GroupCatching' -references @('Semantics.Borrowed', 'Semantics.Borrower') `
+        -source "module Semantics.GroupCatching`n`nlet marker = `"c`"`n"
+
+    $alone = Invoke-FableDirect 'Semantics.Borrower'
+    $masking = Invoke-FableDirect 'Semantics.GroupMasking'
+    $catching = Invoke-FableDirect 'Semantics.GroupCatching'
+
+    # 15. What the per-entry compile buys, stated as the thing that would be lost: a package whose
+    # Fable arm has not declared its own dependency fails, which is the question a CONSUMER
+    # transpiling that package alone asks.
+    Assert 'a Fable arm borrowing an undeclared dependency FAILS when the package is entered alone' `
+    (($alone.Exit -ne 0) -and ($alone.Text -match "Semantics\.Borrower.*'Semantics' is not defined")) $alone.Text
+
+    # 16. And why Phase 1621 shipped no grouping. Fable flattens the reference graph into ONE
+    # compilation that does NOT enforce boundaries between members, so the SAME member is masked or
+    # caught according to flattened source order alone — which tracks the group entry's reference
+    # declaration order and which no author controls.
+    #
+    # The `catching` half is the discriminator, and it is not decoration: without it, `masking`
+    # would also pass if the borrow had quietly become legal for some unrelated reason, and the
+    # assertion would report a masking that was not happening.
+    Assert 'the SAME member is MASKED inside a multi-reference entry that lists it first' `
+    ($masking.Exit -eq 0) $masking.Text
+    Assert 'and is CAUGHT by the same entry with its members declared the other way round' `
+    (($catching.Exit -ne 0) -and ($catching.Text -match "Semantics\.Borrower.*'Semantics' is not defined")) $catching.Text
+
+    # If either of the two above ever flips, Fable's semantics have changed and grouping entries by
+    # property signature may have become sound. That is the one thing this file can do for that
+    # header section which the section cannot do for itself: make it falsifiable rather than let it
+    # age quietly into being wrong.
+
 }
 finally {
     if (-not $KeepScratch) {
         Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $semantics -ErrorAction SilentlyContinue
     }
 }
 
