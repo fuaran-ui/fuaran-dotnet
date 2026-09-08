@@ -1,4 +1,4 @@
-module Fuaran.UI.OpStream.Tests.TeleportTests
+﻿module Fuaran.UI.OpStream.Tests.TeleportTests
 
 // Phase 1152 — `Action.Dispatch` carries the IDL's `inProcessOnly` marking, which
 // the generator renders as `[<Obsolete(…, false)>]`: FS0044 at every mention, and
@@ -25,6 +25,9 @@ module Fuaran.UI.OpStream.Tests.TeleportTests
 //    - budget: the exemplar wizard bundle fits the QR version-40-L ceiling.
 // ============================================================================
 
+open System
+open System.IO
+open System.Text.Json
 open Expecto
 open Fuaran.Core
 open Fuaran.UI
@@ -457,4 +460,266 @@ let tests =
                   | Error e -> failtestf "a real bundle must still decode under tr-TR: %A" e
               finally
                   System.Globalization.CultureInfo.CurrentCulture <- original
+          } ]
+
+// ────────────────────────────────────────────────────────────────────────────
+//  Phase 1602 — the corpus family (WIRE_FORMAT.md §12 + §17.6).
+//
+//  Everything above is this host talking to itself: it encodes an exemplar and
+//  decodes it back, which proves the codec is self-consistent and proves
+//  nothing at all about cross-host agreement. A bundle produced by the
+//  reference encoder and checked into `wire-format-fixtures/teleport/` is a
+//  different claim — bytes in, bytes out, no shared type model between the
+//  producer and this reader — and it is the claim §17.6 makes. The TypeScript
+//  host has read this family since Phase 1589; this is the F# host joining it.
+//
+//  The exemplar round trip stays where it is, as the ENCODER test. The corpus
+//  cannot make that statement: every vector here is decode-only by
+//  construction, because a vector's whole value is that this host did not
+//  produce it.
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Walk up from the test assembly to the workspace `wire-format-fixtures/`.
+/// `None` in a bare single-repo clone — the same posture (and the same reason)
+/// as `ChainCorpusTests` and `TreeOpMapLawsTests`: a missing input degrades to
+/// a skip and never takes the assembly's type initializer down with it.
+let private tryCorpusRoot () : string option =
+    let rec walk (dir: DirectoryInfo | null) =
+        match dir with
+        | null -> None
+        | d when File.Exists(Path.Combine(d.FullName, "wire-format-fixtures", "manifest.json")) ->
+            Some(Path.Combine(d.FullName, "wire-format-fixtures"))
+        | d -> walk d.Parent
+
+    walk (DirectoryInfo AppContext.BaseDirectory)
+
+/// A manifest row this family cares about (WIRE_FORMAT §12).
+type private CorpusFixture =
+    { Id: string
+      Kind: string
+      Decoder: string
+      InputFile: string
+      ExpectedFile: string
+      ExpectedErrorCode: string
+      ExpectedPath: string
+      Description: string }
+
+let private manifestString (row: JsonElement) (name: string) : string =
+    match row.TryGetProperty name with
+    | true, v when v.ValueKind = JsonValueKind.String ->
+        match v.GetString() with
+        | null -> ""
+        | s -> s
+    | _ -> ""
+
+/// The `teleport-decode` / `teleport-reject` rows, read from the MANIFEST
+/// rather than from the directory listing: the manifest is what a conformant
+/// host's harness loads, so a payload sitting on disk that the manifest does
+/// not list is not a conformance obligation and must not be run as one.
+let private teleportFixtures (root: string) : CorpusFixture list =
+    use doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "manifest.json")))
+
+    doc.RootElement.GetProperty("fixtures").EnumerateArray()
+    |> Seq.map (fun row ->
+        { Id = manifestString row "id"
+          Kind = manifestString row "kind"
+          Decoder = manifestString row "decoder"
+          InputFile = manifestString row "inputFile"
+          ExpectedFile = manifestString row "expectedFile"
+          ExpectedErrorCode = manifestString row "expectedErrorCode"
+          ExpectedPath = manifestString row "expectedPath"
+          Description = manifestString row "description" })
+    |> Seq.filter (fun f -> f.Kind = "teleport-decode" || f.Kind = "teleport-reject")
+    |> List.ofSeq
+
+/// A `teleport-*` fixture's input DOCUMENT: the bundle string, plus the size
+/// ceilings this vector is to be run under when it names any (§17.6). It is a
+/// document, not a payload — a decoder handed the file's own bytes as a bundle
+/// fails every vector in the family.
+let private inputOf (root: string) (f: CorpusFixture) : string * TeleportLimits =
+    match Json.parse (File.ReadAllText(Path.Combine(root, f.InputFile))) with
+    | Ok(JObj fields) ->
+        let encoded =
+            match fields |> List.tryFind (fun (k, _) -> k = "encoded") with
+            | Some(_, JStr s) -> s
+            | _ -> failtestf "%s: input document has no string 'encoded' member" f.Id
+
+        let limits =
+            match fields |> List.tryFind (fun (k, _) -> k = "limits") with
+            | Some(_, JObj limitFields) ->
+                limitFields
+                |> List.fold
+                    (fun (acc: TeleportLimits) (k, v) ->
+                        match k, v with
+                        | "maxEncodedChars", JInt n -> { acc with MaxEncodedChars = int n }
+                        | "maxDecodedBytes", JInt n -> { acc with MaxDecodedBytes = int n }
+                        // Silently ignoring an unrecognised ceiling would run the
+                        // vector under limits it did not ask for and report the
+                        // result as conformance.
+                        | other, _ -> failtestf "%s: unknown limit '%s' — §17.6 names two" f.Id other)
+                    TeleportLimits.defaults
+            | _ -> TeleportLimits.defaults
+
+        encoded, limits
+    | other -> failtestf "%s: input file is not a JSON object document — %A" f.Id other
+
+/// A member of the expected envelope as canonical bytes; `None` when the
+/// envelope omits it (§17.2 omits `state` / `history` / `chainHead` when empty).
+let private envelopeMember (envelope: (string * JVal) list) (name: string) : string option =
+    envelope
+    |> List.tryPick (fun (k, v) -> if k = name then Some(Canon.render v) else None)
+
+/// The `$`-rooted position a §17.4 refusal concerns. The mapping is NORMATIVE
+/// and lives in WIRE_FORMAT.md §17.6, not here: a §17.4 error is a typed case
+/// rather than a `(code, path)` pair, so fixing the position in the
+/// specification is what stops two conformant hosts disagreeing about a fixture
+/// while both pass. This implements that table and nothing else.
+let private codeAndPath (e: TeleportError) : string * string =
+    match e with
+    | TeleportError.Oversize _ -> "Oversize", "$"
+    | TeleportError.InvalidFormat _ -> "InvalidFormat", "$"
+    | TeleportError.InvalidJson _ -> "InvalidJson", "$"
+    | TeleportError.InvalidEnvelope(path, _) -> "InvalidEnvelope", path
+    | TeleportError.UnsupportedVersion _ -> "UnsupportedVersion", "$.bundle"
+    | TeleportError.DigestMismatch _ -> "DigestMismatch", "$.digest"
+    | TeleportError.TreeDecode e -> "TreeDecode", e.Path
+    | TeleportError.HistoryDecode(_, e) -> "HistoryDecode", e.Path
+    | TeleportError.TreeInvalid _ -> "TreeInvalid", "$.tree"
+
+[<Tests>]
+let corpusTests =
+    testList
+        "Fuaran.UI.OpStream — Teleport corpus family (§17.6)"
+        [ test "the family is registered, and every row names the teleport entry point" {
+              match tryCorpusRoot () with
+              | None ->
+                  skiptest
+                      "wire-format-fixtures/ not found walking up from the test assembly — this family needs the workspace checkout (skipped in a bare single-repo clone)"
+              | Some root ->
+                  let fixtures = teleportFixtures root
+                  let accepts = fixtures |> List.filter (fun f -> f.Kind = "teleport-decode")
+                  let rejects = fixtures |> List.filter (fun f -> f.Kind = "teleport-reject")
+
+                  // FAILING here, rather than reporting an empty suite green, is
+                  // the point. The family's rows are hand-maintained, so a
+                  // corpus regeneration that dropped them would otherwise leave
+                  // every arm below quantifying over nothing — a green run that
+                  // has silently stopped certifying the format.
+                  Expect.isNonEmpty
+                      accepts
+                      "the corpus carries no `teleport-decode` rows. If it was just regenerated, the emit dropped this family — restore the rows (WIRE_FORMAT.md §12)."
+
+                  Expect.isNonEmpty rejects "the corpus carries no `teleport-reject` rows (WIRE_FORMAT.md §12)."
+
+                  let wrongDecoder = fixtures |> List.filter (fun f -> f.Decoder <> "teleport")
+
+                  Expect.isEmpty
+                      wrongDecoder
+                      (sprintf
+                          "these rows name an entry point other than `teleport`, so a harness would run them through the wrong decoder: %A"
+                          (wrongDecoder |> List.map (fun f -> f.Id, f.Decoder)))
+          }
+
+          test "every accept vector decodes to the envelope the corpus holds" {
+              match tryCorpusRoot () with
+              | None -> skiptest "wire-format-fixtures/ not found — needs the workspace checkout"
+              | Some root ->
+                  let accepts =
+                      teleportFixtures root |> List.filter (fun f -> f.Kind = "teleport-decode")
+
+                  Expect.isNonEmpty accepts "no accept vectors — this arm would assert nothing"
+
+                  for f in accepts do
+                      let encoded, limits = inputOf root f
+
+                      let decoded =
+                          match Teleport.decodeWith limits encoded with
+                          | Ok d -> d
+                          | Error e -> failtestf "%s failed to decode (%s): %A" f.Id f.Description e
+
+                      let expectedRaw = File.ReadAllText(Path.Combine(root, f.ExpectedFile))
+
+                      let envelope =
+                          match Json.parse expectedRaw with
+                          | Ok(JObj fields) -> fields
+                          | other -> failtestf "%s: expectedFile is not a JSON object — %A" f.Id other
+
+                      // The expectation itself must be canonical. A hand edit
+                      // that reordered a member or respaced the document would
+                      // make every comparison below a comparison against bytes
+                      // §2 does not permit — and would still pass, because both
+                      // sides are re-rendered before they are compared.
+                      Expect.equal
+                          (Canon.render (JObj envelope))
+                          expectedRaw
+                          (sprintf "%s: expectedFile is not in canonical form (WIRE_FORMAT §2)" f.Id)
+
+                      Expect.equal
+                          (Canon.render (JStr decoded.Digest))
+                          (envelopeMember envelope "digest" |> Option.defaultValue "")
+                          (sprintf
+                              "%s: the integrity digest, recomputed here, differs from the one the corpus carries"
+                              f.Id)
+
+                      // The cross-host claim: the decoded tree re-encodes to the
+                      // SAME canonical bytes the corpus holds for the envelope's
+                      // `tree` member. The CARRIED payload is not those bytes —
+                      // it spells shorthand the node decoder normalises — so a
+                      // decoder that treated it as opaque JSON fails here, which
+                      // is exactly what §17.6 is for.
+                      Expect.equal
+                          (CanonicalJson.encodeNode decoded.Tree)
+                          (envelopeMember envelope "tree" |> Option.defaultValue "")
+                          (sprintf "%s: the decoded tree does not re-encode to the corpus's `tree` bytes" f.Id)
+
+                      Expect.equal
+                          (Canon.render (JObj(Map.toList decoded.State)))
+                          (envelopeMember envelope "state" |> Option.defaultValue "{}")
+                          (sprintf "%s: the resumed state map differs from the one the envelope carries" f.Id)
+
+                      let expectedHistory =
+                          match envelope |> List.tryPick (fun (k, v) -> if k = "history" then Some v else None) with
+                          | Some(JArr items) -> items |> List.map Canon.render
+                          | _ -> []
+
+                      Expect.equal
+                          (decoded.History |> List.map CanonicalJson.encodeOp)
+                          expectedHistory
+                          (sprintf "%s: the op-history window differs from the one the envelope carries" f.Id)
+
+                      Expect.equal
+                          (decoded.ChainHead |> Option.map (JStr >> Canon.render))
+                          (envelopeMember envelope "chainHead")
+                          (sprintf "%s: the chain head differs from the one the envelope carries" f.Id)
+          }
+
+          test "every reject vector is refused with the case and at the position §17.6 fixes" {
+              match tryCorpusRoot () with
+              | None -> skiptest "wire-format-fixtures/ not found — needs the workspace checkout"
+              | Some root ->
+                  let rejects =
+                      teleportFixtures root |> List.filter (fun f -> f.Kind = "teleport-reject")
+
+                  Expect.isNonEmpty rejects "no reject vectors — this arm would assert nothing"
+
+                  for f in rejects do
+                      let encoded, limits = inputOf root f
+
+                      match Teleport.decodeWith limits encoded with
+                      | Ok _ -> failtestf "%s DECODED, but %s" f.Id f.Description
+                      | Error e ->
+                          let code, path = codeAndPath e
+
+                          Expect.equal code f.ExpectedErrorCode (sprintf "%s: %s" f.Id f.Description)
+
+                          // Prefix matching, per §12 — a host may name a position
+                          // deeper than the corpus's stated slot and is then more
+                          // precise rather than divergent.
+                          Expect.isTrue
+                              (path.StartsWith(f.ExpectedPath, System.StringComparison.Ordinal))
+                              (sprintf
+                                  "%s: refused at '%s', which is not at or below the corpus's '%s'"
+                                  f.Id
+                                  path
+                                  f.ExpectedPath)
           } ]
