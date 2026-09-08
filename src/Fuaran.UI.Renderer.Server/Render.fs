@@ -2701,6 +2701,68 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                               prop.value toV ]
                             @ constraintAttrs
                         ) ] ]
+        // Phase 1605 — THE SSR FLOOR FOR A TOGGLE, closing the first half of
+        // the asymmetry Phase 1591 declared as data rather than smoothed over.
+        // Until now a form toggle fell through to the generic input arm below,
+        // which emitted `type="toggle"` — a type no user agent knows, so the
+        // browser degraded it to a text box — and no role at all: a screen
+        // reader on the static floor heard a text field where the hydrated page
+        // announces on/off. The FILTER twin has emitted the pair on both
+        // pipelines since Phase 766; this is the same emission, for the same
+        // boolean data, on the field side.
+        //
+        // Built on a native checkbox for the client arm's reason: keyboard
+        // operation (Space) and focus come from the platform, where an ARIA role
+        // on a non-interactive element would have to reimplement both — the
+        // usual way a hand-rolled switch becomes unusable.
+        //
+        // `aria-checked` is RESOLVED here rather than deferred to hydration. A
+        // switch announced `false` on first paint and corrected later is
+        // announced wrongly to the reader who is already there, and for a
+        // static (never-hydrated) render it would never be corrected at all.
+        // The control stays inert like every other server-rendered field
+        // (`RichTier.Behavioural`): no handler is wired, and the per-field
+        // buffer marker is unchanged, so the shim harvests `el.checked` where
+        // it previously read a text box that could hold no boolean.
+        | FormFieldKind.Toggle(value, _) ->
+            let value =
+                value
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue false
+
+            Html.input
+                [ prop.className "fuaran-form-field-control"
+                  prop.custom ("data-fuaran-field", field.Id)
+                  prop.custom ("type", "checkbox")
+                  prop.custom ("role", "switch")
+                  prop.custom ("aria-checked", (if current then "true" else "false"))
+                  if current then
+                      prop.custom ("checked", "checked") ]
+        // Phase 1605 — THE SSR FLOOR FOR A SEGMENTED CHOICE, the second half of
+        // that asymmetry. The field arm fell through to the generic input arm
+        // too and emitted `type="segmented-choice"`, so a no-script reader met
+        // one text box where the hydrated page renders a `radiogroup` of
+        // options (Horizontal) or a fieldset of native radios (Vertical). It now
+        // shares the server's own segmented core with the FILTER arm, which has
+        // emitted those roles since the filters unification: ONE shape, two
+        // callers, so the two floors can no longer drift apart the way the
+        // fidelity table recorded them doing.
+        //
+        // The CONTAINER carries the per-field buffer marker rather than each
+        // option — the writable-Rating precedent above, where the interactive
+        // children sit inside the marked container. No per-option shim marker is
+        // emitted: `data-filter-value` is what bridges a filter CLICK to a
+        // value, and wiring an interaction is not what this phase ships. The
+        // floor stays inert, and the selection is still visible to a reader and
+        // to assistive technology through `aria-checked` / the checked radio.
+        | FormFieldKind.SegmentedChoice(options, value, _, orientation) ->
+            let value =
+                value
+                |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.choice))
+
+            renderSegmentedChoiceCore ctx field.Id "data-fuaran-field" None options value orientation
         | _ ->
             // Phase 864 — a static emitter MUST project a declared rule into
             // the platform's OWN constraint attributes, so the platform (here,
@@ -2974,7 +3036,15 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                         ) ] ]
         | FormFieldKind.SegmentedChoice(options, value, _, orientation) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-            renderSegmentedFilter ctx spec.Name options value orientation
+
+            renderSegmentedChoiceCore
+                ctx
+                spec.Name
+                "data-filter-name"
+                (Some "data-filter-value")
+                options
+                value
+                orientation
         | FormFieldKind.Combobox(allowFreeText, _, options, value) ->
             // Phase 1113 — the form field's SSR floor, chip-addressed. Same
             // native `<input list>` + `<datalist>`, same recorded limit on
@@ -3106,15 +3176,30 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
               [ Html.span [ prop.className "fuaran-filter-label"; prop.text labelText ]
                 control ] ]
 
-/// The segmented-control / radio-group filter, inert. Mirrors the client
-/// `renderSegmentedChoiceCore` shapes (id namespace = the filter's `Name`):
-/// Horizontal — `role="radiogroup"` of `role="radio"` buttons, each carrying
-/// `data-filter-value` so the shim bridges a click to `payload.value`;
+/// The segmented-control / radio-group floor, inert. Mirrors the client
+/// `renderSegmentedChoiceCore` shapes, and — since Phase 1605 — drives BOTH of
+/// its callers, as the client core already did:
+/// `FormFieldKind.SegmentedChoice` on a `Form` (id namespace = the field's
+/// `Id`) and on a `Filters` chip (id namespace = the filter's `Name`).
+/// Horizontal — `role="radiogroup"` of `role="radio"` buttons;
 /// Vertical — `<fieldset>` of native radio inputs (a change event carries the
 /// chosen value natively).
-and private renderSegmentedFilter
+///
+/// One shape with two callers rather than two arms: the fidelity table recorded
+/// the form side emitting no group role at all where the filter side emitted
+/// both, and two arms is how that divergence arose.
+and private renderSegmentedChoiceCore
     (ctx: ServerRenderContext)
     (idNamespace: string)
+    // The shim marker the CONTAINER carries: `data-filter-name` for a filter
+    // chip (the name-addressed round trip), `data-fuaran-field` for a form
+    // field (the per-field buffer marker).
+    (containerAttr: string)
+    // The per-OPTION marker, where the shim bridges a click to a value
+    // (`data-filter-value`). `None` for a form field, whose floor is inert:
+    // emitting one would wire an interaction no server-driven form handler
+    // reads.
+    (optionAttr: string option)
     (options: Binding<SelectOption list>)
     (value: Binding<string>)
     (orientation: Orientation)
@@ -3150,7 +3235,9 @@ and private renderSegmentedFilter
                       elif activeIndex < 0 && index = 0 then 0
                       else -1
                   )
-                  prop.custom ("data-filter-value", option.Value)
+                  match optionAttr with
+                  | Some attr -> prop.custom (attr, option.Value)
+                  | None -> ()
                   prop.text option.Label ]
 
         Html.div
@@ -3158,7 +3245,7 @@ and private renderSegmentedFilter
               prop.id idNamespace
               prop.role "radiogroup"
               prop.custom ("aria-orientation", "horizontal")
-              prop.custom ("data-filter-name", idNamespace)
+              prop.custom (containerAttr, idNamespace)
               prop.children [ for index, option in List.indexed opts -> optionButton index option ] ]
     | Orientation.Vertical ->
         let optionRow (index: int) (option: SelectOption) : ReactElement =
@@ -3180,7 +3267,7 @@ and private renderSegmentedFilter
         Html.fieldSet
             [ prop.className "fuaran-segmented-vertical"
               prop.custom ("aria-orientation", "vertical")
-              prop.custom ("data-filter-name", idNamespace)
+              prop.custom (containerAttr, idNamespace)
               prop.children (
                   Html.legend [ prop.className "fuaran-segmented-legend"; prop.text idNamespace ]
                   :: [ for index, option in List.indexed opts -> optionRow index option ]

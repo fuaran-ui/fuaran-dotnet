@@ -57,6 +57,12 @@
     <Compile Include="CustomContractServerTests.fs" />
     <Compile Include="ResumeTests.fs" />
     <Compile Include="SharedSourceSeedingTests.fs" />
+    <!-- IntrinsicAriaSsrTests is Phase 1605's proof, in emitted bytes, that the
+         server floor announces Form's Toggle and horizontal SegmentedChoice.
+         The Phase 1591 lock is a token-level source census and cannot see it:
+         switch / radiogroup / radio already appear in the server arm from the
+         Filters arms, so a tier re-declaration alone would have passed it. -->
+    <Compile Include="IntrinsicAriaSsrTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
