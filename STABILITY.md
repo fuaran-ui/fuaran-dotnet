@@ -7186,6 +7186,53 @@ and reports a fixture addressing a peer shape this host cannot present as out of
 reason** rather than skipping it: this host's tree is in the page by construction — it IS the
 renderer — so an upstream-tree fixture is not a gap here and never becomes one.
 
+## Recorded change — 0.79.0, the server floor announces Form's Toggle and horizontal SegmentedChoice (fuaran#1605)
+
+**No published .NET surface moves.** No type, member, field or case is added, changed or removed;
+the two renderer functions involved are `private`. What moves is what the SERVER RENDERER EMITS,
+and one generated artefact.
+
+**The emission.** `Fuaran.UI.Renderer.Server` rendered a `Form`'s `Toggle` and `SegmentedChoice`
+fields through its generic input arm, which emitted `type="toggle"` and `type="segmented-choice"` —
+types no user agent knows, so both degraded to text boxes — and no ARIA role at all. A screen reader
+on a server-rendered form therefore heard a text field where the hydrated page announces a switch,
+and a text field where it announces a group of options. The `Filters` twin has emitted both on both
+pipelines since Phase 766 / the filters unification, so this was a divergence between two carriers
+of ONE control vocabulary rather than a considered floor.
+
+| Field kind | Server bytes before | Server bytes now |
+|---|---|---|
+| `Toggle` | `<input class="fuaran-form-field-control" type="toggle" value="">` | `<input class="fuaran-form-field-control" type="checkbox" role="switch" aria-checked="…" …>`, `checked` when bound true |
+| `SegmentedChoice` (Horizontal) | `<input … type="segmented-choice" value="">` | `<div role="radiogroup" aria-orientation="horizontal">` of `<button role="radio" aria-checked="…">` |
+| `SegmentedChoice` (Vertical) | as above | `<fieldset aria-orientation="vertical">` of native `<input type="radio">` + `<label>` |
+
+`aria-checked` is RESOLVED at render rather than deferred to hydration: a static, never-hydrated
+render is never corrected, and a hydrated one would still have announced the wrong state on first
+paint.
+
+**A consumer diffing server HTML sees a change; a consumer reading the .NET API sees none.** The
+per-field buffer marker `data-fuaran-field` is preserved on both controls — for the segmented field
+it sits on the container, the writable-`Rating` precedent — so the server-driven shim addresses the
+same field ids it did before, and now reads a checkbox's checked state where it previously read a
+text box that could hold no boolean. The floor stays INERT (`RichTier.Behavioural`): no handler is
+wired, and the filter-side per-option shim marker is deliberately not emitted for a form field.
+
+**The generated artefact moves with it.** `wire-format-fixtures/render-fidelity.json` re-emitted:
+`Form`'s three `intrinsic` entries change `tier` from `clientOnly` to `bothPipelines` and drop their
+`tierNote`. That is the whole artefact diff. Phase 1591 declared those entries `ClientOnly` and named
+the reason as a real SSR accessibility gap rather than a posture; the tier moved because the emission
+did.
+
+**Version — it RIDES the open 0.79.0 draft.** `v0.78.1` is the newest tag, 0.79.0 is untagged and
+pinned by no public-path consumer, and this change's class is lower than what that draft already
+carries (a public surface addition on `Fuaran.UI.ServerDriven`'s shim). `Directory.Build.props` is
+not touched.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged: `Toggle` and `SegmentedChoice` are shipped kinds, and this gives one
+of their two renderers the emission the other already had.
+
+
 ## 0.79.0 — the AG Grid adapter honours the declarative grid vocabulary (Phase 1611)
 
 **BREAKING, on `Fuaran.UI.Renderer`'s visualisation-adapter seam.**

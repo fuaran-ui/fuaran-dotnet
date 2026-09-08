@@ -54,6 +54,11 @@
          IDL leg reads the emitted corpus. -->
     <Compile Include="OpVocabularyTests.fs" />
     <Compile Include="CorpusEmitEolTests.fs" />
+    <!-- Phase 1602 — the corpus emit MERGES: a fixture family the emitter
+         does not author (the hand-maintained `teleport-*` vectors today)
+         survives a regeneration byte-for-byte instead of being deleted in
+         passing. Must follow Corpus.fs — it drives the emitter. -->
+    <Compile Include="CorpusMergeTests.fs" />
     <Compile Include="RoundTripTests.fs" />
     <Compile Include="SelectionDerivedValueTests.fs" />
     <Compile Include="ElicitationTests.fs" />

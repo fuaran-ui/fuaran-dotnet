@@ -97,8 +97,18 @@ unrecognised `lane` value, and a narrow lane that would admit no test raises rat
 nothing and exiting 0.
 
 **`-SkipFable` is not implied by any lane** — the Fable leg is a stage, not a lane. It is named
-explicitly in the fast-lane invocations above because on measurement it is the single largest
-share of this gate's wall-clock, so a pre-merge lane that leaves it in is not fast.
+explicitly in the fast-lane invocations above because on measurement it was the single largest
+share of this gate's wall-clock, so a pre-merge lane that left it in was not fast.
+
+**Phase 1619 narrowed that last point rather than retiring it: the lane now reaches the Fable stage
+too**, where a narrow lane may skip a compile whose CONTENT ADDRESS matches its last recorded green.
+Measured on this repo: the stage runs **475s cold**, **2s on an unchanged tree** (12 entries plus
+the law harness, every one skipped by name with its address printed), and **38s after editing one
+file in `Fuaran.UI.Renderer`** — one recompile, twelve skips. An edit deep in the substrate
+invalidates most entries and approaches the cold figure; the skip is worth what the edit is narrow.
+`full` writes addresses and consults none, so the skip is structurally unreachable on the lane a
+release cites, and `-SkipFable` remains the right switch for a loop that wants no Fable stage at
+all rather than a cheap one. See "The Fable stage" below.
 
 ## The Fable stage
 
@@ -126,6 +136,25 @@ does two things, and they answer different questions:
    The derivation's own go-red proof is `tests/fable-laws/fable-check.tests.ps1` — it builds a
    scratch package tree, puts the 0.78.0 defect shape into it, and asserts the gate fails with no
    list edited. It is not part of the gate; run it when the derivation changes.
+
+   **A narrow lane may SKIP an unchanged compile by content address** (Phase 1619). Each compile is
+   keyed on a hash of the entry's transitive `.fs` / `.fsproj` graph, the MSBuild files governing
+   every project in it, the Fable tool version, and the entry's own Fable-relevant properties; in
+   `-Lane pure|fast` a compile whose address matches its last recorded green is reported as
+   `SKIPPED BY ADDRESS` with the address printed, and in `full` the address is written and never
+   read. `--noCache` is untouched — nothing here trusts Fable's cache; the address decides whether
+   to invoke Fable at all, and a byte that changes the compile changes the address. Every
+   uncertainty resolves to "compile": an unresolvable reference, a missing tool manifest, an
+   unrecognised lane, an absent or stale-schema record. A red compile DELETES its record, so a tree
+   restored to a state that once passed still recompiles.
+
+   `pwsh ./tests/fable-laws/fable-check.ps1 -Addresses` prints each address, its record state and
+   the record store's path. `-ProveAddressing` is the address function's own go-red proof — a
+   scratch tree of plain files, no compiling, milliseconds — and it runs **inside the gate** on
+   every invocation that could skip; if it fails, skipping is withdrawn for that run and the stage
+   goes red. The end-to-end half (a narrow lane skips, a one-byte edit to a transitively-referenced
+   file misses, the full lane compiles anyway, a red run clears the record) is in
+   `fable-check.tests.ps1` beside it, which needs real compiles and so stays out of the gate.
 2. **The laws.** [`tests/fable-laws/`](tests/fable-laws/) is a Fable-compilable law project. It runs
    on both pipelines and its output is compared byte for byte, so two pipelines that are each
    internally lawful and disagree about a result still fail. Its `.NET` leg is also a rostered suite
@@ -141,7 +170,19 @@ lower (no Expecto, no `System.IO`, no reflection).
 
 ### Fable method traps
 
-Four, each of which cost real time and none of which announces itself:
+Five, each of which cost real time and none of which announces itself:
+
+- **The stage's scratch output root is OUTSIDE the repo, so every worktree shared it — and the
+  stage WIPES it at start.** Two gates running at once therefore deleted each other's output
+  mid-compile. It surfaces as a wall of path exceptions followed by cascading F# errors naming
+  `Fuaran.Core.*`, which reads as a genuine portability break and is not one; the first instinct is
+  to go looking at the substrate. The root is now keyed on the gate script's own location, so each
+  worktree gets its own, and the portability stage prints `output root:` on every run because the
+  path is not guessable and seeing it is most of the diagnosis. Out-of-repo placement is still
+  deliberate (MAX_PATH — see the stage's own note); it is being out of the repo that made the
+  sharing possible in the first place. The address-record store was already keyed this way, but on
+  `-SrcRoot` rather than on the tree: a cache two trees over identical sources SHOULD share, while
+  scratch output must not.
 
 - **A transpile is not a run.** `dotnet fable` can finish green on JavaScript that dies at its first
   `import`. With nullness ON at the entry project, the canonical wire encoder emits
