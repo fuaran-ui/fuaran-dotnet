@@ -170,7 +170,19 @@ lower (no Expecto, no `System.IO`, no reflection).
 
 ### Fable method traps
 
-Four, each of which cost real time and none of which announces itself:
+Five, each of which cost real time and none of which announces itself:
+
+- **The stage's scratch output root is OUTSIDE the repo, so every worktree shared it — and the
+  stage WIPES it at start.** Two gates running at once therefore deleted each other's output
+  mid-compile. It surfaces as a wall of path exceptions followed by cascading F# errors naming
+  `Fuaran.Core.*`, which reads as a genuine portability break and is not one; the first instinct is
+  to go looking at the substrate. The root is now keyed on the gate script's own location, so each
+  worktree gets its own, and the portability stage prints `output root:` on every run because the
+  path is not guessable and seeing it is most of the diagnosis. Out-of-repo placement is still
+  deliberate (MAX_PATH — see the stage's own note); it is being out of the repo that made the
+  sharing possible in the first place. The address-record store was already keyed this way, but on
+  `-SrcRoot` rather than on the tree: a cache two trees over identical sources SHOULD share, while
+  scratch output must not.
 
 - **A transpile is not a run.** `dotnet fable` can finish green on JavaScript that dies at its first
   `import`. With nullness ON at the entry project, the canonical wire encoder emits

@@ -326,6 +326,37 @@ function Get-TextSha256 {
     finally { $sha.Dispose() }
 }
 
+function Get-TreeScratchRoot {
+    <#
+      A scratch output root for THIS tree.
+
+      The scratch roots live outside the repo on purpose (see the portability root's own note for
+      the MAX_PATH reasoning), and that is exactly what makes them shared: every worktree of this
+      repo resolves the same fixed path under %TEMP%. Both stages that use one WIPE it at start to
+      guarantee a clean compile, so two gates running at once delete each other's output mid-run.
+
+      Phase 1605 hit it: 31 path exceptions and 1,867 cascading F# errors naming `Fuaran.Core.*`,
+      which reads as a real portability break and is not one. Phase 1619's fold hit the same thing
+      from the other side, its verify arm colliding with a sibling worker's gate.
+
+      Keying the leaf on this script's own location gives one root per worktree — the same trick
+      `Get-RecordPath` already plays, but keyed on the TREE rather than on `-SrcRoot`: the address
+      records are a cache that two trees over identical sources SHOULD share, while scratch output
+      is per-invocation and must not be. Twelve hex characters keeps the path well short of the
+      MAX_PATH headroom the out-of-tree placement buys.
+
+      Not per-PROCESS: two concurrent gates in one worktree would still collide, and that is
+      deliberate. A stable per-tree path is what makes a failed compile's output still there to
+      read afterwards, which is most of why these roots are outside the repo in the first place.
+    #>
+    param([Parameter(Mandatory)] [string] $Name)
+
+    if (-not $script:treeScratchKey) {
+        $script:treeScratchKey = (Get-TextSha256 $PSScriptRoot.ToLowerInvariant()).Substring(0, 12)
+    }
+    return Join-Path ([IO.Path]::GetTempPath()) "$Name-$script:treeScratchKey"
+}
+
 $fileHashCache = @{}
 $governingCache = @{}
 $toolVersionCache = @{}
@@ -691,7 +722,7 @@ function Invoke-AddressingProof {
     #>
     param([switch] $Quiet)
 
-    $proofRoot = Join-Path ([IO.Path]::GetTempPath()) 'fuaran-fable-address-proof'
+    $proofRoot = Get-TreeScratchRoot 'fuaran-fable-address-proof'
     $found = New-Object System.Collections.Generic.List[string]
 
     function New-ProofProject {
@@ -815,10 +846,17 @@ if ($laneMaySkip) {
 
 # Outside the repo tree on purpose: Fable emits a deep `fable_modules/` graph, and a deep output
 # path under an already-deep worktree hits MAX_PATH, where fsc fails without a readable error.
-$portabilityRoot = Join-Path ([IO.Path]::GetTempPath()) 'fuaran-fable-portability'
+# Keyed per tree because being outside the repo is precisely what made every worktree share one
+# directory — and this stage wipes its root at start. See `Get-TreeScratchRoot`.
+$portabilityRoot = Get-TreeScratchRoot 'fuaran-fable-portability'
 
 if (-not $SkipPortability) {
     Write-Stage "portability — $($entries.Count) entries covering $($covered.Count) of $($gated.Count) gated projects (lane '$lane': $(if ($laneMaySkip) { 'an unchanged entry may be skipped by address' } else { 'every entry compiles' }))"
+
+    # Printed because it is not guessable and it is where a confusing failure comes from: a wiped
+    # or half-wiped output root surfaces as path exceptions and cascading F# errors that name
+    # `Fuaran.Core.*` and read as a portability break. Seeing the root is most of the diagnosis.
+    Write-Host "  output root: $portabilityRoot" -ForegroundColor DarkGray
 
     foreach ($project in $exempt) {
         Write-Host "  EXEMPT $($project.Relative) — $($project.Exemption)" -ForegroundColor Yellow

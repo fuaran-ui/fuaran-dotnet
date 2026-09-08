@@ -283,6 +283,50 @@ try {
     $restored = Invoke-Gate -lane 'fast'
     Assert 'a red compile cleared the record, so the restored tree recompiles' `
     (($restored.Exit -eq 0) -and ($restored.Text -match 'fable .*SelfTest\.Root') -and ($restored.Text -cnotmatch 'SKIPPED BY ADDRESS.*SelfTest\.Root')) $restored.Text
+
+    # ── The scratch output root is per TREE ──────────────────────────────────
+    #
+    # The portability root lives outside the repo (MAX_PATH), and the stage WIPES it at start. With
+    # a fixed leaf that made every worktree share one directory, so two gates running at once
+    # deleted each other's output mid-compile — surfacing as path exceptions and cascading F#
+    # errors naming `Fuaran.Core.*`, which read as a portability break and are not one (Phase 1605;
+    # 1619's fold hit the same collision from the other side).
+    #
+    # The discriminator is a SECOND COPY of the gate at a different path, run over the SAME
+    # `-SrcRoot`. Same sources, different tree: the address records may legitimately be shared,
+    # the scratch output must not be. A constant leaf passes the first assertion and fails this one.
+    $rootOf = {
+        param([string] $text)
+        if ($text -match '(?m)^\s*output root:\s*(.+?)\s*$') { $Matches[1] } else { '' }
+    }
+
+    $hereRoot = & $rootOf $restored.Text
+    Assert 'the portability stage reports its output root' ($hereRoot -ne '') $restored.Text
+    Assert 'the output root carries a tree key rather than a bare fixed name' `
+    ($hereRoot -match 'fuaran-fable-portability-[0-9a-f]{12}$') $hereRoot
+
+    $otherTree = Join-Path ([IO.Path]::GetTempPath()) ("fable-check-tree-" + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Force -Path $otherTree | Out-Null
+    try {
+        Copy-Item -Path (Join-Path $PSScriptRoot '*.ps1') -Destination $otherTree -Force
+        $previousLane = $env:FUARAN_TEST_LANE
+        $env:FUARAN_TEST_LANE = 'full'
+        try {
+            $elsewhere = & pwsh -NoProfile -File (Join-Path $otherTree 'fable-check.ps1') -SrcRoot $scratch -SkipLaws 2>&1 | Out-String
+        }
+        finally {
+            if ($null -eq $previousLane) { Remove-Item Env:FUARAN_TEST_LANE -ErrorAction SilentlyContinue }
+            else { $env:FUARAN_TEST_LANE = $previousLane }
+        }
+
+        $thereRoot = & $rootOf $elsewhere
+        Assert 'a copy of the gate at another path reports its own output root' ($thereRoot -ne '') $elsewhere
+        Assert 'two trees over the same sources get DIFFERENT scratch roots' `
+        (($hereRoot -ne '') -and ($thereRoot -ne '') -and ($hereRoot -ne $thereRoot)) "here=$hereRoot there=$thereRoot"
+    }
+    finally {
+        Remove-Item -Recurse -Force $otherTree -ErrorAction SilentlyContinue
+    }
 }
 finally {
     if (-not $KeepScratch) {
