@@ -75,11 +75,22 @@ function Write-Stage {
 # `Fuaran.UI` is the root of the graph, and `ServerDriven` / `StyleObserver` are the two
 # nullable-enabled entry points that transitively pull in Renderer.Core / ThemeManifest /
 # StyleObserver.Abstractions — which is how those are covered without a compile each.
+#
+# `Fuaran.UI.Renderer` is here on its own account rather than transitively, and the reason is worth
+# stating because it is the general case, not a quirk of one project. Reaching a project through
+# another's graph covers only the files that project's graph REACHES; a client-tier project's
+# `#if FABLE_COMPILER` arm is unreachable from any .NET build AND from any Fable compile that does
+# not enter it. `Renderer.Core` was covered transitively and `Renderer` was not, so `Resume.fs`'s
+# Fable-only arm was compiled by nothing in this repo: it shipped in 0.78.0 naming four types it
+# never opened, with a green build and a green gate, and the first thing to notice was a consumer.
+# A project shipping `Content Include="**\*.fs" PackagePath="fable\"` and holding a
+# `#if FABLE_COMPILER` arm needs its OWN entry here.
 
 $portabilityProjects = @(
     'src/Fuaran.UI/Fuaran.UI.fsproj'
     'src/Fuaran.UI.StyleObserver/Fuaran.UI.StyleObserver.fsproj'
     'src/Fuaran.UI.ServerDriven/Fuaran.UI.ServerDriven.fsproj'
+    'src/Fuaran.UI.Renderer/Fuaran.UI.Renderer.fsproj'
 )
 
 # Outside the repo tree on purpose: Fable emits a deep `fable_modules/` graph, and a deep output

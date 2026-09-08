@@ -161,6 +161,14 @@ jobs:
       - name: Fable-compile Fuaran.UI.StyleObserver under its own settings
         run: dotnet fable src/Fuaran.UI.StyleObserver/Fuaran.UI.StyleObserver.fsproj -o "$RUNNER_TEMP/fable-guard/style-observer" --noCache
 
+      # On its own account, not transitively: the three above reach Renderer.Core but never
+      # Renderer, and a `#if FABLE_COMPILER` arm is compiled by no .NET build and by no Fable
+      # compile that does not enter its project. Resume.fs's arm shipped in 0.78.0 naming four
+      # types it never opened, past a green build and a green gate. Keep in step with
+      # `tests/fable-laws/fable-check.ps1`'s `$portabilityProjects`, whose header carries the rule.
+      - name: Fable-compile Fuaran.UI.Renderer under its own settings
+        run: dotnet fable src/Fuaran.UI.Renderer/Fuaran.UI.Renderer.fsproj -o "$RUNNER_TEMP/fable-guard/renderer" --noCache
+
   # ── The out-of-solution project guard ─────────────────────────────────────
   #
   # `Fuaran.sln` does not list every project in the tree, and `dotnet build
