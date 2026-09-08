@@ -24,6 +24,26 @@
     4. A `<FablePortabilityExemption>` holds a package out AND is echoed by name, so an exemption
        cannot be a silent one.
 
+  THE CONTENT-ADDRESSED SKIP (Phase 1619) is proved here too, and for the same reason one step
+  sharper: a cache that returns a stale green is worse than no cache, so the claim worth
+  falsifying is not "it skips" but "a changed input MISSES". Five more assertions, end to end
+  through real Fable compiles rather than through the address function alone:
+
+    5. In a NARROW lane a second run over an unchanged tree is SKIPPED BY ADDRESS, with the address
+       printed — and the first run was not, so the skip is a state that was reached rather than one
+       that was always there.
+    6. A one-byte edit to a TRANSITIVELY-REFERENCED source — a file the entry does not name and
+       which is not itself an entry — makes the narrow lane recompile the entry.
+    7. The FULL lane compiles with a matching record present: it writes addresses and consults
+       none, so the skip is structurally unreachable on the lane a release cites.
+    8. A RED compile clears the record, so restoring the tree to a state that once passed still
+       recompiles rather than standing on the earlier green.
+
+  The go-red proof for the ADDRESS FUNCTION itself — that the hash moves with the sources, the
+  Fable tool version and the entry's properties — is `fable-check.ps1 -ProveAddressing`, which
+  compiles nothing, costs milliseconds, and therefore runs inside the gate on every invocation
+  that could skip. It is exercised here as well so a single command covers both halves.
+
   It is NOT part of the gate. It compiles scratch projects with Fable (tens of seconds) to prove a
   property of the gate rather than of the repo, which is a different question asked at a different
   cadence — the posture the workspace's own `surface-guard.tests.ps1` takes. Run it when
@@ -97,12 +117,25 @@ $referenceItems
 }
 
 function Invoke-Gate {
-    param([string[]] $extraArguments = @())
-    # Never piped — the same rule the gate itself states about `dotnet fable`: a pipe would report
-    # the last command's status and a red gate would read as a pass, which is the one answer this
-    # script must never give.
-    $output = & pwsh -NoProfile -File $gate -SrcRoot $scratch -SkipLaws @extraArguments 2>&1
-    [pscustomobject]@{ Exit = $LASTEXITCODE; Text = ($output | Out-String) }
+    # The lane travels the way it travels in production — through `FUARAN_TEST_LANE`, which
+    # `run.ps1` sets around the stage — rather than through a parameter this script would be the
+    # only caller of. Default `full`, so the derivation assertions below run under the lane that
+    # never skips and read exactly as they did before Phase 1619.
+    param([string[]] $extraArguments = @(), [string] $lane = 'full')
+    $previousLane = $env:FUARAN_TEST_LANE
+    $env:FUARAN_TEST_LANE = $lane
+    try {
+        # Never piped — the same rule the gate itself states about `dotnet fable`: a pipe would
+        # report the last command's status and a red gate would read as a pass, which is the one
+        # answer this script must never give.
+        $output = & pwsh -NoProfile -File $gate -SrcRoot $scratch -SkipLaws @extraArguments 2>&1
+        $exit = $LASTEXITCODE
+    }
+    finally {
+        if ($null -eq $previousLane) { Remove-Item Env:FUARAN_TEST_LANE -ErrorAction SilentlyContinue }
+        else { $env:FUARAN_TEST_LANE = $previousLane }
+    }
+    [pscustomobject]@{ Exit = $exit; Text = ($output | Out-String) }
 }
 
 function Assert {
@@ -185,6 +218,71 @@ try {
     Assert 'a Fable-only defect fails the gate with no list edit' ($red.Exit -ne 0) $red.Text
     Assert 'the failure names the offending project' `
     ($red.Text -match 'SelfTest\.Root.*FAILED|FAILED.*SelfTest\.Root') $red.Text
+
+    # ── 5-8. The content-addressed skip (Phase 1619). ──
+    #
+    # What is worth falsifying here is not that a skip happens — that is easy and useless — but
+    # that a CHANGED INPUT MISSES, that the full lane cannot reach the skip at all, and that a red
+    # run does not leave a green behind. Each assertion below is a state the run before it was NOT
+    # in, so none of them can pass vacuously.
+
+    Write-Host ''
+    Write-Host '── fable-check content address: go-red proof ─────────────' -ForegroundColor Cyan
+
+    $proofText = (& pwsh -NoProfile -File $gate -ProveAddressing 2>&1 | Out-String)
+    Assert "the address function's own go-red proof holds" ($LASTEXITCODE -eq 0) $proofText
+
+    $cleanSource | Set-Content -Path (Join-Path $scratch 'SelfTest.Root/Library.fs') -Encoding utf8NoBOM
+
+    # Records outlive a run — they sit under the system temp root, keyed by the source root — so a
+    # previous invocation of THIS script would otherwise hand the first assertion a skip and it
+    # would fail for the wrong reason. The gate names the store rather than leaving it unguessable.
+    $probe = Invoke-Gate -extraArguments @('-Addresses')
+    $recordRoot = ((($probe.Text -split "`r?`n") | Where-Object { $_ -like 'records *' } | Select-Object -First 1) -replace '^records\s+', '').Trim()
+    Assert 'the gate names its record store' ([bool] $recordRoot) $probe.Text
+    if ($recordRoot) { Remove-Item -Recurse -Force -LiteralPath $recordRoot -ErrorAction SilentlyContinue }
+
+    $first = Invoke-Gate -lane 'fast'
+    Assert 'the narrow lane compiles when nothing is recorded' `
+    (($first.Exit -eq 0) -and ($first.Text -match 'fable .*SelfTest\.Root') -and ($first.Text -cnotmatch 'SKIPPED BY ADDRESS')) $first.Text
+
+    $second = Invoke-Gate -lane 'fast'
+    Assert 'the narrow lane skips an unchanged compile by address' `
+    (($second.Exit -eq 0) -and ($second.Text -cmatch 'SKIPPED BY ADDRESS.*SelfTest\.Root')) $second.Text
+    Assert 'the skip prints the address it matched' ($second.Text -match 'address [0-9a-f]{64}') $second.Text
+    Assert 'the skip invokes no compile at all' ($second.Text -cnotmatch '(?m)^\s+fable ') $second.Text
+
+    # (a) One byte, in a file the entry does not name and which is not itself an entry — the only
+    # route to it is the transitive reference graph.
+    Add-Content -LiteralPath (Join-Path $scratch 'SelfTest.Leaf/Library.fs') -Value '// one byte'
+
+    $edited = Invoke-Gate -lane 'fast'
+    Assert 'a one-byte edit to a transitively-referenced .fs makes the narrow lane recompile' `
+    (($edited.Exit -eq 0) -and ($edited.Text -match 'fable .*SelfTest\.Root')) $edited.Text
+    # The discriminator: if everything recompiled, the assertion above would hold for a gate whose
+    # address is a constant. An entry the edit cannot reach must still skip.
+    Assert 'an entry that edit cannot reach still skips' `
+    ($edited.Text -cmatch 'SKIPPED BY ADDRESS.*SelfTest\.Armed') $edited.Text
+
+    # (c) Every record now matches the tree, which is precisely the state in which the full lane
+    # must compile anyway.
+    $full = Invoke-Gate -lane 'full'
+    Assert 'the full lane compiles with matching records present' `
+    (($full.Exit -eq 0) -and ($full.Text -cnotmatch 'SKIPPED BY ADDRESS')) $full.Text
+    Assert 'the full lane compiles every entry' `
+    (($full.Text -match 'fable .*SelfTest\.Root') -and ($full.Text -match 'fable .*SelfTest\.Armed')) $full.Text
+
+    # A red run must delete the record rather than merely decline to write one. Restoring the file
+    # below gives back the EXACT bytes whose green was recorded a moment ago, so a surviving record
+    # would match and serve a skip.
+    $defectiveSource | Set-Content -Path (Join-Path $scratch 'SelfTest.Root/Library.fs') -Encoding utf8NoBOM
+    $failedNarrow = Invoke-Gate -lane 'fast'
+    Assert 'the narrow lane still fails on a Fable-only defect' ($failedNarrow.Exit -ne 0) $failedNarrow.Text
+
+    $cleanSource | Set-Content -Path (Join-Path $scratch 'SelfTest.Root/Library.fs') -Encoding utf8NoBOM
+    $restored = Invoke-Gate -lane 'fast'
+    Assert 'a red compile cleared the record, so the restored tree recompiles' `
+    (($restored.Exit -eq 0) -and ($restored.Text -match 'fable .*SelfTest\.Root') -and ($restored.Text -cnotmatch 'SKIPPED BY ADDRESS.*SelfTest\.Root')) $restored.Text
 }
 finally {
     if (-not $KeepScratch) {
