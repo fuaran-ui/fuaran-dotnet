@@ -29,8 +29,14 @@ let private solution = Path.Combine(repoRoot, "Fuaran.sln")
 // each suite's own fail-loud-if-absent contract intact.
 
 type private TestSuite =
-    { Project: string
-      RequiresCorpus: bool }
+    {
+        Project: string
+        RequiresCorpus: bool
+        /// Phase 1553 — the suite-level gate lane, verbatim from the roster. `None` is the ordinary
+        /// tier (runs in `full` and `fast`, not in `pure`); `Some "pure"` joins the per-commit lane;
+        /// `Some "slow"` leaves `fast` and `pure` both.
+        Lane: string option
+    }
 
 let private readTestSuites () =
     let manifestPath = Path.Combine(repoRoot, "test-suites.json")
@@ -56,7 +62,23 @@ let private readTestSuites () =
                 RequiresCorpus =
                   match entry.TryGetProperty "requiresCorpus" with
                   | true, flag -> flag.GetBoolean()
-                  | _ -> false } ]
+                  | _ -> false
+                Lane =
+                  match entry.TryGetProperty "lane" with
+                  | true, lane ->
+                      match lane.GetString() with
+                      | null -> None
+                      // Refused, not ignored: a typo that silently demoted a suite out of `fast`
+                      // would make the pre-merge lane quietly weaker over time, which is the one
+                      // failure a lane must not have. `run.ps1` refuses the same set.
+                      | ("pure" | "slow") as value -> Some value
+                      | other ->
+                          failwithf
+                              "test-suites.json (%s): %s declares lane '%s'; expected 'pure' or 'slow'."
+                              manifestPath
+                              relative
+                              other
+                  | _ -> None } ]
 
     // An empty roster would let the gate pass having run nothing, which is the
     // one failure this file exists to make impossible.
@@ -542,6 +564,48 @@ let private registerTargets (args: string array) =
         // The roster is `test-suites.json` — see the block at the head of this
         // file. `run.ps1` reads the same file, in the same order, with the same
         // corpus gate, so the two entry points cannot run different sets.
+        //
+        // Phase 1553 — and the same LANE. This target is what CI runs, so it stays on the full
+        // lane unless `FUARAN_TEST_LANE` says otherwise; the variable is read here (the suite
+        // filter) and inherited by each suite process (the marker filter inside it), so one value
+        // decides both halves. `run.ps1 -Lane` is the ordinary way to set it.
+        let lane =
+            match System.Environment.GetEnvironmentVariable "FUARAN_TEST_LANE" with
+            | null -> "full"
+            | value ->
+                match value.Trim().ToLowerInvariant() with
+                | "" -> "full"
+                // Unrecognised fails SAFE toward running MORE, matching Lanes.parse: a typo must
+                // never silently skip the slow half and report green.
+                | ("pure" | "fast") as known -> known
+                | _ -> "full"
+
+        let inLane (suite: TestSuite) =
+            match lane with
+            | "pure" -> suite.Lane = Some "pure"
+            | "fast" -> suite.Lane <> Some "slow"
+            | _ -> true
+
+        let testSuites =
+            match lane with
+            | "full" -> testSuites
+            | _ ->
+                let admitted = testSuites |> List.filter inLane
+
+                // A lane that runs nothing and exits 0 is the one answer a gate must never give.
+                if List.isEmpty admitted then
+                    failwithf "FUARAN_TEST_LANE=%s admits no suite in test-suites.json — nothing would run." lane
+
+                Trace.traceImportant (
+                    sprintf
+                        "Lane '%s': %d of %d suites (releases cite the full lane only)."
+                        lane
+                        (List.length admitted)
+                        (List.length testSuites)
+                )
+
+                admitted
+
         let corpusManifest =
             Path.Combine(repoRoot, "..", "wire-format-fixtures", "manifest.json")
 

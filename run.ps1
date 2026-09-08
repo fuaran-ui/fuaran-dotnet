@@ -24,6 +24,12 @@
   Switches stack: -SkipFormat / -SkipBuild / -SkipTests / -SkipFable for fast
   iteration loops inside the verify mode.
 
+  -Lane pure|fast|full (Phase 1553) SELECTS TESTS rather than dropping a stage,
+  so a change can be gated in seconds before a merge and the full gate spent
+  once, on the merged tree. It is a NAMED lane and is therefore visible in
+  whatever gate command a result quotes; a -Skip* switch is not. Default `full`
+  is byte-identical to the pre-1553 gate.
+
   "Every Expecto suite" means the roster declared in `test-suites.json`, which
   `Build.fs`'s `Test` target reads too — so this script and the FAKE pipeline
   run the same suites in the same order, and cannot drift apart.
@@ -46,6 +52,12 @@
   Re-test after a code edit (skip format + build for ~10s loop).
 
 .EXAMPLE
+  pwsh ./run.ps1 -Lane fast -SkipFable
+
+  The pre-merge lane: format + build + every suite but the slow ones, without
+  the Fable stage.
+
+.EXAMPLE
   pwsh ./run.ps1 -Demo
 
   Launch the Vite + Fable demo at http://localhost:24000.
@@ -58,7 +70,25 @@ param(
     [switch] $SkipFable,
     [switch] $Validate,
     [switch] $SkipPublishCheck,
-    [switch] $Demo
+    [switch] $Demo,
+
+    # Phase 1553 - the gate LANE, on THIS one file. Tooling that records which gate produced a
+    # result resolves this script by its filename and pins its hash, so a SECOND gate script would
+    # read as permanent drift; one parameter on the existing file moves that hash exactly once.
+    #
+    #   pure - the roster's `"lane": "pure"` suites only: no filesystem, no corpus. Seconds.
+    #   fast - every suite but the roster's `"lane": "slow"` ones, with `Lanes.slow`-marked
+    #          subtrees dropped inside the suites that do run. The pre-merge lane.
+    #   full - the whole suite (default). The RELEASE lane, and the only lane a release may cite.
+    #
+    # The lane rides the recorded gate COMMAND STRING, so a result says which lane produced it
+    # rather than leaving a reader to assume the full one - which is what makes a lane honest where
+    # a dropped stage is not. `-SkipFable` composes with it and is NOT implied by any lane: the
+    # Fable leg is a stage, not a lane. A pre-merge invocation names both, because on measurement
+    # the Fable stage is ~65% of this gate's wall-clock and a "fast" lane that leaves it in is not
+    # fast.
+    [ValidateSet('pure', 'fast', 'full')]
+    [string] $Lane = 'full'
 )
 
 $ErrorActionPreference = "Stop"
@@ -122,6 +152,40 @@ if ($testSuites.Count -eq 0) {
 }
 $corpusPresent = Test-Path (Join-Path $PSScriptRoot "../wire-format-fixtures/manifest.json")
 
+# Phase 1553 - the SUITE-level half of the lane. `lane` is declared per suite in the roster above
+# ("pure" / "slow"; absent = the ordinary tier), so this filter and Build.fs's read the same
+# declaration. An unrecognised value is REFUSED rather than ignored: a typo that silently demoted a
+# suite out of `fast` would make the pre-merge lane quietly weaker over time, which is the one
+# failure a lane must not have.
+$recognisedLanes = @("pure", "slow")
+foreach ($suite in $testSuites) {
+    if ($suite.lane -and ($recognisedLanes -notcontains $suite.lane)) {
+        Write-Error "test-suites.json: $($suite.project) declares lane '$($suite.lane)'; expected one of: $($recognisedLanes -join ', ')."
+        exit 1
+    }
+}
+
+function Test-SuiteInLane {
+    param($suite, [string] $lane)
+    switch ($lane) {
+        "pure" { return $suite.lane -eq "pure" }
+        "fast" { return $suite.lane -ne "slow" }
+        default { return $true }
+    }
+}
+
+if ($Lane -ne "full") {
+    $admitted = @($testSuites | Where-Object { Test-SuiteInLane $_ $Lane })
+    if ($admitted.Count -eq 0) {
+        # A lane that runs nothing and exits 0 is the one answer a gate must never give.
+        Write-Error "-Lane $Lane admits no suite in test-suites.json - nothing would run."
+        exit 1
+    }
+    Write-Host ""
+    Write-Host "Lane '$Lane': $($admitted.Count) of $($testSuites.Count) suites (releases cite the full lane only)." -ForegroundColor Yellow
+    $testSuites = $admitted
+}
+
 Write-Step "dotnet tool restore"
 dotnet tool restore
 if ($LASTEXITCODE -ne 0) { Write-Error "dotnet tool restore failed (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
@@ -142,27 +206,36 @@ if (-not $SkipBuild) {
 }
 
 if (-not $SkipTests) {
-    foreach ($suite in $testSuites) {
-        $project = $suite.project
+    # The TEST-level half: the suites that link tests/lanes/Lanes.fs read this at their own Expecto
+    # entry point and drop their `Lanes.slow`-marked subtrees. A suite that links nothing ignores it,
+    # which is why an unmarked suite needs no edit to join the scheme.
+    $env:FUARAN_TEST_LANE = $Lane
+    try {
+        foreach ($suite in $testSuites) {
+            $project = $suite.project
 
-        if ($suite.requiresCorpus -and -not $corpusPresent) {
-            Write-Step "SKIPPING $project"
-            Write-Host "wire-format-fixtures corpus absent (single-repo checkout; conformance runs where the workspace corpus is present)." -ForegroundColor Yellow
-            continue
-        }
+            if ($suite.requiresCorpus -and -not $corpusPresent) {
+                Write-Step "SKIPPING $project"
+                Write-Host "wire-format-fixtures corpus absent (single-repo checkout; conformance runs where the workspace corpus is present)." -ForegroundColor Yellow
+                continue
+            }
 
-        Write-Step "Expecto: $project"
-        # Expecto console runner — `dotnet run --project`, NOT `dotnet test`
-        # (`dotnet test` silently no-ops on Expecto consoles).
-        # `--no-build` MUST precede `--project` or `dotnet run` forwards
-        # it to Expecto.
-        if ($SkipBuild) {
-            dotnet run --project $project -c $config
+            Write-Step "Expecto: $project"
+            # Expecto console runner — `dotnet run --project`, NOT `dotnet test`
+            # (`dotnet test` silently no-ops on Expecto consoles).
+            # `--no-build` MUST precede `--project` or `dotnet run` forwards
+            # it to Expecto.
+            if ($SkipBuild) {
+                dotnet run --project $project -c $config
+            }
+            else {
+                dotnet run --no-build --project $project -c $config
+            }
+            if ($LASTEXITCODE -ne 0) { Write-Error "$project failed (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
         }
-        else {
-            dotnet run --no-build --project $project -c $config
-        }
-        if ($LASTEXITCODE -ne 0) { Write-Error "$project failed (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
+    }
+    finally {
+        Remove-Item Env:FUARAN_TEST_LANE -ErrorAction SilentlyContinue
     }
 }
 

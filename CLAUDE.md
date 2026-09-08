@@ -69,6 +69,37 @@ dotnet run --project Build.fsproj -- RendererWebCheck # fail when the embedded c
 dotnet run --project Build.fsproj -- FableCheck       # the Fable stage: client-tier portability + the law harness (in `Check`)
 ```
 
+## Gate lanes
+
+`run.ps1 -Lane pure|fast|full` selects TESTS rather than dropping a stage, so a change can be
+gated in seconds before a merge and the full gate spent once, on the merged tree. Default `full`
+is byte-identical to the pre-lane gate and is the only lane a shipping claim may cite.
+
+```powershell
+pwsh ./run.ps1                             # full — the ship lane (unchanged)
+pwsh ./run.ps1 -Lane fast -SkipFable       # the pre-merge lane
+pwsh ./run.ps1 -Lane pure -SkipFable       # the per-commit lane, seconds
+```
+
+A lane is decided at two granularities, because the two costs live at different granularities:
+
+- **Suite level** — `"lane": "pure" | "slow"` in [`test-suites.json`](test-suites.json), read by
+  this script AND by `Build.fs`'s `Test` target, so the two entry points cannot select different
+  sets. `pure` lives here: every suite costs a ~1.0s `dotnet run` floor whatever it contains, so a
+  seconds-fast lane is one that runs fewer PROCESSES.
+- **Test level** — `Lanes.slow` markers from [`tests/lanes/Lanes.fs`](tests/lanes/Lanes.fs), read
+  at a suite's own Expecto entry point via `FUARAN_TEST_LANE`. `slow` lives here: fourteen
+  generative/fuzz tests in one suite carry ~15s of the test stage, and no suite-level switch drops
+  them without also dropping the ~1,420 cheap corpus assertions beside them.
+
+A test runs in lane L iff its suite admits L and it is not slow-marked. Both readers REFUSE an
+unrecognised `lane` value, and a narrow lane that would admit no test raises rather than running
+nothing and exiting 0.
+
+**`-SkipFable` is not implied by any lane** — the Fable leg is a stage, not a lane. It is named
+explicitly in the fast-lane invocations above because on measurement it is the single largest
+share of this gate's wall-clock, so a pre-merge lane that leaves it in is not fast.
+
 ## The Fable stage
 
 `Check` and `run.ps1` both run [`tests/fable-laws/fable-check.ps1`](tests/fable-laws/fable-check.ps1)

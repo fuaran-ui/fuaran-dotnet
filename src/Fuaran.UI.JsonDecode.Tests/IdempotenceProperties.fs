@@ -21,6 +21,7 @@ module Fuaran.UI.JsonDecode.Tests.IdempotenceProperties
 // ============================================================================
 
 open Expecto
+open Fuaran.UI.Testing
 open FsCheck
 open FsCheck.FSharp
 open Fuaran.UI.Types
@@ -47,9 +48,13 @@ let private opRoundTrips (op: TreeOp<obj>) : bool =
 /// counterexample on failure, which surfaces as an Expecto test failure).
 let private config1000 = Config.QuickThrowOnFailure.WithMaxTest(1000)
 
+// Phase 1553 — SLOW lane: two FsCheck properties over 1,000 generated trees each.
+// Measured 2026-09-08 (Release, warm build): 4.8s net of the ~1.0s process floor, for 2 tests. Excluded from `-Lane fast` and
+// `-Lane pure`; runs in the full lane every release cites.
 [<Tests>]
 let idempotence =
-    testList
+    Lanes.slow
+    <| testList
         "Fuaran.UI.Ops.JsonDecode — generative idempotence (Phase 101)"
         [ testCase "Node: encode→decode→encode is byte-stable over 1000 generated trees" (fun () ->
               Check.One(config1000, Prop.forAll Generators.nodeArb nodeRoundTrips))

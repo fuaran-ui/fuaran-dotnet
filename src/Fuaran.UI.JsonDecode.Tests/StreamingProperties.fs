@@ -31,6 +31,7 @@ module Fuaran.UI.JsonDecode.Tests.StreamingProperties
 
 open System
 open Expecto
+open Fuaran.UI.Testing
 open FsCheck
 open FsCheck.FSharp
 open Fuaran.UI
@@ -214,9 +215,13 @@ let private generativeInvariant (n: Node<obj>) : bool =
         printfn "FGP 5 invariant failure: %s" reason
         false
 
+// Phase 1553 — SLOW lane: one FsCheck property over 1,000 generated trees.
+// Measured 2026-09-08 (Release, warm build): 8.6s net of the ~1.0s process floor, for 1 test. Excluded from `-Lane fast` and
+// `-Lane pure`; runs in the full lane every release cites.
 [<Tests>]
 let generativeReplay =
-    testList
+    Lanes.slow
+    <| testList
         "Fuaran.UI.Ops.Streaming — FGP 5 replay invariant (generative, Phase 104)"
         [ testCase "streamed replay is byte-identical to batch over 1000 generated trees" (fun () ->
               Check.One(config1000, Prop.forAll Generators.nodeArb generativeInvariant)) ]

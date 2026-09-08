@@ -2,6 +2,7 @@ module Fuaran.UI.JsonDecode.Tests.Program
 
 open System
 open Expecto
+open Fuaran.UI.Testing
 
 [<EntryPoint>]
 let main argv =
@@ -144,4 +145,14 @@ let main argv =
         printfn ""
         printfn "%d contract violation(s) in the replayed range." found
         if found = 0 then 0 else 1
-    | _ -> runTestsInAssemblyWithCLIArgs [] argv
+    // Phase 1553 — the ONE place this suite reads the gate lane. `runTestsInAssemblyWithCLIArgs`
+    // discovers and runs in one call, so the lane filter needs the two steps separated: discover the
+    // assembly's tests, keep what the lane admits (`Lanes.applyTo`), then run. The full lane (the
+    // default, and the only lane a ship may cite) returns the discovered tree untouched, so the ship
+    // gate is byte-identical to the pre-phase run.
+    | _ ->
+        match Impl.testFromThisAssembly () with
+        | None ->
+            eprintfn "no tests discovered in the assembly"
+            1
+        | Some tests -> runTestsWithCLIArgs [] argv (Lanes.applyTo Lanes.current tests)

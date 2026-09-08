@@ -36,6 +36,11 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
+    <!-- Phase 1553 — the shared gate-lane markers, DECLARED ONCE at tests/lanes/Lanes.fs and
+         linked (not copied) into every suite that carries a marker, so `lane-slow` cannot come to
+         mean two different things in two suites. Must compile FIRST: the marked lists below apply
+         it. -->
+    <Compile Include="..\..\tests\lanes\Lanes.fs" Link="Lanes.fs" />
     <Compile Include="Tests.fs" />
     <Compile Include="BoundedTests.fs" />
     <!-- Phase 437: UTF-8 / base64url / raw-DEFLATE byte substrate. -->
@@ -348,6 +353,9 @@
     <Compile Include="ReferenceTablesEnhancementTests.fs" />
     <!-- Phase 1594 — the AG adapters' OnReady valve is authoring-only by construction. -->
     <Compile Include="AdapterOptionsIsolationTests.fs" />
+    <!-- Phase 1553 - the gate lanes' own contract: the filter's go-red proof, the roster's
+         suite-level declarations, and the two entry points' shared lane vocabulary. -->
+    <Compile Include="LaneTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

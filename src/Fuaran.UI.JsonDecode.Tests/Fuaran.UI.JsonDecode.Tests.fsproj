@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -6,6 +6,11 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Phase 1553 — the shared gate-lane markers, DECLARED ONCE at tests/lanes/Lanes.fs and
+         linked (not copied) into every suite that carries a marker, so `lane-slow` cannot come to
+         mean two different things in two suites. Must compile FIRST: the marked lists below apply
+         it. -->
+    <Compile Include="..\..\tests\lanes\Lanes.fs" Link="Lanes.fs" />
     <!-- Fixtures.fs + RejectFixtures.fs + LenientFixtures.fs are the canonical
          fixture VALUES that generate the workspace-root wire-format-fixtures/
          corpus (Corpus.emit). The test suites below load the emitted corpus,

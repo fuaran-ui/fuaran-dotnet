@@ -10,7 +10,21 @@
     "corpus from a sibling of this repo: present in a workspace checkout, absent in a",
     "single-repo checkout (e.g. the publish-packages workflow), where the suite would crash",
     "at startup. Both readers skip those loudly rather than run them.",
-    "`note` is documentation only — no reader consults it."
+    "`note` is documentation only — no reader consults it.",
+    "",
+    "`lane` (Phase 1553) is the suite-level half of the gate lanes. Absent means the ordinary",
+    "tier: the suite runs in `full` and in `fast`, not in `pure`. \"pure\" adds it to the",
+    "seconds-fast per-commit lane — declared of a suite that touches no filesystem and needs no",
+    "corpus, so `requiresCorpus: true` and `\"lane\": \"pure\"` together are a contradiction the",
+    "roster tests refuse. \"slow\" removes it from `fast` and `pure` both.",
+    "",
+    "Why the SUITE is the granularity for `pure` and the TEST is the granularity for `slow`:",
+    "every suite costs a ~1.0s `dotnet run` floor whatever it contains, so a per-commit lane is",
+    "only seconds-fast if it runs fewer PROCESSES; whereas the measured slow tail is fourteen",
+    "generative tests inside one suite, which no suite-level switch can drop without also",
+    "dropping the ~1,420 cheap corpus assertions beside them. Those carry `Lanes.slow` markers",
+    "instead (tests/lanes/Lanes.fs), read at that suite's own Expecto entry point via",
+    "FUARAN_TEST_LANE. A test runs in lane L iff its SUITE admits L and its own MARKER admits L."
   ],
   "suites": [
     {
@@ -21,14 +35,16 @@
       "project": "src/Fuaran.UI.Ops.Tests/Fuaran.UI.Ops.Tests.fsproj"
     },
     {
-      "project": "src/Fuaran.UI.AiTools.Tests/Fuaran.UI.AiTools.Tests.fsproj"
+      "project": "src/Fuaran.UI.AiTools.Tests/Fuaran.UI.AiTools.Tests.fsproj",
+      "lane": "pure"
     },
     {
       "project": "src/Fuaran.UI.FastPath.Tests/Fuaran.UI.FastPath.Tests.fsproj",
       "note": "Phase 512 — the public signature-searchable pattern bank (engine + domain-neutral seed catalogue)."
     },
     {
-      "project": "src/Fuaran.UI.Validator.Tests/Fuaran.UI.Validator.Tests.fsproj"
+      "project": "src/Fuaran.UI.Validator.Tests/Fuaran.UI.Validator.Tests.fsproj",
+      "lane": "slow"
     },
     {
       "project": "src/Fuaran.UI.OpStream.Tests/Fuaran.UI.OpStream.Tests.fsproj"
@@ -39,6 +55,7 @@
     },
     {
       "project": "src/Fuaran.UI.OpStream.Dag.Inspect.Tests/Fuaran.UI.OpStream.Dag.Inspect.Tests.fsproj",
+      "lane": "pure",
       "note": "Phase 186 — DAG-aware op-stream inspector substrate (render model + audition + overlay + arbitrary-coordinate diff)."
     },
     {
@@ -63,27 +80,32 @@
       "note": "Phase 142 — the SSR client/server class+ARIA parity corpus. Also runnable on its own via the `SsrParity` target."
     },
     {
-      "project": "src/Fuaran.UI.Renderer.Web.Tests/Fuaran.UI.Renderer.Web.Tests.fsproj"
+      "project": "src/Fuaran.UI.Renderer.Web.Tests/Fuaran.UI.Renderer.Web.Tests.fsproj",
+      "lane": "pure"
     },
     {
       "project": "src/Fuaran.UI.ServerDriven.Tests/Fuaran.UI.ServerDriven.Tests.fsproj",
       "note": "Phase 158 QW6 — the golden TreeOp -> DomPatch lowering corpus. Also runnable on its own via the `DomPatchCorpus` target."
     },
     {
-      "project": "src/Fuaran.UI.ServerDriven.AspNetCore.Tests/Fuaran.UI.ServerDriven.AspNetCore.Tests.fsproj"
+      "project": "src/Fuaran.UI.ServerDriven.AspNetCore.Tests/Fuaran.UI.ServerDriven.AspNetCore.Tests.fsproj",
+      "lane": "pure"
     },
     {
-      "project": "src/Fuaran.UI.ServerDriven.WebSocket.Tests/Fuaran.UI.ServerDriven.WebSocket.Tests.fsproj"
+      "project": "src/Fuaran.UI.ServerDriven.WebSocket.Tests/Fuaran.UI.ServerDriven.WebSocket.Tests.fsproj",
+      "lane": "pure"
     },
     {
       "project": "src/Fuaran.UI.Giraffe.Tests/Fuaran.UI.Giraffe.Tests.fsproj"
     },
     {
       "project": "src/Fuaran.UI.Content.Tests/Fuaran.UI.Content.Tests.fsproj",
+      "lane": "pure",
       "note": "Host-neutral validated-exemplar seam (decodeExemplar + 3-gate integrity). Corpus-independent — builds a node, encodes, and checks the round-trip fixed point."
     },
     {
       "project": "src/Fuaran.UI.Fragments.Tests/Fuaran.UI.Fragments.Tests.fsproj",
+      "lane": "pure",
       "note": "Phase 380 — the certified fragment library. Drives every entry in `Stdlib.all` through the Phase 359 certification floor plus the template / reference consistency checks. The wire fixtures for the same fragments live in the shared corpus and are gated by the JsonDecode suite; this one runs unconditionally."
     },
     {
@@ -92,10 +114,12 @@
     },
     {
       "project": "src/Fuaran.UI.Ops.CleanRoom.Tests/Fuaran.UI.Ops.CleanRoom.Tests.fsproj",
+      "lane": "pure",
       "note": "Phase 205 — structure-only clean room (content-free skeleton projection + structural-op gate + audit). Pure + Fable-clean."
     },
     {
       "project": "src/Fuaran.UI.Catalog.Tests/Fuaran.UI.Catalog.Tests.fsproj",
+      "lane": "pure",
       "note": "Phase 169 — catalog wire-JSON round-trip guard. Compile-links the catalog's Matrix.fs and asserts every entry's canonical JSON decodes back through the canonical decoder, so the \"the JSON shown next to the render is real\" promise is build-time-checked."
     },
     {

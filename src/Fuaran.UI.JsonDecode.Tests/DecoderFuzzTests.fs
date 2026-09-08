@@ -39,6 +39,7 @@ module Fuaran.UI.JsonDecode.Tests.DecoderFuzzTests
 open System
 open System.IO
 open Expecto
+open Fuaran.UI.Testing
 
 /// The gate seed is FIXED, not clock-derived. A gate whose input set changes
 /// per run is a gate that fails on someone else's commit for reasons neither of
@@ -122,106 +123,111 @@ let private expectCaught (subject: DecoderFuzz.Subject) (iterations: int) (expec
 // Sequencing removes the contention; the timeout exclusion in the inverse pin
 // below removes the residual sensitivity. Both are needed: sequencing alone
 // still leaves a cold-JIT first decode able to breach 100 ms.
+// Phase 1553 — SLOW lane: five deliberately-broken decoders driven through the real fuzz machinery, sequenced.
+// Measured 2026-09-08 (Release, warm build): 1.2s net of the ~1.0s process floor, for 6 tests. Excluded from `-Lane fast` and
+// `-Lane pure`; runs in the full lane every release cites.
 [<Tests>]
 let goRedSelfTest =
-    testSequenced
-    <| testList
-        "Fuaran.UI.Ops.JsonDecode — fuzz harness go-red self-test (Phase 779)"
-        [ test "invariant 1 (totality): an escaping exception is caught" {
-              // The defect class the threat-model claim is actually about: a
-              // decoder that throws instead of returning a typed error.
-              let broken =
-                  mutant "throwing-decoder" 4 (fun s -> s.Length > 2) (fun _ ->
-                      raise (InvalidOperationException "deliberate injected decoder defect"))
+    Lanes.slow (
+        testSequenced
+        <| testList
+            "Fuaran.UI.Ops.JsonDecode — fuzz harness go-red self-test (Phase 779)"
+            [ test "invariant 1 (totality): an escaping exception is caught" {
+                  // The defect class the threat-model claim is actually about: a
+                  // decoder that throws instead of returning a typed error.
+                  let broken =
+                      mutant "throwing-decoder" 4 (fun s -> s.Length > 2) (fun _ ->
+                          raise (InvalidOperationException "deliberate injected decoder defect"))
 
-              expectCaught broken 400 "escaped-InvalidOperationException"
-          }
+                  expectCaught broken 400 "escaped-InvalidOperationException"
+              }
 
-          test "invariant 2 (termination): a decode past the soft time budget is caught" {
-              let broken =
-                  mutant "slow-decoder" 3 (fun s -> s.Length > 2) (fun input ->
-                      System.Threading.Thread.Sleep 250
-                      DecoderFuzz.nodeSubject.Run input)
-
-              expectCaught broken 400 "timeout"
-          }
-
-          test "invariant 3 (bounded work): an allocation blow-up is caught" {
-              // The trigger excludes over-closed inputs on purpose: those are
-              // routed to the documented higher ceiling, so a mutant firing on
-              // one would prove nothing about the ORDINARY budget.
-              let broken =
-                  mutant
-                      "allocating-decoder"
-                      2
-                      (fun s -> s.Length > 2 && not (DecoderFuzz.isOverClosed s))
-                      (fun input ->
-                          // Allocate well past the floor, in pieces the runtime
-                          // cannot elide, touching each so it is real.
-                          let mutable sink = 0
-
-                          for _ in 1..24 do
-                              let block = Array.zeroCreate<byte> (2 * 1024 * 1024)
-                              block[0] <- 1uy
-                              sink <- sink + int block[0]
-
-                          if sink < 0 then
-                              failwith "unreachable"
-
+              test "invariant 2 (termination): a decode past the soft time budget is caught" {
+                  let broken =
+                      mutant "slow-decoder" 3 (fun s -> s.Length > 2) (fun input ->
+                          System.Threading.Thread.Sleep 250
                           DecoderFuzz.nodeSubject.Run input)
 
-              expectCaught broken 400 "overallocated"
-          }
+                  expectCaught broken 400 "timeout"
+              }
 
-          test "invariant 4 (fixed point): a canonical form that is not a fixed point is caught" {
-              let broken =
-                  mutant "drifting-encoder" 4 (fun s -> s.Length > 2) (fun _ ->
-                      DecoderFuzz.Accepted("{\"a\":1}", Ok "{\"a\":2}"))
+              test "invariant 3 (bounded work): an allocation blow-up is caught" {
+                  // The trigger excludes over-closed inputs on purpose: those are
+                  // routed to the documented higher ceiling, so a mutant firing on
+                  // one would prove nothing about the ORDINARY budget.
+                  let broken =
+                      mutant
+                          "allocating-decoder"
+                          2
+                          (fun s -> s.Length > 2 && not (DecoderFuzz.isOverClosed s))
+                          (fun input ->
+                              // Allocate well past the floor, in pieces the runtime
+                              // cannot elide, touching each so it is real.
+                              let mutable sink = 0
 
-              expectCaught broken 400 "fixed-point-broken"
-          }
+                              for _ in 1..24 do
+                                  let block = Array.zeroCreate<byte> (2 * 1024 * 1024)
+                                  block[0] <- 1uy
+                                  sink <- sink + int block[0]
 
-          test "invariant 4 (fixed point): a canonical form the decoder itself refuses is caught" {
-              let broken =
-                  mutant "unreadable-output-decoder" 4 (fun s -> s.Length > 2) (fun _ ->
-                      DecoderFuzz.Accepted("{\"a\":1}", Error "INVALID_JSON"))
+                              if sink < 0 then
+                                  failwith "unreachable"
 
-              expectCaught broken 400 "canonical-refused"
-          }
+                              DecoderFuzz.nodeSubject.Run input)
 
-          test "the mutants are PARTIAL — the real decoder over the same inputs is clean" {
-              // The inverse pin. Every mutant above defers to the real decoder
-              // once its firing budget is spent, so if this run ALSO reported
-              // counterexamples the go-red proof would be vacuous: it would show
-              // the harness reports everything, not that it discriminates.
-              let stats =
-                  DecoderFuzz.run [ DecoderFuzz.nodeSubject ] selfTestBudgets selfTestConfig gateSeed 400 false
+                  expectCaught broken 400 "overallocated"
+              }
 
-              // TIME verdicts are excluded here, and the exclusion is the fix for
-              // a long-standing intermittent red (isolation-passes + suite-fails —
-              // the signature of a wall-clock assertion, not of a decoder defect).
-              // `selfTestBudgets` sets SoftTimeMs to 100 so the SLOW MUTANT need
-              // only sleep briefly; that tiny budget is a lever for the mutant, it
-              // was never a claim about the real decoder. The same gate run
-              // routinely reports a max decode in the hundreds of milliseconds
-              // (693 ms on the run that motivated this), so on a loaded machine
-              // the unmutated decoder trips a 100 ms budget through no fault of
-              // its own and this test goes red for a reason no one can reproduce
-              // in isolation.
-              //
-              // The time invariant is NOT dropped — it is asserted where it means
-              // something: the bounded run below measures the real decoder against
-              // `defaultBudgets` (3 s), which is a budget chosen for the decoder
-              // rather than for a mutant's convenience.
-              let substantive =
-                  stats.Counterexamples
-                  |> List.filter (fun c -> DecoderFuzz.verdictClass c.Verdict <> "timeout")
-                  |> List.map (fun c -> DecoderFuzz.describeVerdict c.Verdict)
+              test "invariant 4 (fixed point): a canonical form that is not a fixed point is caught" {
+                  let broken =
+                      mutant "drifting-encoder" 4 (fun s -> s.Length > 2) (fun _ ->
+                          DecoderFuzz.Accepted("{\"a\":1}", Ok "{\"a\":2}"))
 
-              Expect.isEmpty
-                  substantive
-                  "the unmutated decoder must be clean over the same inputs the mutants ran on (wall-clock timeouts against the mutant-sized 100 ms budget excluded — see the bounded run for the real time invariant)"
-          } ]
+                  expectCaught broken 400 "fixed-point-broken"
+              }
+
+              test "invariant 4 (fixed point): a canonical form the decoder itself refuses is caught" {
+                  let broken =
+                      mutant "unreadable-output-decoder" 4 (fun s -> s.Length > 2) (fun _ ->
+                          DecoderFuzz.Accepted("{\"a\":1}", Error "INVALID_JSON"))
+
+                  expectCaught broken 400 "canonical-refused"
+              }
+
+              test "the mutants are PARTIAL — the real decoder over the same inputs is clean" {
+                  // The inverse pin. Every mutant above defers to the real decoder
+                  // once its firing budget is spent, so if this run ALSO reported
+                  // counterexamples the go-red proof would be vacuous: it would show
+                  // the harness reports everything, not that it discriminates.
+                  let stats =
+                      DecoderFuzz.run [ DecoderFuzz.nodeSubject ] selfTestBudgets selfTestConfig gateSeed 400 false
+
+                  // TIME verdicts are excluded here, and the exclusion is the fix for
+                  // a long-standing intermittent red (isolation-passes + suite-fails —
+                  // the signature of a wall-clock assertion, not of a decoder defect).
+                  // `selfTestBudgets` sets SoftTimeMs to 100 so the SLOW MUTANT need
+                  // only sleep briefly; that tiny budget is a lever for the mutant, it
+                  // was never a claim about the real decoder. The same gate run
+                  // routinely reports a max decode in the hundreds of milliseconds
+                  // (693 ms on the run that motivated this), so on a loaded machine
+                  // the unmutated decoder trips a 100 ms budget through no fault of
+                  // its own and this test goes red for a reason no one can reproduce
+                  // in isolation.
+                  //
+                  // The time invariant is NOT dropped — it is asserted where it means
+                  // something: the bounded run below measures the real decoder against
+                  // `defaultBudgets` (3 s), which is a budget chosen for the decoder
+                  // rather than for a mutant's convenience.
+                  let substantive =
+                      stats.Counterexamples
+                      |> List.filter (fun c -> DecoderFuzz.verdictClass c.Verdict <> "timeout")
+                      |> List.map (fun c -> DecoderFuzz.describeVerdict c.Verdict)
+
+                  Expect.isEmpty
+                      substantive
+                      "the unmutated decoder must be clean over the same inputs the mutants ran on (wall-clock timeouts against the mutant-sized 100 ms budget excluded — see the bounded run for the real time invariant)"
+              } ]
+    )
 
 // ─── Minimiser + repro persistence ──────────────────────────────────────────
 
@@ -308,9 +314,13 @@ let private boundedStats =
             gateIterations
             true)
 
+// Phase 1553 — SLOW lane: the gate-resident bounded fuzz run.
+// Measured 2026-09-08 (Release, warm build): 0.8s net of the ~1.0s process floor, for 5 tests. Excluded from `-Lane fast` and
+// `-Lane pure`; runs in the full lane every release cites.
 [<Tests>]
 let boundedRun =
-    testList
+    Lanes.slow
+    <| testList
         "Fuaran.UI.Ops.JsonDecode — decoder robustness fuzz, bounded run (Phase 779)"
         [ test "no hostile input escapes the refusal contract" {
               let stats = boundedStats.Value
