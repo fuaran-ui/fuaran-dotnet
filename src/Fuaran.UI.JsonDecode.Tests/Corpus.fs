@@ -127,6 +127,72 @@ let private controlKindsOf (root: JsonElement) : string list =
 
 // ─── Emit (generator) ───────────────────────────────────────────────────────
 
+/// One row of the manifest as it will be WRITTEN: either a row this run
+/// authored, or a row read back verbatim from the manifest already at
+/// `outputDir` because this run authors no fixture of its `kind`.
+///
+/// The second case is what makes `--emit-corpus` a MERGE rather than a
+/// wholesale rewrite. The corpus is a shared repo with more authors than this
+/// emitter: a family may be hand-maintained (the `teleport-*` vectors, whose
+/// bundles are produced by the reference encoder and checked in) or emitted by
+/// some other tool entirely, and a rewrite drops every one of them in passing
+/// — silently, leaving the payload directory orphaned on disk and every host
+/// that certifies against that family quietly un-certified. It happened twice
+/// on 2026-09-07 to the nine `teleport-*` entries. So a `kind` this run did not
+/// author is not the emitter's to delete.
+///
+/// `Preserved` carries the row's ORIGINAL TEXT, not a re-serialisation of the
+/// six fields `FixtureEntry` models. A foreign row may carry properties this
+/// type has never heard of, in an order this writer would not choose, and the
+/// promise is that a regeneration leaves it exactly as it found it — which only
+/// raw text can keep. (LF-normalised: the corpus pins `eol=lf` and
+/// `CorpusEmitEolTests` holds the writer to it, so copying a CRLF working-tree
+/// row through would defeat a guard this file already carries.)
+type private ManifestRow =
+    | Authored of FixtureEntry
+    | Preserved of kind: string * id: string * rawText: string
+
+/// The rows of an existing `manifest.json` at `outputDir` whose `kind` is not
+/// in `authoredKinds`. Empty when there is no manifest yet (a first emit into
+/// an empty directory), which is the only case in which having nothing to
+/// preserve is correct rather than suspicious.
+let private preservedRows (outputDir: string) (authoredKinds: Set<string>) : ManifestRow list =
+    let path = Path.Combine(outputDir, "manifest.json")
+
+    if not (File.Exists path) then
+        []
+    else
+        use doc = JsonDocument.Parse(File.ReadAllText path, wireJsonOptions)
+
+        match doc.RootElement.TryGetProperty "fixtures" with
+        | true, fixtures when fixtures.ValueKind = JsonValueKind.Array ->
+            fixtures.EnumerateArray()
+            |> Seq.choose (fun row ->
+                let str (name: string) : string | null =
+                    match row.TryGetProperty name with
+                    | true, v when v.ValueKind = JsonValueKind.String -> v.GetString()
+                    | _ -> null
+
+                match str "kind", str "id" with
+                | null, _
+                | _, null ->
+                    // A row carrying neither cannot be classified, so it cannot
+                    // be shown NOT to be ours — and a row silently dropped is
+                    // exactly what this whole change exists to stop. Loud.
+                    failwithf
+                        "manifest.json at %s carries a fixture row with no 'kind'/'id' string — refusing to guess whether it is ours to rewrite"
+                        outputDir
+                | kind, _ when authoredKinds.Contains kind -> None
+                | kind, id ->
+                    // LF-normalised: the corpus pins `eol=lf` and
+                    // `CorpusEmitEolTests` holds this writer to it, so copying a
+                    // CRLF working-tree row through would defeat a guard this
+                    // file already carries.
+                    let raw = row.GetRawText().Replace("\r\n", "\n")
+                    Some(Preserved(kind, id, raw)))
+            |> List.ofSeq
+        | _ -> []
+
 let private writeManifest
     (outputDir: string)
     (kinds: string list)
@@ -134,7 +200,13 @@ let private writeManifest
     (ops: string list)
     (entries: FixtureEntry list)
     : unit =
-    let sorted = entries |> List.sortBy (fun e -> e.Kind, e.Id)
+    let authoredKinds = entries |> List.map (fun e -> e.Kind) |> Set.ofList
+
+    let sorted =
+        (entries |> List.map Authored) @ preservedRows outputDir authoredKinds
+        |> List.sortBy (function
+            | Authored e -> e.Kind, e.Id
+            | Preserved(kind, id, _) -> kind, id)
     // Relaxed escaping keeps the human-readable descriptions clean (no
     // + / — noise) — this is a spec artefact a human reads.
     //
@@ -197,6 +269,15 @@ let private writeManifest
         + "refusal (expectedErrorCode at a path starting with expectedPath). A card is NOT a node — it "
         + "is the description a host reads to label and prop-validate a Custom node it has no renderer "
         + "for — so it is its own family and never appears in nodes/. "
+        + "teleport-decode / teleport-reject fixtures (WIRE_FORMAT 17): read the inputFile document "
+        + "({encoded, limits?}), decode the encoded teleport bundle with the teleport entry point under "
+        + "the limits the document names (its own defaults when it names none), then either re-render the "
+        + "verified envelope — with its payload NORMALISED by the ordinary node decoder, so expectedFile "
+        + "is the decode expectation and not the carried bytes — byte-equal to expectedFile, or assert "
+        + "the structured refusal (expectedErrorCode at a path starting with expectedPath). The refusal "
+        + "vocabulary is the one WIRE_FORMAT 17.4 names (InvalidFormat / InvalidJson / InvalidEnvelope / "
+        + "UnsupportedVersion / DigestMismatch / Oversize / TreeDecode / HistoryDecode / TreeInvalid), NOT "
+        + "the eight DecodeError codes: a bundle is a container the node decoder runs inside. "
         + "See fuaran-dotnet/docs/WIRE_FORMAT.md."
     )
 
@@ -252,20 +333,34 @@ let private writeManifest
 
     w.WriteStartArray("fixtures")
 
-    for e in sorted do
-        w.WriteStartObject()
-        w.WriteString("id", e.Id)
-        w.WriteString("kind", e.Kind)
-        w.WriteString("decoder", e.Decoder)
-        w.WriteString("inputFile", e.InputFile)
-        e.ExpectedFile |> Option.iter (fun f -> w.WriteString("expectedFile", f))
+    for row in sorted do
+        match row with
+        | Authored e ->
+            w.WriteStartObject()
+            w.WriteString("id", e.Id)
+            w.WriteString("kind", e.Kind)
+            w.WriteString("decoder", e.Decoder)
+            w.WriteString("inputFile", e.InputFile)
+            e.ExpectedFile |> Option.iter (fun f -> w.WriteString("expectedFile", f))
 
-        e.ExpectedErrorCode
-        |> Option.iter (fun c -> w.WriteString("expectedErrorCode", c))
+            e.ExpectedErrorCode
+            |> Option.iter (fun c -> w.WriteString("expectedErrorCode", c))
 
-        e.ExpectedPath |> Option.iter (fun p -> w.WriteString("expectedPath", p))
-        w.WriteString("description", e.Description)
-        w.WriteEndObject()
+            e.ExpectedPath |> Option.iter (fun p -> w.WriteString("expectedPath", p))
+            w.WriteString("description", e.Description)
+            w.WriteEndObject()
+        // Verbatim, so a property this emitter does not model — or an order it
+        // would not choose — survives untouched. The row keeps the internal
+        // indentation it was written at, at this same depth, so the bytes land
+        // back where they were.
+        //
+        // The leading break and indent are OURS to supply: WriteRawValue writes
+        // the separating comma and then the bytes, and no pending indentation at
+        // all — so without this the merged array reads `},{` and every preserved
+        // row lands on the previous row. Two spaces per level is
+        // JsonWriterOptions' own default, which `opts` above does not override.
+        | Preserved(_, _, rawText) ->
+            w.WriteRawValue("\n" + String.replicate (2 * w.CurrentDepth) " " + rawText, skipInputValidation = false)
 
     w.WriteEndArray()
     w.WriteEndObject()
