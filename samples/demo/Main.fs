@@ -502,7 +502,9 @@ let view (model: Model) (dispatch: Msg -> unit) =
           EgressPolicy = Sanitize.permissiveEgress
           // Phase 1117 — no upload sink: this surface performs no uploads.
           UploadSink = None
-          CustomHashFloor = None }
+          CustomHashFloor = None
+          // Phase 1545 — the default posture; samples render under no CSP mode.
+          Csp = Csp.Permissive }
 
     // Phase 90 — register the in-page introspection REPL over the live tree.
     // The host opt-in is read from THIS project's build (Phase 1532), not

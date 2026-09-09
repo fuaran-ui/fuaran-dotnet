@@ -226,4 +226,50 @@ let documentShellHardeningTests =
               Expect.isFalse (html.Contains "nonce") "no nonce attribute"
               Expect.isFalse (html.Contains "integrity") "no integrity attribute"
               Expect.isFalse (html.Contains "crossorigin") "no crossorigin attribute"
+          }
+
+          // ── Phase 1545 — the shell-level nonce ───────────────────────────
+
+          test "the shell's nonce reaches every script that declares none" {
+              let shell =
+                  { (DocumentShell.create "T" |> DocumentShell.withNonce "per-response") with
+                      Scripts = [ ScriptRef.moduleScript "/a.js"; ScriptRef.deferred "/b.js" ] }
+
+              let html = Document.render shell "BODY"
+
+              Expect.equal
+                  (System.Text.RegularExpressions.Regex.Matches(html, "nonce=\"per-response\"").Count)
+                  2
+                  "both scripts carry the response's nonce without either declaring it"
+          }
+
+          test "a script's own nonce wins over the shell's" {
+              // The shell's value is a DEFAULT, not an override: a host that has
+              // a reason to nonce one script differently keeps that reason.
+              let shell =
+                  { (DocumentShell.create "T" |> DocumentShell.withNonce "shell") with
+                      Scripts = [ ScriptRef.create "/a.js" |> ScriptRef.withNonce "its-own" ] }
+
+              let html = Document.render shell "BODY"
+              Expect.stringContains html "nonce=\"its-own\"" "the script's own nonce is emitted"
+              Expect.isFalse (html.Contains "nonce=\"shell\"") "and the shell's is not also emitted onto it"
+          }
+
+          test "a shell declaring no nonce is byte-identical to the pre-1545 emission" {
+              let withoutNonce =
+                  Document.render
+                      { DocumentShell.create "T" with
+                          Scripts = [ ScriptRef.moduleScript "/app.js" ] }
+                      "BODY"
+
+              Expect.isFalse (withoutNonce.Contains "nonce") "no nonce attribute anywhere"
+          }
+
+          test "the style-src directive names the nonce and no unsafe-inline" {
+              // The host's half of the contract, as one call — the sentence the
+              // whole mode exists to make true.
+              let directive = Fuaran.UI.Renderer.Csp.styleSrcDirective "per-response"
+
+              Expect.equal directive "style-src 'self' 'nonce-per-response'" "the directive a host sends"
+              Expect.isFalse (directive.Contains "unsafe-inline") "no unsafe-inline, which is the point"
           } ]

@@ -7435,3 +7435,83 @@ nothing here is authorable, encodable or decodable. **No escape hatch is created
 relaxed**: the walk executes nothing, registers nothing, and every value it reports is read off the
 tree the caller already holds. What the introspection block exposes is strictly a projection of that
 same tree, to a caller that could already have walked it.
+
+## 0.79.0 — the strict-CSP render mode: a host-supplied nonce, and no inline style attribute (Phase 1545)
+
+Both renderers, the shared render spine and the Giraffe document shell gain a Content-Security-Policy
+POSTURE. `Permissive` is what every existing entry point builds and is byte-for-byte the emission the
+renderers have always produced; `Strict of nonce` is reached by name and emits no `style` attribute
+anywhere, collecting each continuous declaration into one nonce-bearing `<style>` element per render
+root under a derived class name.
+
+The reason it is worth a slot at all: inline style is the last CSP directive a Fuaran host could not
+close. Every deploying host has had to ship `style-src 'unsafe-inline'` because the renderer sets a
+`style` attribute for the six layout slots whose value is genuinely continuous, and injects the theme
+through an inline `<style>`. Under a policy that otherwise forbids everything, inline-style CSS is the
+remaining exfiltration channel.
+
+**New public surface** (`Fuaran.UI.Renderer.Core`, namespace `Fuaran.UI.Renderer`):
+
+| Surface | What it is |
+|---|---|
+| `Csp.CspMode` = `Permissive \| Strict of nonce: string` | The posture a render runs under. |
+| `Csp.isStrict` / `Csp.nonce` | Its two readers. |
+| `Csp.Declarations.{grid, masonry, flex, splitPane, scrollArea, progressFill}` | The canonical CSS pairs for each continuous slot — **called by both renderers**, so the derived class cannot drift between them. |
+| `Csp.generatedClass` / `Csp.classRoot` / `Csp.declarationText` | The derivation: FNV-1a over node id + slot + declarations, under the reserved `fuaran-csp-` root. |
+| `Csp.StyleCollector` | The per-render, per-context accumulator (first write wins, walk order). |
+| `Csp.isCollectableValue` / `Csp.stylesheetText` | The raw-`<style>`-content floor and the rule renderer. |
+| `Csp.styleSrcDirective` | The host's half in one call — `style-src 'self' 'nonce-…'`. |
+
+**New public surface** (`Fuaran.UI.Renderer.Server`): `Render.mkContextWithCsp`,
+`Render.renderWithCsp`, `Render.renderStrict`, `Render.renderWithThemeAndCsp`,
+`Render.themeStyleElementWithCsp`, `Render.collectedStyleHtml`.
+(`Fuaran.UI.Renderer`): `Render.renderWithSourcesAndCsp`, `Render.themeStyleElementWithCsp`.
+(`Fuaran.UI.Giraffe`): `DocumentShell.Nonce`, `DocumentShell.withNonce`.
+
+**The consumer cost, stated plainly.** Three records gain a field, which is `FS0764` at a full record
+literal: `Render.ServerRenderContext` (`Csp`, `Styles`), `Render.RenderContext<'Msg>` (`Csp`) and
+`DocumentShell` (`Nonce`). Nothing else moves — every convenience entry point supplies the defaults,
+every record-`with` construction is unaffected, and a consumer that builds a context through
+`mkContextWith*` or a shell through `DocumentShell.create` sees nothing at all. In practice the
+render contexts are constructed by full literal only inside this repo's own tests.
+
+**What does NOT move, which is the load-bearing half.** `Permissive` renders byte-for-byte what the
+renderers rendered before, asserted directly rather than against a golden
+(`StrictCspTests` compares `renderWithCsp Permissive` to `renderWith` over the style-bearing corpus),
+so the parity corpus, the SSR class/ARIA locks and every existing consumer are untouched. The wire is
+untouched: nothing here is encoded, decoded, or refused that was accepted before.
+
+**The class name is derived rather than allocated**, so two renders of one tree are byte-identical —
+the property SSR output is already held to. Both tiers hash the SAME `Csp.Declarations` output, which
+is what lets a hydrating client put the server's class on the server's element even though the two
+tiers spell their emissions differently. `Fuaran.UI.Tests/StrictCspParityTests.fs` locks which builder
+each tier calls at each slot; `Fuaran.UI.Renderer.Server.Tests/StrictCspTests.fs` proves the claim in
+emitted bytes over the style-bearing corpus and the wire-format node fixtures, with a go-red twin that
+reintroduces one site.
+
+**The new sink carries a floor the shared grammar does not.** A collected declaration lands in raw
+`<style>` CONTENT, which is not escaped and which the HTML parser scans for `</style` before any CSS
+parser reads it. `Sanitize.isSafeCssValue` denies `;`, `{`, `}`, `\` and C0 but not `<` — correctly,
+for an attribute value — so `Csp.isCollectableValue` refuses `<` and `>` on top of it. That is Phase
+1523's resume-envelope `</script` finding at a new sink, closed at the sink rather than assumed away.
+
+**What the mode does not claim** is recorded in [`SANITIZATION.md`](SANITIZATION.md): strict is the
+HYDRATION posture (a nonce must match the header of the response that delivered the document, so a
+client-only strict render has nothing to match), and three client-only emission sites — the DataGrid
+cell progress fill, the rating control's per-star fraction, and the AG Grid / AG Charts wrappers — are
+out of scope with the reason for each. The inventory table there names every site in both renderers.
+
+**Version.** Additive, so it rides the standing untagged 0.79.0 draft under the draft-slot rule. The
+three added record fields are `FS0764` at a full literal, which is the cost that draft already carries
+(Phase 1611's required `VisualisationContext` field), so the release class does not move on this
+entry's account.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged — nothing here is authorable, encodable or decodable. **No escape
+hatch is created, widened or relaxed.** No host-registered seam, no new effect a tree can reach, no
+new registry a decoded tree selects from, no default that fails open: the mode NARROWS what a decoded
+tree can do, since under `Strict` no tree-declared value reaches a `style` attribute at all, and the
+one slot that carried CSS (`templateColumns`) meets the same §1523 emission grammar it already met
+plus the raw-`<style>`-content floor above. The collected stylesheet is renderer-authored throughout —
+its property names are literals in this package and its values are renderer-formatted numbers or
+already-gated slot values.

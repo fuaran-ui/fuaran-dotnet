@@ -391,6 +391,26 @@ type RenderContext<'Msg> =
         /// to switch off the host's verification for its own documents — the
         /// tree-side bypass the floor exists to close, re-opened one layer up.
         CustomHashFloor: HashStrictness option
+        /// Phase 1545 — the Content-Security-Policy posture this render runs
+        /// under. `Permissive` (the default at every convenience entry point) is
+        /// byte-for-byte the emission this renderer has always produced.
+        ///
+        /// Under `Csp.Strict` no `style` attribute is emitted: each continuous
+        /// value rides the generated class the SERVER renderer derived for the
+        /// same node and slot, whose declaration is already in the document's
+        /// collected `<style>` element. So the hydrate leaves the strict policy
+        /// intact rather than re-writing the attribute the server was careful
+        /// not to emit.
+        ///
+        /// **Strict is the HYDRATION posture, and that is a boundary rather
+        /// than an omission.** A nonce has to match the `Content-Security-Policy`
+        /// header of the response that delivered the document, and a render with
+        /// no such response has nothing to match — a nonce this tier minted for
+        /// itself would be exactly the derivable nonce `ScriptRef.Nonce` refuses
+        /// to generate. So a client-only strict render emits the classes and
+        /// finds no rules behind them; the mode is for a document a server
+        /// rendered under the same posture. `SANITIZATION.md` states the limit.
+        Csp: Csp.CspMode
     }
 
 // ─── Text-source rendering — handles i18n + bound text ─────────────────────
@@ -419,6 +439,46 @@ let accessibilityAttributes
 /// is shared rather than inlined at the one former emission site.
 let private toProps (pairs: (string * string) list) : IReactProperty list =
     pairs |> List.map (fun (k, v) -> prop.custom (k, v))
+
+// ─── Strict-CSP style emission (Phase 1545) ────────────────────────────────
+
+/// The class suffix and the props one continuous-value site emits, under
+/// whichever CSP posture the render is running.
+///
+/// `canonical` comes from `Csp.Declarations` — the SHARED builders the server
+/// arm calls, so the hash input cannot drift between the two tiers. It is the
+/// hash input and nothing this tier emits, which is what makes a shared
+/// definition sufficient: the class only has to NAME the rule the server wrote.
+/// So the progress fill's canonical value is the server's `width:50.000000%`
+/// even though React renders `width: 50%` here — the two tiers have always
+/// spelled that value differently, and under strict mode only one of them
+/// writes it. `permissive` is the React style object this renderer has always
+/// emitted, whose keys are camelCase because React's style object requires it.
+///
+/// **The two are separate arguments precisely because they are spelled
+/// differently**, and that is the one place this could drift: a site whose
+/// camelCase object and kebab-case pairs came to disagree would hydrate onto a
+/// class the server never generated. `Fuaran.UI.Tests/StrictCspTests.fs` pins
+/// them together by rendering the same tree through both tiers and comparing
+/// the class each derived, so the drift fails a test rather than a page.
+///
+/// Under `Permissive` the returned props are exactly what the site emitted
+/// before this mode existed. Under `Strict` there is no style prop at all — the
+/// declaration is already in the document's collected stylesheet, under the name
+/// the server derived from the same canonical pairs.
+let private cspStyle
+    (ctx: RenderContext<'Msg>)
+    (nodeId: string)
+    (slot: string)
+    (canonical: (string * string) list)
+    (permissive: IStyleAttribute list)
+    : string * IReactProperty list =
+    if List.isEmpty canonical then
+        "", []
+    elif Csp.isStrict ctx.Csp then
+        " " + Csp.generatedClass nodeId slot canonical, []
+    else
+        "", [ prop.style permissive ]
 
 // ─── Reconciliation keys for repeated children ─────────────────────────────
 //
@@ -2910,10 +2970,15 @@ let rec private renderKind
                    | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
                    | None -> [])
 
+            // Phase 1545 — the canonical pairs come from the SHARED builder the
+            // server arm calls, beside the camelCase object React needs.
+            let gridClass, gridStyleProps =
+                cspStyle ctx parentNodeId "grid" (Csp.Declarations.grid templateColumns gridGap) gridStyle
+
             Html.div (
-                [ prop.className ("fuaran-layout-grid" + brk)
-                  prop.style gridStyle
-                  prop.children (spec.Children |> List.map (render ctx)) ]
+                [ prop.className ("fuaran-layout-grid" + brk + gridClass) ]
+                @ gridStyleProps
+                @ [ prop.children (spec.Children |> List.map (render ctx)) ]
                 @ (cssRefusalAttrs |> List.map (fun (k, v) -> prop.custom (k, v)))
             )
         | BoxRole.Group, BoxLayout.Masonry(cols, masonryGap) ->
@@ -2929,10 +2994,14 @@ let rec private renderKind
                    | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
                    | None -> [])
 
-            Html.div
-                [ prop.className ("fuaran-layout-masonry" + brk)
-                  prop.style masonryStyle
-                  prop.children (spec.Children |> List.map (render ctx)) ]
+            let masonryClass, masonryStyleProps =
+                cspStyle ctx parentNodeId "masonry" (Csp.Declarations.masonry cols masonryGap) masonryStyle
+
+            Html.div (
+                [ prop.className ("fuaran-layout-masonry" + brk + masonryClass) ]
+                @ masonryStyleProps
+                @ [ prop.children (spec.Children |> List.map (render ctx)) ]
+            )
         | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
             let dir =
                 match direction with
@@ -2943,11 +3012,19 @@ let rec private renderKind
 
             // `gap` emits only when set (Phase 459) — a gap-free stack carries no
             // `style` attribute, byte-identical to the pre-459 emission.
+            let flexClass, flexStyleProps =
+                cspStyle
+                    ctx
+                    parentNodeId
+                    "flex"
+                    (Csp.Declarations.flex flexGap)
+                    (match flexGap with
+                     | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
+                     | None -> [])
+
             Html.div (
-                [ prop.className (Css.layoutStack dir wrap + brk) ]
-                @ (match flexGap with
-                   | Some n -> [ prop.style [ style.custom ("gap", sprintf "%dpx" n) ] ]
-                   | None -> [])
+                [ prop.className (Css.layoutStack dir wrap + brk + flexClass) ]
+                @ flexStyleProps
                 @ [ prop.children (spec.Children |> List.map (render ctx)) ]
             )
     | NodeKind.SplitPanel spec ->
@@ -2968,17 +3045,37 @@ let rec private renderKind
             | [ a ] -> [ a ], []
             | a :: rest -> [ a ], rest
 
+        // Phase 1545 — the same slot discriminators the server arm uses, so the
+        // two panes hydrate onto the classes it generated.
+        let leftClass, leftStyleProps =
+            cspStyle
+                ctx
+                parentNodeId
+                "split-left"
+                (Csp.Declarations.splitPane weightLeft)
+                [ style.custom ("flex", sprintf "%f 1 0" weightLeft) ]
+
+        let rightClass, rightStyleProps =
+            cspStyle
+                ctx
+                parentNodeId
+                "split-right"
+                (Csp.Declarations.splitPane weightRight)
+                [ style.custom ("flex", sprintf "%f 1 0" weightRight) ]
+
         Html.div
             [ prop.className "fuaran-layout-split-panel"
               prop.children
-                  [ Html.div
-                        [ prop.className "fuaran-split-pane fuaran-split-pane-left"
-                          prop.style [ style.custom ("flex", sprintf "%f 1 0" weightLeft) ]
-                          prop.children leftChildren ]
-                    Html.div
-                        [ prop.className "fuaran-split-pane fuaran-split-pane-right"
-                          prop.style [ style.custom ("flex", sprintf "%f 1 0" weightRight) ]
-                          prop.children rightChildren ] ] ]
+                  [ Html.div (
+                        [ prop.className ("fuaran-split-pane fuaran-split-pane-left" + leftClass) ]
+                        @ leftStyleProps
+                        @ [ prop.children leftChildren ]
+                    )
+                    Html.div (
+                        [ prop.className ("fuaran-split-pane fuaran-split-pane-right" + rightClass) ]
+                        @ rightStyleProps
+                        @ [ prop.children rightChildren ]
+                    ) ] ]
     | NodeKind.Tabs spec ->
         // Worked-example follow-on:
         // TabsSpec extends with `ActiveIndex: Binding<int>` and
@@ -3442,12 +3539,14 @@ let rec private renderKind
               | Some w -> style.maxWidth (length.px w)
               | None -> () ]
 
-        Html.div
-            [ prop.className axisClass
-              prop.tabIndex 0
-              if not styleProps.IsEmpty then
-                  prop.style styleProps
-              prop.children (spec.Children |> List.map (render ctx)) ]
+        let scrollClass, scrollStyleProps =
+            cspStyle ctx parentNodeId "scroll" (Csp.Declarations.scrollArea spec.MaxHeight spec.MaxWidth) styleProps
+
+        Html.div (
+            [ prop.className (axisClass + scrollClass); prop.tabIndex 0 ]
+            @ scrollStyleProps
+            @ [ prop.children (spec.Children |> List.map (render ctx)) ]
+        )
     // -- Display --
     | NodeKind.Heading spec ->
         // Feliz-parity additive: Heading.Variant
@@ -4826,7 +4925,13 @@ let rec private renderKind
                       // raised for the guest it mounts, which is the answer a
                       // reader expects and the one that does not depend on a
                       // second rule to be safe.
-                      CustomHashFloor = ctx.CustomHashFloor }
+                      CustomHashFloor = ctx.CustomHashFloor
+                      // Phase 1545 — the guest inherits the host's posture, for
+                      // the egress reason directly above: a guest that could
+                      // render under `Permissive` inside a strict document
+                      // would put back the inline style attribute the host's
+                      // policy exists to forbid.
+                      Csp = ctx.Csp }
 
                 // Route through the late-bound hook (a function *value*), not a
                 // direct call into the recursive `render` group at type obj —
@@ -4992,9 +5097,15 @@ and private renderProgress
                     Html.div
                         [ prop.className "fuaran-progress-bar"
                           prop.children
-                              [ Html.div
-                                    [ prop.className "fuaran-progress-fill"
-                                      prop.style [ style.width (length.percent (fraction * 100.0)) ] ] ] ]
+                              [ let fillClass, fillStyleProps =
+                                    cspStyle
+                                        ctx
+                                        parentNodeId
+                                        "progress-fill"
+                                        (Csp.Declarations.progressFill fraction)
+                                        [ style.width (length.percent (fraction * 100.0)) ]
+
+                                Html.div ([ prop.className ("fuaran-progress-fill" + fillClass) ] @ fillStyleProps) ] ]
                     match spec.Caveat with
                     | Some caveat ->
                         Html.div [ prop.className "fuaran-progress-caveat"; prop.text (renderText ctx caveat) ]
@@ -8248,7 +8359,10 @@ let renderWithSources
           UploadSink = None
           // Phase 1532 — no per-render floor at a convenience entry point: this
           // render uses whatever process floor the host installed.
-          CustomHashFloor = None }
+          CustomHashFloor = None
+          // Phase 1545 — `Permissive` at every convenience entry point, so the
+          // emission is unchanged; strict mode is reached by name.
+          Csp = Csp.Permissive }
         node
 
 /// `renderWithSources` with an EXPLICIT destination policy (Phase 1026) — the
@@ -8301,7 +8415,10 @@ let renderWithSourcesAndEgress
           UploadSink = None
           // Phase 1532 — no per-render floor at a convenience entry point: this
           // render uses whatever process floor the host installed.
-          CustomHashFloor = None }
+          CustomHashFloor = None
+          // Phase 1545 — `Permissive` at every convenience entry point, so the
+          // emission is unchanged; strict mode is reached by name.
+          Csp = Csp.Permissive }
         node
 
 /// Convenience entry point that pre-wires the optional
@@ -8342,7 +8459,10 @@ let renderWithSourcesAndSink
           UploadSink = None
           // Phase 1532 — no per-render floor at a convenience entry point: this
           // render uses whatever process floor the host installed.
-          CustomHashFloor = None }
+          CustomHashFloor = None
+          // Phase 1545 — `Permissive` at every convenience entry point, so the
+          // emission is unchanged; strict mode is reached by name.
+          Csp = Csp.Permissive }
         node
 
 /// Correlation-aware render entry (Phase 330). As `renderWithSourcesAndSink`,
@@ -8392,7 +8512,10 @@ let renderWithSourcesSinkAndContext
           UploadSink = None
           // Phase 1532 — no per-render floor at a convenience entry point: this
           // render uses whatever process floor the host installed.
-          CustomHashFloor = None }
+          CustomHashFloor = None
+          // Phase 1545 — `Permissive` at every convenience entry point, so the
+          // emission is unchanged; strict mode is reached by name.
+          Csp = Csp.Permissive }
         node
 
 /// User-action-recording render entry (Phase 889). As
@@ -8444,7 +8567,10 @@ let renderWithSourcesSinkContextAndActionSink
           UploadSink = None
           // Phase 1532 — no per-render floor at a convenience entry point: this
           // render uses whatever process floor the host installed.
-          CustomHashFloor = None }
+          CustomHashFloor = None
+          // Phase 1545 — `Permissive` at every convenience entry point, so the
+          // emission is unchanged; strict mode is reached by name.
+          Csp = Csp.Permissive }
         node
 
 /// Scope-aware render entry (Phase 266, §4o). Renders `node` under an explicit
@@ -8490,7 +8616,10 @@ let renderWithSourcesInScope
           UploadSink = None
           // Phase 1532 — no per-render floor at a convenience entry point: this
           // render uses whatever process floor the host installed.
-          CustomHashFloor = None }
+          CustomHashFloor = None
+          // Phase 1545 — `Permissive` at every convenience entry point, so the
+          // emission is unchanged; strict mode is reached by name.
+          Csp = Csp.Permissive }
         node
 
 /// Scope-aware render entry WITH a telemetry sink — `renderWithSourcesInScope`
@@ -8550,7 +8679,10 @@ let renderWithSourcesInScopeAndSink
           UploadSink = None
           // Phase 1532 — no per-render floor at a convenience entry point: this
           // render uses whatever process floor the host installed.
-          CustomHashFloor = None }
+          CustomHashFloor = None
+          // Phase 1545 — `Permissive` at every convenience entry point, so the
+          // emission is unchanged; strict mode is reached by name.
+          Csp = Csp.Permissive }
         node
 
 // ─── State-reactive render (Phase 106) ─────────────────────────────────────
@@ -8726,3 +8858,57 @@ let renderWithTheme
     (node: Node<'Msg>)
     : ReactElement =
     React.Fragment [ themeStyleElement theme; renderWithSources sources dispatch node ]
+
+// ─── Strict-CSP rendering (Phase 1545) ─────────────────────────────────────
+
+/// `themeStyleElement` under an explicit CSP posture. Under `Csp.Strict nonce`
+/// the element carries `nonce="…"`, so a host serving `style-src 'nonce-…'` can
+/// mount the theme without `'unsafe-inline'`; under `Permissive` it is
+/// `themeStyleElement`, unchanged. The raw-HTML sink still mints through the
+/// `fuaran-renderer` Trusted Types policy — the two postures are orthogonal and
+/// a host may send both directives.
+let themeStyleElementWithCsp (csp: Csp.CspMode) (theme: Theme) : ReactElement =
+    match Csp.nonce csp with
+    | Some n ->
+        Html.style
+            [ prop.custom ("nonce", n)
+              prop.dangerouslySetInnerHTML (TrustedTypes.html (Theme.toCss theme)) ]
+    | None -> themeStyleElement theme
+
+/// `renderWithSources` under an explicit CSP posture — the client half of the
+/// strict mode, and the entry point a HYDRATING host calls.
+///
+/// Under `Csp.Strict` this renderer emits no `style` attribute on any node the
+/// server also rendered: each continuous value rides the class the server
+/// derived for the same node and slot, whose declaration is in the collected
+/// `<style>` element already in the document. Hydration therefore leaves the
+/// policy exactly as the server left it.
+///
+/// It does NOT mint a stylesheet of its own, and that is the boundary rather
+/// than an omission: the declarations belong to the document the server sent,
+/// and a nonce this tier invented would match no header. `SANITIZATION.md`
+/// records what the mode does and does not claim on this path.
+let renderWithSourcesAndCsp
+    (csp: Csp.CspMode)
+    (sources: BindingResolver.BindingSources)
+    (dispatch: 'Msg -> unit)
+    (node: Node<'Msg>)
+    : ReactElement =
+    render
+        { Sources = withStateSeeds node sources
+          Runtime = Runtime.diagnostic
+          VisAdapter = VisAdapter.noOp<'Msg>
+          Dispatch = dispatch
+          TelemetrySink = None
+          InErrorBoundary = false
+          Fragments = collectFragments Map.empty node
+          ExpandingFragments = Set.empty
+          Scope = None
+          SessionContext = Map.empty
+          ActionSink = None
+          CurrentNodeId = None
+          EgressPolicy = Sanitize.denyNonLocalEgress
+          UploadSink = None
+          CustomHashFloor = None
+          Csp = csp }
+        node

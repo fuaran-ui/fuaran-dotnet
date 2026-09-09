@@ -18,7 +18,7 @@ Threats in scope:
 
 Threats out of scope (consumer responsibility):
 
-- **Content Security Policy** — Fuaran's renderer does not set CSP headers; the host application does. Since Phase 1546 the renderer meets one directive halfway by creating a named Trusted Types policy, so a host sending `require-trusted-types-for 'script'` has a policy to pin; sending the header remains the host's act. See "Trusted Types" below.
+- **Content Security Policy** — Fuaran's renderer does not set CSP headers; the host application does. It meets two directives halfway. Since Phase 1546 it creates a named Trusted Types policy, so a host sending `require-trusted-types-for 'script'` has a policy to pin; and since Phase 1545 it has a render mode that emits no inline style at all, so a host sending `style-src` with a nonce and no `'unsafe-inline'` has a renderer that can live under it. Sending either header remains the host's act. See "Trusted Types" and "The strict-CSP render mode" below.
 - **DOM-clobbering** via author-supplied IDs that match global JavaScript names — author trust boundary.
 
 ## Posture per seam
@@ -30,6 +30,7 @@ Every place a string makes it to the DOM through `Fuaran.UI.Renderer`:
 | `TextSource.Literal` / `Bound` / `I18n` → `prop.text` | AI emission, query resolution, i18n catalog | **Escaped by React** (textContent assignment) | `Render.renderText` |
 | `Markdown.toHtml` → `prop.dangerouslySetInnerHTML` | AI-emitted markdown source | **Escaped by construction** (deterministic GFM renderer escapes every text run, escapes raw HTML, routes URLs through `sanitizeUrlOrBlank`) **+ sanitized at render-time** as defence-in-depth (strip `<script>`/`<iframe>`/`<object>`/`<embed>`/`<form>`/`<link>`/`<meta>` blocks + `on*=` attributes + `javascript:`/`vbscript:` URLs) | `Renderer.Core` `Markdown.toHtml` → `Sanitize.sanitizeMarkdownHtml` |
 | `Theme.toCss` → `prop.dangerouslySetInnerHTML` (via `themeStyleElement`) | Host-supplied `Theme` record | **Host-trusted** — Theme is a consumer-authored F# record; the wire-decode path strips it (Theme is not part of the §4d JSON contract) | `themeStyleElement` |
+| The **collected stylesheet** → `prop.dangerouslySetInnerHTML` inside one `<style>` element (Phase 1545, strict mode only) | The renderer's own per-node layout declarations — a resolved grid track list, a column count, a gap, a pane weight, a scroll ceiling, a progress width | **Renderer-owned, plus a raw-content floor.** Every value is a renderer-formatted number except the grid track list, which has already passed the §1523 emission grammar at its own site. On top of that, `Csp.isCollectableValue` re-applies `isSafeCssValue` (so a value cannot close its declaration or its rule) **and additionally refuses `<` and `>`**, which the shared grammar does not: those are safe in an attribute (React and ViewEngine escape them) and unsafe in raw `<style>` CONTENT, where the HTML parser looks for `</style` before any CSS parser reads the text. That is the Phase 1523 resume-envelope `</script` finding at a new sink. A declaration that fails the floor is dropped and its class registers no rule, so the element keeps a class that styles nothing — which is what a refused value should look like, and the emission site has already marked the refusal in the document | `Renderer.Core` `Csp.isCollectableValue` / `Csp.StyleCollector`; `Renderer.Server` `Render.collectedStyleHtml` |
 | Protected email `Link` (`protection: "email"`) → `prop.dangerouslySetInnerHTML` (SSR only) | Resolved link href (post-`sanitizeUrlOrBlank`) + rendered label | **Escaped by construction** — every character of the sanitised `mailto:` href and the label is emitted as a decimal HTML entity (`&#N;`), so no character can open a tag, attribute, or entity of its own; the href has additionally passed `sanitizeUrlOrBlank` before encoding. The CSR arm uses only typed props (no raw HTML) | `Renderer.Server` `Render.fs` `NodeKind.Link` protected arm (Phase 812) |
 | `Node.ExtraAttributes` → `prop.custom(k, v)` | Smart-ctor `Node.withExtraAttribute` (prefix-gated) OR `{ node with ExtraAttributes = ... }` (bypass) | **Sanitized at render-time** — data-* / aria-* prefix rule **plus a positive `[A-Za-z0-9-]` character allowlist over the whole key** + value safety check; non-conforming entries dropped, survivors emitted **trimmed**. The server renderer re-checks the key at its emission site (see "Attribute-name injection" below) | `Render.render` → `Sanitize.sanitizeExtraAttributes`; SSR emission site → `Sanitize.isSafeAttributeName` |
 | `NodeKind.Drawing` → `DrawingSvg.render` → `prop.dangerouslySetInnerHTML` | AI emission / wire decode (label text, `title`/`desc`, colour + font strings) **and, since Phase 883, the chart lowering's per-mark `DrawStyle.Tip` — built from series-field and category strings taken straight off the data feed, and since Phase 921 the lowering's generated accessible SUMMARY, built from the same strings and carried into the root's `aria-label`** | **Escaped by construction** — the builder emits raw markup, so React's escaping is bypassed on this path and the module XML-escapes every string it writes itself (`& < > " '` → entities), for text content and attribute values alike. Numbers go through `formatNum` (invariant, non-finite → `0`), never string interpolation. There is no attribute-name seam: every attribute name is a renderer-owned literal, and the closed `Shape` DU admits no raw SVG markup, no `d` string and no attribute bag (see `docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md` §3) | `Renderer.Core` `DrawingSvg.escape`, applied at `emitTip` / the `Label` arm / the root `<title>` + `<desc>` + (Phase 921) the root `aria-label` — the one seam where the escaped string lands in an ATTRIBUTE value rather than element content, which the same escape already covers (`"` and `'` are in its set) / `styleAttrs` |
@@ -95,6 +96,101 @@ The seam inventory is enforced rather than remembered: a source-reading test enu
 sinks in `src/Fuaran.UI.Renderer/` and fails when one takes a value the policy did not mint. A new
 sink is therefore red on the commit that adds it, and the fix is to route it and add its row to the
 table above.
+
+## The strict-CSP render mode (Phase 1545)
+
+Inline style is the last directive a Fuaran host cannot close. The renderers set a `style`
+attribute for the handful of slots whose value is genuinely continuous, and inject the theme
+through an inline `<style>` element, so every deploying host has had to ship
+`style-src 'unsafe-inline'`. Under a policy that otherwise forbids everything, inline-style CSS
+is the remaining exfiltration channel: an injected style attribute reads the document with
+attribute selectors and leaks what it finds through a background URL. A language that owns a URL
+floor should not be the reason a host cannot close it.
+
+So a render carries a **posture**, `Csp.CspMode` (in the shared `Fuaran.UI.Renderer.Core` spine):
+
+| | |
+|---|---|
+| `Permissive` | What every existing entry point builds, and **byte-for-byte the emission the renderers have always produced**. Nothing on this path consults the mode. |
+| `Strict of nonce` | Reached BY NAME — `Render.renderWithCsp` / `Render.renderStrict` / `Render.renderWithThemeAndCsp` on the server, `Render.renderWithSourcesAndCsp` on the client. No `style` attribute is emitted anywhere; each continuous value becomes a generated class whose declaration rides one nonce-bearing `<style>` element per render root, and the theme element carries the same nonce. |
+
+The host mints the nonce per response, sends it in its own header —
+`Csp.styleSrcDirective` writes the style half, `style-src 'self' 'nonce-…'` and no
+`'unsafe-inline'` — and hands the same value to the renderer and to
+`DocumentShell.withNonce`, which is what puts it on the shell's scripts too. **Nothing in the
+renderer generates a nonce**, for the reason `ScriptRef.Nonce` already gives: a nonce the
+document could derive is a nonce an attacker can derive.
+
+### The class name is derived, never allocated
+
+`Csp.generatedClass` hashes the node id, a slot discriminator and the declarations themselves
+(`Ids.deterministicCorrelationId`, the FNV-1a already used for correlation ids and already
+measured Fable-portable). Two renders of one tree therefore produce identical bytes, which is
+what SSR output is held to anyway — cache-stable, and hydration-parity-safe.
+
+The declarations are built by `Csp.Declarations`, **one set of builders both renderers call**.
+That sharing is load-bearing rather than tidy: the two tiers legitimately EMIT different bytes
+here (the client hands React a camelCase style object where the server writes kebab-case into an
+attribute; their progress fills have always formatted the same percentage differently), so the
+class cannot be derived from what either tier emits. A tier that built its own pairs would derive
+a name the other never generated, and the symptom would be an unstyled element in a hydrated
+document — not a failing test. `Fuaran.UI.Tests/StrictCspParityTests.fs` locks which builder each
+tier calls at each slot.
+
+### The inventory
+
+Every place either renderer can put CSS into the markup, and what strict mode does with it.
+"Token" means the value is drawn from a fixed set and could map to a stylesheet class; "continuous"
+means it cannot, and needs a generated declaration.
+
+**`Fuaran.UI.Renderer.Server/Render.fs` — covered by strict mode**
+
+| Site | Declaration | Value | Under `Strict` |
+|---|---|---|---|
+| `Box` / `Grid` | `grid-template-columns`, `gap` | Continuous — an author track list, or `repeat(N, 1fr)` for an unbounded N; the gap is a pixel count | Generated class, slot `grid` |
+| `Box` / `Masonry` | `column-count`, `gap` | Continuous — an unbounded column count and pixel gap | Generated class, slot `masonry` |
+| `Box` / `Flex` | `gap` | Continuous — a pixel count | Generated class, slot `flex` |
+| `SplitPanel`, left pane | `flex` | Continuous — a float weight | Generated class, slot `split-left` |
+| `SplitPanel`, right pane | `flex` | Continuous — `1 - weight` | Generated class, slot `split-right` |
+| `ScrollArea` | `max-height`, `max-width` | Continuous — pixel ceilings | Generated class, slot `scroll` |
+| `Progress` fill | `width` | Continuous — a resolved percentage | Generated class, slot `progress-fill` |
+| `themeStyleElement` | the whole `:root` block | Host-authored `Theme` | The element carries the nonce (`themeStyleElementWithCsp`) |
+
+**`Fuaran.UI.Renderer/Render.fs` — the client twin of all eight, same slots, same derived
+classes.** Under `Strict` the client emits the class and no style prop; the declaration is
+already in the document the server sent.
+
+**Not covered, and why.** These emit CSS from the CLIENT tier only — markup with no server twin
+to hydrate against, so there is no collected stylesheet in the document for a generated class to
+name.
+
+| Site | Value | Why it is out |
+|---|---|---|
+| `Render.fs` — `DataGrid` cell `Progress` fill | Continuous width | The F# server tier renders `DataGrid` as a placeholder and emits no cells at all, so this markup is created after hydration, not adopted from the document |
+| `RatingControl.fs` — the per-star `--fuaran-rating-fill` | Continuous fraction | The server's floor for `Rating` is a native radio group — deliberately different markup (`docs/SSR.md`), so again nothing to hydrate onto |
+| `AgGridAdapter.fs` (wrapper size, cell progress fill), `AgChartAdapter.fs` (wrapper size) | Token sizes (`100%`, `320px`, `200px`) and one continuous width | These wrap AG Grid / AG Charts, which **write inline styles themselves at runtime** on every element they own. A page that mounts one cannot be served nonce-only whatever this renderer does, so changing three wrapper declarations would buy nothing and would imply a guarantee that is not available |
+
+**Not a style seam at all**, recorded because a reader will ask: `DrawingSvg` emits SVG
+**presentation attributes** (`fill=`, `stroke=`, `opacity=`), not a `style` attribute. Those are
+markup, not CSS, and no `style-src` directive governs them.
+
+### What the mode claims, and what it does not
+
+- It claims: a document rendered by `Renderer.Server` under `Strict`, and hydrated by
+  `Renderer` under `Strict`, contains no `style` attribute and no un-nonced `<style>` element.
+  That is asserted in emitted bytes over the style-bearing corpus **and** the wire-format node
+  fixtures, with a go-red twin that reintroduces one site —
+  `Fuaran.UI.Renderer.Server.Tests/StrictCspTests.fs`.
+- It does **not** claim anything about a CLIENT-ONLY strict render. Strict is the hydration
+  posture: a nonce has to match the `Content-Security-Policy` header of the response that
+  delivered the document, and a render with no such response has nothing to match — a nonce the
+  client minted for itself would be exactly the derivable nonce this document refuses to
+  generate. A client-only strict render emits the classes and finds no rules behind them.
+- It does **not** claim anything about what a HOST puts in `DocumentShell.HtmlAttributes` /
+  `BodyAttributes`, or in its own `<head>`. Those bags are host-authored (see the attribute-NAMES
+  section below): a host that writes `style` on its own `<body>` has written the CSS it wanted.
+- It does **not** narrow the wire. No decoder refuses anything it accepted before; what changed
+  is what the renderers emit under a mode nothing reaches by default.
 
 ## `Action.Navigate` and the State-key namespace (Phase 782)
 
@@ -486,6 +582,9 @@ stricter rule (`isAllowedExtraAttributeKey`: `data-*` and `aria-*` only).
 - [`src/Fuaran.UI/EmissionGrammar.fs`](src/Fuaran.UI/EmissionGrammar.fs) — the emission grammar for string-typed slots (Phase 1523): the rule every host's copy agrees with, consulted pre-emit and re-exported at every emission site.
 - [`src/Fuaran.UI.Renderer.Core/Sanitize.fs`](src/Fuaran.UI.Renderer.Core/Sanitize.fs) — implementation (shared by the client and server renderers).
 - [`src/Fuaran.UI.Renderer/TrustedTypes.fs`](src/Fuaran.UI.Renderer/TrustedTypes.fs) — the `fuaran-renderer` Trusted Types policy every client raw-HTML sink mints through.
+- [`src/Fuaran.UI.Renderer.Core/Csp.fs`](src/Fuaran.UI.Renderer.Core/Csp.fs) — the strict-CSP mode (Phase 1545): the posture, the shared declaration builders both renderers hash, the generated-class derivation, the per-render collector and its raw-`<style>` content floor.
+- [`src/Fuaran.UI.Renderer.Server.Tests/StrictCspTests.fs`](src/Fuaran.UI.Renderer.Server.Tests/StrictCspTests.fs) — the strict-mode proof in emitted bytes, with the go-red twin for both detectors.
+- [`src/Fuaran.UI.Tests/StrictCspParityTests.fs`](src/Fuaran.UI.Tests/StrictCspParityTests.fs) — the cross-tier lock on the generated class name.
 - [`src/Fuaran.UI.Tests/SanitizeTests.fs`](src/Fuaran.UI.Tests/SanitizeTests.fs) — XSS-payload corpus.
 - [`src/Fuaran.UI.Tests/TrustedTypesTests.fs`](src/Fuaran.UI.Tests/TrustedTypesTests.fs) — the sink-inventory scan, the floor's invariance over the renderer's own payloads, and the tag-name-boundary cases.
 - [`src/Fuaran.UI.Renderer.Server.Tests/ServerRenderTests.fs`](src/Fuaran.UI.Renderer.Server.Tests/ServerRenderTests.fs) — SSR attribute-name-injection assertions on the emitted HTML string.

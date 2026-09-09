@@ -327,6 +327,12 @@
          governed the moment it gains a default. -->
     <Compile Include="SpecConstructionTests.fs" />
     <Compile Include="HotPathVocabularyTests.fs" />
+    <!-- StrictCspParityTests is Phase 1545's cross-tier lock: the generated
+         class name has to agree between the two renderers or a hydrated
+         document is silently unstyled, and no test here can render the client
+         tier to a string — so it locks WHICH shared builder each tier calls at
+         each slot, which is the fact the hydration claim rests on. -->
+    <Compile Include="StrictCspParityTests.fs" />
     <!-- Phase 1141 — the render-level form-field write-back harness. Drives
          the change closures the rendered pair controls carry
          (Render.rangeInputHandlers / dateRangeInputHandlers) and the scalar

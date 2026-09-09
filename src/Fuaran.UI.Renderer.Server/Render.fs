@@ -103,7 +103,58 @@ type ServerRenderContext =
         /// anywhere lowered it for everyone. RAISE-ONLY on both axes: the
         /// effective floor is the stricter of this and the process floor.
         CustomHashFloor: HashStrictness option
+        /// Phase 1545 — the Content-Security-Policy posture this render runs
+        /// under. `Permissive` (the default at every convenience entry point) is
+        /// byte-for-byte the emission this renderer has always produced;
+        /// `Csp.Strict nonce` is reached by name (`mkContextWithCsp` /
+        /// `renderWithCsp`) and emits no `style` attribute anywhere.
+        Csp: Csp.CspMode
+        /// Phase 1545 — the rules this render generated, in walk order. Empty
+        /// and untouched under `Permissive`: nothing on that path registers
+        /// anything, which is what keeps the default emission unchanged.
+        ///
+        /// One collector belongs to one context. It is mutable because
+        /// collection happens DURING the walk while the element carrying it can
+        /// only be emitted after — see `Csp.StyleCollector`, which carries the
+        /// full argument for the shape.
+        Styles: Csp.StyleCollector
     }
+
+// ─── Strict-CSP style emission (Phase 1545) ────────────────────────────────
+
+/// The class suffix and the props one continuous-value site emits, under
+/// whichever posture the render is running.
+///
+/// `declarations` are the CANONICAL CSS pairs, built by `Csp.Declarations` —
+/// the same builders the client renderer calls, so the generated class name
+/// cannot drift between the two tiers. Under `Permissive` they become the
+/// `style` attribute this renderer has always emitted, byte for byte, through
+/// `style.custom` so the property name lands verbatim (which is what this
+/// tier's kebab-case spelling is FOR: Feliz.ViewEngine writes the key straight
+/// into the attribute). Under `Strict` they are registered in the
+/// render's collector under a derived class and NO style prop is emitted; the
+/// caller appends the returned suffix to its own class string.
+///
+/// One helper for all seven sites rather than a branch at each, so a site added
+/// later cannot emit a style attribute under strict mode by forgetting to.
+let private cspStyle
+    (ctx: ServerRenderContext)
+    (nodeId: string)
+    (slot: string)
+    (declarations: (string * string) list)
+    : string * IReactProperty list =
+    if List.isEmpty declarations then
+        "", []
+    elif Csp.isStrict ctx.Csp then
+        let className = Csp.generatedClass nodeId slot declarations
+        ctx.Styles.Register(className, declarations)
+        " " + className, []
+    else
+        "",
+        [ prop.style (
+              declarations
+              |> List.map (fun (property, value) -> style.custom (property, value))
+          ) ]
 
 // ─── Text + value helpers ──────────────────────────────────────────────────
 
@@ -526,16 +577,17 @@ and private renderKind
             // camelCase `gridTemplateColumns`: Feliz.ViewEngine emits the key
             // verbatim into the style attribute (where CSS ignores camelCase),
             // while the client's React style object requires camelCase.
-            let gridStyle =
-                [ style.custom ("grid-template-columns", templateColumns) ]
-                @ (match gridGap with
-                   | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
-                   | None -> [])
+            let gridDeclarations = Csp.Declarations.grid templateColumns gridGap
+
+            // Phase 1545 — under `Csp.Strict` these become a generated class and
+            // a collected declaration; under `Permissive` the `style` attribute
+            // above, byte for byte.
+            let gridClass, gridStyleProps = cspStyle ctx parentNodeId "grid" gridDeclarations
 
             Html.div (
-                [ prop.className ("fuaran-layout-grid" + brk)
-                  prop.style gridStyle
-                  prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
+                [ prop.className ("fuaran-layout-grid" + brk + gridClass) ]
+                @ gridStyleProps
+                @ [ prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
                 @ (cssRefusalAttrs |> List.map (fun (k, v) -> prop.custom (k, v)))
             )
         | BoxRole.Group, BoxLayout.Masonry(cols, masonryGap) ->
@@ -550,16 +602,16 @@ and private renderKind
             // The column count rides inline for the same reason `Grid`'s does —
             // so a CSS host need not pre-declare every N — and the same
             // narrow-viewport rules in the reference sheet collapse it.
-            let masonryStyle =
-                [ style.custom ("column-count", string cols) ]
-                @ (match masonryGap with
-                   | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
-                   | None -> [])
+            let masonryDeclarations = Csp.Declarations.masonry cols masonryGap
 
-            Html.div
-                [ prop.className ("fuaran-layout-masonry" + brk)
-                  prop.style masonryStyle
-                  prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
+            let masonryClass, masonryStyleProps =
+                cspStyle ctx parentNodeId "masonry" masonryDeclarations
+
+            Html.div (
+                [ prop.className ("fuaran-layout-masonry" + brk + masonryClass) ]
+                @ masonryStyleProps
+                @ [ prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
+            )
         | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
             let dir =
                 match direction with
@@ -568,11 +620,12 @@ and private renderKind
 
             let wrap = if flexWrap then " fuaran-stack-wrap" else ""
 
+            let flexClass, flexStyleProps =
+                cspStyle ctx parentNodeId "flex" (Csp.Declarations.flex flexGap)
+
             Html.div (
-                [ prop.className (Css.layoutStack dir wrap + brk) ]
-                @ (match flexGap with
-                   | Some n -> [ prop.style [ style.custom ("gap", sprintf "%dpx" n) ] ]
-                   | None -> [])
+                [ prop.className (Css.layoutStack dir wrap + brk + flexClass) ]
+                @ flexStyleProps
                 @ [ prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
             )
     | NodeKind.SplitPanel spec ->
@@ -586,17 +639,27 @@ and private renderKind
             | [ a ] -> [ a ], []
             | a :: rest -> [ a ], rest
 
+        // Phase 1545 — the two panes are one node, so the slot discriminator is
+        // what keeps their generated classes apart when the weights are equal.
+        let leftClass, leftStyleProps =
+            cspStyle ctx parentNodeId "split-left" (Csp.Declarations.splitPane weightLeft)
+
+        let rightClass, rightStyleProps =
+            cspStyle ctx parentNodeId "split-right" (Csp.Declarations.splitPane weightRight)
+
         Html.div
             [ prop.className "fuaran-layout-split-panel"
               prop.children
-                  [ Html.div
-                        [ prop.className "fuaran-split-pane fuaran-split-pane-left"
-                          prop.style [ style.custom ("flex", sprintf "%f 1 0" weightLeft) ]
-                          prop.children leftChildren ]
-                    Html.div
-                        [ prop.className "fuaran-split-pane fuaran-split-pane-right"
-                          prop.style [ style.custom ("flex", sprintf "%f 1 0" weightRight) ]
-                          prop.children rightChildren ] ] ]
+                  [ Html.div (
+                        [ prop.className ("fuaran-split-pane fuaran-split-pane-left" + leftClass) ]
+                        @ leftStyleProps
+                        @ [ prop.children leftChildren ]
+                    )
+                    Html.div (
+                        [ prop.className ("fuaran-split-pane fuaran-split-pane-right" + rightClass) ]
+                        @ rightStyleProps
+                        @ [ prop.children rightChildren ]
+                    ) ] ]
     | NodeKind.Tabs spec ->
         // Static tablist + the active panel. Keyboard nav + click dispatch are
         // client-only (hydration); the server emits the ARIA structure inert.
@@ -865,21 +928,22 @@ and private renderKind
             | ScrollOrientation.Horizontal -> "fuaran-scrollarea fuaran-scrollarea-horizontal"
             | ScrollOrientation.Both -> "fuaran-scrollarea fuaran-scrollarea-both"
 
-        let styleProps =
-            [ match spec.MaxHeight with
-              | Some h -> style.maxHeight (length.px h)
-              | None -> ()
-              match spec.MaxWidth with
-              | Some w -> style.maxWidth (length.px w)
-              | None -> () ]
+        // Phase 1545 — the canonical pairs, spelled as `style.maxHeight
+        // (length.px h)` emitted them (`max-height:<n>px`), so the `Permissive`
+        // bytes are unchanged and the TS twin's `max-height:${n}px` still
+        // matches.
+        let scrollDeclarations = Csp.Declarations.scrollArea spec.MaxHeight spec.MaxWidth
+
+        let scrollClass, scrollStyleProps =
+            cspStyle ctx parentNodeId "scroll" scrollDeclarations
 
         Html.div (
             // `prop.custom ("tabindex", ...)` emits the lowercase attribute the
             // client's React `prop.tabIndex` normalises to — keeps SSR↔CSR
             // byte-identical (Feliz.ViewEngine's `prop.tabIndex` would emit the
             // camelCase `tabIndex`, diverging from React's DOM `tabindex`).
-            [ prop.className axisClass; prop.custom ("tabindex", "0") ]
-            @ (if styleProps.IsEmpty then [] else [ prop.style styleProps ])
+            [ prop.className (axisClass + scrollClass); prop.custom ("tabindex", "0") ]
+            @ scrollStyleProps
             @ [ prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
         )
     // -- Display --
@@ -1026,9 +1090,14 @@ and private renderKind
                         Html.div
                             [ prop.className "fuaran-progress-bar"
                               prop.children
-                                  [ Html.div
-                                        [ prop.className "fuaran-progress-fill"
-                                          prop.style [ style.custom ("width", sprintf "%f%%" (fraction * 100.0)) ] ] ] ] ] ]
+                                  [ let fillClass, fillStyleProps =
+                                        cspStyle
+                                            ctx
+                                            parentNodeId
+                                            "progress-fill"
+                                            (Csp.Declarations.progressFill fraction)
+
+                                    Html.div ([ prop.className ("fuaran-progress-fill" + fillClass) ] @ fillStyleProps) ] ] ] ]
     | NodeKind.Sparkline spec ->
         // Phase 1098 — the em-dash placeholder is retired for a RESOLVED series.
         // The server now lowers the sparkline through the same
@@ -3321,7 +3390,15 @@ let mkContextWith
       // Phase 1532 — no per-render floor here: this render uses whatever process
       // floor the host installed. A multi-tenant host that needs one request
       // enforced sets it on that request's context.
-      CustomHashFloor = None }
+      CustomHashFloor = None
+      // Phase 1545 — `Permissive` at this single context choke point, so every
+      // existing entry point keeps emitting exactly what it emitted before and
+      // the strict posture is reached BY NAME (`mkContextWithCsp` /
+      // `renderWithCsp`) — the same reasoning the egress default above gives.
+      Csp = Csp.Permissive
+      // One collector per context, so it can never outlive the render that
+      // built it or be shared between two. Untouched under `Permissive`.
+      Styles = Csp.StyleCollector() }
 
 /// `mkContextWith` with an EXPLICIT destination policy (Phase 1026) — the named
 /// opt-out from the ambient default-deny, and the server twin of the client's
@@ -3355,6 +3432,22 @@ let mkContextWithCards
     : ServerRenderContext =
     { mkContextWith customs sources node with
         Cards = cards }
+
+/// `mkContextWith` under an explicit CSP posture (Phase 1545) — the named
+/// opt-in to strict mode.
+///
+/// Under `Csp.Strict nonce` the context's collector fills as the tree is
+/// walked, so the caller must read it from THIS context after rendering —
+/// `collectedStyleHtml` does that, and `renderWithCsp` composes both in one
+/// call. Passing `Csp.Permissive` is exactly `mkContextWith`.
+let mkContextWithCsp
+    (csp: Csp.CspMode)
+    (customs: Registry.ServerCustomRendererRegistry)
+    (sources: BindingResolver.BindingSources)
+    (node: Node<obj>)
+    : ServerRenderContext =
+    { mkContextWith customs sources node with
+        Csp = csp }
 
 /// Build a `ServerRenderContext` under a named render SCOPE (Phase 783) —
 /// Custom-renderer lookup is then constrained to renderers registered for that
@@ -3438,10 +3531,93 @@ let renderWithCards
 let themeStyleElement (theme: Theme) : ReactElement =
     Html.style [ prop.dangerouslySetInnerHTML (Theme.toCss theme) ]
 
+/// `themeStyleElement` under an explicit CSP posture (Phase 1545). Under
+/// `Csp.Strict nonce` the element carries `nonce="…"`, so a host serving
+/// `style-src 'nonce-…'` can inject the theme without `'unsafe-inline'`; under
+/// `Permissive` it is `themeStyleElement`, byte for byte.
+///
+/// The nonce lands in an ATTRIBUTE value and is emitted through ViewEngine, so
+/// it is escaped for free — nothing here has to handle a host's own string
+/// beyond placing it.
+let themeStyleElementWithCsp (csp: Csp.CspMode) (theme: Theme) : ReactElement =
+    match Csp.nonce csp with
+    | Some n -> Html.style [ prop.custom ("nonce", n); prop.dangerouslySetInnerHTML (Theme.toCss theme) ]
+    | None -> themeStyleElement theme
+
 /// Render the theme `:root` style block followed by the tree's body HTML, as a
 /// single string. Convenience for a host that wants both in one emission.
 let renderWithTheme (theme: Theme) (sources: BindingResolver.BindingSources) (node: Node<obj>) : string =
     Render.htmlView (themeStyleElement theme) + render sources node
+
+// ─── Strict-CSP rendering (Phase 1545) ─────────────────────────────────────
+
+/// The collected `<style>` element for a render that has ALREADY happened
+/// against `ctx`, as an HTML string — `""` when the render generated no rule,
+/// which is every render under `Permissive` and every strict render of a tree
+/// carrying no continuous value.
+///
+/// One element per render root, carrying every generated rule in walk order.
+/// The rules go in as raw `<style>` content, which is why the collector refuses
+/// `<` and `>` in a declaration value on top of the shared CSS grammar (see
+/// `Csp.isCollectableValue`); everything else about them is renderer-formatted
+/// numbers or a value that already passed its emission-site gate.
+let collectedStyleHtml (ctx: ServerRenderContext) : string =
+    if ctx.Styles.IsEmpty then
+        ""
+    else
+        let css = Csp.stylesheetText ctx.Styles.Rules
+
+        let element =
+            match Csp.nonce ctx.Csp with
+            | Some n -> Html.style [ prop.custom ("nonce", n); prop.dangerouslySetInnerHTML css ]
+            | None -> Html.style [ prop.dangerouslySetInnerHTML css ]
+
+        Render.htmlView element
+
+/// Render a tree under an explicit CSP posture, returning the collected
+/// stylesheet followed by the body-fragment HTML.
+///
+/// Under `Csp.Strict nonce` the emitted markup carries NO `style` attribute:
+/// every continuous value is a generated class whose declaration rides the one
+/// nonce-bearing `<style>` element this returns ahead of the body. Under
+/// `Csp.Permissive` it is exactly `renderWith` — no element is emitted, because
+/// nothing registered anything.
+///
+/// The stylesheet leads rather than trails because a document is parsed in
+/// order and a rule that arrives after the element it styles is a flash of
+/// unstyled content on a slow connection. It is INSIDE the body fragment, not
+/// in the head, because this tier owns the fragment and not the shell — a host
+/// that wants it in `<head>` renders through `mkContextWithCsp` and places
+/// `collectedStyleHtml` itself.
+let renderWithCsp
+    (csp: Csp.CspMode)
+    (customs: Registry.ServerCustomRendererRegistry)
+    (sources: BindingResolver.BindingSources)
+    (node: Node<obj>)
+    : string =
+    let ctx = mkContextWithCsp csp customs sources node
+    let body = Render.htmlView (renderNode 1 ctx node)
+    collectedStyleHtml ctx + body
+
+/// `renderWithCsp` with no host Custom-renderer registry — the strict-mode twin
+/// of `render`.
+let renderStrict (nonce: string) (sources: BindingResolver.BindingSources) (node: Node<obj>) : string =
+    renderWithCsp (Csp.Strict nonce) Registry.empty sources node
+
+/// The theme block, the collected stylesheet and the body, in one emission
+/// under one posture — the strict-mode twin of `renderWithTheme`.
+///
+/// Both `<style>` elements carry the same nonce, which is the whole shape a
+/// host needs: one `style-src 'self' 'nonce-…'` directive
+/// (`Csp.styleSrcDirective`) and no `'unsafe-inline'` anywhere.
+let renderWithThemeAndCsp
+    (csp: Csp.CspMode)
+    (theme: Theme)
+    (sources: BindingResolver.BindingSources)
+    (node: Node<obj>)
+    : string =
+    Render.htmlView (themeStyleElementWithCsp csp theme)
+    + renderWithCsp csp Registry.empty sources node
 
 // ─── Served-stylesheet fingerprint (Phase 433) ─────────────────────────────
 //

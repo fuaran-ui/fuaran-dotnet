@@ -110,6 +110,25 @@ type DocumentShell =
         HtmlAttributes: (string * string) list
         /// `<body>` attributes (values escaped).
         BodyAttributes: (string * string) list
+        /// Phase 1545 — this response's CSP nonce, when the host is serving the
+        /// document under a nonce-based policy.
+        ///
+        /// The shell does not generate one and never will, for the reason
+        /// `ScriptRef.Nonce` gives: a nonce the document could derive is a nonce
+        /// an attacker can derive. The host mints it per response, puts the same
+        /// value in its `Content-Security-Policy` header
+        /// (`Csp.styleSrcDirective` writes the style half), and hands it here.
+        ///
+        /// What the shell does with it: every `ScriptRef` that declares no nonce
+        /// of its own inherits this one, so a host adopting a nonce policy does
+        /// not have to remember it per script. The `<style>` elements — the
+        /// theme block and the collected strict-mode stylesheet — are emitted by
+        /// `Renderer.Server` rather than here, and take the same nonce through
+        /// `Render.themeStyleElementWithCsp` / `Render.renderWithCsp`; so one
+        /// value reaches all three emitters and a host declares it once.
+        ///
+        /// `None` (the default) emits exactly what this shell emitted before.
+        Nonce: string option
     }
 
 [<RequireQualifiedAccess>]
@@ -166,7 +185,8 @@ module DocumentShell =
           Scripts = []
           Locale = LocaleSource.Ambient
           HtmlAttributes = []
-          BodyAttributes = [] }
+          BodyAttributes = []
+          Nonce = None }
 
     /// Pin the document's language to a BCP-47 tag — `withLocale "ar-EG"` emits
     /// `lang="ar-EG" dir="rtl"`. The direction is derived from the tag, never
@@ -174,6 +194,14 @@ module DocumentShell =
     let withLocale (tag: string) (shell: DocumentShell) : DocumentShell =
         { shell with
             Locale = LocaleSource.Explicit tag }
+
+    /// Declare this response's CSP nonce (Phase 1545). Every script this shell
+    /// emits that has not declared its own nonce inherits it, and the host
+    /// passes the SAME value to `Render.renderWithCsp` /
+    /// `Render.themeStyleElementWithCsp` so the two `<style>` elements carry it
+    /// too — one declaration, one directive
+    /// (`Csp.styleSrcDirective`), no `'unsafe-inline'`.
+    let withNonce (nonceValue: string) (shell: DocumentShell) : DocumentShell = { shell with Nonce = Some nonceValue }
 
 [<RequireQualifiedAccess>]
 module Document =
@@ -246,9 +274,16 @@ module Document =
                       // emission. ViewEngine escapes these attribute VALUES, so
                       // the host's own nonce / digest strings need no handling
                       // here beyond being placed.
-                      @ (match s.Nonce with
-                         | Some n -> [ prop.custom ("nonce", n) ]
-                         | None -> [])
+                      //
+                      // Phase 1545 — the script's OWN nonce wins; the shell's is
+                      // the default for scripts that declare none, so a host
+                      // adopting a nonce policy declares the value once
+                      // (`DocumentShell.withNonce`) rather than per script. A
+                      // shell with no nonce is the pre-1545 emission exactly.
+                      @ (match s.Nonce, shell.Nonce with
+                         | Some n, _
+                         | None, Some n -> [ prop.custom ("nonce", n) ]
+                         | None, None -> [])
                       @ (match s.Integrity with
                          | Some i -> [ prop.custom ("integrity", i) ]
                          | None -> [])

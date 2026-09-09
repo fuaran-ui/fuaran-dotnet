@@ -173,7 +173,9 @@ let private aiEvalRenderCtx () : Render.RenderContext<obj> =
       EgressPolicy = Sanitize.permissiveEgress
       // Phase 1117 — no upload sink: this surface performs no uploads.
       UploadSink = None
-      CustomHashFloor = None }
+      CustomHashFloor = None
+      // Phase 1545 — the default posture; samples render under no CSP mode.
+      Csp = Csp.Permissive }
 
 let private aiEvalView (model: AiEvalModel) (dispatch: AiEvalMsg -> unit) : ReactElement =
     React.Fragment
@@ -246,7 +248,9 @@ let private parityView () : ReactElement =
                     EgressPolicy = Sanitize.permissiveEgress
                     // Phase 1117 — no upload sink: this surface performs no uploads.
                     UploadSink = None
-                    CustomHashFloor = None }
+                    CustomHashFloor = None
+                    // Phase 1545 — the default posture; samples render under no CSP mode.
+                    Csp = Csp.Permissive }
 
               Html.div
                   [ prop.id ("parity-fuaran-" + p.Id)

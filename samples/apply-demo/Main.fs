@@ -112,7 +112,9 @@ let view (model: Model) (dispatch: Msg -> unit) =
           EgressPolicy = Sanitize.permissiveEgress
           // Phase 1117 — no upload sink: this surface performs no uploads.
           UploadSink = None
-          CustomHashFloor = None }
+          CustomHashFloor = None
+          // Phase 1545 — the default posture; samples render under no CSP mode.
+          Csp = Csp.Permissive }
 
     // The host-supplied apply handler: decode the wire TreeOp, apply it to the
     // live Node<obj> tree, and dispatch ReplaceTree to re-render. Phase 90's

@@ -177,7 +177,9 @@ let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
           EgressPolicy = Sanitize.permissiveEgress
           // Phase 1117 — no upload sink: this surface performs no uploads.
           UploadSink = None
-          CustomHashFloor = None }
+          CustomHashFloor = None
+          // Phase 1545 — the default posture; samples render under no CSP mode.
+          Csp = Csp.Permissive }
 
     React.Fragment
         [ Render.themeStyleElement Defaults.theme

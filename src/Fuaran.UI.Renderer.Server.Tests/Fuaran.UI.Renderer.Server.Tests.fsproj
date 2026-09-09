@@ -63,6 +63,12 @@
          switch / radiogroup / radio already appear in the server arm from the
          Filters arms, so a tier re-declaration alone would have passed it. -->
     <Compile Include="IntrinsicAriaSsrTests.fs" />
+    <!-- StrictCspTests is Phase 1545's proof, in emitted bytes: no `style`
+         attribute and no un-nonced `<style>` element survives the strict
+         posture, over the style-bearing corpus AND the wire-format node
+         fixtures — with a go-red twin that reintroduces one site, because an
+         absence assertion is worth exactly what its detector is worth. -->
+    <Compile Include="StrictCspTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
