@@ -252,6 +252,8 @@ The maintainers' workspace-level `pack-all.ps1` packs `fuaran` ahead of its down
 
 Per the workspace mandate, every commit is preceded by a Fantomas pass over changed F# files. `dotnet fantomas` is available via [`.config/dotnet-tools.json`](.config/dotnet-tools.json) (`dotnet tool restore` first if it's missing).
 
+The gate's format stage checks **tracked sources only** — [`.fantomasignore`](.fantomasignore) excludes `bin/` and `obj/`, so the `.fs` copies a build drops into its own output (e.g. `src/Fuaran.UI.Tests/bin/**/renderer-sources/`) cannot redden the stage when a session builds before it formats.
+
 ## Cross-repo dependencies
 
 This repo has **no upstream dependencies on any private repo**. It packs into `../local-nuget-feed/` for consumption by downstream apps and runtime tiers, which consume these packs as `PackageReference`s, not `ProjectReference`s.
