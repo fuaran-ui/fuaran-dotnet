@@ -7144,6 +7144,56 @@ its own settings on every gate run. The refutation was observed before the fix l
 
 ---
 
+## Release note — 0.79.0, a BREAKING release
+
+**Adopting 0.79.0 requires consumer source edits.** A consumer that drops the new assemblies in
+without recompiling does not fail at load; it fails the next time its own code is built, and the
+error it gets (`FS0764`) names a record it did not change. Read this note before adopting — the
+per-change entries below carry the detail, and this is the summary a consumer deciding whether to
+take the bump actually needs.
+
+**The number, and the precedent it follows.** This tier is pre-1.0, and every recorded breaking
+change in this document has ridden a **minor** bump: 0.4.0, 0.5.0, 0.12.0, 0.14.0, 0.15.0, 0.25.0,
+0.29.0, 0.37.0 and 0.48.0 are each headed *Recorded breaking change*, and the [Pre-1.0
+caveat](#pre-10-caveat) says plainly that until `1.0.0` every minor version may break. 0.79.0 is
+already a minor advance over the released `v0.78.1`, so it is exactly the increment this project's
+own precedent assigns to a breaking release, and it is released as one. It is deliberately **not**
+advanced again to 0.80.0: a second minor would convey no class information the first does not, would
+leave a released-version number that never existed, and would misdescribe every entry below, each of
+which was authored in place against this slot. What tells a consumer what adoption costs is this
+note, not the digit.
+
+The slot was opened for an *additive* change and then took four breaking-class ones. Under the
+draft-slot rule the higher class governs the whole slot, so this is that slot released at its true
+class rather than repacked at a lower one. The 0.48.0 precedent — where a wire break deliberately
+took its own number instead of riding an in-flight additive 0.47.0 — was checked and reads the other
+way here: its argument was that "a wire break folded into a minor that otherwise reads as growth is a
+break nobody finds when they go looking for it", and 0.79.0 does not read as growth. It has never
+been released, half its entries are breaking-class, and this note stands at the head of them.
+
+### What breaks
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI.Renderer` — `VisAdapter.VisualisationContext<'Msg>` | Gains a **required** field `WriteRows: Binding<Row seq> -> Row seq -> unit` (Phase 1611). | **Only a consumer that CONSTRUCTS a context by hand.** Every `IVisualisationAdapter` implementation merely *receives* one and is unaffected — which is the overwhelmingly common case — and both construction sites in this repository, plus the two adapters this package ships, were adapted in the same change. |
+| `Fuaran.UI.Renderer.Core` / `.Renderer.Server` / `.Giraffe` — `Render.RenderContext<'Msg>`, `Render.ServerRenderContext`, `DocumentShell` | Gain `Csp` (and `Styles`, `Nonce`) (Phase 1545). | A full record literal — `FS0764`. A record-`with` copy, or construction through `mkContextWith*` / `DocumentShell.create`, is unaffected. |
+| `Fuaran.UI` — `FileUploadSpec` | Gains `MaxBytes: int option` and `MaxFiles: int option` (Phase 1548). | A full record literal — `FS0764`. Both are absent-at-`None`, so the wire bytes and the render are unchanged. |
+| Two shipped defaults flip from fail-open to fail-closed (Phase 1550) | The `Custom` content-hash floor defaults to `Enforced`; host-reserved state keys become a declared list seeded by the `host.` prefix. | **No signature moves — this break is behavioural, so nothing fails to compile.** An unconfigured host rendering a `Custom` node whose declared hash disagrees with its registered renderer now refuses it where it previously warned and rendered. A `Custom` node declaring no hash is unchanged. The one-line opt-back is `CustomHash.installCustomHashFloor HashStrictness.AdvisoryWarning`. |
+
+**What does not break.** The wire format is untouched by every change on this release: no fixture
+byte moves, and a document written against 0.78.1 decodes identically. `Permissive` is the CSP
+posture every existing entry point builds, and it renders byte-for-byte what 0.78.1 rendered.
+
+### Also in this release, additive
+
+The server-driven browser shim declares `treeSource` and `isConnected()` for an inspecting relay
+peer; the server floor announces Form's `Toggle` and horizontal `SegmentedChoice`; a server-driven
+session holds its own live-`Transform` store; the binding walk carries the live-`Transform` site;
+and the strict-CSP mode's own new surface (`Csp.*`, `Render.renderStrict` and the `*WithCsp` entry
+points) is additive beside the record widening its adoption costs.
+
+---
+
 ## 0.79.0 — the server-driven shim declares what an inspecting relay peer may read
 
 **Additive, on `Fuaran.UI.ServerDriven`'s packaged browser shim.** `global.FuaranLive` — the shim's
