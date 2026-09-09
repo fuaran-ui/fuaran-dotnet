@@ -10,6 +10,11 @@
     "op": "{\u0022$type\u0022:\u0022EditNode\u0022,\u0022newKind\u0022:{\u0022$type\u0022:\u0022Markdown\u0022,\u0022text\u0022:\u0022Edited\u0022},\u0022target\u0022:\u0022metric-1\u0022}"
   },
   {
+    "name": "op-editnode-action-commitlocal",
+    "notation": "btn-apply: kind \u2192 Button",
+    "op": "{\u0022$type\u0022:\u0022EditNode\u0022,\u0022newKind\u0022:{\u0022$type\u0022:\u0022Button\u0022,\u0022label\u0022:\u0022Apply\u0022,\u0022onClick\u0022:{\u0022$type\u0022:\u0022CommitLocal\u0022,\u0022nodeId\u0022:\u0022salary-input\u0022},\u0022variant\u0022:\u0022Primary\u0022},\u0022target\u0022:\u0022btn-apply\u0022}"
+  },
+  {
     "name": "op-insertchild",
     "notation": "dash-empty: \u002B child Metric \u0022metric-1\u0022",
     "op": "{\u0022$type\u0022:\u0022InsertChild\u0022,\u0022child\u0022:{\u0022id\u0022:\u0022metric-1\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Metric\u0022,\u0022format\u0022:{\u0022$type\u0022:\u0022Currency\u0022,\u0022code\u0022:\u0022GBP\u0022},\u0022icon\u0022:\u0022trending-up\u0022,\u0022label\u0022:\u0022Revenue\u0022,\u0022subtext\u0022:\u0022vs last month\u0022,\u0022tone\u0022:\u0022Brand\u0022,\u0022trend\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:0.07},\u0022trendFormat\u0022:{\u0022$type\u0022:\u0022Percent\u0022,\u0022decimals\u0022:1},\u0022value\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:1234.5}}},\u0022parentId\u0022:\u0022dash-empty\u0022}"
