@@ -2344,12 +2344,24 @@ and private renderCustom
 
                 Some effective
             | Some _, Some _ -> None
-            | _ ->
-                // Unverifiable: refuse under an enforcing floor, render otherwise.
-                if floor = HashStrictness.AdvisoryWarning then
-                    None
-                else
+            | None, _ ->
+                // Phase 1550 — TREE-SIDE absence. The floor governs mismatch,
+                // and a tree that declares no hash has nothing to mismatch, so
+                // only `StrictReplay` refuses it. Split from the registry-side
+                // arm below (they shared one catch-all) because the flip of the
+                // default to `Enforced` made the two answers differ: lumped, an
+                // unconfigured host would refuse every hash-less `Custom` node
+                // server-side, which is exactly the upgrade break the flip is
+                // designed not to cause.
+                if CustomHash.refusesUnverifiable floor then
                     Some floor
+                else
+                    None
+            | Some _, None ->
+                // REGISTRY-SIDE absence: the tree made a claim the registry
+                // cannot check. A verification failure, not an absence — any
+                // enforcing floor refuses it, as before.
+                if CustomHash.isEnforcing floor then Some floor else None
 
         match outcome with
         | Some HashStrictness.StrictReplay

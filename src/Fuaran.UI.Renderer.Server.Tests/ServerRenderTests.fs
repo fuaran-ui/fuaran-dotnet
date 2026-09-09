@@ -241,6 +241,60 @@ let serverRenderTests =
               Expect.isTrue (contains "fuaran-custom-hash-mismatch" html) "hash-mismatch class"
               Expect.isTrue (contains "data-fuaran-custom-hash-mismatch=\"strict\"" html) "strict marker"
               Expect.isFalse (contains "host-score" html) "the drifted renderer is NOT invoked"
+          }
+
+          // ─── Phase 1550 — the flipped default, on the tier it would have broken ───
+          //
+          //  The server renderer computes its own verdict rather than calling
+          //  `CustomHash.classify*`, and its catch-all arm lumped tree-side and
+          //  registry-side absence together. Under the flipped default that arm
+          //  refuses EVERY hash-less `Custom` node server-side, which is exactly
+          //  the upgrade break the flip is designed not to cause — so both halves
+          //  are pinned here, in emitted HTML, on the shipped default with no
+          //  host configuration at all.
+
+          test "an UNCONFIGURED host refuses a mismatched Custom renderer" {
+              let hash: ContentHash =
+                  { Algorithm = "SHA256"
+                    Hash = "declared-hash"
+                    // The tree names the LENIENT posture. Before the flip an
+                    // unconfigured host took the tree's word for it and rendered.
+                    Strictness = HashStrictness.AdvisoryWarning }
+
+              let custom: Node<obj> =
+                  Fuaran.custom "cust" "music" "score" Map.empty (Some hash) []
+
+              let registry =
+                  Registry.empty
+                  |> Registry.registerWithHash "music" "score" "different-hash" (fun _ ->
+                      Html.div [ prop.className "host-score" ])
+
+              let html = Render.renderWith registry BindingResolver.empty custom
+
+              Expect.isTrue
+                  (contains "data-fuaran-custom-hash-mismatch=\"strict\"" html)
+                  "the shipped default enforces — no installCustomHashFloor call anywhere"
+
+              Expect.isFalse (contains "host-score" html) "the drifted renderer is NOT invoked"
+          }
+
+          test "…and renders a Custom node that declares NO hash, exactly as before" {
+              // The upgrade property. A tree with no hash is the common
+              // legitimate case, so the floor governs mismatch and not absence.
+              let custom: Node<obj> = Fuaran.custom "cust" "music" "score" Map.empty None []
+
+              let registry =
+                  Registry.empty
+                  |> Registry.registerWithHash "music" "score" "some-hash" (fun _ ->
+                      Html.div [ prop.className "host-score" ])
+
+              let html = Render.renderWith registry BindingResolver.empty custom
+
+              Expect.isTrue (contains "host-score" html) "the registered renderer runs"
+
+              Expect.isFalse
+                  (contains "fuaran-custom-hash-mismatch" html)
+                  "and nothing is marked — there was no hash to disagree with"
           } ]
 
 // ============================================================================

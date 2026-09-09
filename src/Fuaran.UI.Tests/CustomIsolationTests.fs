@@ -158,16 +158,20 @@ let hashFloorTests =
     testSequenced
     <| testList
         "Phase 783 — Custom content-hash floor"
-        [ test "omitting the hash is a REFUSAL under an enforcing floor" {
+        [ test "omitting the hash is a REFUSAL under a StrictReplay floor" {
               // The cheapest bypass: `NoTreeHash` shared a render branch with
               // `Match`, so skipping verification skipped it silently.
+              //
+              // Phase 1550 narrowed WHICH enforcing floor closes it — see the
+              // `Enforced` case in the next test — but `StrictReplay`, the floor
+              // whose name is the stronger claim, is unchanged.
               Expect.equal
                   (CustomHash.classifyUnder
                       HashStrictness.StrictReplay
                       None
                       (Some(hash "abc" HashStrictness.StrictReplay)))
                   CustomHash.CustomHashOutcome.Unverifiable
-                  "no tree hash + enforcing floor → refuse"
+                  "no tree hash + StrictReplay floor → refuse"
 
               Expect.equal
                   (CustomHash.classifyUnder
@@ -175,7 +179,64 @@ let hashFloorTests =
                       None
                       (Some(hash "abc" HashStrictness.StrictReplay)))
                   CustomHash.CustomHashOutcome.NoTreeHash
-                  "no tree hash + advisory floor → render (the default, unchanged)"
+                  "no tree hash + advisory floor → render"
+          }
+
+          // ─── Phase 1550 — the floor governs MISMATCH, not tree-side absence ───
+          //
+          //  The shipped default is `Enforced` now, so this pair is what makes
+          //  the flip shippable at all: an unconfigured host refuses a hash that
+          //  DISAGREES and renders a tree that declares none, which is the shape
+          //  most existing `Custom` nodes have.
+
+          test "an Enforced floor refuses a MISMATCH and renders a tree that declared no hash" {
+              Expect.equal
+                  (CustomHash.classifyUnder
+                      HashStrictness.Enforced
+                      (Some(hash "aaa" HashStrictness.AdvisoryWarning))
+                      (Some(hash "bbb" HashStrictness.AdvisoryWarning)))
+                  CustomHash.CustomHashOutcome.MismatchStrict
+                  "a mismatch is refused under the shipped default"
+
+              Expect.equal
+                  (CustomHash.classifyUnder HashStrictness.Enforced None (Some(hash "abc" HashStrictness.StrictReplay)))
+                  CustomHash.CustomHashOutcome.NoTreeHash
+                  "and a tree with no hash renders as before — nothing to mismatch"
+          }
+
+          test "refusesUnverifiable separates the two enforcing floors" {
+              // The predicate the two absence arms turn on, pinned directly so
+              // the distinction cannot be quietly collapsed back into the rank.
+              Expect.isTrue
+                  (CustomHash.refusesUnverifiable HashStrictness.StrictReplay)
+                  "StrictReplay cannot be satisfied by a tree carrying no hash"
+
+              Expect.isFalse
+                  (CustomHash.refusesUnverifiable HashStrictness.Enforced)
+                  "Enforced governs the declared hash, so absence is not its case"
+
+              Expect.isFalse
+                  (CustomHash.refusesUnverifiable HashStrictness.AdvisoryWarning)
+                  "and an advisory floor refuses nothing"
+
+              // Both still ENFORCE — `isEnforcing` is the mismatch question and
+              // must not have moved …
+              Expect.isTrue
+                  (CustomHash.isEnforcing HashStrictness.Enforced
+                   && CustomHash.isEnforcing HashStrictness.StrictReplay)
+                  "both enforcing floors refuse a mismatch"
+
+              // … and StrictReplay now OUTRANKS Enforced in the raise-only
+              // lattice, because it refuses a strict superset. Observed through
+              // the lattice rather than the private rank: a context declaring
+              // StrictReplay must raise above the shipped Enforced default, or
+              // its declaration is silently discarded.
+              CustomHash.clearCustomHashFloorForTests ()
+
+              Expect.equal
+                  (CustomHash.effectiveFloor (Some HashStrictness.StrictReplay))
+                  HashStrictness.StrictReplay
+                  "a StrictReplay context raises above the Enforced default"
           }
 
           test "a registry with no recorded hash is equally unverifiable" {
@@ -236,13 +297,13 @@ let hashFloorTests =
                       "a verified hash always renders"
           }
 
-          test "the installed floor defaults to AdvisoryWarning and is restorable" {
+          test "the shipped default floor is Enforced and is restorable" {
               CustomHash.clearCustomHashFloorForTests ()
 
               Expect.equal
                   (CustomHash.currentCustomHashFloor ())
-                  HashStrictness.AdvisoryWarning
-                  "the default floor is the pre-0.15.0 behaviour"
+                  HashStrictness.Enforced
+                  "an unconfigured host enforces (Phase 1550)"
 
               try
                   CustomHash.installCustomHashFloor HashStrictness.StrictReplay
@@ -255,9 +316,46 @@ let hashFloorTests =
                   CustomHash.clearCustomHashFloorForTests ()
 
               Expect.equal
+                  (CustomHash.currentCustomHashFloor ())
+                  CustomHash.DefaultCustomHashFloor
+                  "clearing withdraws the declaration and restores the shipped default"
+
+              Expect.equal
                   (CustomHash.classify None None)
                   CustomHash.CustomHashOutcome.NoTreeHash
-                  "clearing restores the default"
+                  "…under which a tree that declared no hash still renders"
+          }
+
+          test "AdvisoryWarning is reachable BY NAME — the permissive opt-back" {
+              // The half an enforcing default could have destroyed: with a
+              // raise-only setter over a plain mutable seeded at `Enforced`, the
+              // permissive posture would exist in the type and in no reachable
+              // program. A FIRST declaration may name it; a declaration made
+              // after an enforcement may not (the next test).
+              CustomHash.clearCustomHashFloorForTests ()
+
+              let declared = Some(hash "aaa" HashStrictness.AdvisoryWarning)
+              let registered = Some(hash "bbb" HashStrictness.AdvisoryWarning)
+
+              try
+                  Expect.equal
+                      (CustomHash.classify declared registered)
+                      CustomHash.CustomHashOutcome.MismatchStrict
+                      "unconfigured, the mismatch is refused"
+
+                  CustomHash.installCustomHashFloor HashStrictness.AdvisoryWarning
+
+                  Expect.equal
+                      (CustomHash.currentCustomHashFloor ())
+                      HashStrictness.AdvisoryWarning
+                      "the host named the permissive posture and got it"
+
+                  Expect.equal
+                      (CustomHash.classify declared registered)
+                      CustomHash.CustomHashOutcome.MismatchAdvisory
+                      "…with the warn-then-render outcome intact"
+              finally
+                  CustomHash.clearCustomHashFloorForTests ()
           }
 
           // ─── Phase 1532 — the floor is raise-only, and rides the context ───
@@ -355,6 +453,15 @@ let hashFloorTests =
               let registered = Some(hash "xyz" HashStrictness.AdvisoryWarning)
 
               try
+                  // The process floor has to be the permissive one for two
+                  // verdicts to be OBSERVABLE at all: since Phase 1550 the
+                  // shipped default enforces, and a context can only raise, so
+                  // an unconfigured process gives both tenants the strict
+                  // verdict. The host declares the permissive posture by name —
+                  // which is the shape a host that wants per-render enforcement
+                  // now has to write, and worth pinning for that reason too.
+                  CustomHash.installCustomHashFloor HashStrictness.AdvisoryWarning
+
                   Expect.equal
                       (CustomHash.classifyForRender None declared registered)
                       CustomHash.CustomHashOutcome.MismatchAdvisory
