@@ -3,9 +3,13 @@
 // of `Generated.fs` so the generated code can reference them and their wire codecs.
 // `Fuaran.UI.Types` re-exposes each as an alias, so consumers are unaffected.
 //
-// A byte-identical stub lives in Fuaran-Core's test assembly
-// (`tests/Fuaran.Core.Tests/UiHostPrelude.fs`) so the generated snapshot compiles
-// there too — keep the two in sync; the corpus pins the wire bytes on both sides.
+// There is NO second copy of this file (Phase 1647). It used to say a
+// byte-identical stub lived in Fuaran-Core's test assembly at
+// `tests/Fuaran.Core.Tests/UiHostPrelude.fs`, which was true while Core carried
+// a byte-pin over the UI's generated snapshot; Core deleted that pin, and the
+// stub with it, and the sentence outlived the file it named. Nothing here needs
+// keeping in sync with Core — the wire bytes are pinned by the shared corpus,
+// which is where a cross-host disagreement surfaces.
 module Fuaran.UI.HostPrelude
 
 open Fuaran.Core

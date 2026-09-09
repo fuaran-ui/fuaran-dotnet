@@ -74,6 +74,9 @@ param(
     [switch] $SkipFable,
     [switch] $Validate,
     [switch] $SkipPublishCheck,
+    # Phase 1647 - the cross-host validator-coverage projection. A switch rather than a lane:
+    # it is seconds, node-only, and reads committed text, so no lane wants it dropped.
+    [switch] $SkipValidatorCoverage,
     [switch] $Demo,
 
     # Phase 1553 - the gate LANE, on THIS one file. Tooling that records which gate produced a
@@ -320,13 +323,40 @@ if ($Validate) {
     }
 }
 
-# ─── Publish readiness: is the public channel behind <Version>? ──────
+# ─── Validator coverage: does this host's declaration match the vocabulary? ──
+# `validator-coverage.json` declares which of the canonical pre-emit vocabulary's
+# codes this host implements. It is GENERATED (Phase 1647) from the same
+# reflection over the defect DU that emits the corpus vocabulary, and the corpus
+# carries the script that compares the two. Nothing invoked that script from
+# either entry point, so the declaration's own claim to be "checked by
+# construction" was checked by nobody: it stopped at FUARAN114 while the
+# vocabulary ran to FUARAN148, and a phase that merely ADDED a defect case left
+# the cross-host gate red on `main` for someone else to attribute.
+#
+# THIS repo's root is passed explicitly rather than relying on the script's
+# sibling discovery, so a worktree gates its own declaration and not the primary
+# tree's. Node-only; absent corpus is NOT CHECKED by name, never a quiet pass.
+if (-not $SkipValidatorCoverage) {
+    Write-Step "Validator coverage (validator-coverage.json vs the corpus vocabulary)"
+    $coverageScript = Join-Path $corpusRoot "validator/check-coverage.mjs"
+    if (-not (Test-Path $coverageScript)) {
+        Write-Host "validator coverage  NOT CHECKED - the wire-format-fixtures corpus is absent from this checkout." -ForegroundColor Yellow
+    }
+    else {
+        node $coverageScript $PSScriptRoot
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "validator-coverage.json disagrees with the corpus vocabulary (exit $LASTEXITCODE). Regenerate it with: dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-vocabulary"
+            exit $LASTEXITCODE
+        }
+    }
+}
+
+# ─── The standing draft: what sits between <Version> and the newest tag ──────
 # The packages restore from nuget.org for every consumer outside this
 # workspace — including a downstream consumer's free-tier CI that builds
 # against the RELEASED packages and has no local feed. Publication is triggered by a `v*`
-# tag (see .github/workflows/publish-packages.yml), so a <Version> bump that
-# is never tagged leaves those consumers pinning a version that exists only
-# on the machine that packed it.
+# tag (see .github/workflows/publish-packages.yml), so a <Version> ahead of the
+# newest tag names a version those consumers cannot restore.
 #
 # That is not hypothetical: <Version> ran 0.18.0 -> 0.26.0 between 2026-08-13
 # and 2026-08-16 with no tag pushed after v0.18.0, and a downstream consumer's
@@ -334,12 +364,21 @@ if ($Validate) {
 # consecutive failing runs, whose cause was a wall of "Unable to find package"
 # lines rather than anything naming the omission.
 #
-# WARN, never fail: the commit that bumps <Version> legitimately precedes its
-# tag, so a hard gate here would block the very change it is asking for. The
-# point is that the gap is stated at the moment it opens, not discovered days
-# later in a consumer's CI.
+# This step used to answer that by URGING the tag, printing the two git commands
+# whenever <Version> exceeded it. That was wrong in a way the NU1102 story hides:
+# a version standing ahead of the newest tag is the NORMAL state between
+# releases — the draft slot every change rides until someone deliberately cuts a
+# release — so the nag fired constantly, and what it rewarded was tagging
+# whichever number happened to be standing. In the week to 2026-09-04 this repo
+# minted 25 versions and tagged one; the other 24 were dead on arrival.
+#
+# So it REPORTS instead: the standing draft, the newest tag, and what has ridden
+# the draft since that tag. Release timing is a separate deliberate act and is
+# not this script's to prompt. The NU1102 explanation is KEPT and narrowed to the
+# case where it is genuinely a defect — a consumer that already pins the untagged
+# version — because that consumer's CI is red now, whatever the draft rule says.
 if (-not $SkipPublishCheck) {
-    Write-Step "Publish readiness (<Version> vs the newest v* tag)"
+    Write-Step "Standing draft (<Version> vs the newest v* tag)"
 
     $propsPath = Join-Path $PSScriptRoot "Directory.Build.props"
     $versionMatch = Select-String -Path $propsPath -Pattern '<Version>([^<]+)</Version>' | Select-Object -First 1
@@ -360,16 +399,28 @@ if (-not $SkipPublishCheck) {
             Write-Host "No v* tag in this repo yet - nothing published." -ForegroundColor Yellow
         }
         elseif (($version -as [version]) -and ([version] $version) -gt ([version] $newestTag)) {
+            # The report, not a prompt. A draft ahead of the newest tag is the
+            # ordinary state between releases; what is worth SEEING is how much
+            # has ridden it, because that is what a release would carry.
+            $riders = @(git log --oneline "v$newestTag..HEAD" -- Directory.Build.props 2>$null)
+
             Write-Host ""
-            Write-Host "  <Version> is $version; the newest tag is v$newestTag." -ForegroundColor Yellow
-            Write-Host "  Consumers that restore from nuget.org cannot see $version - they will fail" -ForegroundColor Yellow
-            Write-Host "  with NU1102, naming every package rather than the missing tag." -ForegroundColor Yellow
+            Write-Host "  Draft $version stands; the newest published tag is v$newestTag." -ForegroundColor Cyan
+            if ($riders.Count -gt 0) {
+                Write-Host "  Version-file commits riding this draft since v${newestTag}:" -ForegroundColor DarkGray
+                foreach ($r in $riders) { Write-Host "      $r" -ForegroundColor DarkGray }
+            }
+            else {
+                Write-Host "  No version-file commit since v$newestTag - the draft was cut and nothing has ridden it yet." -ForegroundColor DarkGray
+            }
             Write-Host ""
-            Write-Host "  Publish it with the release gesture (the tag IS the trigger):" -ForegroundColor Yellow
-            Write-Host "      git tag v$version" -ForegroundColor Cyan
-            Write-Host "      git push origin v$version" -ForegroundColor Cyan
+            Write-Host "  This is the normal state between releases and is NOT a defect. Cutting the" -ForegroundColor DarkGray
+            Write-Host "  release is a separate deliberate act; this step does not ask for one." -ForegroundColor DarkGray
             Write-Host ""
-            Write-Host "  Deliberately holding a version back is fine - re-run with -SkipPublishCheck." -ForegroundColor DarkGray
+            Write-Host "  It IS a defect for one consumer only: anything restoring from nuget.org that" -ForegroundColor Yellow
+            Write-Host "  already pins $version cannot see it, and fails with NU1102 naming every" -ForegroundColor Yellow
+            Write-Host "  package rather than the missing tag. If a public-path consumer pins this" -ForegroundColor Yellow
+            Write-Host "  draft, either move its pin back to $newestTag or release the draft." -ForegroundColor Yellow
         }
         else {
             Write-Host "v$newestTag published; <Version> is $version - the public channel is current." -ForegroundColor Green

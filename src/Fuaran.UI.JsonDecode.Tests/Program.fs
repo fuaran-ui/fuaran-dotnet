@@ -24,6 +24,37 @@ let main argv =
         printfn "Emitting into the resolved corpus root: %s" dir
         Corpus.emit dir
         0
+    // Phase 1647 — the TARGETED escape. `--emit-corpus` is wholesale: it deletes
+    // and rewrites every payload directory, which is the operation the estate
+    // memory warns destroys corpus-only payloads. Adding a defect case needs
+    // neither of those — it needs the vocabulary re-emitted and this host's
+    // coverage declaration re-derived from it, which is exactly what this does
+    // and nothing else. `<dir>` is the corpus root and is optional, resolving
+    // through the same one resolver every suite uses.
+    //   dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-vocabulary [<dir>]
+    | "--emit-vocabulary" :: rest ->
+        let corpusDir =
+            match rest with
+            | d :: _ -> d
+            | [] -> Fuaran.Tests.CorpusRoot.find ()
+
+        let vocabPath =
+            System.IO.Path.Combine(corpusDir, "validator", "defect-vocabulary.json")
+
+        System.IO.Directory.CreateDirectory(System.IO.Path.Combine(corpusDir, "validator"))
+        |> ignore
+
+        System.IO.File.WriteAllText(vocabPath, DefectVocabulary.toJson ())
+        printfn "Emitted %s" vocabPath
+
+        match ValidatorCoverage.tryRepoRoot () with
+        | Some repoRoot -> printfn "Emitted %s" (ValidatorCoverage.write repoRoot)
+        | None ->
+            // Loud, not silent: the two artefacts are the same statement made on
+            // two sides, and emitting one of them is how they drifted before.
+            eprintfn "Could not locate the repo root; %s was NOT written." ValidatorCoverage.fileName
+
+        0
     // Phase 442 — write ONLY the render-fidelity manifest into a corpus
     // directory:
     //   dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-fidelity <dir>

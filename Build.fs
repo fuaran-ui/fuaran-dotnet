@@ -220,6 +220,16 @@ let private packableProjects =
 // The copies are plain byte copies and stay so across clones: all four repos
 // pin `* text=auto eol=lf`, so there is no newline translation to reproduce and
 // no generation step beyond the copy itself.
+/// Phase 1647 — the corpus root on the one contract every reader in this repo
+/// honours: FUARAN_WIRE_FIXTURES first, the sibling walk second. A git worktree
+/// is not beside the corpus, so without the override every corpus-dependent
+/// step here silently declared itself absent.
+let private corpusRootPath =
+    match System.Environment.GetEnvironmentVariable "FUARAN_WIRE_FIXTURES" with
+    | null
+    | "" -> Path.Combine(repoRoot, "..", "wire-format-fixtures")
+    | raw -> raw.Trim()
+
 let private canonicalCss =
     Path.Combine(repoRoot, "src", "Fuaran.UI.Renderer", "content", "fuaran-reference.css")
 
@@ -656,15 +666,7 @@ let private registerTargets (args: string array) =
 
                 admitted
 
-        // Phase 1647 — the corpus root on the one contract every reader in this
-        // repo honours: FUARAN_WIRE_FIXTURES first, the sibling walk second. A
-        // git worktree is not beside the corpus, so without the override this
-        // roster silently declared every corpus-requiring suite skipped.
-        let corpusManifest =
-            match System.Environment.GetEnvironmentVariable "FUARAN_WIRE_FIXTURES" with
-            | null
-            | "" -> Path.Combine(repoRoot, "..", "wire-format-fixtures", "manifest.json")
-            | raw -> Path.Combine(raw.Trim(), "manifest.json")
+        let corpusManifest = Path.Combine(corpusRootPath, "manifest.json")
 
         let corpusPresent = File.Exists corpusManifest
 
@@ -919,6 +921,42 @@ let private registerTargets (args: string array) =
             repoRoot)
 
     "AuthoringPack" ==> "Check" |> ignore
+
+    // Phase 1647 — the corpus's cross-host coverage projection, run from the AUTHORING
+    // side. `validator-coverage.json` declares which of the canonical vocabulary's codes
+    // this host implements; `validator/check-coverage.mjs` in the corpus is what compares
+    // the two. Nothing invoked it here, so the declaration's own claim to be "checked by
+    // construction" was checked by nobody — which is how it came to stop at FUARAN114
+    // while the vocabulary ran to FUARAN148, and how a phase that merely ADDED a defect
+    // case left the cross-host gate red on `main` for someone else to attribute.
+    //
+    // THIS REPO'S root is passed explicitly rather than relying on the script's sibling
+    // discovery, and the difference is not cosmetic: discovery would check the sibling
+    // PRIMARY tree's declaration, so a worktree would gate a file it is not editing —
+    // green while its own is stale, red for a drift it did not cause. The cross-host
+    // sweep over every sibling is the corpus side's to run (`node
+    // validator/check-coverage.mjs --matrix`), and is a different question.
+    //
+    // Node-only, no build step. Absent corpus ⇒ NOT CHECKED by name, the `CssCheck`
+    // posture: "nothing to check here" must not read as "everything checked".
+    Target.create "ValidatorCoverageCheck" (fun _ ->
+        let script = Path.Combine(corpusRootPath, "validator", "check-coverage.mjs")
+
+        if not (File.Exists script) then
+            Trace.traceImportant
+                "validator coverage  NOT CHECKED — the wire-format-fixtures corpus is absent from this checkout."
+        else
+            let result =
+                CreateProcess.fromRawCommand "node" [ script; repoRoot ]
+                |> CreateProcess.withWorkingDirectory repoRoot
+                |> Proc.run
+
+            if result.ExitCode <> 0 then
+                failwithf
+                    "validator-coverage.json disagrees with the corpus vocabulary (exit %d). Regenerate it with: dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-vocabulary"
+                    result.ExitCode)
+
+    "ValidatorCoverageCheck" ==> "Check" |> ignore
 
     // Phase 840 — the lenient-dialect pack variant's drift check. Unlike AuthoringPack
     // it NEEDS the build: every dialect example block is proved loss-free by running

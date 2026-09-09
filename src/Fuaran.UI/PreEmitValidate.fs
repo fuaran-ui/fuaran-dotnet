@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.PreEmitValidate
+module Fuaran.UI.PreEmitValidate
 
 // ============================================================================
 //  Pre-emit tree-invariant checks for AI authors + human developers.
@@ -40,6 +40,19 @@
 open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.KindPolicy
+
+
+/// The separator joining the parts of a composite de-duplication key (the
+/// `reported*` HashSets below). It is U+001F UNIT SEPARATOR, written as an
+/// ESCAPE rather than as the raw byte it used to be (Phase 1647): a raw NUL in
+/// a source file makes grep and ripgrep classify the whole file as binary and
+/// silently truncate their results, so every search of this 7,000-line
+/// validator returned a partial answer with nothing to say it had.
+///
+/// Nothing but an in-memory HashSet key ever sees it — no wire byte, no emitted
+/// artefact, no persisted state — so the change of code point is unobservable.
+[<Literal>]
+let private dedupKeySep = "\u001F"
 
 /// A pre-emit defect surfaced by `validate`. Stable, AI-friendly
 /// discriminator (camelCase rendering at the docs boundary).
@@ -4455,7 +4468,10 @@ let private validateCore
     let reportedReserved = System.Collections.Generic.HashSet<string>()
 
     for (writerNodeId, key) in facts.StateKeys.Writes do
-        if StateKeyPolicy.isReserved key && reportedReserved.Add(writerNodeId + " " + key) then
+        if
+            StateKeyPolicy.isReserved key
+            && reportedReserved.Add(writerNodeId + dedupKeySep + key)
+        then
             defects.Add(PreEmitDefect.ReservedStateKeyWrite(writerNodeId, key, true))
 
     if
@@ -4466,7 +4482,7 @@ let private validateCore
             if
                 not (StateKeyPolicy.isReserved key)
                 && not (Set.contains key facts.StateKeys.Reads)
-                && reportedReserved.Add(writerNodeId + " " + key)
+                && reportedReserved.Add(writerNodeId + dedupKeySep + key)
             then
                 defects.Add(PreEmitDefect.ReservedStateKeyWrite(writerNodeId, key, false))
 
@@ -4492,7 +4508,7 @@ let private validateCore
                 key <> ""
                 && not (Set.contains key facts.StateKeys.WriteKeys)
                 && not (StateKeyPolicy.isReserved key)
-                && reportedSwitch.Add(switchNodeId + " " + key)
+                && reportedSwitch.Add(switchNodeId + dedupKeySep + key)
             then
                 defects.Add(PreEmitDefect.SwitchKeyNoWriter(switchNodeId, key))
 
@@ -4512,7 +4528,7 @@ let private validateCore
                 key <> ""
                 && not (Set.contains key facts.StateKeys.WriteKeys)
                 && not (StateKeyPolicy.isReserved key)
-                && reportedVisible.Add(nodeId + " " + key)
+                && reportedVisible.Add(nodeId + dedupKeySep + key)
             then
                 defects.Add(PreEmitDefect.VisibleStateNoWriter(nodeId, key))
 
@@ -4619,7 +4635,7 @@ let private validateCore
                     // One shared key is one source, however many readers point
                     // at it — the shape the seeding rule creates.
                     && not (a.SeedKey.IsSome && a.SeedKey = b.SeedKey)
-                    && reportedPair.Add(a.Reader + " " + b.Reader)
+                    && reportedPair.Add(a.Reader + dedupKeySep + b.Reader)
                 then
                     let seedKey =
                         match a.SeedKey, b.SeedKey with
@@ -4651,7 +4667,7 @@ let private validateCore
                 not (formOwnedStateKeys.Contains key)
                 && not (Set.contains key facts.StateKeys.WriteKeys)
                 && not (StateKeyPolicy.isReserved key)
-                && reportedCompare.Add(formNodeId + " " + fieldId + " " + key)
+                && reportedCompare.Add(formNodeId + dedupKeySep + fieldId + dedupKeySep + key)
             then
                 defects.Add(PreEmitDefect.CompareKeyUnreachable(formNodeId, fieldId, key))
 
