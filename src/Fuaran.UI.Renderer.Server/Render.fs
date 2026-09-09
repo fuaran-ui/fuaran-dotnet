@@ -2006,7 +2006,27 @@ and private renderKind
               if spec.AcceptPaste then
                   prop.custom ("data-fuaran-upload-paste", "declared")
               if spec.Destination.IsSome then
-                  prop.custom ("data-fuaran-upload-destination", "declared") ]
+                  prop.custom ("data-fuaran-upload-destination", "declared")
+              // Phase 1548 — one marker per declared ceiling, on exactly the
+              // shape above. This tier's floor for both is the plain picker,
+              // and that is a decision rather than an omission: HTML has no
+              // attribute for a byte ceiling at all, and `multiple` is a
+              // boolean rather than a count, so there is nothing a no-script
+              // host could enforce. Emitting markup that claimed otherwise
+              // would be a fake affordance.
+              //
+              // The markers record only THAT a ceiling was declared, never its
+              // VALUE — and unlike the destination marker above, that is not a
+              // privacy argument. It is the same posture for a different
+              // reason: nothing on this path can act on the number, so putting
+              // it in the markup would invite a reader to believe this tier
+              // enforces it. A host that hydrates has the decoded tree and
+              // reads both ceilings from there, which is where the client
+              // renderer's floor and the G1 gate take them.
+              if spec.MaxBytes.IsSome then
+                  prop.custom ("data-fuaran-upload-max-bytes", "declared")
+              if spec.MaxFiles.IsSome then
+                  prop.custom ("data-fuaran-upload-max-files", "declared") ]
 
         // Phase 1116 — `capture` is the one declaration on this control whose
         // floor FULLY holds, and it is emitted as the attribute rather than as a

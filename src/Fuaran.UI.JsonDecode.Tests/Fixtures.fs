@@ -2721,6 +2721,46 @@ let fileUploadDestination: Node<obj> =
         ))
         None
 
+/// Phase 1548 — a declared BYTE ceiling, on a single-file upload. `maxFiles` is
+/// omitted, which is what makes this vector pin the two members as independent:
+/// a host that read either as implying the other would round-trip these bytes
+/// perfectly and be wrong about what the document permits.
+///
+/// Single-file deliberately, because a per-file ceiling is exactly what
+/// `maxBytes` declares and a one-file selection is the shape where that is
+/// unambiguous. The value is a real ceiling (5 MiB) rather than a token one —
+/// a vector carrying `1` would pin the bytes while saying nothing about a
+/// number a host has to hold.
+let fileUploadMaxBytes: Node<obj> =
+    node
+        "upload-max-bytes-1"
+        (NodeKind.FileUpload(
+            { Defaults.fileUpload with
+                Label = TextSource.Literal "Attach a scan"
+                Accept = [ "application/pdf" ]
+                OnSelect = Some(fun _ -> placeholderChain)
+                MaxBytes = Some 5242880 }
+        ))
+        None
+
+/// Phase 1548 — a declared COUNT ceiling, the mirror vector: `maxFiles` present,
+/// `maxBytes` omitted. `multiple` is `true`, because that is the only shape in
+/// which a count ceiling says anything — a single-file upload admits one file by
+/// construction — so a vector declaring it beside `multiple:false` would model a
+/// control whose declaration is inert.
+let fileUploadMaxFiles: Node<obj> =
+    node
+        "upload-max-files-1"
+        (NodeKind.FileUpload(
+            { Defaults.fileUpload with
+                Label = TextSource.Literal "Attach up to three photographs"
+                Accept = [ "image/*" ]
+                Multiple = true
+                OnSelect = Some(fun _ -> placeholderChain)
+                MaxFiles = Some 3 }
+        ))
+        None
+
 let select: Node<obj> =
     node
         "select-1"
@@ -7329,6 +7369,9 @@ let allNodes: (string * Node<obj>) list =
       "Input/FileUpload (Phase 1116 — camera capture, image/* filtered)", fileUploadCaptureCamera
       "Input/FileUpload (Phase 1116 — microphone capture, audio/* filtered)", fileUploadCaptureMicrophone
       "Input/FileUpload (Phase 1117 — streamed to a registered destination)", fileUploadDestination
+      "Input/FileUpload (Phase 1548 — a declared per-file byte ceiling; maxFiles OMITTED)", fileUploadMaxBytes
+      "Input/FileUpload (Phase 1548 — a declared selection-count ceiling on a multiple upload; maxBytes OMITTED)",
+      fileUploadMaxFiles
       "Input/Select", select
       "Input/Select (multi-select — list value)", multiSelect
       "Input/Form (Phase 426 — handler-free write-back fields, State-bound)", formDeclarative

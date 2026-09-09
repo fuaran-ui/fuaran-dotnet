@@ -6921,8 +6921,59 @@ let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpe
                     else
                         Ok(Some s))
 
-        match acceptR, labelR, multipleR, disabledR, dropTargetR, acceptPasteR, captureR, destinationR with
-        | Ok accept, Ok label, Ok multiple, Ok disabled, Ok dropTarget, Ok acceptPaste, Ok capture, Ok destination ->
+        // Phase 1548 — the two declared ceilings. Absent is `None`, the
+        // pre-1548 control: the document states no limit and whatever the host
+        // already enforces is the only bound there is.
+        //
+        // POSITIVE-ONLY, on the `SrcSetEntry.width` precedent and for its
+        // reason: the wire has no refined-integer type, so a numeric bound is a
+        // decode rule or it is nothing. Zero is refused as firmly as a
+        // negative, and deliberately — a ceiling of `0` is not a small ceiling,
+        // it is a control that can accept nothing, which is the `Rating.max < 1`
+        // and closed-`Tokens`-without-suggestions line at a third slot: a
+        // control that cannot exist, not a control with a bad value in it.
+        //
+        // Routed through `requireInt` FIRST, so §7.1's slot rule decides the
+        // shape before this floor decides the sign. That is what makes a
+        // ceiling beyond the 32-bit slot — a request for a >2 GiB upload —
+        // a plain `WRONG_TYPE` naming the slot's width, rather than a value
+        // silently wrapped into something the author never wrote.
+        let ceiling (name: string) =
+            match tryField fields name with
+            | None -> Ok Option.None
+            | Some v ->
+                requireInt (path + "." + name) v
+                |> Result.bind (fun n ->
+                    if n > 0 then
+                        Ok(Some n)
+                    else
+                        wrongType (path + "." + name) "JSON number (a positive integer ceiling)")
+
+        let maxBytesR = ceiling "maxBytes"
+        let maxFilesR = ceiling "maxFiles"
+
+        match
+            acceptR,
+            labelR,
+            multipleR,
+            disabledR,
+            dropTargetR,
+            acceptPasteR,
+            captureR,
+            destinationR,
+            maxBytesR,
+            maxFilesR
+        with
+        | Ok accept,
+          Ok label,
+          Ok multiple,
+          Ok disabled,
+          Ok dropTarget,
+          Ok acceptPaste,
+          Ok capture,
+          Ok destination,
+          Ok maxBytes,
+          Ok maxFiles ->
             Ok
                 { Label = label
                   Accept = accept
@@ -6935,15 +6986,19 @@ let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpe
                   AcceptPaste = acceptPaste
                   DropTarget = dropTarget
                   Capture = capture
-                  Destination = destination }
-        | Error e, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _
-        | _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, Error e -> Error e
+                  Destination = destination
+                  MaxBytes = maxBytes
+                  MaxFiles = maxFiles }
+        | Error e, _, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeInputKind (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
     match requireObject path j with

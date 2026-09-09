@@ -6523,11 +6523,55 @@ and private renderFileUpload
                           { Id = sprintf "%d:%s" i f.name
                             Handle = Some(box f) } })
 
-              // `OnSelect` is optional since the swap — an absent handler
-              // means no dispatch (an AI-authored upload without a handler
-              // is inert server-side).
-              spec.OnSelect
-              |> Option.iter (fun onSelect -> runAction ctx (onSelect selections))) ]
+              // Phase 1548 — the declared ceilings, applied at SELECTION time.
+              // This is the floor the node's own declaration buys on a client
+              // that renders it: a selection outside a declared ceiling is
+              // REFUSED and REPORTED, and no `onSelect` runs.
+              //
+              // Refused, never TRUNCATED, and that is the whole judgement. The
+              // tempting behaviour is to take the first `maxFiles` files, or
+              // the ones under `maxBytes`, and carry on — and it is exactly
+              // wrong: the reader chose a set, and silently uploading a subset
+              // of it is a failure with no symptom. They see the control accept
+              // their pick and never learn which half was dropped. A refusal
+              // they can see and correct is strictly better than a success that
+              // is not one.
+              //
+              // `maxBytes` is per file, so EVERY selection is measured against
+              // it rather than the total: that is what the declaration says,
+              // and it is the same quantity the G1 gate measures on the
+              // `file-read` route.
+              //
+              // Reported through `Warn` rather than through a message, because
+              // this control has no failure channel of its own — an upload's
+              // one handler carries a selection, and there is no shape in which
+              // it can carry a refusal. Inventing one would be a wire change,
+              // which is a separate act from enforcing a bound.
+              let tooMany =
+                  match spec.MaxFiles with
+                  | Some limit when List.length selections > limit -> Some(sprintf "maxFiles of %d" limit)
+                  | _ -> None
+
+              let tooLarge =
+                  match spec.MaxBytes with
+                  | Some limit when selections |> List.exists (fun s -> s.Size > int64 limit) ->
+                      Some(sprintf "maxBytes of %d" limit)
+                  | _ -> None
+
+              match tooMany |> Option.orElse tooLarge with
+              | Some breached ->
+                  ctx.Runtime.Warn(
+                      sprintf
+                          "FileUpload '%s': the selection is outside this control's declared %s, so it was refused. Nothing was read and no handler ran."
+                          nodeId
+                          breached
+                  )
+              | None ->
+                  // `OnSelect` is optional since the swap — an absent handler
+                  // means no dispatch (an AI-authored upload without a handler
+                  // is inert server-side).
+                  spec.OnSelect
+                  |> Option.iter (fun onSelect -> runAction ctx (onSelect selections))) ]
 
     let labelChildren =
         [ Html.span

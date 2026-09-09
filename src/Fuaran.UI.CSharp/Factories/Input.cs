@@ -101,7 +101,7 @@ public static partial class Fuaran
             options.Id,
             // Generated FileUploadSpec ctor is Generated.fs declaration order (Accept,
             // Label, Multiple, OnSelect, Disabled, AcceptPaste, DropTarget, Capture,
-            // Destination);
+            // Destination, MaxBytes, MaxFiles);
             // OnSelect is optional now and FileSelection lives in HostPrelude — the
             // facade keeps its no-op handler (Some-wrapped) so the wire shape is
             // unchanged.
@@ -126,7 +126,12 @@ public static partial class Fuaran
                 // client-only upload, and a destination is asked for by name.
                 options.Destination is { } destination
                     ? Fs.Some(destination)
-                    : Fs.None<string>())));
+                    : Fs.None<string>(),
+                // Phase 1548 — both ceilings absent by default: the shortest C#
+                // call declares no limit, which is the wire identity, and each
+                // ceiling is asked for by name.
+                options.MaxBytes is { } maxBytes ? Fs.Some(maxBytes) : Fs.None<int>(),
+                options.MaxFiles is { } maxFiles ? Fs.Some(maxFiles) : Fs.None<int>())));
 }
 
 /// <summary>A form field — build with the static factories (<see cref="Text"/> / <see cref="Number"/> / …).</summary>
@@ -468,4 +473,19 @@ public sealed record FileUploadOptions
     /// does not serve is refused, with no fallback of any kind. What comes back is
     /// a reference (id, hash, size, type) and never the bytes.</summary>
     public string? Destination { get; init; }
+
+    /// <summary>The largest single file this control accepts, in bytes (Phase
+    /// 1548); <c>null</c> — the default — declares no ceiling, which is the
+    /// pre-1548 control. It is PER FILE, not per selection: a multiple upload
+    /// that wants a total bounds it as <c>MaxBytes × MaxFiles</c>. It must be
+    /// positive, and it is a signed 32-bit integer like every typed integer slot
+    /// on this wire, so the largest declarable ceiling is 2 147 483 647 bytes.</summary>
+    public int? MaxBytes { get; init; }
+
+    /// <summary>How many files this control accepts in one selection (Phase
+    /// 1548); <c>null</c> — the default — declares no ceiling. Meaningful only
+    /// alongside <see cref="Multiple"/>: a single-file upload admits one file by
+    /// construction, so a ceiling there is inert rather than wrong. It must be
+    /// positive.</summary>
+    public int? MaxFiles { get; init; }
 }

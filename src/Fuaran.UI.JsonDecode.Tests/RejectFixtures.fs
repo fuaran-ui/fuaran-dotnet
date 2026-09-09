@@ -636,6 +636,53 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a FileUpload `destination` of `\"\"` — refused rather than read as absence. The member names a host-registered destination and the empty string names none, so the document describes an upload that can never stream; reading it as \"no destination\" would silently turn a streaming upload into a client-only one, which is the one failure mode with no visible symptom" }
+      // Phase 1548 — the two declared upload ceilings, four vectors: a
+      // wrong-type and a non-positive value for each member. Four rather than
+      // two because they are four decoder arms, and a corpus that vectored one
+      // member would leave a host free to enforce the floor on `maxBytes` and
+      // not on `maxFiles`.
+      //
+      // The non-positive vectors are the ones that matter most. A wrong-typed
+      // ceiling is caught by any host that reads the slot as an integer at all;
+      // a ceiling of `0` is a perfectly well-typed number, and a host that
+      // admitted it would carry a control that can accept nothing — the
+      // `Rating.max < 1` and closed-`Tokens`-without-suggestions line, where the
+      // document describes a control that cannot exist rather than one with a
+      // bad value in it. `0` is chosen over a negative deliberately: it is the
+      // value an author reaches for meaning "no ceiling", which is the mistake
+      // the refusal exists to name, and absence is how the wire spells it.
+      { Id = "reject-upload-maxbytes-nonint"
+        Json =
+          """{"id":"up","kind":{"$type":"FileUpload","accept":["application/pdf"],"label":"Upload","maxBytes":"5242880","multiple":false,"onSelect":"<closure>"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.maxBytes"
+        IsOp = false
+        Description =
+          "a FileUpload `maxBytes` of `\"5242880\"` — a ceiling written as a string, refused rather than parsed. The member is a typed integer slot, and a host that read the digits out of a string would accept a bound no other host could, which is precisely the divergence a declared ceiling exists to remove" }
+      { Id = "reject-upload-maxbytes-nonpositive"
+        Json =
+          """{"id":"up","kind":{"$type":"FileUpload","accept":["application/pdf"],"label":"Upload","maxBytes":0,"multiple":false,"onSelect":"<closure>"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.maxBytes"
+        IsOp = false
+        Description =
+          "a FileUpload `maxBytes` of `0` — refused as firmly as a negative. A ceiling of zero is not a small ceiling; it is an upload that can accept no file at all, so the document describes a control that cannot exist. The author who means \"no ceiling\" omits the member, which is how the wire spells it" }
+      { Id = "reject-upload-maxfiles-nonint"
+        Json =
+          """{"id":"up","kind":{"$type":"FileUpload","accept":["image/*"],"label":"Upload","maxFiles":3.5,"multiple":true,"onSelect":"<closure>"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.maxFiles"
+        IsOp = false
+        Description =
+          "a FileUpload `maxFiles` of `3.5` — a fractional count, refused rather than truncated. §7.1 retired truncation at every typed integer slot, and this is the slot where it would be least visible: a host that read `3` would enforce a ceiling the document does not state, and the reader would find out by losing a file" }
+      { Id = "reject-upload-maxfiles-nonpositive"
+        Json =
+          """{"id":"up","kind":{"$type":"FileUpload","accept":["image/*"],"label":"Upload","maxFiles":0,"multiple":true,"onSelect":"<closure>"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.maxFiles"
+        IsOp = false
+        Description =
+          "a FileUpload `maxFiles` of `0` — the count member's twin of the byte floor, vectored separately because it is a separate decoder arm. A multiple upload admitting zero files is a control with no reachable selection, which is the same defect as a zero byte ceiling and needs the same refusal" }
       { Id = "reject-tokens-value-not-list"
         Json =
           """{"id":"f","kind":{"$type":"Form","fields":[{"id":"labels","kind":{"$type":"Tokens","value":{"$type":"Static","value":"urgent"}},"label":"Labels","required":false}],"onSubmit":"<closure>","submitLabel":"Save"}}"""

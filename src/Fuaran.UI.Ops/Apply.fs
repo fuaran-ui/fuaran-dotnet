@@ -941,6 +941,27 @@ let private updateFileUpload (field: string) (v: obj) (spec: FileUploadSpec<'Msg
                 match x with
                 | Some "" -> Error "expected a non-empty registered upload destination id"
                 | _ -> Ok { spec with Destination = x }))
+    // Phase 1548 — the two declared ceilings take the optional-integer
+    // disposition: a `null` clears the declaration back to the unbounded
+    // control, a positive number declares a ceiling. The positivity floor is
+    // re-stated here for the reason the empty-destination refusal above is —
+    // an `UpdateProp` must not reach a state a decode could not, or the tree
+    // would be able to carry a control that can accept nothing by a route the
+    // wire refuses.
+    | "MaxBytes" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryIntOption v
+            |> Result.bind (fun x ->
+                match x with
+                | Some n when n <= 0 -> Error "expected a positive integer ceiling"
+                | _ -> Ok { spec with MaxBytes = x }))
+    | "MaxFiles" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryIntOption v
+            |> Result.bind (fun x ->
+                match x with
+                | Some n when n <= 0 -> Error "expected a positive integer ceiling"
+                | _ -> Ok { spec with MaxFiles = x }))
     | "OnSelect"
     | "Disabled" -> NotSupportedYet
     | _ -> UnknownField

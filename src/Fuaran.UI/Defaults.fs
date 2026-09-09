@@ -469,7 +469,14 @@ let fileUpload<'Msg> : FileUploadSpec<'Msg> =
       // identity: a default upload still encodes to exactly the bytes it always
       // did, and the shortest document is the one whose selection never leaves
       // the client. Naming a destination is the thing an emitter has to ask for.
-      Destination = Option.None }
+      Destination = Option.None
+      // Phase 1548 — both ceilings undeclared, which is the wire identity and
+      // the pre-1548 control: the document states no limit, and whatever the
+      // host already enforces is the only bound there is. Declaring one is the
+      // thing an emitter has to ask for, and it is the only way the limit
+      // becomes visible to the gate, to the renderer and to every other host.
+      MaxBytes = Option.None
+      MaxFiles = Option.None }
 
 // ─── Visualisation defaults ─────────────────────────────────────────────────
 

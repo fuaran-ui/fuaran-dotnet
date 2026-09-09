@@ -7600,3 +7600,62 @@ existing ones, which is why the hatch-inventory rule bites the other way here: t
 "The advisory defaults" in the estate escape-hatch inventory are amended in the same change-set to
 record that each default now refuses and how its permissive posture is named. Migration note:
 [`docs/migrations/1550-fail-open-defaults-flip.md`](docs/migrations/1550-fail-open-defaults-flip.md).
+
+---
+
+## 0.79.0 — `FileUpload` declares its own ceilings (Phase 1548)
+
+`FileUploadSpec` gains two optional members — **`MaxBytes: int option`** and
+**`MaxFiles: int option`** — declaring the largest single file and the largest selection the control
+accepts. Both are absent-at-`None`, so a document that declares neither is byte-identical on the
+wire and identical in render to everything written before this release.
+
+**What the members are for.** Every deployment that accepts uploads already bounds them, in its
+transport or its sink, and none of that is visible to the document. So the ceiling exists and cannot
+be enforced by the tier that meets the selection first: the server-driven G1 gate had nothing to
+refuse a body read against, and a client renderer had nothing to check a pick against at all.
+Declared on the node, the bound travels with the tree — default-deny by shape, where it was
+default-deny by configuration. It is the language-level half; the transport ceiling is the other,
+and neither subsumes the other.
+
+**`MaxBytes` is PER FILE**, which is what makes it the quantity the `file-read` route can be
+measured against and what makes it meaningful on a single-file upload; a total is
+`MaxBytes × MaxFiles`. **`MaxFiles` is meaningful only alongside `Multiple`** — a single-file upload
+admits one file by construction, so a ceiling there is inert rather than wrong, and it is documented
+rather than refused. **Both are positive-only**, enforced as a decode rule (`WRONG_TYPE` at the
+member's own path on zero or below) and mirrored by `minimum: 1` in the published JSON Schema, on
+the `SrcSetEntry.Width` precedent: a ceiling of zero is a control that can accept nothing.
+
+**Both are 32-BIT, and that is the FORMAT's width rather than this member's choice.** `WIRE_FORMAT.md`
+§7.1 declares every typed integer slot a signed 32-bit integer, so the largest declarable `MaxBytes`
+is `2147483647` — a little under 2 GiB — and a larger value is a `WRONG_TYPE` naming the slot's
+range, never a number silently wrapped. A wider ceiling would be a new slot width for the whole
+format, ratified against §7.1 and §20; it is not a member on one node. A document needing a larger
+bound declares none and leaves it to the host's transport ceiling, which is where a bound that large
+belongs.
+
+**What moves besides the record.** The generated structural layer, the policy decoder, the JSON
+Schema, `UpdateProp` (both members settable, with the positivity floor restated so an op cannot
+reach a state a decode could not), the C# fluent factory and the VB XML dialect + analyzer
+vocabulary (§11 step 6), the server-driven G1 gate (a new
+`Validation.RejectReason.UploadCeilingExceeded`, and the shim now reports the selected file's `size`
+and the selection's `count` alongside the body), the client renderer's selection-time floor, and the
+static tier's two read-markers. The G1 check measures the client's REPORTED figures and cannot
+verify them — an event carrying neither figure is not refused, so a shim older than this release is
+unaffected — which is stated where the check is rather than left implied.
+
+**The consumer cost.** Source-breaking only at a full-literal `FileUploadSpec` construction, which
+gains two `None` fields (FS0764); `{ Defaults.fileUpload with … }` and every copy-update site are
+untouched, as is every existing wire document. The C# `FileUploadOptions` gains two `init` properties
+and no existing call changes.
+
+**Version — it RIDES the standing untagged 0.79.0 draft.** `v0.78.1` is the newest tag; 0.79.0 is
+untagged and no public-path consumer pins it, so it is a draft slot under the draft-slot rule. The
+draft already carries a breaking class of exactly this shape — Phase 1545's three added record
+fields, whose adoption cost is the same FS0764 at the same kind of site — so this entry is additive
+against what the draft already imposes and the number does not move.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged. **No escape hatch is created or widened**: both members NARROW what
+a control accepts, and neither introduces a seam, a registry or a default that fails open — a
+document that declares no ceiling is exactly the control it was.

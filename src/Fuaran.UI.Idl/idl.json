@@ -1586,6 +1586,24 @@
           "type": {
             "$type": "str"
           }
+        },
+        {
+          "name": "maxBytes",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "int"
+          }
+        },
+        {
+          "name": "maxFiles",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "int"
+          }
         }
       ],
       "tag": "FileUpload"

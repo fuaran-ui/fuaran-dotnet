@@ -350,7 +350,11 @@ and mapFileUploadSpec (f: 'a -> 'b) (spec: FileUploadSpec<'a>) : FileUploadSpec<
       // Phase 1117 — nor does the destination: it is a host-registered NAME,
       // and the reference the upload returns reaches the tree through the
       // host's own write path rather than through a handler this map rewrites.
-      Destination = spec.Destination }
+      Destination = spec.Destination
+      // Phase 1548 — the two declared ceilings are plain integers and carry no
+      // `'Msg` either; the map is the identity on both.
+      MaxBytes = spec.MaxBytes
+      MaxFiles = spec.MaxFiles }
 
 // ─── Visualisations — data-bound; the tree stores the erased grid shapes ────
 

@@ -758,13 +758,24 @@ let private genFileUploadSpec: Gen<FileUploadSpec<obj>> =
         let! accept = genSmallList genNonEmptyString
         let! multiple = genBool
         let! disabled = genOption genBindingBool
+        // Phase 1548 — the two declared ceilings, both optional and both
+        // POSITIVE by construction. The generator stays inside the wire's own
+        // rule deliberately: a non-positive ceiling is a decode refusal, and
+        // this fuzz exercises the round trip of documents the wire admits. The
+        // refusal itself is pinned by the four reject vectors, which is where a
+        // rule belongs — a generator that emitted values the decoder must
+        // refuse would be testing the reject path through the accept one.
+        let! maxBytes = genOption (Gen.choose (1, 1073741824))
+        let! maxFiles = genOption (Gen.choose (1, 64))
 
         return
             { Defaults.fileUpload with
                 Label = label
                 Accept = accept
                 Multiple = multiple
-                Disabled = disabled }
+                Disabled = disabled
+                MaxBytes = maxBytes
+                MaxFiles = maxFiles }
     }
 
 let private genSelectSpec: Gen<SelectSpec<obj>> =

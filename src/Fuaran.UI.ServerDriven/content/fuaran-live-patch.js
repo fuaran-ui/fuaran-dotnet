@@ -265,10 +265,18 @@
         var file = input && input.files && input.files[0];
         if (!file) break;
         var reader = new FileReader();
+        // Phase 1548 — report the selection's shape alongside the body. The
+        // upload node may declare `maxBytes` / `maxFiles`, and the G1 gate
+        // measures the reported figures against them before the continuation
+        // dispatches anything. Reported, not enforced here: the shim holds no
+        // ceiling (the SSR marker records only THAT one was declared, never
+        // which), so the declaration is enforced where the decoded tree is.
+        var count = input.files.length;
+        var size = file.size;
         reader.onload = function () {
           // Round-trip the body back as a LiveEvent the server's ReadFileBody
           // continuation consumes.
-          send({ nodeId: fx.nodeId, event: "file-read", payload: { encoding: fx.encoding, body: reader.result } });
+          send({ nodeId: fx.nodeId, event: "file-read", payload: { encoding: fx.encoding, body: reader.result, size: size, count: count } });
         };
         if (fx.encoding === "Text") reader.readAsText(file);
         else reader.readAsDataURL(file); // Base64 / DataUrl both via data URL

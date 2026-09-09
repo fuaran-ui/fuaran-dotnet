@@ -1489,7 +1489,15 @@ let private defs: (string * J) list =
             // judgement — `""` names an upload that can never stream, so it is
             // refused rather than read as absence. Whether a NON-EMPTY id is
             // registered is a fact about the host and no schema can state it.
-            "destination", JObj [ "type", JStr "string"; "minLength", JInt 1 ] ]
+            "destination", JObj [ "type", JStr "string"; "minLength", JInt 1 ]
+            // Phase 1548 — the two declared ceilings. Out of `required`: an
+            // absent member declares no ceiling, which is what every pre-1548
+            // document says. `minimum: 1` is the schema's half of the decoder's
+            // positivity floor — the `SrcSetEntry.width` shape — so the two
+            // expressions of the contract agree; a ceiling of `0` names a
+            // control that can accept nothing.
+            "maxBytes", JObj [ "type", JStr "integer"; "minimum", JInt 1 ]
+            "maxFiles", JObj [ "type", JStr "integer"; "minimum", JInt 1 ] ]
 
       "InputKind",
       union

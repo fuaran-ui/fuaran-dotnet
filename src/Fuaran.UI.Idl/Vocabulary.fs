@@ -2562,7 +2562,54 @@ let inputKinds: IdlKind list =
             // empty string is refused at decode rather than read as absence.
             //
             // Appended, so no generated constructor position moves.
-            opt "destination" TStr ] }
+            opt "destination" TStr
+            // Phase 1548 — the two DECLARED CEILINGS, and the reason they are on
+            // the node rather than in a host setting. Without them the
+            // server-driven gate has nothing to refuse a `file-read` against
+            // before the body reaches the message loop, and a client renderer
+            // has nothing to check a selection against at all — so the limit
+            // that every deployment already has lives only in configuration,
+            // invisible to the document and to every other host that reads it.
+            // Declared here it travels with the tree: default-deny by shape,
+            // where it was default-deny by configuration.
+            //
+            // `maxBytes` is PER FILE, not per selection. That is what makes it
+            // the ceiling the `file-read` route can actually be checked against
+            // — that route reads one file — and a per-selection total would be
+            // a different quantity wearing the same name. A multiple upload
+            // that wants a total bounds it as `maxBytes × maxFiles`.
+            //
+            // `maxFiles` is meaningful only alongside `multiple`. A single-file
+            // upload admits one file by construction, so a ceiling there is
+            // inert rather than wrong; it is documented in §4b and deliberately
+            // NOT a decode refusal, because the bytes describe a control every
+            // host renders identically with or without the member.
+            //
+            // Both are POSITIVE-ONLY, and the floor is a DECODE RULE rather
+            // than a type — the `SrcSetEntry.width` precedent, and for the same
+            // reason: the IDL has no refined-integer type, so the floor lives
+            // in the policy decoder and the published schema, with a corpus
+            // reject vector per field to make it a wire rule rather than one
+            // host's opinion. A ceiling of `0` or below describes a control
+            // that can accept nothing, which is the `Rating.max < 1` line at a
+            // third slot: a control that cannot exist, not a control with a bad
+            // value in it.
+            //
+            // Both are OPTIONS rather than omit-at-default integers, because
+            // "say nothing" is a real and distinct state here — an upload with
+            // no declared ceiling is unbounded by the document and bounded only
+            // by whatever the host already enforces, which is the pre-1548
+            // control exactly. Appended, so no generated constructor position
+            // moves, and absent-at-`None`, so every upload document written
+            // before this release encodes to the bytes it always did.
+            //
+            // 32-BIT, per WIRE_FORMAT.md §7.1: every typed integer slot this
+            // format declares is a signed 32-bit integer, so `maxBytes` tops
+            // out at 2 147 483 647 bytes (~2 GiB). A wider ceiling would be a
+            // new slot width for the whole format, ratified against §7.1 and
+            // §20 — not a member on one node.
+            opt "maxBytes" TInt
+            opt "maxFiles" TInt ] }
       { Tag = "Form"
         Category = "Input"
         Annotations = Annotations.Empty

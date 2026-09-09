@@ -46,6 +46,14 @@ Friend Module InputMapping
         ' wire's absent-is-client-only; a name is what the host registered, and a
         ' URL written here is refused by the host as an unregistered id like any
         ' other unknown string.
+        '
+        ' Phase 1548 — `max-bytes` / `max-files` spell the two declared ceilings,
+        ' read through OptIntAttr rather than AttrInt: both spec fields are
+        ' themselves optional, and absence means "this document declares no
+        ' ceiling" rather than a numeric default, so inventing one here would
+        ' erase the distinction the wire is carrying. The positivity floor is the
+        ' wire's decode rule and is not re-stated here; a non-positive value
+        ' written in the XML reaches it unchanged.
         d("FileUpload") = Function(el) Csharp.Fuaran.FileUpload(
             New Csharp.FileUploadOptions With {
                 .Id = Attr(el, "id"),
@@ -55,7 +63,9 @@ Friend Module InputMapping
                 .DropTarget = AttrBool(el, "drop-target"),
                 .AcceptPaste = AttrBool(el, "accept-paste"),
                 .Capture = OptEnum(Of Csharp.CaptureSource)(el, "capture"),
-                .Destination = Attr(el, "destination")})
+                .Destination = Attr(el, "destination"),
+                .MaxBytes = OptIntAttr(el, "max-bytes"),
+                .MaxFiles = OptIntAttr(el, "max-files")})
     End Sub
 
     Private Function ReadFields(el As XElement) As IEnumerable(Of Csharp.FormField)

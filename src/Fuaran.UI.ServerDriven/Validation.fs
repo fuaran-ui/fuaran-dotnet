@@ -78,6 +78,19 @@ type RejectReason =
     /// and it is what makes the line diagnosable; nothing the reader chose is
     /// in it.
     | BodyReadRefused of nodeId: string * destination: string
+    /// (c) The event reported a selection outside a ceiling the UPLOAD NODE
+    /// ITSELF declares (Phase 1548) — a file larger than `maxBytes`, or more
+    /// files than `maxFiles`. Carries the node id, which ceiling was missed, and
+    /// the DECLARED bound; never the reported figure.
+    ///
+    /// **The declared bound is author vocabulary and the reported one is not.**
+    /// `maxBytes` and `maxFiles` are written into the document by its author, so
+    /// they are grade B in `docs/ACTION-LOG-PRIVACY.md`'s vocabulary and are
+    /// what makes the line diagnosable. The size and count the client reported
+    /// are facts about the READER'S OWN FILES, which is grade C — a log line
+    /// carrying them would publish how large a document a named user tried to
+    /// upload, to an always-on host log, from a rejection path.
+    | UploadCeilingExceeded of nodeId: string * ceiling: string * declared: int
 
 module RejectReason =
     /// A short, audit-log-shaped description (no payload values — those may be
@@ -111,6 +124,12 @@ module RejectReason =
                 "body read refused for node '%s': this upload streams to destination '%s', so its bytes may not enter the message loop"
                 id
                 destination
+        | RejectReason.UploadCeilingExceeded(id, ceiling, declared) ->
+            sprintf
+                "upload ceiling exceeded for node '%s': the selection is outside the declared %s of %d"
+                id
+                ceiling
+                declared
 
 /// The successfully-validated, gated event — the boundary's output. `Action` is
 /// `None` for a legitimate event with no server-resolvable action yet (the
@@ -326,10 +345,52 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
     // a HOST WRITE to the control's reserved state slot — a state write is not
     // an event. What this member adds is a REFUSAL on an event already
     // admitted, not an admission.
+    // Phase 1548 — the declared ceilings, checked at the same boundary and on
+    // the same event, after the Phase 1117 refusal above (which is
+    // unconditional for a streaming upload and so is the stronger statement
+    // when both apply).
+    //
+    // What this refuses is the CONTINUATION: `Action.ReadFileBody`'s result
+    // reaches the message loop through this event, so a refusal here is a body
+    // that is dispatched nowhere, recorded nowhere, and hash-chained into no
+    // durable stream. That is the language-level half of the ceiling. The
+    // renderer floor refuses the read BEFORE it happens, and the transport
+    // ceiling bounds what a connection may carry at all; the three are
+    // complements, and none of them subsumes another.
+    //
+    // **What this check claims, stated exactly.** The shim reports the selected
+    // file's `size` and the selection's `count`, and this gate measures those
+    // REPORTED figures against the declared ceilings. It does not, and cannot,
+    // verify the report: a forged event is free to understate a size. That is
+    // not a gap this member can close — a byte count is a fact about a file the
+    // server has not been given — and it is why the transport ceiling exists
+    // beside it. What the check DOES buy is that a document's own declared
+    // bound is enforced by the gate rather than left to the renderer's good
+    // behaviour, so a client that reports honestly and reads anyway is refused,
+    // and a client that does not report at all is treated as it always was.
+    //
+    // A MISSING figure is not a refusal, deliberately. A shim older than this
+    // phase sends neither member, and refusing on absence would break every
+    // deployed client the moment an author declared a ceiling — a
+    // fail-closed-on-absence rule here would make the declaration a breaking
+    // change rather than an additive one. Absence is the pre-1548 behaviour
+    // exactly; a figure that IS reported is measured.
     | NodeKind.FileUpload(spec) when ev.Event = "file-read" ->
         match spec.Destination with
         | Some destination -> Error(RejectReason.BodyReadRefused(ev.NodeId, destination))
-        | None -> Ok()
+        | None ->
+            let over (name: string) (declared: int option) (reported: float option) =
+                match declared, reported with
+                | Some limit, Some n when n > float limit ->
+                    Some(RejectReason.UploadCeilingExceeded(ev.NodeId, name, limit))
+                | _ -> None
+
+            match over "maxFiles" spec.MaxFiles (tryNum "count" ev.Payload) with
+            | Some reason -> Error reason
+            | None ->
+                match over "maxBytes" spec.MaxBytes (tryNum "size" ev.Payload) with
+                | Some reason -> Error reason
+                | None -> Ok()
     | _ -> Ok()
 
 // ─── action resolution ──────────────────────────────────────────────────────
