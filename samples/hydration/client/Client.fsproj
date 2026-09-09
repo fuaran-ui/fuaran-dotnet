@@ -2,6 +2,11 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>disable</Nullable>
+    <!-- A sample, never a package. Without this the project id defaults to
+         `Client` — a real, unrelated id on the public registry — so anything
+         enumerating this repo's producing units reads two ids the pack target
+         does not emit. Every other sample declares the same. -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\Tree.fs" />
