@@ -46,6 +46,20 @@ module Fuaran.UI.Renderer.Csp
 
 open System.Collections.Generic
 
+// `isCollectableValue` and `generatedClass` `isNull`-test a `string` parameter as
+// their first act — the same defence-in-depth floor `Sanitize.fs` keeps beside
+// them, since a hand-built or wire-decoded record can carry a null the type says
+// cannot exist, and this module writes into a raw `<style>` sink. F# 10's
+// nullness checker rejects that test on a non-nullable `string` (FS3261). This
+// project declares the posture project-wide via `<Nullable>disable</Nullable>`,
+// but under Fable it is the ENTRY project's property that governs the whole
+// transpiled graph — a nullable-enabled entry (`Fuaran.UI.ServerDriven`)
+// transpiles these sources with nullness ON and the file stops compiling. The
+// file-scoped suppression makes the posture travel with the source, per the
+// precedent in `Sanitize.fs` / `BindingResolver.fs` / `Markdown.fs`. Do NOT drop
+// the `isNull` guards — they are the contract.
+#nowarn "3261"
+
 /// The Content-Security-Policy posture a render runs under.
 ///
 /// `Permissive` is the default at every convenience entry point and is exactly
