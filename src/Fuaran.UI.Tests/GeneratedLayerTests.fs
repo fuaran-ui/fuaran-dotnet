@@ -837,6 +837,18 @@ let generatedLayerTests =
                     "reject-switch-case-match-and-when.json"
                     "reject-switch-case-neither.json"
                     "reject-upload-destination-empty.json"
+                    // Fuaran-UI Phase 1548 — the two upload ceilings' POSITIVE
+                    // floor, and the value-bound class exactly: the IDL declares
+                    // both members `TInt` and has no refined-integer type, so
+                    // the generated decoder reads a well-typed integer and
+                    // accepts `0`, while the policy decoder applies the floor.
+                    // Their WRONG-TYPE siblings are absent from this list on
+                    // purpose — a non-integer IS structurally judgeable, and the
+                    // generated layer refuses both. Schema-EXPRESSIBLE and
+                    // expressed (`minimum: 1` on each slot), so like the srcset
+                    // width they stay OUT of `schemaInexpressibleRejects`.
+                    "reject-upload-maxbytes-nonpositive.json"
+                    "reject-upload-maxfiles-nonpositive.json"
                     "reject-wrongtype-grid-default-sort-column.json"
                     "reject-wrongtype-grid-page-size-zero.json"
                     "reject-wrongtype-static-sort-column.json" ]
