@@ -27,7 +27,7 @@ let private navButton<'Msg> (id: string) (label: string) (route: string) : Node<
         { Defaults.button<'Msg> with
             Label = TextSource.Literal label
             Variant = ButtonVariant.Secondary
-            OnClick = Action.Navigate route }
+            OnClick = Action.navigate route }
 
 let build<'Msg> (count: int) (onBoot: Action<'Msg>) : Node<'Msg> =
     Fuaran.dashboard

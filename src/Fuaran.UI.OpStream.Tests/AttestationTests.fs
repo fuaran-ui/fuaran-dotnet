@@ -587,7 +587,18 @@ let tests =
                       e.Message
 
               let message = refusalFor secp
-              Expect.stringContains message "secp256k1" "the refusal names the curve the key is actually on"
+
+              // The spelling of a curve's friendly name is the PLATFORM's, not
+              // ours: Windows CNG exports `secp256k1`, Linux's OpenSSL exports
+              // `secP256k1`. The refusal is required to name the curve, not to
+              // agree with one host's capitalisation of it — which is also why
+              // `checkCurve` matches its own accepted names with
+              // `OrdinalIgnoreCase`. A case-sensitive assertion here passed on
+              // Windows and failed the Linux CI leg.
+              Expect.isTrue
+                  (message.Contains("secp256k1", StringComparison.OrdinalIgnoreCase))
+                  $"the refusal names the curve the key is actually on: {message}"
+
               Expect.stringContains message "P-256" "and the curve the algorithm id requires"
 
               // The same is true of P-521, which the size gate also caught — kept
