@@ -606,8 +606,15 @@ let private registerTargets (args: string array) =
 
                 admitted
 
+        // Phase 1647 — the corpus root on the one contract every reader in this
+        // repo honours: FUARAN_WIRE_FIXTURES first, the sibling walk second. A
+        // git worktree is not beside the corpus, so without the override this
+        // roster silently declared every corpus-requiring suite skipped.
         let corpusManifest =
-            Path.Combine(repoRoot, "..", "wire-format-fixtures", "manifest.json")
+            match System.Environment.GetEnvironmentVariable "FUARAN_WIRE_FIXTURES" with
+            | null
+            | "" -> Path.Combine(repoRoot, "..", "wire-format-fixtures", "manifest.json")
+            | raw -> Path.Combine(raw.Trim(), "manifest.json")
 
         let corpusPresent = File.Exists corpusManifest
 

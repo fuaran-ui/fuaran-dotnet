@@ -632,20 +632,7 @@ let private fixtures: Fixture list =
 //  module level, a `failwith` throws in the type initializer and takes the
 //  whole assembly down).
 
-let private tryCorpusRoot () : string option =
-    let rec walk (dir: System.IO.DirectoryInfo) =
-        if isNull dir then
-            None
-        else
-            let candidate =
-                System.IO.Path.Combine(dir.FullName, "wire-format-fixtures", "manifest.json")
-
-            if System.IO.File.Exists candidate then
-                Some(System.IO.Path.Combine(dir.FullName, "wire-format-fixtures"))
-            else
-                walk dir.Parent
-
-    walk (System.IO.DirectoryInfo(System.AppContext.BaseDirectory))
+let private tryCorpusRoot () : string option = Fuaran.Tests.CorpusRoot.tryFind () // Phase 1647 — the ONE resolver
 
 let private corpusRoot = tryCorpusRoot ()
 

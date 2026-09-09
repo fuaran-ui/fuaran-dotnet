@@ -483,15 +483,7 @@ let tests =
 /// `None` in a bare single-repo clone — the same posture (and the same reason)
 /// as `ChainCorpusTests` and `TreeOpMapLawsTests`: a missing input degrades to
 /// a skip and never takes the assembly's type initializer down with it.
-let private tryCorpusRoot () : string option =
-    let rec walk (dir: DirectoryInfo | null) =
-        match dir with
-        | null -> None
-        | d when File.Exists(Path.Combine(d.FullName, "wire-format-fixtures", "manifest.json")) ->
-            Some(Path.Combine(d.FullName, "wire-format-fixtures"))
-        | d -> walk d.Parent
-
-    walk (DirectoryInfo AppContext.BaseDirectory)
+let private tryCorpusRoot () : string option = Fuaran.Tests.CorpusRoot.tryFind ()
 
 /// A manifest row this family cares about (WIRE_FORMAT §12).
 type private CorpusFixture =

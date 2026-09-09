@@ -32,19 +32,9 @@ open Expecto
 open Fuaran.UI.Renderer
 
 let private tryFindCorpus () : string option =
-    let rec climb (dir: DirectoryInfo) =
-        if isNull (box dir) then
-            None
-        else
-            let candidate =
-                Path.Combine(dir.FullName, "wire-format-fixtures", "markdown", "corpus.json")
-
-            if File.Exists candidate then
-                Some candidate
-            else
-                climb dir.Parent
-
-    climb (DirectoryInfo(AppContext.BaseDirectory))
+    Fuaran.Tests.CorpusRoot.tryFind ()
+    |> Option.map (fun r -> Path.Combine(r, "markdown", "corpus.json"))
+    |> Option.filter File.Exists
 
 [<Tests>]
 let tests =

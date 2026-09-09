@@ -49,19 +49,9 @@ open Fuaran.UI.Renderer.Relay
 // ─── Corpus location ────────────────────────────────────────────────────────
 
 let private tryFindCorpus () : string option =
-    let rec climb (dir: DirectoryInfo) =
-        if isNull (box dir) then
-            None
-        else
-            let candidate =
-                Path.Combine(dir.FullName, "wire-format-fixtures", "devtools-relay", "manifest.json")
-
-            if File.Exists candidate then
-                Some(Path.GetDirectoryName candidate)
-            else
-                climb dir.Parent
-
-    climb (DirectoryInfo(AppContext.BaseDirectory))
+    Fuaran.Tests.CorpusRoot.tryFind ()
+    |> Option.map (fun r -> Path.Combine(r, "devtools-relay"))
+    |> Option.filter (fun d -> File.Exists(Path.Combine(d, "manifest.json")))
 
 // ─── JsonElement → RelayValue ───────────────────────────────────────────────
 

@@ -26,21 +26,8 @@ open Fuaran.UI.OpStream.Abstractions
 //      own key directory, proven by verifying after the signing key is gone.
 // ============================================================================
 
-/// Walk up from the test assembly until the workspace `wire-format-fixtures/`
-/// corpus is found (a sibling of the `fuaran-dotnet/` repo).
-let private corpusRoot () : string =
-    let rec walk (dir: DirectoryInfo) =
-        if isNull dir then
-            failwith "wire-format-fixtures/ not found walking up — the Fuaran workspace checkout is required."
-        else
-            let candidate = Path.Combine(dir.FullName, "wire-format-fixtures", "manifest.json")
-
-            if File.Exists candidate then
-                Path.Combine(dir.FullName, "wire-format-fixtures")
-            else
-                walk dir.Parent
-
-    walk (DirectoryInfo(AppContext.BaseDirectory))
+/// The shared corpus root, via the ONE resolver (Phase 1647).
+let private corpusRoot () : string = Fuaran.Tests.CorpusRoot.find ()
 
 let private corpus () : JsonDocument =
     JsonDocument.Parse(File.ReadAllText(Path.Combine(corpusRoot (), "attestation", "document-corpus.json")))

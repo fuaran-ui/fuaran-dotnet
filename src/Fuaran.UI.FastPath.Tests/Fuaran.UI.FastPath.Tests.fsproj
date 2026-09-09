@@ -6,7 +6,11 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="FastPathTests.fs" />
+    <!-- Phase 1647 - the ONE corpus-root resolver, DECLARED ONCE at tests/corpus-root/CorpusRoot.fs
+         and linked (not copied) into every suite that reads the shared wire-format-fixtures corpus,
+         so a git worktree resolves it through FUARAN_WIRE_FIXTURES rather than skipping silently.
+         Must compile FIRST: the resolvers below delegate to it. -->
+    <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />    <Compile Include="FastPathTests.fs" />
     <Compile Include="GoldensTests.fs" />
     <!-- Phase 1478: the Core conformance kit's function-registry, capability,
          composition, verification and memo families over this tier's own

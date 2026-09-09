@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -8,7 +8,11 @@
     <NoWarn>$(NoWarn);NU1608</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="ServerRenderTests.fs" />
+    <!-- Phase 1647 - the ONE corpus-root resolver, DECLARED ONCE at tests/corpus-root/CorpusRoot.fs
+         and linked (not copied) into every suite that reads the shared wire-format-fixtures corpus,
+         so a git worktree resolves it through FUARAN_WIRE_FIXTURES rather than skipping silently.
+         Must compile FIRST: the resolvers below delegate to it. -->
+    <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />    <Compile Include="ServerRenderTests.fs" />
     <Compile Include="DrawingSvgTests.fs" />
     <!-- Phase 1098 — the SSR half of the `Sparkline → Drawing` lowering: the
          server draws real geometry, and its bytes ARE the shared lowering

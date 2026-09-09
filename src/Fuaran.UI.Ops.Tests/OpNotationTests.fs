@@ -44,26 +44,8 @@ open Fuaran.UI.Types
 open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
 
-/// Walk up from the test binary to the workspace-root `wire-format-fixtures/`
-/// corpus (the same climb the apply-parity suite uses).
-let private findCorpusRoot () : string =
-    let rec climb (dir: DirectoryInfo | null) : string option =
-        match dir with
-        | null -> None
-        | d ->
-            let candidate = Path.Combine(d.FullName, "wire-format-fixtures", "manifest.json")
-
-            if File.Exists candidate then
-                Some(Path.Combine(d.FullName, "wire-format-fixtures"))
-            else
-                climb d.Parent
-
-    match climb (DirectoryInfo(AppContext.BaseDirectory)) with
-    | Some root -> root
-    | None ->
-        failwithf
-            "wire-format-fixtures/manifest.json not found walking up from %s. The op-notation suite requires the Fuaran workspace checkout."
-            AppContext.BaseDirectory
+/// The shared corpus root, via the ONE resolver (Phase 1647).
+let private findCorpusRoot () : string = Fuaran.Tests.CorpusRoot.find ()
 
 /// (fixtureName, opJson) for every `ops/*.json`, ordered by name (deterministic).
 let private corpusOps () : (string * string) list =

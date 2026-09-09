@@ -178,7 +178,14 @@ if ($testSuites.Count -eq 0) {
     Write-Error "test-suites.json ($manifestPath) lists no suites."
     exit 1
 }
-$corpusPresent = Test-Path (Join-Path $PSScriptRoot "../wire-format-fixtures/manifest.json")
+# Phase 1647 - FUARAN_WIRE_FIXTURES overrides the sibling walk, on the one contract every corpus
+# reader in this repo honours. A git worktree is not beside the corpus, so without it every
+# corpus-requiring suite was silently declared absent and the gate went green having certified
+# against nothing.
+$corpusRoot =
+    if ($env:FUARAN_WIRE_FIXTURES) { $env:FUARAN_WIRE_FIXTURES.Trim() }
+    else { Join-Path $PSScriptRoot "../wire-format-fixtures" }
+$corpusPresent = Test-Path (Join-Path $corpusRoot "manifest.json")
 
 # Phase 1553 - the SUITE-level half of the lane. `lane` is declared per suite in the roster above
 # ("pure" / "slow"; absent = the ordinary tier), so this filter and Build.fs's read the same

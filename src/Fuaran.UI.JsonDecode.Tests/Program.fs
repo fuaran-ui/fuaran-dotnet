@@ -10,7 +10,18 @@ let main argv =
     // Corpus generator. Regenerate the workspace-root
     // wire-format-fixtures/ corpus from the F# fixture values:
     //   dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-corpus <dir>
+    // Phase 1647 — `<dir>` is now OPTIONAL. Omitted, the destination is the one
+    // corpus root every suite in this repo resolves (`FUARAN_WIRE_FIXTURES`,
+    // else the upward walk), so an emit and the suites that certify against it
+    // cannot address two different clones — which is exactly what a git
+    // worktree used to arrange, the explicit `..\wire-format-fixtures` argument
+    // naming a path that does not exist there.
     | "--emit-corpus" :: dir :: _ ->
+        Corpus.emit dir
+        0
+    | [ "--emit-corpus" ] ->
+        let dir = Fuaran.Tests.CorpusRoot.find ()
+        printfn "Emitting into the resolved corpus root: %s" dir
         Corpus.emit dir
         0
     // Phase 442 — write ONLY the render-fidelity manifest into a corpus

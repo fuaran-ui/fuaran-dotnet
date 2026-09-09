@@ -37,18 +37,9 @@ open Fuaran.UI.Ops
 /// Locate one family of the workspace-root shared corpus by climbing from the
 /// test binary — the same idiom `MarkdownCorpusTests` uses.
 let private familyDir (family: string) : string option =
-    let rec climb (dir: DirectoryInfo option) =
-        match dir with
-        | None -> None
-        | Some d ->
-            let candidate = Path.Combine(d.FullName, "wire-format-fixtures", family)
-
-            if Directory.Exists candidate then
-                Some candidate
-            else
-                climb (Option.ofObj d.Parent)
-
-    climb (Some(DirectoryInfo(System.AppContext.BaseDirectory)))
+    Fuaran.Tests.CorpusRoot.tryFind ()
+    |> Option.map (fun r -> Path.Combine(r, family))
+    |> Option.filter Directory.Exists
 
 let private corpusDir () : string option = familyDir "nodes"
 
@@ -75,19 +66,7 @@ let private familyFixtures (family: string) (pattern: string) : (string * string
         |> List.map (fun p -> fileName p, (File.ReadAllText p).Trim())
 
 /// The corpus root — the directory holding `manifest.json`.
-let private corpusRoot () : string option =
-    let rec climb (dir: DirectoryInfo option) =
-        match dir with
-        | None -> None
-        | Some d ->
-            let candidate = Path.Combine(d.FullName, "wire-format-fixtures")
-
-            if File.Exists(Path.Combine(candidate, "manifest.json")) then
-                Some candidate
-            else
-                climb (Option.ofObj d.Parent)
-
-    climb (Some(DirectoryInfo(System.AppContext.BaseDirectory)))
+let private corpusRoot () : string option = Fuaran.Tests.CorpusRoot.tryFind () // Phase 1647 — the ONE corpus-root resolver (tests/corpus-root/CorpusRoot.fs)
 
 /// How many fixtures of one `kind` the corpus MANIFEST enumerates.
 ///

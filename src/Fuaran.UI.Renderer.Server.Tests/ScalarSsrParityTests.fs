@@ -44,19 +44,7 @@ let private contains (needle: string) (haystack: string) =
 /// is broken" where the truth was "these few tests need the workspace
 /// checkout". A missing input degrades to a skip; it never masks the tests
 /// beside it.
-let private tryCorpusRoot () : string option =
-    let rec walk (dir: DirectoryInfo) =
-        if isNull dir then
-            None
-        else
-            let candidate = Path.Combine(dir.FullName, "wire-format-fixtures", "manifest.json")
-
-            if File.Exists candidate then
-                Some(Path.Combine(dir.FullName, "wire-format-fixtures"))
-            else
-                walk dir.Parent
-
-    walk (DirectoryInfo(AppContext.BaseDirectory))
+let private tryCorpusRoot () : string option = Fuaran.Tests.CorpusRoot.tryFind () // Phase 1647 — the ONE resolver
 
 let private root = tryCorpusRoot ()
 

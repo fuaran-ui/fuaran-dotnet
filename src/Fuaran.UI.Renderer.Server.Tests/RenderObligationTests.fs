@@ -63,20 +63,13 @@ let private refusedUrl = "https://collector.example/asset.jpg"
 /// Walk up to the workspace corpus — the same degrade-to-skip posture
 /// `A11yCorpusParityTests` records, and for the same reason: a missing input is
 /// a statement about the checkout, not about the code.
+/// Phase 1647 — the root comes from the ONE resolver; the artefact's own
+/// existence stays a separate statement (a corpus that carries no
+/// `render-fidelity.json` is a corpus defect, not an absent checkout).
 let private tryCorpusArtifact () : string option =
-    let rec walk (dir: DirectoryInfo) =
-        if isNull dir then
-            None
-        else
-            let candidate =
-                Path.Combine(dir.FullName, "wire-format-fixtures", "render-fidelity.json")
-
-            if File.Exists candidate then
-                Some candidate
-            else
-                walk dir.Parent
-
-    walk (DirectoryInfo(AppContext.BaseDirectory))
+    Fuaran.Tests.CorpusRoot.tryFind ()
+    |> Option.map (fun root -> Path.Combine(root, "render-fidelity.json"))
+    |> Option.filter File.Exists
 
 /// One obligation as the manifest declares it, before this host has resolved the
 /// claim id against its own vocabulary.

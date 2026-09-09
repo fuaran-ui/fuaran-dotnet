@@ -153,19 +153,7 @@ let private noSources = BindingResolver.empty
 let private svgOf (ds: DrawingSpec) : string =
     DrawingSvg.render noSources (fun _ -> "") ds
 
-let private tryFindFixtures () : string option =
-    let rec climb (dir: DirectoryInfo) =
-        if isNull (box dir) then
-            None
-        else
-            let candidate = Path.Combine(dir.FullName, "wire-format-fixtures")
-
-            if Directory.Exists candidate then
-                Some candidate
-            else
-                climb dir.Parent
-
-    climb (DirectoryInfo(AppContext.BaseDirectory))
+let private tryFindFixtures () : string option = Fuaran.Tests.CorpusRoot.tryFind () // Phase 1647 — the ONE corpus-root resolver (tests/corpus-root/CorpusRoot.fs)
 
 let private lowered (case: Case) : DrawingSpec =
     Charts.tryLowerSparkline Defaults.sparkline case.Series

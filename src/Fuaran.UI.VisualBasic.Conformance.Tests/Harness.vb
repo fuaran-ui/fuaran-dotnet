@@ -62,7 +62,21 @@ Public Module Corpus
         End Get
     End Property
 
+    ''' <summary>Phase 1647 — FUARAN_WIRE_FIXTURES overrides the walk, on the one
+    ''' contract every corpus reader in this repo honours. A git worktree is not
+    ''' beside the corpus, so without it this harness reported the corpus absent
+    ''' and skipped its whole conformance run.</summary>
     Private Function Locate() As String
+        Dim overridePath = Environment.GetEnvironmentVariable("FUARAN_WIRE_FIXTURES")
+        If Not String.IsNullOrWhiteSpace(overridePath) Then
+            overridePath = overridePath.Trim()
+            If File.Exists(Path.Combine(overridePath, "manifest.json")) Then
+                Return Path.GetFullPath(overridePath)
+            End If
+            Throw New InvalidOperationException(
+                $"FUARAN_WIRE_FIXTURES is set to '{overridePath}', which holds no manifest.json. It must name the corpus root itself.")
+        End If
+
         Dim dir = New DirectoryInfo(AppContext.BaseDirectory)
         While dir IsNot Nothing
             Dim candidate = Path.Combine(dir.FullName, "wire-format-fixtures")

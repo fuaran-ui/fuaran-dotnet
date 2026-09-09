@@ -124,19 +124,7 @@ let private wholeCorpus: Node<obj> =
 /// checkout is a statement about the checkout, not about the code, so it
 /// degrades to a skip (the `ScalarSsrParityTests` posture, and for the reason
 /// recorded there: a module-level throw takes the whole assembly down).
-let private tryCorpusRoot () : string option =
-    let rec walk (dir: DirectoryInfo) =
-        if isNull dir then
-            None
-        else
-            let candidate = Path.Combine(dir.FullName, "wire-format-fixtures", "manifest.json")
-
-            if File.Exists candidate then
-                Some(Path.Combine(dir.FullName, "wire-format-fixtures"))
-            else
-                walk dir.Parent
-
-    walk (DirectoryInfo(AppContext.BaseDirectory))
+let private tryCorpusRoot () : string option = Fuaran.Tests.CorpusRoot.tryFind () // Phase 1647 — the ONE resolver
 
 let private corpusRoot = tryCorpusRoot ()
 

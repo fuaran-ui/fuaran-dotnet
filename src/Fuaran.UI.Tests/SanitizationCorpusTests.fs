@@ -26,19 +26,9 @@ open Expecto
 open Fuaran.UI.Renderer
 
 let private manifestPath () : string option =
-    let rec climb (dir: DirectoryInfo option) =
-        match dir with
-        | None -> None
-        | Some d ->
-            let candidate =
-                Path.Combine(d.FullName, "wire-format-fixtures", "sanitization", "manifest.json")
-
-            if File.Exists candidate then
-                Some candidate
-            else
-                climb (Option.ofObj d.Parent)
-
-    climb (Some(DirectoryInfo(System.AppContext.BaseDirectory)))
+    Fuaran.Tests.CorpusRoot.tryFind ()
+    |> Option.map (fun r -> Path.Combine(r, "sanitization", "manifest.json"))
+    |> Option.filter File.Exists
 
 type private Case =
     {

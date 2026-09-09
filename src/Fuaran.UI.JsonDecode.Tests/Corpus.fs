@@ -774,28 +774,10 @@ let emit (outputDir: string) : unit =
 
 // ─── Load (test-time index) ──────────────────────────────────────────────────
 
-/// Walk up from the test binary's base directory to find the workspace-root
-/// `wire-format-fixtures/` corpus. Fails loudly if absent.
-let findRoot () : string =
-    let rec climb (dir: DirectoryInfo | null) : string option =
-        match dir with
-        | null -> None
-        | d ->
-            let candidate = Path.Combine(d.FullName, corpusDirName, "manifest.json")
-
-            if File.Exists candidate then
-                Some(Path.Combine(d.FullName, corpusDirName))
-            else
-                climb d.Parent
-
-    match climb (DirectoryInfo(AppContext.BaseDirectory)) with
-    | Some root -> root
-    | None ->
-        failwithf
-            "%s/manifest.json not found walking up from %s. The JsonDecode conformance suite requires the Fuaran workspace checkout (corpus lives at workspace root, a sibling of the fuaran-dotnet/ repo). Regenerate with: dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-corpus <workspace-root>/%s"
-            corpusDirName
-            AppContext.BaseDirectory
-            corpusDirName
+/// The corpus root. Delegates to the ONE resolver (Phase 1647) —
+/// `FUARAN_WIRE_FIXTURES` first, then the historical upward walk from the test
+/// binary — and fails loudly if absent.
+let findRoot () : string = Fuaran.Tests.CorpusRoot.find ()
 
 let private requireStr (el: JsonElement) (name: string) : string =
     match el.TryGetProperty name with

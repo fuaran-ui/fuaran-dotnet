@@ -82,7 +82,30 @@ let scriptDir = __SOURCE_DIRECTORY__ //                       fuaran-dotnet/docs
 let docsDir = Directory.GetParent(scriptDir).FullName //      fuaran-dotnet/docs
 let fuaranDir = Directory.GetParent(docsDir).FullName //      fuaran
 let workspaceRoot = Directory.GetParent(fuaranDir).FullName // <workspace root>
-let fixturesDir = Path.Combine(workspaceRoot, "wire-format-fixtures")
+
+/// Phase 1647 — the corpus root, on the one contract every reader in this repo
+/// honours: `FUARAN_WIRE_FIXTURES` first, the sibling walk second. A git
+/// worktree is not beside the corpus, so without the override this script
+/// reported every corpus-derived surface NOT CHECKED there — a green pack check
+/// that checked nothing. A variable naming a directory with no `manifest.json`
+/// is refused rather than ignored: an override that points at nothing is a
+/// configuration error, and falling through would check a clone nobody named.
+let fixturesDir =
+    match Environment.GetEnvironmentVariable "FUARAN_WIRE_FIXTURES" with
+    | null
+    | "" -> Path.Combine(workspaceRoot, "wire-format-fixtures")
+    | raw ->
+        let p = raw.Trim()
+
+        if p = "" then
+            Path.Combine(workspaceRoot, "wire-format-fixtures")
+        elif File.Exists(Path.Combine(p, "manifest.json")) then
+            Path.GetFullPath p
+        else
+            failwithf
+                "FUARAN_WIRE_FIXTURES is set to '%s', which holds no manifest.json. It must name the corpus root itself."
+                p
+
 let manifestPath = Path.Combine(fixturesDir, "manifest.json")
 let schemaSrcPath = Path.Combine(fixturesDir, "schema.json")
 let packDir = Path.Combine(docsDir, "prompt-pack")

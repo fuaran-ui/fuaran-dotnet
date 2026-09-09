@@ -74,6 +74,20 @@ internal static class Corpus
 
     private static string? Locate()
     {
+        // Phase 1647 — FUARAN_WIRE_FIXTURES overrides the walk, on the one
+        // contract every corpus reader in this repo honours. A git worktree is
+        // not beside the corpus, so without it this harness reported the corpus
+        // absent and skipped its whole conformance run.
+        var overridePath = Environment.GetEnvironmentVariable("FUARAN_WIRE_FIXTURES")?.Trim();
+        if (!string.IsNullOrEmpty(overridePath))
+        {
+            return File.Exists(Path.Combine(overridePath, "manifest.json"))
+                ? Path.GetFullPath(overridePath)
+                : throw new InvalidOperationException(
+                    $"FUARAN_WIRE_FIXTURES is set to '{overridePath}', which holds no manifest.json. "
+                        + "It must name the corpus root itself.");
+        }
+
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {

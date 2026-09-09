@@ -40,18 +40,8 @@ open Fuaran.UI.Ops.JsonDecode
 /// The corpus root — the `wire-format-fixtures/` clone, wherever it sits above
 /// the test binary.
 let private corpusRoot () : string option =
-    let rec climb (dir: DirectoryInfo option) =
-        match dir with
-        | None -> None
-        | Some d ->
-            let candidate = Path.Combine(d.FullName, "wire-format-fixtures")
-
-            if Directory.Exists(Path.Combine(candidate, "nodes")) then
-                Some candidate
-            else
-                climb (Option.ofObj d.Parent)
-
-    climb (Some(DirectoryInfo(System.AppContext.BaseDirectory)))
+    Fuaran.Tests.CorpusRoot.tryFind ()
+    |> Option.filter (fun r -> Directory.Exists(Path.Combine(r, "nodes")))
 
 let private fixturesIn (family: string) : (string * string) list =
     match corpusRoot () with

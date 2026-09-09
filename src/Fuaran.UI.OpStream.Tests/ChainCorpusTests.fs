@@ -29,19 +29,7 @@ open Fuaran.UI.Ops.Types
 /// reporting every op-stream test as broken where the truth is that these few
 /// need the workspace checkout. A missing input degrades to a skip; it never
 /// masks the tests beside it.
-let private tryCorpusRoot () : string option =
-    let rec walk (dir: DirectoryInfo) =
-        if isNull dir then
-            None
-        else
-            let candidate = Path.Combine(dir.FullName, "wire-format-fixtures", "manifest.json")
-
-            if File.Exists candidate then
-                Some(Path.Combine(dir.FullName, "wire-format-fixtures"))
-            else
-                walk dir.Parent
-
-    walk (DirectoryInfo(AppContext.BaseDirectory))
+let private tryCorpusRoot () : string option = Fuaran.Tests.CorpusRoot.tryFind ()
 
 let private root = tryCorpusRoot ()
 

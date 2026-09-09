@@ -40,15 +40,20 @@ module GoldensTests =
     /// The goldens live at the workspace-shared corpus root, a sibling of the
     /// `fuaran-dotnet/` repo — absent in a single-repo checkout (skip cleanly then, same
     /// as the DAG / merge conformance suites).
+    /// Phase 1647 — resolved through the ONE corpus-root resolver.
     let private goldensPath =
-        Path.Combine(
-            __SOURCE_DIRECTORY__,
-            "..",
-            "..",
-            "..",
-            "wire-format-fixtures",
-            "function-registry",
-            "goldens.json"
+        Fuaran.Tests.CorpusRoot.tryFind ()
+        |> Option.map (fun root -> Path.Combine(root, "function-registry", "goldens.json"))
+        |> Option.defaultValue (
+            Path.Combine(
+                __SOURCE_DIRECTORY__,
+                "..",
+                "..",
+                "..",
+                "wire-format-fixtures",
+                "function-registry",
+                "goldens.json"
+            )
         )
 
     // ── JSON readers (Nullable is on; GetString() is string | null) ───────────

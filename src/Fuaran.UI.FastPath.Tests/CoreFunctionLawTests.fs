@@ -65,10 +65,10 @@ module CoreFunctionLawTests =
     /// absent in a single-repo checkout, and also in a git worktree checked out
     /// away from the workspace, so `FUARAN_WIRE_FIXTURES` overrides the path —
     /// the same override shape the estate's other corpus consumers take.
+    /// Phase 1647 generalised this file's own override into the ONE resolver at
+    /// `tests/corpus-root/CorpusRoot.fs`; this is that same seam, shared.
     let private corpusDir =
-        System.Environment.GetEnvironmentVariable "FUARAN_WIRE_FIXTURES"
-        |> Option.ofObj
-        |> Option.filter (fun s -> s <> "")
+        Fuaran.Tests.CorpusRoot.tryFind ()
         |> Option.defaultValue (Path.Combine(__SOURCE_DIRECTORY__, "..", "..", "..", "wire-format-fixtures"))
 
     let private regenCommand =

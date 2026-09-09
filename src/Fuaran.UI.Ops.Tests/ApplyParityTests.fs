@@ -26,26 +26,8 @@ open System.IO
 open System.Text.Json
 open Expecto
 
-/// Walk up from the test binary to the workspace-root `wire-format-fixtures/`
-/// corpus (same climb the JsonDecode suite uses).
-let private findCorpusRoot () : string =
-    let rec climb (dir: DirectoryInfo | null) : string option =
-        match dir with
-        | null -> None
-        | d ->
-            let candidate = Path.Combine(d.FullName, "wire-format-fixtures", "manifest.json")
-
-            if File.Exists candidate then
-                Some(Path.Combine(d.FullName, "wire-format-fixtures"))
-            else
-                climb d.Parent
-
-    match climb (DirectoryInfo(AppContext.BaseDirectory)) with
-    | Some root -> root
-    | None ->
-        failwithf
-            "wire-format-fixtures/manifest.json not found walking up from %s. The apply-parity suite requires the Fuaran workspace checkout."
-            AppContext.BaseDirectory
+/// The shared corpus root, via the ONE resolver (Phase 1647).
+let private findCorpusRoot () : string = Fuaran.Tests.CorpusRoot.find ()
 
 /// (fixtureName, opJson) for every `ops/*.json`, ordered by name (deterministic).
 let private corpusOps () : (string * string) list =

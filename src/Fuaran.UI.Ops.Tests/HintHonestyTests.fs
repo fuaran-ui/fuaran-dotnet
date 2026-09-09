@@ -43,31 +43,14 @@ open Fuaran.UI.Types
 open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
 
-/// Walk up from the test assembly looking for the shared corpus. The corpus
-/// lives beside the language repo rather than inside it, so the depth differs
-/// between a local build and CI.
+/// The corpus's `nodes/` family, via the ONE corpus-root resolver (Phase 1647).
+/// The root and the family are separate statements: a root that is present but
+/// carries no `nodes/` is a corpus defect, not an absent checkout, so the
+/// family's own existence check stays here.
 let private corpusNodesDir () : string option =
-    let rec probe (dir: DirectoryInfo option) (depth: int) =
-        match dir with
-        | None -> None
-        | Some d when depth > 8 ->
-            ignore d
-            None
-        | Some d ->
-            let candidate = Path.Combine(d.FullName, "wire-format-fixtures", "nodes")
-
-            if Directory.Exists candidate then
-                Some candidate
-            else
-                probe (Option.ofObj d.Parent) (depth + 1)
-
-    let assemblyDir =
-        System.Reflection.Assembly.GetExecutingAssembly().Location
-        |> Path.GetDirectoryName
-        |> Option.ofObj
-        |> Option.map DirectoryInfo
-
-    probe assemblyDir 0
+    Fuaran.Tests.CorpusRoot.tryFind ()
+    |> Option.map (fun root -> Path.Combine(root, "nodes"))
+    |> Option.filter Directory.Exists
 
 /// Every node of every decodable corpus fixture, grouped by kind name. One
 /// sample per kind is enough — `availableFields` dispatches on the kind, and for

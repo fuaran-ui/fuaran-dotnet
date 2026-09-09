@@ -6,7 +6,11 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="OpsApplyTests.fs" />
+    <!-- Phase 1647 - the ONE corpus-root resolver, DECLARED ONCE at tests/corpus-root/CorpusRoot.fs
+         and linked (not copied) into every suite that reads the shared wire-format-fixtures corpus,
+         so a git worktree resolves it through FUARAN_WIRE_FIXTURES rather than skipping silently.
+         Must compile FIRST: the resolvers below delegate to it. -->
+    <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />    <Compile Include="OpsApplyTests.fs" />
     <!-- Phase 1527 - the apply-time §21 guard (WireLimits.MaxDepth / MaxNodes). -->
     <Compile Include="ApplyLimitTests.fs" />
     <Compile Include="InputAndWireSpellingTests.fs" />

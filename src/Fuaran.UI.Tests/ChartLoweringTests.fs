@@ -1871,19 +1871,7 @@ let private summaryOf (name: string) : string =
     | Some(TextSource.Literal t) -> t
     | _ -> ""
 
-let private tryFindFixtures () : string option =
-    let rec climb (dir: DirectoryInfo) =
-        if isNull (box dir) then
-            None
-        else
-            let candidate = Path.Combine(dir.FullName, "wire-format-fixtures")
-
-            if Directory.Exists candidate then
-                Some candidate
-            else
-                climb dir.Parent
-
-    climb (DirectoryInfo(AppContext.BaseDirectory))
+let private tryFindFixtures () : string option = Fuaran.Tests.CorpusRoot.tryFind () // Phase 1647 — the ONE corpus-root resolver (tests/corpus-root/CorpusRoot.fs)
 
 [<Tests>]
 let chartLoweringTests =

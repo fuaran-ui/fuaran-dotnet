@@ -17,8 +17,14 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //  suite gates the same way). Leg B (TS == corpus) runs in the fuaran-ts repo.
 // ============================================================================
 
+// Phase 1647 — resolved through the ONE corpus-root resolver rather than a
+// `__SOURCE_DIRECTORY__` climb: the source path is fixed at compile time, so in
+// a git worktree it named a directory that does not exist and this suite
+// skipped silently.
 let private corpusDir =
-    Path.Combine(__SOURCE_DIRECTORY__, "..", "..", "..", "wire-format-fixtures", "dag")
+    Fuaran.Tests.CorpusRoot.tryFind ()
+    |> Option.map (fun root -> Path.Combine(root, "dag"))
+    |> Option.defaultValue (Path.Combine(__SOURCE_DIRECTORY__, "..", "..", "..", "wire-format-fixtures", "dag"))
 
 let private decodeOp (s: string) : Result<TreeOp<obj>, string> =
     JsonDecode.decodeOp s |> Result.mapError (sprintf "%A")

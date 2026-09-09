@@ -64,18 +64,9 @@ open PureTierLaws
 /// test binary — the same idiom the generated-layer and markdown corpus suites
 /// use. `None` when the corpus clone is absent (a bare single-repo checkout).
 let private corpusDir () : string option =
-    let rec climb (dir: DirectoryInfo option) =
-        match dir with
-        | None -> None
-        | Some d ->
-            let candidate = Path.Combine(d.FullName, "wire-format-fixtures", "nodes")
-
-            if Directory.Exists candidate then
-                Some candidate
-            else
-                climb (Option.ofObj d.Parent)
-
-    climb (Some(DirectoryInfo(System.AppContext.BaseDirectory)))
+    Fuaran.Tests.CorpusRoot.tryFind ()
+    |> Option.map (fun r -> Path.Combine(r, "nodes"))
+    |> Option.filter Directory.Exists
 
 let private fileName (p: string) =
     Path.GetFileName p |> Option.ofObj |> Option.defaultValue p

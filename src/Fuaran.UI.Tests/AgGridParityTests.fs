@@ -49,18 +49,8 @@ open Fuaran.UI.Renderer.AgGridPlan
 /// The corpus root — the `wire-format-fixtures/` clone, wherever it sits above
 /// the test binary. Same climb as the other corpus-driven suites.
 let private corpusRoot () : string option =
-    let rec climb (dir: DirectoryInfo option) =
-        match dir with
-        | None -> None
-        | Some d ->
-            let candidate = Path.Combine(d.FullName, "wire-format-fixtures")
-
-            if Directory.Exists(Path.Combine(candidate, "nodes")) then
-                Some candidate
-            else
-                climb (Option.ofObj d.Parent)
-
-    climb (Some(DirectoryInfo(System.AppContext.BaseDirectory)))
+    Fuaran.Tests.CorpusRoot.tryFind ()
+    |> Option.filter (fun r -> Directory.Exists(Path.Combine(r, "nodes")))
 
 /// Every `nodes/` fixture, decoded. A fixture that does not decode is a defect
 /// in a different suite (`GeneratedLayerTests` owns the corpus's round trip),

@@ -49,11 +49,19 @@ if (-not (Get-Command node -CommandType Application -ErrorAction SilentlyContinu
 # Absence of the corpus is a HARD FAILURE here, not a skip. This is a conformance probe against a
 # shared oracle, and a conformance check that goes green without its oracle is worse than none.
 
-$nodesDir = Join-Path $PSScriptRoot '..' '..' '..' 'wire-format-fixtures' 'nodes'
+# Phase 1647 — FUARAN_WIRE_FIXTURES overrides the sibling walk, on the one
+# contract every corpus reader in this repo honours. A git worktree is not
+# beside the corpus, so without it this probe fails there for the checkout's
+# shape rather than for anything it measured.
+$corpusRoot =
+    if ($env:FUARAN_WIRE_FIXTURES) { $env:FUARAN_WIRE_FIXTURES.Trim() }
+    else { Join-Path $PSScriptRoot '..' '..' '..' 'wire-format-fixtures' }
+$nodesDir = Join-Path $corpusRoot 'nodes'
 
 if (-not (Test-Path $nodesDir)) {
     Write-Host "==== pure-tier laws: FAILED — corpus not found at $nodesDir" -ForegroundColor Red
-    Write-Host '     The shared wire-format-fixtures/ clone is the oracle for this probe. Clone it beside the repo.'
+    Write-Host '     The shared wire-format-fixtures/ clone is the oracle for this probe. Clone it beside the repo,'
+    Write-Host '     or set FUARAN_WIRE_FIXTURES to its path (a git worktree is not beside it).'
     exit 1
 }
 

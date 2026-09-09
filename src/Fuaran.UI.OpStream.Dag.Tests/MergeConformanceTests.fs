@@ -14,8 +14,14 @@ open Fuaran.UI.OpStream.Dag.Tests.TestSupport
 //  (TS merge == corpus) runs in the fuaran-ts repo against the same payloads.
 // ============================================================================
 
+// Phase 1647 — resolved through the ONE corpus-root resolver; see the note in
+// `ConformanceTests.fs` beside it.
 let private corpusDir =
-    Path.Combine(__SOURCE_DIRECTORY__, "..", "..", "..", "wire-format-fixtures", "merge-conformance")
+    Fuaran.Tests.CorpusRoot.tryFind ()
+    |> Option.map (fun root -> Path.Combine(root, "merge-conformance"))
+    |> Option.defaultValue (
+        Path.Combine(__SOURCE_DIRECTORY__, "..", "..", "..", "wire-format-fixtures", "merge-conformance")
+    )
 
 [<Tests>]
 let tests =

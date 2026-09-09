@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -9,7 +9,11 @@
        can read it at runtime and assert byte-for-byte parity against
        Theme.toCss Defaults.theme. -->
   <ItemGroup>
-    <Content Include="..\Fuaran.UI.Renderer\content\fuaran-reference.css">
+    <!-- Phase 1647 - the ONE corpus-root resolver, DECLARED ONCE at tests/corpus-root/CorpusRoot.fs
+         and linked (not copied) into every suite that reads the shared wire-format-fixtures corpus,
+         so a git worktree resolves it through FUARAN_WIRE_FIXTURES rather than skipping silently.
+         Must compile FIRST: the resolvers below delegate to it. -->
+    <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />    <Content Include="..\Fuaran.UI.Renderer\content\fuaran-reference.css">
       <Link>fuaran-reference.css</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

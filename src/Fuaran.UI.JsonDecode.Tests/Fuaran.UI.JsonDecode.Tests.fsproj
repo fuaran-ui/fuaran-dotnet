@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -6,7 +6,11 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Phase 1553 — the shared gate-lane markers, DECLARED ONCE at tests/lanes/Lanes.fs and
+    <!-- Phase 1647 - the ONE corpus-root resolver, DECLARED ONCE at tests/corpus-root/CorpusRoot.fs
+         and linked (not copied) into every suite that reads the shared wire-format-fixtures corpus,
+         so a git worktree resolves it through FUARAN_WIRE_FIXTURES rather than skipping silently.
+         Must compile FIRST: the resolvers below delegate to it. -->
+    <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />    <!-- Phase 1553 — the shared gate-lane markers, DECLARED ONCE at tests/lanes/Lanes.fs and
          linked (not copied) into every suite that carries a marker, so `lane-slow` cannot come to
          mean two different things in two suites. Must compile FIRST: the marked lists below apply
          it. -->

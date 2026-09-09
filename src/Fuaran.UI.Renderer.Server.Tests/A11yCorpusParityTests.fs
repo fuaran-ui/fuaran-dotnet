@@ -41,19 +41,7 @@ let private contains (needle: string) (haystack: string) =
 /// single-repo clone or a worktree checked out elsewhere — the same
 /// degrade-to-skip posture `ScalarSsrParityTests` records, and for the same
 /// reason: a missing input is a statement about the checkout, not the code.
-let private tryCorpusRoot () : string option =
-    let rec walk (dir: DirectoryInfo) =
-        if isNull dir then
-            None
-        else
-            let candidate = Path.Combine(dir.FullName, "wire-format-fixtures", "manifest.json")
-
-            if File.Exists candidate then
-                Some(Path.Combine(dir.FullName, "wire-format-fixtures"))
-            else
-                walk dir.Parent
-
-    walk (DirectoryInfo(AppContext.BaseDirectory))
+let private tryCorpusRoot () : string option = Fuaran.Tests.CorpusRoot.tryFind () // Phase 1647 — the ONE resolver
 
 let private root = tryCorpusRoot ()
 
