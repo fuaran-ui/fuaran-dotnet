@@ -53,6 +53,11 @@ open System.Collections.Generic
 //  server-driven interpreter, which does not depend on this module. Writes made
 //  through the module functions below are HOST writes and are deliberately
 //  unrestricted: the host owns its own store.
+//
+//  Phase 1550 adds the host-facing `declareReserved` / `isReserved` /
+//  `reservedKeys` beside `declarePersistent`, so one host says what it owns in
+//  one place. They are module-level and delegate: reservation is process-wide
+//  policy, not per-instance state — see the block beside them.
 
 // ── Single-process / single-threaded assumption (Phase 128) ─────────────────
 //  The process-global default store + its subscriber lists are deliberately
@@ -461,6 +466,48 @@ let isPersistent (key: string) : bool = defaultInstance.IsPersistent key
 
 /// The default store's declared persistent keys.
 let persistentKeys () : Set<string> = defaultInstance.PersistentKeys
+
+// ── Host-RESERVED keys (Phase 1550) ─────────────────────────────────────────
+//  The second thing a host declares about its own key namespace, beside the
+//  persistent-key declaration above and deliberately in the same place: one
+//  host, one place it says what it owns.
+//
+//  The two declarations answer different questions and are correctly
+//  independent. `declarePersistent` says a key SURVIVES A RELOAD; this says a
+//  RENDERED TREE MAY NOT WRITE IT. A host key is usually both and need not be
+//  either.
+//
+//  MODULE-LEVEL ONLY, with no `StateStoreInstance` twin, because reservation is
+//  process-wide policy rather than per-store state: the paths that enforce it
+//  are tree-originated writes, which hold no store handle, and the bounded
+//  server-driven interpreter does not depend on this module at all. Hence these
+//  delegate to `Fuaran.UI.StateKeyPolicy` — the lowest tier any reader occupies,
+//  where the `host.` prefix has lived since Phase 932 — rather than holding a
+//  second copy of the list. One mechanism; this is the host-facing spelling of
+//  it.
+
+/// Declare state keys as HOST-OWNED by exact name, so no rendered tree can
+/// write them (Phase 1550).
+///
+/// THE HOST'S CALL, like `declarePersistent`, and for the mirror reason: which
+/// of a host's own key names are sensitive is not something a shipped default
+/// can know. The `host.` prefix rule still reserves everything it always did —
+/// this is for the slot that predates the convention and cannot cheaply be
+/// renamed through every reader, seed and persisted value.
+///
+/// Additive, idempotent, process-wide, and there is no withdrawal: a function
+/// that un-reserved a key would be reachable from any assembly in the process,
+/// which is the fail-open shape the reservation exists to remove.
+let declareReserved (keys: seq<string>) : unit = StateKeys.declareReserved keys
+
+/// Whether `key` is host-owned — under the `host.` prefix, or declared by exact
+/// name. The question every tree-originated write asks.
+let isReserved (key: string) : bool = StateKeys.isReserved key
+
+/// The keys declared reserved by exact name. The prefix rule is not an
+/// enumerable set, so this is the declaration and not the whole reservation —
+/// ask [[isReserved]] about a key.
+let reservedKeys () : Set<string> = StateKeys.reservedKeys ()
 
 /// Subscribe to any state change; returns an unsubscribe thunk. The callback
 /// fires on every `set`, regardless of which key changed.

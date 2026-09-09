@@ -5312,3 +5312,179 @@ let emissionGrammarPreEmitTests =
                   [ "FUARAN142"; "FUARAN143"; "FUARAN144"; "FUARAN145"; "FUARAN146" ]
                   "all five codes are reachable from a tree"
           } ]
+
+// ─── Phase 1550 — FUARAN149, the host-reserved namespace from the authoring side ───
+//
+//  SEQUENCED, and this is not incidental: the reserved declaration is
+//  process-global (its enforcement point is a tree-originated write, which holds
+//  no store handle), so a case that declares changes what every other case in
+//  this process sees. Shape 2 in particular turns on whether ANY pre-convention
+//  key is declared, so a declaration leaking out of these cases would add a
+//  finding to unrelated fixtures in a runner-order-dependent way. Each case
+//  restores through the test-fenced reset in a `finally`.
+
+let private reservedDefects (tree: Node<Msg>) : (string * bool) list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.choose (function
+            | PreEmitDefect.ReservedStateKeyWrite(_, key, declared) -> Some(key, declared)
+            | _ -> None)
+
+[<Tests>]
+let reservedStateKeyRuleTests =
+    testSequenced
+    <| testList
+        "PreEmitValidate — FUARAN149, the host-reserved namespace (Phase 1550)"
+        [ test "shape 1: a write to a DECLARED reserved key is reported" {
+              StateKeyPolicy.clearReservedForTests ()
+
+              try
+                  let tree = setStateTree "sessionToken" [ markdown "copy" "x" ]
+
+                  Expect.isEmpty (reservedDefects tree) "undeclared, the rule has nothing to say"
+
+                  StateKeyPolicy.declareReserved [ "sessionToken" ]
+
+                  Expect.equal
+                      (reservedDefects tree)
+                      [ "sessionToken", true ]
+                      "declared, the write is reported at BUILD time rather than refused at render time"
+
+                  let code, severity, _ =
+                      match PreEmitValidate.validate tree with
+                      | Ok() -> failtest "expected a finding"
+                      | Error ds ->
+                          ds
+                          |> List.pick (function
+                              | PreEmitDefect.ReservedStateKeyWrite _ as d -> Some(PreEmitValidate.describe d)
+                              | _ -> None)
+
+                  Expect.equal code "FUARAN149" "the next free spec-band code"
+                  Expect.equal severity DefectSeverity.Warning "a Warning — the tree is legal, the write is futile"
+              finally
+                  StateKeyPolicy.clearReservedForTests ()
+          }
+
+          test "shape 1 covers the PREFIX too — silent at authoring time since Phase 782" {
+              StateKeyPolicy.clearReservedForTests ()
+
+              try
+                  let key = StateKeyPolicy.HostReservedPrefix + "secret"
+                  let tree = setStateTree key [ markdown "copy" "x" ]
+
+                  Expect.equal
+                      (reservedDefects tree)
+                      [ key, true ]
+                      "a prefixed write has been refused for phases and reported by nothing"
+
+                  Expect.isEmpty (noReaderDefects tree) "and FUARAN098 still stands aside — one finding, not two"
+              finally
+                  StateKeyPolicy.clearReservedForTests ()
+          }
+
+          test "shape 2: an undeclared PRE-CONVENTION key is reported once the host has adopted the list" {
+              StateKeyPolicy.clearReservedForTests ()
+
+              try
+                  // `tenantId` is unread by the tree and unreserved — the shape a
+                  // host-owned legacy slot has when a rendered tree can reach it.
+                  let tree = setStateTree "tenantId" [ markdown "copy" "x" ]
+
+                  Expect.isEmpty
+                      (reservedDefects tree)
+                      "with no declaration anywhere, the rule is silent — it cannot see the host and does not guess"
+
+                  // The host closes ONE such slot. That is the evidence it has
+                  // pre-convention slots and is closing them, so a warning about
+                  // the next one is actionable rather than speculative.
+                  StateKeyPolicy.declareReserved [ "sessionToken" ]
+
+                  Expect.equal
+                      (reservedDefects tree)
+                      [ "tenantId", false ]
+                      "…and now the undeclared sibling is at least visible"
+              finally
+                  StateKeyPolicy.clearReservedForTests ()
+          }
+
+          test "shape 2 is not armed by a PREFIXED declaration alone" {
+              // The gate is `preConventionReservedKeys`, not `reservedKeys`: a
+              // host that declares only `host.*` keys has told us nothing about
+              // legacy-named slots, and the prefix already covered those keys
+              // with no declaration at all.
+              StateKeyPolicy.clearReservedForTests ()
+
+              try
+                  StateKeyPolicy.declareReserved [ StateKeyPolicy.HostReservedPrefix + "x" ]
+
+                  let tree = setStateTree "tenantId" [ markdown "copy" "x" ]
+
+                  Expect.isEmpty (reservedDefects tree) "no pre-convention declaration, no pre-convention warning"
+              finally
+                  StateKeyPolicy.clearReservedForTests ()
+          }
+
+          test "shape 2 stands down under an OPAQUE reader, as FUARAN098 does" {
+              StateKeyPolicy.clearReservedForTests ()
+
+              try
+                  StateKeyPolicy.declareReserved [ "sessionToken" ]
+
+                  let opaque =
+                      Fuaran.metric
+                          "computed"
+                          { Defaults.metric with
+                              Label = TextSource.Literal "M"
+                              Value = Binding.Computed(fun _ -> 0.0) }
+
+                  let tree = setStateTree "tenantId" [ opaque ]
+
+                  Expect.isEmpty
+                      (reservedDefects tree)
+                      "a Computed closure is handed the whole state bag, so the absence of a read proves nothing"
+              finally
+                  StateKeyPolicy.clearReservedForTests ()
+          }
+
+          test "a key the tree READS is not reported, declared list or no" {
+              StateKeyPolicy.clearReservedForTests ()
+
+              try
+                  StateKeyPolicy.declareReserved [ "sessionToken" ]
+
+                  let tree =
+                      setStateTree
+                          "theme"
+                          [ Fuaran.metric
+                                "m"
+                                { Defaults.metric with
+                                    Label = TextSource.Literal "M"
+                                    Value = Binding.State("theme", None) } ]
+
+                  Expect.isEmpty (reservedDefects tree) "the tree reads what it writes — an ordinary slot of its own"
+              finally
+                  StateKeyPolicy.clearReservedForTests ()
+          }
+
+          test "FUARAN098 exempts a key reserved BY NAME, exactly as it exempts a prefixed one" {
+              // The write is refused at dispatch either way, so its defect is
+              // that it is unaddressable rather than that it is unread — and
+              // FUARAN149 is where that is said.
+              StateKeyPolicy.clearReservedForTests ()
+
+              try
+                  let tree = setStateTree "sessionToken" [ markdown "copy" "x" ]
+
+                  Expect.equal
+                      (List.length (noReaderDefects tree))
+                      1
+                      "undeclared, the unread write is FUARAN098's business"
+
+                  StateKeyPolicy.declareReserved [ "sessionToken" ]
+
+                  Expect.isEmpty (noReaderDefects tree) "declared, it moves to FUARAN149 and is not reported twice"
+              finally
+                  StateKeyPolicy.clearReservedForTests ()
+          } ]

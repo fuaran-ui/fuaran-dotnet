@@ -685,12 +685,19 @@ let applyDispatchGate
     : unit =
     applyDispatchGateOutcome runtime descriptor effect |> ignore
 
-/// Perform a TREE-ORIGINATED write to the State channel, refusing any key under
-/// the host-reserved namespace (Phase 782). Every State write that originates in
-/// a rendered tree — `Action.SetState`, a covered control's write-back, a
-/// declarative `Call … into State` target — routes through here, so
-/// `StateKeys.HostReservedPrefix` is unaddressable from a tree by construction
-/// rather than by whatever the host's `CanDispatch` policy happened to say.
+/// Perform a TREE-ORIGINATED write to the State channel, refusing any
+/// host-reserved key (Phase 782). Every State write that originates in a
+/// rendered tree — `Action.SetState`, a covered control's write-back, a
+/// declarative `Call … into State` target — routes through here, so a reserved
+/// key is unaddressable from a tree by construction rather than by whatever the
+/// host's `CanDispatch` policy happened to say.
+///
+/// Phase 1550 widened WHAT is reserved and changed nothing about HOW: the test
+/// is `StateKeys.isReserved` — the `host.` prefix, plus whatever the host has
+/// declared by exact name — and the refusal takes the same path, with the same
+/// `Warn` record, that it always has. A declared list needs no second denial
+/// channel, and adding one would give the same fact two places to be reported
+/// from and one place to be missed.
 ///
 /// A refusal is RECORDED through `Warn`, never silent: a tree that tried to write
 /// a host slot is a signal worth surfacing, and a silently-dropped write is
@@ -699,12 +706,15 @@ let applyDispatchGate
 /// Public so the .NET tests can pin the decision without a browser render
 /// (precedent: `applyDispatchGate`).
 let treeStateWriteOutcome (runtime: Runtime.IFuaranRuntime) (key: string) (write: unit -> unit) : Result<unit, string> =
-    if StateKeys.isHostReserved key then
+    if StateKeys.isReserved key then
+        let why =
+            if StateKeys.isHostReserved key then
+                sprintf "is under the host-reserved '%s' namespace" StateKeys.HostReservedPrefix
+            else
+                "was declared host-reserved by name"
+
         let reason =
-            sprintf
-                "State write refused — key '%s' is under the host-reserved '%s' namespace and is not addressable from a rendered tree."
-                key
-                StateKeys.HostReservedPrefix
+            sprintf "State write refused — key '%s' %s and is not addressable from a rendered tree." key why
 
         runtime.Warn("[Fuaran] " + reason)
         Error reason

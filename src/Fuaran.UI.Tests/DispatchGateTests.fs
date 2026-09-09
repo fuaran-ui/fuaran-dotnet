@@ -227,6 +227,100 @@ let tests =
               Expect.equal nearWrote 1 "'host.' mid-key is not the reserved namespace"
           }
 
+          // ─── Phase 1550 — reservation is a DECLARED LIST seeded by the prefix ───
+          //
+          //  SEQUENCED: the declaration is process-global (the enforcement point
+          //  is a tree-originated write, which holds no store handle), so a case
+          //  that declares would otherwise change what a concurrently-running
+          //  case sees — including what the pre-emit validator reports, since
+          //  FUARAN149's second shape turns on whether any pre-convention key is
+          //  declared at all.
+          testSequenced
+          <| testList
+              "Phase 1550 — declared reserved keys"
+              [ test "a key the host declared by NAME is refused on the same path as a prefixed one" {
+                    // The gap this closes: `sessionToken` predates the `host.`
+                    // convention, so before Phase 1550 the only hardening was to
+                    // rename it through every reader, seed and persisted value.
+                    StateKeys.clearReservedForTests ()
+
+                    try
+                        let before = GatingRuntime(fun _ -> true)
+                        let mutable wroteBefore = 0
+
+                        Render.treeStateWrite (before :> IFuaranRuntime) "sessionToken" (fun () ->
+                            wroteBefore <- wroteBefore + 1)
+
+                        Expect.equal wroteBefore 1 "undeclared, the legacy-named slot is writable — the exposure"
+
+                        StateStore.declareReserved [ "sessionToken" ]
+
+                        let after = GatingRuntime(fun _ -> true)
+                        let mutable wroteAfter = 0
+
+                        Render.treeStateWrite (after :> IFuaranRuntime) "sessionToken" (fun () ->
+                            wroteAfter <- wroteAfter + 1)
+
+                        Expect.equal wroteAfter 0 "declared, the same write is refused"
+                        Expect.equal after.Warnings.Count 1 "…through the SAME denial path, recorded not silent"
+
+                        Expect.stringContains
+                            after.Warnings[0]
+                            "declared host-reserved by name"
+                            "and the diagnostic says which rule refused it"
+                    finally
+                        StateKeys.clearReservedForTests ()
+                }
+
+                test "the prefix rule SEEDS the list — declaring nothing changes nothing" {
+                    StateKeys.clearReservedForTests ()
+
+                    try
+                        Expect.isTrue (StateStore.isReserved "host.anything") "the prefix reserves with no declaration"
+                        Expect.isFalse (StateStore.isReserved "theme") "and reserves nothing else"
+                        Expect.isTrue (Set.isEmpty (StateStore.reservedKeys ())) "the declared list starts empty"
+
+                        StateStore.declareReserved [ "theme" ]
+
+                        Expect.isTrue (StateStore.isReserved "host.anything") "the prefix still reserves"
+                        Expect.isTrue (StateStore.isReserved "theme") "and the declaration adds to it"
+                    finally
+                        StateKeys.clearReservedForTests ()
+                }
+
+                test "declaring is additive and idempotent, and ignores keys no write can name" {
+                    StateKeys.clearReservedForTests ()
+
+                    try
+                        StateStore.declareReserved [ "a" ]
+                        StateStore.declareReserved [ "a"; "b" ]
+                        StateStore.declareReserved [ "" ]
+
+                        Expect.equal
+                            (StateStore.reservedKeys ())
+                            (Set.ofList [ "a"; "b" ])
+                            "repeated and empty declarations leave the set exactly as declared"
+                    finally
+                        StateKeys.clearReservedForTests ()
+                }
+
+                test "an ALLOW-everything gate cannot reach a declared key either" {
+                    // The property Phase 782 established for the prefix, on the
+                    // declared half: this is a namespace, not gate policy.
+                    StateKeys.clearReservedForTests ()
+
+                    try
+                        StateStore.declareReserved [ "tenantId" ]
+
+                        let runtime = GatingRuntime(fun _ -> true)
+                        let mutable wrote = 0
+                        Render.treeStateWrite (runtime :> IFuaranRuntime) "tenantId" (fun () -> wrote <- wrote + 1)
+
+                        Expect.equal wrote 0 "the gate said yes and the namespace said no"
+                    finally
+                        StateKeys.clearReservedForTests ()
+                } ]
+
           test "a javascript: route cannot reach a host router — client action path" {
               // `Render.treeNavigate` IS the Navigate arm of `runAction` (the arm
               // is one call to it), so this drives the shipping code path, not a

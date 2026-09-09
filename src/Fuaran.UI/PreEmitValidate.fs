@@ -399,6 +399,45 @@ type PreEmitDefect =
     /// Carries the writing node's id and the key. What counts as a READ is
     /// enumerated on `BindingWalk.StateKeyFacts`, not left to the reader.
     | SetStateNoReader of nodeId: string * key: string
+    /// **FUARAN149 (Warning)**. The host-reserved State namespace, seen from the
+    /// authoring side (Phase 1550). Two shapes under one code, on the FUARAN147
+    /// precedent, because they are two readings of one namespace rather than two
+    /// rules: `declared = true` is a write to a slot the host has closed,
+    /// `declared = false` is a write to a slot it may have meant to close and
+    /// has not.
+    ///
+    /// **`declared = true` — the tree writes a key the host DECLARED reserved.**
+    /// Provably wrong and free of false positives: `Render.treeStateWriteOutcome`
+    /// refuses that write on every path, so the gesture runs and nothing
+    /// happens. Reporting it here moves the discovery from render time to build
+    /// time. `host.`-prefixed keys are in scope too — the prefix has been
+    /// refused since Phase 782 and was equally silent at authoring time.
+    ///
+    /// **`declared = false` — an UNDECLARED PRE-CONVENTION key.** The tree
+    /// writes a key that is not reserved and that nothing in the tree reads,
+    /// which is the shape a host-owned legacy slot has when a tree can reach it.
+    /// Before Phase 1550 the only remedy was to rename the slot under `host.`,
+    /// so `SECURITY.md` could say only that such a key "keeps its exposure until
+    /// it is renamed, and nothing detects one". The declared list is the remedy
+    /// and this is the detection.
+    ///
+    /// **Shape 2 fires only where the host has declared a reserved key OUTSIDE
+    /// the prefix**, i.e. where it has adopted the list for exactly this
+    /// purpose. That gate is what keeps the rule honest rather than a guess: the
+    /// validator cannot know which unprefixed keys a host owns, so it says
+    /// nothing at all unless the host has demonstrated that it has such slots
+    /// and is closing them. Every tree that passes today passes unchanged,
+    /// because the declaration is empty in every process that has not opted in.
+    ///
+    /// The consequence worth naming: shape 2's population is FUARAN098's, so an
+    /// adopting host with pre-convention slots sees both on one write. That is
+    /// deliberate — they say different things about it (a gesture that changes
+    /// nothing the reader can see, versus a host slot a rendered tree can
+    /// reach), and suppressing either would answer one question by deleting the
+    /// other.
+    ///
+    /// Carries the writing node's id, the key, and which shape it is.
+    | ReservedStateKeyWrite of nodeId: string * key: string * declared: bool
     /// **FUARAN102 (Warning)**. A labelled datum names the CURRENT instant in
     /// its own words — "today", "last updated", "current date" — and states a
     /// hardcoded ISO-8601 calendar date beside it, where the host-furnished
@@ -2150,6 +2189,19 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             nodeId
             key
             key
+    | PreEmitDefect.ReservedStateKeyWrite(nodeId, key, declared) ->
+        "FUARAN149",
+        DefectSeverity.Warning,
+        (if declared then
+             sprintf
+                 "'%s' writes state key '%s', which the host has reserved — every tree-originated write to it is refused at dispatch, so the gesture runs and nothing happens; write a key the host has not closed, or ask the host to expose the slot through a Query or a Call (Phase 1550)"
+                 nodeId
+                 key
+         else
+             sprintf
+                 "'%s' writes state key '%s', which is not host-reserved and which nothing in this tree reads — the shape of a host-owned slot a rendered tree can reach. If the key is the HOST's, declare it (StateStore.declareReserved) and this write is refused instead of silently landing in the host's slot; if it is the tree's own, FUARAN098 beside this says what is missing (Phase 1550)"
+                 nodeId
+                 key)
     | PreEmitDefect.DateLiteralWhereNowPlausible(nodeId, literal) ->
         "FUARAN102",
         DefectSeverity.Warning,
@@ -4367,18 +4419,56 @@ let private validateCore
         let reported = System.Collections.Generic.HashSet<string>()
 
         for (writerNodeId, key) in facts.StateKeys.Writes do
-            // Host-reserved keys are exempt through the Phase 782 guard's own
-            // prefix rather than a second list beside it: a write there is
+            // Host-reserved keys are exempt through the Phase 782/1550 guard's
+            // own rule rather than a second list beside it: a write there is
             // REFUSED at dispatch on every path, so its defect is that it is
-            // unaddressable, not that it is unread.
+            // unaddressable, not that it is unread — FUARAN149 below is the
+            // finding that says so. `isReserved` rather than `isHostReserved`
+            // since Phase 1550: a key the host declared BY NAME is refused
+            // exactly as a prefixed one is, so it earns the same exemption for
+            // the same reason.
             let unread = not (Set.contains key facts.StateKeys.Reads)
 
             if
                 unread
-                && not (StateKeyPolicy.isHostReserved key)
+                && not (StateKeyPolicy.isReserved key)
                 && reported.Add(writerNodeId + "\u0000" + key)
             then
                 defects.Add(PreEmitDefect.SetStateNoReader(writerNodeId, key))
+
+    // ── FUARAN149 — the host-reserved namespace from the authoring side ──
+    // (Phase 1550). Two shapes, one code; `PreEmitDefect.ReservedStateKeyWrite`
+    // carries why they are one rule and what each is worth.
+    //
+    // Shape 1 needs no stand-down clause: a write to a reserved key is refused
+    // at dispatch whatever else the tree holds, so no opaque reader or writer
+    // can make it not so.
+    //
+    // Shape 2 reasons from the ABSENCE of a read exactly as FUARAN098 does, so
+    // it inherits that stand-down — and adds its own: it is silent unless the
+    // host has declared a reserved key the `host.` prefix does not already
+    // cover. Without that, "this unread key might be the host's" is a guess
+    // about a host the validator cannot see, and the fuaran-core#90 rule
+    // applies — report only what is PROVABLY worth reporting. Every tree that
+    // passes today therefore passes unchanged: the declaration is empty in
+    // every process that has not opted in.
+    let reportedReserved = System.Collections.Generic.HashSet<string>()
+
+    for (writerNodeId, key) in facts.StateKeys.Writes do
+        if StateKeyPolicy.isReserved key && reportedReserved.Add(writerNodeId + " " + key) then
+            defects.Add(PreEmitDefect.ReservedStateKeyWrite(writerNodeId, key, true))
+
+    if
+        not facts.StateKeys.OpaqueReader
+        && not (Set.isEmpty (StateKeyPolicy.preConventionReservedKeys ()))
+    then
+        for (writerNodeId, key) in facts.StateKeys.Writes do
+            if
+                not (StateKeyPolicy.isReserved key)
+                && not (Set.contains key facts.StateKeys.Reads)
+                && reportedReserved.Add(writerNodeId + " " + key)
+            then
+                defects.Add(PreEmitDefect.ReservedStateKeyWrite(writerNodeId, key, false))
 
     // ── FUARAN103 — a `Switch` selecting on a key nothing can write (Phase 768) ──
     // The read-side twin of the rule above, and the shape every emission in its
@@ -4391,15 +4481,17 @@ let private validateCore
         let reportedSwitch = System.Collections.Generic.HashSet<string>()
 
         for (switchNodeId, key) in facts.StateKeys.SwitchSelectors do
-            // A host-reserved key (Phase 782) is the host's to write by
-            // definition, so its absence from the tree's writers is expected
-            // rather than a defect — the same exemption FUARAN098 takes, for
-            // the mirror-image reason. An EMPTY key is FUARAN083's case, not
-            // this one; reporting both would say the same thing twice.
+            // A host-reserved key (Phase 782, widened to the declared list by
+            // Phase 1550 — the whole `isReserved` family below reads the same
+            // widening) is the host's to write by definition, so its absence
+            // from the tree's writers is expected rather than a defect — the
+            // same exemption FUARAN098 takes, for the mirror-image reason. An
+            // EMPTY key is FUARAN083's case, not this one; reporting both would
+            // say the same thing twice.
             if
                 key <> ""
                 && not (Set.contains key facts.StateKeys.WriteKeys)
-                && not (StateKeyPolicy.isHostReserved key)
+                && not (StateKeyPolicy.isReserved key)
                 && reportedSwitch.Add(switchNodeId + " " + key)
             then
                 defects.Add(PreEmitDefect.SwitchKeyNoWriter(switchNodeId, key))
@@ -4419,7 +4511,7 @@ let private validateCore
             if
                 key <> ""
                 && not (Set.contains key facts.StateKeys.WriteKeys)
-                && not (StateKeyPolicy.isHostReserved key)
+                && not (StateKeyPolicy.isReserved key)
                 && reportedVisible.Add(nodeId + " " + key)
             then
                 defects.Add(PreEmitDefect.VisibleStateNoWriter(nodeId, key))
@@ -4465,7 +4557,7 @@ let private validateCore
                 key <> ""
                 && not (Set.contains key seededKeys)
                 && not (Set.contains key facts.StateKeys.WriteKeys)
-                && not (StateKeyPolicy.isHostReserved key)
+                && not (StateKeyPolicy.isReserved key)
                 && reportedTransform.Add(readerNodeId + " " + key)
             then
                 defects.Add(PreEmitDefect.TransformSourceInert(readerNodeId, key))
@@ -4486,7 +4578,7 @@ let private validateCore
         facts.StateKeys.Seeds
         |> List.filter (fun (d: BindingWalk.StateSeedDecl) ->
             d.Key <> ""
-            && not (StateKeyPolicy.isHostReserved d.Key)
+            && not (StateKeyPolicy.isReserved d.Key)
             // `defaultValue: []` declares nothing — it is the value an unseeded
             // slot already has, and today it is also the only way a Transform's
             // source slot can spell "I read this key and carry no data of my
@@ -4558,7 +4650,7 @@ let private validateCore
             if
                 not (formOwnedStateKeys.Contains key)
                 && not (Set.contains key facts.StateKeys.WriteKeys)
-                && not (StateKeyPolicy.isHostReserved key)
+                && not (StateKeyPolicy.isReserved key)
                 && reportedCompare.Add(formNodeId + " " + fieldId + " " + key)
             then
                 defects.Add(PreEmitDefect.CompareKeyUnreachable(formNodeId, fieldId, key))

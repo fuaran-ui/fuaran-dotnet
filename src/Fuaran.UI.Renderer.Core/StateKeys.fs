@@ -20,6 +20,17 @@ module Fuaran.UI.Renderer.StateKeys
 //  that wants a State slot no rendered tree can reach names it `host.<whatever>`
 //  and is done.
 //
+//  ── AND A DECLARED LIST BESIDE THE PREFIX (Phase 1550) ─────────────────────
+//
+//  The prefix closes exactly the keys a host has RENAMED under it, so a slot
+//  named before the convention existed keeps its exposure — and renaming a live
+//  state key is a migration through every reader, seed and persisted value,
+//  which is why the hardening path was documented and not taken. `declareReserved`
+//  lets a host name such a slot instead. The prefix rule SEEDS the list rather
+//  than being replaced by it, so the structural closure above is untouched for
+//  every key that carries the prefix and no host has to declare what it already
+//  covers. See `Fuaran.UI.StateKeyPolicy`.
+//
 //  What this deliberately does NOT do: re-namespace tree writes themselves. The
 //  declarative write-back loop (a control writes `Binding.State k`, every reader
 //  of `k` re-resolves) depends on tree writes and tree reads naming the same
@@ -50,8 +61,39 @@ let HostReservedPrefix = Fuaran.UI.StateKeyPolicy.HostReservedPrefix
 // nullable-enabled Fable entry project, moved with the implementation to
 // `Fuaran.UI.StateKeyPolicy` — the guard is stated once, where it runs.
 
-/// True when `key` names a host-reserved slot (see [[HostReservedPrefix]]).
-/// Total on null: an absent key is not "privileged", it is malformed, and that
-/// is a different refusal in a different place.
+/// True when `key` names a host-reserved slot BY PREFIX (see
+/// [[HostReservedPrefix]]). Total on null: an absent key is not "privileged",
+/// it is malformed, and that is a different refusal in a different place.
+///
+/// The prefix half of the rule. [[isReserved]] is the whole of it.
 let isHostReserved (key: string) : bool =
     Fuaran.UI.StateKeyPolicy.isHostReserved key
+
+//  Phase 1550 — reservation is a declared LIST seeded by the prefix rule, so a
+//  host can close a slot whose name predates the convention without renaming it
+//  through every reader, seed and persisted value. Re-exported here for the
+//  same reason the prefix is: the enforcing paths sit at or above this tier and
+//  spell the policy `StateKeys.*`, while the definition lives at the lowest
+//  tier any reader occupies (`Fuaran.UI.StateKeyPolicy`) so the pre-emit
+//  validator reads the same list rather than a copy of it.
+
+/// Declare state keys as HOST-OWNED by exact name. Additive, idempotent and
+/// process-wide; there is no withdrawal. See
+/// `Fuaran.UI.StateKeyPolicy.declareReserved`.
+let declareReserved (keys: seq<string>) : unit =
+    Fuaran.UI.StateKeyPolicy.declareReserved keys
+
+/// The keys declared reserved by exact name (the prefix rule is not an
+/// enumerable set — ask [[isReserved]] about a key).
+let reservedKeys () : Set<string> =
+    Fuaran.UI.StateKeyPolicy.reservedKeys ()
+
+/// True when `key` is host-owned: under [[HostReservedPrefix]], or declared by
+/// exact name. THE question a tree-originated write asks.
+let isReserved (key: string) : bool = Fuaran.UI.StateKeyPolicy.isReserved key
+
+/// Withdraw every declaration. **Test isolation only** — see
+/// `Fuaran.UI.StateKeyPolicy.clearReservedForTests` for why there is no
+/// ordinary withdrawal.
+let clearReservedForTests () : unit =
+    Fuaran.UI.StateKeyPolicy.clearReservedForTests ()

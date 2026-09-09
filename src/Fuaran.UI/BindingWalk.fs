@@ -410,7 +410,7 @@ type StateKeyFacts =
         /// tree says, and refusing a tree-originated write to a host slot
         /// (Phase 782) is the SEEDING pass's job, where the refusal belongs
         /// beside every other one. A rule that wants the filtered set applies
-        /// `StateKeyPolicy.isHostReserved` itself, as `stateSeeds` does.
+        /// `StateKeyPolicy.isReserved` itself, as `stateSeeds` does.
         Seeds: StateSeedDecl list
         /// Phase 1075 — every inline table the tree carries, normalised to the
         /// canonical columnar shape. FUARAN107's subjects.
@@ -1750,7 +1750,11 @@ let stateSeeds<'Msg> (root: Node<'Msg>) : Map<string, obj> =
             // `isEmptySeed`).
             | _ when isEmptySeed d.Fingerprint -> acc
             | value ->
-                if Fuaran.UI.StateKeyPolicy.isHostReserved d.Key || Map.containsKey d.Key acc then
+                // Phase 1550 — `isReserved`, not the prefix alone: a key the
+                // host declared by name is one a tree cannot write, so a
+                // tree-declared seed must not fill it either. Seeding is a
+                // tree-originated population of the slot by another route.
+                if Fuaran.UI.StateKeyPolicy.isReserved d.Key || Map.containsKey d.Key acc then
                     acc
                 else
                     Map.add d.Key value acc)
