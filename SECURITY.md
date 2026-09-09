@@ -49,13 +49,36 @@ library's surface are enumerated:
   the downgrade, with two-way messaging granted host-side. Scope separates registries and state keys;
   it does not separate memory or authority.
 
-Two shipped defaults fail open, stated here rather than left to be discovered. The `Custom`
-content-hash **host floor** defaults to `AdvisoryWarning` — a mismatch warns and renders — because a
-tree with no hash is the common legitimate case and an enforcing default would refuse most existing
-`Custom` nodes on upgrade; enforcement is a host act, via
-`CustomHash.installCustomHashFloor`. And the state-channel **host-reserved prefix** closes only keys
-named under `host.`: a host-owned key that predates the convention keeps its exposure until it is
-renamed, and nothing detects one.
+**Both of those defaults used to fail open, and both now refuse.** They are kept in this section
+rather than deleted, because what a document like this is for is telling you where a default stands
+and how to change it — and because the permissive posture each of them had is still reachable, by
+name, which is a thing worth being able to find.
+
+The `Custom` content-hash **host floor** defaults to `Enforced`: a tree whose declared hash disagrees
+with the registered renderer's is refused by a host that configured nothing. The old
+`AdvisoryWarning` reading — a mismatch warns and renders — is now a deliberate opt-back, written
+`CustomHash.installCustomHashFloor HashStrictness.AdvisoryWarning`, so one `grep` for that call
+enumerates every place the permissive posture is in force. The upgrade objection that justified the
+old default is answered by narrowing what the floor governs rather than by weakening it: the floor
+decides a MISMATCH, so a tree carrying no hash at all — the common legitimate case, and the shape
+most existing `Custom` nodes have — renders exactly as it did. The stronger posture that refuses
+that too is `HashStrictness.StrictReplay`, which is what a host previously running `Enforced` should
+now install.
+
+The state-channel **host-reserved rule** is a declared list, seeded by the `host.` prefix. Keys under
+`host.` are reserved with no configuration at all, exactly as before; a host names any further slot
+with `StateStore.declareReserved`, and every tree-originated write to it is refused on the same path
+and recorded through the same diagnostic. This replaces the migration the prefix alone demanded — a
+host-owned key that predated the convention could previously be protected only by renaming it through
+every reader, seed and persisted value, which is why in practice it was not. The build-time validator
+reports `FUARAN149` where a tree writes a reserved key, and — once a host has declared any
+pre-convention slot — where it writes an unread, unreserved key of the same shape, so such a key is at
+least visible rather than merely undetected.
+
+What is **not** claimed by either: the content hash remains drift detection and never authentication
+of the tree (a match proves only that whoever wrote the tree knew the registered renderer's hash), and
+reservation closes a namespace to a rendered tree without sandboxing tree writes into one of their
+own — a slot that matters must be prefixed or declared.
 
 A hatch that is enumerated with its mediation stated is a design position; one found later is a
 defect. If you find a route into host-affecting behaviour that is not on this list, that gap is

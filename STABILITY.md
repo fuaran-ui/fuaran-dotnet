@@ -7515,3 +7515,88 @@ one slot that carried CSS (`templateColumns`) meets the same §1523 emission gra
 plus the raw-`<style>`-content floor above. The collected stylesheet is renderer-authored throughout —
 its property names are literals in this package and its values are renderer-formatted numbers or
 already-gated slot values.
+
+## 0.79.0 — the two fail-open defaults flip: the custom-hash floor enforces, and reserved state keys are declared (Phase 1550)
+
+**Breaking, and the direction is the point — this is the 0.14.0 argument applied to the two defaults
+that were left.** `SECURITY.md` named two shipped defaults that fail open, honestly and by design at
+the time. The `Custom` content-hash host floor defaulted to `AdvisoryWarning`, so a drifted renderer
+warned and rendered and enforcement was a host act. The host-reserved state-key rule closed only keys
+under the `host.` prefix, so a host-owned key that predated the convention kept its exposure and
+nothing detected it. Both are exactly the posture the dispatch gate held until 0.14.0, and the
+argument that flipped it holds here unchanged: **the shipped default is what an unconfigured host
+receives, so a default that allows is the gate for precisely the hosts that never configured one.**
+
+**What changed.**
+
+1. **The `Custom` content-hash floor defaults to `Enforced`** (`CustomHash.DefaultCustomHashFloor`).
+   A tree whose declared hash disagrees with the registered renderer's is refused by a host that
+   configured nothing — client and server tiers alike.
+2. **The floor governs MISMATCH, not tree-side absence.** A tree that declares no hash renders
+   exactly as it did. That is what makes an enforcing default shippable rather than an upgrade
+   break: a hash-less `Custom` node is the common legitimate case, and there is nothing for the
+   floor to compare. `CustomHash.refusesUnverifiable` is the predicate, and only `StrictReplay`
+   satisfies it — the floor whose name is the stronger claim, and which a tree carrying no hash
+   cannot satisfy by construction.
+3. **`StrictReplay` now outranks `Enforced`** in the raise-only lattice, where they were previously
+   equal. It refuses a strict superset, so ordering them is forced: without it a `RenderContext`
+   declaring `StrictReplay` could not raise above the shipped default and its declaration would be
+   silently discarded.
+4. **Reservation of state keys becomes a declared list, seeded by the prefix rule.**
+   `StateStore.declareReserved` (equivalently `StateKeys.declareReserved`, defined in
+   `Fuaran.UI.StateKeyPolicy` so the pre-emit validator reads the same list) names a slot by exact
+   name; `StateKeys.isReserved` is the whole rule and is what `Render.treeStateWriteOutcome`
+   consults. Keys under `host.` are reserved with no declaration at all, exactly as before — the
+   prefix seeds the list rather than being replaced by it.
+5. **The refusal takes the EXISTING authorizer-denial path.** A declared key is refused by the same
+   `treeStateWriteOutcome`, with the same `Warn` record, that has refused `host.*` since 0.14.0. No
+   second denial channel: one fact with two places to be reported from has one place to be missed.
+   The diagnostic names which half of the rule refused the write.
+6. **`FUARAN149` (Warning), the pre-emit validator's new rule**, in two shapes under one code. A
+   tree write to a reserved key — provably futile, since dispatch refuses it — is reported at build
+   time instead of at render time. And where a host has declared a *pre-convention* slot (one the
+   prefix does not cover), a write to an unread, unreserved key of the same shape is reported too,
+   so such a key is at least visible. `FUARAN098`, `FUARAN099`, `FUARAN103`, `FUARAN105`,
+   `FUARAN106` and `FUARAN148` now read `isReserved` rather than the prefix alone, so a declared key
+   earns the same host-writes-it exemption a prefixed one always had. `BindingWalk.stateSeeds` reads
+   it too: a tree-declared seed is a tree-originated population of the slot by another route.
+
+**The consumer cost, stated plainly.** Nothing here is a signature change — the break is behavioural
+throughout, and no existing call fails to compile.
+
+| You had | What you now see | The one-line opt-back |
+|---|---|---|
+| No floor configured, a `Custom` node with a drifted hash | Refused, with the mismatch placeholder / `OnError` route | `CustomHash.installCustomHashFloor HashStrictness.AdvisoryWarning` |
+| No floor configured, a `Custom` node with **no** hash | Unchanged — it renders | — |
+| `installCustomHashFloor HashStrictness.Enforced`, relying on it to refuse a hash-less node | It renders; `Enforced` governs mismatch now | `installCustomHashFloor HashStrictness.StrictReplay` |
+| `installCustomHashFloor HashStrictness.StrictReplay` | Unchanged in every arm | — |
+| A tree writing an unprefixed host slot | Unchanged until you declare it | — |
+
+The third row is the only one that LOSES a refusal, and it loses it to a floor that is still
+reachable by name in the same call. Note the second and third rows together are the whole reason the
+flip does not break upgrades: what the enforcing default refuses is a hash that DISAGREES, which no
+correct tree has.
+
+**What does NOT move.** The wire format is untouched — nothing here is encoded, decoded or refused
+that was accepted before, and no corpus fixture moved. `ContentHash` remains drift detection and
+never authentication of the tree; the flip changes what an unconfigured host does with a
+disagreement, not what a match proves. Tree writes are still not re-namespaced into a sandbox, for
+the reason 0.14.0 recorded: the declarative write-back loop needs tree writes and tree reads to name
+the same key. And a host that has declared no reserved key beyond the prefix gets byte-identical
+validator findings to before — `FUARAN149`'s second shape is silent unless the host has demonstrated
+that it has pre-convention slots and is closing them, because the validator cannot see the host and
+must not guess.
+
+**Version — it RIDES the standing untagged 0.79.0 draft.** `v0.78.1` is the newest tag; 0.79.0 is
+untagged and no public-path consumer pins it, so it is a draft slot under the draft-slot rule. It
+already carries a breaking class (Phase 1611's required `VisualisationContext` field, Phase 1545's
+three added record fields), and this entry is breaking of the same class — behavioural rather than
+signature-level, which is if anything a lower adoption cost than the FS0764 the draft already
+imposes. So the number does not move.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged. **No escape hatch is created or widened** — both changes NARROW
+existing ones, which is why the hatch-inventory rule bites the other way here: the two entries under
+"The advisory defaults" in the estate escape-hatch inventory are amended in the same change-set to
+record that each default now refuses and how its permissive posture is named. Migration note:
+[`docs/migrations/1550-fail-open-defaults-flip.md`](docs/migrations/1550-fail-open-defaults-flip.md).
