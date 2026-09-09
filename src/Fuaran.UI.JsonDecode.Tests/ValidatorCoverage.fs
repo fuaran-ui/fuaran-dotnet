@@ -28,19 +28,8 @@ open System
 open System.IO
 open System.Text
 
-/// The repo root — the directory holding `Fuaran.sln` — walking up from the
-/// test binary. `None` only if this assembly has been copied out of the repo.
-let tryRepoRoot () : string option =
-    let rec climb (dir: DirectoryInfo | null) : string option =
-        match dir with
-        | null -> None
-        | d ->
-            if File.Exists(Path.Combine(d.FullName, "Fuaran.sln")) then
-                Some d.FullName
-            else
-                climb d.Parent
-
-    climb (DirectoryInfo AppContext.BaseDirectory)
+/// The repo root, via the shared resolver beside the corpus one (Phase 1647).
+let tryRepoRoot () : string option = Fuaran.Tests.CorpusRoot.tryRepoRoot ()
 
 [<Literal>]
 let fileName = "validator-coverage.json"

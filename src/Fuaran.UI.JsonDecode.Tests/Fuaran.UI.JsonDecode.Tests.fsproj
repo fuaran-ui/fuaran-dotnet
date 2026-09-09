@@ -161,6 +161,7 @@
          assertion that goes red the day either becomes a wire member. -->
     <Compile Include="HostOnlyEnvelopeTests.fs" />
     <Compile Include="StaticTableSourceTests.fs" />
+    <Compile Include="IdlCopyTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

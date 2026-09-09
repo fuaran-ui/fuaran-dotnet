@@ -114,3 +114,20 @@ let find () : string =
 [<Literal>]
 let AbsentSkipReason =
     "wire-format-fixtures/ absent (single-repo or worktree checkout) — set FUARAN_WIRE_FIXTURES to its path to check it"
+
+/// THIS repo's root — the directory holding `Fuaran.sln` — walking up from the
+/// test binary. Beside the corpus resolver because it answers the sibling
+/// question and has the same two callers' shape: several places need to read a
+/// committed file by repo-relative path, and each was climbing for itself.
+/// `None` only where this assembly has been copied out of the repo.
+let tryRepoRoot () : string option =
+    let rec climb (dir: DirectoryInfo | null) : string option =
+        match dir with
+        | null -> None
+        | d ->
+            if File.Exists(Path.Combine(d.FullName, "Fuaran.sln")) then
+                Some d.FullName
+            else
+                climb d.Parent
+
+    climb (DirectoryInfo AppContext.BaseDirectory)

@@ -716,6 +716,38 @@ let emit (outputDir: string) : unit =
     // test asserts byte-equality between this file and SchemaGen.wireFormatSchema.
     File.WriteAllText(Path.Combine(outputDir, "schema.json"), Fuaran.UI.Ops.SchemaGen.wireFormatSchema)
 
+    // Phase 1647 — co-emit the IDL vocabulary copy, which was HAND-CARRIED.
+    //
+    // The manifest has pointed at `idl.json` since Phase 696, and nothing wrote
+    // it: a human copied `src/Fuaran.UI.Idl/idl.json` across whenever they
+    // remembered. The failure that makes is not a stale file, it is a stale
+    // file NOBODY CAN SEE — the Phase 699 projection test compares
+    // `WIRE_FORMAT.md` against the CORPUS copy, so when the copy is behind, the
+    // spec and the copy are CONSISTENTLY behind and `--check-spec` goes green.
+    // Phase 1122 watched the §11 Motion enum line keep eight cases that way.
+    //
+    // Copying it here (rather than hand-carrying, or leaving the guard alone to
+    // catch it) is what makes the pointer honest: the artefact the manifest
+    // names is now written by the same command that writes everything else the
+    // manifest names. `IdlCopyTests` beside this is the authoring-side guard,
+    // for the case where someone regenerates the vocabulary and not the corpus.
+    match Fuaran.Tests.CorpusRoot.tryRepoRoot () with
+    | Some repoRoot ->
+        let authored = Path.Combine(repoRoot, "src", "Fuaran.UI.Idl", "idl.json")
+
+        if File.Exists authored then
+            // LF on every platform, matching every other emitted artefact — a
+            // CR here is invisible to `git status` under the repo's eol=lf
+            // normalisation and visible only to a byte-comparing consumer.
+            File.WriteAllText(Path.Combine(outputDir, "idl.json"), File.ReadAllText(authored).Replace("\r\n", "\n"))
+        else
+            failwithf "the authored IDL vocabulary is absent at %s — the corpus copy cannot be emitted." authored
+    | None ->
+        // Loud rather than silent: an emit that skipped this would leave the
+        // hand-carry in place while looking like it had ended it.
+        failwith
+            "could not locate the repo root (Fuaran.sln) from the emitting assembly, so idl.json was not co-emitted."
+
     // Co-emit the canonical pre-emit DEFECT VOCABULARY (Phase 669). Distinct
     // from `schema.json`, which answers "is this payload legal on the wire?" —
     // this answers "what may a conformant host's pre-emit validator refuse?",
