@@ -223,12 +223,62 @@ let private packableProjects =
 let private canonicalCss =
     Path.Combine(repoRoot, "src", "Fuaran.UI.Renderer", "content", "fuaran-reference.css")
 
-/// The tier copies, keyed by the sibling repo shipping each. Resolved through
-/// the same `..` hop above this repo that the wire-corpus gate uses.
+/// Phase 1647 — where each tier's repo root is, per tier.
+///
+/// The default is the `..` hop above this repo, which is what a normal
+/// workspace checkout wants. It is also what makes `-- Css` WRITE INTO SIBLING
+/// PRIMARY TREES: a worker running the sync from a git worktree rewrites four
+/// files in four checkouts it does not own, where a concurrent session may have
+/// uncommitted work — so a campaign that touches the canonical stylesheet
+/// cannot safely run the generator at all.
+///
+/// `FUARAN_CSS_SIBLINGS` redirects it. The value is a `;`-separated list of
+/// `<tier>=<repo root>` entries; a tier the list does not name keeps the
+/// default hop, so pointing ONE tier at a worktree is as expressible as
+/// pointing all four:
+///
+///     $env:FUARAN_CSS_SIBLINGS = "fuaran-ts=C:\repos\Fuaran-ToolUp\wt\ts-1648"
+///     $env:FUARAN_CSS_SIBLINGS = "fuaran-ts=…\wt\ts;fuaran-go=…\wt\go"
+///
+/// A malformed entry — no `=`, an unknown tier, an empty path — is REFUSED
+/// rather than ignored: silently keeping the default would write into the very
+/// primary tree the override was set to protect, which is the one failure this
+/// seam exists to prevent.
+let private cssSiblingRoots: Map<string, string> =
+    let known = set [ "fuaran-ts"; "fuaran-go"; "fuaran-rs"; "fuaran-py" ]
+
+    match System.Environment.GetEnvironmentVariable "FUARAN_CSS_SIBLINGS" with
+    | null
+    | "" -> Map.empty
+    | raw ->
+        raw.Split(
+            ';',
+            System.StringSplitOptions.RemoveEmptyEntries
+            ||| System.StringSplitOptions.TrimEntries
+        )
+        |> Array.map (fun entry ->
+            match entry.Split('=', 2) with
+            | [| tier; path |] when known.Contains(tier.Trim()) && path.Trim() <> "" ->
+                tier.Trim(), Path.GetFullPath(path.Trim())
+            | _ ->
+                failwithf
+                    "FUARAN_CSS_SIBLINGS: '%s' is not a '<tier>=<repo root>' entry naming one of %A. An override that cannot be read must not fall back to the default — that would write into the primary tree it was set to protect."
+                    entry
+                    (Set.toList known))
+        |> Map.ofArray
+
+/// The root of one tier's repo — the override if the list names it, else the
+/// historical `..` hop.
+let private cssSiblingRoot (tier: string) =
+    match Map.tryFind tier cssSiblingRoots with
+    | Some root -> root
+    | None -> Path.Combine(repoRoot, "..", tier)
+
+/// The tier copies, keyed by the sibling repo shipping each.
 let private tierCssCopies =
-    [ "fuaran-ts", Path.Combine(repoRoot, "..", "fuaran-ts", "packages", "renderer", "css", "fuaran.css")
-      "fuaran-go", Path.Combine(repoRoot, "..", "fuaran-go", "renderer", "content", "fuaran-reference.css")
-      "fuaran-rs", Path.Combine(repoRoot, "..", "fuaran-rs", "css", "fuaran.css")
+    [ "fuaran-ts", Path.Combine(cssSiblingRoot "fuaran-ts", "packages", "renderer", "css", "fuaran.css")
+      "fuaran-go", Path.Combine(cssSiblingRoot "fuaran-go", "renderer", "content", "fuaran-reference.css")
+      "fuaran-rs", Path.Combine(cssSiblingRoot "fuaran-rs", "css", "fuaran.css")
       // Phase 1082 rider — `fuaran-py` was the one tier shipping a byte-copy of
       // the canonical sheet that Phase 432 never registered here. Its own
       // byte-parity test (`tests/test_renderer.py`) compared against the
@@ -238,7 +288,7 @@ let private tierCssCopies =
       // Phase 432 closed for ts/go/rs, and py was outside it by omission rather
       // than by decision.
       "fuaran-py",
-      Path.Combine(repoRoot, "..", "fuaran-py", "src", "fuaran_py", "renderer", "content", "fuaran-reference.css") ]
+      Path.Combine(cssSiblingRoot "fuaran-py", "src", "fuaran_py", "renderer", "content", "fuaran-reference.css") ]
 
 // ─── Phase 433 — the vocabulary fingerprint stamp ──────────────────────────
 //
