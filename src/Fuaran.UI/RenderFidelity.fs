@@ -142,6 +142,16 @@ type ObligationClaim =
     /// behind is unavailable when it is fully interactive. `role="dialog"` is
     /// carried by both, so the claim is about the attribute, not the role.
     | AriaModalOnlyWhenBlocking
+    /// Every DECLARED upload ceiling is recorded as READ, and never by VALUE
+    /// (Phase 1548). This floor degrades entirely — HTML has no attribute for a
+    /// byte ceiling, and `multiple` is a boolean rather than a count — so a
+    /// static host emits the plain picker and marks each declared ceiling with a
+    /// `data-fuaran-upload-max-bytes` / `data-fuaran-upload-max-files` attribute
+    /// saying only that the declaration was read. The value is withheld
+    /// deliberately: nothing on this path can act on the number, so emitting it
+    /// would invite a reader to believe this tier enforces it. Both directions
+    /// are the claim — an undeclared ceiling emits no marker.
+    | CeilingRecordedNeverEnforced
 
 /// The stable wire token for a claim. This is what the artefact carries and what
 /// a host's checker registry is keyed by, so it may not change without a version
@@ -165,6 +175,7 @@ let claimId (claim: ObligationClaim) : string =
     | ObligationClaim.RefusedEmbedSourceOmitted -> "refused-embed-source-omitted"
     | ObligationClaim.PickerAlwaysPresent -> "picker-always-present"
     | ObligationClaim.AriaModalOnlyWhenBlocking -> "aria-modal-only-when-blocking"
+    | ObligationClaim.CeilingRecordedNeverEnforced -> "ceiling-recorded-never-enforced"
 
 /// What the claim MEANS, kind-independently — the vocabulary entry a host reads
 /// when it meets a claim id it does not yet implement, so "unchecked" can be
@@ -205,6 +216,8 @@ let claimMeaning (claim: ObligationClaim) : string =
         "a declared ingress gesture is additional: the file picker and its label are emitted whatever the document declares, so the keyboard-accessible route survives and a no-script host renders a working upload"
     | ObligationClaim.AriaModalOnlyWhenBlocking ->
         "the aria-modal inertness claim is emitted for the blocking modality alone; a non-blocking anchored surface carries the dialog role without it, because the page behind it is genuinely still available"
+    | ObligationClaim.CeilingRecordedNeverEnforced ->
+        "each declared ceiling is recorded as read with a marker carrying no value, and an undeclared ceiling emits no marker at all - the value is withheld because nothing in this tier can act on it"
 
 /// The closed vocabulary, in declaration order.
 ///
@@ -229,7 +242,8 @@ let allClaims: ObligationClaim list =
       ObligationClaim.SandboxAlwaysExactlyDeclared
       ObligationClaim.RefusedEmbedSourceOmitted
       ObligationClaim.PickerAlwaysPresent
-      ObligationClaim.AriaModalOnlyWhenBlocking ]
+      ObligationClaim.AriaModalOnlyWhenBlocking
+      ObligationClaim.CeilingRecordedNeverEnforced ]
 
 /// One obligation as a row declares it: which claim, the normative sentence for
 /// THIS kind, and the spec section that states it.
@@ -548,19 +562,27 @@ let all: FidelityRow list =
       (row
           "FileUpload"
           false
-          "the accept / multiple declarations, the label, and the two Phase 1115 ingress declarations (`dropTarget` / `acceptPaste`)"
+          "the accept / multiple declarations, the label, the two Phase 1115 ingress declarations (`dropTarget` / `acceptPaste`) and the two Phase 1548 ceilings (`maxBytes` / `maxFiles`)"
           "the file control with its classes and `disabled` state, carrying no event handlers. The ingress declarations degrade to the PLAIN PICKER: a drop needs a `drop` listener and a paste needs a `paste` one, and no CSS observes a drag, so a static host emits the control it always emitted and marks each declared gesture with a `data-fuaran-upload-drop` / `data-fuaran-upload-paste` attribute recording that the declaration was read - the marker is NOT coverage and nothing in this tier acts on it"
           (RichTier.Behavioural(
               "selection handling is wired on hydration, and a client tier honouring `dropTarget` / `acceptPaste` writes dropped or pasted files into the control's OWN input so the same selection path and the same `Accept` filter run whatever route the file arrived by",
               "the control is inert server-side (Phase 143); the `onSelect` payload is non-scalar and needs host wiring"
           ))
-          [ "upload-1"; "upload-drop-1"; "upload-paste-1" ]
-          "Phase 1115; WIRE_FORMAT.md 3.6.10; docs/SSR.md (Input - rendered inert)"
+          [ "upload-1"
+            "upload-drop-1"
+            "upload-paste-1"
+            "upload-max-bytes-1"
+            "upload-max-files-1" ]
+          "Phase 1115; Phase 1548; WIRE_FORMAT.md 3.6.10 + 3.6.23; docs/SSR.md (Input - rendered inert)"
        |> obliged
            [ owes
                  ObligationClaim.PickerAlwaysPresent
                  "WIRE_FORMAT.md 3.6.10"
-                 "the `<input type=\"file\">` and its label are emitted whatever gestures the document declares - a drop zone is an ADDITIONAL route and never a replacement, which is what keeps the keyboard-accessible route intact and what makes the no-script floor a working upload rather than an inert box" ])
+                 "the `<input type=\"file\">` and its label are emitted whatever gestures the document declares - a drop zone is an ADDITIONAL route and never a replacement, which is what keeps the keyboard-accessible route intact and what makes the no-script floor a working upload rather than an inert box"
+             owes
+                 ObligationClaim.CeilingRecordedNeverEnforced
+                 "WIRE_FORMAT.md 3.6.23"
+                 "a declared `maxBytes` / `maxFiles` is marked read and NEVER carried by value, and an undeclared one is marked not at all - this tier can enforce neither ceiling, so a marker holding the number would claim an enforcement that is not there" ])
 
       row
           "Filters"

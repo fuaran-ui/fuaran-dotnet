@@ -787,6 +787,57 @@ let private checkPickerAlwaysPresent () =
         (contains "data-fuaran-upload-drop" plain)
         "…and an upload that declares neither carries neither marker"
 
+// Phase 1548 — the ceiling-recorded-never-enforced checker. Two claims in one,
+// and the second is the one a marker-emission test alone would miss: the marker
+// records only THAT a ceiling was declared, so a host that put the NUMBER in the
+// markup would pass an emission assertion while telling a reader this tier
+// enforces a bound it cannot enforce at all.
+let private uploadWithCeilings maxBytes maxFiles : Node<obj> =
+    Fuaran.fileUpload
+        "up-ceiling"
+        { Defaults.fileUpload with
+            Label = TextSource.Literal "Attach a scan"
+            Accept = [ "application/pdf" ]
+            MaxBytes = maxBytes
+            MaxFiles = maxFiles }
+
+let private checkCeilingRecordedNeverEnforced () =
+    let bytes = render (uploadWithCeilings (Some 5242880) None)
+
+    Expect.isTrue
+        (contains "data-fuaran-upload-max-bytes=\"declared\"" bytes)
+        "a declared byte ceiling is recorded, so the declaration is visibly read rather than dropped"
+
+    Expect.isFalse
+        (contains "5242880" bytes)
+        "…and its VALUE is nowhere in the markup — nothing in this tier can act on the number, so carrying it would claim an enforcement that is not there"
+
+    Expect.isFalse
+        (contains "data-fuaran-upload-max-files" bytes)
+        "…and the count marker is absent when the count member is, so the two are recorded independently"
+
+    let files = render (uploadWithCeilings None (Some 3))
+
+    Expect.isTrue
+        (contains "data-fuaran-upload-max-files=\"declared\"" files)
+        "a declared count ceiling is recorded on the same terms"
+
+    Expect.isFalse
+        (contains "data-fuaran-upload-max-bytes" files)
+        "…and the byte marker is absent when the byte member is"
+
+    // The polarity, which is what makes the members additive: an upload
+    // declaring neither is byte-identical in render to what it always was.
+    let plain = render (uploadWithCeilings None None)
+
+    Expect.isFalse
+        (contains "data-fuaran-upload-max-" plain)
+        "an upload declaring no ceiling carries no ceiling marker at all"
+
+    Expect.isTrue
+        (contains "type=\"file\"" plain && contains "type=\"file\"" bytes)
+        "and a declared ceiling changes nothing about the control itself — the picker is emitted either way"
+
 // Phase 1119 — the aria-modal-only-when-blocking checker. Both directions are
 // pinned, and the second is the one that matters: a host that implemented the
 // popover by re-styling the modal would emit `aria-modal="true"` on a surface
@@ -894,6 +945,7 @@ let private checkers: ((string * string) * (unit -> unit)) list =
       ("Embed", "sandbox-always-exactly-declared"), checkEmbedSandboxAlwaysExactlyDeclared
       ("Embed", "refused-embed-source-omitted"), checkRefusedEmbedSourceOmitted
       ("FileUpload", "picker-always-present"), checkPickerAlwaysPresent
+      ("FileUpload", "ceiling-recorded-never-enforced"), checkCeilingRecordedNeverEnforced
       ("Modal", "aria-modal-only-when-blocking"), checkAriaModalOnlyWhenBlocking
       ("Tree", "accessible-name-always"), checkTreeAccessibleNameAlways ]
 
