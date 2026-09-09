@@ -21,6 +21,9 @@ let private call (providerId: string) (outcome: ProviderCallOutcome) : ProviderC
       SessionId = Some "s"
       PromptId = Some "p"
       UserId = "test"
+      // Phase 1637 — the drift detector reads outcomes and nothing else, so the
+      // subject is `None` here to pin that the signal is unaffected by the field.
+      Subject = None
       Timestamp = DateTimeOffset(2026, 6, 14, 12, 0, 0, TimeSpan.Zero) }
 
 [<Tests>]

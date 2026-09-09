@@ -18,6 +18,9 @@
     <Compile Include="DriftTests.fs" />
     <Compile Include="ProviderDriftTests.fs" />
     <Compile Include="StyleDriftTests.fs" />
+    <!-- Phase 1637: the provider-call subject — the additive claim about the sink
+         and the redaction rule on the subject's own constructor. -->
+    <Compile Include="ProviderSubjectTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

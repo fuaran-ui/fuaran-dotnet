@@ -668,7 +668,22 @@
          `Binding.Computed` now raises where it used to answer the slot's zero.
          See STABILITY.md "Recorded change - 0.78.0, a wire-complete
          `Binding.Local`". -->
-    <Version>0.79.0</Version>
+
+    <!-- (0.79.0) - released as a BREAKING slot; its account is STABILITY.md
+         "Release note - 0.79.0, a BREAKING release", which supersedes a comment
+         here because four separate changes landed on that one slot.
+
+         (0.80.0) - `ProviderCallTelemetry` gains
+         `Subject: TelemetrySubject option`, the resolved identity a provider call
+         was made under. Additive on the wire (omitted when absent, no fixture byte
+         moves) and FS0764-shaped for a full-literal constructor, so it is the same
+         record-widening class as the entries above. It ADVANCES rather than riding
+         0.79.0 because v0.79.0 is TAGGED - that slot is released, not a draft, so
+         a public-contract change cannot be repacked into it. `IFuaranTelemetrySink`
+         gains no member, which is checked rather than asserted. See STABILITY.md
+         "0.80.0 - the provider-call telemetry record carries the subject it was
+         made under". -->
+    <Version>0.80.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

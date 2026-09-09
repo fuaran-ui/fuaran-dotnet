@@ -33,6 +33,23 @@ open System
 //  the `OpApplyTelemetry` / `DenyTelemetry` ids are — operator-initiated and
 //  non-session-bound calls legitimately have no value.
 //
+//  `Subject` (Phase 1637) is a SECOND principal beside `UserId`, and the two do
+//  not replace one another. `UserId` is the tenant-side principal the engine
+//  entity is scoped to — who the work is for. `Subject` is the identity the call
+//  was actually MADE UNDER once the host resolved access: whose key paid for it,
+//  whose quota it drew on. They coincide in the ordinary case and diverge in
+//  exactly the cases a reader of their own telemetry needs to see — a
+//  service-account fallback, a delegated identity, a misconfigured resolver
+//  attributing every call to one subject. Without it a tenant cannot verify the
+//  per-identity attribution a runtime promises them, and a wrong resolution is
+//  invisible until a bill is wrong.
+//
+//  It is OPTIONAL and defaults to `None`, so every existing construction and
+//  every existing sink is unchanged, and a host that resolves no identity says
+//  so by absence rather than by a placeholder. Its id is opaque to this tier and
+//  its kind is drawn from the host's own vocabulary — the public tier coins no
+//  identity vocabulary, exactly as it coins no operation vocabulary above.
+//
 //  FGP 4 (diagnostics under both pipelines): the record shape is Fable-
 //  compatible (no closures, no `System.Security.Cryptography`); `DateTimeOffset`
 //  rounds through Fable cleanly per the `OpApplyTelemetry` / `RenderFailure`
@@ -124,16 +141,125 @@ module ProviderCallOutcome =
 /// `ProviderCallTelemetry.TokenUsage = None` rather than zeroes.
 type ProviderTokenUsage = { InputTokens: int; OutputTokens: int }
 
+/// The resolved identity a provider call was made under — an opaque `Id` plus a
+/// host-owned `Kind`, and **never a credential**.
+///
+/// `Id` is opaque to this tier: it is compared and reported, never parsed. `Kind`
+/// says what sort of identity it is (a user, a service account, a tenant, …) in
+/// whatever vocabulary the host already uses for the distinction; the public tier
+/// records the tag and does not interpret it, the same posture
+/// `ProviderOperation.Other` takes for a call-site label.
+///
+/// **Construct through `TelemetrySubject.create`.** It is the supported
+/// constructor and it refuses key material, so a host that resolves an identity
+/// badly gets no record rather than a record carrying a secret. A record literal
+/// compiles — the type is public because sinks read it — and it is the caller's
+/// own guarantee at that point; this project's redaction posture for a durable
+/// record is that the value never enters it, and `create` is where that is
+/// enforced for this one.
+type TelemetrySubject = { Id: string; Kind: string }
+
+[<RequireQualifiedAccess>]
+module TelemetrySubject =
+
+    /// Credential shapes this tier refuses to carry, lower-cased and matched as
+    /// PREFIXES of the trimmed id: the two `Authorization`-header spellings (a
+    /// header value is not an identity), the widely-used secret-key prefixes,
+    /// the issued-token prefixes of common code-hosting and chat platforms,
+    /// cloud access-key ids, and the opening line of a PEM block of any kind.
+    ///
+    /// Deliberately prefix shapes and NOT an entropy or length score. A
+    /// legitimate subject id is routinely a long opaque string — a GUID, a
+    /// directory object id, a hashed pseudonym — so a length or entropy
+    /// heuristic refuses real identities while catching no credential a prefix
+    /// does not already catch. A guard that fires on correct input is one hosts
+    /// route around, and a routed-around guard protects nothing.
+    let private secretPrefixes =
+        [ "bearer "
+          "basic "
+          "sk-"
+          "sk_"
+          "ghp_"
+          "gho_"
+          "ghu_"
+          "ghs_"
+          "ghr_"
+          "github_pat_"
+          "xoxb-"
+          "xoxp-"
+          "xoxa-"
+          "xoxs-"
+          "xoxr-"
+          "xapp-"
+          "akia"
+          "asia"
+          "aiza"
+          "-----begin" ]
+
+    /// True when `id` has the shape of key material rather than of an identity.
+    /// Public so a host decoding a subject off its own wire can apply the same
+    /// rule at its own boundary, where `create` is not on the path.
+    ///
+    /// What it does NOT claim: it is a shape test, not a secret detector. An
+    /// opaque credential with no recognisable prefix passes it, and that is the
+    /// honest limit — the guard narrows an obvious and repeatedly-observed
+    /// mistake (pasting the credential where the identity goes) and never
+    /// licenses a host to stop caring what it puts here.
+    let looksLikeKeyMaterial (id: string) : bool =
+        if String.IsNullOrWhiteSpace id then
+            false
+        else
+            let normalised = id.Trim().ToLowerInvariant()
+
+            let jwtShaped =
+                // A compact JWS/JWT: a base64url-encoded JSON header (which always
+                // begins `eyJ`) followed by two more dot-separated segments.
+                normalised.StartsWith "eyj"
+                && (normalised |> Seq.sumBy (fun c -> if c = '.' then 1 else 0)) >= 2
+
+            jwtShaped
+            || secretPrefixes
+               |> List.exists (fun (prefix: string) -> normalised.StartsWith prefix)
+
+    /// The supported constructor. `Error` carries a stable, key-free
+    /// classification token — `blank-kind` / `blank-id` / `key-material` — on the
+    /// same convention `ProviderCallOutcome.name` uses above, so a host can log
+    /// WHY a subject was refused without logging the value that was refused.
+    ///
+    /// A blank id or kind is refused as well as key material: a record asserting
+    /// that a call was made under the empty identity carries no attribution at
+    /// all, and absence already has a spelling (`Subject = None`).
+    let create (kind: string) (id: string) : Result<TelemetrySubject, string> =
+        if String.IsNullOrWhiteSpace kind then Error "blank-kind"
+        elif String.IsNullOrWhiteSpace id then Error "blank-id"
+        elif looksLikeKeyMaterial id then Error "key-material"
+        else Ok { Id = id; Kind = kind }
+
 /// One outbound provider call's worth of telemetry, surfaced to the configured
 /// `IFuaranTelemetrySink` from the orchestration engine's provider call site.
 type ProviderCallTelemetry =
-    { ProviderId: string
-      ModelId: string
-      Operation: ProviderOperation
-      Outcome: ProviderCallOutcome
-      LatencyMs: float
-      TokenUsage: ProviderTokenUsage option
-      SessionId: string option
-      PromptId: string option
-      UserId: string
-      Timestamp: DateTimeOffset }
+    {
+        ProviderId: string
+        ModelId: string
+        Operation: ProviderOperation
+        Outcome: ProviderCallOutcome
+        LatencyMs: float
+        TokenUsage: ProviderTokenUsage option
+        SessionId: string option
+        PromptId: string option
+        UserId: string
+        /// The resolved identity this call was made under, when the host resolved
+        /// one — beside `UserId`, never instead of it (see the header note). It
+        /// carries NO key material: construct it through `TelemetrySubject.create`,
+        /// which refuses a credential-shaped id.
+        ///
+        /// **Absent-at-`None` on the wire.** This tier ships no encoder for this
+        /// record — `TokenUsage` above sits under the same condition — so the
+        /// obligation is on a host encoder, and it is the one every optional member
+        /// in this format already carries: a `None` member is OMITTED, not written
+        /// as null or as an empty subject. A record that predates the field, and one
+        /// from a host that resolves no identity, therefore serialise identically to
+        /// what they serialised before.
+        Subject: TelemetrySubject option
+        Timestamp: DateTimeOffset
+    }

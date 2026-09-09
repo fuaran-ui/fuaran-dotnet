@@ -315,6 +315,7 @@ path – a simple linear tree app carries zero DAG overhead.
 ### `Fuaran.UI.Telemetry.Abstractions`
 - `OpApplyTelemetry`, `DenyTelemetry`, `OpKind`, `CacheStatTelemetry` records.
 - The `IFuaranTelemetrySink` interface. Adding a new abstract member (Phase 183 added `RecordCacheStat`, after Phase 171's `RecordProviderCall`) is an **additive pre-1.0 minor** event on this still-stabilising contract – direct implementers add `member _.RecordCacheStat _ = ()` alongside their existing members. It becomes a breaking change once `Fuaran.UI` ships `1.0.0`.
+- `TelemetrySubject` + `TelemetrySubject.create` / `TelemetrySubject.looksLikeKeyMaterial` (Phase 1637) – the resolved identity a provider call was made under, carried as the optional `ProviderCallTelemetry.Subject`. The id is opaque to this tier and the kind is the host's own vocabulary; `create` is the supported constructor and refuses a credential-shaped id.
 
 ### `Fuaran.UI.Memo`
 - The incremental re-derivation engine `Engine<'Msg>` (`Apply` / `Reapply`) + the `Derivation<'Msg>` record (Phase 183) – effect-aware memoisation over `FragmentApply.apply`. Transparent: no wire change, no change to apply semantics.
@@ -7709,3 +7710,78 @@ against what the draft already imposes and the number does not move.
 admission gates are not engaged. **No escape hatch is created or widened**: both members NARROW what
 a control accepts, and neither introduces a seam, a registry or a default that fails open — a
 document that declares no ceiling is exactly the control it was.
+
+---
+
+## 0.80.0 — the provider-call telemetry record carries the subject it was made under (Phase 1637)
+
+**Additive on the wire, RECORD-WIDENING at the source, and the two are not the same statement — read
+the second one before adopting.** `Fuaran.UI.Telemetry.Abstractions`'s `ProviderCallTelemetry` gains
+
+```fsharp
+Subject: TelemetrySubject option   // where TelemetrySubject = { Id: string; Kind: string }
+```
+
+placed after `UserId` and before `Timestamp`. An optional field on a record consumers **construct**
+is source-breaking at every FULL-LITERAL construction — `FS0764`, the same class this document
+records for `FileUploadSpec` and `Render.RenderContext` — and it is *not* breaking at a
+`{ existing with … }` copy, at a pattern that names its fields, or at a sink that only reads. So
+"additive" is true of the emitted bytes and of every consumer that receives the record, and false of
+a consumer that builds one from scratch. Naming both is the point of this paragraph.
+
+**What it is for.** `UserId` is the tenant-side principal the engine entity is scoped to — who the
+work is for. `Subject` is the identity the call was actually made under once the host resolved
+access: whose key paid for it, whose quota it drew on. **`UserId` stays**, and this field does not
+replace it: the two coincide in the ordinary case and diverge in exactly the cases a tenant reading
+their own telemetry needs to see — a service-account fallback, a delegated identity, a misconfigured
+resolver attributing every call to one subject. Without the field, per-identity attribution is a
+promise the runtime makes and the telemetry cannot evidence, and a wrong resolution stays invisible
+until a bill is wrong.
+
+**The sink is untouched, and that is checked rather than asserted.** `IFuaranTelemetrySink` gains no
+member. Every previous member add on that interface — `RecordProviderCall` (171), `RecordCacheStat`
+(183), `RecordValidateOutcome` (330) — was a documented pre-1.0 minor that every direct implementer
+paid for, so this release saying "not that one" is worth proving. `ProviderSubjectTests.fs` proves it
+twice: an object expression implementing exactly the six members must still compile (a seventh member
+would break the build), and the reflected member set must equal the six by name (which additionally
+catches a rename or a removal). A third case pins `RecordProviderCall`'s parameter type, so the field
+is demonstrably riding the record rather than the signature.
+
+**The subject carries no key material, refused at construction.** `TelemetrySubject.create kind id`
+is the supported constructor and returns `Result<TelemetrySubject, string>`; the `Error` is a stable,
+key-free classification token — `blank-kind` / `blank-id` / `key-material` — on the same convention
+`ProviderCallOutcome.name` already uses, so a host can log *why* a subject was refused without
+logging the value that was refused. `TelemetrySubject.looksLikeKeyMaterial` is public so a host
+decoding a subject off its own wire can apply the same rule where `create` is not on the path.
+
+The rule is **anchored prefix shapes** over the trimmed, lower-cased id — the two `Authorization`
+header spellings, the common secret-key prefixes, the issued-token prefixes of widespread code-hosting
+and chat platforms, cloud access-key ids, a PEM opening line — plus the compact-JWT shape (`eyJ` and
+at least two dot separators). It is deliberately **not** an entropy or length score: a legitimate
+subject id is routinely a long opaque string — a GUID, a directory object id, a hashed pseudonym — so
+such a heuristic refuses real identities while catching no credential a prefix does not already catch,
+and a guard that fires on correct input is one hosts route around. **What it does not claim:** it is a
+shape test, not a secret detector. An opaque credential with no recognisable prefix passes it. It
+narrows an obvious and repeatedly-observed mistake and licenses nobody to stop caring what they put
+here. The type stays a plain public record because sinks read it, so a record literal still compiles
+and is the caller's own guarantee at that point.
+
+**Absent-at-`None` on the wire.** This tier ships no encoder for this record — `TokenUsage` has sat
+under the same condition since 171 — so the obligation falls on a host encoder, and it is the one
+every optional member in this format already carries: a `None` member is OMITTED, never written as
+null or as an empty subject. A record from a host that resolves no identity therefore serialises
+exactly as it did before this release.
+
+**What moves besides the record.** Nothing shipped. The two full-literal constructions in this
+repository are both in the telemetry suite and gain `Subject = None`; the four sinks in
+`Fuaran.UI.Telemetry.Default` and the drift detector in `Fuaran.UI.Telemetry.Drift` only read fields
+and are unchanged, including their rendered output. No wire fixture byte moves and no schema changes.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged. **No escape hatch is created or widened**: the field admits no
+behaviour, reaches no seam, and its constructor NARROWS what may be recorded.
+
+**Version — it ADVANCES to 0.80.0 rather than riding 0.79.0.** `v0.79.0` is tagged: that slot is
+released, not a draft, so under the draft-slot rule a public-contract change cannot be repacked into
+it. The increment is one pre-1.0 minor, which is what this project's own precedent assigns to a
+source-breaking change of this class, and 0.80.0 is the version the field first ships on.

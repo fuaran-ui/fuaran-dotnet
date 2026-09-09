@@ -39,6 +39,9 @@ let private sampleProviderCall: ProviderCallTelemetry =
       SessionId = Some "session-1"
       PromptId = Some "prompt-A"
       UserId = "user-1"
+      // Phase 1637 — the default. A sink round trip must hold for the record a
+      // host that resolves no identity emits, which is every pre-1637 record.
+      Subject = None
       Timestamp = DateTimeOffset(2026, 5, 26, 12, 0, 2, TimeSpan.Zero) }
 
 [<Tests>]
