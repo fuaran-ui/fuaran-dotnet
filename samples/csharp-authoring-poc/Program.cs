@@ -123,6 +123,25 @@ internal static class Program
         if (args.Length > 0 && Directory.Exists(args[0]))
             return args[0];
 
+        // Phase 1647 — FUARAN_WIRE_FIXTURES, on the one contract every corpus
+        // reader in this repo honours. The variable names the corpus ROOT; this
+        // reader wants its `nodes/` family, so it combines. A git worktree is
+        // not beside the corpus, so without it the walk below finds nothing and
+        // this sample exits 2 — which is a gate failure about the checkout's
+        // shape, not about the veneer it exists to certify.
+        var overridePath = Environment.GetEnvironmentVariable("FUARAN_WIRE_FIXTURES")?.Trim();
+        if (!string.IsNullOrEmpty(overridePath))
+        {
+            var nodes = Path.Combine(overridePath, "nodes");
+            if (Directory.Exists(nodes))
+                return nodes;
+
+            Console.Error.WriteLine(
+                $"FUARAN_WIRE_FIXTURES is set to '{overridePath}', which has no nodes/ directory. " +
+                "It must name the corpus root itself.");
+            return null;
+        }
+
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
         {
             var dir = new DirectoryInfo(start);

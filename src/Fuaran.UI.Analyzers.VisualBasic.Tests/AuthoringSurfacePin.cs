@@ -245,10 +245,23 @@ internal static class AuthoringSurfacePin
     /// "everything checked".</summary>
     internal static string? FindIdl()
     {
-        var declared = Environment.GetEnvironmentVariable("FUARAN_WIRE_CORPUS");
+        // Phase 1647 — FUARAN_WIRE_FIXTURES is the estate's ONE corpus-root
+        // override, and this file used to be the only reader of a SECOND name.
+        // Two variables for one thing is the divergence the single-resolver work
+        // exists to end: a session that set the documented one got the walk here
+        // and a silent skip, on a checkout where every other reader had found
+        // the corpus. `FUARAN_WIRE_CORPUS` stays honoured as a deprecated alias
+        // so nothing that already sets it breaks, and is read SECOND.
+        var declared = Environment.GetEnvironmentVariable("FUARAN_WIRE_FIXTURES");
+
+        if (string.IsNullOrWhiteSpace(declared))
+        {
+            declared = Environment.GetEnvironmentVariable("FUARAN_WIRE_CORPUS");
+        }
+
         if (!string.IsNullOrWhiteSpace(declared))
         {
-            var direct = Path.Combine(declared, "idl.json");
+            var direct = Path.Combine(declared.Trim(), "idl.json");
             return File.Exists(direct) ? direct : null;
         }
 

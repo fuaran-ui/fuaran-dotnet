@@ -59,16 +59,7 @@ open Fuaran.UI.OpStream.Abstractions
 /// corpus. `None` in a bare single-repo clone — the same posture (and the same
 /// reason) as `ChainCorpusTests`: a missing input degrades to a skip and never
 /// takes the assembly's type initializer down with it.
-let private tryCorpusRoot () : string option =
-    let rec walk (dir: DirectoryInfo) =
-        if isNull dir then
-            None
-        elif File.Exists(Path.Combine(dir.FullName, "wire-format-fixtures", "manifest.json")) then
-            Some(Path.Combine(dir.FullName, "wire-format-fixtures"))
-        else
-            walk dir.Parent
-
-    walk (DirectoryInfo(AppContext.BaseDirectory))
+let private tryCorpusRoot () : string option = Fuaran.Tests.CorpusRoot.tryFind () // Phase 1647 — the ONE resolver
 
 let private corpusRoot = tryCorpusRoot ()
 
