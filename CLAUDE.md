@@ -191,6 +191,12 @@ does two things, and they answer different questions:
    always does, whose .NET conformance check goes through `System.IO.Compression` and therefore
    could never run on the pipeline that actually receives foreign bundles.
 
+   **This stage is the ONLY runner of the .NET leg** (Phase 1647). It was also rostered in
+   `test-suites.json`, so every full gate ran the .NET half twice — once as a suite and once here
+   as the comparison baseline — while the roster's note described the stage as the only runner.
+   The roster entry went; this run could not, being the baseline. One consequence worth knowing:
+   `-SkipFable` now skips the .NET laws too, which is what it already meant for the Node leg.
+
 Add a law by adding it to `tests/fable-laws/Laws.fs`; nothing there may use a construct Fable cannot
 lower (no Expecto, no `System.IO`, no reflection).
 

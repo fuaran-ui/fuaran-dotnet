@@ -1709,10 +1709,24 @@ let private inputJson (case: Case) : string =
             "{\"$type\":\"I18n\",\"args\":{},\"key\":\"" + esc key + "\"}"
         | _ -> failwith "chart-lowering inputs carry only Literal, Bound-of-Static and empty-args I18n text sources"
 
+    // Phase 1647 — no title is spelled by OMITTING the key, not by `null`.
+    //
+    // Three inputs carried `"title":null`. The harness contract read that as
+    // absent, which is how it has always behaved; the shipped wire decoder is
+    // stricter — it refuses `null` in a `TextSource` slot as ambiguous with
+    // absence — so a host that ever routed these inputs through its real decoder
+    // would reject fixtures every other host accepts. Both readings were legal
+    // only because this family is a neutral harness contract rather than a wire
+    // node, and "legal because nobody has joined them up yet" is not a contract.
+    //
+    // Omission is the arm to keep: it is what the wire's own one-canonical-form
+    // rule says, and it is already the posture of `valueFormat` and
+    // `axisUnitMode` immediately below, so the family now spells absence one way
+    // throughout rather than two.
     let title =
         match case.Title with
-        | Some t -> textSourceJson t
-        | None -> "null"
+        | Some t -> ",\"title\":" + textSourceJson t
+        | None -> ""
 
     // Phase 876 — both keys are OMITTED when absent, so the twelve pre-876
     // inputs stay byte-identical. `valueFormat` is canonical `Format` wire JSON
@@ -1820,7 +1834,7 @@ let private inputJson (case: Case) : string =
                ",\"annotations\":[" + (anns |> List.map one |> String.concat ",") + "]")
 
     sprintf
-        "{\"kind\":\"%s\",\"xField\":\"%s\",\"yFields\":[%s],\"title\":%s,\"stacked\":%s%s%s%s,\"data\":[%s]}"
+        "{\"kind\":\"%s\",\"xField\":\"%s\",\"yFields\":[%s]%s,\"stacked\":%s%s%s%s,\"data\":[%s]}"
         kind
         (esc case.XField)
         yFields

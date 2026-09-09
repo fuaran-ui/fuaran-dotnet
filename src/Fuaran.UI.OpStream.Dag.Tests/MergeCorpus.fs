@@ -174,6 +174,27 @@ let refusalFixtures: (string * string * Node<TestMsg> * Node<TestMsg> * Node<Tes
         baseTree
         |> applyOk (TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "B wrote this"))
 
+    // 3. Phase 1647 — the ONE style sub-facet whose case name is not its wire
+    //    spelling. `TextDirection` is `Auto` / `Ltr` / `Rtl` in the vocabulary
+    //    and `auto` / `ltr` / `rtl` on the wire; every other style sub-field's
+    //    two spellings coincide. The manifest's `refusalDescription` asserted
+    //    that coincidence as a RULE, which was true of five sub-fields and false
+    //    of this one — and no fixture reached it, so both the Rust and the
+    //    TypeScript hosts matched the reference's case-name spelling from the
+    //    reference's own source and each recorded the guess in a comment. Three
+    //    implementations agreeing because they read one another is not a pinned
+    //    contract. This fixture is what pins it: whatever the envelope's side
+    //    values spell for `style.direction`, the committed bytes now say so, and
+    //    a host that spells it the other way fails here rather than agreeing
+    //    with everyone about something nobody checked.
+    let directionA =
+        baseTree
+        |> applyOk (style (fun s -> { s with Direction = TextDirection.Ltr }) leftChildId)
+
+    let directionB =
+        baseTree
+        |> applyOk (style (fun s -> { s with Direction = TextDirection.Rtl }) leftChildId)
+
     [ "merge-refusal-concurrent-tone",
       "Both sides retone the same pane — a two-sided ConcurrentEdit refusal with no primacy pin",
       baseTree,
@@ -183,7 +204,12 @@ let refusalFixtures: (string * string * Node<TestMsg> * Node<TestMsg> * Node<Tes
       "Both sides insert the same NodeId with different content — refused naming the id, never an A-side default",
       baseTree,
       sameIdA,
-      sameIdB ]
+      sameIdB
+      "merge-refusal-concurrent-direction",
+      "Both sides set a different text direction on the same pane — the one style sub-facet whose case name (Ltr/Rtl) is not its wire spelling (ltr/rtl), so the envelope's side values are pinned rather than described",
+      baseTree,
+      directionA,
+      directionB ]
 
 /// The refusal ENVELOPE for a fixture. Fails loudly if the triad merges: a
 /// refusal fixture that stopped refusing would otherwise be committed as an
@@ -423,7 +449,7 @@ let emit (root: string) : unit =
     let manifest =
         "{\n  \"version\": 1,\n  \"description\": \"Fuaran merge-conformance corpus (Phase 179 + 184, additive). merge-3way: decode base/a/b, run the deterministic 3-way tree merge, assert byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-validator-gated (Phase 184): run the documented sample validator over the auto-merge, diff introduced defects vs both parents, assert encodeVerdict(introduced) byte-equal to verdictFile and sha256(verdict) == verdictHash. See fuaran-dotnet/docs/WIRE_FORMAT.md.\",\n  \"fixtures\": [\n"
         + System.String.Join(",\n", entries)
-        + "\n  ],\n  \"refusalDescription\": \"merge-refusal (Phase 1497, additive, SEPARATE key): decode base/a/b, run the 3-way merge, assert it REFUSES, and assert the canonically-encoded two-sided conflict envelope is byte-equal to envelopeFile with sha256(envelope) == envelopeHash. Swapping a and b must transpose each entry's 'a' and 'b' and change nothing else. Held under its own key because a host that iterates 'fixtures' expecting every entry to auto-merge is correct to do so. A side's 'value' is the contended cell's canonical encoding, EXCEPT for the style.* sub-facets, whose value is the sub-field's case name — that coincides with its wire spelling because every style sub-field is enum-shaped, and a host must not generalise it to a compound cell.\",\n  \"refusalFixtures\": [\n"
+        + "\n  ],\n  \"refusalDescription\": \"merge-refusal (Phase 1497, additive, SEPARATE key): decode base/a/b, run the 3-way merge, assert it REFUSES, and assert the canonically-encoded two-sided conflict envelope is byte-equal to envelopeFile with sha256(envelope) == envelopeHash. Swapping a and b must transpose each entry's 'a' and 'b' and change nothing else. Held under its own key because a host that iterates 'fixtures' expecting every entry to auto-merge is correct to do so. A side's 'value' is the contended cell's canonical WIRE encoding, and that holds for the style.* sub-facets too — a sub-facet's value is the sub-field's wire token, never its vocabulary case name. Until Phase 1647 this said the value was the CASE NAME, adding that the two coincide 'because every style sub-field is enum-shaped'. Both halves were wrong, and the second hid the first: five sub-fields do spell the two identically, so the description read as true against every fixture that existed, while style.direction spells them differently (cases Auto/Ltr/Rtl, wire auto/ltr/rtl) and no fixture reached it. Two hosts had matched a case-name spelling read from the reference's source rather than from any committed byte. merge-refusal-concurrent-direction is the fixture that decides it, and it emits 'ltr'/'rtl'. A host must not generalise a sub-facet value to a compound cell either.\",\n  \"refusalFixtures\": [\n"
         + System.String.Join(",\n", refusalEntries)
         + "\n  ],\n  \"totalityDescription\": \"merge-totality (Phase 1526, additive, SEPARATE key): each PAIR is a triad that must REFUSE, immediately followed by a corrected twin that must AUTO-MERGE. The refusal entry carries an envelopeFile + envelopeHash and is checked exactly as a `merge-refusal` entry is; the twin carries an expectedFile + outcomeHash and is checked exactly as a `merge-3way` entry is; `twin` and `refusal` cross-reference the two. The pair is the point: a host can pass the refusal by refusing every structural merge, and can pass an auto-merge suite by never growing the arm, and only the pair pins the boundary between them. Three cases are covered, each one merge behaviour a host can silently OMIT and still look conformant: DeleteModify (one side edits a node the other REMOVES) and ConcurrentMove (a node relocated by one side and moved or edited by the other), both declared since Phase 179 and constructed by nothing until 1526 — so a host that reproduced the reference exactly reproduced a silent loss; and the node-level `tooltip` trait, which the reference merges as a facet of its own since Phase 1112 and which no fixture in any other family reaches, so a host whose merge constructs its nodes with the trait hardcoded empty drops an uncontested hint and nothing notices. The tooltip pair fails on its TWIN rather than its refusal, because a dropped trait is a different TREE and not a different envelope. Two envelope spellings are specific to these classes and a host must not generalise either: a side that holds NO value for the cell — the removing side of a DeleteModify — carries the EMPTY STRING, which no node canonical-encodes to and which `base` already uses for a same-id insert; and a ConcurrentMove is TWO entries on one node, `move` whose side value is the parent id that side holds the node under (empty string at the root) and `node` whose side value is that side's canonical subtree, never one entry compounding position and content. Held under its own key for the reason refusalFixtures is: a host that iterates `fixtures` expecting every entry to auto-merge is correct to do so, and one that iterates `refusalFixtures` expecting every entry to refuse is correct too.\",\n  \"totalityFixtures\": [\n"
         + System.String.Join(",\n", totalityEntries)

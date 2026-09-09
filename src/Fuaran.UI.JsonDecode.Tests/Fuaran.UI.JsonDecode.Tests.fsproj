@@ -154,6 +154,13 @@
          document-length ceiling, and each decode reports what it repaired. -->
     <Compile Include="RecoveryPolicyTests.fs" />
     <Compile Include="ValidatorCoverageTests.fs" />
+    <!-- Phase 1647 - the corpus-only-payload gate (the fuaran#1094 class). Runs the emit
+         into a throwaway directory and reports what a wholesale regen would delete. -->
+    <Compile Include="CorpusOnlyPayloadTests.fs" />
+    <!-- Phase 1647 - motion/extraAttributes are hostOnly, not dropped: the finding, as an
+         assertion that goes red the day either becomes a wire member. -->
+    <Compile Include="HostOnlyEnvelopeTests.fs" />
+    <Compile Include="StaticTableSourceTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

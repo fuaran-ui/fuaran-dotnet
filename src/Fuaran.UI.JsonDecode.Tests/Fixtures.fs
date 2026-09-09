@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.JsonDecode.Tests.Fixtures
+module Fuaran.UI.JsonDecode.Tests.Fixtures
 
 // Phase 1152 — `Action.Dispatch` carries the IDL's `inProcessOnly` marking, which
 // the generator renders as `[<Obsolete(…, false)>]`: FS0044 at every mention, and
@@ -6385,17 +6385,31 @@ let formLocalDeclared: Node<obj> =
         ))
         None
 
-// Action.CommitLocal fixture for the TreeOp round-trip suite.
-let opUpdatePropCommitLocal: TreeOp<obj> =
-    // A typical "Apply" button shape: an UpdateStyle on a button whose
-    // OnClick = Action.CommitLocal "salary-input" — encoded as a typed
-    // ButtonSpec carrying the action. Routes through UpdateProp's
-    // Binding/style/state slots rather than introducing a fresh op kind;
-    // the Action surfaces via the canonical ButtonSpec.OnClick path.
-    TreeOp.UpdateStyle(
+// Phase 1647 — the registered op set carries an `Action`.
+//
+// This binding replaces `opUpdatePropCommitLocal`, which was dead AND false: it
+// was referenced by nothing (never added to `allOps`, so it reached no fixture
+// and no host), and its comment claimed to encode "a button whose OnClick =
+// Action.CommitLocal, the Action surfacing via the canonical ButtonSpec.OnClick
+// path" while the value beneath it was a bare `UpdateStyle` carrying a tone and
+// no action at all. A fixture nobody runs cannot be wrong about the wire; a
+// fixture nobody runs whose COMMENT is wrong about the wire teaches the next
+// reader something untrue, which is worse.
+//
+// So: an `EditNode` whose replacement node is a Button carrying a real
+// `Action.CommitLocal`, REGISTERED below. It closes a genuine gap — every op in
+// `allOps` moved styles, props, bindings, state or tree shape, and none carried
+// an Action, so the op codec's Action arm was pinned by node fixtures only and
+// never across an op boundary on any host.
+let opEditNodeCommitLocal: TreeOp<obj> =
+    TreeOp.EditNode(
         NodeId "btn-apply",
-        { Defaults.style with
-            Tone = ToneVariant.Brand }
+        NodeKind.Button(
+            { Defaults.button with
+                Label = TextSource.Literal "Apply"
+                OnClick = Action.CommitLocal "salary-input"
+                Variant = ButtonVariant.Primary }
+        )
     )
 
 // Binding.Format (Phase 102) — a Stack of Markdown nodes whose Text is a
@@ -7519,7 +7533,11 @@ let allOps: (string * TreeOp<obj>) list =
       "UpdateProp-nested-object-value", opUpdatePropNestedObjectValue
       "UpdateProp-nested-badindex", opUpdatePropNestedBadIndex
       "UpdateProp-nested-badfield", opUpdatePropNestedBadField
-      "UpdateProp-nested-malformed", opUpdatePropNestedMalformed ]
+      "UpdateProp-nested-malformed", opUpdatePropNestedMalformed
+      // Phase 1647 — the first registered op carrying an `Action`. The label is
+      // the fixture ID and therefore the FILENAME: id-safe tokens only, on the
+      // `UpdateProp-nested-badindex` pattern above, never prose.
+      "EditNode-action-commitlocal", opEditNodeCommitLocal ]
 
 // ─── §21 shape-limit payloads (wire STRINGS, not `Node` values) ──────────────
 //

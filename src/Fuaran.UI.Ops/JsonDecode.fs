@@ -3947,20 +3947,6 @@ let private decodeBindingSelectOptions (path: string) (j: Json) : Result<Binding
             Label = opaqueSentinel } ]
         j
 
-let private decodeBindingStringOpt (path: string) (j: Json) : Result<Binding<string option>, DecodeError> =
-    // Typed form (Phase 429): `Some s` encodes as the plain string, `None`
-    // as `null`. The `"<opaque>"` sentinel (any pre-429 `Some` payload —
-    // boxed options hit the old catch-all) stays decode-accepted; its
-    // `Some opaqueSentinel` placeholder re-encodes as the same string.
-    let parseStatic (p: string) (v: Json) : Result<string option, DecodeError> =
-        match v with
-        | JNull -> Ok None
-        | JString s when s = opaqueSentinel -> Ok(Some opaqueSentinel)
-        | JString s -> Ok(Some s)
-        | _ -> wrongType p "JSON string or null (string option)"
-
-    bindingGeneric<string option> path parseStatic (Some opaqueSentinel) j
-
 let private decodeBindingStringList (path: string) (j: Json) : Result<Binding<string list>, DecodeError> =
     // Phase 291 — the multi-select `Values` binding. Typed form preferred
     // (Phase 429 — a plain string array); `null` (the pre-429 boxes-to-null

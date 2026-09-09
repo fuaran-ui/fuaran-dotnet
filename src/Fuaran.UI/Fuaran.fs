@@ -1739,7 +1739,23 @@ module Fuaran =
         // string-narrowing at the IDL seam) — `Bound` / `I18n` cells ride
         // through unchanged, exactly as the retired hand shape carried them.
         let staticGrid: GridSpec<'Msg> =
-            { Source = Binding.Static None
+            {
+              // Phase 1647 — `Some []`, not `None`. A static table holds its rows
+              // in `StaticRows`, so its grid SOURCE carries nothing either way;
+              // but the two spell that differently on the wire —
+              // `{"$type":"Static"}` against `{"$type":"Static","value":[]}` —
+              // and the corpus (`nodes/table-1.json`) and `@fuaran-ui/ops` both
+              // say the second. This constructor said the first, so a table
+              // authored through the F# facade did not encode like the corpus's
+              // own table, and Phase 286's cross-host tour found the divergence
+              // live at 0.70.0 rather than any test finding it: the fixture is
+              // hand-built from the record and never went through here.
+              //
+              // The ENCODER was never wrong — it faithfully encoded two
+              // different values. What was wrong is which value the facade
+              // built. `Some []` is the empty collection; `None` is the absent
+              // one, and absent is not what a static table's source is.
+              Source = Binding.Static(Some [])
               RowKey = None
               RowKeyField = None
               SortStateKey = None

@@ -37,6 +37,19 @@ open Fuaran.UI.OpStream.Abstractions
 [<Literal>]
 let corpusDirName = "wire-format-fixtures"
 
+/// The corpus directories `emit` DELETES and rewrites wholesale — declared here
+/// so the emit and the guard that watches it read one list (Phase 1647).
+///
+/// The distinction is load-bearing and was invisible before: `validator/` is
+/// WRITTEN INTO but never cleared (it also holds hand-authored cross-host
+/// tooling that no emit produces), while these seven are emptied first. Only
+/// these can lose a payload to a regen, so only these are what
+/// `CorpusOnlyPayloadTests` compares — a guard over the written-into set would
+/// report the corpus's own tooling as about to be deleted, which is the
+/// opposite of true.
+let wholesaleDirectories =
+    [ "nodes"; "ops"; "reject"; "lenient"; "envelope"; "elicitation"; "cards" ]
+
 /// `JsonDocument` options that admit exactly what the wire format's SYNTACTIC
 /// bound admits (`WireLimits.MaxJsonDepth`).
 ///
@@ -243,6 +256,18 @@ let private writeManifest
     // host reads the pointer, never the emitter. See WIRE_FORMAT.md §13.
     w.WriteString("idl", "idl.json")
 
+    // Phase 1647 — the third discovery pointer, and the one Phase 442 left out
+    // when it added the artefact. `render-fidelity.json` (WIRE_FORMAT.md §13)
+    // answers a question neither of the two above does: not "is this payload
+    // legal?" nor "what IS the vocabulary?" but "what does a conformant host owe
+    // the reader for each kind — what does the wire carry, what does the
+    // parity-checked fallback render pin, and what is declared client-only
+    // rich?". A host that discovers artefacts through this manifest could reach
+    // the schema and the IDL and not the fidelity table, which is the one of the
+    // three a RENDERING host most needs. Co-emitted by `emit` below, like the
+    // schema and unlike the IDL.
+    w.WriteString("renderFidelity", "render-fidelity.json")
+
     w.WriteString(
         "description",
         "Fuaran canonical wire-format conformance corpus. node-round-trip / op-round-trip "
@@ -378,14 +403,9 @@ let emit (outputDir: string) : unit =
     let elicitationDir = Path.Combine(outputDir, "elicitation")
     let cardsDir = Path.Combine(outputDir, "cards")
 
-    for d in
-        [ nodesDir
-          opsDir
-          rejectDir
-          lenientDir
-          envelopeDir
-          elicitationDir
-          cardsDir ] do
+    for name in wholesaleDirectories do
+        let d = Path.Combine(outputDir, name)
+
         if Directory.Exists d then
             Directory.Delete(d, true)
 

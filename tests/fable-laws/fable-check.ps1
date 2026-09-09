@@ -32,6 +32,15 @@
      pipelines that are each internally lawful and disagree about a merge outcome still differ
      line-for-line; a law-only probe would report that as two green runs.
 
+     THIS STAGE IS THE ONLY RUNNER OF THE .NET LEG (Phase 1647). It used to be rostered in
+     `test-suites.json` as well, so every full gate ran the .NET half TWICE — once as suite 31 and
+     once here as the comparison baseline — while the roster's own note described the stage as if
+     it were the only runner. The roster entry is the one that went, because THIS run cannot: it is
+     the baseline the byte comparison is against, so dropping it would leave nothing to compare
+     Node's output to. One consequence, stated rather than discovered: `-SkipFable` (and only
+     `-SkipFable` — no LANE drops this stage) now skips the .NET laws too. That is what the switch
+     already meant for the Node leg, and the laws are one subject with two legs.
+
   THE DERIVATION (Phase 1606). Fuaran.UI 0.78.0 shipped a Renderer whose `#if FABLE_COMPILER` arm
   did not compile — four bare `JVal` / `JStr` uses with no `open Fuaran.Core` — invisible to the
   .NET build, which compiles only the `#else` arm, and to this gate, whose hand-kept list did not
