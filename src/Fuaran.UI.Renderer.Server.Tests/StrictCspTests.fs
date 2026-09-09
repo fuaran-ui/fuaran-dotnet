@@ -362,6 +362,56 @@ let tests =
                       (sprintf "%s/%s writes the rule the class names" nodeId slot)
           }
 
+          // ── 5b. The CROSS-HOST pins ──────────────────────────────────────
+          //
+          // A document is supposed to render the same on every conformant host,
+          // and a generated class name is part of the document. These exact
+          // strings are pinned by the TypeScript server renderer's own suite
+          // (`packages/renderer-server/test/strictCsp.test.ts`) for the same
+          // trees. They are written out rather than computed so that a drift in
+          // either host's declaration spelling or hash reddens exactly ONE suite
+          // and names the class it now produces — a computed expectation on both
+          // sides would move together and prove nothing.
+          test "the class names are the ones the other host derives" {
+              let pins =
+                  [ "fuaran-csp-c5f9115c",
+                    box "g1" (BoxLayout.Grid(3, Option.Some "1fr 2fr 1fr", Option.Some 12)) [ leaf "a" ]
+
+                    "fuaran-csp-6d6f75ea", box "m1" (BoxLayout.Masonry(3, Option.Some 8)) [ leaf "c" ]
+
+                    "fuaran-csp-06499874",
+                    box "f1" (BoxLayout.Flex(Orientation.Horizontal, false, Option.Some 16)) [ leaf "d" ]
+
+                    "fuaran-csp-48acacb7",
+                    Fuaran.splitPanel
+                        "sp"
+                        { Defaults.splitPanel<obj> with
+                            Weight = 0.5
+                            Children = [ leaf "e"; leaf "f" ] }
+
+                    "fuaran-csp-5082b942",
+                    Fuaran.scrollArea
+                        "sc1"
+                        { Defaults.scrollArea<obj> with
+                            Children = [ leaf "g" ]
+                            MaxHeight = Option.Some 200
+                            MaxWidth = Option.Some 320 }
+
+                    "fuaran-csp-4140a29a",
+                    Fuaran.progress
+                        "p1"
+                        { Defaults.progress with
+                            Fraction = Binding.Static(Some 0.42) } ]
+
+              for expected, node in pins do
+                  let html = Render.renderWithCsp strict Registry.empty BindingResolver.empty node
+
+                  Expect.stringContains
+                      html
+                      expected
+                      (sprintf "the cross-host pinned class %s is what this host derives" expected)
+          }
+
           test "the split panel's two panes take different classes" {
               // Equal weights, one node id: only the slot discriminator keeps
               // them apart, and this is the case that proves it does.
