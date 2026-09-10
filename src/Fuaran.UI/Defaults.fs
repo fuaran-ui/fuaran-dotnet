@@ -451,7 +451,28 @@ let fileUpload<'Msg> : FileUploadSpec<'Msg> =
     { Label = emptyLiteral
       Accept = []
       Multiple = false
-      OnSelect = Some(fun _ -> Action.Chain [])
+      // Phase 1646 — `None`, not a `Some`-wrapped empty chain. The old default
+      // put a handler that consumes nothing onto every upload built from it, and
+      // FUARAN121 (`OnSelect.IsNone && (DropTarget || AcceptPaste)`) therefore
+      // could not fire on the shape it exists for:
+      // `{ Defaults.fileUpload with DropTarget = true }` is exactly the fake
+      // affordance the rule describes — a file that vanishes on release with no
+      // user-agent feedback of any kind — and it passed silently.
+      //
+      // WHY THE DEFAULT MOVED RATHER THAN THE RULE. The bundle offered the other
+      // repair, teaching FUARAN121 to read an empty `Action.Chain` as absent, and
+      // it is not implementable: `OnSelect` is a CLOSURE
+      // (`FileSelection list -> Action<'Msg>`), so the only way to learn what it
+      // returns is to call host code from inside a validator. A rule cannot ask
+      // that question, and one that could would still be answering it for one
+      // sample selection.
+      //
+      // The wire is untouched at the DEFAULT — a `None` omits `onSelect` where a
+      // `Some` wrote the `"<closure>"` sentinel, and every corpus fixture on this
+      // kind sets the slot explicitly — but a tree built from this default and
+      // then encoded does lose that key. That is the point: the sentinel was
+      // recording a handler that did nothing.
+      OnSelect = Option.None
       Disabled = Option.None
       // Phase 1115 — both gestures OFF by default, which is the wire identity:
       // a default upload encodes to exactly the bytes it always did, and the
@@ -539,7 +560,14 @@ let grid<'row, 'Msg> : GridSpecOf<'row, 'Msg> =
       TransferInKey = Option.None
       // Phase 1125 — no export affordance by default: a grid is a rendering
       // until the document says its rows are the reader's to take.
-      Exportable = false }
+      Exportable = false
+      // Phase 934 (surfaced here by Phase 1646) — no row reorder by default,
+      // matching `Editable` beside it: the pre-934 wire, byte-for-byte.
+      Reorderable = false
+      // Phase 425 (surfaced here by Phase 1646) — no declared key field by
+      // default, which is what every grid built from this default already
+      // emitted, `Fuaran.grid` having pinned the slot off until now.
+      RowKeyField = Option.None }
 
 let column<'Msg> : Column<'Msg> =
     { Label = ""

@@ -4441,6 +4441,33 @@ let uploadGestureRuleTests =
               Expect.isEmpty (uploadDefects (uploadWith true true true)) "a handler consumes both gestures"
           }
 
+          test "FUARAN121: the DEFAULT record's own drop target is reported (Phase 1646)" {
+              // The shape the rule most exists for, and the one it could not
+              // see for three releases: `Defaults.fileUpload` shipped
+              // `OnSelect = Some (fun _ -> Action.Chain [])`, so every upload
+              // built from it carried a handler that consumes nothing, and
+              // `OnSelect.IsNone` was false on exactly the document the rule
+              // describes. Phase 1646 made the default `None`.
+              //
+              // Written against the DEFAULT rather than through `uploadWith`
+              // deliberately: the fixture above sets `OnSelect` explicitly on
+              // every leg, so it passed before this change and passes after, and
+              // could never have caught the default. What is under test here is
+              // `Defaults.fileUpload` itself.
+              let tree =
+                  Fuaran.fileUpload
+                      "up-default"
+                      { Defaults.fileUpload with
+                          Label = TextSource.Literal "Drop a file"
+                          DropTarget = true }
+
+              Expect.equal
+                  (uploadDefects tree
+                   |> List.map (fun d -> let c, _, _ = PreEmitValidate.describe d in c))
+                  [ "FUARAN121" ]
+                  "a default-built upload declaring a drop target has nothing consuming it"
+          }
+
           test "FUARAN121 go-red check: a handler-less PLAIN picker is silent" {
               // The rule is about the pairing, not about the handler. A plain
               // upload with no handler is a legitimate authoring intermediate,

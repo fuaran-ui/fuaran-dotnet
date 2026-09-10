@@ -20,8 +20,18 @@ public static partial class Fuaran
     // Generated SelectSpec.Value is a plain `Binding<string>` (the old
     // `Binding<string option>` double option flattened): "no selection" is
     // `Static None`, a selection is `Static (Some v)`.
-    internal static global::Fuaran.UI.Generated.Binding<string> OptStrValue(string? selected) =>
-        global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.OptStr(selected!));
+    //
+    // Phase 1646 — the slot takes a BINDING now, not a bare string. It always
+    // was one on the wire; the veneer narrowed it to a literal, and that
+    // narrowing is what made a state-bound `<Select>` unauthorable from the VB
+    // dialect while `<Disclosure>` and the grid had been given the `$state.<key>`
+    // spelling. A null still means "no selection" and produces the same
+    // `Static None` every earlier release wrote, so a caller that set nothing,
+    // or set a plain string (which converts implicitly), emits unchanged bytes.
+    internal static global::Fuaran.UI.Generated.Binding<string> OptStrValue(Binding<string>? selected) =>
+        selected?.Inner
+        ?? global::Fuaran.UI.Generated.Binding<string>.NewStatic(
+            Microsoft.FSharp.Core.FSharpOption<string>.None);
 
     // F# `string option` projects to C# as the nullable-annotated `FSharpOption<string>?`
     // (F# 10 nullness); the no-op handler carries the matching annotation so the
@@ -399,8 +409,16 @@ public sealed record SelectOptions
     /// <summary>The (value, label) options.</summary>
     public IEnumerable<(string Value, string Label)>? Options { get; init; }
 
-    /// <summary>The currently-selected value (or null).</summary>
-    public string? Value { get; init; }
+    /// <summary>
+    /// The currently-selected value, or null for no selection. A plain string converts
+    /// implicitly, so <c>Value = "b"</c> still reads as it always did.
+    /// <para>A <see cref="Binding{T}"/> is what makes the control LIVE (Phase 1646): bind it to
+    /// <see cref="Binding.State{T}(string)"/> and the renderer writes the chosen option straight
+    /// back to that key under the write-back default, with no handler — which is the shape a
+    /// handler-less select needs and the one FUARAN069 reports its absence of. A static value is
+    /// an opening selection and nothing more.</para>
+    /// </summary>
+    public Binding<string>? Value { get; init; }
 
     /// <summary>An optional placeholder.</summary>
     public Text? Placeholder { get; init; }

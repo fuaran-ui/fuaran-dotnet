@@ -477,6 +477,25 @@ module binding =
 
 [<RequireQualifiedAccess>]
 module Action =
+    /// The bounded NO-OP: an action that raises nothing (Phase 1646).
+    ///
+    /// `ButtonSpec.OnClick` and `FormSpec.OnSubmit` are REQUIRED, not optional,
+    /// and that is deliberate — a control whose gesture is unstated is a control
+    /// nobody can reason about. But a genuinely inert control does exist: one
+    /// whose behaviour comes from a host enhancement over the rendered element
+    /// rather than from the document, where the honest declaration is "this
+    /// raises nothing". Until now the only spelling was `Action.Chain []`, which
+    /// says the same thing while reading as an oversight.
+    ///
+    /// **This is a NAME, not a new case, and it is a name rather than a case on
+    /// purpose.** An empty chain already IS the no-op on every host and in the
+    /// corpus, so a wire case beside it would be the near-synonym pair the
+    /// [vocabulary charter](../../docs/VOCABULARY.md) exists to forbid, and it
+    /// would cost a codec arm on every conformant host to express what the
+    /// format already expresses. Nothing on the wire moves: this encodes to the
+    /// bytes `Action.Chain []` has always encoded to.
+    let none<'Msg> : Action<'Msg> = Action.Chain []
+
     /// Dispatch a typed host message. **IN-PROCESS ONLY** — read this before
     /// putting one on a tree you intend to serialise.
     ///
@@ -1874,7 +1893,12 @@ module Fuaran =
               // The accessors are `Row`-typed on both sides since fuaran#665 —
               // no unbox wrapper survives.
               RowKey = Some spec.RowKey
-              RowKeyField = None
+              // Phase 1646 — `RowKeyField` has a typed-facade slot now, so it
+              // passes through instead of being pinned off. `RowKey` above is
+              // the closure OVERRIDE and is still always supplied; this is the
+              // declarative floor beside it, and it is what FUARAN130 asks a
+              // transferring grid to name.
+              RowKeyField = spec.RowKeyField
               // Phases 861 / 862 / 863 (surfaced on the typed facade by Phase
               // 873): the declarative grid-behaviour slots pass through
               // unchanged. They are wire DECLARATIONS, not closures, so unlike
@@ -1884,13 +1908,11 @@ module Fuaran =
               PageStateKey = spec.PageStateKey
               DefaultSort = spec.DefaultSort
               EditStateKey = spec.EditStateKey
-              // Phase 934's `reorderable` has no typed-facade slot yet — the
-              // §11-step-6 follow-up for that phase, not this one's.
-              Reorderable = false
-              // Phase 1123 — the transfer pair DOES have typed-facade slots, so
-              // it passes through. `reorderable` still does not, which is the
-              // §11-step-6 follow-up that shipped with Phase 934 and is not
-              // this phase's to close.
+              // Phase 934's `reorderable` gained its typed-facade slot in Phase
+              // 1646 — the §11-step-6 follow-up that shipped with 934 — so it
+              // passes through rather than being pinned off.
+              Reorderable = spec.Reorderable
+              // Phase 1123 — the transfer pair has typed-facade slots too.
               TransferInKey = spec.TransferInKey
               TransferOutKey = spec.TransferOutKey
               // Phase 1473 — the print-break declarations DO have typed-facade

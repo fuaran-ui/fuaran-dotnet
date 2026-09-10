@@ -14,12 +14,24 @@ Friend Module InputMapping
                 .Fields = ReadFields(el),
                 .SubmitLabel = If(HasAttr(el, "submit-label"), AsText(Attr(el, "submit-label")), CType("Submit", Csharp.Text))})
 
+        ' Phase 1646 — `value` reads as a BINDING, so `<Select value="$state.tier">`
+        ' authors the writable slot that makes a handler-less select live, exactly as
+        ' `<Disclosure open="$state.panelOpen">` and the grid's own source already do.
+        ' The facade slot was a bare string until now, which is why this one control
+        ' was left out of Phase 1154's `$state.<key>` spelling: the dialect had the
+        ' vocabulary and the veneer had nowhere to put it.
+        '
+        ' One reinterpretation rides with it, and it is the same one 1154 recorded for
+        ' the slots it reached: a literal beginning with `$` was previously an opening
+        ' selection spelled with a dollar sign, and is now a query. That is what `$`
+        ' means at every other bound attribute in this dialect, and a select whose
+        ' option values begin with `$` was already unable to bind.
         d("Select") = Function(el) Csharp.Fuaran.Select(
             New Csharp.SelectOptions With {
                 .Id = Attr(el, "id"),
                 .Label = AsText(Attr(el, "label")),
                 .Options = ReadOptions(el),
-                .Value = OptStr(el, "value"),
+                .Value = OptStrBinding(el, "value"),
                 .Placeholder = OptText(el, "placeholder")})
 
         d("MultiSelect") = Function(el) Csharp.Fuaran.MultiSelect(

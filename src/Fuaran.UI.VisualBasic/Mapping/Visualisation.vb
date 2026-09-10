@@ -63,6 +63,14 @@ Friend Module VisualisationMapping
         ' boolean spelling of "this grid may release rows", because a release with
         ' no key names no counterpart. Two grids naming one key exchange rows; a
         ' grid naming it on one side only is the one-way column.
+        '
+        ' Phase 1646 — `reorderable` (Phase 934's wire flag) and `row-key-field`
+        ' (Phase 425's declarative row identity) were the two attribute-eligible
+        ' DataGrid fields this dialect had never spelled; both were declared GAPs
+        ' in the authoring-surface pin. `row-key-field` is what makes the transfer
+        ' pair above USABLE from here — FUARAN130 asks a transferring grid to name
+        ' the field a moved row is identified by, and the pair shipped with no way
+        ' to say it.
         d("DataGrid") = Function(el) Csharp.Fuaran.DataGrid(Of Object)(
             New Csharp.DataGridOptions(Of Object) With {
                 .Id = Attr(el, "id"),
@@ -79,7 +87,9 @@ Friend Module VisualisationMapping
                 .RepeatHeader = AttrBool(el, "repeat-header"),
                 .TransferOutKey = OptStr(el, "transfer-out-key"),
                 .TransferInKey = OptStr(el, "transfer-in-key"),
-                .Exportable = AttrBool(el, "exportable")})
+                .Exportable = AttrBool(el, "exportable"),
+                .Reorderable = AttrBool(el, "reorderable"),
+                .RowKeyField = OptStr(el, "row-key-field")})
     End Sub
 
     ''' fuaran#665 — the required ToRow projection for XML-authored grids, whose row

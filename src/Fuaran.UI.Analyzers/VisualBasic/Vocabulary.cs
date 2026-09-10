@@ -28,7 +28,7 @@ internal static class Vocabulary
 
     /// <summary>Structural sub-elements (children of a kind, not kinds themselves) — recognised so
     /// the analyzer does not flag them as unknown. Membership here is not cosmetic:
-    /// `IsKnownElement` is `Kinds ∪ Structural`, and the analyzer reports FUARAN060 and
+    /// `IsKnownElement` is `Kinds ∪ Structural`, and the analyzer reports FUARAN150 and
     /// RETURNS on anything outside it, so an omission is a false positive on valid
     /// authoring AND silently skips that element's attribute check. Pinned to the IDL
     /// slot each name spells by `StructuralElementPin` in the analyzer test project.</summary>
@@ -41,7 +41,7 @@ internal static class Vocabulary
         // `Tone` is a `<Column>` child carrying one entry of the TonedPill value map
         // (Phase 750). It was read by the translator and admitted by the attribute
         // table below from the day it landed, but omitted HERE — so `<Tone>` raised
-        // FUARAN060 on every valid use until `StructuralElementPin` measured the set.
+        // FUARAN150 on every valid use until `StructuralElementPin` measured the set.
         //
         // `ReferenceLine` is a `<Chart>` child carrying one arm of the Phase 1490
         // annotation union. A repeated STRUCTURED slot again — a union case with
@@ -104,7 +104,7 @@ internal static class Vocabulary
         ImmutableHashSet.Create(StringComparer.Ordinal, "tooltip", "direction", "visible");
 
     /// <summary>Per-element allowed attributes. An element absent from this table is not
-    /// attribute-checked (allow-any), so FUARAN061 never false-positives on a kind we
+    /// attribute-checked (allow-any), so FUARAN151 never false-positives on a kind we
     /// have not enumerated.</summary>
     public static readonly ImmutableDictionary<string, ImmutableHashSet<string>> Attributes = BuildAttributes();
 
@@ -143,7 +143,7 @@ internal static class Vocabulary
         Add("Sparkline", "id", "source");
         // (No `Spacer` row. The kind was retired in Phase 459 — spacing is the
         // enclosing Box's `gap` — and the element left neither a `Kinds` entry
-        // nor a translator mapping, so `<Spacer>` is refused by FUARAN060 before
+        // nor a translator mapping, so `<Spacer>` is refused by FUARAN150 before
         // any attribute is looked at. The row that outlived it was unreachable
         // code that also mis-stated the surface; `StructuralElementPin`'s
         // recognition leg is what named it.)
@@ -228,12 +228,12 @@ internal static class Vocabulary
         // Phase 1473 — `keep-rows-together` / `repeat-header` spell the wire's
         // `keepRowsTogether` / `repeatHeader` print-break declarations. They MUST
         // be listed: `DataGrid` is an enumerated element, so an unlisted
-        // attribute is FUARAN061 rather than allow-any. `Box`'s matching pair
+        // attribute is FUARAN151 rather than allow-any. `Box`'s matching pair
         // needs no entry for the mirror-image reason — `Box` is absent from this
         // table and therefore not attribute-checked at all.
         // Phase 1123 — `transfer-out-key` / `transfer-in-key` name the two sides
         // of ONE shared State key. Both are key NAMES and neither is a flag, so
-        // an unrecognised spelling here is FUARAN061 rather than a silent
+        // an unrecognised spelling here is FUARAN151 rather than a silent
         // no-declaration — a misspelled key pairs with nothing and would render a
         // grid that looks like a board and exchanges nothing.
         Add("DataGrid", "id", "source", "editable",
@@ -243,8 +243,13 @@ internal static class Vocabulary
             "transfer-out-key", "transfer-in-key",
             // Phase 1125 — `exportable` spells the wire flag of the same name.
             // Listed for the reason the print-break pair above is: an unlisted
-            // attribute on an enumerated element is FUARAN061, not allow-any.
-            "exportable");
+            // attribute on an enumerated element is FUARAN151, not allow-any.
+            "exportable",
+            // Phase 1646 — `reorderable` (Phase 934) and `row-key-field` (Phase
+            // 425) close the last two declared GAPs on this element. Both were
+            // attribute-eligible wire fields with no spelling here at all, so
+            // authoring either drew FUARAN151 on a field the wire accepts.
+            "reorderable", "row-key-field");
         Add("Custom", "id", "module-id", "component-id", "exposed-node-ids");
         Add("ErrorBoundary", "id");
         Add("FragmentDecl", "id", "name");

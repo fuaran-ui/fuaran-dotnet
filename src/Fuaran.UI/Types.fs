@@ -1929,6 +1929,29 @@ and GridSpecOf<'row, 'Msg> =
         /// constructor the language veneers use, so a slot inserted anywhere but
         /// the end would silently move an existing argument.
         Exportable: bool
+        /// Phase 934 — declarative row reorder, surfaced on the typed facade by
+        /// Phase 1646. The reordered rows commit to `EditStateKey`: a reorder IS
+        /// a write of the whole updated rows value, so it needs no destination
+        /// of its own. Erases to `DataGridSpec.Reorderable`; omitted on the wire
+        /// at `false`.
+        ///
+        /// It shipped on the wire in 934 with no slot here at all, so
+        /// `Fuaran.grid` pinned it off and the one behaviour of this record an
+        /// `UpdateProp` could not reach was also the one a typed author could
+        /// not declare. Appended, per the positional-constructor rule above.
+        Reorderable: bool
+        /// Phase 425 — the row property a decoded grid projects as its row key,
+        /// surfaced on the typed facade by Phase 1646. The declarative floor
+        /// beside `RowKey`, which is the closure OVERRIDE: a key derived from a
+        /// named field survives the wire, and a closure does not.
+        ///
+        /// Its absence is what made `TransferInKey` / `TransferOutKey` above
+        /// unusable from this facade — FUARAN130 requires a transferring grid to
+        /// name the field a moved row is identified by, and until this slot
+        /// existed there was no way to say it without reaching past the facade
+        /// into the erased record. Erases to `DataGridSpec.RowKeyField`; omitted
+        /// on the wire when absent. Appended, for the same reason.
+        RowKeyField: string option
     }
 
 /// §4k Q3.2 — Column carries a typed `Kind`, not a nullable `OnEdit`.

@@ -497,6 +497,16 @@ type PreEmitDefect =
     /// Phase 782 prefix) are exempt: those are the host's to write by
     /// definition.
     ///
+    /// **A LIVE `autoAdvanceMs` is a writer, and since Phase 1646 the walk says
+    /// so.** Phase 1122's timed advance ticks and writes the switch's own index
+    /// key, so a timer-only carousel — the shape the feature exists for — has a
+    /// writer even though no gesture in the tree does. Until that was taught,
+    /// this rule reported exactly that shape, and it could not cross the
+    /// pre-emit gate without two dot controls added purely to ground the key.
+    /// The condition is FUARAN128's own (a state-key selector and at least two
+    /// cases), so a declaration that CANNOT advance grounds nothing and is
+    /// reported by FUARAN128 instead.
+    ///
     /// Carries the switch node's id and the key.
     | SwitchKeyNoWriter of nodeId: string * key: string
     /// **FUARAN105 (Warning)**. A `Binding.Transform` whose SOURCE is a

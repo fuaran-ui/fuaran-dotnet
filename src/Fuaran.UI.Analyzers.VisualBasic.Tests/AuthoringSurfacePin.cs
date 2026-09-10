@@ -22,7 +22,7 @@ namespace Fuaran.UI.Analyzers.VisualBasic.Tests;
 //  per-element allowed-attribute table, 54 rows — was pinned against nothing at
 //  all: an element absent from it is allow-any, and an element PRESENT in it
 //  with a stale attribute set silently refuses an attribute the wire accepts
-//  (FUARAN061) or admits one it does not. Nothing could tell you which. The
+//  (FUARAN151) or admits one it does not. Nothing could tell you which. The
 //  measured residue when this pin was written was seventeen wire fields with no
 //  attribute spelling, none of them recorded anywhere.
 //
@@ -105,8 +105,6 @@ internal static class AuthoringSurfacePin
         ["Metric.subtext"] = "GAP — no VB spelling",
         ["Metric.emphasis"] = "GAP — no VB spelling",
         ["Metric.weight"] = "GAP — no VB spelling",
-        ["DataGrid.reorderable"] = "GAP — no VB spelling",
-        ["DataGrid.row-key-field"] = "GAP — no VB spelling",
         ["Tabs.active-tag"] = "GAP — no VB spelling",
     };
 

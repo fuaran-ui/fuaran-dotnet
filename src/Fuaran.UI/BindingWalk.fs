@@ -356,6 +356,9 @@ type StateKeyFacts =
         ///     — plain STRINGS the renderer writes with no `Binding` to see,
         ///     and an editable grid whose `source` is a direct `Binding.State`
         ///     (the Phase 663 commit destination).
+        ///  6. A `Switch` whose `autoAdvanceMs` can actually advance (Phase
+        ///     1122, taught here by Phase 1646) — the timer writes the switch's
+        ///     own index key, so a carousel with no other writer is grounded.
         WriteKeys: Set<string>
         /// True when the tree holds a writer whose DESTINATION cannot be seen —
         /// the write-side twin of `OpaqueReader`, and the reason FUARAN103 can
@@ -1645,6 +1648,28 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
 
                 match spec.On with
                 | Binding.State(key, _) when consultsSelector -> switchSelectors.Add(readerId, key)
+                | _ -> ()
+
+                // Phase 1122's `autoAdvanceMs` IS a writer of the switch's own
+                // index key, and Phase 1646 teaches the write projection so
+                // (fuaran#1474, finding 2). A LIVE auto-advance ticks and writes
+                // the next branch's key, exactly as a dot control's `SetState`
+                // would — so a timer-only carousel, which is the whole point of
+                // the feature, was reported by FUARAN103 as a switch nothing can
+                // write, and could not cross the pre-emit gate at all. The
+                // orchestration bank had to carry two dot controls purely to
+                // ground the key.
+                //
+                // The condition is FUARAN128's, deliberately and not
+                // coincidentally: that rule reports a declared interval that
+                // CANNOT advance, and it can advance exactly when the selector is
+                // a state key and there are at least two cases to advance
+                // between. Any looser and this would ground a key the renderer
+                // never writes — turning FUARAN103 off for a dead declaration
+                // FUARAN128 is separately reporting, which is the one shape a
+                // writer projection must not invent.
+                match spec.AutoAdvanceMs, spec.On with
+                | Some _, Binding.State(key, _) when List.length spec.Cases >= 2 -> stateWriteKeys.Add key |> ignore
                 | _ -> ()
 
                 [], (spec.Cases |> List.map _.Child) @ [ spec.Default ]

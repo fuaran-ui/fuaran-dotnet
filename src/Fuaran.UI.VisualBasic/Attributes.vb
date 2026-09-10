@@ -267,6 +267,16 @@ Friend Module Attributes
         Return AsDoubleBinding(Attr(el, name))
     End Function
 
+    ''' <summary>
+    ''' Phase 1646 — an optional STRING binding, completing the family beside the three
+    ''' above. A literal stays a literal, "$name" is a host-fed query and "$state.&lt;key&gt;"
+    ''' is a writable slot, exactly as every other bound attribute in this dialect reads.
+    ''' </summary>
+    Friend Function OptStrBinding(el As XElement, name As String) As Csharp.Binding(Of String)
+        If Not HasAttr(el, name) Then Return Nothing
+        Return AsStringBinding(Attr(el, name))
+    End Function
+
     ''' <summary>Split a pipe-separated attribute (e.g. y-fields="a|b") into its parts.</summary>
     Friend Function PipeList(value As String) As IEnumerable(Of String)
         If String.IsNullOrEmpty(value) Then Return Array.Empty(Of String)()

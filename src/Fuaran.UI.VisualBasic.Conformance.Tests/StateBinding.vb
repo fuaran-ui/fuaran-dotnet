@@ -26,7 +26,60 @@ Module StateBinding
     Sub Run(h As Harness)
         Disclosure(h)
         EditableGrid(h)
+        Select_(h)
         Spelling(h)
+    End Sub
+
+    ' ── 1b. A state-bound Select (Phase 1646). ──────────────────────────────
+    '
+    ' The control 1154 could not reach. The dialect had the spelling and the WIRE
+    ' had the slot — the corpus's own `controls-declarative.json` carries a select
+    ' whose `value` is a no-default State binding, which is where `StateFragment`
+    ' below takes its shape from — but `SelectOptions.Value` was a bare `string`,
+    ' so the translator had nowhere to put a binding and every VB select was a
+    ' literal opening selection. Phase 1646 widened the facade slot; this asserts
+    ' the result is the same document the shared factory host produces.
+    Private Sub Select_(h As Harness)
+        Dim vb = <Select id="tier" label="Tier" value="$state.chosenTier">
+                     <Option value="a" label="A"/>
+                     <Option value="b" label="B"/>
+                 </Select>
+
+        Dim cs = Csharp.Fuaran.Select(New Csharp.SelectOptions With {
+            .Id = "tier",
+            .Label = CType("Tier", Csharp.Text),
+            .Options = {("a", "A"), ("b", "B")},
+            .Value = Csharp.Binding.State(Of String)("chosenTier")})
+
+        Dim json = FuaranXml.Encode(vb)
+        h.ByteEqual("state-bound Select == the shared factory host", json, cs.Encode())
+
+        h.Check("state-bound Select: value is a direct State slot",
+                json.Contains(StateFragment("value", "chosenTier")), json)
+        h.Check("state-bound Select round-trips through the shared decoder",
+                Csharp.Decode.NodeRoundTrips(json))
+
+        ' Negative control, on the Disclosure leg's pattern: `$chosenTier` is a
+        ' host-fed query, which the write-back default cannot write to. Without
+        ' this the check above would pass on a translator that turned every
+        ' `$`-value into a State slot.
+        Dim queryBound = FuaranXml.Encode(
+            <Select id="tier" label="Tier" value="$chosenTier">
+                <Option value="a" label="A"/>
+            </Select>)
+        h.Check("negative control: a $name-bound Select is NOT a State slot",
+                Not queryBound.Contains(StateFragment("value", "chosenTier")) AndAlso
+                queryBound.Contains("""$type"":""Query"""), queryBound)
+
+        ' And a LITERAL still reads as one — the widening must not have turned an
+        ' opening selection into a binding.
+        Dim literal = FuaranXml.Encode(
+            <Select id="tier" label="Tier" value="b">
+                <Option value="a" label="A"/>
+                <Option value="b" label="B"/>
+            </Select>)
+        h.Check("a literal value is still a Static selection",
+                literal.Contains("""value"":{""$type"":""Static"",""value"":""b""}"), literal)
     End Sub
 
     ' ── 1. A state-bound Disclosure. ────────────────────────────────────────

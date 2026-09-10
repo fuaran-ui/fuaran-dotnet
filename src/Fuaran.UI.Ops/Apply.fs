@@ -1359,6 +1359,15 @@ let private updateGridTop (field: string) (v: obj) (spec: GridSpec<'Msg>) : Upda
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryBool v
             |> Result.map (fun x -> { spec with Exportable = x }))
+    // Phase 934's row reorder, wired here by Phase 1646 — the same disposition
+    // again, and the one grid behaviour an `UpdateProp` could not reach while
+    // `keepRowsTogether` / `repeatHeader` / `exportable` on the same record
+    // could. It is a plain wire boolean with a coercion, so an op turns the
+    // reorder handles on and off exactly as it turns editing on and off.
+    | "Reorderable" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with Reorderable = x }))
     // `Columns` is addressed through the nested surface (`Columns[i].Label`);
     // `Source` is a ReplaceBinding slot; the rest are closures.
     | "Source"

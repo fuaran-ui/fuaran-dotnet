@@ -132,10 +132,15 @@ public static partial class Fuaran
                 // written before this release says.
                 Fs.OptStr(options.TransferOutKey),
                 Fs.OptStr(options.TransferInKey),
-                // Phase 1125 — the export affordance, LAST because the typed
-                // facade puts it last: appending is what keeps every earlier
-                // ctor position where it was.
-                options.Exportable)));
+                // Phase 1125 — the export affordance.
+                options.Exportable,
+                // Phase 934's row reorder and Phase 425's declarative row-key
+                // field, appended to the typed facade by Phase 1646 — LAST for
+                // the reason every slot above was appended: this ctor is
+                // positional, so a slot inserted anywhere but the end silently
+                // moves an existing argument.
+                options.Reorderable,
+                Fs.OptStr(options.RowKeyField))));
 }
 
 /// <summary>A data-grid column. Accessors read the PROJECTED row (fuaran#665 —
@@ -466,4 +471,21 @@ public sealed record DataGridOptions<TRow>
     /// the gesture.</para></summary>
     public string? TransferInKey { get; init; }
 
+    /// <summary>
+    /// Whether the reader may drag rows into a new order (Phase 934). The reordered rows commit
+    /// to <see cref="EditStateKey"/> — a reorder IS a write of the whole updated rows value, so it
+    /// declares no destination of its own.
+    /// </summary>
+    public bool Reorderable { get; init; }
+
+    /// <summary>
+    /// The row property that identifies a row (Phase 425) — the declarative floor beside
+    /// <see cref="RowKey"/>, which is the closure override. A key derived from a named field
+    /// survives the wire; a closure does not, so a DECODED grid has stable row identity only when
+    /// this is declared.
+    /// <para>A grid declaring either half of the transfer pair needs it: the moved row is
+    /// identified by this field, and one that declares neither is reported pre-emit
+    /// (FUARAN130).</para>
+    /// </summary>
+    public string? RowKeyField { get; init; }
 }
