@@ -22,8 +22,8 @@ internal static class Program
 
     private static async Task<int> Main()
     {
-        // ── FUARAN060 — unknown element. ───────────────────────────────────────
-        await Expect("FUARAN060 positive: typo'd element",
+        // ── FUARAN150 — unknown element. ───────────────────────────────────────
+        await Expect("FUARAN150 positive: typo'd element",
             """
             Module M
                 Sub S()
@@ -31,9 +31,9 @@ internal static class Program
                 End Sub
             End Module
             """,
-            new[] { "FUARAN060" });
+            new[] { "FUARAN150" });
 
-        await Expect("FUARAN060 negative: all known elements",
+        await Expect("FUARAN150 negative: all known elements",
             """
             Module M
                 Sub S()
@@ -48,8 +48,8 @@ internal static class Program
         // (`ChildElements(c, "Tone")`) and it carries a row in
         // `Vocabulary.Attributes` — but it was absent from
         // `Vocabulary.Structural`, so `IsKnownElement` said no and every valid
-        // use raised FUARAN060 and skipped the attribute check entirely.
-        await Expect("FUARAN060 negative: <Tone> is a recognised structural child",
+        // use raised FUARAN150 and skipped the attribute check entirely.
+        await Expect("FUARAN150 negative: <Tone> is a recognised structural child",
             """
             Module M
                 Sub S()
@@ -69,8 +69,8 @@ internal static class Program
             """,
             Array.Empty<string>());
 
-        // ── FUARAN061 — unknown attribute. ─────────────────────────────────────
-        await Expect("FUARAN061 positive: unknown attribute",
+        // ── FUARAN151 — unknown attribute. ─────────────────────────────────────
+        await Expect("FUARAN151 positive: unknown attribute",
             """
             Module M
                 Sub S()
@@ -78,7 +78,7 @@ internal static class Program
                 End Sub
             End Module
             """,
-            new[] { "FUARAN061" });
+            new[] { "FUARAN151" });
 
         // ── FUARAN001 — duplicate id. ──────────────────────────────────────────
         await Expect("FUARAN001 positive: duplicate id",
@@ -216,7 +216,7 @@ internal static class Program
         // ── The same question again for the CHILD-ELEMENT table. The pin above
         //    stops where the attribute stops; a structured wire field takes a
         //    child element instead, and `Vocabulary.Structural` — the set that
-        //    decides whether FUARAN060 fires — was pinned against nothing.
+        //    decides whether FUARAN150 fires — was pinned against nothing.
         StructuralElementPin.Run(Check, AuthoringSurfacePin.FindIdl());
 
         Console.WriteLine($"[vb-analyzer-tests] {_passed} passed, {Failures.Count} failed.");

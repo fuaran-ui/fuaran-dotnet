@@ -77,6 +77,10 @@ param(
     # Phase 1647 - the cross-host validator-coverage projection. A switch rather than a lane:
     # it is seconds, node-only, and reads committed text, so no lane wants it dropped.
     [switch] $SkipValidatorCoverage,
+    # Phase 1646 - the FUARAN defect-code collision check. A switch rather than a lane, on
+    # -SkipValidatorCoverage's reasoning: it reads committed source text with regexes, costs
+    # under a second, and needs no build, so no lane wants it dropped.
+    [switch] $SkipCodesCheck,
     [switch] $Demo,
 
     # Phase 1553 - the gate LANE, on THIS one file. Tooling that records which gate produced a
@@ -348,6 +352,26 @@ if (-not $SkipValidatorCoverage) {
             Write-Error "validator-coverage.json disagrees with the corpus vocabulary (exit $LASTEXITCODE). Regenerate it with: dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-vocabulary"
             exit $LASTEXITCODE
         }
+    }
+}
+
+# ─── FUARAN defect codes: does any one code name two different rules? ───────
+# The FUARAN code space is shared by three registries - the tree-time validator's
+# `describe`, the build-time source-AST walker's findings, and the Roslyn diagnostic
+# descriptors - and each used to mint by reading the highest number the minting session
+# happened to have open. Two phases minted FUARAN114 in one evening; the analyzer and the
+# walker had each been sitting on FUARAN060/061 for a DIFFERENT defect since Phase 315.
+#
+# `scripts/fuaran-codes.ps1` is both halves: `-Next` allocates (reading the tree, the corpus
+# vocabulary AND every sibling worktree, so an unpushed concurrent mint is visible), `-Check`
+# is this stage. Declared once, called by `Build.fs`'s `CodesCheck` target too, so the two
+# entry points cannot check different registries.
+if (-not $SkipCodesCheck) {
+    Write-Step "FUARAN defect codes (no code names two rules)"
+    & (Join-Path $PSScriptRoot "scripts/fuaran-codes.ps1") -Check
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "FUARAN defect-code check failed (exit $LASTEXITCODE)."
+        exit $LASTEXITCODE
     }
 }
 

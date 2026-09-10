@@ -22,9 +22,11 @@ internal static class DiagnosticDescriptors
         isEnabledByDefault: true,
         description: "Every NodeId inside one Fuaran tree must be unique so tree-ops can target nodes stably (§4g).");
 
-    /// <summary>FUARAN060 — unknown Fuaran XML element (VB XML-literal authoring, Phase 315).</summary>
+    /// <summary>FUARAN150 — unknown Fuaran XML element (VB XML-literal authoring, Phase 315;
+    /// renumbered from FUARAN060 by Phase 1646 — see the remark on
+    /// <see cref="MalformedStateBinding"/>).</summary>
     public static readonly DiagnosticDescriptor UnknownElement = new(
-        id: "FUARAN060",
+        id: "FUARAN150",
         title: "Unknown Fuaran element",
         messageFormat: "Unknown Fuaran element <{0}> — not a recognised node kind{1}",
         category: Category,
@@ -32,9 +34,11 @@ internal static class DiagnosticDescriptors
         isEnabledByDefault: true,
         description: "A VB XML-literal element name must map to a shipped Fuaran node kind.");
 
-    /// <summary>FUARAN061 — unknown attribute on a Fuaran XML element (VB XML-literal authoring, Phase 315).</summary>
+    /// <summary>FUARAN151 — unknown attribute on a Fuaran XML element (VB XML-literal authoring,
+    /// Phase 315; renumbered from FUARAN061 by Phase 1646 — see the remark on
+    /// <see cref="MalformedStateBinding"/>).</summary>
     public static readonly DiagnosticDescriptor UnknownAttribute = new(
-        id: "FUARAN061",
+        id: "FUARAN151",
         title: "Unknown Fuaran attribute",
         messageFormat: "Attribute '{0}' is not recognised on a Fuaran <{1}> element",
         category: Category,
@@ -58,12 +62,19 @@ internal static class DiagnosticDescriptors
     /// FUARAN117 — malformed state binding in a VB XML literal (Phase 1154).
     /// </summary>
     /// <remarks>
-    /// Allocated at the top of the band rather than beside FUARAN060/061: the low 06x
-    /// numbers this analyzer already uses collide with the F# validator's own
-    /// (FUARAN060 is the extra-attribute allowlist rule there, FUARAN061 the blank
-    /// code-block check), and minting a third into the same range would deepen that.
-    /// 117 is the next free number: 115 and 116 were claimed by the embed rules
-    /// while this phase was in flight.
+    /// Allocated at the top of the band rather than in the low 06x range this analyzer
+    /// used to sit in: those numbers COLLIDED with the F# source walker's own — FUARAN060
+    /// is the extra-attribute allowlist rule there and FUARAN061 the currency-code
+    /// coherence rule — so one code named two defects depending on which tool reported it,
+    /// and minting a third into the same range would have deepened that. 117 was the next
+    /// free number at the time: 115 and 116 were claimed by the embed rules while that
+    /// phase was in flight.
+    /// <para>Phase 1646 repaired the collision itself rather than leaving this remark to
+    /// describe it: the two analyzer codes were renumbered to FUARAN150 / FUARAN151, past
+    /// every code any of the three registries held, and
+    /// <c>scripts/fuaran-codes.ps1</c> now allocates the next free code and fails the gate
+    /// on a fresh collision. Both were <c>AnalyzerReleases.Unshipped.md</c> entries, so the
+    /// renumber withdrew nothing a release had published.</para>
     /// </remarks>
     public static readonly DiagnosticDescriptor MalformedStateBinding = new(
         id: "FUARAN117",

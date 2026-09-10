@@ -1043,6 +1043,35 @@ let private registerTargets (args: string array) =
 
     "RendererWebCheck" ==> "Check" |> ignore
 
+    // Phase 1646 — the FUARAN defect-code collision check. The code space is
+    // shared by three registries (the tree-time validator's `describe`, the
+    // source-AST walker's findings, the Roslyn descriptors), each of which used
+    // to mint by reading the highest number the minting session happened to have
+    // open. Two phases minted FUARAN114 in one evening; the analyzer and the
+    // walker had been sitting on FUARAN060/061 for two different defects each
+    // since Phase 315, so one code named two things depending on which tool
+    // reported it.
+    //
+    // The work is in `scripts/fuaran-codes.ps1` rather than here for
+    // `sync-renderer-web.ps1`'s reason: it is also the ALLOCATOR an author runs
+    // by hand (`-Next`), and a FAKE target is not something you invoke to be
+    // handed a number. Declared once, called by both entry points — this target
+    // and `run.ps1` — so the two gates cannot check different registries.
+    //
+    // No `Build` dependency, hard or soft: it reads committed source text with
+    // regexes and needs no compile, so `-- CodesCheck` stays a seconds-long
+    // check rather than a solution build.
+    Target.create "CodesCheck" (fun _ ->
+        let script = Path.Combine(repoRoot, "scripts", "fuaran-codes.ps1")
+
+        CreateProcess.fromRawCommand "pwsh" [ "-NoProfile"; "-File"; script; "-Check" ]
+        |> CreateProcess.withWorkingDirectory repoRoot
+        |> CreateProcess.ensureExitCode
+        |> Proc.run
+        |> ignore)
+
+    "CodesCheck" ==> "Check" |> ignore
+
     // Phase 1094 — ORDER the docs-drift checks after the compile/test gate inside
     // `Check`, with SOFT dependencies (`?=>` — "if both targets run, this one runs
     // first", imposing no dependency of its own).

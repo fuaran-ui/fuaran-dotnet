@@ -14,8 +14,8 @@ namespace Fuaran.UI.Analyzers.VisualBasic;
 /// otherwise a runtime error — but Roslyn parses VB XML literals into syntax, so this
 /// analyzer restores the safety at compile time:
 ///
-///   * FUARAN060 — unknown element name (with a nearest-match suggestion);
-///   * FUARAN061 — unknown attribute for the element's kind;
+///   * FUARAN150 — unknown element name (with a nearest-match suggestion);
+///   * FUARAN151 — unknown attribute for the element's kind;
 ///   * FUARAN001 — duplicate NodeId across an XML-literal tree;
 ///   * FUARAN010 — a "$name" binding resolves against the manifest queries list;
 ///   * FUARAN117 — a "$state" value carries no state key.
@@ -67,7 +67,7 @@ public sealed class FuaranVbXmlAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        // FUARAN060 — unknown element.
+        // FUARAN150 — unknown element.
         if (!Vocabulary.IsKnownElement(name))
         {
             var suggestion = Vocabulary.Nearest(name);
@@ -86,7 +86,7 @@ public sealed class FuaranVbXmlAnalyzer : DiagnosticAnalyzer
                 continue;
             }
 
-            // FUARAN061 — unknown attribute (only for enumerated elements, to avoid false positives).
+            // FUARAN151 — unknown attribute (only for enumerated elements, to avoid false positives).
             if (allowed is not null && !allowed.Contains(attrName))
             {
                 ctx.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.UnknownAttribute, attr.GetLocation(), attrName, name));

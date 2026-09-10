@@ -320,6 +320,40 @@ governs *whether the change is admitted at all*. A plan that adds a kind without
 a discipline defect, the same class as a plan that introduces a breaking change without the
 `**Stability impact:**` annotation.
 
+### 5.1 Minting a `FUARAN*` defect code (the allocation rule)
+
+A vocabulary change usually brings a diagnostic with it, and a **defect code is allocated, never
+guessed**:
+
+```powershell
+pwsh ./scripts/fuaran-codes.ps1 -Next            # the next free code
+pwsh ./scripts/fuaran-codes.ps1 -Next -Count 3   # three, contiguously
+pwsh ./scripts/fuaran-codes.ps1 -Check           # in the gate — no code names two rules
+pwsh ./scripts/fuaran-codes.ps1 -List            # every code, with the registries that claim it
+```
+
+**The rule exists because the code space is shared by THREE registries** — the tree-time
+validator's `describe` arms, the build-time source-AST walker's findings, and the Roslyn
+diagnostic descriptors the C#/VB surfaces raise — while the obvious way to mint is to read the
+highest number in whichever one you happen to have open. Both failure modes have happened:
+two phases minted FUARAN114 on one evening (the later one renumbered its pair at fourteen sites),
+and the analyzer and the walker sat on FUARAN060/FUARAN061 for **different** defects from Phase
+315 until Phase 1646 renumbered the analyzer's pair to FUARAN150/FUARAN151.
+
+Two properties of `-Next` are what make it worth running rather than eyeballing. Its floor is
+strictly above the maximum over **every** source, the conformance corpus's published
+`validator/defect-vocabulary.json` included — so a mint cannot hand back a number the corpus has
+already put in front of other hosts. And it reads **every sibling worktree of this repository**,
+because a concurrent session's unpushed branch is invisible to this tree and to `git log`, which
+is precisely where the FUARAN114 collision came from.
+
+One code may legitimately be raised by two registries when it is **one rule stated at two layers**
+(the Tabs parity rules are, at source-AST time and at tree time). That is declared, with its
+reason, in the script's own `$Mirrors` table; a declaration that has stopped being true fails the
+check too, on the enumeration-completeness rule the authoring-surface pin uses. What the check
+deliberately does **not** police is two cases sharing a code *within* one registry — several
+defect-DU cases legitimately map to one code, and nothing can distinguish that from a repeat.
+
 ---
 
 ## Appendix A – Plateau taxonomy (reserve names now, implement on evidence)

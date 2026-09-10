@@ -23,14 +23,14 @@ namespace Fuaran.UI.Analyzers.VisualBasic.Tests;
 //  WHAT GOES WRONG WHEN IT DRIFTS, in both directions:
 //
 //    - A name MISSING from `Structural` is not merely unchecked. `IsKnownElement`
-//      is `Kinds ∪ Structural`, and `AnalyzeElement` reports FUARAN060 and
+//      is `Kinds ∪ Structural`, and `AnalyzeElement` reports FUARAN150 and
 //      RETURNS on anything outside it — so a structural child the translator
 //      happily reads is reported to the author as an unknown element, and the
 //      attribute leg for it never runs at all. Found by this pin on its first
 //      run: `<Tone>` — read by the translator since Phase 750
 //      (`ChildElements(c, "Tone")`), carrying a row in `Vocabulary.Attributes`,
 //      declared in `AuthoringSurfacePin.NonKindElements` as a structural child —
-//      and absent from `Structural`, so every valid use of it raised FUARAN060.
+//      and absent from `Structural`, so every valid use of it raised FUARAN150.
 //    - A name PRESENT in `Structural` whose wire slot has gone is the opposite
 //      failure: the analyzer silently admits an element nothing will translate,
 //      and the author learns at run time.
@@ -297,7 +297,7 @@ internal static class StructuralElementPin
             $"these are now spelled, or are no longer structured wire fields: [{string.Join(", ", orphanDivergences.OrderBy(x => x, StringComparer.Ordinal))}]");
 
         // ── Direction 3 — the RECOGNITION leg, and the reason `Tone` was found.
-        //    `AnalyzeElement` reports FUARAN060 and RETURNS on any element outside
+        //    `AnalyzeElement` reports FUARAN150 and RETURNS on any element outside
         //    `Kinds ∪ Structural`, so an attribute row for an unrecognised element
         //    is unreachable code AND a false positive on valid authoring. Neither
         //    the attribute pin nor the two directions above can see it: the
@@ -311,7 +311,7 @@ internal static class StructuralElementPin
             "structural pin: every attribute-table element is one the analyzer recognises",
             unreachableRows.Count == 0,
             $"unrecognised: [{string.Join(", ", unreachableRows.OrderBy(x => x, StringComparer.Ordinal))}]. "
-            + "FUARAN060 fires on these and the attribute row is never reached — add the name to Vocabulary.Structural "
+            + "FUARAN150 fires on these and the attribute row is never reached — add the name to Vocabulary.Structural "
             + "if the translator reads it as a child element, or drop the row if the element is retired.");
 
         // ── The vacuity guard. Every assertion above is a "no undeclared
