@@ -8474,7 +8474,13 @@
               "type": {
                 "$type": "map",
                 "values": {
-                  "$type": "json"
+                  "$type": "hosted",
+                  "hostSurface": {
+                    "decode": "decI18nArg",
+                    "encode": "encI18nArg",
+                    "fsharp": "Binding<JVal>"
+                  },
+                  "wire": "json"
                 }
               }
             }

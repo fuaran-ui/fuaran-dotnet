@@ -1382,7 +1382,7 @@ let ssrParityTests =
                               Some(
                                   TextSource.I18n(
                                       "gallery.caption.harbour",
-                                      Map.ofList [ "year", Fuaran.Core.JInt 1908 ]
+                                      Map.ofList [ "year", Binding.Static(Some(Fuaran.Core.JInt 1908)) ]
                                   )
                               ) }
 

@@ -302,6 +302,23 @@ let private genJValMap: Gen<Map<string, JVal>> =
         return Map.ofList pairs
     }
 
+/// Fuaran-UI Phase 1661 — a `TextSource.I18n` argument bag. A `Static` argument
+/// carrying a value IS the literal wire form (it encodes bare); the two
+/// store-reading arms carry their own `$type` object. Drawing from both means a
+/// generated bag exercises each side of the discriminate-by-inspection codec,
+/// which is the only place a one-sided generator could hide a divergence.
+let private genI18nArgMap: Gen<Map<string, Binding<JVal>>> =
+    let genArg: Gen<Binding<JVal>> =
+        Gen.oneof
+            [ Gen.map (fun v -> Binding.Static(Some v)) genJVal
+              Gen.map (fun k -> Binding.State(k, None)) genNonEmptyString
+              Gen.map (fun n -> Binding.Filter(n, None)) genNonEmptyString ]
+
+    gen {
+        let! pairs = genSmallList (Gen.zip genNonEmptyString genArg)
+        return Map.ofList pairs
+    }
+
 // ─── LocalFlushTrigger ──────────────────────────────────────────────────────
 
 let private genFlushTrigger: Gen<LocalFlushTrigger> =
@@ -407,7 +424,7 @@ let rec private genTextSource: Gen<TextSource> =
           Gen.map TextSource.Bound genBindingString
           gen {
               let! k = genNonEmptyString
-              let! args = genJValMap
+              let! args = genI18nArgMap
               return TextSource.I18n(k, args)
           } ]
 

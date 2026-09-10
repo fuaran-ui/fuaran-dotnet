@@ -3146,6 +3146,70 @@ and private decodeExprParams (path: string) (fields: Map<string, Json>) : Result
 and private decodeBindingJVal (path: string) (j: Json) : Result<Binding<JVal>, DecodeError> =
     bindingGeneric<JVal> path (fun p v -> jsonToJVal 1 p v) (JStr closureSentinel) j
 
+/// Fuaran-UI Phase 1661 — a `TextSource.I18n` argument bag, discriminated BY
+/// INSPECTION (WIRE_FORMAT.md §5).
+///
+/// An object carrying a `$type` member is a BINDING and decodes as one; every
+/// other JSON value is the LITERAL argument and decodes to `Static` carrying it.
+/// Two things follow, and both are stated in §5 rather than left to be inferred:
+/// a literal that is itself an object carrying `$type` is not expressible, and an
+/// unrecognised `$type` REFUSES rather than falling back to the literal reading —
+/// a document naming a binding case this host does not know is one it cannot
+/// honour, and reading it as an object would substitute the discriminator's own
+/// text into a caption.
+///
+/// The literal arm keeps `decodeJVal`'s path and code exactly (`$.….args.<name>`),
+/// which is what `reject/reject-null-i18n-arg` pins: the null refusal is rule 12's
+/// and the widening does not touch it. The TAGGED spelling of a literal —
+/// `{"$type":"Static","value":v}` — takes the same strict decoder on the same
+/// grounds: it is one payload position under two spellings, so rule 12 must
+/// govern both identically, and routing it through the generic binding decoder
+/// instead would map a nested `null` to the empty string here while every other
+/// conformant host refused it — a cross-host divergence with no fixture to catch
+/// it, manufactured by this phase.
+and private decodeI18nArgMap (path: string) (j: Json) : Result<Map<string, Binding<JVal>>, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let folded =
+            (Ok [], fields |> Map.toList)
+            ||> List.fold (fun acc (k, v) ->
+                match acc with
+                | Error e -> Error e
+                | Ok pairs ->
+                    let argPath = path + "." + k
+
+                    let decoded =
+                        match v with
+                        | JObject argFields when Map.containsKey "$type" argFields ->
+                            match Map.tryFind "$type" argFields, Map.tryFind "value" argFields with
+                            // A `Static` argument carrying no readable value is
+                            // Phase 677's STRUCTURAL absence, and it re-encodes as
+                            // `{"$type":"Static"}` — not as a bare empty string.
+                            //
+                            // Read here rather than left to `decodeBindingJVal`,
+                            // whose absent-payload path routes through the SLOT's
+                            // own parser and yields that slot's placeholder value.
+                            // That is right where the placeholder is a resolution
+                            // value nobody sees (a `Metric.value` of `0`) and wrong
+                            // at an argument, where it would be substituted into a
+                            // sentence a reader reads — and it would put this
+                            // decoder at odds with the generated structural layer,
+                            // whose `Static` arm reads the payload as an option and
+                            // yields `Static None` here.
+                            | Some(JString "Static"), (None | Some JNull) -> Ok(Binding.Static None)
+                            // The tagged spelling of a LITERAL — rule 12's strict
+                            // decoder, at the value's own path, exactly as the bare
+                            // spelling below.
+                            | Some(JString "Static"), Some raw ->
+                                decodeJVal (argPath + ".value") raw |> Result.map (Some >> Binding.Static)
+                            | _ -> decodeBindingJVal argPath v
+                        | literal -> decodeJVal argPath literal |> Result.map (Some >> Binding.Static)
+
+                    decoded |> Result.map (fun b -> (k, b) :: pairs))
+
+        folded |> Result.map (List.rev >> Map.ofList)
+
 and private decodeLocalFlushTrigger (path: string) (j: Json) : Result<LocalFlushTrigger, DecodeError> =
     // 4-case DU; one carries a `milliseconds: int` payload.
     match requireObject path j with
@@ -3901,7 +3965,7 @@ and private decodeTextSource (path: string) (j: Json) : Result<TextSource, Decod
                         match tryField fields "args" with
                         | None -> Ok(TextSource.I18n(key, Map.empty))
                         | Some aJ ->
-                            decodeJValMap (path + ".args") aJ
+                            decodeI18nArgMap (path + ".args") aJ
                             |> Result.map (fun args -> TextSource.I18n(key, args))
             | Ok s -> unknownDuCase path s "Literal | Bound | I18n"
 

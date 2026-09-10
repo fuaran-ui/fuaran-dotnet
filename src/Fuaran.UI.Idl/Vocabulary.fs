@@ -429,8 +429,8 @@ let private omit (name: string) (t: IdlType) (dflt: IdlValue) : IdlField =
       Annotations = Annotations.Empty }
 
 /// `TextSource` — `Literal` (the corpus's only Display case) + `Bound`
-/// (`Binding<string>`). The `I18n` case (a `Map<string, JsonValue>` arg bag)
-/// rides a later slice — the IDL has no map type yet and no Display fixture uses it.
+/// (`Binding<string>`) + `I18n` (a name-keyed `Binding<JVal>` argument bag,
+/// discriminated by inspection — Phase 1661; see the case comment below).
 let private textSource =
     { Name = "TextSource"
       Params = []
@@ -446,10 +446,29 @@ let private textSource =
           // encoder emits it and the generated union had to hold it for the
           // swap). Phase 1078 closed that gap: `image-caption-i18n-1` carries an
           // `I18n` caption, so the case is now certified rather than merely
-          // declared. `args` is a name-keyed JVal bag, always emitted (matching
-          // the hand-written arm).
+          // declared. `args` is a name-keyed bag, always emitted (matching the
+          // hand-written arm).
+          //
+          // Phase 1661 — an argument is a `Binding<JVal>`, not a bare `JVal`, so
+          // "3 items left" can take its count from the same slot the list reads.
+          // The bag's element is a DISCRIMINATED-BY-INSPECTION slot (the
+          // `TransformSource` precedent): the wire has no `$type` tag saying
+          // "literal" versus "binding", the codec inspects the shape, and a
+          // `Static` argument carrying a value emits the BARE value — which is
+          // why every literal-args document ever emitted is byte-identical
+          // across this widening. So it cannot be a `TUnion`; the two codecs are
+          // support splices (`Support.fs`), reached by name.
           { Tag = "I18n"
-            Fields = [ req "key" TStr; req "args" (TMap TJson) ]
+            Fields =
+              [ req "key" TStr
+                req
+                    "args"
+                    (TMap(
+                        THosted
+                            { FSharp = "Binding<JVal>"
+                              Encode = "encI18nArg"
+                              Decode = "decI18nArg" }
+                    )) ]
             Annotations = Annotations.Empty } ] }
 
 /// `Binding<'T>` — the real recursive binding union, now at full case parity with

@@ -101,7 +101,10 @@ type BindingSources =
         ComputedContext: BindingContext
         /// i18n catalog — keys map to localised strings. Session 3b's
         /// `TextSource.I18n` resolver substitutes `{argName}` placeholders in
-        /// the localised string with values from the `TextSource.I18n` args map.
+        /// the localised string with values from the `TextSource.I18n` args map
+        /// — each of which is a `Binding<JVal>` since Phase 1661, so an argument
+        /// may read the same slot the surrounding page does; a literal argument
+        /// substitutes exactly the characters it always did.
         /// Empty map ⇒ the renderer falls back to a `[i18n:key]` debug
         /// placeholder so missing-translation cases stay loud (same
         /// behaviour as session 3a). `Binding.I18n` uses
