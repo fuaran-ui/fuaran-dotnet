@@ -611,3 +611,134 @@ let valuelessAutoBoundFieldTests =
 
                   Expect.isTrue (html.Length > 0) (sprintf "%s emitted markup" name)
           } ]
+
+// ============================================================================
+//  Phase 1648 — the four SSR↔CSR class-emission divergences (Phase 431's
+//  field-findings).
+//
+//  The Phase 431 coverage test aliased the STYLING consequence of each of these
+//  through declared absences, so the reference sheet stayed correct while the
+//  EMISSION divergence stood — and each aliased pair is a trap for any host
+//  whose own CSS or DOM query selects on the class the CLIENT gave it and meets
+//  the server's instead. Three of the four were also plain defects in the
+//  markup: an invalid input type, a dropped help slot, and a missing chip-kind
+//  suffix.
+// ============================================================================
+
+[<Tests>]
+let ssrCsrEmissionParityTests =
+    testList
+        "Fuaran.UI.Renderer.Server — SSR↔CSR class emission (Phase 1648)"
+        [ test "a plain text field carries the client's `fuaran-form-input`, not the coarse field-control class" {
+              let html =
+                  Render.renderStatic (
+                      fieldForm "name" (FormFieldKind.Text(Some(Binding.State("name", Some "")), None))
+                  )
+
+              Expect.isTrue (contains "fuaran-form-input" html) "the split vocabulary the client emits"
+          }
+
+          test "a textarea carries `fuaran-form-textarea`" {
+              let html =
+                  Render.renderStatic (
+                      fieldForm "notes" (FormFieldKind.TextArea(Some(Binding.State("notes", Some "")), None, 3))
+                  )
+
+              Expect.isTrue (contains "fuaran-form-textarea" html) "the textarea's own class"
+          }
+
+          test "a date field carries the input class AND the per-kind modifier" {
+              let html =
+                  Render.renderStatic (
+                      fieldForm
+                          "when"
+                          (FormFieldKind.Date(
+                              Some(Binding.State("when", Some "")),
+                              None,
+                              DateVariant.Date,
+                              None,
+                              None,
+                              None
+                          ))
+                  )
+
+              Expect.isTrue
+                  (contains "fuaran-form-input fuaran-form-date" html)
+                  "both, in the order the client emits them"
+          }
+
+          test "a Choice is a <select>, not `<input type=\"choice\">`" {
+              // `choice` is not an HTML input type, so every browser fell back
+              // to `type="text"` per the invalid-value default: a no-script
+              // reader met a free-text box where the hydrated page shows a
+              // dropdown, and could submit a value no option offered.
+              let options =
+                  Binding.Static(
+                      Some([ { Value = "a"; Label = "Alpha" }; { Value = "b"; Label = "Beta" } ]: SelectOption list)
+                  )
+
+              let html =
+                  Render.renderStatic (fieldForm "pick" (FormFieldKind.Choice(options, None, None)))
+
+              Expect.isFalse (contains "type=\"choice\"" html) "the invalid input type is gone"
+              Expect.isTrue (contains "<select" html) "and the control is a real select"
+              Expect.isTrue (contains "fuaran-form-select" html) "carrying the client's class"
+
+              Expect.isTrue
+                  (contains "Alpha" html)
+                  "with its options in the markup, where a no-script reader can choose one"
+
+              Expect.isTrue (contains "Beta" html) "both of them"
+          }
+
+          test "a Choice marks the resolved option selected" {
+              let options =
+                  Binding.Static(Some([ { Value = "b"; Label = "Beta" } ]: SelectOption list))
+
+              let html =
+                  Render.renderStatic (
+                      fieldForm "pick" (FormFieldKind.Choice(options, Some(Binding.Static(Some "b")), None))
+                  )
+
+              Expect.isTrue
+                  (contains "selected" html)
+                  "a static render that cannot say which option is chosen shows the placeholder to a reader who already chose"
+          }
+
+          test "FormField.Help is emitted — it was dropped entirely" {
+              let field: FormField<obj> =
+                  { Defaults.formField<obj> with
+                      Id = "email"
+                      Label = TextSource.Literal "Email"
+                      Help = Some(TextSource.Literal "We never share it.")
+                      Kind = FormFieldKind.Text(Some(Binding.State("email", Some "")), None) }
+
+              let html =
+                  Render.renderStatic (
+                      Fuaran.form
+                          "frm"
+                          { Defaults.form<obj> with
+                              Fields = [ field ] }
+                  )
+
+              Expect.isTrue (contains "fuaran-form-help" html) "the client's help class"
+
+              Expect.isTrue
+                  (contains "We never share it." html)
+                  "and the text — the static floor is the reader least able to work a control without its help"
+          }
+
+          test "a filter chip carries the kind suffix on BOTH renderers' shared table" {
+              // The suffix table is `Theme.filterKindClass` now, so this asserts
+              // the server still reads it and the client reads the same one.
+              let spec: FilterSpec<obj> =
+                  { Defaults.filter<obj> with
+                      Name = "amount"
+                      Label = TextSource.Literal "Amount"
+                      Kind = FormFieldKind.Range(None, None, None, None, None) }
+
+              let html = Render.renderStatic (Fuaran.filters "flt" [ spec ])
+
+              Expect.isTrue (contains "fuaran-filter fuaran-filter-range" html) "the chip's kind suffix"
+              Expect.equal (Theme.filterKindClass spec.Kind) "range" "and the shared table is what produced it"
+          } ]
