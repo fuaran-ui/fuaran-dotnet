@@ -2432,17 +2432,14 @@ and private renderCustom
 /// A form field rendered inert: the labelled control with the correct class
 /// vocabulary. Interactive binding (onChange) is a client-hydration concern.
 /// Whether the control write-back default has somewhere to write (Phase 1130).
-/// The SSR tier's copy of the predicate the client renderer and the FUARAN069
-/// inert check both use, and it must stay the same predicate: the two tiers
-/// choose DIFFERENT markup from this one answer (a picture, or an adjustable
-/// control), so disagreeing about it would make the floor and the hydrated
-/// control disagree about what the document even is.
+/// The two tiers choose DIFFERENT markup from this one answer (a picture, or an
+/// adjustable control), so disagreeing about it would make the floor and the
+/// hydrated control disagree about what the document even is — which is why
+/// Phase 1667 made it one DEFINITION (`BindingWalk.isWriteBackTarget`) shared
+/// with the client renderer and the FUARAN069 check, rather than three copies
+/// under a comment asserting they agree.
 and private isWriteBackTarget (binding: Binding<'T>) : bool =
-    match binding with
-    | Binding.State _
-    | Binding.Filter(_, None)
-    | Binding.Local _ -> true
-    | _ -> false
+    Fuaran.UI.BindingWalk.isWriteBackTarget binding
 
 and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) : ReactElement =
     // Phase 596 — the value slots are `Binding<_> option` since the swap. An

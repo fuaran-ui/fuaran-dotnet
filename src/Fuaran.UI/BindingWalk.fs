@@ -1057,6 +1057,37 @@ let rec writeBackTargetOf<'T> (binding: Binding<'T>) : string option * bool =
         destination, opaque || onCommit.IsSome
     | _ -> None, false
 
+/// THE predicate for "the Phase 426 control write-back default has somewhere to
+/// write" — FUARAN069's inert-control condition, and the same question the client
+/// renderer and the SSR renderer each ask before choosing their markup.
+///
+/// **One definition, here, and that is the point of the function existing**
+/// (Phase 1667). It stood as three byte-identical private copies — in
+/// `PreEmitValidate.fs`, `Fuaran.UI.Renderer/Render.fs` and
+/// `Fuaran.UI.Renderer.Server/Render.fs` — each carrying a comment asserting they
+/// must stay one predicate, which is the weakest possible form of that guarantee:
+/// three copies agree until one of them is edited. It lives in this module
+/// because this is where `writeBackTargetOf` already answers the harder half of
+/// the same question, and because `Fuaran.UI` is upstream of both renderers and of
+/// the validator.
+///
+/// `Binding.State` and an unwritten `Binding.Filter` are direct store slots. A
+/// `Binding.Local` is DERIVED from `writeBackTargetOf` rather than admitted
+/// wholesale, which is what narrows its exemption to what 1538 said it meant: a
+/// buffer is live when it carries a commit closure, a declared `commitTo`, OR a
+/// writable re-sync source, and one carrying none of the three buffers a value
+/// and then has nowhere to put it. Deriving it also means the narrowing cannot
+/// drift from the destination the validator's two-writers check reads, since both
+/// now read the same function.
+let isWriteBackTarget<'T> (binding: Binding<'T>) : bool =
+    match binding with
+    | Binding.State _
+    | Binding.Filter(_, None) -> true
+    | Binding.Local _ ->
+        let destination, opaque = writeBackTargetOf binding
+        destination.IsSome || opaque
+    | _ -> false
+
 /// The write-side facts of one `FormFieldKind`'s value slot.
 type FormFieldWrite =
     {

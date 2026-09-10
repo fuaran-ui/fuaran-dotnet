@@ -2738,18 +2738,16 @@ let private staleDateLiteral (kind: NodeKind<'Msg>) : string option =
     else
         None
 
-/// A binding the Phase 426 control write-back default can write to: directly
-/// `Binding.State` (the renderer writes the StateStore slot) or
-/// `Binding.Filter` (the FilterStore slot). Any other shape gives an omitted
-/// handler nothing to write — the FUARAN069 inert-control condition. A
-/// `Binding.Local` also counts as live: its Phase 62 commit pipeline carries
-/// the change independently of the handler.
-let private isWriteBackTarget (binding: Binding<'T>) : bool =
-    match binding with
-    | Binding.State _
-    | Binding.Filter(_, None)
-    | Binding.Local _ -> true
-    | _ -> false
+/// A binding the Phase 426 control write-back default can write to — the
+/// FUARAN069 inert-control condition.
+///
+/// Phase 1667 — one definition, in `BindingWalk`, shared with both renderers.
+/// This was a byte-identical private copy of the same three lines, under a
+/// comment asserting the copies must agree; deriving the answer from
+/// `writeBackTargetOf` is what makes that true rather than asserted, and it is
+/// what applies 1538's narrowing of the `Local` exemption to this check, which
+/// was the one place the narrowing had been stated and not implemented.
+let private isWriteBackTarget (binding: Binding<'T>) : bool = BindingWalk.isWriteBackTarget binding
 
 // ── FUARAN109/110/111 — the accessibility family (Phase 727) ─────────────────
 //
