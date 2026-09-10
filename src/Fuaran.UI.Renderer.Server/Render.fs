@@ -2506,7 +2506,37 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                 v
                 |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.combobox))
 
-            "combobox", (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
+            // Phase 1648 — the NULL COLLAPSE this arm was missing, and the one
+            // place in this renderer that lacked it.
+            //
+            // `ControlValueDefaults.combobox` is `None` — deliberately, because
+            // "no selection" is what a combobox's absent value means and the
+            // codec's collapse keys off exactly that — so the auto-bound
+            // placeholder is `Binding.State(id, None)`. `BindingResolver.resolve`
+            // answers a default-less `State` whose key is absent with
+            // `Resolved Unchecked.defaultof<'T>`, which for a `string` slot is
+            // NULL, so `tryResolve` returned `Some null` and `Option.defaultValue`
+            // — which only replaces `None` — passed it straight through to
+            // `prop.value`. Feliz.ViewEngine's `mkAttr` then threw a
+            // NullReferenceException, and the whole document failed to render on
+            // the commonest shape the docs teach: a `Combobox` field with no
+            // value binding.
+            //
+            // The client renderer has guarded this since Phase 1113 (`if isNull s
+            // || s = "" then None`), and so do the three other resolutions in
+            // THIS file — the filter twin among them. This arm was the omission,
+            // which is why the defect reached a shipped 0.70.0 while every
+            // neighbouring control was fine.
+            //
+            // Fixed HERE rather than at the resolver: making a default-less
+            // `State` resolve to a slot-typed empty instead of the CLR default
+            // would change what "absent" means for every host and every slot
+            // type, which is a wire-semantics decision and not this phase's to
+            // take. Recorded as a finding beside the phase.
+            "combobox",
+            (BindingResolver.tryResolve ctx.Sources v
+             |> Option.bind (fun s -> if isNull s then None else Some s)
+             |> Option.defaultValue "")
         // Phase 1130 — the rating's own branch below builds the control (a star
         // row or a radio group, per what the document can honour), so this
         // tuple carries only the discriminator.

@@ -534,3 +534,80 @@ let mediaCaptureSsrTests =
                   (MediaCapture.acceptSelectsDevice CaptureSource.Microphone [ "*/*" ])
                   "…and so does */*, for the same reason"
           } ]
+
+// ============================================================================
+//  Phase 1648 — the auto-bound value slot whose default is `None`.
+//
+//  `Fuaran.UI.Renderer.Server` 0.70.0 threw a NullReferenceException rendering
+//  a `Combobox` field with no value binding — the commonest shape the docs
+//  teach, and the shape the decoder synthesises for any wire tree that omits
+//  the slot. Isolated with single-field probes: Text, Choice, Rating and Tokens
+//  were all fine, because every one of their `ControlValueDefaults` is a `Some`.
+//  `combobox` is `None` (deliberately: "no selection" is what a combobox's
+//  absent value means, and the codec's collapse keys off it), so
+//  `Binding.State(id, None)` resolved through `resolve`'s `Unchecked.defaultof`
+//  arm to a NULL string, `Option.defaultValue` did not replace it — it only
+//  replaces `None` — and `Feliz.ViewEngine`'s `mkAttr` threw on the null value.
+//
+//  A whole document failed to render for one field, so the assertion is on the
+//  RENDER SUCCEEDING as much as on what it emits.
+// ============================================================================
+
+let private fieldForm (fieldId: string) (kind: FormFieldKind<obj>) : Node<obj> =
+    Fuaran.form
+        "frm"
+        { Defaults.form<obj> with
+            Fields =
+                [ { Defaults.formField<obj> with
+                      Id = fieldId
+                      Label = TextSource.Literal "Label"
+                      Kind = kind } ] }
+
+[<Tests>]
+let valuelessAutoBoundFieldTests =
+    testList
+        "Fuaran.UI.Renderer.Server — a value-less auto-bound field (Phase 1648)"
+        [ test "a Combobox with no value binding renders" {
+              let html =
+                  Render.renderStatic (
+                      fieldForm "pick" (FormFieldKind.Combobox(true, None, Binding.Static(Some []), None))
+                  )
+
+              Expect.isTrue
+                  (contains "fuaran-combobox-input" html)
+                  "the combobox's own input is emitted — before Phase 1648 this call threw and the document rendered not at all"
+
+              Expect.isTrue (contains "value=\"\"" html) "and its value is the empty entry, never a null"
+          }
+
+          test "every FormFieldKind whose value slot may be omitted renders" {
+              // The single-field probe set, kept as a suite rather than as a
+              // session's scratch: `ControlValueDefaults` gains entries, and the
+              // next `None` default is the next instance of this defect. A kind
+              // added here costs one line; discovering it in a consumer's
+              // browser costs a release.
+              let kinds: (string * FormFieldKind<obj>) list =
+                  [ "Text", FormFieldKind.Text(None, None)
+                    "Number", FormFieldKind.Number(None, None)
+                    "TextArea", FormFieldKind.TextArea(None, None, 3)
+                    "Checkbox", FormFieldKind.Checkbox(None, None)
+                    "Toggle", FormFieldKind.Toggle(None, None)
+                    "Choice", FormFieldKind.Choice(Binding.Static(Some []), None, None)
+                    "Combobox", FormFieldKind.Combobox(true, None, Binding.Static(Some []), None)
+                    "Rating", FormFieldKind.Rating(false, 5, None, None)
+                    "Color", FormFieldKind.Color(None, None)
+                    "Tokens", FormFieldKind.Tokens(true, None, None, None) ]
+
+              for name, kind in kinds do
+                  let html =
+                      try
+                          Render.renderStatic (fieldForm "f" kind)
+                      with e ->
+                          failtestf
+                              "%s with an omitted value slot threw %s: %s. The decoder synthesises exactly this shape for a wire tree that omits the slot, so a throw here is a whole document lost."
+                              name
+                              (e.GetType().Name)
+                              e.Message
+
+                  Expect.isTrue (html.Length > 0) (sprintf "%s emitted markup" name)
+          } ]
