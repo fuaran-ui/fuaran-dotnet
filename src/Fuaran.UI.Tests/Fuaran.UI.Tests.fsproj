@@ -361,6 +361,9 @@
     <Compile Include="TokensModelTests.fs" />
     <Compile Include="TrustedTypesTests.fs" />
     <Compile Include="LocalWireTests.fs" />
+    <!-- Phase 1667 - the write-back predicate is one definition, pinned behaviourally against
+         FUARAN069 and structurally by a census over the two copied renderer sources. -->
+    <Compile Include="WriteBackPredicateTests.fs" />
     <!-- Phase 1532 — the client Transform evaluator has a row x step budget. -->
     <Compile Include="TransformBudgetTests.fs" />
     <Compile Include="StatePersistenceTests.fs" />

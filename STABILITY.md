@@ -6157,6 +6157,28 @@ closure; a per-row action slot is a separate admission. `Action.WriteToClipboard
 from one correction it should have carried since 1126: `BindingWalk.usesOfAction` now counts the
 bound `TextSource` payloads of BOTH `WriteToClipboard` and `Navigate`, which it counted for neither.
 
+### Version note — this ships in 0.78.0, not the 0.77.0 it was authored against
+
+**`v0.77.0` was TAGGED on 2026-09-06 (`762097c`), after this entry was written.** A tagged slot is
+somebody's contract and gains nothing, so under the draft-slot rule everything recorded above ships on
+the next draft rather than on the number in the heading. Phase 1535 advanced that draft to 0.78.0
+(`6f290c0`) and Phase 1538 rode it, and this entry's changes are in the same commits' package. Read
+the heading as the slot this was authored against and this section as where it actually shipped —
+exactly as the `Derivation<'Msg>.StructuralKey` and `ApplyErrorCode.LimitExceeded` entries above read.
+
+**Why a note rather than a rewritten heading** (Phase 1667, which added this). Phase 1538 found the
+discrepancy and recorded it as a finding rather than editing two other phases' entries, which was
+right: an entry is the record its own phase made, and silently renumbering it would erase the fact
+that the tag landed mid-flight. The 1531-style version note is the shape this document already uses
+for exactly this situation, so what was missing was the note, not a correction.
+
+**What it costs a consumer of 0.78.0.** The `Action.Navigate` widening above is breaking at
+construction and at every positional match, and 0.78.0 already carries two further source-breaking
+changes of the same pre-1.0-minor class (Phase 1535's `Node.Visible` / predicate `SwitchCase`, Phase
+1538's `Binding.Local` field set). One slot, one recompile, three changes enumerated in this document
+under two numbers — which is the draft-slot rule working rather than a defect, and is why no fourth
+number was cut.
+
 ---
 
 ## Recorded change — 0.77.0, renderer correctness: uploads, keys, refusals and two host-parity fixes (fuaran#1531)
@@ -6239,6 +6261,25 @@ the `PreEmitValidate` rule this phase's M-B1 task proposed are NOT here: a
 count-like bound at `Skeleton.rows` contradicts the shipped §7.1 conformance test
 that every 32-bit integer decodes at an integer slot, so it is a specification
 amendment rather than a host-side refusal. See the phase's outcome.
+
+### Version note — this ships in 0.78.0, not the 0.77.0 it was authored against
+
+**`v0.77.0` was TAGGED on 2026-09-06 (`762097c`), after this entry was written.** A tagged slot is
+somebody's contract and gains nothing, so under the draft-slot rule everything recorded above ships on
+the next draft rather than on the number in the heading. Phase 1535 advanced that draft to 0.78.0
+(`6f290c0`) and Phase 1538 rode it, and this entry's changes are in the same commits' package. Read
+the heading as the slot this was authored against and this section as where it actually shipped —
+exactly as the `Derivation<'Msg>.StructuralKey` and `ApplyErrorCode.LimitExceeded` entries above read.
+
+**Why a note rather than a rewritten heading** (Phase 1667, which added this). Phase 1538 found the
+discrepancy and recorded it as a finding rather than editing two other phases' entries, which was
+right: an entry is the record its own phase made, and silently renumbering it would erase the fact
+that the tag landed mid-flight. The 1531-style version note is the shape this document already uses
+for exactly this situation, so what was missing was the note, not a correction.
+
+**What it costs a consumer of 0.78.0.** The one source-breaking change in the entry above rides the
+same slot as Phase 1535's and Phase 1538's, all three of the same pre-1.0-minor class. A consumer
+adopting 0.78.0 pays one recompile for all of them.
 
 ---
 
@@ -7728,6 +7769,46 @@ lands; a phase moves NO number._
 ### What rides 0.81.0
 
 _(each phase adds one paragraph here, named `fuaran#NNNN — <class>`)_
+
+**fuaran#1667 — BREAKING at a public predicate's answer, and NOTHING on the wire moves.** Two
+changes ride this slot, and only the second is a contract move a consumer can trip over.
+
+`Fuaran.UI.BindingWalk` gains `isWriteBackTarget` — THE predicate for "the Phase 426 control
+write-back default has somewhere to write", which is FUARAN069's inert-control condition and the
+question both renderers ask before choosing their markup. It stood as three byte-identical private
+copies (in `PreEmitValidate.fs`, `Fuaran.UI.Renderer/Render.fs` and
+`Fuaran.UI.Renderer.Server/Render.fs`), each under a comment asserting the copies must stay one
+predicate — a guarantee that holds until one copy is edited. Adding the function is additive; the
+three copies now delegate to it, which is source-invisible.
+
+**What BREAKS is the answer for one `Binding.Local` shape.** The `Local` arm is now DERIVED from
+`writeBackTargetOf` rather than admitted wholesale, which applies the narrowing Phase 1538 declared
+and did not implement: a buffer is live when it carries an `onCommit` closure, a declared `commitTo`,
+or a writable re-sync source, and one carrying none of the three buffers a value and then has nowhere
+to put it. So a handler-free control over such a `Local` now reports **FUARAN069** where it was
+silently accepted, and the client renderer gives it the rating control's non-adjustable ARIA role
+where it previously claimed a slider. A tree carrying any of the three destinations is unaffected;
+`Binding.State` and an unwritten `Binding.Filter` are unaffected. It is a validator answer rather
+than a runtime one, so an author sees it at build time — which is the point, since the control was
+already inert and only the diagnosis was missing. 1538's own test already asserted
+`writeBackTargetOf` calls this shape inert, so the two halves of the estate disagreed until now.
+
+**Pinned by a test rather than by the comment that claimed it.**
+`src/Fuaran.UI.Tests/WriteBackPredicateTests.fs` asserts FUARAN069's own emission (through
+`PreEmitValidate.validate`, its public surface) agrees with the predicate over eight binding shapes —
+four `Local` shapes, three live for three different reasons and one not live at all — and then
+censuses the two copied renderer sources for a re-appearing local `match`. The behavioural half
+cannot see that: a fresh copy AGREES on the day it is written, which is how the last one arrived.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged; no field is added to a mapped record, so §11 step 6 is not engaged
+either. **No escape hatch is created or widened** — the change NARROWS what counts as a live
+write-back target, and `docs/security/ESCAPE-HATCHES.md` needs no amendment.
+
+**The phase's other three hosts do not ship here.** The §5 error channel for a decoded
+`Binding.Computed` lands in `fuaran-py`, `fuaran-go` and `fuaran-rs`; this tier already errored
+(`HostPrelude.WireSurvivabilityError`, recorded under 0.78.0 as Phase 1538's fourth behavioural
+change) and is unchanged by it.
 
 ## 0.80.0 — the provider-call telemetry record carries the subject it was made under (Phase 1637)
 

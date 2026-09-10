@@ -1287,21 +1287,21 @@ let private commitLocalTo (ctx: RenderContext<'Msg>) (commitTo: string option) (
 /// render function is untestable by construction, and the harness census in
 /// `Fuaran.UI.Tests` fails on one reappearing.
 /// Whether the control write-back default has somewhere to write (Phase 1130).
-/// The renderer's copy of the predicate `PreEmitValidate`'s FUARAN069 inert
-/// check uses, and it must stay the same predicate: what the validator calls an
-/// inert control is exactly what this renderer must not dress up as an
-/// adjustable one. A `Binding.Local` counts as live — its commit pipeline
-/// carries the change independently of the handler.
+/// What `PreEmitValidate`'s FUARAN069 inert check calls an inert control is
+/// exactly what this renderer must not dress up as an adjustable one, so the two
+/// must be ONE predicate — and since Phase 1667 they are one DEFINITION
+/// (`BindingWalk.isWriteBackTarget`) rather than three copies under a comment
+/// asserting they agree. A `Binding.Local` counts as live when its commit
+/// pipeline has a destination: an `onCommit` closure, a declared `commitTo`, or a
+/// writable re-sync source. One carrying none of the three buffers a value and
+/// then has nowhere to put it, which is what 1538 corrected and what this copy
+/// still said was always live.
 ///
 /// Only the rating control consults it today, because it is the only control
 /// whose ARIA ROLE changes with the answer; every other control renders the
 /// same markup either way and lets the validator do the complaining.
 let internal isWriteBackTarget (binding: Binding<'T>) : bool =
-    match binding with
-    | Binding.State _
-    | Binding.Filter(_, None)
-    | Binding.Local _ -> true
-    | _ -> false
+    Fuaran.UI.BindingWalk.isWriteBackTarget binding
 
 let fieldChange
     (ctx: RenderContext<'Msg>)
