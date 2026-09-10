@@ -193,6 +193,7 @@
     "now-grain": [138,157,189,245,280,307,326,448,449,450,592,793,798,801,805,808,811,814],
     "op-batch": [297,299,305,373,440,457,763,765,767],
     "op-editnode": [196,298],
+    "op-editnode-action-commitlocal": [3,240,298,330],
     "op-insertchild": [],
     "op-movenode": [],
     "op-removenode": [299],

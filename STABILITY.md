@@ -7713,6 +7713,22 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.81.0 — DRAFT: the slot Phase 1646 opened, which the 2026-09-10 (e) run (fuaran#1656–#1669) rides (UNTAGGED — until the next release gesture)
+
+_**This is the draft slot the 2026-09-10 (e) run rides.** `v0.80.0` is tagged (Phase 1637), so nothing can ride it;
+Phase 1646 (5095855) advanced `<Version>` to 0.81.0 by hand for its typed-grid facade widening (its entry is below), and
+this run appends to that same slot rather than cutting another. The version ledger's producing-unit discovery refused
+`fuaran-dotnet` on 2026-09-10 (recorded as an engine finding), so neither cut is attributed on the ledger yet; both are
+attributed once the verb resolves the repo again. Six phases in the run are BREAKING on the wire or a public surface —
+1661 (`TextSource.I18n`), 1662 (`MaxExprNodes` over `Transform`), 1663 (render-text family), 1665 (`Accessibility.label`),
+1666 (`Skeleton.rows` bound), 1667 (the binding-resolution error channel) — so the slot's class is BREAKING whatever
+else rides it; 1668 and 1669 are additive. Each phase appends one paragraph under the heading below, in the order it
+lands; a phase moves NO number._
+
+### What rides 0.81.0
+
+_(each phase adds one paragraph here, named `fuaran#NNNN — <class>`)_
+
 ## 0.80.0 — the provider-call telemetry record carries the subject it was made under (Phase 1637)
 
 **Additive on the wire, RECORD-WIDENING at the source, and the two are not the same statement — read
