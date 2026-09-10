@@ -280,7 +280,7 @@ regen and treats the regen + three-host green as a single landing.
    --emit-corpus ..\wire-format-fixtures`; add one legacy-upgrade fixture per retired tag.
 5. **TS leg** – `packages/{schema,ops,renderer}` encode/decode/upgrade/render; re-copy reference CSS;
    class-name vocabulary parity lock.
-6. **Python leg** – `fuaran_py/{schema,ops,validator,renderer}` encode/decode/upgrade/render.
+6. **Python leg** – `fuaran_ui/{schema,ops,validator,renderer}` encode/decode/upgrade/render.
 7. **Sweep** – samples/demos/courses; cookbook recipes + FastPathResolver anchors + eval assertions
    naming the retired kinds; capture the post-merge container-cluster confusion run.
 

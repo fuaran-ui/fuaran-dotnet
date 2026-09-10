@@ -3,7 +3,7 @@
 // tree-carry loop, and the four hardening properties (timeout, endpoint scheme,
 // malformed 200, no upstream exception text). Driven against a scripted
 // MockTransport, so no live endpoint is touched. Parity-checked against the
-// TypeScript @fuaran-ui/client and the Python fuaran_py.client, which speak the
+// TypeScript @fuaran-ui/client and the Python fuaran_ui.client, which speak the
 // same wire and synthesise the same codes.
 
 module Fuaran.UI.Client.Tests.ClientTests

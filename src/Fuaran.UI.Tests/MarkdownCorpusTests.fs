@@ -9,7 +9,7 @@ module Fuaran.UI.Tests.MarkdownCorpus
 //  and asserts the F# reference renderer (Fuaran.UI.Renderer.Markdown.toHtml)
 //  reproduces every `source → html` pair byte-for-byte. This pins the corpus
 //  to the F# renderer (Leg A: `F# == corpus`); the TS (@fuaran-ui/renderer) and
-//  Python (fuaran_py.renderer) hosts run the same corpus (Leg B: `TS == corpus`,
+//  Python (fuaran_ui.renderer) hosts run the same corpus (Leg B: `TS == corpus`,
 //  `Py == corpus`) — together proving `F# == TS == Py`, the §11.1-style
 //  byte-parity gate applied to markdown rendering.
 //

@@ -6,7 +6,7 @@ Fuaran renders `DisplayKind.Markdown` through **one deterministic GFM → HTML r
 **client** renderer (`Fuaran.UI.Renderer`) and the .NET **server** renderer
 (`Fuaran.UI.Renderer.Server`) call the *same* function, their markdown output is byte-identical **by
 construction** – there is no SSR↔CSR hydration-mismatch surface. The TypeScript
-(`@fuaran-ui/renderer`) and Python (`fuaran_py.renderer`) hosts implement the same renderer and are
+(`@fuaran-ui/renderer`) and Python (`fuaran_ui.renderer`) hosts implement the same renderer and are
 held byte-identical by a shared conformance corpus (below).
 
 > **Behaviour change (Phase 292) – read this if you relied on the old renderer.** Before Phase 292
@@ -89,7 +89,7 @@ The HTML string `toHtml` returns is the contract every host reproduces exactly:
 
 - **Home:** `Fuaran.UI.Renderer.Core` (Phase 138 spine; FSharp.Core only, Fable-portable). The F#
   client and server renderers consume it directly → F#-side parity by construction.
-- **TS / Python:** `@fuaran-ui/renderer` and `fuaran_py.renderer` implement the same renderer,
+- **TS / Python:** `@fuaran-ui/renderer` and `fuaran_ui.renderer` implement the same renderer,
   verified byte-identical against the corpus.
 - **Sanitization:** the renderer **escapes by construction** – every text run is HTML-escaped, raw
   HTML never passes through, and every link/image URL goes through the scheme floor

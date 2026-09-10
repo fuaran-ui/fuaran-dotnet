@@ -148,7 +148,7 @@ The CSS moves by byte-copy; the shells do not, and each tier's shell is a differ
 | `fuaran-ts` | yes — `packages/renderer/css/fuaran.css` | its standalone-bundle mount and any host page template it ships |
 | `fuaran-go` | yes — `renderer/content/fuaran-reference.css` | the static-HTML + islands document emitter (the `<html>` open tag it writes) |
 | `fuaran-rs` | yes — `css/fuaran.css` | the server-side emitter and the `wasm32` client's mount root |
-| `fuaran-py` | yes — `src/fuaran_py/renderer/content/fuaran-reference.css` | the server-HTML renderer's document wrapper |
+| `fuaran-py` | yes — `src/fuaran_ui/renderer/content/fuaran-reference.css` | the server-HTML renderer's document wrapper |
 | `fuaran-swift` / `fuaran-kt` | n/a — native surfaces, no stylesheet | the platform's own layout-direction setting, from the same locale |
 
 Each of those shells needs the same two facts the F# shell now derives: the BCP-47 tag, and the

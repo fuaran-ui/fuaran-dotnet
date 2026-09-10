@@ -302,7 +302,7 @@ let private tierCssCopies =
       // Phase 432 closed for ts/go/rs, and py was outside it by omission rather
       // than by decision.
       "fuaran-py",
-      Path.Combine(cssSiblingRoot "fuaran-py", "src", "fuaran_py", "renderer", "content", "fuaran-reference.css") ]
+      Path.Combine(cssSiblingRoot "fuaran-py", "src", "fuaran_ui", "renderer", "content", "fuaran-reference.css") ]
 
 // ─── Phase 433 — the vocabulary fingerprint stamp ──────────────────────────
 //
