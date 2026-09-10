@@ -740,4 +740,33 @@ let all: LenientFixture list =
         VerboseJson =
           """{"id":"custom-int53","kind":{"$type":"Custom","componentId":"trend-card","moduleId":"analytics","props":{"beyond":9007199254740992,"boundary":9007199254740991}}}"""
         Description =
-          "§2 rule 5 — integer identity in a rule-12 payload stops at ±(2⁵³−1). `boundary` is at the limit and survives verbatim; `beyond` is one past it, has no representation every host holds exactly, and decodes to the nearest double. Pinned as a lenient NORMALISATION rather than left implicit, because three hosts silently rounded it, one kept an int64 and one an arbitrary-precision integer — the same document, five canonical byte sequences, five hash-chain digests" } ]
+          "§2 rule 5 — integer identity in a rule-12 payload stops at ±(2⁵³−1). `boundary` is at the limit and survives verbatim; `beyond` is one past it, has no representation every host holds exactly, and decodes to the nearest double. Pinned as a lenient NORMALISATION rather than left implicit, because three hosts silently rounded it, one kept an int64 and one an arbitrary-precision integer — the same document, five canonical byte sequences, five hash-chain digests" }
+
+      // ─── Phase 1656 — the null spelling of an absent State default ──────
+      //
+      // §5's read-compat rule says a `null` Static payload normalises to the
+      // slot's TYPED EMPTY (`[]` / `None`) — the pre-429 F# boxes-to-null
+      // asymmetry, pinned at the `Static.value` position by
+      // `lenient-null-static-options` above. At the `State.defaultValue`
+      // position it means something else, and this fixture is what keeps the
+      // two apart: there `null` is a spelling of ABSENCE, so it normalises to
+      // the OMITTED key and not to a declaration of the empty collection.
+      //
+      // The distinction is not pedantry. A declared `[]` at a collection slot
+      // is a claim the seeding lattice reads (`BindingWalk`'s `isEmptySeed`);
+      // absence is the claim that this reader carries nothing of its own. A
+      // host that routed the null through its typed parser — which is exactly
+      // what a shared `parseStatic` seam invites, and what one host did at every
+      // collection slot — turned the second claim into the first on every round
+      // trip.
+      //
+      // Both spellings ride: the canonical `defaultValue` at an options slot and
+      // the `initialValue` alias at a float-sequence one, so a host that special
+      // cased the canonical name alone fails on the second child.
+      { Id = "lenient-1656-state-default-null"
+        LenientJson =
+          """{"id":"len-1656","kind":{"$type":"Box","children":[{"id":"len-1656-select","kind":{"$type":"Select","label":"Region","source":{"$type":"State","defaultValue":null,"key":"regionOptions"},"value":{"$type":"State","defaultValue":"uk","key":"region"}}},{"id":"len-1656-spark","kind":{"$type":"Sparkline","source":{"$type":"State","initialValue":null,"key":"series"}}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"len-1656","kind":{"$type":"Box","children":[{"id":"len-1656-select","kind":{"$type":"Select","label":"Region","source":{"$type":"State","key":"regionOptions"},"value":{"$type":"State","defaultValue":"uk","key":"region"}}},{"id":"len-1656-spark","kind":{"$type":"Sparkline","source":{"$type":"State","key":"series"}}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+        Description =
+          "§5 — a `null` State.defaultValue is the null SPELLING OF ABSENCE and normalises to the omitted key, not to the slot's typed empty. The `initialValue` alias carrying null takes the same arm. The typed-empty read-compat belongs to `Static.value` (`lenient-null-static-options`); at a collection slot a declared `[]` is a claim the seeding rule reads, and normalising absence into it fabricates one (Phase 1656)" } ]
