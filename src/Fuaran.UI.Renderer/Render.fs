@@ -1785,12 +1785,18 @@ let rec keysOfBinding<'T> (channel: KeyChannel) (binding: Binding<'T>) : string 
     | Binding.Computed _ -> []
 
 /// Reactive keys referenced by a `TextSource` for `channel`. `Literal` carries none; `Bound` defers
-/// to its binding; `TextSource.I18n` args are `JVal` literals (not bindings) so they carry none.
+/// to its binding; `TextSource.I18n` defers to its ARGUMENTS.
+///
+/// Fuaran-UI Phase 1661 — the args are `Binding<JVal>` now rather than `JVal`
+/// literals, so a caption reading "{count} items left" subscribes to whatever
+/// channel `count` names. Missing this would not render wrongly on first paint;
+/// it would render correctly once and then never update, which is the harder
+/// defect to see.
 let keysOfText (channel: KeyChannel) (text: TextSource) : string list =
     match text with
     | TextSource.Bound b -> keysOfBinding channel b
-    | TextSource.Literal _
-    | TextSource.I18n _ -> []
+    | TextSource.I18n(_, args) -> args |> Map.toList |> List.collect (fun (_, ab) -> keysOfBinding channel ab)
+    | TextSource.Literal _ -> []
 
 let private keysOfTextOpt (channel: KeyChannel) (text: TextSource option) : string list =
     match text with

@@ -270,7 +270,54 @@ let imageCaptionI18n: Node<obj> =
             { Defaults.image with
                 Src = Binding.Static(Some "/harbour.jpg")
                 Alt = TextSource.Literal "Fishing boats moored at first light"
-                Caption = Some(TextSource.I18n("gallery.caption.harbour", Map.ofList [ "year", JInt 1908 ])) }
+                Caption =
+                    Some(
+                        TextSource.I18n(
+                            "gallery.caption.harbour",
+                            Map.ofList [ "year", Binding.Static(Some(JInt 1908)) ]
+                        )
+                    ) }
+        ))
+        None
+
+/// Fuaran-UI Phase 1661 — a `TextSource.I18n` whose argument is a BINDING.
+///
+/// This is the vector the phase exists for, and the one the pre-1661 slot could
+/// not hold at all: "{count} items left" taking its count from the same state
+/// key the list beside it reads. The argument's wire form is its own `$type`
+/// object, which is the half of the discriminate-by-inspection rule that
+/// `image-caption-i18n-1` (a bare literal argument) cannot exercise.
+///
+/// `State` rather than `Query`, deliberately: a `Query` argument carries a
+/// closure the wire cannot hold, so the fixture would be pinning a `"<closure>"`
+/// sentinel rather than a reachable value.
+let textI18nBoundArg: Node<obj> =
+    node
+        "text-i18n-bound-arg-1"
+        (NodeKind.Markdown(
+            { Text = TextSource.I18n("cart.remaining", Map.ofList [ "count", Binding.State("cartCount", None) ]) }
+        ))
+        None
+
+/// Fuaran-UI Phase 1661 — one argument bag carrying BOTH arms.
+///
+/// A mixed bag is not merely a third example: it is the only vector in which a
+/// host that implemented the discriminator as a property of the BAG rather than
+/// of each ARGUMENT fails. Such a host reads a bag as "all literal" or "all
+/// bound" from whichever entry it inspected first, and both single-arm fixtures
+/// above pass under either mistake.
+let textI18nMixedArgs: Node<obj> =
+    node
+        "text-i18n-mixed-args-1"
+        (NodeKind.Markdown(
+            { Text =
+                TextSource.I18n(
+                    "invoice.summary",
+                    Map.ofList
+                        [ "currency", Binding.Static(Some(JStr "GBP"))
+                          "total", Binding.State("invoiceTotal", Some(JFloat 1250.5))
+                          "year", Binding.Static(Some(JInt 2026)) ]
+                ) }
         ))
         None
 
@@ -7463,6 +7510,8 @@ let allNodes: (string * Node<obj>) list =
       "Display/Image (Phase 1077 — fit / aspectRatio / loading all off-default)", imagePresentation
       "Display/Image (Phase 1078 — literal caption)", imageCaption
       "Display/Image (Phase 1078 — i18n caption with args)", imageCaptionI18n
+      "Display/Markdown (Phase 1661 — an i18n argument that is a binding)", textI18nBoundArg
+      "Display/Markdown (Phase 1661 — one i18n bag carrying both argument arms)", textI18nMixedArgs
       "Display/Image (Phase 1080 — three-candidate srcSet, authored descending)", imageSrcset
       "Display/Image (Phase 1079 — expandable, the declaration alone)", imageExpandable
       "Display/Image (Phase 1079 — expandable + caption + srcSet, the gallery thumbnail)", imageExpandableFigure

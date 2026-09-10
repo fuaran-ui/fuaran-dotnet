@@ -7943,6 +7943,49 @@ entry in each of `fuaran-ts` / `fuaran-py` / `fuaran-go` / `fuaran-rs`'s own
 pointer at the emit site in `PreEmitValidate.fs`. It was unlisted in all four, so it fell to each
 file's "an honest 'not yet'" default, which mischaracterised a decision as a backlog item.
 
+**fuaran#1661 — BREAKING at F# construction and read sites, ADDITIVE on the wire.** A
+`TextSource.I18n` argument is a `Binding<JVal>`, not a bare `JVal`: `"{count} items left"` can take
+its count from the same slot the list beside it reads, which the widened slot could not express at
+all.
+
+*Nothing on the wire moves, and that is a property rather than a hope.* The argument slot is
+discriminated BY INSPECTION — an object carrying `$type` is a binding, ANY other JSON value is the
+literal — and a `Static` argument carrying a value ENCODES BARE, so every literal argument any host
+has ever emitted decodes to exactly that arm and re-encodes to the bytes it arrived as.
+`nodes/image-caption-i18n-1.json` and `nodes/tooltip-metric-1.json` are byte-identical across the
+release, which is what the corpus's own round-trip family asserts. The three new vectors are
+`nodes/text-i18n-bound-arg-1`, `nodes/text-i18n-mixed-args-1` and
+`lenient/lenient-1661-i18n-arg-tagged-static`, plus two rejects for the shapes the inspection makes
+ambiguous.
+
+*What breaks in F#, counted.* `TextSource.I18n(key, args)` at a site passing a NON-EMPTY map: two in
+this repository (`Fuaran.UI.JsonDecode.Tests/Fixtures.fs`'s harbour caption and the SSR-parity
+construction), both updated. A site passing `Map.empty` is UNAFFECTED — the value is generic — and
+that is twelve of the fourteen sites here, including every `Tooltip` / `XTitle` / validation-message
+construction. A site that PATTERN-MATCHES the arm and binds `args` as a `Map<string, JVal>` adapts:
+three in this repository (`Renderer.Core/BindingResolver.fs`, `Renderer/Render.fs`,
+`Fuaran.UI/BindingWalk.fs`), all updated, and each of the last two for a reason beyond compiling —
+they enumerate a tree's reactive keys and binding uses, and an arm that kept returning the empty
+list would have rendered a bound caption correctly ONCE and then never updated it.
+
+*Additive on the C# facade.* `Text.I18n(string key)` is unchanged in signature; a
+`Text.I18n(string key, params (string Name, Binding<Payload> Value)[] args)` overload joins it,
+mirroring the `Binding.I18n(key, params …)` that already existed. **The VB mapping and the analyzer
+vocabulary are a deliberate no-op**, so §11 step 6 lands on the C# veneer alone: `AuthoringSurfacePin`
+is a node-kind-FIELD pin over attribute-eligible fields, and a `TMap` field is structured — before
+and after this change. No node kind is added, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged; **no escape hatch is created or widened** — an unrecognised `$type`
+at an argument now REFUSES where the pass-through hosts waved it through.
+
+*The asymmetry this phase was cut to resolve, resolved explicitly (`WIRE_FORMAT.md` §5).*
+`Binding.I18n` and `TextSource.I18n` now carry the SAME argument type and keep two stated
+differences: `TextSource.I18n.args` is required and always emitted (`"args":{}` is a shipped byte
+sequence), where `Binding.I18n.args` is omitted when absent; and a `TextSource.I18n` literal argument
+is BARE, where a `Binding.I18n` argument always carries its `$type` envelope. Giving `Binding.I18n`
+the collapse too was considered and REJECTED: it buys no capability (that slot can already carry a
+literal, as `Static`) and would move the canonical emission of a shipped surface. Each slot's
+canonical form is pinned by what already shipped on it, and this release moves neither.
+
 **fuaran#1662 — BREAKING at the DECODER: a document five hosts accepted is now refused.** No exported
 type, signature or member moves; `MaxExprNodes` does not change value. What changes is its SCOPE, and
 therefore the answer `JsonDecode` gives to a document that was inside the limit only because the limit

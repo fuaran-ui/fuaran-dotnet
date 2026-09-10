@@ -769,4 +769,32 @@ let all: LenientFixture list =
         VerboseJson =
           """{"id":"len-1656","kind":{"$type":"Box","children":[{"id":"len-1656-select","kind":{"$type":"Select","label":"Region","source":{"$type":"State","key":"regionOptions"},"value":{"$type":"State","defaultValue":"uk","key":"region"}}},{"id":"len-1656-spark","kind":{"$type":"Sparkline","source":{"$type":"State","key":"series"}}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
         Description =
-          "§5 — a `null` State.defaultValue is the null SPELLING OF ABSENCE and normalises to the omitted key, not to the slot's typed empty. The `initialValue` alias carrying null takes the same arm. The typed-empty read-compat belongs to `Static.value` (`lenient-null-static-options`); at a collection slot a declared `[]` is a claim the seeding rule reads, and normalising absence into it fabricates one (Phase 1656)" } ]
+          "§5 — a `null` State.defaultValue is the null SPELLING OF ABSENCE and normalises to the omitted key, not to the slot's typed empty. The `initialValue` alias carrying null takes the same arm. The typed-empty read-compat belongs to `Static.value` (`lenient-null-static-options`); at a collection slot a declared `[]` is a claim the seeding rule reads, and normalising absence into it fabricates one (Phase 1656)" }
+
+      // ─── Phase 1661 — the tagged spelling of a literal I18n argument ────
+      //
+      // An `I18n` argument is discriminated BY INSPECTION, and a `Static`
+      // argument carrying a value emits the BARE value. So the tagged
+      // `{"$type":"Static","value":v}` spelling is decode-accepted and
+      // normalises DOWN — `TextSource.Literal`'s own bare-string rule, one level
+      // in.
+      //
+      // This vector exists because the widening MANUFACTURES a cross-host
+      // divergence if it is not pinned. Two of the five conformant hosts decode
+      // a nested `$type` object structurally and re-emit it verbatim, so without
+      // an expected-bytes fixture they would keep the tagged spelling while the
+      // three typed hosts collapsed it — one document, two canonical byte
+      // sequences, two hash-chain digests, and no test anywhere that noticed.
+      //
+      // A `Static` carrying NO value rides alongside it and does NOT collapse:
+      // absence is structural (Phase 677) and has no bare spelling, so
+      // `{"$type":"Static"}` is already canonical. Both in one bag, because a
+      // host that collapsed unconditionally would drop the second argument
+      // entirely and still pass a single-argument fixture.
+      { Id = "lenient-1661-i18n-arg-tagged-static"
+        LenientJson =
+          """{"id":"len-1661","kind":{"$type":"Markdown","text":{"$type":"I18n","args":{"absent":{"$type":"Static"},"year":{"$type":"Static","value":1908}},"key":"gallery.caption.harbour"}}}"""
+        VerboseJson =
+          """{"id":"len-1661","kind":{"$type":"Markdown","text":{"$type":"I18n","args":{"absent":{"$type":"Static"},"year":1908},"key":"gallery.caption.harbour"}}}"""
+        Description =
+          "§5 — a `{\"$type\":\"Static\",\"value\":v}` I18n argument is decode-accepted and normalises to the BARE value, which is why the widening from a JVal bag to a Binding<JVal> bag moves no shipped byte. A valueless `Static` is already canonical and stays tagged: absence is structural and has no bare spelling (Phase 1661)" } ]

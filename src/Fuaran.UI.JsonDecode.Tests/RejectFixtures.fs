@@ -961,6 +961,31 @@ let all: RejectFixture list =
         IsOp = false
         Description = "null I18n arg value (structured JVal position)" }
 
+      // ─── The I18n argument discriminator (Phase 1661) ───────────────────
+      //
+      // An `I18n` argument is discriminated BY INSPECTION: a bare JSON value is
+      // the literal, an object carrying `$type` is a binding. These two vectors
+      // pin the shapes that reading makes AMBIGUOUS, and pinning them is the
+      // point — each is a shape a host could plausibly wave through as "an
+      // object literal I do not recognise", and doing so would substitute a
+      // discriminator's own text into a caption a reader sees.
+      { Id = "reject-i18n-arg-unknown-binding-case"
+        Json =
+          """{"id":"m1","kind":{"$type":"Markdown","text":{"$type":"I18n","args":{"count":{"$type":"Nope","value":1}},"key":"cart.remaining"}}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.text.args.count.$type"
+        IsOp = false
+        Description =
+          "an I18n arg object carrying an unrecognised $type — the inspection reads it as a binding and refuses, rather than falling back to the literal arm" }
+      { Id = "reject-i18n-arg-binding-missing-key"
+        Json =
+          """{"id":"m1","kind":{"$type":"Markdown","text":{"$type":"I18n","args":{"count":{"$type":"State"}},"key":"cart.remaining"}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.text.args.count.key"
+        IsOp = false
+        Description =
+          "an I18n arg naming a KNOWN binding case with its required member missing — the arg decodes as a binding, so the binding's own refusal applies at the arg's path" }
+
       // ─── DateRange ordering (Phase 725) ─────────────────────────────────
       //
       // A LITERAL date-range pair is ordered: `from <= to`. Same-variant

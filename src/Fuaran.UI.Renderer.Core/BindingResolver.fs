@@ -1355,6 +1355,44 @@ let tryResolveScalarText (sources: BindingSources) (binding: Binding<string>) : 
     | Errored _
     | I18nUnresolved _ -> None
 
+/// Fuaran-UI Phase 1661 — the display string ONE `TextSource.I18n` argument
+/// substitutes into its template.
+///
+/// A LITERAL argument — `Binding.Static (Some v)`, which is what the bare wire
+/// form decodes to and what every pre-1661 document carries — projects through
+/// exactly the scalar/composite rule the slot used before it was widened, so no
+/// existing caption changes a character. Any other arm resolves through the same
+/// store-reading erasure `Binding.I18n`'s own args take (`objOfJValBinding` and
+/// `resolve<obj>`), and an unresolvable one substitutes the empty string rather
+/// than leaving `{name}` visible in the sentence — the `Bound` arm's degradation
+/// one level down.
+///
+/// `bool` is projected explicitly rather than through `string`, because `string`
+/// disagrees with itself across the two pipelines (`"True"` on .NET, `"true"`
+/// under Fable) and this slot's own literal arm has always spelled it lower-case.
+let private i18nArgText (sources: BindingSources) (arg: Binding<JVal>) : string =
+    let display (v: JVal) =
+        match v with
+        | JStr s -> s
+        | JInt i -> string i
+        | JFloat f -> string f
+        | JBool b -> (if b then "true" else "false")
+        | composite -> Json.render composite
+
+    match arg with
+    | Binding.Static(Some v) -> display v
+    | other ->
+        match resolve<obj> sources (objOfJValBinding other) with
+        | Resolved v ->
+            match v with
+            | :? JVal as jv -> display jv
+            | :? string as s -> s
+            | :? bool as b -> (if b then "true" else "false")
+            | raw -> string raw
+        | NotResolved
+        | Errored _
+        | I18nUnresolved _ -> ""
+
 /// Resolve a whole `TextSource` to the string a reader sees — THE one
 /// definition of that dispatch in the estate.
 ///
@@ -1375,6 +1413,11 @@ let tryResolveScalarText (sources: BindingSources) (binding: Binding<string>) : 
 /// so an unregistered key is caught at sight. Args substitute `{name}`
 /// placeholders — scalars as their display string, a composite as compact
 /// canonical JSON. Full ICU-shape interpolation remains an ergonomic upgrade.
+///
+/// Fuaran-UI Phase 1661 — an arg is a `Binding<JVal>`, so a placeholder can take
+/// its value from the same slot the surrounding page reads; `i18nArgText` above
+/// is the per-argument projection and keeps the literal arm's characters
+/// unchanged.
 let resolveTextSource (sources: BindingSources) (text: TextSource) : string =
     match text with
     | TextSource.Literal s -> s
@@ -1384,18 +1427,9 @@ let resolveTextSource (sources: BindingSources) (text: TextSource) : string =
         | Some template ->
             args
             |> Map.fold
-                (fun (acc: string) (k: string) (v: JVal) ->
+                (fun (acc: string) (k: string) (arg: Binding<JVal>) ->
                     let needle = "{" + k + "}"
-
-                    let replacement =
-                        match v with
-                        | JStr s -> s
-                        | JInt i -> string i
-                        | JFloat f -> string f
-                        | JBool b -> (if b then "true" else "false")
-                        | composite -> Json.render composite
-
-                    acc.Replace(needle, replacement))
+                    acc.Replace(needle, i18nArgText sources arg))
                 template
         | None -> sprintf "[i18n:%s]" key
 
