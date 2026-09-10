@@ -1113,6 +1113,67 @@ let tests =
               | Ok() -> failtest "Expected FUARAN069 defect, got Ok"
           }
 
+          // Phase 1648 — the READ-ONLY RATING, which the 1129 findings left as an
+          // open question: decode admitted it and pre-emit refused it, and one of
+          // the two had to be wrong. The renderers answer it — on this exact
+          // predicate the server emits `fuaran-rating-static` with `role="img"`
+          // and the client hands `RatingControl` `interactive = false` — so a
+          // handler-less rating is a designed rendition, not an inert control.
+          test "FUARAN069 exempts a read-only Rating — the renderers give it a rendition of its own" {
+              let field: FormField<Msg> =
+                  { Defaults.formField<Msg> with
+                      Id = "score"
+                      Kind = FormFieldKind.Rating(false, 5, None, Some(Binding.Static(Some 4.0))) }
+
+              let tree =
+                  dashboard
+                      "root"
+                      [ Fuaran.form
+                            "frm"
+                            { Defaults.form<Msg> with
+                                Fields = [ field ] } ]
+
+              let inert =
+                  match PreEmitValidate.validate tree with
+                  | Ok() -> []
+                  | Error defects ->
+                      defects
+                      |> List.filter (function
+                          | PreEmitDefect.InertControl _ -> true
+                          | _ -> false)
+
+              Expect.isEmpty
+                  inert
+                  "a rating with no handler and a static value renders as `role=img` with the score as its label — refusing it would refuse a shape both renderers deliberately support"
+          }
+
+          test "FUARAN069 still flags a read-only Color — it has no static rendition" {
+              // The exemption is Rating's alone, and this is what makes that
+              // narrow rather than a hole: `<input type=\"color\">` IS the
+              // control on every host, so a colour nobody can change is exactly
+              // the inert control the rule describes.
+              let field: FormField<Msg> =
+                  { Defaults.formField<Msg> with
+                      Id = "brand"
+                      Kind = FormFieldKind.Color(None, Some(Binding.Static(Some "#336699"))) }
+
+              let tree =
+                  dashboard
+                      "root"
+                      [ Fuaran.form
+                            "frm"
+                            { Defaults.form<Msg> with
+                                Fields = [ field ] } ]
+
+              match PreEmitValidate.validate tree with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.InertControl("frm", "FormField(brand)"))
+                      "the colour field is still inert"
+              | Ok() -> failtest "Expected FUARAN069 for the handler-free colour field, got Ok"
+          }
+
           test "validate passes a handler-free form field whose value is State-bound (write-back target)" {
               let field: FormField<Msg> =
                   { Defaults.formField<Msg> with

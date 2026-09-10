@@ -75,11 +75,20 @@ type FuaranRendererEndpointExtensions =
 
     /// Map the embedded renderer assets under `prefix` (no trailing slash).
     ///
-    /// Serves three routes:
+    /// Serves five routes:
     ///
-    ///   `GET {prefix}/fuaran-renderer.js`      the standalone browser renderer
-    ///   `GET {prefix}/fuaran-reference.css`    the canonical reference stylesheet
-    ///   `GET {prefix}/fingerprint.json`        what the embedded bundle IS
+    ///   `GET {prefix}/fuaran-renderer.js`            the standalone browser renderer
+    ///   `GET {prefix}/fuaran-reference.css`          the canonical reference stylesheet
+    ///   `GET {prefix}/fuaran-reference-tables.js`    the table-sort enhancement
+    ///   `GET {prefix}/fuaran-image-expand.js`        the expandable-image enhancement
+    ///   `GET {prefix}/fingerprint.json`              what the embedded bundle IS
+    ///
+    /// The two enhancement scripts (Phase 1648) are PROGRESSIVE and a host loads
+    /// them or does not: the stylesheet and the markup are correct without them.
+    /// They are served because `Fuaran.UI.Renderer`'s own `content/README.md`
+    /// documents the `<script src="…">` line and this package served neither, so
+    /// the documented integration was unreachable from a package whose claim is
+    /// that one call gives the browser everything.
     ///
     /// The fingerprint route is not optional and has no switch. A deployment
     /// that can be asked what it is serving can be diagnosed from outside; one
@@ -90,7 +99,7 @@ type FuaranRendererEndpointExtensions =
     ///
     /// Returns the endpoint convention builder for the group, so a host can
     /// apply its own metadata (`.RequireAuthorization()`, a CORS policy, an
-    /// output-cache policy) to all three at once.
+    /// output-cache policy) to all of them at once.
     [<Extension>]
     static member MapFuaranRenderer(endpoints: IEndpointRouteBuilder, prefix: string) : IEndpointConventionBuilder =
         let trimmed =

@@ -179,7 +179,12 @@ let private repeatedChildArms =
       "list item", "prop.className \"fuaran-list-item\""
       "skeleton row", "prop.className \"fuaran-skeleton-row\""
       "form field", "prop.className \"fuaran-form-field\""
-      "filter chip", "prop.className \"fuaran-filter\""
+      // Phase 1648 — the chip's class became `Css.filter (Theme.filterKindClass
+      // spec.Kind)`, because this renderer had been emitting a bare
+      // `fuaran-filter` where the server emits the kind suffix too. The anchor
+      // moves with it; the MISSING ANCHOR report is what caught the rename,
+      // which is the whole reason it is reported as loudly as a missing key.
+      "filter chip", "Css.filter (Theme.filterKindClass spec.Kind)"
       "segmented option", "prop.className \"fuaran-segmented-option\""
       "segmented row", "prop.className \"fuaran-segmented-row\""
       "select option", "prop.text option.Label"

@@ -3787,7 +3787,37 @@ let private validateCore
                     | FormFieldKind.Date(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.DateRange(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.Combobox(_, oc, _, value) -> oc.IsNone && not (valueLive value)
-                    | FormFieldKind.Rating(_, _, oc, value) -> oc.IsNone && not (valueLive value)
+                    // Phase 1648 — RATING IS EXEMPT, and this is a decision
+                    // rather than an omission.
+                    //
+                    // A handler-less rating with a static value was reported
+                    // inert, so a tree that DECODES cleanly failed pre-emit —
+                    // and the question the 1129 findings left open was which of
+                    // the two was right. The tree answers it: BOTH renderers
+                    // implement the read-only rating as a designed rendition
+                    // rather than tolerating it. On exactly this predicate
+                    // (`onChange.IsNone && not (isWriteBackTarget value)`) the
+                    // server emits `fuaran-rating-static` with `role="img"` and
+                    // an `aria-label` carrying the score, and the client hands
+                    // `RatingControl` `interactive = false`, which switches its
+                    // ARIA from `slider` to `img` and drops the keyboard model.
+                    // A rendition with its own class, its own role and its own
+                    // recorded accessibility decision is not an accident the
+                    // validator should be warning about.
+                    //
+                    // And the reading generalises: "4 stars, as scored" is a
+                    // legitimate thing for a form to SHOW beside the fields a
+                    // reader fills in, where "a text box nobody can type into"
+                    // is not. FUARAN069's premise — that an interactive control
+                    // with nowhere to write is a mistake — simply does not hold
+                    // for the one control family that has a non-interactive
+                    // rendition by design.
+                    //
+                    // `Color` deliberately keeps the rule: `<input type="color">`
+                    // IS the control on every host, there is no static rendition
+                    // of it, and a colour input nobody can change is the defect
+                    // FUARAN069 describes.
+                    | FormFieldKind.Rating _ -> false
                     | FormFieldKind.Color(oc, value) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.Tokens(_, oc, _, value) -> oc.IsNone && not (valueLive value)
 

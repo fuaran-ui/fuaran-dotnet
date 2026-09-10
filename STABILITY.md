@@ -7729,6 +7729,47 @@ lands; a phase moves NO number._
 
 _(each phase adds one paragraph here, named `fuaran#NNNN — <class>`)_
 
+**fuaran#1648 — ADDITIVE, with one RECORD WIDENING.** The Tidy-Up drain over the rendering surface.
+
+*Additive.* `Fuaran.UI.Telemetry.Default` gains a public `ConsoleRedaction` module — the two
+redaction rules (`RedactedUser`, `FreeTextLimit`, `freeText`, `user`) lifted out of `ConsoleSink`'s
+private `Format`, unchanged, so both console-shaped sinks in the package share one definition of
+what "redacted" means. `Fuaran.UI.Renderer.Core` gains `Css.formControl` and
+`Theme.filterKindClass`, the two class projections the client and server renderers had been spelling
+separately. `Fuaran.UI.Renderer.Web` serves two more assets — `fuaran-reference-tables.js` and
+`fuaran-image-expand.js`, both progressive enhancements the renderer package already documented as
+served files — so `MapFuaranRenderer` maps five routes rather than three; a host that mounted the
+group and enumerated it will see two more endpoints, and no existing route moves.
+
+*Record widening.* `ConsoleDevToolsOptions` gains `Disclosure: ConsoleDisclosure`, placed last.
+Source-breaking at every FULL-LITERAL construction (`FS0764`), and not breaking at
+`{ ConsoleDevToolsOptions.defaults with … }`, at either shipped preset, or at a host that only
+passes one of them — which is how the type is used in every sample and test. **The default is
+`Redacted`, on both presets.** That sink writes `UserId` on five record types and, beside them, the
+unbounded free text an apply-engine error, a decoder rejection, an authorizer refusal and a render
+failure carry, all of which quote tree content; it was outside the file set Phase 1532 examined and
+carried the whole of the defect that phase closed for `ConsoleSink`. A host that wants the old
+output asks for `ConsoleDisclosure.Verbose` by name.
+
+*Behavioural, and worth reading before upgrading a server-rendered page.* The SSR renderer's form
+output changes shape in four ways, each of them towards what the client renderer already emitted: a
+`Choice` field is a `<select>` rather than `<input type="choice">` (not a valid input type — every
+browser fell back to a free-text box); a plain control carries `fuaran-form-input` / `-textarea` /
+`-checkbox` / `-toggle` (plus `fuaran-form-date`) rather than the coarse
+`fuaran-form-field-control`; `FormField.Help` is emitted as `fuaran-form-help`, having been dropped
+entirely; and a filter chip carries its `fuaran-filter-<kind>` suffix on the CLIENT too, where it
+emitted a bare `fuaran-filter`. **A host with its own CSS or DOM queries selecting on these classes
+should read them**: the classes are not new — every one was already in the vocabulary, which is why
+`Theme.vocabularyFingerprint` does not move and the reference stylesheet needs no restamp — but
+which element carries which has changed on one side or the other.
+
+*Defect fixes, no surface.* A `Combobox` field with no value binding no longer throws a
+`NullReferenceException` on the server renderer (it took the whole document with it). FUARAN069 no
+longer reports a read-only `Rating` as an inert control, which was refusing pre-emit a shape both
+renderers render deliberately. The server-driven `ReadFileBody` shim resolves a `FileUpload`'s own
+`<input type="file">` instead of the wrapper it was addressing, so a server-driven host can read an
+uploaded file at all — and refuses loudly where it cannot, rather than breaking out in silence.
+
 ## 0.80.0 — the provider-call telemetry record carries the subject it was made under (Phase 1637)
 
 **Additive on the wire, RECORD-WIDENING at the source, and the two are not the same statement — read

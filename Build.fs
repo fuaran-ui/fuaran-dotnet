@@ -153,7 +153,11 @@ let private packableProjects =
       "Fuaran.UI.LayoutObserver"
       "Fuaran.UI.Telemetry.Abstractions"
       "Fuaran.UI.Telemetry.Default"
-      "Fuaran.UI.Telemetry.Drift"
+      // Phase 1532 set `IsPackable=false` on `Fuaran.UI.Telemetry.Drift` and left it named
+      // here, where `dotnet pack` then ran on it and produced nothing — a dead entry that
+      // reads as a shipped package to anyone auditing this list, which is the one thing the
+      // list is for. Removed in Phase 1648. The project is unchanged and still builds; what
+      // is gone is a line asserting a publication that stopped happening.
       // Phase 183 — incremental re-derivation engine (effect-aware memoisation
       // over FragmentApply.apply). Consumes Fuaran.UI + Renderer + OpStream +
       // Telemetry abstractions.
@@ -1071,6 +1075,41 @@ let private registerTargets (args: string array) =
         |> ignore)
 
     "CodesCheck" ==> "Check" |> ignore
+
+    // Phase 1648 — the shipped BROWSER SCRIPTS. Three JavaScript files ride in this
+    // repo's packages and run in a reader's browser, and had no behavioural coverage of
+    // any kind: Phase 1532 could add only a source-SHAPE guard, and the defect that
+    // motivated this target — a server-driven `ReadFileBody` that resolved to a `<label>`,
+    // found no `files` and broke out in silence — has a perfectly ordinary shape.
+    //
+    // Declared once and called by both entry points, this target and `run.ps1`, on
+    // `CodesCheck`'s reasoning. Node stdlib only; no build dependency, hard or soft.
+    //
+    // BOTH halves run. The `--self-test` pass perturbs each subject in memory and requires
+    // the harness to go RED, because a hand-rolled DOM stub is exactly the kind of test
+    // double that can pass by understanding nothing — a harness whose falsifier is unnamed
+    // is not a check. The sidecar writer's self-test rides here for the same reason: Phase
+    // 1532's F# round trip starts from the F# writer, so it can only ever prove one of that
+    // format's two writers.
+    Target.create "ContentJsCheck" (fun _ ->
+        let harness = Path.Combine(repoRoot, "tests", "content-js", "run.mjs")
+
+        for args in [ [ harness ]; [ harness; "--self-test" ] ] do
+            CreateProcess.fromRawCommand "node" args
+            |> CreateProcess.withWorkingDirectory repoRoot
+            |> CreateProcess.ensureExitCode
+            |> Proc.run
+            |> ignore
+
+        let syncScript = Path.Combine(repoRoot, "scripts", "sync-renderer-web.ps1")
+
+        CreateProcess.fromRawCommand "pwsh" [ "-NoProfile"; "-File"; syncScript; "-SelfTest" ]
+        |> CreateProcess.withWorkingDirectory repoRoot
+        |> CreateProcess.ensureExitCode
+        |> Proc.run
+        |> ignore)
+
+    "ContentJsCheck" ==> "Check" |> ignore
 
     // Phase 1094 — ORDER the docs-drift checks after the compile/test gate inside
     // `Check`, with SOFT dependencies (`?=>` — "if both targets run, this one runs

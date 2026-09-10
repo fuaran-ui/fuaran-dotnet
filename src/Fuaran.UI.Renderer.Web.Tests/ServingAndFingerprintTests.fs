@@ -116,4 +116,57 @@ let tests =
                       message
                       "vocabularyFingerprint"
                       "and the refusal names the field, which is the whole diagnosis"
+          }
+
+          // ── Phase 1648 — the two enhancement scripts are SERVED ─────────────
+          //
+          // `Fuaran.UI.Renderer`'s `content/README.md` documents both as a
+          // `<script src="/…">` line, and this package served neither — so a
+          // host that added the package and followed that README got the
+          // stylesheet's sort affordances with nothing setting the attributes
+          // they key off. The assertion is on `Assets.all` rather than on a
+          // mapped route because `MapFuaranRenderer` maps exactly that list:
+          // an asset in it is served, and one outside it cannot be.
+          test "the reference enhancement scripts are in the served set" {
+              let paths = Assets.all |> List.map (fun a -> a.Path)
+
+              Expect.contains
+                  paths
+                  Assets.referenceTablesScript.Path
+                  "the table-sort enhancement is documented in the renderer package's README as a served file"
+
+              Expect.contains paths Assets.imageExpandScript.Path "and the expandable-image enhancement with it"
+          }
+
+          test "each enhancement script is the canonical file, byte for byte" {
+              // They are EmbeddedResource LINKS to `Fuaran.UI.Renderer`'s own
+              // files, not copies — the stylesheet's posture, for the
+              // stylesheet's reason. This asserts the link resolved to a real
+              // asset with real content; a missing resource throws in `read`
+              // with the resource name, which is the diagnosis.
+              for asset in [ Assets.referenceTablesScript; Assets.imageExpandScript ] do
+                  let bytes, tag = Assets.content asset
+
+                  Expect.isGreaterThan
+                      bytes.Length
+                      0
+                      (sprintf "%s embeds no bytes — the fsproj link did not resolve" asset.Path)
+
+                  Expect.equal tag (Assets.etag bytes) (sprintf "%s's ETag hashes its own bytes" asset.Path)
+
+                  Expect.stringContains
+                      (Text.Encoding.UTF8.GetString bytes)
+                      "fuaran"
+                      (sprintf "%s carries the enhancement source rather than some other file" asset.Path)
+          }
+
+          test "the served set has no duplicate paths" {
+              // Two assets on one path is a route collision `MapGroup` would
+              // accept silently, serving whichever was mapped last.
+              let paths = Assets.all |> List.map (fun a -> a.Path)
+
+              Expect.equal
+                  (List.length (List.distinct paths))
+                  (List.length paths)
+                  "every served asset answers on its own path"
           } ]

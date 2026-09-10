@@ -65,8 +65,43 @@ let fingerprintDocument =
       ResourceName = resourcePrefix + "fuaran-renderer.json"
       Immutable = false }
 
+/// The reference table-sort enhancement — the script that sets the
+/// `[data-sortable]` / `[aria-sort]` attributes the stylesheet's sort
+/// affordances key off. Progressive: without it a table renders and reads
+/// correctly and shows no sort affordance at all, which is the right behaviour
+/// rather than a broken one.
+///
+/// Linked from `Fuaran.UI.Renderer`'s canonical file, like the stylesheet, so
+/// this package is not a second copy of it.
+let referenceTablesScript =
+    { Path = "fuaran-reference-tables.js"
+      ContentType = "text/javascript; charset=utf-8"
+      ResourceName = resourcePrefix + "fuaran-reference-tables.js"
+      Immutable = true }
+
+/// The reference expandable-image enhancement. Progressive on the same terms:
+/// the anchor the renderers emit is an ordinary link to the asset, so without
+/// this script the browser's own viewer opens it. The script changes WHERE the
+/// picture opens, never whether it opens.
+let imageExpandScript =
+    { Path = "fuaran-image-expand.js"
+      ContentType = "text/javascript; charset=utf-8"
+      ResourceName = resourcePrefix + "fuaran-image-expand.js"
+      Immutable = true }
+
 /// Every asset this package serves, in the order the endpoints are mapped.
-let all = [ rendererScript; referenceStylesheet; fingerprintDocument ]
+///
+/// Phase 1648 added the two enhancement scripts. `Fuaran.UI.Renderer` packaged
+/// them and its `content/README.md` documented the `<script src="…">` line, and
+/// this package — whose claim is that one `MapFuaranRenderer()` call gives a
+/// browser everything — served neither, so a host following that README got the
+/// affordance CSS with nothing to drive it.
+let all =
+    [ rendererScript
+      referenceStylesheet
+      referenceTablesScript
+      imageExpandScript
+      fingerprintDocument ]
 
 let private assembly = typeof<Asset>.Assembly
 
