@@ -621,7 +621,23 @@ and [<RequireQualifiedAccess>] TransformSource =
 and private encTransformSource (s: TransformSource) : JVal =
     match s with
     | TransformSource.Data ds -> Fuaran.Core.ColumnCodec.encodeJson ds
-    | TransformSource.Live (b, _) -> (encBinding id) b"""
+    | TransformSource.Live (b, _) -> (encBinding id) b
+
+// Phase 1661 — one `TextSource.I18n` argument. A `Static` argument carrying a
+// value emits the BARE value: that is the whole reason the widening from a
+// `JVal` bag to a `Binding<JVal>` bag moves no shipped byte, because every
+// literal argument ever emitted decodes to exactly that arm. Every other arm
+// emits its own `$type` object, and `Static` carrying NO value emits
+// `{"$type":"Static"}` — absence is structural (Phase 677) and there is no bare
+// spelling of it.
+//
+// The tagged `{"$type":"Static","value":v}` spelling is therefore decode-accepted
+// and normalises DOWN to the bare form on re-encode, which is `TextSource.Literal`'s
+// own bare-string rule one level in (§16).
+and private encI18nArg (arg: Binding<JVal>) : JVal =
+    match arg with
+    | Binding.Static (Some v) -> v
+    | other -> (encBinding id) other"""
         DecodeSplice =
             Some
                 """// Phase 818 — the Transform source slot. A `$type` of State / Selection / Query preserves the binding as
@@ -672,7 +688,23 @@ and private decTransformSource (j: JVal) : Result<TransformSource, string> =
                 // The State arm used to fall through to `asData` here.
                 | None, _ -> Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource)))
         | _ -> asData j
-    | _ -> asData j"""
+    | _ -> asData j
+
+// Phase 1661 — the `TextSource.I18n` argument slot, discriminated BY INSPECTION.
+// An object carrying a `$type` member is a binding and decodes as one; ANY other
+// JSON value is the literal argument and decodes to `Static` carrying it.
+//
+// Two consequences worth stating where the rule is implemented. A literal
+// argument that is ITSELF a JSON object carrying a `$type` member is not
+// expressible — the inspection reads it as a binding — and an unrecognised
+// `$type` is a refusal rather than a fallback to the literal reading, because a
+// document that names a binding case this host does not know is a document the
+// host cannot honour, and reading it as an object literal would substitute the
+// discriminator's own text into a caption.
+and private decI18nArg (j: JVal) : Result<Binding<JVal>, string> =
+    match j with
+    | JObj fields when fields |> List.exists (fun (k, _) -> k = "$type") -> decBinding dJson j
+    | literal -> dJson literal |> Result.map (Some >> Binding.Static)"""
         AccessorSplice =
             Some
                 """// Phase 818 — JVal-level accessor for a data-shaped Action (the

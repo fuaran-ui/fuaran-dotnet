@@ -7943,6 +7943,104 @@ entry in each of `fuaran-ts` / `fuaran-py` / `fuaran-go` / `fuaran-rs`'s own
 pointer at the emit site in `PreEmitValidate.fs`. It was unlisted in all four, so it fell to each
 file's "an honest 'not yet'" default, which mischaracterised a decision as a backlog item.
 
+**fuaran#1661 — BREAKING at F# construction and read sites, ADDITIVE on the wire.** A
+`TextSource.I18n` argument is a `Binding<JVal>`, not a bare `JVal`: `"{count} items left"` can take
+its count from the same slot the list beside it reads, which the widened slot could not express at
+all.
+
+*Nothing on the wire moves, and that is a property rather than a hope.* The argument slot is
+discriminated BY INSPECTION — an object carrying `$type` is a binding, ANY other JSON value is the
+literal — and a `Static` argument carrying a value ENCODES BARE, so every literal argument any host
+has ever emitted decodes to exactly that arm and re-encodes to the bytes it arrived as.
+`nodes/image-caption-i18n-1.json` and `nodes/tooltip-metric-1.json` are byte-identical across the
+release, which is what the corpus's own round-trip family asserts. The three new vectors are
+`nodes/text-i18n-bound-arg-1`, `nodes/text-i18n-mixed-args-1` and
+`lenient/lenient-1661-i18n-arg-tagged-static`, plus two rejects for the shapes the inspection makes
+ambiguous.
+
+*What breaks in F#, counted.* `TextSource.I18n(key, args)` at a site passing a NON-EMPTY map: two in
+this repository (`Fuaran.UI.JsonDecode.Tests/Fixtures.fs`'s harbour caption and the SSR-parity
+construction), both updated. A site passing `Map.empty` is UNAFFECTED — the value is generic — and
+that is twelve of the fourteen sites here, including every `Tooltip` / `XTitle` / validation-message
+construction. A site that PATTERN-MATCHES the arm and binds `args` as a `Map<string, JVal>` adapts:
+three in this repository (`Renderer.Core/BindingResolver.fs`, `Renderer/Render.fs`,
+`Fuaran.UI/BindingWalk.fs`), all updated, and each of the last two for a reason beyond compiling —
+they enumerate a tree's reactive keys and binding uses, and an arm that kept returning the empty
+list would have rendered a bound caption correctly ONCE and then never updated it.
+
+*Additive on the C# facade.* `Text.I18n(string key)` is unchanged in signature; a
+`Text.I18n(string key, params (string Name, Binding<Payload> Value)[] args)` overload joins it,
+mirroring the `Binding.I18n(key, params …)` that already existed. **The VB mapping and the analyzer
+vocabulary are a deliberate no-op**, so §11 step 6 lands on the C# veneer alone: `AuthoringSurfacePin`
+is a node-kind-FIELD pin over attribute-eligible fields, and a `TMap` field is structured — before
+and after this change. No node kind is added, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged; **no escape hatch is created or widened** — an unrecognised `$type`
+at an argument now REFUSES where the pass-through hosts waved it through.
+
+*The asymmetry this phase was cut to resolve, resolved explicitly (`WIRE_FORMAT.md` §5).*
+`Binding.I18n` and `TextSource.I18n` now carry the SAME argument type and keep two stated
+differences: `TextSource.I18n.args` is required and always emitted (`"args":{}` is a shipped byte
+sequence), where `Binding.I18n.args` is omitted when absent; and a `TextSource.I18n` literal argument
+is BARE, where a `Binding.I18n` argument always carries its `$type` envelope. Giving `Binding.I18n`
+the collapse too was considered and REJECTED: it buys no capability (that slot can already carry a
+literal, as `Static`) and would move the canonical emission of a shipped surface. Each slot's
+canonical form is pinned by what already shipped on it, and this release moves neither.
+
+**fuaran#1662 — BREAKING at the DECODER: a document five hosts accepted is now refused.** No exported
+type, signature or member moves; `MaxExprNodes` does not change value. What changes is its SCOPE, and
+therefore the answer `JsonDecode` gives to a document that was inside the limit only because the limit
+did not look there.
+
+*The hole.* `WireLimits.MaxExprNodes` (512) bounded a `Binding.Expr`'s expression and, in its own doc
+comment and in `WIRE_FORMAT.md` §21.8, declared the `ColExpr` a `Binding.Transform` PIPELINE embeds —
+a `derive` step's `expr`, a `filter` step's `pred` — to be deliberately outside its scope. Both
+expressions reach the same evaluator, so the exclusion was a documented way to move an expression out
+from under the bound by wrapping it in a Transform: every conformant host accepted a 513-node `derive`
+expression, including the `param`-leafed shape a `Binding.Expr` refuses at 513. A stated exclusion on
+the one surface an expression can be moved to is not a scope; it is a bypass, and §21.8 now says so.
+
+*What now happens.* `Ops/JsonDecode.fs` checks each pipeline-embedded expression against the same
+budget at DECODE — inside the `Transform` binding arm, immediately after the pipeline decodes and
+before `params` — and refuses `LIMIT_EXCEEDED` at that step's own member path
+(`$.….pipeline[2].pred`), so an author is told which STEP to come back under. Decode rather than
+validation, because a host may decode, store, forward and later evaluate a tree without ever running
+a validator over it. `exprAdmissible`'s traversal was split out as `scanExpr` to share it: the
+pre-1662 walk short-circuited on `sawCol`, which on a pipeline expression (where a `col` is ordinary)
+would UNDER-count and admit the bypass. `exprAdmissible` is now a thin verdict over `scanExpr` with
+its refusal order unchanged, so `Binding.Expr`'s shipped behaviour does not move.
+
+*One budget, per expression — recorded because the alternatives were live options.* Not a second
+constant: the thing bounded is identical either way, so a second figure would be one more number to
+keep in step across five hosts while refusing nothing this one does not. Not a whole-pipeline sum:
+twenty `derive` steps of ten nodes each are twenty cheap evaluations, not one expensive one, and the
+aggregate is max document bytes' job — which is the rule §21.8 already stated for the many `Expr`
+bindings of one tree.
+
+*Refused OUTRIGHT — no profile boundary, no grandfathering.* §21.2 rules 1 and 2 admit no second
+acceptance class, and the format's one host-narrowing mechanism (§23) is deliberately a NARROWING
+that never appears on the wire; widening in the other direction has no spelling, and inventing one
+for a resource limit would be a larger and more durable change than the hole it papers over. The
+affected shape is named rather than estimated away: a document that stops decoding carries more than
+512 `ColExpr` nodes in ONE pipeline step's expression, which is the blow-up the limit exists to
+refuse and not a shape an author writes — §21.8 records that 512 admits a membership test over
+roughly 500 values.
+
+*Certified from both sides.* The corpus gains `nodes/limit-expr-nodes-pipeline-at-max.json` (a
+`derive` expression of EXACTLY 512 nodes, which every host must still decode — rule 1 is symmetric
+with rule 2, and a guard that refused 512 too would be a different defect wearing this one's fix) and
+three rejects, `reject-limit-expr-nodes-derive` / `-filter` / `-transform-bypass`: two because
+`filter` and `derive` are separate branches of the step decoder on every host, and the third because
+the `param`-leafed bypass is the vector that says the HOLE is closed rather than merely that a bound
+exists. The same four vectors were run against all five hosts before and after: pre-change every host
+accepted all four, post-change each accepted the at-the-bound vector and refused the other three at
+the same path.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged; no field is added to a mapped record, so §11 step 6 is not engaged
+either. **No escape hatch is created or widened** — the change NARROWS what a decoder accepts, and
+`docs/security/ESCAPE-HATCHES.md` needs no amendment. **The number does not move**: this slot is an
+untagged draft already carrying a BREAKING class, which is exactly the class of this change.
+
 **fuaran#1666 — BREAKING on the wire and BREAKING on a closed public DU, and the two are separate
 changes that happen to ride one slot.** Read the first if you emit trees; read the second if you
 match on `ApplyErrorCode`.

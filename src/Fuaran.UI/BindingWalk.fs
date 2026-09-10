@@ -741,12 +741,19 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     | Binding.Static _ -> []
 
 /// Binding usages read by a `TextSource`. `Literal` carries none; `Bound`
-/// defers to its binding; `TextSource.I18n` args are `JVal` literals.
+/// defers to its binding; `TextSource.I18n` defers to its ARGUMENTS.
+///
+/// Fuaran-UI Phase 1661 — that last arm used to return the empty list, correctly,
+/// because the args were `JVal` literals. They are `Binding<JVal>` now, exactly as
+/// `Binding.I18n`'s are, so this delegates the same way that case's arm does; a
+/// caption whose count comes from a state key is a READER of that key, and an
+/// enumeration that missed it would under-report the tree's state reads to every
+/// consumer of this walk.
 let usesOfText (text: TextSource) : BindingUse list =
     match text with
     | TextSource.Bound b -> usesOfBinding b
-    | TextSource.Literal _
-    | TextSource.I18n _ -> []
+    | TextSource.I18n(_, args) -> args |> Map.toList |> List.collect (fun (_, ab) -> usesOfBinding<JVal> ab)
+    | TextSource.Literal _ -> []
 
 let private usesOfTextOpt (text: TextSource option) : BindingUse list =
     match text with

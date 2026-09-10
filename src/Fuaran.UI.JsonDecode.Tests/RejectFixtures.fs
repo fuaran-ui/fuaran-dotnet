@@ -961,6 +961,31 @@ let all: RejectFixture list =
         IsOp = false
         Description = "null I18n arg value (structured JVal position)" }
 
+      // ─── The I18n argument discriminator (Phase 1661) ───────────────────
+      //
+      // An `I18n` argument is discriminated BY INSPECTION: a bare JSON value is
+      // the literal, an object carrying `$type` is a binding. These two vectors
+      // pin the shapes that reading makes AMBIGUOUS, and pinning them is the
+      // point — each is a shape a host could plausibly wave through as "an
+      // object literal I do not recognise", and doing so would substitute a
+      // discriminator's own text into a caption a reader sees.
+      { Id = "reject-i18n-arg-unknown-binding-case"
+        Json =
+          """{"id":"m1","kind":{"$type":"Markdown","text":{"$type":"I18n","args":{"count":{"$type":"Nope","value":1}},"key":"cart.remaining"}}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.text.args.count.$type"
+        IsOp = false
+        Description =
+          "an I18n arg object carrying an unrecognised $type — the inspection reads it as a binding and refuses, rather than falling back to the literal arm" }
+      { Id = "reject-i18n-arg-binding-missing-key"
+        Json =
+          """{"id":"m1","kind":{"$type":"Markdown","text":{"$type":"I18n","args":{"count":{"$type":"State"}},"key":"cart.remaining"}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.text.args.count.key"
+        IsOp = false
+        Description =
+          "an I18n arg naming a KNOWN binding case with its required member missing — the arg decodes as a binding, so the binding's own refusal applies at the arg's path" }
+
       // ─── DateRange ordering (Phase 725) ─────────────────────────────────
       //
       // A LITERAL date-range pair is ordered: `from <= to`. Same-variant
@@ -1533,6 +1558,66 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "§21 max JSON depth — 257 levels of bare array nesting, ONE past the limit. Well-formed and merely too deep, so LIMIT_EXCEEDED rather than INVALID_JSON (rule 2). Pins the boundary exactly; its at-the-limit twin below pins the other side" }
+      // ─── Fuaran-UI Phase 1662 — §21.8 on the PIPELINE surface ────────
+      //
+      // `MaxExprNodes` bounded `Binding.Expr` alone until now, and §21.8 SAID
+      // so — which is what made it bypassable: a `derive`'s expression and a
+      // `filter`'s predicate reach the same evaluator, carried no ceiling on
+      // any host, and are one wrapper away from any expression an `Expr`
+      // refuses. All five hosts accepted the third vector below before this
+      // phase; all five refuse it now.
+      //
+      // Three vectors and not one, because they fail through three different
+      // arms. `derive` and `filter` are separate branches of the step decoder
+      // on every host, so a host that bounded one and left the other open
+      // would pass a one-armed corpus while leaving the bypass wide; and the
+      // bypass vector is `param`-leafed, so it is exactly the expression
+      // `Binding.Expr` refuses rather than a merely oversized pipeline
+      // expression — the vector that says the HOLE is closed, not just that a
+      // bound exists.
+      //
+      // Their at-the-bound twin is `Fixtures.storedNodes`'
+      // `limit-expr-nodes-pipeline-at-max`, per the pin-from-both-sides rule
+      // above.
+      { Id = "reject-limit-expr-nodes-derive"
+        Json =
+          Fixtures.pipelineExprNode
+              "x"
+              "derive"
+              Fixtures.pipelineExprColLeaf
+              false
+              (Fuaran.UI.WireLimits.MaxExprNodes + 1)
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath = "$.kind.source.pipeline[0].expr"
+        IsOp = false
+        Description =
+          "§21.8 max expression nodes — a `derive` step's expression ONE node past the limit (513). LIMIT_EXCEEDED at the path of the offending `expr` member, so an author is told which STEP to come back under; refused at decode rather than left to be a budget each host's evaluator discovers differently (Fuaran-UI Phase 1662)" }
+      { Id = "reject-limit-expr-nodes-filter"
+        Json =
+          Fixtures.pipelineExprNode
+              "x"
+              "filter"
+              Fixtures.pipelineExprColLeaf
+              false
+              (Fuaran.UI.WireLimits.MaxExprNodes + 1)
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath = "$.kind.source.pipeline[0].pred"
+        IsOp = false
+        Description =
+          "§21.8 max expression nodes — a `filter` step's PREDICATE one node past the limit (513). The second arm: `filter` and `derive` are separate branches of the step decoder on every host, so a host that bounded one and left the other open would pass a corpus carrying only the `derive` vector (Fuaran-UI Phase 1662)" }
+      { Id = "reject-limit-expr-nodes-transform-bypass"
+        Json =
+          Fixtures.pipelineExprNode
+              "x"
+              "derive"
+              Fixtures.pipelineExprParamLeaf
+              true
+              (Fuaran.UI.WireLimits.MaxExprNodes + 1)
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath = "$.kind.source.pipeline[0].expr"
+        IsOp = false
+        Description =
+          "§21.8 — THE BYPASS that motivated Phase 1662, recorded as a reject. The expression is `param`-leafed and its params are bound, so it is exactly what a `Binding.Expr` would carry and exactly what `Binding.Expr` refuses at 513 nodes; wrapping it in a Transform `derive` step escaped the bound on all five hosts until now. Refusing it is what makes §21.8 a bound on EVERY expression a decoded document can name rather than on one binding case" }
       // ─── Phase 1473 — the print-break flags, on BOTH decoder arms ─────
       //
       // The four declarations reach a decoder through two INDEPENDENT arms —

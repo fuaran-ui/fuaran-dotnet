@@ -180,9 +180,25 @@ let private anyJson: J = JBool true
 let private jsonValue: J = JObj [ "not", JObj [ "type", JStr "null" ] ]
 
 /// A JSON object whose (arbitrary-keyed) values are structured JVal positions
-/// — `Custom.props` / `I18n.args` (a null prop/arg value violates rule 12).
+/// — `Custom.props` (a null prop value violates rule 12).
 let private jsonValueMap: J =
     JObj [ "type", JStr "object"; "additionalProperties", jsonValue ]
+
+/// A structured JVal position that is NOT the binding form — a non-null JSON
+/// value that is not an object carrying `$type` (Phase 1661).
+///
+/// This is the LITERAL arm of a discriminate-by-inspection slot, and stating the
+/// exclusion is what keeps the published schema an honest mirror of the decoder:
+/// `{"$type":"Nope"}` is a perfectly ordinary non-null JSON object, so a schema
+/// that admitted it as a literal would validate a document the decoder refuses
+/// with `UNKNOWN_DU_CASE` — and the reject vector that pins the refusal would
+/// then pass the schema leg it is supposed to fail.
+let private jsonValueNotBinding: J =
+    JObj
+        [ "allOf",
+          JArr
+              [ jsonValue
+                JObj [ "not", JObj [ "type", JStr "object"; "required", JArr [ JStr "$type" ] ] ] ] ]
 
 /// The closure sentinel slot (§4) — always exactly the string `"<closure>"`.
 let private closure: J = JObj [ "const", JStr "<closure>" ]
@@ -533,7 +549,24 @@ let private defs: (string * J) list =
                   union
                       [ duCase "Literal" [ "text" ] [ "text", str ]
                         duCase "Bound" [ "binding" ] [ "binding", binding "str" ]
-                        duCase "I18n" [ "args"; "key" ] [ "args", jsonValueMap; "key", str ] ] ] ]
+                        // Phase 1661 — an `I18n` argument is a `Binding<JSON>`
+                        // discriminated BY INSPECTION (§5): an object carrying
+                        // `$type` is the binding arm, ANY other non-null JSON
+                        // value is the literal arm. `anyOf`, not `oneOf`: the
+                        // two arms are disjoint by construction (the literal arm
+                        // excludes a `$type`-carrying object), but `oneOf` would
+                        // additionally require the binding arm's own internal
+                        // `oneOf` to stay non-overlapping under composition, and
+                        // nothing here needs that promise.
+                        duCase
+                            "I18n"
+                            [ "args"; "key" ]
+                            [ "args",
+                              JObj
+                                  [ "type", JStr "object"
+                                    "additionalProperties",
+                                    JObj [ "anyOf", JArr [ binding "json"; jsonValueNotBinding ] ] ]
+                              "key", str ] ] ] ]
 
       // ── Binding<'T> (§3.3) — ONE DEFINITION PER INSTANTIATED ELEMENT TYPE ─
       //

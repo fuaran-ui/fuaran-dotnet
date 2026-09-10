@@ -789,6 +789,18 @@ let generatedLayerTests =
                     "reject-json-number-leading-zero.json"
                     "reject-json-raw-control-char.json"
                     "reject-json-surrogate-pair-split.json"
+                    // Fuaran-UI Phase 1662 — §21.8's node bound on the PIPELINE
+                    // surface. The `reject-limit-node-depth` class on the
+                    // expression axis: a COUNT over a recursive structure,
+                    // where the generated layer has no counter and each level
+                    // is individually well-shaped. Sharper here than for node
+                    // depth, in fact — `expr` / `pred` are `THosted` slots the
+                    // generated layer hands to `Fuaran.Core`'s codec whole and
+                    // never decomposes, so there is not even a level for it to
+                    // count.
+                    "reject-limit-expr-nodes-derive.json"
+                    "reject-limit-expr-nodes-filter.json"
+                    "reject-limit-expr-nodes-transform-bypass.json"
                     "reject-limit-node-depth.json"
                     // Fuaran-UI Phase 1666 — §21.9's row ceiling, and it lands
                     // beside the two depth bounds for the same reason: §21 is

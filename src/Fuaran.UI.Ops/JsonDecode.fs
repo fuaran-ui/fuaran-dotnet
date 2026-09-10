@@ -3027,24 +3027,35 @@ let private decodeIconSource (path: string) (j: Json) : Result<IconSource, Decod
 // and `Binding.I18n` args; the typed flavours dispatch to a parametric
 // generator below.
 
-/// Fuaran-UI Phase 1534 — the two structural rules a `Binding.Expr`'s
-/// expression must satisfy, checked once at decode over the whole tree.
+/// Fuaran-UI Phase 1534 / 1662 — one walk over a `ColExpr`, answering both
+/// questions this wire asks of an expression: how many nodes it carries, and
+/// whether it names a `col`.
 ///
 /// The walk is written here rather than taken from `Fuaran.Core` because Core
-/// has no reason to hold either rule: `Col` is perfectly ordinary in a pipeline
-/// expression, and the node ceiling is this WIRE's limit, not the algebra's.
-/// One traversal answers both, so a pathological expression is counted while it
-/// is being scanned rather than twice.
-let private exprAdmissible (path: string) (expr: Fuaran.Core.ColExpr) : Result<unit, DecodeError> =
+/// has no reason to hold either question: `Col` is perfectly ordinary in a
+/// pipeline expression, and the node ceiling is this WIRE's limit, not the
+/// algebra's. One traversal answers both, so a pathological expression is
+/// counted while it is being scanned rather than twice.
+///
+/// The count is CAPPED — the walk stops descending once it passes
+/// `WireLimits.MaxExprNodes` — so a returned count above the ceiling means
+/// "over it" and is not a true total. Neither caller wants the true figure, and
+/// a hostile expression is exactly the input that must not be walked to the end.
+///
+/// Phase 1662 split this out of `exprAdmissible` because §21.8's node bound now
+/// covers the expressions a `Transform` pipeline embeds as well, and there a
+/// `col` is perfectly ordinary: the two verdicts have two callers now, and only
+/// one of them wants the second. That is also why the walk no longer stops on
+/// `sawCol` — short-circuiting on it would UNDER-count, which on the pipeline
+/// caller would silently admit a bypass vector rather than refuse it.
+let private scanExpr (expr: Fuaran.Core.ColExpr) : struct (int * bool) =
     let mutable count = 0
     let mutable sawCol = false
 
     let rec walk (e: Fuaran.Core.ColExpr) =
         count <- count + 1
 
-        // Stop as soon as either verdict is settled: a hostile expression is
-        // exactly the input that must not be walked to the end.
-        if not sawCol && count <= Fuaran.UI.WireLimits.MaxExprNodes then
+        if count <= Fuaran.UI.WireLimits.MaxExprNodes then
             match e with
             | Fuaran.Core.Col _ -> sawCol <- true
             | Fuaran.Core.Lit _
@@ -3070,6 +3081,12 @@ let private exprAdmissible (path: string) (expr: Fuaran.Core.ColExpr) : Result<u
             | Fuaran.Core.InParam(x, _) -> walk x
 
     walk expr
+    struct (count, sawCol)
+
+/// Fuaran-UI Phase 1534 — the two structural rules a `Binding.Expr`'s
+/// expression must satisfy, checked once at decode over the whole tree.
+let private exprAdmissible (path: string) (expr: Fuaran.Core.ColExpr) : Result<unit, DecodeError> =
+    let struct (count, sawCol) = scanExpr expr
 
     if sawCol then
         Error(
@@ -3091,6 +3108,51 @@ let private exprAdmissible (path: string) (expr: Fuaran.Core.ColExpr) : Result<u
         )
     else
         Ok()
+
+/// Fuaran-UI Phase 1662 — §21.8's node bound over the expressions a
+/// `Binding.Transform` PIPELINE embeds. `MaxExprNodes` bounded `Binding.Expr`
+/// alone until now, which made it bypassable by wrapping the expression in a
+/// Transform: a `derive`'s expression and a `filter`'s predicate reach the same
+/// evaluator and carried no ceiling on any host.
+///
+/// `Filter` and `Derive` are the whole surface — the only `Fuaran.Core`
+/// `Transform` cases carrying a `ColExpr` — and a `join` / `union` / `intersect`
+/// / `except` operand is a `DataSource` (embedded table or named ref), never
+/// another pipeline, so there is no recursive axis to descend.
+///
+/// Counted per EMBEDDED EXPRESSION and against the SAME budget, per §21.8: the
+/// thing bounded is one evaluation either way. The refusal is `LIMIT_EXCEEDED`
+/// at the path of the offending `pred` / `expr` member, so an author repairing
+/// the document is told which step to come back under; the FIRST breach wins,
+/// on the ordinary "one error, named precisely" discipline.
+let private pipelineExprsAdmissible (path: string) (pipeline: Fuaran.Core.Transform list) : Result<unit, DecodeError> =
+    let breach (slot: string) (i: int) (expr: Fuaran.Core.ColExpr) =
+        let struct (count, _) = scanExpr expr
+
+        if count > Fuaran.UI.WireLimits.MaxExprNodes then
+            Some(
+                DecodeError.create
+                    DecodeErrorCode.LIMIT_EXCEEDED
+                    (sprintf "%s.pipeline[%d].%s" path i slot)
+                    (sprintf
+                        "expression exceeds the maximum of %d expression nodes (WIRE_FORMAT 21.8)"
+                        Fuaran.UI.WireLimits.MaxExprNodes)
+                    (Some(
+                        sprintf "at most %d ColExpr nodes in one pipeline expression" Fuaran.UI.WireLimits.MaxExprNodes
+                    ))
+            )
+        else
+            None
+
+    pipeline
+    |> List.indexed
+    |> List.tryPick (fun (i, step) ->
+        match step with
+        | Fuaran.Core.Filter pred -> breach "pred" i pred
+        | Fuaran.Core.Derive(_, expr) -> breach "expr" i expr
+        | _ -> None)
+    |> Option.map Error
+    |> Option.defaultValue (Ok())
 
 let rec private decodeBindingObj (path: string) (j: Json) : Result<Binding<obj>, DecodeError> =
     bindingGeneric<obj> path (fun _ v -> Ok(decodeObj v)) (box closureSentinel) j
@@ -3145,6 +3207,70 @@ and private decodeExprParams (path: string) (fields: Map<string, Json>) : Result
 /// `Binding.I18n` args and `Binding.Transform` param sources since the swap.
 and private decodeBindingJVal (path: string) (j: Json) : Result<Binding<JVal>, DecodeError> =
     bindingGeneric<JVal> path (fun p v -> jsonToJVal 1 p v) (JStr closureSentinel) j
+
+/// Fuaran-UI Phase 1661 — a `TextSource.I18n` argument bag, discriminated BY
+/// INSPECTION (WIRE_FORMAT.md §5).
+///
+/// An object carrying a `$type` member is a BINDING and decodes as one; every
+/// other JSON value is the LITERAL argument and decodes to `Static` carrying it.
+/// Two things follow, and both are stated in §5 rather than left to be inferred:
+/// a literal that is itself an object carrying `$type` is not expressible, and an
+/// unrecognised `$type` REFUSES rather than falling back to the literal reading —
+/// a document naming a binding case this host does not know is one it cannot
+/// honour, and reading it as an object would substitute the discriminator's own
+/// text into a caption.
+///
+/// The literal arm keeps `decodeJVal`'s path and code exactly (`$.….args.<name>`),
+/// which is what `reject/reject-null-i18n-arg` pins: the null refusal is rule 12's
+/// and the widening does not touch it. The TAGGED spelling of a literal —
+/// `{"$type":"Static","value":v}` — takes the same strict decoder on the same
+/// grounds: it is one payload position under two spellings, so rule 12 must
+/// govern both identically, and routing it through the generic binding decoder
+/// instead would map a nested `null` to the empty string here while every other
+/// conformant host refused it — a cross-host divergence with no fixture to catch
+/// it, manufactured by this phase.
+and private decodeI18nArgMap (path: string) (j: Json) : Result<Map<string, Binding<JVal>>, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let folded =
+            (Ok [], fields |> Map.toList)
+            ||> List.fold (fun acc (k, v) ->
+                match acc with
+                | Error e -> Error e
+                | Ok pairs ->
+                    let argPath = path + "." + k
+
+                    let decoded =
+                        match v with
+                        | JObject argFields when Map.containsKey "$type" argFields ->
+                            match Map.tryFind "$type" argFields, Map.tryFind "value" argFields with
+                            // A `Static` argument carrying no readable value is
+                            // Phase 677's STRUCTURAL absence, and it re-encodes as
+                            // `{"$type":"Static"}` — not as a bare empty string.
+                            //
+                            // Read here rather than left to `decodeBindingJVal`,
+                            // whose absent-payload path routes through the SLOT's
+                            // own parser and yields that slot's placeholder value.
+                            // That is right where the placeholder is a resolution
+                            // value nobody sees (a `Metric.value` of `0`) and wrong
+                            // at an argument, where it would be substituted into a
+                            // sentence a reader reads — and it would put this
+                            // decoder at odds with the generated structural layer,
+                            // whose `Static` arm reads the payload as an option and
+                            // yields `Static None` here.
+                            | Some(JString "Static"), (None | Some JNull) -> Ok(Binding.Static None)
+                            // The tagged spelling of a LITERAL — rule 12's strict
+                            // decoder, at the value's own path, exactly as the bare
+                            // spelling below.
+                            | Some(JString "Static"), Some raw ->
+                                decodeJVal (argPath + ".value") raw |> Result.map (Some >> Binding.Static)
+                            | _ -> decodeBindingJVal argPath v
+                        | literal -> decodeJVal argPath literal |> Result.map (Some >> Binding.Static)
+
+                    decoded |> Result.map (fun b -> (k, b) :: pairs))
+
+        folded |> Result.map (List.rev >> Map.ofList)
 
 and private decodeLocalFlushTrigger (path: string) (j: Json) : Result<LocalFlushTrigger, DecodeError> =
     // 4-case DU; one carries a `milliseconds: int` payload.
@@ -3671,9 +3797,21 @@ and private bindingGeneric<'T>
                             match pipelineR with
                             | Error e -> Error e
                             | Ok pipeline ->
-                                decodeExprParams path fields
-                                |> Result.map (fun ps ->
-                                    Binding.Transform(source, pipeline, (if List.isEmpty ps then None else Some ps)))
+                                // Fuaran-UI Phase 1662 — §21.8's expression-node
+                                // bound over the pipeline's own embedded
+                                // expressions, at DECODE and not at validation:
+                                // a document that decodes must not be able to
+                                // name an unbounded evaluation.
+                                match pipelineExprsAdmissible path pipeline with
+                                | Error e -> Error e
+                                | Ok() ->
+                                    decodeExprParams path fields
+                                    |> Result.map (fun ps ->
+                                        Binding.Transform(
+                                            source,
+                                            pipeline,
+                                            (if List.isEmpty ps then None else Some ps)
+                                        ))
             // Fuaran-UI Phase 1534 — the scalar expression binding. `expr` is one
             // `Fuaran.Core.ColExpr` in Core's own encoding, `params` the same
             // name→binding list `Transform` carries and in the same shape (the
@@ -3901,7 +4039,7 @@ and private decodeTextSource (path: string) (j: Json) : Result<TextSource, Decod
                         match tryField fields "args" with
                         | None -> Ok(TextSource.I18n(key, Map.empty))
                         | Some aJ ->
-                            decodeJValMap (path + ".args") aJ
+                            decodeI18nArgMap (path + ".args") aJ
                             |> Result.map (fun args -> TextSource.I18n(key, args))
             | Ok s -> unknownDuCase path s "Literal | Bound | I18n"
 
