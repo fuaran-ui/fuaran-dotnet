@@ -7252,6 +7252,125 @@ let tooltipIconButton: Node<obj> =
         ))
         None
 
+/// Phase 1656 — an ABSENT `State.defaultValue` at the five TYPED slots no
+/// fixture reached, in one tree.
+///
+/// The posture §5 now states is that absence OMITS: a bare
+/// `{"$type":"State","key":k}` re-encodes as itself, at every slot, and a host
+/// that fills the gap with the slot's typed placeholder writes a declaration
+/// the author never made. Three hosts agreed on that by luck rather than by
+/// contract, because every bare-`State` occurrence in the corpus sat at a slot
+/// whose placeholder happens to be the absent sentinel (`string`,
+/// `string option`, an untyped `Expr` param) or at a BOOL one, where
+/// `node-visible` and `switch-predicate` reached it late and only for `false`.
+///
+/// The five slots here are the ones that were left: `Float` and `Int`, where
+/// the placeholder is `0` and emitting it fabricates a numeric declaration;
+/// and the three COLLECTION slots — a row feed, an options source and a float
+/// sequence — where the placeholder is the typed empty `[]`, which is not
+/// nothing but a DECLARATION of emptiness the seeding lattice spends on its own
+/// meaning (`Fuaran.UI.BindingWalk`'s `isEmptySeed`: a declared empty neither
+/// wins the first-declaration race nor conflicts). A host re-emitting `[]` here
+/// respells "I read this key and carry nothing of my own" as "the collection is
+/// empty", and the two are different claims.
+///
+/// Deliberately one tree rather than five: the assertion is a POSTURE, and a
+/// host that gets four slots right and one wrong should fail on the posture
+/// rather than on a fixture whose slot happened to be the one nobody covered.
+let stateAbsentDefault: Node<obj> =
+    let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = kind
+          Width = ColumnWidth.Auto }
+
+    // Float — the slot the Phase 1084 pin named. Its placeholder is `0`.
+    let metricNode =
+        node
+            "absent-default-metric"
+            (NodeKind.Metric(
+                { Defaults.metric with
+                    Label = TextSource.Literal "Revenue"
+                    Value = Binding.State("revenue", None) }
+            ))
+            None
+
+    // Int — the placeholder is `0` here too, and `activeIndex` is the one Int
+    // slot the encoder omits at `Static(Some 0)`, so a host that fabricated the
+    // placeholder AND kept the omit rule would drop the binding entirely.
+    let tabsNode =
+        node
+            "absent-default-tabs"
+            (NodeKind.Tabs(
+                { Defaults.tabs with
+                    Children = [ withId "absent-default-tab-body" markdown ]
+                    ActiveIndex = Binding.State("pane.index", None) }
+            ))
+            None
+
+    // `float seq` — placeholder `[]`.
+    let sparklineNode =
+        node "absent-default-sparkline" (NodeKind.Sparkline({ Source = Binding.State("series", None) })) None
+
+    // `SelectOption list` — placeholder `[]`. `value` carries a DECLARED
+    // default beside it, so the fixture also proves the two members of one
+    // binding position are read independently.
+    let selectNode =
+        node
+            "absent-default-select"
+            (NodeKind.Select(
+                { Defaults.select with
+                    Label = TextSource.Literal "Region"
+                    Source = Binding.State("regionOptions", None)
+                    Value = Binding.State("region", Some "uk") }
+            ))
+            None
+
+    // `Row seq` — placeholder `[]`, and the slot whose declared-empty spelling
+    // the seeding lattice depends on.
+    let gridNode =
+        node
+            "absent-default-grid"
+            (NodeKind.DataGrid(
+                { SortStateKey = None
+                  PageSize = None
+                  PageStateKey = None
+                  EditStateKey = None
+                  DefaultSort = None
+                  Source = Binding.State("planRows", None)
+                  RowKey = None
+                  RowKeyField = Some "month"
+                  Columns =
+                    [ col "Month" "month" CellKindErased.Text
+                      col "Revenue" "revenue" CellKindErased.Numeric ]
+                  OnRowClick = None
+                  Editable = false
+                  Reorderable = false
+                  TransferInKey = None
+                  TransferOutKey = None
+                  StaticRows = None
+                  KeepRowsTogether = false
+                  RepeatHeader = false
+                  Exportable = false }
+            ))
+            None
+
+    node
+        "state-absent-default"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+              Role = BoxRole.Group
+              Heading = None
+              Children = [ metricNode; tabsNode; sparklineNode; selectNode; gridNode ]
+              KeepTogether = false
+              BreakBefore = false }
+        ))
+        None
+
 
 let allNodes: (string * Node<obj>) list =
     [ "Display/Heading", heading
@@ -7505,7 +7624,9 @@ let allNodes: (string * Node<obj>) list =
       "Tooltip (Phase 1112 — the trait on a display kind, I18n hint; description and focus stop on the wrapper)",
       tooltipMetric
       "Tooltip (Phase 1112 — the icon-only button: accessibility.label NAMES, tooltip DESCRIBES, describedBy merges)",
-      tooltipIconButton ]
+      tooltipIconButton
+      "Binding (Phase 1656 — an ABSENT State.defaultValue at Float / Int / rows / options / floatSeq: absence OMITS)",
+      stateAbsentDefault ]
     @ stdlibFragments
 
 let opReplaceRoot: TreeOp<obj> = TreeOp.ReplaceRoot composite

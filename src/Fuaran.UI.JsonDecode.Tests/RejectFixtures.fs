@@ -1925,4 +1925,27 @@ let all: RejectFixture list =
         ExpectedPath = "$.kind.rows"
         IsOp = false
         Description =
-          "§7.1 — a value outside the 32-bit range an integer slot can hold. The cast was implementation-defined: the same bytes became Int32.MinValue on one runtime and 1410065408 on another, which is §20's defect one layer above the syntax. Twin: the `skel-1` node fixture" } ]
+          "§7.1 — a value outside the 32-bit range an integer slot can hold. The cast was implementation-defined: the same bytes became Int32.MinValue on one runtime and 1410065408 on another, which is §20's defect one layer above the syntax. Twin: the `skel-1` node fixture" }
+
+      // ─── Phase 1656 — the State binding's optionality, the right way round ───
+      //
+      // §5's absent-default posture makes `defaultValue` the OPTIONAL half of
+      // this binding and `key` the required one, and this vector is what keeps
+      // the two from being read the other way about. A host implementing the
+      // rejected posture — re-emit the slot's typed empty for an absent default
+      // — has no use for the distinction between a declared default and none, so
+      // its natural shape treats the whole payload as optional and this document
+      // decodes to a `State` reading the empty key. That is a binding on a slot
+      // nothing can ever write, rendering the typed placeholder forever, and it
+      // is silent.
+      //
+      // The accept twin is `state-absent-default`, and the pair states the rule
+      // in both directions: the DEFAULT may be omitted, the KEY may not.
+      { Id = "reject-state-default-without-key"
+        Json =
+          """{"id":"n1","kind":{"$type":"Metric","format":{"$type":"None"},"label":{"$type":"Literal","text":"Revenue"},"value":{"$type":"State","defaultValue":0}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.value.key"
+        IsOp = false
+        Description =
+          "a State binding carrying `defaultValue` and no `key` — §5's absent-default posture makes the default optional and the key required, and a host that read the optionality the other way about would decode a reader of the empty key rather than refuse. Accept twin: the `state-absent-default` node fixture (Phase 1656)" } ]
