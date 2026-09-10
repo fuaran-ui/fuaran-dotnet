@@ -374,6 +374,15 @@
     <!-- Phase 1553 - the gate lanes' own contract: the filter's go-red proof, the roster's
          suite-level declarations, and the two entry points' shared lane vocabulary. -->
     <Compile Include="LaneTests.fs" />
+    <!-- Phase 1668 — the three UI-scale IDL certifications Fuaran.Core no longer runs
+         (fuaran-core#123 deleted the UI byte-pin fixture and the suites it fed). The
+         support module compiles FIRST: it declares the vocabulary these three read (the
+         homed src/Fuaran.UI.Idl/ declaration, canonicalised) plus the corpus family
+         resolution, so there is no second copy of either in this project. -->
+    <Compile Include="IdlCertificationSupport.fs" />
+    <Compile Include="IdlSchemaTests.fs" />
+    <Compile Include="IdlOpTests.fs" />
+    <Compile Include="IdlFullVocabularyFuzzTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -397,6 +406,12 @@
          against that surface rather than a stand-in. The reference runs
          tests -> bank -> tier; the tier itself still references neither. -->
     <ProjectReference Include="..\Fuaran.UI.FastPath\Fuaran.UI.FastPath.fsproj" />
+    <!-- Phase 1668 — the HOMED wire vocabulary + its declared-support record. The three
+         IDL certifications read this project rather than re-declaring any of it, which is
+         the property that let fuaran-core#123 retire Core's UI byte-pin exception. This
+         suite is IsPackable=false, so the Fuaran.Core.Idl dependency the reference brings
+         with it still reaches no shipped Fuaran.UI.* package. -->
+    <ProjectReference Include="..\Fuaran.UI.Idl\Fuaran.UI.Idl.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />
@@ -406,5 +421,15 @@
     <PackageReference Include="Fuaran.Core.Ops" />
     <PackageReference Include="Fuaran.Core.OpStream" />
     <PackageReference Include="Fuaran.Core.Conformance" />
+    <!-- Phase 1668 — the packaged IDL engine the three certifications run over: the
+         model + codec (Idl) and the generator the schema / TypeScript legs emit through
+         (Idl.Codegen). Both are already centrally pinned for src/Fuaran.UI.Idl. -->
+    <PackageReference Include="Fuaran.Core.Idl" />
+    <PackageReference Include="Fuaran.Core.Idl.Codegen" />
+    <!-- Phase 1668 — the off-the-shelf Draft 2020-12 validator the generated schema is
+         evaluated by. Already centrally pinned (Fuaran.UI.JsonDecode.Tests and
+         Fuaran.UI.ThemeManifest.Tests use the same version); a schema certified by its
+         own emitter would certify nothing. -->
+    <PackageReference Include="JsonSchema.Net" />
   </ItemGroup>
 </Project>
