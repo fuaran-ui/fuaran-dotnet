@@ -7851,6 +7851,98 @@ write-back target, and `docs/security/ESCAPE-HATCHES.md` needs no amendment.
 (`HostPrelude.WireSurvivabilityError`, recorded under 0.78.0 as Phase 1538's fourth behavioural
 change) and is unchanged by it.
 
+**fuaran#1663 — ADDITIVE here, and the BREAKING half of the phase lands in two other hosts.** The
+phase cuts a new corpus family and widens a public type in `fuaran-py` and `fuaran-go`; what ships in
+THIS tier is the family's generator and its reference certification, and no shipped package surface
+moves at all.
+
+*What is added, and where.* The corpus gains **`render-text.json`** — the render-TEXT conformance
+family (`WIRE_FORMAT.md` §13): `(fixture, pinned sources, expected text)` vectors over node fixtures
+this corpus already carries, so "N renderers agree on the text" is a check rather than a claim.
+`manifest.json` gains a fourth discovery pointer, **`renderText`**, beside `schema` / `idl` /
+`renderFidelity`. The generator is `src/Fuaran.UI.JsonDecode.Tests/{RenderTextFixtures,RenderTextArtifact}.fs`,
+co-emitted by `--emit-corpus` and writable alone with the new **`--emit-render-text [<dir>]`**;
+`RenderTextTests.fs` is this tier's certification, reading the COMMITTED artefact the way every other
+host reads it, with a go-red probe and a stale-artefact guard beside it. All three files are in a TEST
+project: **no `Fuaran.UI.*` package gains, loses or moves a member, and no fixture byte changes** —
+the emit's whole corpus diff is the manifest key and the new artefact.
+
+*Why this tier is the reference and what that claims.* The generator PROVES every vector before
+writing it: it decodes the named fixture, resolves the named slot through `BindingResolver` under the
+vector's pinned sources, and refuses to write the file on any mismatch — the discipline the §15 and
+§16 families' emitters already carry. So the family cannot publish a text this tier does not
+produce, which is what makes it satisfiable rather than aspirational. It does NOT claim the family
+covers every slot: `slotVocabulary` is closed and small, and growing it is a change to the artefact
+and to every adopting host's reader in one change-set under the §11 forward-coupling rule.
+
+*What the family pins, and what it declines to.* `expectedText` is the **fallback**-tier render
+(§13 tier 2) — the deterministic, non-`Intl` text a no-JS reader, a crawler, an email client or a
+non-browser host receives. `Binding.Now` at every grain and `Format.Since` / `Format.RelativeTime`
+are IN: their `(unit, count)` reduction is shared above this tier's own pipeline split
+(`Formatting.sinceUnitAndCount`) and canonical, and only the final phrasing differs — English on
+.NET, `Intl.RelativeTimeFormat` under Fable — so the family pins the former and a browser host's
+phrasing is a declared rich-tier divergence. The artefact's `excluded` array names
+`Format.Number` / `.Currency` / `.Percent` / `.Date` with the reason: their text comes out of a locale
+database, three hosts give three correct answers, and none is canonical.
+
+*The sources are PINNED, and that is not a convenience.* A `Binding.Now` slot rendered against the
+machine's own clock has no expected text at all. The vector carries the instant and the ambient
+locale as data, so the comparison is a function of the corpus and the host alone — and an unset
+instant is pinned too: it resolves the slot to ABSENCE (an empty text slot), never to an invented
+date, which is this tier's shipped `NotResolved` behaviour and now the family's normative statement
+of it.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged; no field is added to a mapped record, so §11 step 6 is not engaged
+either. **No escape hatch is created or widened** — the artefact admits no behaviour and reaches no
+seam, and `docs/security/ESCAPE-HATCHES.md` needs no amendment. **The number does not move**: this
+slot is an untagged draft already carrying a BREAKING class, and an additive change of this shape
+rides it.
+
+**fuaran#1665 — BREAKING at a rendered accessible name, and NOTHING on the wire moves.** No type,
+signature or encoding changes; what changes is what five hosts emit for a document they all already
+accepted.
+
+`Accessibility.label` resolved through `BindingResolver.tryResolve`, whose `Binding.Transform` arm is
+ROW-shaped — it evaluates the pipeline to a `Row seq` and unboxes that at `string`. Phase 1535 routed
+`accessibility.hidden`, the adjacent slot on the same trait, to the scalar resolver and recorded the
+label asymmetry at both the F# and TS sites as a deliberate deferral. This closes it:
+`Accessibility.fs`'s label arm now calls `tryResolveScalarText`, and both doc comments state the
+measured behaviour rather than the deferral.
+
+**What breaks.** A node whose `accessibility.label` is a `Binding.Transform` or a `Binding.Expr` now
+renders the accessible name its author wrote. Before, this tier emitted **no `aria-label` at all** —
+the cast threw and `resolve` caught it into an errored resolution, which `tryResolve` maps to
+`None` — so the change is from a silently-absent name to a present one. Any host-side snapshot,
+golden markup or DOM query over such a node gains an `aria-label`. **Every other binding case
+resolves exactly as before**, so no other shipped document changes what it renders: `Static`,
+`State`, `Query`, `Filter`, `Selection`, `Now`, `Format` and `I18n` all reach the same code they
+reached before, and the non-empty filter is unchanged (an empty accessible name is still worse than
+none, and is still dropped).
+
+**Pinned by the corpus, not by five host-local tests — and that is the durable half of the phase.**
+`nodes/a11y-wrapper-transform-label` carries a `Transform`-bound name over embedded rows (the
+Phase-632 scalar terminal: `groupBy [] [count]` → `derive` a `case` → `project` to one column), so
+the resolved name is identical on every host with nothing seeded anywhere;
+`reject/reject-a11y-label-nonstring` completes the trait's reject family at the name slot, the twin
+of `reject-a11y-hidden-nonbool`. `WIRE_FORMAT.md` states five normative render obligations for the
+trait's two `Binding` slots. And the corpus's `a11y-contract.json` gains a `behaviour` section — the
+per-fixture accessible-name and placement vectors, hand-authored, which **replaces the table this
+repo's `A11yCorpusParityTests.fs` used to hold and the four identical tables its sibling hosts held**.
+Five copies of one cross-host claim is exactly the arrangement that let this slot resolve five
+different ways with every conformance gate green.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged; no field is added to a mapped record, so §11 step 6 is not engaged
+either. **No escape hatch is created or widened** — the change routes an existing slot through an
+existing coercion, and `docs/security/ESCAPE-HATCHES.md` needs no amendment.
+
+**FUARAN148 stays reference-only, and its four-host abstention is now recorded** — an `abstained`
+entry in each of `fuaran-ts` / `fuaran-py` / `fuaran-go` / `fuaran-rs`'s own
+`validator-coverage.json`, on the principled FUARAN103/105 grounds those files already state, with a
+pointer at the emit site in `PreEmitValidate.fs`. It was unlisted in all four, so it fell to each
+file's "an honest 'not yet'" default, which mischaracterised a decision as a backlog item.
+
 **fuaran#1661 — BREAKING at F# construction and read sites, ADDITIVE on the wire.** A
 `TextSource.I18n` argument is a `Binding<JVal>`, not a bare `JVal`: `"{count} items left"` can take
 its count from the same slot the list beside it reads, which the widened slot could not express at

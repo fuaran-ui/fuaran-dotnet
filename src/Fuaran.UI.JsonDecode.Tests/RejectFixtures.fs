@@ -1298,6 +1298,28 @@ let all: RejectFixture list =
         Description =
           "accessibility.hidden bare scalar of the wrong type — §3.6 leniency is about SHAPE, not type (Phase 955)" }
 
+      // (7) The SAME boundary at the name slot (Phase 1665). `hidden`'s vector
+      // above pinned it at the bool slot only, and the two slots are the trait's
+      // two `Binding` positions — so a host that read the §3.6 coercion as
+      // "coerce whatever is there" had one of them measured and one of them
+      // not. A bare number in `label` is a shape the coercion admits and a type
+      // the slot does not, which is exactly the pair the rule separates: the
+      // lenient profile turns a bare STRING into `Static`, and turns nothing
+      // else into anything.
+      //
+      // It lands beside the Transform-bound name fixture rather than on its own
+      // because the two are one statement about the slot: `label` is an ordinary
+      // `Binding<string>`, so it takes every binding case through the scalar
+      // path AND it refuses what a `Binding<string>` refuses.
+      { Id = "reject-a11y-label-nonstring"
+        Json =
+          """{"id":"n1","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"accessibility":{"label":42}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility.label"
+        IsOp = false
+        Description =
+          "accessibility.label bare scalar of the wrong type — the name slot's twin of the hidden vector above; §3.6 leniency is about SHAPE, not type (Phase 1665)" }
+
       // ─── The `Accessibility` trait's NEAR MISSES (Phase 959) ──────────────
       //
       //  Phase 955's six vectors above pin what happens to a MALFORMED trait.

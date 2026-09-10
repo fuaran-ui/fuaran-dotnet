@@ -44,6 +44,13 @@
          `Fuaran.UI.RenderFidelity` declaration. Must precede Corpus.fs, which
          co-emits it beside schema.json. -->
     <Compile Include="RenderFidelityArtifact.fs" />
+    <!-- Phase 1663 — the render-TEXT conformance family: the authored
+         (fixture, pinned sources, expected text) vectors, then the artefact
+         writer that PROVES each one against the reference resolver before
+         writing render-text.json. Must precede Corpus.fs, which co-emits it
+         beside schema.json and render-fidelity.json. -->
+    <Compile Include="RenderTextFixtures.fs" />
+    <Compile Include="RenderTextArtifact.fs" />
     <Compile Include="Corpus.fs" />
     <!-- Phase 699 — WIRE_FORMAT.md's mechanical tables as marker-block
          projections over idl.json (Phase 696) + manifest.json, with the
@@ -97,6 +104,11 @@
          per canonical wire kind, proven to fail on a probe kind), the
          fixture-pin existence check, and the stale-artefact guard. -->
     <Compile Include="RenderFidelityTests.fs" />
+    <!-- Phase 1663 — the reference host's certification against the render-TEXT
+         family: every vector re-resolved from the COMMITTED artefact, the
+         go-red property proven against a perturbed expectation, and the
+         stale-artefact guard. -->
+    <Compile Include="RenderTextTests.fs" />
     <!-- Phase 101 — generative / property-based wire-format fuzzer:
          FsCheck generators (Generators.fs) + idempotence + DU-arm coverage
          properties (IdempotenceProperties.fs). -->

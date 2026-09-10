@@ -67,18 +67,32 @@ let accessibilityAttributes
     match a11y with
     | None -> []
     | Some a ->
-        // `label` deliberately still resolves through the GENERIC path, and the
-        // asymmetry with `hidden` below is recorded rather than accidental.
-        // Phase 1535 routed `hidden` (and `Switch.on`) to the scalar resolver
-        // because a `Binding.Transform` in those slots is row-only and cannot
-        // work; the same is true here, but the fix is a cross-host behaviour
-        // change with no fixture behind it, so it is ROUTED as a finding rather
-        // than folded into a phase whose acceptance does not cover it. Whoever
-        // takes it takes all five hosts and a corpus vector, exactly as 1535
-        // did for the two slots it names.
+        // Fuaran-UI Phase 1665 — the SCALAR resolver on `label`, closing the
+        // asymmetry with `hidden` below that Phase 1535 recorded here as a
+        // deliberate deferral. `tryResolve`'s `Binding.Transform` arm is
+        // ROW-shaped: it evaluates the pipeline to a `Row seq` and unboxes that
+        // at `string`. The measured consequence is worth stating exactly,
+        // because it is one step off what the deferral predicted: on .NET the
+        // cast throws and the resolver CATCHES it into `Errored`, which
+        // `tryResolve` maps to `None` — so the projection emitted no
+        // `aria-label` at all and the diagnosis went nowhere; under Fable
+        // `unbox` is the identity, so the rows array reached the attribute. Two
+        // different wrong renderings, neither of them reported, on the one trait
+        // that has no visible output to notice.
+        //
+        // `tryResolveScalarText` reads the 1x1 result cell through the same
+        // `cellToText` coercion every other text slot uses. Every other binding
+        // case resolves exactly as it did before, so no shipped document changes
+        // what it renders — and the empty-name filter below is unchanged: an
+        // empty accessible name is worse than none, because it silences the
+        // content that would otherwise have named the node.
+        //
+        // Pinned cross-host by `nodes/a11y-wrapper-transform-label` and the
+        // `behaviour` vectors in the corpus's `a11y-contract.json`; stated
+        // normatively in `WIRE_FORMAT.md`'s accessibility-trait obligations.
         let labelAttr =
             a.Label
-            |> Option.bind (fun b -> BindingResolver.tryResolve sources b)
+            |> Option.bind (BindingResolver.tryResolveScalarText sources)
             |> Option.filter (fun t -> t <> "")
             |> Option.map (fun t -> "aria-label", t)
 

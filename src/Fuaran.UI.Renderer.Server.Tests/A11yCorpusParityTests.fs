@@ -1,4 +1,4 @@
-module Fuaran.UI.Renderer.Server.Tests.A11yCorpusParityTests
+﻿module Fuaran.UI.Renderer.Server.Tests.A11yCorpusParityTests
 
 // ============================================================================
 //  The a11y projection, driven by the SHARED CORPUS (Phase 956).
@@ -28,6 +28,7 @@ module Fuaran.UI.Renderer.Server.Tests.A11yCorpusParityTests
 
 open System
 open System.IO
+open System.Text.Json
 open Expecto
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
@@ -68,71 +69,79 @@ let private openTagOf (tag: string) (html: string) =
 let private wrapperTag (html: string) =
     html.Substring(0, html.IndexOf('>') + 1)
 
-/// One fixture's expectation.
+/// One fixture's expectation, DERIVED from the corpus's own a11y contract
+/// (Phase 1665).
 ///
-/// `Element = None` means the projection stays on the wrapper `<div>`; `Some
-/// tag` names the semantic element the kind body renders, which carries it
-/// under D4.
+/// This table used to be hand-written here — and the same table was hand-written
+/// again in four other hosts. Five copies of one cross-host claim is exactly the
+/// arrangement that let `Accessibility.label` resolve five different ways with
+/// every conformance gate green: each host measured itself against its own idea
+/// of the trait, and no copy could contradict another. The claim now lives once,
+/// in `a11y-contract.json`'s `behaviour` section, and every host reads it.
+///
+/// What stays host-local is the one thing the contract deliberately does not
+/// state: which ELEMENT this host renders for a forwarding kind. The contract
+/// says the projection FORWARDS (the D4 predicate, host-neutral); the tag is
+/// this renderer's own answer, and `forwardingTag` below is where it is given.
 type private A11yCase =
     {
         Fixture: string
-        Element: string option
+        /// The contract's `forwards` flag: false = the wrapper carries the
+        /// projection, true = the kind's own semantic element does.
+        Forwards: bool
         /// The exact `(attr, value)` pairs the SHARED projection must produce —
-        /// pinned in the wire's slot order, so a dropped slot fails as loudly as
-        /// a wrong value.
+        /// in the wire's slot order, so a dropped slot fails as loudly as a
+        /// wrong value.
         Expected: (string * string) list
-        /// Attributes that must NOT appear on the carrying element.
+        /// Attributes that must NOT appear on the carrying element. DERIVED: the
+        /// contract declares its attribute list exhaustive for the projection,
+        /// so every projection attribute the vector omits is one the carrier
+        /// must not emit.
         AbsentFromCarrier: string list
     }
 
+/// The six attribute names the accessibility projection can emit, in the wire's
+/// slot order. The complement of a vector's own list is what that vector forbids.
+let private projectionAttributes =
+    [ "aria-label"
+      "aria-labelledby"
+      "aria-describedby"
+      "role"
+      "aria-live"
+      "aria-hidden" ]
+
+/// The element THIS host's body renders for each forwarding fixture's kind — the
+/// host-local half of a contract vector (see `A11yCase` above). A forwarding
+/// vector with no entry here fails loudly rather than falling back to the
+/// wrapper: a silent fallback would assert the projection landed where the
+/// contract says it must not.
+let private forwardingTag =
+    Map.ofList
+        [ "a11y-link-labelled", "a"
+          "a11y-button-named", "button"
+          "a11y-image-decorative", "img" ]
+
+/// Read the contract's behaviour vectors. `[]` in a checkout with no corpus —
+/// the leg below turns that into a skip rather than a vacuous pass.
+let private readVectors (corpusRoot: string) : A11yCase list =
+    use doc =
+        JsonDocument.Parse(File.ReadAllText(Path.Combine(corpusRoot, "a11y-contract.json")))
+
+    [ for v in doc.RootElement.GetProperty("behaviour").GetProperty("vectors").EnumerateArray() do
+          let expected =
+              [ for pair in v.GetProperty("attributes").EnumerateArray() -> pair[0].GetString(), pair[1].GetString() ]
+
+          { Fixture = v.GetProperty("fixture").GetString()
+            Forwards = v.GetProperty("forwards").GetBoolean()
+            Expected = expected
+            AbsentFromCarrier =
+              projectionAttributes
+              |> List.filter (fun a -> expected |> List.forall (fun (k, _) -> k <> a)) } ]
+
 let private cases =
-    [
-      // All six slots at once on an ordinary wrapper kind. `hidden` is an
-      // explicit Static FALSE — distinct on the wire from omitted, and it must
-      // emit nothing.
-      { Fixture = "a11y-wrapper-all-slots"
-        Element = None
-        Expected =
-          [ "aria-label", "Channel performance summary"
-            "aria-labelledby", "a11y-wrapper-heading"
-            "aria-describedby", "a11y-wrapper-note"
-            "role", "region"
-            "aria-live", "polite" ]
-        AbsentFromCarrier = [ "aria-hidden" ] }
-
-      // The State forms. `label` resolves through its declared `defaultValue`
-      // with no host state (the Phase-629 default law); `hidden`'s default is
-      // FALSE, so nothing is emitted. The custom role's CASE is carried
-      // verbatim — the exact spelling a fold bug once rewrote — and `off` is a
-      // real `liveRegion` token, not an absence.
-      { Fixture = "a11y-wrapper-state-bound"
-        Element = None
-        Expected = [ "aria-label", "Site footer"; "role", "doc-pageFooter"; "aria-live", "off" ]
-        AbsentFromCarrier = [ "aria-hidden" ] }
-
-      { Fixture = "a11y-alert-assertive"
-        Element = None
-        Expected = [ "role", "alert"; "aria-live", "assertive" ]
-        AbsentFromCarrier = [] }
-
-      // D4 forwarding: the body IS the semantic element. The accessible name
-      // OVERRIDES the visible "Read more".
-      { Fixture = "a11y-link-labelled"
-        Element = Some "a"
-        Expected = [ "aria-label", "Read the 2026 annual report (PDF)" ]
-        AbsentFromCarrier = [] }
-
-      { Fixture = "a11y-button-named"
-        Element = Some "button"
-        Expected = [ "aria-label", "Refresh revenue figures"; "role", "button" ]
-        AbsentFromCarrier = [] }
-
-      // The decorative shape: empty alt + `hidden` Static TRUE — the slot two
-      // hosts dropped entirely before the Phase 951 port.
-      { Fixture = "a11y-image-decorative"
-        Element = Some "img"
-        Expected = [ "aria-hidden", "true" ]
-        AbsentFromCarrier = [] } ]
+    match root with
+    | Some r -> readVectors r
+    | None -> []
 
 [<Tests>]
 let a11yCorpusParityTests =
@@ -158,9 +167,15 @@ let a11yCorpusParityTests =
                   let wrapper = wrapperTag html
 
                   let carrier =
-                      match case.Element with
-                      | None -> wrapper
-                      | Some tag -> openTagOf tag html
+                      if not case.Forwards then
+                          wrapper
+                      else
+                          match Map.tryFind case.Fixture forwardingTag with
+                          | Some tag -> openTagOf tag html
+                          | None ->
+                              failwithf
+                                  "%s: the contract says the projection forwards, and this host has not said which element it renders for that kind - add it to `forwardingTag`"
+                                  case.Fixture
 
                   for (attr, value) in case.Expected do
                       Expect.isTrue
@@ -173,9 +188,7 @@ let a11yCorpusParityTests =
                           $"{case.Fixture}: {attr} must not be emitted — got: {carrier}"
 
                   // A forwarding kind must not leave the projection behind.
-                  match case.Element with
-                  | None -> ()
-                  | Some _ ->
+                  if case.Forwards then
                       for (attr, _) in case.Expected do
                           Expect.isFalse
                               (contains attr wrapper)
@@ -189,7 +202,18 @@ let a11yCorpusParityTests =
               }
 
           // A table-driven leg that silently enumerated nothing would be a gate
-          // that checked nothing.
-          test "the a11y corpus family is the full Phase 955 set" {
-              Expect.equal (List.length cases) 6 "the Phase 955 node family is six fixtures"
+          // that checked nothing — and since Phase 1665 the table is READ rather
+          // than written here, so an empty one is also what a mis-shaped contract
+          // looks like. Both are refused. The count is not restated: the contract
+          // is the enumeration, exactly as `manifest.json` is for the fixtures.
+          test "the a11y contract's behaviour vectors are present, and cover the Transform-bound name" {
+              if root.IsNone then
+                  skiptest
+                      "wire-format-fixtures/ not found walking up from the test assembly — skipped in a bare single-repo clone"
+
+              Expect.isNonEmpty cases "a11y-contract.json's `behaviour.vectors` must enumerate the a11y fixture family"
+
+              Expect.isTrue
+                  (cases |> List.exists (fun c -> c.Fixture = "a11y-wrapper-transform-label"))
+                  "the contract must carry the Phase 1665 vector — the Transform-bound accessible name is the one every host resolved through its row-shaped generic path"
           } ]
