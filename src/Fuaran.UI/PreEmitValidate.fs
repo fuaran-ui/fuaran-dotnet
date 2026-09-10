@@ -4589,6 +4589,20 @@ let private validateCore
     // the CONSEQUENCE — a Transform over an unfillable source renders a wrong
     // number, which a reader can at least see and doubt; a visibility predicate
     // that cannot be made true renders nothing at all.
+    //
+    // **This code is REFERENCE-ONLY, and the other four hosts' abstention is
+    // recorded in ONE named place: each host's own `validator-coverage.json`
+    // `abstained` entry (Phase 1665).** Not here, and not in a comment on any
+    // host — the corpus's `validator/README.md` fixes the rule ("an abstention
+    // with a stated reason is a decision; an unlisted code is drift"), the
+    // declaration is what `node validator/check-coverage.mjs` reads, and a
+    // comment would be invisible to both. Until 1665 the code was UNLISTED in
+    // all four, so it fell to each file's `abstentionDefault` — "an honest 'not
+    // yet'" — which mischaracterises it: the grounds are the same principled
+    // ones those files already state for FUARAN103 / FUARAN105 (the rule reasons
+    // from the ABSENCE of a write anywhere in the tree, and no other host has a
+    // tree-wide write projection to reason from). Do not re-derive that here;
+    // read the four entries.
     if not facts.StateKeys.OpaqueWriter then
         let reportedVisible = System.Collections.Generic.HashSet<string>()
 
