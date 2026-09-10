@@ -176,14 +176,22 @@ let private schemaInexpressibleRejects: Set<string> =
           "reject-json-lone-low-surrogate"
           "reject-json-surrogate-pair-split"
 
-          // §7.1's range half. Unlike the four above this one IS expressible in
-          // principle — `minimum` / `maximum` on the integer slots — and simply is
-          // not expressed today; filed here rather than left silently passing so
-          // the exemption carries its reason. The inverse assertion means it fails
-          // the moment `SchemaGen` emits those bounds, which is when this entry
-          // should go. Its sibling `reject-int-slot-fractional` needs no entry:
-          // `"type":"integer"` already refuses `2.5`.
-          "reject-int-slot-out-of-range"
+          // §7.1's range half USED TO BE HERE, and Phase 1666 retired the entry
+          // exactly as the note predicted: "it fails the moment `SchemaGen` emits
+          // those bounds, which is when this entry should go". §21.9 bounds
+          // `Skeleton.rows` at 10 000 and `SchemaGen` states it as a `maximum`,
+          // so `reject-int-slot-out-of-range` (`rows: 1e10`) is now refused by
+          // the schema and the inverse assertion caught the stale exemption on
+          // the first run.
+          //
+          // Worth being precise about WHAT closed, because it is less than the
+          // old note's framing suggests: the fixture is caught by a §21 RESOURCE
+          // ceiling that happens to sit on the slot it probes, not by §7.1's
+          // 32-bit range being expressed. Every other typed integer slot still
+          // carries no `minimum` / `maximum`, so §7.1's range half remains
+          // schema-inexpressible in general — it simply has no fixture of its own
+          // any more. Its sibling `reject-int-slot-fractional` needed no entry
+          // either way: `"type":"integer"` already refuses `2.5`.
 
           // ─── Fuaran-UI Phase 1534 — `Binding.Expr`'s two refusals ─────────
           //

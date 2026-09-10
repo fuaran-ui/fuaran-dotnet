@@ -7973,7 +7973,7 @@ asserts the conjunction of §7.1 and §21 and is re-broken by the next limit.
 **The bound is an UPPER bound only, and the omission is deliberate.** A negative `rows` is not a
 resource breach — nothing expands — and answering `LIMIT_EXCEEDED` for it would be the
 actively-wrong diagnosis §21.2 rule 2 forbids in the `INVALID_JSON` direction. It is an authoring
-defect, so `PreEmitValidate` gains **FUARAN150** (Error), which holds BOTH ends of the range because
+defect, so `PreEmitValidate` gains **FUARAN152** (Error), which holds BOTH ends of the range because
 that is the surface an author is standing on. `schema.json` carries the ceiling as `maximum` and no
 `minimum`, matching. No per-host exemption exists, here or anywhere in §21: the pre-emit family's
 per-host declared coverage (`validator-coverage.json`) is the dial that does exist and it does not
@@ -8005,6 +8005,23 @@ their ids for uniqueness. Two things change, and they are different problems:
   slot label rides the error in the §3.3 spelling (`Switch.cases[0].child`), and the hint tells the
   caller the two routes that do work. A position that later gains defined structural semantics
   simply stops being reported here, so nothing is foreclosed.
+
+**`Placement.PlaceError` moves with it, and BOTH halves of that are breaking.** That type's declared
+job is to be a pre-statement of the apply-time refusal an emitted op would meet, "so a helper
+rejection and an apply rejection agree — no false permit, no false refuse" — so an engine answer that
+improves obliges the helper to follow. It gains `PositionNotStructural of nodeId * slot` (a new case
+on a closed public DU, source-breaking at every exhaustive match), and `NodeNotFound` is **NARROWED
+to absence and only absence**: it used to cover a node held in or below a keyed position too, on the
+grounds that the engine refused those the same way. A caller matching `NodeNotFound` to mean "not
+addressable" now sees the new case for two of the three shapes it used to catch.
+
+Two live disagreements are closed by the same change, and each was a real defect rather than a
+tidying. `canPlace` refused a move *within* one keyed position's subtree — a false refuse, so an
+editor greyed out a drop the engine would have accepted; and `nudgeOp` refused a nudge below a
+position for the same reason, because `Introspect.findParent` walks `getChildren` and cannot see a
+container held inside one. Both now classify through the very lens the engine classifies with
+(`nonStructuralAncestor`), so the two cannot drift by holding separate ideas of where the positions
+are. Each of the three answers is pinned beside its apply-side twin.
 
 `Introspect` gains `nonStructuralPositions`, `replaceNonStructuralPosition` and
 `nonStructuralAncestor` — all three reading the one existing lens rather than a second notion of what
@@ -8115,7 +8132,7 @@ changes is which shipped wire members an author can actually reach, and one diag
 | `Fuaran.UI` — `GridSpecOf<'row,'Msg>` | Gains `Reorderable: bool` and `RowKeyField: string option`, appended LAST. | A full record literal — `FS0764`. A `{ Defaults.grid with … }` copy, or the C# / VB facades, is unaffected, which is every construction in this repository. |
 | `Fuaran.UI.CSharp` — `SelectOptions.Value` | Widens from `string?` to `Binding<string>?`. | **A caller assigning a plain string is unaffected** — `Binding<T>` converts implicitly, so `Value = "b"` compiles and emits the same bytes. A caller READING the property back, or passing a `string` variable into a `string`-typed local, adapts. |
 | `Fuaran.UI` — `Defaults.fileUpload` | `OnSelect` becomes `None`, where it was a `Some`-wrapped no-op closure. | **Behavioural; nothing fails to compile.** A tree built from the default and then encoded no longer emits `"onSelect":"<closure>"` — it emitted a handler that consumed nothing. Every corpus fixture on this kind sets the slot explicitly and is byte-unchanged. |
-| `Fuaran.UI.Analyzers` — two diagnostic ids | `FUARAN060` → `FUARAN150`, `FUARAN061` → `FUARAN151`. | **A consumer suppressing either by id in `.editorconfig` or a pragma.** Both were `AnalyzerReleases.Unshipped.md` entries, so no released rule set is withdrawn. |
+| `Fuaran.UI.Analyzers` — two diagnostic ids | `FUARAN060` → `FUARAN152`, `FUARAN061` → `FUARAN151`. | **A consumer suppressing either by id in `.editorconfig` or a pragma.** Both were `AnalyzerReleases.Unshipped.md` entries, so no released rule set is withdrawn. |
 
 **The `RowKeyField` slot is what makes a shipped feature authorable.** `DataGridSpec.TransferInKey`
 / `TransferOutKey` shipped in 0.72.0 with C#, VB and analyzer spellings — and FUARAN130 requires a

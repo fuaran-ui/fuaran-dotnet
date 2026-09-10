@@ -299,19 +299,113 @@ let moveOpTests =
                   "the moved node is not among its own destination siblings"
           }
 
-          test "a node held in a non-structural position is not movable — refused as the engine refuses it" {
+          // Phase 1666 — this test's SUBJECT is unchanged (a node at a keyed
+          // position is still not movable) and its expected CODE moved, because
+          // the engine's answer moved. It used to say `NodeNotFound` for a node
+          // `findNode` reaches and `UpdateProp` edits, which sends a caller to
+          // look for a node that is right there; it now names the position whose
+          // arity the op would change. This list's whole contract is that the
+          // helper's refusal is a pre-statement of the engine's, so when the
+          // engine's answer improves this is where the helper follows it —
+          // amending the assertion, never widening it to accept either code.
+          test "a node AT a non-structural position is not movable — refused as the engine refuses it" {
               let t =
                   container "root" [ Node.onLoading (leaf "ph") (leaf "m"); container "box" [] ]
 
               expectRefusal
                   (Placement.moveOp t (NodeId "ph") (at "box" Placement.Last))
-                  (PlaceError.NodeNotFound(NodeId "ph"))
+                  (PlaceError.PositionNotStructural(NodeId "ph", "state.onLoading"))
                   "helper refusal"
 
               Expect.equal
                   (refusedAs (TreeOp.MoveNode(NodeId "ph", NodeId "box")) t)
+                  (ApplyErrorCode.PositionNotStructural "state.onLoading")
+                  "apply-side twin"
+          }
+
+          // Phase 1666 — the three answers `canPlace` now draws apart, each
+          // paired with its apply-side twin. The pairing is the point: a helper
+          // that refuses what the engine permits greys out a legal drop, and one
+          // that permits what the engine refuses emits an op that fails after
+          // the user has committed to the gesture. Both were live the moment the
+          // engine learnt to descend.
+          test "a node BELOW a non-structural position moves WITHIN it — helper and engine agree" {
+              let t =
+                  container "root" [ Node.onLoading (container "panel" [ leaf "p1"; container "inner" [] ]) (leaf "m") ]
+
+              match Placement.moveOp t (NodeId "p1") (at "inner" Placement.Last) with
+              | Error e -> failtestf "a legal move below a keyed position was greyed out: %A" e
+              | Ok op ->
+                  match Apply.apply op t with
+                  | Error err -> failtestf "the helper emitted an op the engine refused: %A %s" err.Code err.Message
+                  | Ok updated ->
+                      match Introspect.findNode (NodeId "inner") updated with
+                      | Some inner ->
+                          Expect.equal
+                              (Introspect.getChildren inner.Kind |> Option.defaultValue [] |> List.map _.Id)
+                              [ "p1" ]
+                              "the moved node landed in its new parent, still inside the position"
+                      | None -> failtest "the destination went missing"
+          }
+
+          test "a move OUT of a non-structural position is refused as the engine refuses it" {
+              let t =
+                  container
+                      "root"
+                      [ Node.onLoading (container "panel" [ leaf "p1" ]) (leaf "m")
+                        container "box" [] ]
+
+              expectRefusal
+                  (Placement.moveOp t (NodeId "p1") (at "box" Placement.Last))
+                  (PlaceError.PositionNotStructural(NodeId "p1", "state.onLoading"))
+                  "helper refusal — the op would cross the position"
+
+              match refusedAs (TreeOp.MoveNode(NodeId "p1", NodeId "box")) t with
+              | ApplyErrorCode.PositionNotStructural _ -> ()
+              | other -> failtestf "apply-side twin: expected PositionNotStructural, got %A" other
+          }
+
+          test "an absent node is still NodeNotFound, not swept into the position refusal" {
+              // The narrowing has to stay narrow: `NodeNotFound` is absence and
+              // only absence now, so the two answers must remain tellable apart.
+              let t =
+                  container "root" [ Node.onLoading (leaf "ph") (leaf "m"); container "box" [] ]
+
+              expectRefusal
+                  (Placement.moveOp t (NodeId "nowhere") (at "box" Placement.Last))
+                  (PlaceError.NodeNotFound(NodeId "nowhere"))
+                  "helper refusal"
+
+              Expect.equal
+                  (refusedAs (TreeOp.MoveNode(NodeId "nowhere", NodeId "box")) t)
                   ApplyErrorCode.NodeNotFound
                   "apply-side twin"
+          }
+
+          test "nudge reaches below a keyed position, and refuses the position's own node by name" {
+              let t =
+                  container "root" [ Node.onLoading (container "panel" [ leaf "p1"; leaf "p2" ]) (leaf "m") ]
+
+              // `Introspect.findParent` cannot see `panel`, so this was a false
+              // refuse the moment the engine learnt to descend.
+              match Placement.nudgeOp t (NodeId "p2") -1 with
+              | Error e -> failtestf "a legal nudge below a keyed position was refused: %A" e
+              | Ok op ->
+                  match Apply.apply op t with
+                  | Error err -> failtestf "the helper emitted a nudge the engine refused: %A %s" err.Code err.Message
+                  | Ok updated ->
+                      match Introspect.findNode (NodeId "panel") updated with
+                      | Some panel ->
+                          Expect.equal
+                              (Introspect.getChildren panel.Kind |> Option.defaultValue [] |> List.map _.Id)
+                              [ "p2"; "p1" ]
+                              "the two children swapped inside the position"
+                      | None -> failtest "the position lost its node"
+
+              expectRefusal
+                  (Placement.nudgeOp t (NodeId "panel") 1)
+                  (PlaceError.PositionNotStructural(NodeId "panel", "state.onLoading"))
+                  "the position's own node has no sibling list to nudge among"
           }
 
           test "canPlace agrees with moveOp on the legal drop" {

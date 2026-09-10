@@ -280,7 +280,7 @@ let integerSlotTests =
               for token in [ "2147483647"; "-2147483648" ] do
                   let json =
                       sprintf
-                          """{"id":"h","kind":{"$type":"Heading","level":%s,"text":"t","variant":"Section"}}"""
+                          """{"id":"h","kind":{"$type":"Heading","level":%s,"text":"t","variant":"Standard"}}"""
                           token
 
                   match JsonDecode.decodeNodeObj json with
@@ -364,7 +364,7 @@ let skeletonRowBoundTests =
           test "the bound is an UPPER bound only — a negative count is the validator's" {
               // Deliberate, and the reason is §21.2 rule 2's: a limit breach
               // must not be reported as something it is not, and a negative row
-              // count is not a resource breach. `PreEmitValidate`'s FUARAN150
+              // count is not a resource breach. `PreEmitValidate`'s FUARAN152
               // holds both ends of the range on the authoring side, where the
               // author is.
               match JsonDecode.decodeNodeObj """{"id":"s","kind":{"$type":"Skeleton","rows":-1}}""" with

@@ -69,10 +69,30 @@ type PlaceError =
     /// The destination parent's kind has no `Children` field (apply:
     /// `ChildlessKind`).
     | ChildlessKind of parentId: NodeId
-    /// The node to move / nudge / duplicate is not structurally addressable
-    /// (absent, or held in a non-structural position the structural ops cannot
-    /// reach) — apply: `NodeNotFound`.
+    /// The node to move / nudge / duplicate is not in the tree at all (apply:
+    /// `NodeNotFound`).
+    ///
+    /// Phase 1666 NARROWED this case. It used to cover a node held in — or
+    /// below — a keyed position as well, because the apply engine refused those
+    /// as `NodeNotFound` too. The engine no longer does: it descends into a
+    /// keyed position to reach a node below one, and names the position when it
+    /// refuses. This case is absence, and only absence.
     | NodeNotFound of nodeId: NodeId
+    /// The op would change the ARITY of a keyed position, or cross one (apply:
+    /// `PositionNotStructural`). Carries the node addressed and the position's
+    /// slot label in the §3.3 spelling (`Switch.cases[0].child`).
+    ///
+    /// Three shapes reach it, and they are one fact seen from three sides: the
+    /// node IS the position's own node, so removing or moving it would leave
+    /// the position empty; the node sits below one position and the destination
+    /// below another; or one of the two sits below a position and the other on
+    /// the structural spine. A single write through an arity-preserving lens
+    /// cannot express any of them, and inventing a two-write form would be a
+    /// wire decision rather than an engine one.
+    ///
+    /// Reaching THROUGH a position is not an error at all — a node below one
+    /// moves, nudges and takes inserts normally, WITHIN that position's subtree.
+    | PositionNotStructural of nodeId: NodeId * slot: string
     /// The placement anchor is not among the destination's post-op children.
     /// The only op that could honour it — a `ReorderChildren` naming it — is
     /// refused by the apply engine as `OrderingMismatch`.
@@ -187,13 +207,49 @@ module Placement =
         | Placement.Before anchor -> anchored anchor 0
         | Placement.After anchor -> anchored anchor 1
 
-    /// Whether `nodeId` is addressable by the structural ops: the root, or a
-    /// node reachable through a `Children` list. A node held in a
-    /// non-structural position (a Switch case, an ErrorBoundary slot, a State
-    /// placeholder) is visible to traversal but not movable, and the apply
-    /// engine refuses ops against it as `NodeNotFound`.
-    let private structurallyPresent (nodeId: NodeId) (root: Node<'Msg>) : bool =
-        NodeId root.Id = nodeId || (Introspect.findParent nodeId root |> Option.isSome)
+    /// The keyed position `nodeId` sits AT or BELOW, as `(holder, slot, isAt)`,
+    /// or `None` when it is reachable through `Children` from the root
+    /// (Phase 1666).
+    ///
+    /// Reads `Introspect.nonStructuralAncestor` — the same lens the apply engine
+    /// classifies with — so the helper cannot drift from the engine by having
+    /// its own idea of where the positions are. `None` here does NOT distinguish
+    /// a spine node from an absent one; `Introspect.findNode` answers that, and
+    /// every caller below asks it first.
+    let private keyedPosition (nodeId: NodeId) (root: Node<'Msg>) : (NodeId * string * bool) option =
+        Introspect.nonStructuralAncestor nodeId root
+        |> Option.map (fun (holder, slot, _, isAt) -> holder, slot, isAt)
+
+    /// The position IDENTITY, for the crossing test: two nodes may take part in
+    /// one structural op iff they answer the same value here.
+    let private positionKey (position: (NodeId * string * bool) option) : (NodeId * string) option =
+        position |> Option.map (fun (holder, slot, _) -> holder, slot)
+
+    /// The node whose STRUCTURAL children contain `target`, searched over the
+    /// whole tree rather than the structural spine alone (Phase 1666).
+    ///
+    /// `Introspect.findParent` walks `getChildren` from the root, so it cannot
+    /// see a container held inside a keyed position — and since the engine now
+    /// DESCENDS into such a position, a nudge below one is legal and this helper
+    /// has to be able to express it. Everything else about the answer is
+    /// unchanged: the parent found is always a structural container, so the
+    /// reorder it produces names that container's own children.
+    let private findStructuralParent (target: NodeId) (root: Node<'Msg>) : (Node<'Msg> * int) option =
+        let (NodeId targetRaw) = target
+
+        let rec walk (node: Node<'Msg>) =
+            let here =
+                Introspect.getChildren node.Kind
+                |> Option.bind (fun children ->
+                    children
+                    |> List.tryFindIndex (fun c -> c.Id = targetRaw)
+                    |> Option.map (fun i -> node, i))
+
+            match here with
+            | Some hit -> Some hit
+            | None -> Introspect.descendantNodes node |> List.tryPick walk
+
+        walk root
 
     /// Whether `moved` may legally take up residence at `target` — the
     /// pre-check an editor uses to grey out an illegal drop without a dry-run
@@ -201,8 +257,30 @@ module Placement =
     /// itself, move into its own descendant (a cycle), absent or childless
     /// destination, unknown anchor.
     let canPlace (root: Node<'Msg>) (moved: NodeId) (target: Target) : Result<unit, PlaceError> =
-        if not (structurallyPresent moved root) then
+        // Phase 1666 — the three answers the engine now gives, in its order:
+        // absence first (nothing else is meaningful about a node that is not
+        // there), then the ARITY guard, then the CROSSING guard.
+        let movedPosition = keyedPosition moved root
+        let destPosition = keyedPosition target.ParentId root
+
+        if Introspect.findNode moved root |> Option.isNone then
             Error(PlaceError.NodeNotFound moved)
+        elif movedPosition |> Option.exists (fun (_, _, isAt) -> isAt) then
+            let _, slot, _ = Option.get movedPosition
+            Error(PlaceError.PositionNotStructural(moved, slot))
+        elif positionKey movedPosition <> positionKey destPosition then
+            // The op crosses a keyed position — between two of them, or between
+            // one and the structural spine. Reported at the position the MOVED
+            // node is in where there is one, since that is the side the caller
+            // addressed; otherwise at the destination's.
+            let slot =
+                match movedPosition, destPosition with
+                | Some(_, slot, _), _
+                | None, Some(_, slot, _) -> slot
+                // Unreachable: the keys differ, so at least one side is Some.
+                | None, None -> ""
+
+            Error(PlaceError.PositionNotStructural(moved, slot))
         elif target.ParentId = moved then
             Error(PlaceError.MoveIntoSelf moved)
         elif Introspect.isAncestorOf moved target.ParentId root then
@@ -264,8 +342,16 @@ module Placement =
         if NodeId root.Id = nodeId then
             Error(PlaceError.CannotNudgeRoot nodeId)
         else
-            match Introspect.findParent nodeId root with
-            | None -> Error(PlaceError.NodeNotFound nodeId)
+            // Phase 1666 — `findStructuralParent`, not `Introspect.findParent`:
+            // a container held inside a keyed position is a legal nudge target
+            // now that the engine descends into one, and a node that IS a
+            // position's own node has no sibling list to nudge among, which is
+            // a different answer from absence.
+            match findStructuralParent nodeId root with
+            | None ->
+                match keyedPosition nodeId root with
+                | Some(_, slot, true) -> Error(PlaceError.PositionNotStructural(nodeId, slot))
+                | _ -> Error(PlaceError.NodeNotFound nodeId)
             | Some(parent, index) ->
                 let ids =
                     Introspect.getChildren parent.Kind

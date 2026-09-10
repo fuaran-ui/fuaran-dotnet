@@ -1206,7 +1206,7 @@ let private defs: (string * J) list =
       // of the walk (depth, total nodes, document bytes) or of a length Draft
       // 2020-12 has no keyword for at the position that matters; a scalar
       // ceiling is exactly what `maximum` is. No `minimum`: the decoder refuses
-      // only the ceiling (a negative count is an authoring defect, FUARAN150,
+      // only the ceiling (a negative count is an authoring defect, FUARAN152,
       // not a resource breach), and the schema is subordinate to the text.
       "SkeletonSpec",
       record

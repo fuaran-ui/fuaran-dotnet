@@ -192,7 +192,7 @@ let MaxExprNodes = 512
 /// calling it one would be the actively-wrong diagnosis §21.2 rule 2 forbids in
 /// the `INVALID_JSON` direction; it is an authoring defect, so the pre-emit
 /// validator holds it (`PreEmitValidate`'s `SkeletonRowsOutOfRange`,
-/// FUARAN150) and the decoder does not.
+/// FUARAN152) and the decoder does not.
 ///
 /// The FIGURE keeps a skeleton's EXPANSION an order of magnitude under the
 /// 100 000 `MaxArrayLength` already fixes for a single position's element count,

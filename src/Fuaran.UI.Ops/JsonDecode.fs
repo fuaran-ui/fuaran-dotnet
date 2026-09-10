@@ -5438,7 +5438,7 @@ let private decodeSparklineSpec (path: string) (j: Json) : Result<SparklineSpec,
 //
 // Upper bound only, deliberately: a negative count is an authoring defect, not
 // a resource breach, and `PreEmitValidate`'s `SkeletonRowsOutOfRange`
-// (FUARAN150) is where it belongs.
+// (FUARAN152) is where it belongs.
 let private decodeSkeletonSpec (path: string) (j: Json) : Result<SkeletonSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e

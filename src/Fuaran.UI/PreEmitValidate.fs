@@ -311,7 +311,7 @@ type PreEmitDefect =
     /// simply recursed until the process died of a `StackOverflowException`,
     /// which .NET cannot catch, so no defect list of any kind came back.
     | MaxDepthExceeded of nodeId: string * limit: int
-    /// **FUARAN150 (Error)**. A `Skeleton` declares a `rows` count outside
+    /// **FUARAN152 (Error)**. A `Skeleton` declares a `rows` count outside
     /// `0 … WireLimits.MaxSkeletonRows` (Phase 1666; WIRE_FORMAT §21.9).
     /// Carries the node's id and the offending count.
     ///
@@ -2123,7 +2123,7 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             nodeId
             limit
     | PreEmitDefect.SkeletonRowsOutOfRange(nodeId, rows) ->
-        "FUARAN150",
+        "FUARAN152",
         DefectSeverity.Error,
         sprintf
             "Skeleton '%s' declares rows = %d, outside 0 … %d (WIRE_FORMAT §21.9) — a negative count draws nothing, and a count above the bound names more placeholder rows than any conformant host may carry, so the encoded tree would be refused on decode; pick a count in range"
@@ -3502,7 +3502,7 @@ let private validateCore
                 if hostPages then
                     defects.Add(PreEmitDefect.DoublePagedGrid(nodeIdStr, key))
             | None, _ -> ()
-        // FUARAN150 (Phase 1666) — the §21.9 row bound, whole, on the authoring
+        // FUARAN152 (Phase 1666) — the §21.9 row bound, whole, on the authoring
         // side. This is the first tenant of the "future kind-specific
         // invariants land here" note the leaf arm below has carried since 781.
         | NodeKind.Skeleton spec ->
