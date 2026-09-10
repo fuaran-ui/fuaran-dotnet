@@ -7138,6 +7138,78 @@ let a11yImageDecorative: Node<obj> =
               LiveRegion = None
               Hidden = Some(Binding.Static(Some true)) })
 
+/// Fuaran-UI Phase 1665 — the COMPUTED accessible name: `label` as a
+/// `Binding.Transform` yielding exactly one cell.
+///
+/// The sibling of Phase 1535's `switch-on-transform-scalar`, at the slot 1535
+/// left behind. `Accessibility.label` is an ordinary `Binding<string>`, so the
+/// one wire spelling of "name this region after what is in it" is a scalar
+/// pipeline — and every host resolved it through its GENERIC binding path,
+/// whose `Transform` arm is row-shaped: the reference threw, Fable emitted the
+/// rows array, and the other three fell through to no `aria-label` at all. A
+/// region with no accessible name is not a cosmetic loss; it is the one trait
+/// whose failure has no visible output, so nothing downstream reported it.
+///
+/// The pipeline is the canonical scalar terminal the Phase-632 rule names — a
+/// global `groupBy [] [count]`, a `derive` folding the count into the name, a
+/// `project` to that one column. No new wire vocabulary: what the fixture pins
+/// is that an EXISTING document renders what its author meant. The rows are
+/// EMBEDDED and the count is fixed, so the resolved name is the same on every
+/// host with no seeded state anywhere — which is what lets one contract vector
+/// state it for all five.
+let a11yWrapperTransformLabel: Node<obj> =
+    let source =
+        Fuaran.Core.Embedded
+            { Schema = [ "severity", Fuaran.Core.StringType ]
+              Columns =
+                [ Fuaran.Core.Column.create
+                      "severity"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "high"; Fuaran.Core.Str "high"; Fuaran.Core.Str "low" ] ] }
+
+    node
+        "a11y-wrapper-transform-label"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+              Role = BoxRole.Group
+              Heading = None
+              Children = [ withId "a11y-transform-note" markdown ]
+              KeepTogether = false
+              BreakBefore = false }
+        ))
+        (Some
+            { Label =
+                Some(
+                    Binding.Transform(
+                        TransformSource.Data source,
+                        [ Fuaran.Core.GroupBy(
+                              [],
+                              [ { Name = "n"
+                                  Fn = Fuaran.Core.AggFn.Count
+                                  Of = "severity" } ]
+                          )
+                          Fuaran.Core.Derive(
+                              "label",
+                              Fuaran.Core.Case(
+                                  [ Fuaran.Core.Binary(
+                                        Fuaran.Core.Gt,
+                                        Fuaran.Core.Col "n",
+                                        Fuaran.Core.Lit(Fuaran.Core.Int 2)
+                                    ),
+                                    Fuaran.Core.Lit(Fuaran.Core.Str "3 open alerts") ],
+                                  Fuaran.Core.Lit(Fuaran.Core.Str "No open alerts")
+                              )
+                          )
+                          Fuaran.Core.Project [ "label", "label" ] ],
+                        None
+                    )
+                )
+              LabelledBy = None
+              DescribedBy = None
+              Role = Some AriaRole.Region
+              LiveRegion = None
+              Hidden = None })
+
 // ─── Public collections ─────────────────────────────────────────────────
 
 /// Phase 380 — the certified fragment library's wire fixtures: for every
@@ -7500,6 +7572,8 @@ let allNodes: (string * Node<obj>) list =
       "Accessibility (Phase 955 — Button: an explicit named role on a kind that already has a native one)",
       a11yButtonNamed
       "Accessibility (Phase 955 — Image: the decorative shape, empty alt + hidden Static true)", a11yImageDecorative
+      "Accessibility (Phase 1665 — a Transform-bound accessible name, read through the SCALAR path)",
+      a11yWrapperTransformLabel
       "Tooltip (Phase 1112 — the trait on a forwarding interactive kind; the description rides the button)",
       tooltipButton
       "Tooltip (Phase 1112 — the trait on a display kind, I18n hint; description and focus stop on the wrapper)",
