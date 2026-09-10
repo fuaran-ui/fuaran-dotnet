@@ -15,8 +15,17 @@
          the `Exe` is for on a consumer's machine, and the honest answer today is
          that it is for nothing there. -->
     <IsPackable>false</IsPackable>
+    <!-- Phase 1648 — the package metadata below is INERT and kept deliberately, not
+         because it is still true of a shipped package. `IsPackable=false` means nothing
+         reads it, and `Build.fs` no longer names this project in `packableProjects`, so
+         there is no path by which these strings reach a feed. They stay because they are
+         the accurate description of what the modules in here do, and deleting them would
+         lose that rather than clarify it; the first line says what the reader needs to
+         know, which is that this is not published. Re-packing is the deliberate act the
+         comment above describes, and it starts by answering what the `Exe` is for on a
+         consumer's machine. -->
     <PackageId>Fuaran.UI.Telemetry.Drift</PackageId>
-    <Description>Drift detector for Fuaran op-apply telemetry. Computes per-OpKind aggregate metrics (success rate, p50/p95 latency, top decoder-rejection reasons, top NodeNotFound NodeIds) and flags week-on-week success-rate regressions exceeding an operator-tunable threshold (default 10pp). Also ships a deterministic StyleFlag drift detector (Phase 151) — the resolved-style twin that diffs declared-invariant flag sets across two windows of StyleObservation to surface newly-introduced / cleared visual-legibility violations, severity-weighted by the ThemeManifest's invariant weights (semantic visual regression, no pixels, CI-gateable). Manual-run console tool for now (`dotnet run --project src/Fuaran.UI.Telemetry.Drift`); cron-friendly later when an operator-decided threshold is wired into a scheduled job. Companion to Fuaran.UI.Telemetry.Abstractions. Apache-2.0 licensed.</Description>
+    <Description>NOT PUBLISHED (IsPackable=false since Phase 1532). Drift detector for Fuaran op-apply telemetry. Computes per-OpKind aggregate metrics (success rate, p50/p95 latency, top decoder-rejection reasons, top NodeNotFound NodeIds) and flags week-on-week success-rate regressions exceeding an operator-tunable threshold (default 10pp). Also ships a deterministic StyleFlag drift detector (Phase 151) — the resolved-style twin that diffs declared-invariant flag sets across two windows of StyleObservation to surface newly-introduced / cleared visual-legibility violations, severity-weighted by the ThemeManifest's invariant weights (semantic visual regression, no pixels, CI-gateable). Manual-run console tool for now (`dotnet run --project src/Fuaran.UI.Telemetry.Drift`); cron-friendly later when an operator-decided threshold is wired into a scheduled job. Companion to Fuaran.UI.Telemetry.Abstractions. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>fuaran;telemetry;drift;observability;regression</PackageTags>
   </PropertyGroup>
