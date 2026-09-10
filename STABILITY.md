@@ -7899,6 +7899,50 @@ seam, and `docs/security/ESCAPE-HATCHES.md` needs no amendment. **The number doe
 slot is an untagged draft already carrying a BREAKING class, and an additive change of this shape
 rides it.
 
+**fuaran#1665 — BREAKING at a rendered accessible name, and NOTHING on the wire moves.** No type,
+signature or encoding changes; what changes is what five hosts emit for a document they all already
+accepted.
+
+`Accessibility.label` resolved through `BindingResolver.tryResolve`, whose `Binding.Transform` arm is
+ROW-shaped — it evaluates the pipeline to a `Row seq` and unboxes that at `string`. Phase 1535 routed
+`accessibility.hidden`, the adjacent slot on the same trait, to the scalar resolver and recorded the
+label asymmetry at both the F# and TS sites as a deliberate deferral. This closes it:
+`Accessibility.fs`'s label arm now calls `tryResolveScalarText`, and both doc comments state the
+measured behaviour rather than the deferral.
+
+**What breaks.** A node whose `accessibility.label` is a `Binding.Transform` or a `Binding.Expr` now
+renders the accessible name its author wrote. Before, this tier emitted **no `aria-label` at all** —
+the cast threw and `resolve` caught it into an errored resolution, which `tryResolve` maps to
+`None` — so the change is from a silently-absent name to a present one. Any host-side snapshot,
+golden markup or DOM query over such a node gains an `aria-label`. **Every other binding case
+resolves exactly as before**, so no other shipped document changes what it renders: `Static`,
+`State`, `Query`, `Filter`, `Selection`, `Now`, `Format` and `I18n` all reach the same code they
+reached before, and the non-empty filter is unchanged (an empty accessible name is still worse than
+none, and is still dropped).
+
+**Pinned by the corpus, not by five host-local tests — and that is the durable half of the phase.**
+`nodes/a11y-wrapper-transform-label` carries a `Transform`-bound name over embedded rows (the
+Phase-632 scalar terminal: `groupBy [] [count]` → `derive` a `case` → `project` to one column), so
+the resolved name is identical on every host with nothing seeded anywhere;
+`reject/reject-a11y-label-nonstring` completes the trait's reject family at the name slot, the twin
+of `reject-a11y-hidden-nonbool`. `WIRE_FORMAT.md` states five normative render obligations for the
+trait's two `Binding` slots. And the corpus's `a11y-contract.json` gains a `behaviour` section — the
+per-fixture accessible-name and placement vectors, hand-authored, which **replaces the table this
+repo's `A11yCorpusParityTests.fs` used to hold and the four identical tables its sibling hosts held**.
+Five copies of one cross-host claim is exactly the arrangement that let this slot resolve five
+different ways with every conformance gate green.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged; no field is added to a mapped record, so §11 step 6 is not engaged
+either. **No escape hatch is created or widened** — the change routes an existing slot through an
+existing coercion, and `docs/security/ESCAPE-HATCHES.md` needs no amendment.
+
+**FUARAN148 stays reference-only, and its four-host abstention is now recorded** — an `abstained`
+entry in each of `fuaran-ts` / `fuaran-py` / `fuaran-go` / `fuaran-rs`'s own
+`validator-coverage.json`, on the principled FUARAN103/105 grounds those files already state, with a
+pointer at the emit site in `PreEmitValidate.fs`. It was unlisted in all four, so it fell to each
+file's "an honest 'not yet'" default, which mischaracterised a decision as a backlog item.
+
 **fuaran#1662 — BREAKING at the DECODER: a document five hosts accepted is now refused.** No exported
 type, signature or member moves; `MaxExprNodes` does not change value. What changes is its SCOPE, and
 therefore the answer `JsonDecode` gives to a document that was inside the limit only because the limit
@@ -7953,7 +7997,6 @@ admission gates are not engaged; no field is added to a mapped record, so §11 s
 either. **No escape hatch is created or widened** — the change NARROWS what a decoder accepts, and
 `docs/security/ESCAPE-HATCHES.md` needs no amendment. **The number does not move**: this slot is an
 untagged draft already carrying a BREAKING class, which is exactly the class of this change.
-
 ## 0.80.0 — the provider-call telemetry record carries the subject it was made under (Phase 1637)
 
 **Additive on the wire, RECORD-WIDENING at the source, and the two are not the same statement — read
