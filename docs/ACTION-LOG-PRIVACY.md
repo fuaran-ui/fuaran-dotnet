@@ -68,6 +68,49 @@ only the payload the author declared. That is a correct consequence of the opt-i
 defect in it — but a host reading "payload-bearing" as "the author's payload" would be wrong, and
 this is the sentence that says so.
 
+## The clipboard payload: the DECLARATION is logged, never the resolved text
+
+`Action.WriteToClipboard`'s payload became a `TextSource` in Phase 1126, so it can now be a
+literal, a `Bound` binding or an `I18n` key rather than only a string. This census said nothing
+about the change either way; this section is that gap closed (Phase 1646). Two questions, and they
+have different answers.
+
+**Which does the log record — the declaration, or the text that reached the clipboard?** The
+declaration, at every site and on both tiers.
+
+| site | grade | what it records |
+|---|---|---|
+| `ActionInvocation.fs` — `describe`, `WriteToClipboard` arm | A | the constructor name alone. No contents at any mode |
+| `ActionInvocation.fs` — `payloadFor`, `WriteToClipboard` arm | B / C | under `PayloadBearing`, the `TextSource` **as declared**, through the canonical encoder |
+| `ServerDriven/Driver.fs` — `recordInvocation` | B / C | the tree's own `Action`, before lowering. Not the `ClientEffect` |
+
+The third row is the one that is easy to get backwards, and the case the finding raised. The
+server-driven driver DOES resolve the payload — `ClientEffect.WriteToClipboard` carries a plain
+string, because the client shim that performs the write holds no binding resolver, so a bound
+payload has to become text on the server side or not at all. **That resolved string never reaches
+the log.** `recordInvocation` is handed the unresolved `Action`, and the resolution happens on the
+separate lowering path that produces the effect the transport carries. The two are not sequenced —
+they are different projections of the same gesture, and only one of them is a record.
+
+So: a **literal** payload is recorded verbatim under `PayloadBearing`, because a literal `TextSource`
+IS the string; a **bound** or **I18n** payload is recorded as the binding — a state key, a query
+name, a catalogue key — and the value it stood for at that instant is not in the record at all.
+
+**Is a State-resolved value a privacy-relevant capture?** No, on this evidence — but the state KEY
+is, at the ordinary grade-B level, and the reasoning is the same one `Navigate` takes one row above
+(Phase 1536, the identical treatment on the identical shape). The projection holds no resolver, so
+writing a resolved value would claim knowledge it does not have; and the value most likely to be
+sensitive is exactly the one a document binds rather than hardcodes. That the two coincide is
+convenient rather than designed, and it is worth stating that the protection is a **consequence of
+where the projection sits**, not a redaction step: nothing here strips a resolved value, because no
+resolved value is ever in hand. A host that wired a resolver into this projection would lose the
+property with no line here changing.
+
+**What is NOT claimed.** Under `PayloadBearing` a literal clipboard payload is captured in full,
+and a document that hardcodes an address, a token or a name into `WriteToClipboard` puts it in the
+durable record. That is the opt-in working as designed — the same sentence the form-submit
+amplification above earns — and it is the reason the mode is off by default.
+
 ## Renderer diagnostics
 
 | site | grade | note |

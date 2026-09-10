@@ -25,6 +25,21 @@ module Fuaran.UI.Validator.ButtonDisabledCheck
 //
 //  Advisory only — emits a Warning (FUARAN064), never an Error, so it does not
 //  fail the build and stays safe for incremental adoption.
+//
+//  THE MESSAGE BELOW IS RESTATED IN `docs/AI_AUTHORING_GUIDE.md`'s validator-code
+//  table, DELIBERATELY, and the two move together (Phase 1646). The guide's row
+//  is a markdown-formatted near-copy of the string this file emits — same
+//  diagnosis, same remedy, same `Binding.Static true` carve-out — because that
+//  table is what an author reads BEFORE writing the button and this string is
+//  what they read after, and a row that merely pointed at the source would fail
+//  the reader at the moment the table exists for.
+//
+//  Nothing enforces the coupling. It cannot be a byte-parity gate without making
+//  one of the two worse: the guide's cell is prose with code spans in it, and the
+//  emitted string is a single line a build log has to carry. So it is DECLARED
+//  instead, at both ends: an edit here that changes the diagnosis, the remedy or
+//  the carve-out edits that row in the same change-set. An edit that changes only
+//  wording need not — the two were never byte-identical and are not claimed to be.
 // ============================================================================
 
 open Fuaran.UI.Validator.AstWalker

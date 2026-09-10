@@ -47,6 +47,10 @@ let pairsPath =
 
 let mutable failures = 0
 let mutable checked' = 0
+// Phase 1646 — counted apart from `failures`, because a canonical side that does
+// not decode is NOT a loss-free failure and reporting it as one sent two readings
+// hunting a lossy normalisation that does not exist. See the summary below.
+let mutable canonicalFails = 0
 let verdicts = System.Collections.Generic.List<string>()
 
 for line in File.ReadAllLines pairsPath do
@@ -73,13 +77,29 @@ for line in File.ReadAllLines pairsPath do
                 else
                     "ok"
             | Error e, _ ->
-                eprintfn "CANONICAL DECODE FAILED: %s — %A" label e
+                // NOT a loss-free failure, and the distinction is the whole
+                // point of counting it separately (Phase 1646). The canonical
+                // side did not decode, so there is no value for the dialect
+                // side to differ FROM and no normalisation to accuse. On a
+                // hand-tier pair the overwhelmingly likely cause is a
+                // deliberately-WRONG teaching example — the pack shows several
+                // emissions beside the words "this exact emission fails to
+                // decode" — and the caller's advisory tier is built to fall
+                // back for exactly those.
+                eprintfn
+                    "CANONICAL DECODE FAILED (not a loss-free failure — the canonical side does not decode; \
+                     on a hand pair this is usually a deliberately-wrong teaching example): %s — %A"
+                    label
+                    e
+
                 "canonical-fail"
             | _, Error e ->
                 eprintfn "DIALECT DECODE REFUSED: %s — %A (not in the decoder's lenient profile)" label e
                 "dialect-fail"
 
-        if verdict <> "ok" then
+        if verdict = "canonical-fail" then
+            canonicalFails <- canonicalFails + 1
+        elif verdict <> "ok" then
             failures <- failures + 1
 
         verdicts.Add(label + "\t" + verdict)
@@ -90,8 +110,27 @@ for line in File.ReadAllLines pairsPath do
 // that decision; a human running this directly still sees every failure printed.
 File.WriteAllLines(pairsPath + ".verdicts", verdicts)
 
-if failures > 0 then
-    eprintfn "dialect-verify: %d of %d pair(s) failed the loss-free proof (verdicts written)" failures checked'
+// Phase 1646 — the summary distinguishes the two classes it always recorded but
+// used to add together. `1 of 40 pair(s) failed the loss-free proof` said a
+// normalisation was lossy when the truth was that a teaching counter-example does
+// not decode ON PURPOSE, and it was read as a defect twice, the second time by a
+// Tidy-Up bundle that asked for the losing shorthand to be found or dropped.
+// There was no shorthand and nothing to drop. The exit code is unchanged — the
+// CALLER owns the policy, and a `canonical-fail` still has to reach it.
+let unproved = failures + canonicalFails
+
+if unproved > 0 then
+    let detail =
+        match failures, canonicalFails with
+        | 0, n -> sprintf "%d did not decode on the CANONICAL side (see above — not a loss-free failure)" n
+        | n, 0 -> sprintf "%d failed the LOSS-FREE proof" n
+        | n, m ->
+            sprintf
+                "%d failed the LOSS-FREE proof, %d did not decode on the CANONICAL side (not a loss-free failure)"
+                n
+                m
+
+    eprintfn "dialect-verify: %d of %d pair(s) unproved — %s (verdicts written)" unproved checked' detail
     exit 3
 else
     printfn "dialect-verify: %d pair(s) proved loss-free through the canonical decoder" checked'

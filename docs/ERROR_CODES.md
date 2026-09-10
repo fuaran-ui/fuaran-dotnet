@@ -74,6 +74,31 @@ Surfaced inside `getNodeState`'s `Bindings` map and `getBindingValue`'s `Resolve
 
 The build-time validator's findings carry `FUARAN###` codes (e.g. `FUARAN050` `ScalarRangeCheck`, `FUARAN069` inert-control, `FUARAN073` fire-and-forget-call, `FUARAN084` `WireSurvivabilityCheck` – a `Binding.Computed` host-only escape, advisory when hand-authored and Error in an orchestrated / AI-emitted run (`--orchestrated`); see `WIRE_FORMAT.md` §5.1). The spec's own rules occupy the **`FUARAN0xx`** band; each rule's meaning + severity is declared where the rule ships (`STABILITY.md` and the [`VOCABULARY.md`](VOCABULARY.md) charter), and the cross-implementation surface is enumerated in the TypeScript tier's validator (`@fuaran-ui/validator`).
 
+**Two families share this band, and only one of them is the build-time walker.** The paragraph
+above describes the walker, which reads F# *source* — but the larger family by far is the
+**pre-emit validator**, which reads a *tree* just before it goes on the wire and raises the whole
+`FUARAN047`–`FUARAN149` range. A code you have in hand belongs to whichever family reported it, and
+the two are enumerated in different places: the pre-emit family's codes, severities and message
+shapes are published as data in the conformance corpus's `validator/defect-vocabulary.json`
+(generated from the reference host, never hand-maintained), and each host declares which of them it
+implements in its own `validator-coverage.json`. The walker's family is not yet enumerated
+anywhere; that is open work, and it is why a lookup for an unfamiliar code may need both places.
+
+Because the band is shared, a new code is **allocated rather than chosen**:
+`pwsh ./scripts/fuaran-codes.ps1 -Next`. The gate runs the same script with `-Check` and fails when
+one code names two rules — see [`VOCABULARY.md` §5.1](VOCABULARY.md).
+
+**`FUARAN086` (Error) — a chart names a field its source cannot produce.** Worth a line of its own
+here because it is the one whose failure is invisible: a grid column bound to a missing field
+renders blank, which a reader notices, while a chart series over a missing field lowers to a
+**flat or empty series that looks like data**. `xField`, any `yFields` entry, or an annotation's
+field is checked against the schema the chart's own `Transform` pipeline produces, and the message
+lists the columns that pipeline actually yields. It stands down wherever that set cannot be closed
+(a `$ref` source, a `pivot`) and never fires over a `$state`, `$query` or host `$static` source —
+those are the host's to fill and the tree cannot know their columns. Its siblings: `FUARAN087` (the
+field is produced but the wrong type), `FUARAN097` (a temporal x-axis over a non-date column), and
+`FUARAN114`, the same rule on the read side of a grid.
+
 **Suppressing a validator finding.** Source that deliberately holds a rejected shape — canonically a negative test asserting the runtime reports the defect — opts out with a comment pragma: `// fuaran-validator: disable FUARAN047, FUARAN048 — reason` (file-scoped) or `// fuaran-validator: disable-next-line FUARAN044` (the following line only). Suppressed findings are counted in the run summary rather than hidden, and only the reporting layer is filtered — every check still runs. This is a **host-side** mechanism on the .NET validator, not part of the cross-implementation spec surface. See the [validator README](../src/Fuaran.UI.Validator/README.md#suppressing-a-finding).
 
 **Reserved band – `FUARAN2xx` = host/pack-assigned.** Codes in the `FUARAN200`–`FUARAN299` band are **reserved for rules a host or a rule-pack contributes**, layered atop the spec's own families. The spec will never mint a `FUARAN2xx` code, so a pack can assign in this band without colliding with a future spec rule. This is the concrete, per-domain expression of `Fuaran.Core.Validator`'s pack-provenance convention (a pack rule's family id is `pack + "/" + ruleId`, so the contributing pack is recoverable from any finding). A host that surfaces both spec and pack findings can therefore partition them by band (`0xx` = spec, `2xx` = pack/host) and attribute each pack finding by its `/`-delimited family id – pack-layering stays legible and certifiable through the public validator framework without the framework shipping any pack content.

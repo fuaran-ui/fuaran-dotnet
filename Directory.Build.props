@@ -682,8 +682,17 @@
          a public-contract change cannot be repacked into it. `IFuaranTelemetrySink`
          gains no member, which is checked rather than asserted. See STABILITY.md
          "0.80.0 - the provider-call telemetry record carries the subject it was
-         made under". -->
-    <Version>0.80.0</Version>
+         made under".
+
+         0.81.0 (Phase 1646) - `GridSpecOf` gains `Reorderable` and `RowKeyField`,
+         the same record-widening class again, and `SelectOptions.Value` widens
+         from `string?` to `Binding<string>?` on the C# veneer. It ADVANCES rather
+         than riding 0.80.0 for the reason above, unchanged: v0.80.0 is TAGGED.
+         The wire is untouched - both grid members already existed on
+         `DataGridSpec`; what moved is the typed facade that could not reach them.
+         See STABILITY.md "0.81.0 - the typed grid facade reaches the last two
+         members of its own record". -->
+    <Version>0.81.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

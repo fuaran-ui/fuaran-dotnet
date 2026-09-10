@@ -7785,3 +7785,59 @@ behaviour, reaches no seam, and its constructor NARROWS what may be recorded.
 released, not a draft, so under the draft-slot rule a public-contract change cannot be repacked into
 it. The increment is one pre-1.0 minor, which is what this project's own precedent assigns to a
 source-breaking change of this class, and 0.80.0 is the version the field first ships on.
+
+---
+
+## 0.81.0 — the typed grid facade reaches the last two members of its own record (Phase 1646)
+
+**Breaking for a full-literal `GridSpecOf` construction, additive everywhere else, and NOTHING on
+the wire moves.** This release is a Tidy-Up drain over the language tier's authoring surfaces: it
+adds no kind, no case and no wire member, and every corpus fixture byte is unchanged. What it
+changes is which shipped wire members an author can actually reach, and one diagnostic's number.
+
+### What breaks
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI` — `GridSpecOf<'row,'Msg>` | Gains `Reorderable: bool` and `RowKeyField: string option`, appended LAST. | A full record literal — `FS0764`. A `{ Defaults.grid with … }` copy, or the C# / VB facades, is unaffected, which is every construction in this repository. |
+| `Fuaran.UI.CSharp` — `SelectOptions.Value` | Widens from `string?` to `Binding<string>?`. | **A caller assigning a plain string is unaffected** — `Binding<T>` converts implicitly, so `Value = "b"` compiles and emits the same bytes. A caller READING the property back, or passing a `string` variable into a `string`-typed local, adapts. |
+| `Fuaran.UI` — `Defaults.fileUpload` | `OnSelect` becomes `None`, where it was a `Some`-wrapped no-op closure. | **Behavioural; nothing fails to compile.** A tree built from the default and then encoded no longer emits `"onSelect":"<closure>"` — it emitted a handler that consumed nothing. Every corpus fixture on this kind sets the slot explicitly and is byte-unchanged. |
+| `Fuaran.UI.Analyzers` — two diagnostic ids | `FUARAN060` → `FUARAN150`, `FUARAN061` → `FUARAN151`. | **A consumer suppressing either by id in `.editorconfig` or a pragma.** Both were `AnalyzerReleases.Unshipped.md` entries, so no released rule set is withdrawn. |
+
+**The `RowKeyField` slot is what makes a shipped feature authorable.** `DataGridSpec.TransferInKey`
+/ `TransferOutKey` shipped in 0.72.0 with C#, VB and analyzer spellings — and FUARAN130 requires a
+transferring grid to name the field a moved row is identified by, which `GridSpecOf` had no slot
+for. The transfer pair was therefore expressible and unusable from the typed facade at the same
+time. `Reorderable` is the same shape one member over: on the wire since 0.55.0, pinned off by
+`Fuaran.grid`, and the only behaviour of that record an `UpdateProp` could not reach.
+
+### Also in this release
+
+- **`Action.none`** — a NAME for the bounded no-op, `Action.Chain []`, which is what an
+  enhancement-driven control's required `OnClick` has always had to spell out. Not a new wire case:
+  see [`docs/DECISIONS.md`](docs/DECISIONS.md) D7(2) for why the [vocabulary
+  charter](docs/VOCABULARY.md) refuses one.
+- **`UpdateProp` reaches `DataGrid.Reorderable`**, closing that record's op surface.
+- **The VB dialect gains `reorderable` and `row-key-field` on `<DataGrid>`, and reads `<Select
+  value>` as a BINDING** — so `value="$state.tier"` authors the writable slot that makes a
+  handler-less select live, the spelling `<Disclosure open>` and the grid's `source` already had.
+  One reinterpretation rides with it, the same one Phase 1154 recorded for the slots it reached: a
+  literal beginning with `$` was an opening selection and is now a query.
+- **FUARAN103 knows `autoAdvanceMs` is a writer.** A timed carousel writes its own index key, so a
+  switch with no other writer is grounded and no longer reported as unreachable. The condition is
+  FUARAN128's own, so a declaration that cannot advance grounds nothing.
+- **FUARAN121 can fire on the shape it describes.** `{ Defaults.fileUpload with DropTarget = true }`
+  was exactly the fake affordance the rule names and passed silently, because the default supplied a
+  handler that consumed nothing.
+- **`scripts/fuaran-codes.ps1`** allocates the next free `FUARAN*` code and fails the gate when one
+  code names two rules — the mechanism behind the renumber above, and the reason it is safe to mint
+  the next one. See [`docs/VOCABULARY.md` §5.1](docs/VOCABULARY.md).
+
+**No kind is added, merged or retired**, so the vocabulary charter's admission gates are not
+engaged. **No escape hatch is created or widened**: every slot here is a declaration the renderer
+reads, and the two new grid members were already on the wire.
+
+**Version — it ADVANCES to 0.81.0 rather than riding 0.80.0.** `v0.80.0` is tagged: that slot is
+released, not a draft, so under the draft-slot rule a public-contract change cannot be repacked into
+it. One pre-1.0 minor is what this project's precedent assigns to a source-breaking change of this
+class.

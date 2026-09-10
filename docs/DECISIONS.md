@@ -10,6 +10,58 @@ consequence.
 
 ---
 
+## 2026-09-10 — D7: three claims about the language tier that turned out to be false, and the boundaries they mark
+
+**Why they are here rather than in a work log.** Each was written down as a defect, survived long
+enough to be planned against, and is wrong for a reason that will produce the same wrong belief
+again. What follows is the corrected model in each case, so the next reader meets it before the
+mistaken one. (Phase 1646.)
+
+**1. A "required record member" cannot be missing at pre-emit, and a validator family over them
+would fire on nothing.** The claim was that every required member of every record reachable from a
+kind is unguarded at the pre-emit layer, generalising FUARAN108's shape, with `FormField.required`
+as the instance. It is false at this layer by construction: pre-emit validation walks a
+`Node<'Msg>` the host has already built, and an F# record's required member always has a value —
+there is nothing absent for a rule to find. FUARAN108 is not the same shape either; it reports a
+member that is PRESENT and resolves to nothing, which is a question a validator can ask.
+
+The observation behind the claim was real but belongs one boundary away: an emitting model omitted
+`required` and the DECODER refused the document (`MISSING_FIELD`). That is the decoder doing its
+job. The gap it exposes is in the TEACHING — the material a model is given enumerates the required
+fields of every KIND, and `FormField`, `TreeItem`, `SwitchCase` and `TabHeader` are records, so
+their required members are taught by nobody and guarded by nothing that measures teaching. That
+guard lives in the evaluation harness, which is not this repository, and it is a piece of work in
+its own right rather than a tidy-up.
+
+**2. A no-op `Action` is a NAME, not a wire case.** `ButtonSpec.OnClick` and `FormSpec.OnSubmit` are
+required, and an enhancement-driven control — one whose behaviour comes from a host enhancement over
+the rendered element rather than from the document — genuinely raises nothing. `Action.Chain []` is
+already exactly that, on every host and in the corpus; what it lacked was a name, which is why it
+read as an oversight at every call site. `Action.none` is that name and encodes to the bytes an
+empty chain has always encoded to.
+
+A new wire case was considered and refused on the [vocabulary charter](VOCABULARY.md)'s own ground:
+it would be a near-synonym of a shipped case, indistinguishable in meaning, and it would cost a
+codec arm, a schema alternative and a corpus fixture on every conformant host to express something
+the format already expresses. Making `OnClick` optional was refused separately — a control whose
+gesture is unstated is a control nobody can reason about, and "raises nothing" said explicitly is
+worth more than said by omission.
+
+**3. A dialect pair whose CANONICAL side does not decode is not a lossy normalisation.** The pack's
+lenient-dialect proof reported `1 of 40 pair(s) failed the loss-free proof`, which was read twice as
+a shorthand that loses information. It is not one. The pair is a teaching COUNTER-EXAMPLE — a
+`Metric` whose value is the formatted string `"1h 20m"`, introduced in the pack by the words *this
+exact emission fails to decode* — so the canonical side has no decoded value for the dialect side to
+differ from, and the verifier had recorded that correctly as `canonical-fail` rather than `lossy`
+all along. Only the summary line added the two together.
+
+The lesson is about the report, not the pack: a check that collapses two verdict classes into one
+sentence will have that sentence believed. `dialect-verify.fsx` now counts and words them apart, and
+the advisory tier's fallback for a non-decoding hand block is what it always was — the mechanism
+working, not a defect to chase.
+
+---
+
 ## 2026-09-02 — D6: writing direction is a DOCUMENT fact and a BOUND-TEXT fact; it is not on the wire
 
 **Decided.** Direction enters a Fuaran page at exactly two places, and neither is a wire slot.
