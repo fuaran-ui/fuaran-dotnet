@@ -103,6 +103,23 @@ let main argv =
         RenderFidelityArtifact.write dir
         printfn "Emitted %s to %s" RenderFidelityArtifact.fileName dir
         0
+    // Phase 1663 — write ONLY the render-TEXT family into a corpus directory:
+    //   dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-render-text [<dir>]
+    // `--emit-corpus` co-emits it, so this exists for the vector-only change:
+    // a vector added or an expectation corrected while no fixture moved. The
+    // writer still PROVES every vector against the reference resolver, so this
+    // cannot publish a claim the reference host does not meet. `<dir>` is the
+    // corpus root and is optional, resolving through the one resolver every
+    // suite uses (Phase 1647).
+    | "--emit-render-text" :: rest ->
+        let dir =
+            match rest with
+            | d :: _ -> d
+            | [] -> Fuaran.Tests.CorpusRoot.find ()
+
+        RenderTextArtifact.write dir
+        printfn "Emitted %s to %s" RenderTextArtifact.fileName dir
+        0
     // Phase 101 cross-host fuzz-sample exchange. `--emit-fuzz-samples <dir>
     // <count>` writes F#-canonical generated samples; `--check-fuzz-samples
     // <dir> [host]` validates the <host>-canonical samples that host's emitter
