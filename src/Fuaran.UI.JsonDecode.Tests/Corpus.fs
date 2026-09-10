@@ -268,6 +268,18 @@ let private writeManifest
     // schema and unlike the IDL.
     w.WriteString("renderFidelity", "render-fidelity.json")
 
+    // Phase 1663 — the FOURTH discovery pointer, and the first that names an
+    // artefact a machine can EVALUATE rather than merely read. `render-text.json`
+    // (WIRE_FORMAT.md §13) carries the render-TEXT family: `(fixture, pinned
+    // sources, expected text)` vectors over committed node fixtures, so "N
+    // renderers agree on the text" is a check rather than a claim. It gets a
+    // pointer for the reason the fidelity table above finally did — a host that
+    // discovers artefacts through this manifest must not have to know the
+    // filename — and because the precedent it follows, `markdown/corpus.json`,
+    // has no pointer and is therefore reachable only by a host that was told.
+    // Co-emitted by `emit` below.
+    w.WriteString("renderText", "render-text.json")
+
     w.WriteString(
         "description",
         "Fuaran canonical wire-format conformance corpus. node-round-trip / op-round-trip "
@@ -767,6 +779,16 @@ let emit (outputDir: string) : unit =
     // no wire byte. `--emit-fidelity <dir>` writes only this file, for the case
     // where the fixtures are not being regenerated.
     RenderFidelityArtifact.write outputDir
+
+    // Co-emit the render-TEXT conformance family (Phase 1663). A fifth question,
+    // and the first with an executable answer: for this slot, under these pinned
+    // host sources, what TEXT does a conformant host read? It is written LAST of
+    // the co-emitted artefacts on purpose — its vectors READ the node fixtures
+    // this emit has just rewritten, and the writer refuses to publish a vector
+    // whose expectation the reference resolver does not meet, so a fixture edit
+    // that changes a pinned slot fails the emit rather than shipping a stale
+    // claim. `--emit-render-text <dir>` writes only this file.
+    RenderTextArtifact.write outputDir
 
     // The canonical NodeKind enumeration is the set of true wire `kind.$type`
     // discriminators over the node round-trip fixtures — extracted from the

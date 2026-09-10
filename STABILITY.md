@@ -7851,6 +7851,54 @@ write-back target, and `docs/security/ESCAPE-HATCHES.md` needs no amendment.
 (`HostPrelude.WireSurvivabilityError`, recorded under 0.78.0 as Phase 1538's fourth behavioural
 change) and is unchanged by it.
 
+**fuaran#1663 — ADDITIVE here, and the BREAKING half of the phase lands in two other hosts.** The
+phase cuts a new corpus family and widens a public type in `fuaran-py` and `fuaran-go`; what ships in
+THIS tier is the family's generator and its reference certification, and no shipped package surface
+moves at all.
+
+*What is added, and where.* The corpus gains **`render-text.json`** — the render-TEXT conformance
+family (`WIRE_FORMAT.md` §13): `(fixture, pinned sources, expected text)` vectors over node fixtures
+this corpus already carries, so "N renderers agree on the text" is a check rather than a claim.
+`manifest.json` gains a fourth discovery pointer, **`renderText`**, beside `schema` / `idl` /
+`renderFidelity`. The generator is `src/Fuaran.UI.JsonDecode.Tests/{RenderTextFixtures,RenderTextArtifact}.fs`,
+co-emitted by `--emit-corpus` and writable alone with the new **`--emit-render-text [<dir>]`**;
+`RenderTextTests.fs` is this tier's certification, reading the COMMITTED artefact the way every other
+host reads it, with a go-red probe and a stale-artefact guard beside it. All three files are in a TEST
+project: **no `Fuaran.UI.*` package gains, loses or moves a member, and no fixture byte changes** —
+the emit's whole corpus diff is the manifest key and the new artefact.
+
+*Why this tier is the reference and what that claims.* The generator PROVES every vector before
+writing it: it decodes the named fixture, resolves the named slot through `BindingResolver` under the
+vector's pinned sources, and refuses to write the file on any mismatch — the discipline the §15 and
+§16 families' emitters already carry. So the family cannot publish a text this tier does not
+produce, which is what makes it satisfiable rather than aspirational. It does NOT claim the family
+covers every slot: `slotVocabulary` is closed and small, and growing it is a change to the artefact
+and to every adopting host's reader in one change-set under the §11 forward-coupling rule.
+
+*What the family pins, and what it declines to.* `expectedText` is the **fallback**-tier render
+(§13 tier 2) — the deterministic, non-`Intl` text a no-JS reader, a crawler, an email client or a
+non-browser host receives. `Binding.Now` at every grain and `Format.Since` / `Format.RelativeTime`
+are IN: their `(unit, count)` reduction is shared above this tier's own pipeline split
+(`Formatting.sinceUnitAndCount`) and canonical, and only the final phrasing differs — English on
+.NET, `Intl.RelativeTimeFormat` under Fable — so the family pins the former and a browser host's
+phrasing is a declared rich-tier divergence. The artefact's `excluded` array names
+`Format.Number` / `.Currency` / `.Percent` / `.Date` with the reason: their text comes out of a locale
+database, three hosts give three correct answers, and none is canonical.
+
+*The sources are PINNED, and that is not a convenience.* A `Binding.Now` slot rendered against the
+machine's own clock has no expected text at all. The vector carries the instant and the ambient
+locale as data, so the comparison is a function of the corpus and the host alone — and an unset
+instant is pinned too: it resolves the slot to ABSENCE (an empty text slot), never to an invented
+date, which is this tier's shipped `NotResolved` behaviour and now the family's normative statement
+of it.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged; no field is added to a mapped record, so §11 step 6 is not engaged
+either. **No escape hatch is created or widened** — the artefact admits no behaviour and reaches no
+seam, and `docs/security/ESCAPE-HATCHES.md` needs no amendment. **The number does not move**: this
+slot is an untagged draft already carrying a BREAKING class, and an additive change of this shape
+rides it.
+
 **fuaran#1665 — BREAKING at a rendered accessible name, and NOTHING on the wire moves.** No type,
 signature or encoding changes; what changes is what five hosts emit for a document they all already
 accepted.
@@ -7894,7 +7942,6 @@ entry in each of `fuaran-ts` / `fuaran-py` / `fuaran-go` / `fuaran-rs`'s own
 `validator-coverage.json`, on the principled FUARAN103/105 grounds those files already state, with a
 pointer at the emit site in `PreEmitValidate.fs`. It was unlisted in all four, so it fell to each
 file's "an honest 'not yet'" default, which mischaracterised a decision as a backlog item.
-
 ## 0.80.0 — the provider-call telemetry record carries the subject it was made under (Phase 1637)
 
 **Additive on the wire, RECORD-WIDENING at the source, and the two are not the same statement — read
