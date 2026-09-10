@@ -7899,6 +7899,61 @@ seam, and `docs/security/ESCAPE-HATCHES.md` needs no amendment. **The number doe
 slot is an untagged draft already carrying a BREAKING class, and an additive change of this shape
 rides it.
 
+**fuaran#1662 — BREAKING at the DECODER: a document five hosts accepted is now refused.** No exported
+type, signature or member moves; `MaxExprNodes` does not change value. What changes is its SCOPE, and
+therefore the answer `JsonDecode` gives to a document that was inside the limit only because the limit
+did not look there.
+
+*The hole.* `WireLimits.MaxExprNodes` (512) bounded a `Binding.Expr`'s expression and, in its own doc
+comment and in `WIRE_FORMAT.md` §21.8, declared the `ColExpr` a `Binding.Transform` PIPELINE embeds —
+a `derive` step's `expr`, a `filter` step's `pred` — to be deliberately outside its scope. Both
+expressions reach the same evaluator, so the exclusion was a documented way to move an expression out
+from under the bound by wrapping it in a Transform: every conformant host accepted a 513-node `derive`
+expression, including the `param`-leafed shape a `Binding.Expr` refuses at 513. A stated exclusion on
+the one surface an expression can be moved to is not a scope; it is a bypass, and §21.8 now says so.
+
+*What now happens.* `Ops/JsonDecode.fs` checks each pipeline-embedded expression against the same
+budget at DECODE — inside the `Transform` binding arm, immediately after the pipeline decodes and
+before `params` — and refuses `LIMIT_EXCEEDED` at that step's own member path
+(`$.….pipeline[2].pred`), so an author is told which STEP to come back under. Decode rather than
+validation, because a host may decode, store, forward and later evaluate a tree without ever running
+a validator over it. `exprAdmissible`'s traversal was split out as `scanExpr` to share it: the
+pre-1662 walk short-circuited on `sawCol`, which on a pipeline expression (where a `col` is ordinary)
+would UNDER-count and admit the bypass. `exprAdmissible` is now a thin verdict over `scanExpr` with
+its refusal order unchanged, so `Binding.Expr`'s shipped behaviour does not move.
+
+*One budget, per expression — recorded because the alternatives were live options.* Not a second
+constant: the thing bounded is identical either way, so a second figure would be one more number to
+keep in step across five hosts while refusing nothing this one does not. Not a whole-pipeline sum:
+twenty `derive` steps of ten nodes each are twenty cheap evaluations, not one expensive one, and the
+aggregate is max document bytes' job — which is the rule §21.8 already stated for the many `Expr`
+bindings of one tree.
+
+*Refused OUTRIGHT — no profile boundary, no grandfathering.* §21.2 rules 1 and 2 admit no second
+acceptance class, and the format's one host-narrowing mechanism (§23) is deliberately a NARROWING
+that never appears on the wire; widening in the other direction has no spelling, and inventing one
+for a resource limit would be a larger and more durable change than the hole it papers over. The
+affected shape is named rather than estimated away: a document that stops decoding carries more than
+512 `ColExpr` nodes in ONE pipeline step's expression, which is the blow-up the limit exists to
+refuse and not a shape an author writes — §21.8 records that 512 admits a membership test over
+roughly 500 values.
+
+*Certified from both sides.* The corpus gains `nodes/limit-expr-nodes-pipeline-at-max.json` (a
+`derive` expression of EXACTLY 512 nodes, which every host must still decode — rule 1 is symmetric
+with rule 2, and a guard that refused 512 too would be a different defect wearing this one's fix) and
+three rejects, `reject-limit-expr-nodes-derive` / `-filter` / `-transform-bypass`: two because
+`filter` and `derive` are separate branches of the step decoder on every host, and the third because
+the `param`-leafed bypass is the vector that says the HOLE is closed rather than merely that a bound
+exists. The same four vectors were run against all five hosts before and after: pre-change every host
+accepted all four, post-change each accepted the at-the-bound vector and refused the other three at
+the same path.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged; no field is added to a mapped record, so §11 step 6 is not engaged
+either. **No escape hatch is created or widened** — the change NARROWS what a decoder accepts, and
+`docs/security/ESCAPE-HATCHES.md` needs no amendment. **The number does not move**: this slot is an
+untagged draft already carrying a BREAKING class, which is exactly the class of this change.
+
 ## 0.80.0 — the provider-call telemetry record carries the subject it was made under (Phase 1637)
 
 **Additive on the wire, RECORD-WIDENING at the source, and the two are not the same statement — read

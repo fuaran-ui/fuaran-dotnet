@@ -207,6 +207,25 @@ let private schemaInexpressibleRejects: Set<string> =
           "reject-expr-col-reference"
           "reject-expr-unbound-param"
 
+          // ─── Fuaran-UI Phase 1662 — §21.8 on the pipeline surface ─────────
+          //
+          // The `reject-limit-node-depth` entry's limit, on the expression
+          // axis: "at most 512 nodes anywhere inside this recursive
+          // expression" is a COUNT over a `$ref` recursion, and Draft 2020-12
+          // has no keyword that bounds how many times it recurses. The three
+          // payloads are legal by every shape rule the schema can state — a
+          // `coalesce` over 512 well-formed operands is a well-formed
+          // `coalesce` — which is exactly why the bound has to live in the
+          // decoder and be pinned by the corpus.
+          //
+          // Note `maxItems` is NOT the missing keyword and must not be reached
+          // for: it would bound ONE array, and the limit is over the whole
+          // expression however the nodes are distributed across nested
+          // operators.
+          "reject-limit-expr-nodes-derive"
+          "reject-limit-expr-nodes-filter"
+          "reject-limit-expr-nodes-transform-bypass"
+
           // ─── Fuaran-UI Phase 1537 — Confirm's depth-one bound ─────────────
           //
           // The SAME shape as `reject-expr-col-reference` above, one union over:

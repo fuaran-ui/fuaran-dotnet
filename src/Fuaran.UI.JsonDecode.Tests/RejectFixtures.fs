@@ -1491,6 +1491,66 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "§21 max JSON depth — 257 levels of bare array nesting, ONE past the limit. Well-formed and merely too deep, so LIMIT_EXCEEDED rather than INVALID_JSON (rule 2). Pins the boundary exactly; its at-the-limit twin below pins the other side" }
+      // ─── Fuaran-UI Phase 1662 — §21.8 on the PIPELINE surface ────────
+      //
+      // `MaxExprNodes` bounded `Binding.Expr` alone until now, and §21.8 SAID
+      // so — which is what made it bypassable: a `derive`'s expression and a
+      // `filter`'s predicate reach the same evaluator, carried no ceiling on
+      // any host, and are one wrapper away from any expression an `Expr`
+      // refuses. All five hosts accepted the third vector below before this
+      // phase; all five refuse it now.
+      //
+      // Three vectors and not one, because they fail through three different
+      // arms. `derive` and `filter` are separate branches of the step decoder
+      // on every host, so a host that bounded one and left the other open
+      // would pass a one-armed corpus while leaving the bypass wide; and the
+      // bypass vector is `param`-leafed, so it is exactly the expression
+      // `Binding.Expr` refuses rather than a merely oversized pipeline
+      // expression — the vector that says the HOLE is closed, not just that a
+      // bound exists.
+      //
+      // Their at-the-bound twin is `Fixtures.storedNodes`'
+      // `limit-expr-nodes-pipeline-at-max`, per the pin-from-both-sides rule
+      // above.
+      { Id = "reject-limit-expr-nodes-derive"
+        Json =
+          Fixtures.pipelineExprNode
+              "x"
+              "derive"
+              Fixtures.pipelineExprColLeaf
+              false
+              (Fuaran.UI.WireLimits.MaxExprNodes + 1)
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath = "$.kind.source.pipeline[0].expr"
+        IsOp = false
+        Description =
+          "§21.8 max expression nodes — a `derive` step's expression ONE node past the limit (513). LIMIT_EXCEEDED at the path of the offending `expr` member, so an author is told which STEP to come back under; refused at decode rather than left to be a budget each host's evaluator discovers differently (Fuaran-UI Phase 1662)" }
+      { Id = "reject-limit-expr-nodes-filter"
+        Json =
+          Fixtures.pipelineExprNode
+              "x"
+              "filter"
+              Fixtures.pipelineExprColLeaf
+              false
+              (Fuaran.UI.WireLimits.MaxExprNodes + 1)
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath = "$.kind.source.pipeline[0].pred"
+        IsOp = false
+        Description =
+          "§21.8 max expression nodes — a `filter` step's PREDICATE one node past the limit (513). The second arm: `filter` and `derive` are separate branches of the step decoder on every host, so a host that bounded one and left the other open would pass a corpus carrying only the `derive` vector (Fuaran-UI Phase 1662)" }
+      { Id = "reject-limit-expr-nodes-transform-bypass"
+        Json =
+          Fixtures.pipelineExprNode
+              "x"
+              "derive"
+              Fixtures.pipelineExprParamLeaf
+              true
+              (Fuaran.UI.WireLimits.MaxExprNodes + 1)
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath = "$.kind.source.pipeline[0].expr"
+        IsOp = false
+        Description =
+          "§21.8 — THE BYPASS that motivated Phase 1662, recorded as a reject. The expression is `param`-leafed and its params are bound, so it is exactly what a `Binding.Expr` would carry and exactly what `Binding.Expr` refuses at 513 nodes; wrapping it in a Transform `derive` step escaped the bound on all five hosts until now. Refusing it is what makes §21.8 a bound on EVERY expression a decoded document can name rather than on one binding case" }
       // ─── Phase 1473 — the print-break flags, on BOTH decoder arms ─────
       //
       // The four declarations reach a decoder through two INDEPENDENT arms —

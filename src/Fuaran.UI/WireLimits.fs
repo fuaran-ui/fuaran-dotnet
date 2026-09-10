@@ -146,17 +146,35 @@ let MaxArrayLength = 100000
 [<Literal>]
 let MaxNodes = 100000
 
-/// Maximum number of `ColExpr` nodes in ONE `Binding.Expr` expression
-/// (Fuaran-UI Phase 1534; WIRE_FORMAT §21). Counted per expression, not per
-/// document: a tree may carry many `Expr` bindings, each bounded here, with the
-/// document as a whole still bounded by `MaxDocumentBytes`.
+/// Maximum number of `ColExpr` nodes in ONE expression (Fuaran-UI Phase 1534;
+/// WIRE_FORMAT §21.8). Counted per expression, not per document: a tree may
+/// carry many bounded expressions, with the document as a whole still bounded
+/// by `MaxDocumentBytes`.
 ///
-/// Its SCOPE is `Binding.Expr` and nothing else. A `ColExpr` inside a
-/// `Binding.Transform` pipeline — a `derive`'s expression, a `filter`'s
-/// predicate — is NOT bounded by this, and was not bounded before it either;
-/// that surface predates this limit and widening the limit onto it would change
-/// what an already-shipped decoder accepts. Stated rather than left to be
-/// inferred, because a limit whose scope is guessed at is worse than none.
+/// Its SCOPE is EVERY expression a decoded document can name (Fuaran-UI Phase
+/// 1662): a `Binding.Expr`'s expression, and the `ColExpr` a `Binding.Transform`
+/// pipeline embeds — a `derive`'s expression, a `filter`'s predicate. Those two
+/// are the whole surface: `Filter` and `Derive` are the only `Fuaran.Core`
+/// `Transform` cases carrying a `ColExpr`, and the operand of a `join` / `union`
+/// / `intersect` / `except` is a `DataSource`, which is an embedded table or a
+/// named ref and never another pipeline.
+///
+/// Until 1662 the pipeline surface was deliberately UNBOUNDED, and saying so
+/// made `MaxExprNodes` bypassable by wrapping the expression in a Transform —
+/// the one shape from which a decoded document could still name an unbounded
+/// evaluation. Closing it changes what an already-shipped decoder accepts, so
+/// the refusal is stated in the specification (§21.8) rather than left to be
+/// read off the code: a document past the bound is refused OUTRIGHT on every
+/// host, with no profile boundary and no grandfathering, because §21.2 rules 1
+/// and 2 admit no second acceptance class.
+///
+/// ONE budget for both surfaces, not two. The thing bounded is identical — the
+/// evaluation named by one `ColExpr` — so a second constant would be one more
+/// figure to keep in step across five hosts and would refuse nothing this one
+/// does not. And PER EXPRESSION rather than per pipeline: twenty `derive` steps
+/// of ten nodes each are twenty cheap evaluations, not one expensive one, so a
+/// whole-pipeline sum would refuse that legitimate shape while catching no
+/// blow-up this bound misses.
 ///
 /// ONE count, not a count and a depth, because depth ≤ node count for every
 /// expression: an expression 600 deep is at least 600 nodes and is already

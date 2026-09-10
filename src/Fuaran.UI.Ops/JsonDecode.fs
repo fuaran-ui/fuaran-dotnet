@@ -3027,24 +3027,35 @@ let private decodeIconSource (path: string) (j: Json) : Result<IconSource, Decod
 // and `Binding.I18n` args; the typed flavours dispatch to a parametric
 // generator below.
 
-/// Fuaran-UI Phase 1534 — the two structural rules a `Binding.Expr`'s
-/// expression must satisfy, checked once at decode over the whole tree.
+/// Fuaran-UI Phase 1534 / 1662 — one walk over a `ColExpr`, answering both
+/// questions this wire asks of an expression: how many nodes it carries, and
+/// whether it names a `col`.
 ///
 /// The walk is written here rather than taken from `Fuaran.Core` because Core
-/// has no reason to hold either rule: `Col` is perfectly ordinary in a pipeline
-/// expression, and the node ceiling is this WIRE's limit, not the algebra's.
-/// One traversal answers both, so a pathological expression is counted while it
-/// is being scanned rather than twice.
-let private exprAdmissible (path: string) (expr: Fuaran.Core.ColExpr) : Result<unit, DecodeError> =
+/// has no reason to hold either question: `Col` is perfectly ordinary in a
+/// pipeline expression, and the node ceiling is this WIRE's limit, not the
+/// algebra's. One traversal answers both, so a pathological expression is
+/// counted while it is being scanned rather than twice.
+///
+/// The count is CAPPED — the walk stops descending once it passes
+/// `WireLimits.MaxExprNodes` — so a returned count above the ceiling means
+/// "over it" and is not a true total. Neither caller wants the true figure, and
+/// a hostile expression is exactly the input that must not be walked to the end.
+///
+/// Phase 1662 split this out of `exprAdmissible` because §21.8's node bound now
+/// covers the expressions a `Transform` pipeline embeds as well, and there a
+/// `col` is perfectly ordinary: the two verdicts have two callers now, and only
+/// one of them wants the second. That is also why the walk no longer stops on
+/// `sawCol` — short-circuiting on it would UNDER-count, which on the pipeline
+/// caller would silently admit a bypass vector rather than refuse it.
+let private scanExpr (expr: Fuaran.Core.ColExpr) : struct (int * bool) =
     let mutable count = 0
     let mutable sawCol = false
 
     let rec walk (e: Fuaran.Core.ColExpr) =
         count <- count + 1
 
-        // Stop as soon as either verdict is settled: a hostile expression is
-        // exactly the input that must not be walked to the end.
-        if not sawCol && count <= Fuaran.UI.WireLimits.MaxExprNodes then
+        if count <= Fuaran.UI.WireLimits.MaxExprNodes then
             match e with
             | Fuaran.Core.Col _ -> sawCol <- true
             | Fuaran.Core.Lit _
@@ -3070,6 +3081,12 @@ let private exprAdmissible (path: string) (expr: Fuaran.Core.ColExpr) : Result<u
             | Fuaran.Core.InParam(x, _) -> walk x
 
     walk expr
+    struct (count, sawCol)
+
+/// Fuaran-UI Phase 1534 — the two structural rules a `Binding.Expr`'s
+/// expression must satisfy, checked once at decode over the whole tree.
+let private exprAdmissible (path: string) (expr: Fuaran.Core.ColExpr) : Result<unit, DecodeError> =
+    let struct (count, sawCol) = scanExpr expr
 
     if sawCol then
         Error(
@@ -3091,6 +3108,51 @@ let private exprAdmissible (path: string) (expr: Fuaran.Core.ColExpr) : Result<u
         )
     else
         Ok()
+
+/// Fuaran-UI Phase 1662 — §21.8's node bound over the expressions a
+/// `Binding.Transform` PIPELINE embeds. `MaxExprNodes` bounded `Binding.Expr`
+/// alone until now, which made it bypassable by wrapping the expression in a
+/// Transform: a `derive`'s expression and a `filter`'s predicate reach the same
+/// evaluator and carried no ceiling on any host.
+///
+/// `Filter` and `Derive` are the whole surface — the only `Fuaran.Core`
+/// `Transform` cases carrying a `ColExpr` — and a `join` / `union` / `intersect`
+/// / `except` operand is a `DataSource` (embedded table or named ref), never
+/// another pipeline, so there is no recursive axis to descend.
+///
+/// Counted per EMBEDDED EXPRESSION and against the SAME budget, per §21.8: the
+/// thing bounded is one evaluation either way. The refusal is `LIMIT_EXCEEDED`
+/// at the path of the offending `pred` / `expr` member, so an author repairing
+/// the document is told which step to come back under; the FIRST breach wins,
+/// on the ordinary "one error, named precisely" discipline.
+let private pipelineExprsAdmissible (path: string) (pipeline: Fuaran.Core.Transform list) : Result<unit, DecodeError> =
+    let breach (slot: string) (i: int) (expr: Fuaran.Core.ColExpr) =
+        let struct (count, _) = scanExpr expr
+
+        if count > Fuaran.UI.WireLimits.MaxExprNodes then
+            Some(
+                DecodeError.create
+                    DecodeErrorCode.LIMIT_EXCEEDED
+                    (sprintf "%s.pipeline[%d].%s" path i slot)
+                    (sprintf
+                        "expression exceeds the maximum of %d expression nodes (WIRE_FORMAT 21.8)"
+                        Fuaran.UI.WireLimits.MaxExprNodes)
+                    (Some(
+                        sprintf "at most %d ColExpr nodes in one pipeline expression" Fuaran.UI.WireLimits.MaxExprNodes
+                    ))
+            )
+        else
+            None
+
+    pipeline
+    |> List.indexed
+    |> List.tryPick (fun (i, step) ->
+        match step with
+        | Fuaran.Core.Filter pred -> breach "pred" i pred
+        | Fuaran.Core.Derive(_, expr) -> breach "expr" i expr
+        | _ -> None)
+    |> Option.map Error
+    |> Option.defaultValue (Ok())
 
 let rec private decodeBindingObj (path: string) (j: Json) : Result<Binding<obj>, DecodeError> =
     bindingGeneric<obj> path (fun _ v -> Ok(decodeObj v)) (box closureSentinel) j
@@ -3671,9 +3733,21 @@ and private bindingGeneric<'T>
                             match pipelineR with
                             | Error e -> Error e
                             | Ok pipeline ->
-                                decodeExprParams path fields
-                                |> Result.map (fun ps ->
-                                    Binding.Transform(source, pipeline, (if List.isEmpty ps then None else Some ps)))
+                                // Fuaran-UI Phase 1662 — §21.8's expression-node
+                                // bound over the pipeline's own embedded
+                                // expressions, at DECODE and not at validation:
+                                // a document that decodes must not be able to
+                                // name an unbounded evaluation.
+                                match pipelineExprsAdmissible path pipeline with
+                                | Error e -> Error e
+                                | Ok() ->
+                                    decodeExprParams path fields
+                                    |> Result.map (fun ps ->
+                                        Binding.Transform(
+                                            source,
+                                            pipeline,
+                                            (if List.isEmpty ps then None else Some ps)
+                                        ))
             // Fuaran-UI Phase 1534 — the scalar expression binding. `expr` is one
             // `Fuaran.Core.ColExpr` in Core's own encoding, `params` the same
             // name→binding list `Transform` carries and in the same shape (the

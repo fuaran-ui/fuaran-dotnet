@@ -7714,6 +7714,56 @@ let treeItemChain (rows: int) : string =
 
     "{\"id\":\"t\",\"kind\":{\"$type\":\"Tree\",\"items\":[" + acc + "]}}"
 
+/// Fuaran-UI Phase 1662 — a canonical-wire `DataGrid` whose `Binding.Transform`
+/// pipeline carries ONE step embedding an expression of exactly `nodes`
+/// `ColExpr` nodes: a `coalesce` over `nodes - 1` copies of `leaf`.
+///
+/// `slot` is `"derive"` (member `expr`, plus a `name`) or `"filter"` (member
+/// `pred`). `coalesce` rather than a nested chain deliberately: the shape is
+/// WIDE, so a 513-node expression stays about four levels of JSON and the
+/// vector isolates §21.8's node bound from §21.1's syntactic depth bound — a
+/// past-the-bound vector that also breached max JSON depth would prove nothing
+/// about which limit refused it.
+///
+/// Byte-identical to `CanonicalJson.encodeNode` on this shape (Ordinal-sorted
+/// keys, omit-when-default), so the at-the-bound vector is a genuinely
+/// decodable tree and not merely something the decoder tolerates.
+/// `bindsParam` adds the `params` entry binding `p`, which the `param`-leafed
+/// bypass vector needs so that the only thing wrong with it is its size.
+let pipelineExprNode (nodeId: string) (slot: string) (leaf: string) (bindsParam: bool) (nodes: int) : string =
+    let exprs = List.replicate (nodes - 1) leaf |> String.concat ","
+    let expr = "{\"$type\":\"coalesce\",\"exprs\":[" + exprs + "]}"
+
+    let step =
+        if slot = "filter" then
+            "{\"$type\":\"filter\",\"pred\":" + expr + "}"
+        else
+            "{\"$type\":\"derive\",\"expr\":" + expr + ",\"name\":\"d\"}"
+
+    let paramsMember =
+        if bindsParam then
+            "\"params\":[{\"from\":{\"$type\":\"State\",\"key\":\"k\"},\"name\":\"p\"}],"
+        else
+            ""
+
+    "{\"id\":\""
+    + nodeId
+    + "\",\"kind\":{\"$type\":\"DataGrid\",\"columns\":[],\"rowKeyField\":\"a\",\"source\":{\"$type\":\"Transform\","
+    + paramsMember
+    + "\"pipeline\":["
+    + step
+    + "],\"source\":{\"columns\":{\"a\":{\"validity\":[true],\"values\":[1]}},\"schema\":[{\"name\":\"a\",\"type\":\"int\"}]}}}}"
+
+/// Phase 1662 — the repeated leaf of `pipelineExprNode`: a reference to the
+/// source's only column, which is what a pipeline expression ordinarily reads.
+let pipelineExprColLeaf = "{\"$type\":\"col\",\"name\":\"a\"}"
+
+/// Phase 1662 — the repeated leaf of the BYPASS vector: a `param` reference, so
+/// the wrapped expression is exactly the shape `Binding.Expr` refuses (an `Expr`
+/// admits no `col`) and the vector is the bypass rather than a merely oversized
+/// pipeline expression.
+let pipelineExprParamLeaf = "{\"$type\":\"param\",\"name\":\"p\"}"
+
 /// `batches` nested `TreeOp.Batch` ops around a single innermost `RemoveNode`,
 /// so the document is `batches + 1` op levels deep and carries no nodes at all —
 /// the op nesting axis on its own (§21.5).
@@ -7734,4 +7784,12 @@ let storedNodes: (string * string * string) list =
       boxChain Fuaran.UI.WireLimits.MaxDepth
       "limit-tree-item-depth-at-max",
       "§21.5 the tree-item axis — a tree nesting rows at EXACTLY the limit (24 levels) inside ONE node. Rule 1: every conformant host MUST decode this. Its past-the-bound twin is `reject-limit-tree-item-depth`",
-      treeItemChain Fuaran.UI.WireLimits.MaxDepth ]
+      treeItemChain Fuaran.UI.WireLimits.MaxDepth
+      "limit-expr-nodes-pipeline-at-max",
+      "§21.8 max expression nodes, on the PIPELINE surface — a `derive` step whose expression carries EXACTLY the limit (512 ColExpr nodes: one `coalesce` over 511 column references). Rule 1: every conformant host MUST decode this; its past-the-bound twins are `reject-limit-expr-nodes-derive` / `-filter` / `-transform-bypass`. Wide rather than deep on purpose, so the vector isolates the node bound from the syntactic-depth bound (Fuaran-UI Phase 1662)",
+      pipelineExprNode
+          "limit-expr-nodes-pipeline-at-max"
+          "derive"
+          pipelineExprColLeaf
+          false
+          Fuaran.UI.WireLimits.MaxExprNodes ]
