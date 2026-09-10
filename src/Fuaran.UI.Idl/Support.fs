@@ -774,3 +774,151 @@ let document: SupportDocument =
         Some
             { Module = "Fuaran.UI.HostPrelude"
               Path = "../Fuaran.UI/HostPrelude.fs" } }
+
+// ---------------------------------------------------------------------------
+//  The SAMPLED-VECTOR NARROWING the host projections above necessitate
+//  (Phase 1668; recovered from `Fuaran-Core@ccead29^`'s `UiIdlSupport.fs`).
+//
+//  Two of this vocabulary's shapes carry a CROSS-FIELD rule the IDL's type
+//  language cannot state, so `Sample.sampleNodes` — which samples every
+//  combination the field declarations allow — draws vectors OFF the canonical
+//  wire:
+//
+//    * `Switch` has two optional keys (`on`, the compact `stateKey`) of which
+//      the wire carries exactly one, and the projection's encoder implements
+//      the collapse while its decoder implements the fallback. The sampler
+//      happily draws both, neither, or an `on` the canonical encoder would
+//      respell.
+//    * `Action.SetState` carries `value` XOR `valueFrom`, refused by the host
+//      refine in both the both-present and neither-present directions.
+//
+//  On such a vector the host projection is honestly lossy or refusing while the
+//  IDL interpreter simply echoes it, so a cross-leg comparison reports a
+//  divergence that is an artefact of the sampler rather than of either codec.
+//  This rewrite narrows a sampled vector into the canonical space, in the same
+//  deterministic way for every leg.
+//
+//  It is declared HERE, beside the projections that necessitate it, rather than
+//  inside the certifying test project: the narrowing is visible support-data
+//  for those projections, and retiring a projection should retire it. It is
+//  NOT part of the support DOCUMENT — `support.json` renders from `document`
+//  above and is unchanged by these declarations, which the regeneration triple
+//  in `Fuaran.UI.Idl.Tests` proves on every run.
+// ---------------------------------------------------------------------------
+
+/// Rewrite one sampled `Switch` field set to the canonical `on`/`stateKey`
+/// spelling.
+let private canonicaliseSwitchFields (fields: (string * IdlValue) list) : (string * IdlValue) list =
+    // `VAbsent` is the sampler's spelling of an omitted optional — see the note
+    // on `canonicaliseSetStateFields` below.
+    let hasOn = fields |> List.exists (fun (n, v) -> n = "on" && v <> VAbsent)
+
+    let hasKey = fields |> List.exists (fun (n, v) -> n = "stateKey" && v <> VAbsent)
+
+    // 1. Both spellings present: no conformant encoder emits this; `on` wins,
+    //    exactly as the shipped decoder resolves it.
+    let fields =
+        if hasOn && hasKey then
+            fields |> List.filter (fun (n, _) -> n <> "stateKey")
+        else
+            fields
+
+    // 2. `on` carrying a plain no-default State binding: the canonical encoder
+    //    collapses it to `stateKey` — respell so re-encoding is the identity.
+    //    Any `("stateKey", VAbsent)` shadow entry must go FIRST: leaving it
+    //    alongside the rewrite makes a duplicate key, and in the TypeScript
+    //    value literal the trailing `undefined` wins and silently swallows the
+    //    real one (found the hard way — the interpreter leg agreed with itself
+    //    while the TS leg dropped the field).
+    let collapse =
+        fields
+        |> List.tryPick (fun (n, v) ->
+            match n, v with
+            | "on", VUnion("State", sf) when sf |> List.forall (fun (fn, fv) -> fn <> "defaultValue" || fv = VAbsent) ->
+                sf |> List.tryFind (fun (fn, _) -> fn = "key") |> Option.map snd
+            | _ -> None)
+
+    let fields =
+        match collapse with
+        | Some key ->
+            fields
+            |> List.filter (fun (n, _) -> n <> "stateKey" && n <> "on")
+            |> fun rest -> ("stateKey", key) :: rest
+        | None -> fields
+
+    // 3. Neither spelling: the wire requires one; supply the deterministic
+    //    compact form (the decoder's own MISSING_FIELD didactic names it).
+    if
+        fields
+        |> List.exists (fun (n, v) -> (n = "on" || n = "stateKey") && v <> VAbsent)
+    then
+        fields
+    else
+        ("stateKey", VStr "k")
+        :: (fields |> List.filter (fun (n, _) -> n <> "stateKey"))
+
+/// Rewrite one sampled `SetState` field set to the value-XOR-valueFrom wire:
+/// the same cross-field class as `Switch` — the refine refuses both-present and
+/// neither-present, which field-level optionality happily samples.
+let private canonicaliseSetStateFields (fields: (string * IdlValue) list) : (string * IdlValue) list =
+    // The sampler spells an OMITTED optional as an explicit `VAbsent` entry, so
+    // presence is "named AND not VAbsent" — counting the name alone reads every
+    // omission as a population (found the hard way: the first cut did).
+    let has name =
+        fields |> List.exists (fun (n, v) -> n = name && v <> VAbsent)
+
+    if has "value" && has "valueFrom" then
+        // No conformant encoder emits both; keep the literal (deterministic).
+        fields |> List.filter (fun (n, _) -> n <> "valueFrom")
+    elif not (has "value") && not (has "valueFrom") then
+        // The wire requires one; supply the deterministic literal form.
+        ("value", VJson(Fuaran.Core.JVal.JStr "v"))
+        :: (fields |> List.filter (fun (n, _) -> n <> "value"))
+    else
+        fields
+
+/// Narrow a sampled vector into the canonical space — see the note above.
+let rec canonicaliseVector (v: IdlValue) : IdlValue =
+    let inFields fields =
+        fields |> List.map (fun (n, fv) -> n, canonicaliseVector fv)
+
+    match v with
+    | VNode(id, kindTag, fields) ->
+        let fields = inFields fields
+
+        VNode(
+            id,
+            kindTag,
+            (if kindTag = "Switch" then
+                 canonicaliseSwitchFields fields
+             else
+                 fields)
+        )
+    | VNodeEnv(id, envelope, kindTag, fields) ->
+        let fields = inFields fields
+
+        VNodeEnv(
+            id,
+            inFields envelope,
+            kindTag,
+            (if kindTag = "Switch" then
+                 canonicaliseSwitchFields fields
+             else
+                 fields)
+        )
+    | VUnion(tag, fields) ->
+        let fields = inFields fields
+
+        VUnion(
+            tag,
+            (if tag = "SetState" then
+                 canonicaliseSetStateFields fields
+             else
+                 fields)
+        )
+    | VRecord fields -> VRecord(inFields fields)
+    | VList xs -> VList(xs |> List.map canonicaliseVector)
+    | VMap entries -> VMap(inFields entries)
+    // Every remaining case is a leaf (scalars, closures, raw JSON, opaque
+    // markers): nothing to recurse into, nothing cross-field to rewrite.
+    | _ -> v
