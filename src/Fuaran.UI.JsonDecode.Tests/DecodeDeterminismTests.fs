@@ -256,15 +256,6 @@ let integerSlotTests =
               expectRefused "2^53" """{"id":"s","kind":{"$type":"Skeleton","rows":9007199254740992}}""" "WRONG_TYPE"
           }
 
-          test "the 32-bit boundary itself decodes on both sides" {
-              for token in [ "2147483647"; "-2147483648" ] do
-                  let json = sprintf """{"id":"s","kind":{"$type":"Skeleton","rows":%s}}""" token
-
-                  match JsonDecode.decodeNodeObj json with
-                  | Ok _ -> ()
-                  | Error e -> failtestf "the 32-bit boundary value `%s` was refused: %s" token e.Message
-          }
-
           test "the §7 float sentinels do not leak into an integer slot" {
               // §20.2 row 8 widens a FLOAT slot by exactly three strings. An
               // integer slot does not widen, and a host where one function serves
@@ -272,4 +263,111 @@ let integerSlotTests =
               for sentinel in [ "\"NaN\""; "\"Infinity\""; "\"-Infinity\"" ] do
                   let json = sprintf """{"id":"s","kind":{"$type":"Skeleton","rows":%s}}""" sentinel
                   expectRefused (sprintf "sentinel %s at an integer slot" sentinel) json "WRONG_TYPE"
+          }
+
+          // Phase 1666 — the PROBE moved off `Skeleton.rows`, and §7.1's
+          // statement did not move at all.
+          //
+          // `Heading.level` is a typed integer slot that §21 does not bound;
+          // `Skeleton.rows` is now bounded by §21.9, so 2147483647 there is a
+          // `LIMIT_EXCEEDED` rather than a decode. A §7.1 test must probe a slot
+          // §7.1 ALONE governs, or it is asserting the conjunction of §7.1 and
+          // §21 and will be re-broken by the next limit that lands on whichever
+          // slot it happened to pick. The other four tests in this list stay on
+          // `Skeleton.rows`: every value they use either sits inside the new
+          // bound or fails §7.1 first, which is the property the next test pins.
+          test "the 32-bit boundary itself decodes on both sides" {
+              for token in [ "2147483647"; "-2147483648" ] do
+                  let json =
+                      sprintf
+                          """{"id":"h","kind":{"$type":"Heading","level":%s,"text":"t","variant":"Section"}}"""
+                          token
+
+                  match JsonDecode.decodeNodeObj json with
+                  | Ok _ -> ()
+                  | Error e -> failtestf "the 32-bit boundary value `%s` was refused: %s" token e.Message
+          }
+
+          // Phase 1666 — the §7.1 / §21 SEAM, stated rather than left to be
+          // inferred from which test happens to sit where.
+          //
+          // The two codes answer different questions and the ORDER is what keeps
+          // them apart. §7.1 asks what the slot can HOLD, and 2147483647 is a
+          // finite, fraction-free, in-range integer, so §7.1 admits it. §21.9
+          // then asks how much work the document may NAME, and refuses. A host
+          // that read the bound as a narrowing of the slot's type would answer
+          // `WRONG_TYPE` here — and would also refuse the at-the-limit fixture,
+          // breaching §21.2 rule 1 in the other direction.
+          test "a §21-bounded integer slot refuses in range as LIMIT_EXCEEDED, not WRONG_TYPE" {
+              let json = """{"id":"s","kind":{"$type":"Skeleton","rows":2147483647}}"""
+
+              match JsonDecode.decodeNodeObj json with
+              | Ok _ -> failtest "a rows count past the §21.9 bound decoded"
+              | Error e ->
+                  Expect.equal
+                      e.Code
+                      "LIMIT_EXCEEDED"
+                      "a 32-bit-valid value past a §21 bound is a limit breach, not a wrong type"
+
+                  Expect.equal e.Path "$.kind.rows" "the path names the bounded slot"
+          } ]
+
+[<Tests>]
+let skeletonRowBoundTests =
+    testList
+        "WIRE_FORMAT §21.9 — max skeleton rows (Phase 1666)"
+        [ test "a count at exactly the bound decodes" {
+              // §21.2 rule 1 — refusing this is non-conformance, not caution.
+              // It is the assertion a guard set one too tight fails, and a guard
+              // that only ever refuses is indistinguishable from a decoder that
+              // refuses everything.
+              let json =
+                  sprintf """{"id":"s","kind":{"$type":"Skeleton","rows":%d}}""" Fuaran.UI.WireLimits.MaxSkeletonRows
+
+              match JsonDecode.decodeNodeObj json with
+              | Ok _ -> ()
+              | Error e -> failtestf "a Skeleton at exactly the row bound was refused: %s" e.Message
+          }
+
+          test "one past the bound is LIMIT_EXCEEDED at the rows path" {
+              let json =
+                  sprintf
+                      """{"id":"s","kind":{"$type":"Skeleton","rows":%d}}"""
+                      (Fuaran.UI.WireLimits.MaxSkeletonRows + 1)
+
+              match JsonDecode.decodeNodeObj json with
+              | Ok _ -> failtest "a Skeleton one row past the bound decoded"
+              | Error e ->
+                  Expect.equal e.Code "LIMIT_EXCEEDED" "§21.2 rule 2 — the limit code"
+                  Expect.notEqual e.Code "INVALID_JSON" "§21.2 rule 2 — not a syntax error"
+                  Expect.equal e.Path "$.kind.rows" "the path names the position the bound was breached at"
+
+                  Expect.isTrue
+                      (e.Message.Contains(string Fuaran.UI.WireLimits.MaxSkeletonRows))
+                      "the message names the bound so an author knows what to come back under"
+          }
+
+          test "§7.1 decides FIRST — a value the slot cannot hold is still a WRONG_TYPE" {
+              // The ordering is the contract. `1e10` is past the bound too, but
+              // it is not a value an integer slot can hold at all, so calling it
+              // a limit breach would tell an author to lower a count when what
+              // they actually wrote is not an integer.
+              for token in [ "1e10"; "2.5"; "\"NaN\"" ] do
+                  let json = sprintf """{"id":"s","kind":{"$type":"Skeleton","rows":%s}}""" token
+
+                  match JsonDecode.decodeNodeObj json with
+                  | Ok _ -> failtestf "`%s` decoded at an integer slot" token
+                  | Error e ->
+                      Expect.equal e.Code "WRONG_TYPE" (sprintf "`%s` fails §7.1 before §21.9 can see it" token)
+          }
+
+          test "the bound is an UPPER bound only — a negative count is the validator's" {
+              // Deliberate, and the reason is §21.2 rule 2's: a limit breach
+              // must not be reported as something it is not, and a negative row
+              // count is not a resource breach. `PreEmitValidate`'s FUARAN150
+              // holds both ends of the range on the authoring side, where the
+              // author is.
+              match JsonDecode.decodeNodeObj """{"id":"s","kind":{"$type":"Skeleton","rows":-1}}""" with
+              | Ok _ -> ()
+              | Error e -> failtestf "a negative rows count is not a decode-side refusal: %s" e.Message
           } ]

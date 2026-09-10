@@ -172,3 +172,35 @@ let MaxNodes = 100000
 /// alone.
 [<Literal>]
 let MaxExprNodes = 512
+
+/// Maximum value of a `Skeleton` node's `rows` slot (Fuaran-UI Phase 1666;
+/// WIRE_FORMAT §21.9). A breach is `LIMIT_EXCEEDED` at the `rows` path, refused
+/// on the way down like every other §21 bound.
+///
+/// It is a §21 RESOURCE limit and not a §7.1 slot-type narrowing, and the
+/// distinction is the whole reason this constant exists rather than a tighter
+/// `requireInt`. §7.1 says what an integer slot can HOLD — a finite,
+/// fraction-free value inside signed 32-bit — and `rows` holds 2147483647
+/// perfectly well. What it cannot do is RENDER it: the server-side renderer
+/// emits one placeholder row per count, so `{"rows":100000000}` is a
+/// two-byte-per-digit document naming 10^8 rendered rows. That is §21.8's own
+/// argument for `MaxExprNodes` at a different slot ("small in bytes and shallow
+/// in JSON relative to the work it names"), so it is stated in the same place
+/// and refused with the same code rather than given a mechanism of its own.
+///
+/// ONE bound, upper only. A negative row count is not a resource breach, and
+/// calling it one would be the actively-wrong diagnosis §21.2 rule 2 forbids in
+/// the `INVALID_JSON` direction; it is an authoring defect, so the pre-emit
+/// validator holds it (`PreEmitValidate`'s `SkeletonRowsOutOfRange`,
+/// FUARAN150) and the decoder does not.
+///
+/// The FIGURE keeps a skeleton's EXPANSION an order of magnitude under the
+/// 100 000 `MaxArrayLength` already fixes for a single position's element count,
+/// and the asymmetry is the justification: an array's elements are present in
+/// the input, so the document's own size bounds them, while these rows are
+/// named rather than carried and the input gives a host no size signal at all.
+/// 10 000 is three orders of magnitude above any real loading placeholder.
+/// Changing it is a protocol change — it moves in `WIRE_FORMAT.md` §21 and
+/// across the conformant hosts, not here alone.
+[<Literal>]
+let MaxSkeletonRows = 10000

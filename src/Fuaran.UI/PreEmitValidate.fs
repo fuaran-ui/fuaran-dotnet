@@ -311,6 +311,24 @@ type PreEmitDefect =
     /// simply recursed until the process died of a `StackOverflowException`,
     /// which .NET cannot catch, so no defect list of any kind came back.
     | MaxDepthExceeded of nodeId: string * limit: int
+    /// **FUARAN150 (Error)**. A `Skeleton` declares a `rows` count outside
+    /// `0 … WireLimits.MaxSkeletonRows` (Phase 1666; WIRE_FORMAT §21.9).
+    /// Carries the node's id and the offending count.
+    ///
+    /// `MaxDepthExceeded`'s class at a scalar slot, and it holds BOTH ends of a
+    /// range the decoder deliberately holds only one end of. The decoder refuses
+    /// an over-ceiling count, because a document naming ten million placeholder
+    /// rows is one no host may carry; it does NOT refuse a negative one, because
+    /// a negative count is not a resource breach and answering `LIMIT_EXCEEDED`
+    /// for it would be the wrong diagnosis. Both are authoring defects, and this
+    /// is the authoring surface — so this is where the range is whole.
+    ///
+    /// The over-ceiling half is worth reporting even though the decoder catches
+    /// it, for `MaxDepthExceeded`'s reason: an AUTHORED tree never passes
+    /// through a decoder, so the first thing to refuse it would be some other
+    /// host on the far side of a round trip, hours later and with no author in
+    /// the room.
+    | SkeletonRowsOutOfRange of nodeId: string * rows: int
     /// **FUARAN092 (Warning)**. A `Link` declares `protection: "email"` on an
     /// href that is statically known NOT to be a `mailto:` (Phase 812). The
     /// Email protection strategy only has meaning over a mailto address — on
@@ -2104,6 +2122,14 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "node '%s' nests deeper than the wire limit MaxDepth = %d (WIRE_FORMAT §21) — the tree was not walked past this point; flatten the nesting"
             nodeId
             limit
+    | PreEmitDefect.SkeletonRowsOutOfRange(nodeId, rows) ->
+        "FUARAN150",
+        DefectSeverity.Error,
+        sprintf
+            "Skeleton '%s' declares rows = %d, outside 0 … %d (WIRE_FORMAT §21.9) — a negative count draws nothing, and a count above the bound names more placeholder rows than any conformant host may carry, so the encoded tree would be refused on decode; pick a count in range"
+            nodeId
+            rows
+            WireLimits.MaxSkeletonRows
     | PreEmitDefect.UnsafeUrlScheme(nodeId, slot, reason) ->
         "FUARAN142",
         DefectSeverity.Warning,
@@ -3476,6 +3502,12 @@ let private validateCore
                 if hostPages then
                     defects.Add(PreEmitDefect.DoublePagedGrid(nodeIdStr, key))
             | None, _ -> ()
+        // FUARAN150 (Phase 1666) — the §21.9 row bound, whole, on the authoring
+        // side. This is the first tenant of the "future kind-specific
+        // invariants land here" note the leaf arm below has carried since 781.
+        | NodeKind.Skeleton spec ->
+            if spec.Rows < 0 || spec.Rows > WireLimits.MaxSkeletonRows then
+                defects.Add(PreEmitDefect.SkeletonRowsOutOfRange(n.Id, spec.Rows))
         // Display kinds are leaves; future kind-specific invariants (e.g.
         // HeadingLevel ∈ [1..6]) land here.
         | NodeKind.Heading _
@@ -3485,7 +3517,6 @@ let private validateCore
         | NodeKind.Sparkline _
         | NodeKind.Callout _
         | NodeKind.Progress _
-        | NodeKind.Skeleton _
         | NodeKind.Icon _
         | NodeKind.LabelValueRow _
         | NodeKind.Fact _

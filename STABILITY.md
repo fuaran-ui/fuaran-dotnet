@@ -7851,6 +7851,89 @@ write-back target, and `docs/security/ESCAPE-HATCHES.md` needs no amendment.
 (`HostPrelude.WireSurvivabilityError`, recorded under 0.78.0 as Phase 1538's fourth behavioural
 change) and is unchanged by it.
 
+**fuaran#1666 — BREAKING on the wire and BREAKING on a closed public DU, and the two are separate
+changes that happen to ride one slot.** Read the first if you emit trees; read the second if you
+match on `ApplyErrorCode`.
+
+**The wire half: `Skeleton.rows` is bounded, and a decoder now refuses a value it accepted.**
+`WIRE_FORMAT.md` gains §21.9 — a conformant host MUST refuse a `Skeleton` whose `rows` exceeds
+**10 000**, with `LIMIT_EXCEEDED` at the `rows` path, on the way down like every other §21 bound —
+and `WireLimits.MaxSkeletonRows` carries the figure. It is stated as a §21 RESOURCE limit rather
+than as a §7.1 slot narrowing, and the distinction is the whole of the change: §7.1 says what a
+typed integer slot can HOLD, and `2147483647` is finite, fraction-free and inside signed 32-bit, so
+§7.1 admits it perfectly well. What it cannot do is RENDER it — the server renderer emits one
+placeholder row per count, so `{"$type":"Skeleton","rows":100000000}` is a document inside every
+other limit (a handful of bytes, one node, three JSON levels) that names a hundred million rendered
+rows. That is §21.8's own argument for `MaxExprNodes` at a different slot, so it is stated in the
+same section and refused with the same code rather than given a mechanism of its own.
+
+**§7.1 decides FIRST, and the order is part of the contract.** A value that is not an integer at all
+— `2.5`, `1e10`, a §7 sentinel string — is still `WRONG_TYPE` and never a limit breach; a
+32-bit-valid value past the bound is `LIMIT_EXCEEDED` and never a wrong type. Both halves are corpus
+fixtures (`limit-skeleton-rows-at-max`, `reject-limit-skeleton-rows`), and the reject vector's value
+is the 32-bit maximum rather than `10 001` deliberately: `10 001` cannot separate the two readings,
+and a host that read the bound as a narrowing of the slot's type would also refuse the at-the-bound
+document §21.2 rule 1 obliges it to accept — one misreading breaching both rules at once. §7.1 gains
+a paragraph stating the composition, and the §7.1 boundary test that used `Skeleton.rows` as its
+probe is **re-slotted to `Heading.level`**: a §7.1 test must probe a slot §7.1 alone governs, or it
+asserts the conjunction of §7.1 and §21 and is re-broken by the next limit.
+
+**The bound is an UPPER bound only, and the omission is deliberate.** A negative `rows` is not a
+resource breach — nothing expands — and answering `LIMIT_EXCEEDED` for it would be the
+actively-wrong diagnosis §21.2 rule 2 forbids in the `INVALID_JSON` direction. It is an authoring
+defect, so `PreEmitValidate` gains **FUARAN150** (Error), which holds BOTH ends of the range because
+that is the surface an author is standing on. `schema.json` carries the ceiling as `maximum` and no
+`minimum`, matching. No per-host exemption exists, here or anywhere in §21: the pre-emit family's
+per-host declared coverage (`validator-coverage.json`) is the dial that does exist and it does not
+generalise — a headless codec legitimately carries fewer authoring rules; decode conformance carries
+no such dial.
+
+**The DU half: `ApplyErrorCode` gains `PositionNotStructural of slot: string`**, which is
+source-breaking at every exhaustive match on that closed public type. It replaces a WRONG answer
+rather than adding a feature. The structural ops (`InsertChild` / `RemoveNode` / `MoveNode` /
+`ReorderChildren`) walk `Introspect.getChildren`, which answers `None` for the kinds holding a node
+in a KEYED position — a `Switch` case's child, an `ErrorBoundary` arm, a `state.onLoading`
+alternative, a `Mount` / `FragmentRef` slot argument. So the engine reported `NodeNotFound` for
+nodes it was demonstrably holding: `findNode` reaches them, `UpdateProp` edits them, and §4g counts
+their ids for uniqueness. Two things change, and they are different problems:
+
+- **A node BELOW such a position is now addressable.** `applyStructural` descends into the
+  position's subtree and writes the rewritten subtree back through the lens `replaceDescendantNodes`
+  already used, so the position's ARITY never changes and no new traversal is introduced. Notably
+  this is *not* a widening of the `NodeWitness` handed to the shared apply engine, which the source
+  has recorded as unsafe since the traversal fix: that engine rebuilds through the same function, so
+  a widened witness would have it restructure keyed cases as an ordered list and `ReorderChildren`'s
+  permutation check would start demanding non-structural ids. §4g is checked against the WHOLE tree
+  before any descent, because the engine's own duplicate-id pre-check sees only the root it is
+  handed.
+- **A node AT such a position, or a `MoveNode` crossing two of them, is REFUSED by name.** The
+  arity would have to change, and several of these positions cannot express absence at all — an
+  `ErrorBoundary` fallback is required, and a `Switch` case with no child is not a case. Picking a
+  meaning for each is a wire decision, not an engine one, so it is named rather than guessed. The
+  slot label rides the error in the §3.3 spelling (`Switch.cases[0].child`), and the hint tells the
+  caller the two routes that do work. A position that later gains defined structural semantics
+  simply stops being reported here, so nothing is foreclosed.
+
+`Introspect` gains `nonStructuralPositions`, `replaceNonStructuralPosition` and
+`nonStructuralAncestor` — all three reading the one existing lens rather than a second notion of what
+a keyed position is. `ErrorRender` and `OpOutcome` render the new case as `PositionNotStructural`,
+and the op-stream obligations are pinned rather than asserted: a descended apply persists exactly one
+record whose hash recomputes (so it reaches the persist wrapper by the ordinary path), a replay of the
+recorded stream against a fresh tree reproduces the applied one, and a `PositionNotStructural` refusal
+persists nothing.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged, and no field is added to a mapped record, so §11 step 6 is not
+engaged either. **No escape hatch is created or widened** — both halves NARROW what is accepted, and
+`docs/security/ESCAPE-HATCHES.md` needs no amendment.
+
+**The catalog's `Local`-bindings page gains the observable for a rule it could not state.** Every
+case on that page observes a commit that SHOULD happen; the one it could not express was **mount
+emits no commit**, because a commit at mount dispatches the buffer and the buffer at mount IS the
+model's value, so a mirrored value reads identically either way. The page's `Email` is pre-filled and
+its model counts commits, and the Playwright spec asserts zero at load and one after a debounce
+flush. Sample-only — no shipped surface moves.
+
 ## 0.80.0 — the provider-call telemetry record carries the subject it was made under (Phase 1637)
 
 **Additive on the wire, RECORD-WIDENING at the source, and the two are not the same statement — read

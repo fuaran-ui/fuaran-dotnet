@@ -1482,6 +1482,26 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "§21.5 the tree-item axis — 25 nested TreeItem rows inside ONE node. Counted separately from the node axis, which cannot see it at all (the whole hierarchy is one node) and from the syntactic bound, which at ~50 levels is nowhere near reached. The `TreeOp.Batch` lesson on a third axis" }
+      // Fuaran-UI Phase 1666 — §21.9, and the FIRST §21 bound on a scalar VALUE
+      // rather than on the shape of the document. The other bounds are breached
+      // by an input that is itself large; this one is breached by four digits,
+      // because the rows are NAMED rather than carried and the renderer expands
+      // them. Two vectors are needed and only one lives here: the at-the-bound
+      // accept half is `limit-skeleton-rows-at-max` in `Fixtures.storedNodes`.
+      //
+      // The value is deliberately the 32-BIT MAXIMUM and not `MaxSkeletonRows +
+      // 1`, because it is the one value that separates §7.1 from §21.9. §7.1
+      // says a typed integer slot holds it (it is finite, fraction-free and in
+      // range), so a host answering `WRONG_TYPE` here has read the bound as a
+      // narrowing of the slot's TYPE — which would also have it refuse
+      // `limit-skeleton-rows-at-max`, breaching rule 1 in the other direction.
+      { Id = "reject-limit-skeleton-rows"
+        Json = """{"id":"s","kind":{"$type":"Skeleton","rows":2147483647}}"""
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath = "$.kind.rows"
+        IsOp = false
+        Description =
+          "§21.9 max skeleton rows — a 32-bit-VALID value past the bound. LIMIT_EXCEEDED and never WRONG_TYPE: §7.1 decides the slot's type first and admits this value, so the refusal is about the work the document names and not about what the slot can hold" }
       { Id = "reject-limit-json-depth"
         Json =
           String.replicate (Fuaran.UI.WireLimits.MaxJsonDepth + 1) "["

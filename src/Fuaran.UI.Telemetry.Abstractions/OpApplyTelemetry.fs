@@ -102,6 +102,7 @@ module OpOutcome =
         | ApplyErrorCode.PathNotSupportedYet -> "PathNotSupportedYet"
         | ApplyErrorCode.BatchAborted innerIndex -> sprintf "BatchAborted(%d)" innerIndex
         | ApplyErrorCode.LimitExceeded -> "LimitExceeded"
+        | ApplyErrorCode.PositionNotStructural slot -> sprintf "PositionNotStructural(%s)" slot
 
     /// Derive the closed, `'Msg`-free `OpOutcome` from a typed apply result.
     /// This is the single source of truth for the apply-result → outcome

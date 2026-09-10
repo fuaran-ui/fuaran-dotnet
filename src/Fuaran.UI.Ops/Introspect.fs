@@ -361,8 +361,15 @@ let withChildren (kind: NodeKind<'Msg>) (children: Node<'Msg> list) : NodeKind<'
 //
 // `StateBehaviour.OnError` is deliberately absent: it is `ErrorPayload -> Node`,
 // so there is no node to enumerate until it is applied.
+//
+// Phase 1666 — each position now carries its own LABEL, in the §3.3 spelling an
+// author would recognise (`state.onLoading`, `Switch.cases[0].child`,
+// `Mount.inputs["header"]`). The labels ride the existing match rather than a
+// second one, for the reason the paragraph above gives about the read and the
+// write: a parallel table of names would be a third thing to keep in step, and
+// the whole point of the lens is that there is one.
 
-let private nonStructuralSlots (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg> list -> Node<'Msg>) =
+let private nonStructuralSlots (node: Node<'Msg>) : (string * Node<'Msg>) list * (Node<'Msg> list -> Node<'Msg>) =
     // `Node.State` is an option since the swap — an absent envelope has no
     // slots to enumerate, and the rebuild writes back through the same option.
     let onLoading = node.State |> Option.bind _.OnLoading
@@ -370,10 +377,10 @@ let private nonStructuralSlots (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg
 
     let stateSlots =
         [ match onLoading with
-          | Some n -> n
+          | Some n -> "state.onLoading", n
           | None -> ()
           match onEmpty with
-          | Some n -> n
+          | Some n -> "state.onEmpty", n
           | None -> () ]
 
     let hasLoading = onLoading.IsSome
@@ -405,9 +412,10 @@ let private nonStructuralSlots (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg
     let kindSlots, putKind =
         match node.Kind with
         | NodeKind.Switch spec ->
-            let caseNodes = spec.Cases |> List.map _.Child
+            let caseNodes =
+                spec.Cases |> List.mapi (fun i c -> sprintf "Switch.cases[%d].child" i, c.Child)
 
-            caseNodes @ [ spec.Default ],
+            caseNodes @ [ "Switch.default", spec.Default ],
             fun (rs: Node<'Msg> list) ->
                 let cases =
                     List.zip spec.Cases (List.truncate spec.Cases.Length rs)
@@ -418,7 +426,7 @@ let private nonStructuralSlots (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg
                         Cases = cases
                         Default = List.last rs }
         | NodeKind.ErrorBoundary spec ->
-            [ spec.Child; spec.Fallback ],
+            [ "ErrorBoundary.child", spec.Child; "ErrorBoundary.fallback", spec.Fallback ],
             fun (rs: Node<'Msg> list) ->
                 NodeKind.ErrorBoundary
                     { spec with
@@ -435,7 +443,7 @@ let private nonStructuralSlots (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg
                     | FragmentArg.SlotArg n -> Some(k, n)
                     | _ -> None)
 
-            keyed |> List.map snd,
+            keyed |> List.map (fun (k, n) -> sprintf "FragmentRef.args[%s]" k, n),
             fun (rs: Node<'Msg> list) ->
                 let args =
                     List.zip keyed rs
@@ -456,7 +464,7 @@ let private nonStructuralSlots (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg
                     | FragmentArg.SlotArg n -> Some(k, n)
                     | _ -> None)
 
-            keyed |> List.map snd,
+            keyed |> List.map (fun (k, n) -> sprintf "Mount.inputs[%s]" k, n),
             fun (rs: Node<'Msg> list) ->
                 let inputs =
                     List.zip keyed rs
@@ -490,7 +498,7 @@ let private nonStructuralSlots (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg
 let descendantNodes (node: Node<'Msg>) : Node<'Msg> list =
     let structural = getChildren node.Kind |> Option.defaultValue []
     let nonStructural, _ = nonStructuralSlots node
-    structural @ nonStructural
+    structural @ (nonStructural |> List.map snd)
 
 /// Rebuild `node` with `replacements` in exactly the positions `descendantNodes`
 /// enumerates (structural children first, then the non-structural slots). The
@@ -518,6 +526,51 @@ let replaceDescendantNodes (node: Node<'Msg>) (replacements: Node<'Msg> list) : 
         let _, put = nonStructuralSlots rebuilt
         put nonStructural
 
+// ─── Non-structural positions, by name (Phase 1666) ────────────────────────
+//
+// The structural ops walk `getChildren`, so everything a non-structural
+// position holds — and everything BELOW it — was unreachable to them, and the
+// engine said `NodeNotFound` for a node `findNode` and `UpdateProp` reach
+// perfectly well. These two functions are what let it say something true
+// instead, and neither introduces a traversal: both read the one lens above.
+//
+// The DISTINCTION they draw is the whole of the design. A node sitting AT a
+// keyed position and a node sitting BELOW one are different problems. Below
+// one, its removal or move is ordinary structural surgery at its own parent and
+// the only thing missing is a descent — the position's arity does not change,
+// which is exactly what the positional lens supports. AT one, the arity WOULD
+// change, and several of these positions cannot express absence at all
+// (`ErrorBoundary.fallback` is required; a `Switch` case with no child is not a
+// case). There is no single right semantics for that, so it is named and
+// refused rather than guessed.
+
+/// The non-structural positions held one step below `node`, each with the slot
+/// LABEL that names it (`state.onLoading`, `Switch.cases[0].child`,
+/// `Mount.inputs[header]`). Read-only view of the same lens
+/// `replaceDescendantNodes` writes through.
+let nonStructuralPositions (node: Node<'Msg>) : (string * Node<'Msg>) list =
+    let slots, _ = nonStructuralSlots node
+    slots
+
+/// Replace ONE non-structural position of `node`, named by its label, leaving
+/// every other position and every structural child alone. `None` when the label
+/// names no position on this node — the caller has misidentified the holder,
+/// which is a defect rather than a no-op.
+///
+/// Arity-preserving by construction: it writes back through the same
+/// same-length `put` the lens returns, so the position keeps its shape whatever
+/// the replacement subtree looks like inside.
+let replaceNonStructuralPosition (node: Node<'Msg>) (label: string) (replacement: Node<'Msg>) : Node<'Msg> option =
+    let slots, put = nonStructuralSlots node
+
+    if slots |> List.exists (fun (l, _) -> l = label) then
+        slots
+        |> List.map (fun (l, n) -> if l = label then replacement else n)
+        |> put
+        |> Some
+    else
+        None
+
 let rec findNode (target: NodeId) (node: Node<'Msg>) : Node<'Msg> option =
     // The op layer addresses by `NodeId`; `Node.Id` is a bare string since the
     // swap — unwrap at the comparison.
@@ -527,6 +580,35 @@ let rec findNode (target: NodeId) (node: Node<'Msg>) : Node<'Msg> option =
         Some node
     else
         descendantNodes node |> List.tryPick (findNode target)
+
+/// The OUTERMOST non-structural position on the path from `root` down to
+/// `target` (Phase 1666): the holder's id, the slot label, the position's own
+/// subtree, and whether `target` IS that subtree's root.
+///
+/// `None` means `target` is reachable from `root` through structural children
+/// alone OR is absent from the tree entirely — the two are told apart by
+/// `findNode`, and callers need that distinction because they report different
+/// errors. Outermost rather than nearest, deliberately: a caller descending into
+/// the position and re-running its own walk reaches a nested position on the
+/// next turn, so one level per call composes; naming the innermost would
+/// require the caller to know the path it was about to take.
+let nonStructuralAncestor (target: NodeId) (root: Node<'Msg>) : (NodeId * string * Node<'Msg> * bool) option =
+    let (NodeId targetRaw) = target
+
+    let rec walk (node: Node<'Msg>) : (NodeId * string * Node<'Msg> * bool) option =
+        // Structural children FIRST: a target reachable structurally has no
+        // non-structural ancestor, whatever this node's own positions hold.
+        match getChildren node.Kind |> Option.defaultValue [] |> List.tryPick walk with
+        | Some hit -> Some hit
+        | None ->
+            nonStructuralPositions node
+            |> List.tryPick (fun (label, positioned) ->
+                if findNode target positioned |> Option.isSome then
+                    Some(NodeId node.Id, label, positioned, positioned.Id = targetRaw)
+                else
+                    None)
+
+    walk root
 
 /// Returns `Some (parent, indexOfTarget)` if `target` is a child of some node
 /// reachable from `root`. Returns `None` for the root itself, or for a target
@@ -649,7 +731,7 @@ let rec mapNode (target: NodeId) (replace: Node<'Msg> -> Node<'Msg>) (node: Node
             if List.isEmpty slots then
                 None
             else
-                let replaced = mapInto slots
+                let replaced = mapInto (slots |> List.map snd)
                 if found then Some(put replaced) else None
 
 /// DFS map over the parent of `target`, applying `replaceChildren` to that
@@ -874,7 +956,7 @@ and canonicalForm (node: Node<'Msg>) : Node<'Msg> =
         if List.isEmpty slots then
             node
         else
-            put (slots |> List.map canonicalForm)
+            put (slots |> List.map (snd >> canonicalForm))
 
     { node with
         State =

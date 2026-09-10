@@ -202,3 +202,179 @@ let tests =
               | Ok updated -> Expect.equal (childIds updated) [ "left" ] "Buggy hook does not break apply"
               | Error e -> failtestf "Expected Ok, got Error %A" e
           } ]
+
+// ============================================================================
+//  Phase 1666 — the FGP 5 obligations for non-structural addressing.
+//
+//  `applyStructural` can now DESCEND through a keyed position (a `Switch`
+//  case's child, an `ErrorBoundary` arm, a `state.onLoading` alternative) to
+//  reach a node below it, where it previously answered `NodeNotFound` for a
+//  node `findNode` reaches perfectly well. FGP 5 asks for two things of any
+//  newly-reachable apply path, and neither is safe to assert by inspection:
+//
+//   1. **Every applied op is hash-chained and persisted.** The claim is that
+//      the descent introduces no second path — it returns an ordinary
+//      `Ok tree` from `applyOne`, so it reaches `OpOutcome.ofApplyResult`, the
+//      telemetry sink and this persist wrapper by exactly the route every other
+//      apply takes. A test is what tells that apart from a path that quietly
+//      bypasses the wrapper.
+//   2. **Addressing must not break replay.** The op recorded for a descended
+//      apply has to reproduce the same tree when re-applied from the stream
+//      against the same initial tree — otherwise a store whose records verify
+//      folds to a state that never existed, which is the failure mode
+//      `Replay.applyTo` refuses a broken chain to avoid.
+//
+//  And the refusal half, which is the same obligation seen from the other end:
+//  a `PositionNotStructural` refusal must persist NOTHING, exactly as
+//  `NodeNotFound` does. A refused op in the stream would replay as a state
+//  change that never happened.
+// ============================================================================
+
+/// A dashboard whose second child is a `Switch` holding a container at
+/// `cases[0].child` — so `keyed-inner` is a node the structural ops could not
+/// address before this phase, and `keyed-panel` IS the position.
+let private buildKeyedDashboard () : Node<TestMsg> =
+    Fuaran.dashboard
+        "dash"
+        { Defaults.dashboard<TestMsg> with
+            Children =
+                [ Fuaran.markdown "left" "Left pane"
+                  Fuaran.switch
+                      "mode"
+                      { Defaults.switch<TestMsg> with
+                          On = Binding.State("mode", None)
+                          Cases =
+                              [ { Match = Some "compact"
+                                  When = None
+                                  Child =
+                                    Fuaran.dashboard
+                                        "keyed-panel"
+                                        { Defaults.dashboard<TestMsg> with
+                                            Children =
+                                                [ Fuaran.markdown "keyed-inner" "Inner"
+                                                  Fuaran.markdown "keyed-kept" "Kept" ] } } ]
+                          Default = Fuaran.markdown "fallback" "Fallback" } ] }
+
+[<Tests>]
+let nonStructuralPersistTests =
+    testList
+        "Fuaran.UI.OpStream — applyAndPersist through a non-structural position (Phase 1666)"
+        [ test "a descended apply is persisted and hash-chained by the same wrapper" {
+              let sink: IOpStreamSink<TestMsg> = InMemorySink.create ()
+              let ctx = PersistContext.create "stream-ns-1" "alice"
+              let tree = buildKeyedDashboard ()
+              let op = TreeOp.RemoveNode(NodeId "keyed-inner"): TreeOp<TestMsg>
+
+              let result = ApplyPersist.applyAndPersist sink ctx op tree |> Async.RunSynchronously
+
+              match result with
+              | Error e -> failtestf "a node below a keyed position was unreachable: %A" e
+              | Ok updated ->
+                  Expect.isNone
+                      (Fuaran.UI.Ops.Introspect.findNode (NodeId "keyed-inner") updated)
+                      "the addressed node below the position was removed"
+
+                  Expect.isSome
+                      (Fuaran.UI.Ops.Introspect.findNode (NodeId "keyed-panel") updated)
+                      "the position itself still holds its node — arity untouched"
+
+              let records = sink.Replay("stream-ns-1", 1, 10) |> Async.RunSynchronously
+
+              Expect.equal records.Length 1 "the descended apply persisted exactly one record"
+              let record = List.head records
+              Expect.equal record.Sequence 1 "genesis sequence"
+              Expect.equal record.PreviousHash HashChain.genesisPreviousHash "genesis previous-hash"
+              Expect.equal record.ResultEnvelope OpResultEnvelope.Success "Success envelope on an Ok apply"
+
+              let recomputed =
+                  HashChain.computeHash
+                      record.PreviousHash
+                      record.Op
+                      record.Sequence
+                      record.Timestamp
+                      record.Actor
+                      record.PromptId
+                      record.ResultEnvelope
+
+              Expect.equal
+                  record.Hash
+                  recomputed
+                  "the record's hash recomputes — the chain covers this op like any other"
+          }
+
+          test "replay of the recorded stream reproduces the descended tree" {
+              // The obligation that matters most: addressing must not break
+              // replay. The records are replayed against a FRESH initial tree,
+              // so nothing from the applying session carries over.
+              let sink: IOpStreamSink<TestMsg> = InMemorySink.create ()
+              let ctx = PersistContext.create "stream-ns-2" "alice"
+
+              let op1 = TreeOp.RemoveNode(NodeId "keyed-inner"): TreeOp<TestMsg>
+
+              let op2 =
+                  TreeOp.InsertChild(NodeId "keyed-panel", Fuaran.markdown "keyed-added" "Added")
+
+              let applied =
+                  ApplyPersist.applyAndPersist sink ctx op1 (buildKeyedDashboard ())
+                  |> Async.RunSynchronously
+                  |> Result.bind (fun t ->
+                      ApplyPersist.applyAndPersist sink ctx op2 t
+                      |> Async.RunSynchronously
+                      |> Result.mapError id)
+
+              let appliedTree =
+                  match applied with
+                  | Ok t -> t
+                  | Error e -> failtestf "the two descended applies did not both succeed: %A" e
+
+              let records = sink.Replay("stream-ns-2", 1, 10) |> Async.RunSynchronously
+              Expect.equal records.Length 2 "both descended applies were recorded"
+
+              // `applyTo` verifies the chain first, so this also asserts the two
+              // records chain to each other.
+              match Replay.applyTo (buildKeyedDashboard ()) records with
+              | Error e -> failtestf "replaying descended ops failed: %A" e
+              | Ok replayed ->
+                  // `Node` carries closures and has no structural equality —
+                  // compare the ids the ops moved, in order, at the position.
+                  let idsAt (root: Node<TestMsg>) =
+                      match Fuaran.UI.Ops.Introspect.findNode (NodeId "keyed-panel") root with
+                      | None -> failtest "the keyed position lost its node"
+                      | Some panel ->
+                          Fuaran.UI.Ops.Introspect.getChildren panel.Kind
+                          |> Option.defaultValue []
+                          |> List.map (fun (c: Node<TestMsg>) -> c.Id)
+
+                  Expect.equal
+                      (idsAt replayed)
+                      (idsAt appliedTree)
+                      "the replayed tree matches the applied one below the keyed position"
+
+                  Expect.equal
+                      (idsAt replayed)
+                      [ "keyed-kept"; "keyed-added" ]
+                      "and it is the state the two ops describe"
+          }
+
+          test "a PositionNotStructural refusal persists nothing" {
+              // Same contract as the `NodeNotFound` short-circuit above, and the
+              // same reason: a refused op in the stream would replay as a state
+              // change that never happened.
+              let sink: IOpStreamSink<TestMsg> = InMemorySink.create ()
+              let ctx = PersistContext.create "stream-ns-3" "alice"
+              let tree = buildKeyedDashboard ()
+              // `keyed-panel` IS the position — removing it would leave the
+              // Switch case with no child, which a case cannot express.
+              let op = TreeOp.RemoveNode(NodeId "keyed-panel"): TreeOp<TestMsg>
+
+              match ApplyPersist.applyAndPersist sink ctx op tree |> Async.RunSynchronously with
+              | Ok _ -> failtest "removing the node AT a keyed position was accepted"
+              | Error err ->
+                  match err.Code with
+                  | ApplyErrorCode.PositionNotStructural slot ->
+                      Expect.equal slot "Switch.cases[0].child" "the refusal names the position"
+                  | other -> failtestf "expected PositionNotStructural, got %A" other
+
+              let latest = sink.LatestSequence "stream-ns-3" |> Async.RunSynchronously
+              Expect.equal latest 0 "sink untouched — a refusal is not history"
+          } ]

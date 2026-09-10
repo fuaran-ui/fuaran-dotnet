@@ -2178,7 +2178,155 @@ let private coreIdw: Fuaran.Core.IdWitness<NodeId> =
       OfString = NodeId
       Equals = (=) }
 
-let private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
+// ─── Non-structural addressing (Phase 1666) ────────────────────────────────
+//
+// `applyStructural` is recursive now, and this is the whole of what that buys.
+//
+// Everything below reads ONE existing lens (`Introspect.nonStructuralPositions`
+// / `replaceNonStructuralPosition`, the read and write halves of the same
+// match), so nothing here adds a traversal or a second notion of what a
+// non-structural position is. Two halves, and they are different problems:
+//
+//  * BELOW a position — the op's addressed nodes all live inside one keyed
+//    position's subtree. That is ordinary structural surgery at their own
+//    parent, and the only thing that was missing is a DESCENT: run the same op
+//    against the subtree and write the rewritten subtree back through the lens.
+//    The position's arity never changes, which is exactly the case the
+//    positional lens supports, so this is a reuse rather than a widening — and
+//    notably NOT a widening of the `NodeWitness` handed to Core, which the
+//    comment above records as unsafe (Core rebuilds through the same function,
+//    and `ReorderChildren`'s permutation check would start demanding
+//    non-structural ids).
+//
+//  * AT a position, or ACROSS two of them — the arity would have to change, or
+//    a subtree would have to cross a boundary the lens cannot express in one
+//    write. Refused, by name, with `PositionNotStructural`.
+//
+// What this replaces is a WRONG answer rather than a missing feature: the engine
+// said `NodeNotFound` for nodes `findNode` reaches and `UpdateProp` edits.
+//
+// FGP 5 is satisfied structurally rather than by a new code path: a descended
+// op returns an ordinary `Ok tree` from `applyOne`, so it reaches
+// `OpOutcome.ofApplyResult`, the telemetry sink and the op-stream persist
+// wrapper by exactly the path every other apply takes, and a replay of the
+// recorded stream re-applies the same op against the same tree.
+
+let private positionNotStructural (slot: string) (message: string) : ApplyError =
+    { Code = ApplyErrorCode.PositionNotStructural slot
+      Message = message
+      Hint =
+        { ApplyHint.empty with
+            Suggestion =
+                Some(
+                    sprintf
+                        "'%s' is a keyed position, not an ordered child list. EditNode its holder to replace the whole position, or address a node BELOW it — those apply normally."
+                        slot
+                ) } }
+
+/// The op's addressed node ids, in the order the op names them. Only the
+/// structural five reach here, so the list is one or two ids.
+let private structuralOpTargets (op: TreeOp<'Msg>) : NodeId list =
+    match op with
+    | TreeOp.InsertChild(parentId, _) -> [ parentId ]
+    | TreeOp.RemoveNode target -> [ target ]
+    | TreeOp.ReorderChildren(parentId, _) -> [ parentId ]
+    | TreeOp.MoveNode(target, newParentId) -> [ target; newParentId ]
+    | _ -> []
+
+let rec private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
+    // ── Phase 1666 — descend through a non-structural position, or refuse ──
+    //
+    // Runs BEFORE the dispatch below, because a node inside a keyed position is
+    // invisible to Core's walk and every rejection it could produce would be a
+    // misdiagnosis. `structuralOpTargets` names the one or two ids the op
+    // addresses; each is classified by `nonStructuralAncestor`, which answers
+    // `None` both for a structurally-reachable id and for an absent one — the
+    // second is left to the dispatch below, which already reports it correctly.
+    let located =
+        structuralOpTargets op |> List.map (fun id -> id, nonStructuralAncestor id root)
+
+    let insidePositions =
+        located
+        |> List.choose (fun (id, loc) -> loc |> Option.map (fun (h, label, sub, isAt) -> id, h, label, sub, isAt))
+
+    // §4g, before anything descends. `applyStructuralHere` runs its own
+    // duplicate-id pre-check against whatever root it is given, so on a descent
+    // that root is the POSITION'S SUBTREE and an incoming id colliding
+    // elsewhere in the whole tree would be accepted. The check belongs here,
+    // where the whole tree is still in hand. `firstSharedId` walks
+    // `descendantNodes`, so it already sees every keyed position.
+    let incomingCollision =
+        match op with
+        | TreeOp.InsertChild(_, child) when not (List.isEmpty insidePositions) -> firstSharedId root child
+        | _ -> None
+
+    match incomingCollision, insidePositions with
+    | Some dup, _ -> Error(duplicateNodeId dup)
+    // Nothing addressed sits inside a keyed position — today's path exactly.
+    | None, [] -> applyStructuralHere op root
+    | None, inside ->
+        // Every addressed id must sit inside the SAME position, or there is no
+        // single subtree the op can be run against. A `MoveNode` from one
+        // position to another, or between a position and the structural spine,
+        // lands here — one write through an arity-preserving lens cannot express
+        // it, and inventing a two-write form would be a wire decision.
+        let distinctHolders =
+            inside |> List.map (fun (_, h, label, _, _) -> h, label) |> List.distinct
+
+        if List.length distinctHolders > 1 || List.length inside <> List.length located then
+            let slots = distinctHolders |> List.map snd |> String.concat ", "
+
+            Error(
+                positionNotStructural
+                    (distinctHolders |> List.head |> snd)
+                    (sprintf
+                        "The op addresses nodes on opposite sides of a keyed position (%s) — a structural op cannot cross one, because the position holds a single node rather than an ordered list."
+                        slots)
+            )
+        else
+            let _, holder, label, sub, _ = List.head inside
+
+            // The ARITY guard. Removing or moving the position's own node would
+            // leave the position empty, and several of these positions cannot
+            // express absence at all.
+            let atPositionRoot =
+                inside
+                |> List.exists (fun (id, _, _, _, isAt) ->
+                    isAt
+                    && match op with
+                       | TreeOp.RemoveNode t -> t = id
+                       | TreeOp.MoveNode(t, _) -> t = id
+                       | _ -> false)
+
+            if atPositionRoot then
+                Error(
+                    positionNotStructural
+                        label
+                        (sprintf
+                            "Node '%s' IS the '%s' position — removing or moving it would leave that position empty, which its holder cannot express."
+                            (match List.head (structuralOpTargets op) with
+                             | NodeId s -> s)
+                            label)
+                )
+            else
+                // Descend: the same op against the position's subtree, written
+                // back through the lens. One level per call, so a position
+                // nested inside a position resolves by the next recursion.
+                applyStructural op sub
+                |> Result.bind (fun rewritten ->
+                    let write (h: Node<'Msg>) =
+                        replaceNonStructuralPosition h label rewritten |> Option.defaultValue h
+
+                    match mapNode holder write root with
+                    | Some updated -> Ok updated
+                    | None -> Error(nodeNotFound holder))
+
+/// The structural five against the root it is HANDED — Core's engine, the UI
+/// error mapping, and nothing about non-structural positions. Called by
+/// `applyStructural` with the whole tree in the ordinary case, and with a keyed
+/// position's subtree on a descent; it cannot tell the difference, which is what
+/// makes the descent a reuse rather than a second engine.
+and private applyStructuralHere (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
     let nodew: Fuaran.Core.NodeWitness<Node<'Msg>, NodeId> =
         // `Node.Id` is a bare string since the swap; the op layer's addressing
         // stays `NodeId`-typed, wrapped at this witness boundary.

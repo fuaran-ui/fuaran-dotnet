@@ -5427,12 +5427,38 @@ let private decodeSparklineSpec (path: string) (j: Json) : Result<SparklineSpec,
         |> Result.bind (decodeBindingFloatSeq (path + ".source"))
         |> Result.map (fun source -> { Source = source })
 
+// Phase 1666 — `Skeleton.rows` is bounded by WIRE_FORMAT §21.9.
+//
+// `requireInt` decides FIRST, so §7.1's slot rule is untouched: a fractional,
+// non-finite or out-of-32-bit value is still a `WRONG_TYPE` and never a limit
+// breach. The bound then refuses a value the slot CAN hold but the format will
+// not carry the work of — the renderer emits one placeholder row per count, so
+// `{"rows":100000000}` names 10^8 rendered rows in a handful of bytes. The two
+// codes answer different questions and the ORDER is what keeps them apart.
+//
+// Upper bound only, deliberately: a negative count is an authoring defect, not
+// a resource breach, and `PreEmitValidate`'s `SkeletonRowsOutOfRange`
+// (FUARAN150) is where it belongs.
 let private decodeSkeletonSpec (path: string) (j: Json) : Result<SkeletonSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
         requireField path fields "rows" "skeleton row count integer"
         |> Result.bind (requireInt (path + ".rows"))
+        |> Result.bind (fun rows ->
+            if rows > Fuaran.UI.WireLimits.MaxSkeletonRows then
+                Error(
+                    DecodeError.create
+                        DecodeErrorCode.LIMIT_EXCEEDED
+                        (path + ".rows")
+                        (sprintf
+                            "skeleton rows %d exceeds the maximum of %d (WIRE_FORMAT 21.9)"
+                            rows
+                            Fuaran.UI.WireLimits.MaxSkeletonRows)
+                        (Some(sprintf "at most %d rows on one Skeleton" Fuaran.UI.WireLimits.MaxSkeletonRows))
+                )
+            else
+                Ok rows)
         |> Result.map (fun rows -> { Rows = rows })
 
 // Phase 821 — the standalone icon-only display kind.

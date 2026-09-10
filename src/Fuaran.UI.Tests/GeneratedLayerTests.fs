@@ -790,6 +790,17 @@ let generatedLayerTests =
                     "reject-json-raw-control-char.json"
                     "reject-json-surrogate-pair-split.json"
                     "reject-limit-node-depth.json"
+                    // Fuaran-UI Phase 1666 — §21.9's row ceiling, and it lands
+                    // beside the two depth bounds for the same reason: §21 is
+                    // policy the structural layer deliberately does not model.
+                    // The DIFFERENCE worth noting is which of the two lists it
+                    // joins. The depth bounds are properties of the walk and so
+                    // are also schema-inexpressible; a scalar ceiling is exactly
+                    // what Draft 2020-12's `maximum` says, and `schema.json`
+                    // carries it — so this fixture is structure-inexpressible and
+                    // schema-EXPRESSIBLE, which is the split `staticRows`'
+                    // negative column index first drew.
+                    "reject-limit-skeleton-rows.json"
                     "reject-limit-tree-item-depth.json"
                     // Fuaran-UI Phase 1538 — `Binding.Local`'s two refusals, and
                     // both are the CROSS-FIELD / CASE-RESTRICTION shape rather

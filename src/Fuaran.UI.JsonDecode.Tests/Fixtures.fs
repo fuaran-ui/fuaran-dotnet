@@ -7734,4 +7734,12 @@ let storedNodes: (string * string * string) list =
       boxChain Fuaran.UI.WireLimits.MaxDepth
       "limit-tree-item-depth-at-max",
       "§21.5 the tree-item axis — a tree nesting rows at EXACTLY the limit (24 levels) inside ONE node. Rule 1: every conformant host MUST decode this. Its past-the-bound twin is `reject-limit-tree-item-depth`",
-      treeItemChain Fuaran.UI.WireLimits.MaxDepth ]
+      treeItemChain Fuaran.UI.WireLimits.MaxDepth
+      // Fuaran-UI Phase 1666 — §21.9's accept half. It is a stored payload for
+      // the same reason as its neighbours (the corpus id is not the root node's
+      // id), and it is the half that matters most here: a §7.1-shaped reading of
+      // the slot would refuse this too, and rule 1 says refusing it is
+      // non-conformance rather than caution.
+      "limit-skeleton-rows-at-max",
+      "§21.9 max skeleton rows — a Skeleton at EXACTLY the limit (10 000 rows). Rule 1: every conformant host MUST decode this. Its past-the-bound twin is `reject-limit-skeleton-rows`",
+      sprintf """{"id":"s","kind":{"$type":"Skeleton","rows":%d}}""" Fuaran.UI.WireLimits.MaxSkeletonRows ]

@@ -251,6 +251,36 @@ type ApplyErrorCode =
     /// emit the same `LimitExceeded` name, so a client recovering from it need
     /// not know which engine refused.
     | LimitExceeded
+    /// The addressed node sits AT a non-structural position — a `Switch` case's
+    /// child, an `ErrorBoundary` arm, a `state.onLoading` alternative, a
+    /// `Mount` / `FragmentRef` slot argument — and the op would change that
+    /// position's ARITY. Carries the position's slot label in the §3.3 spelling
+    /// (`Switch.cases[0].child`), so a recovering caller knows which position
+    /// refused rather than which node.
+    ///
+    /// **It replaces a wrong answer, not a missing feature.** These positions
+    /// hold real nodes: `findNode` reaches them, `UpdateProp` edits them, `§4g`
+    /// counts their ids for uniqueness. What the structural surface could not do
+    /// is address them, because `getChildren` — the one function
+    /// `RemoveNode` / `MoveNode` / `ReorderChildren` traverse — answers `None`
+    /// for the kinds that hold them. So the engine reported `NodeNotFound` for a
+    /// node it was holding, which sends a caller to look for a node that is
+    /// right there.
+    ///
+    /// Reaching THROUGH such a position is no longer an error at all: an op
+    /// whose target sits BELOW one descends into it and applies normally, since
+    /// the position's arity is untouched. This case is reserved for the arity
+    /// change itself, and for a `MoveNode` that would cross from one position
+    /// into another (or between a position and the structural spine), which is
+    /// the same thing seen from two ends.
+    ///
+    /// **Why it refuses rather than defines a semantics.** Removal is not
+    /// expressible at several of these positions: an `ErrorBoundary` fallback is
+    /// required, and a `Switch` case with no child is not a case. Picking a
+    /// meaning for each — drop the case? substitute the default? — is a wire
+    /// decision, not an engine one. A position that later gains defined
+    /// structural semantics simply stops being reported here.
+    | PositionNotStructural of slot: string
 
 /// AI-recovery hint payload per §4d lines 745–759. Every field is
 /// optional so a renderer can emit only what's populated for a given

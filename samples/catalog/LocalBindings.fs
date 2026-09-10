@@ -13,6 +13,16 @@ module Fuaran.Samples.Catalog.LocalBindings
 //      when not mid-edit AND the buffer's Parse does not already equal
 //      the new external value.
 //
+//  Phase 1666 adds the fifth thing the page has to be able to say, and it
+//  is the only NEGATIVE one: **mount emits no commit**. The four cases above
+//  each observe a commit that SHOULD happen; this one observes one that
+//  should not, and a mirrored VALUE structurally cannot see it — a commit at
+//  mount dispatches the buffer, and the buffer at mount IS the model's value,
+//  so the spurious write writes back what was already there. Hence the
+//  pre-filled `Email` seed (a real string in the buffer, so a commit would be
+//  a commit of something) and the `EmailCommits` counter (the only observable
+//  that separates one dispatch from none).
+//
 //  The page mounts at `?local-bindings=1`. Playwright spec at
 //  `snapshot/local-bindings.spec.mts` drives the keyboard events and
 //  observes the model-side dispatches via the visible mirror panel.
@@ -26,10 +36,23 @@ open Fuaran.UI.Renderer
 // ─── Model ─────────────────────────────────────────────────────────────────
 
 type Model =
-    { Salary: decimal
-      Email: string
-      Note: string
-      EmailParseError: string option }
+    {
+        Salary: decimal
+        Email: string
+        Note: string
+        EmailParseError: string option
+        /// How many times the email `Local` has committed to the model
+        /// (Phase 1666). The page's whole reason for existing is to make the
+        /// flush BOUNDARY observable, and until this counter the one rule it
+        /// could not observe was **mount emits no commit**: `Email` initialised
+        /// to the empty string, so a spurious commit of the buffer at mount
+        /// wrote the empty string, which is byte-identical to not having
+        /// committed at all. A mirrored VALUE cannot separate those two
+        /// histories no matter what it is seeded with, because a commit of an
+        /// unedited buffer is by construction a commit of the value already
+        /// there. A count can, and it is the only thing that can.
+        EmailCommits: int
+    }
 
 type Msg =
     | SetSalary of decimal
@@ -41,9 +64,17 @@ type Msg =
 
 let init () : Model =
     { Salary = 50000m
-      Email = ""
+      // Phase 1666 — PRE-FILLED, and it is the counter's other half rather
+      // than decoration. With an empty seed the buffer at mount holds nothing,
+      // so an implementation could legitimately skip dispatching it and the
+      // test would pass for the wrong reason. A seeded value means the buffer
+      // at mount carries a real string that a spurious commit WOULD dispatch,
+      // so `EmailCommits = 0` after mount is a statement about the flush
+      // boundary and not about the emptiness of the buffer.
+      Email = "seed@example.com"
       Note = ""
-      EmailParseError = None }
+      EmailParseError = None
+      EmailCommits = 0 }
 
 let update (msg: Msg) (model: Model) : Model =
     match msg with
@@ -51,7 +82,11 @@ let update (msg: Msg) (model: Model) : Model =
     | SetEmail v ->
         { model with
             Email = v
-            EmailParseError = None }
+            EmailParseError = None
+            // Counted in `update` rather than in the view, so the count follows
+            // the MODEL-side dispatch — the thing the flush boundary is about —
+            // and not a render.
+            EmailCommits = model.EmailCommits + 1 }
     | SetEmailError opt -> { model with EmailParseError = opt }
     | SetNote v -> { model with Note = v }
     | PresetSalary v -> { model with Salary = v }
@@ -257,5 +292,9 @@ let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
                                                     prop.text (formatThousands model.Salary) ]
                                               Html.dt [ prop.text "Email (string)" ]
                                               Html.dd [ prop.testId "model-email"; prop.text model.Email ]
+                                              Html.dt [ prop.text "Email commits (count)" ]
+                                              Html.dd
+                                                  [ prop.testId "model-email-commits"
+                                                    prop.text (string model.EmailCommits) ]
                                               Html.dt [ prop.text "Note (string)" ]
                                               Html.dd [ prop.testId "model-note"; prop.text model.Note ] ] ] ] ] ] ] ]

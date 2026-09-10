@@ -1201,7 +1201,17 @@ let private defs: (string * J) list =
       "SparklineSpec", record [ "source" ] [ "source", binding "list_float" ]
 
 
-      "SkeletonSpec", record [ "rows" ] [ "rows", integer ]
+      // Phase 1666 — `rows` carries §21.9's ceiling as a `maximum`, which makes
+      // this the one §21 bound the schema can state. The others are properties
+      // of the walk (depth, total nodes, document bytes) or of a length Draft
+      // 2020-12 has no keyword for at the position that matters; a scalar
+      // ceiling is exactly what `maximum` is. No `minimum`: the decoder refuses
+      // only the ceiling (a negative count is an authoring defect, FUARAN150,
+      // not a resource breach), and the schema is subordinate to the text.
+      "SkeletonSpec",
+      record
+          [ "rows" ]
+          [ "rows", JObj [ "type", JStr "integer"; "maximum", JInt Fuaran.UI.WireLimits.MaxSkeletonRows ] ]
 
       // Phase 821 — the standalone icon-only display kind. Only `icon` is
       // required: `size` omitted-when-Medium, `tone` omitted-when-default,

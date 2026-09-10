@@ -17,6 +17,15 @@ const waitForPage = async (page: Page) => {
 const modelSalary = (page: Page) => page.locator("[data-testid='model-salary']");
 const modelEmail = (page: Page) => page.locator("[data-testid='model-email']");
 const modelNote = (page: Page) => page.locator("[data-testid='model-note']");
+// Phase 1666 — the commit COUNT, which is what distinguishes a spurious
+// commit from none. See the block at the foot of this file.
+const modelEmailCommits = (page: Page) => page.locator("[data-testid='model-email-commits']");
+
+// The seed the page's `init()` puts in the model, and therefore the value the
+// email buffer holds at mount. Duplicated from `LocalBindings.fs` on purpose:
+// the spec asserting a literal is what would catch the seed being quietly
+// emptied, which is the state in which the mount test below passes vacuously.
+const EMAIL_SEED = "seed@example.com";
 
 const salaryInput = (page: Page) => page.locator("#salary-input");
 const emailInput = (page: Page) => page.locator("#email-input");
@@ -108,11 +117,15 @@ test("OnDebounce: model commits after the configured idle delay", async ({ page 
   await waitForPage(page);
 
   await emailInput(page).click();
+  // Phase 1666 — the field is seeded now, so clear before typing. Without the
+  // fill the typed text appends to the seed and the assertion below would be
+  // about a string neither the test nor the page intended.
+  await emailInput(page).fill("");
   await emailInput(page).type("a@b.com");
 
   // Immediately after typing, the model has not committed yet (debounce
-  // timer is still running).
-  await expect(modelEmail(page)).toHaveText("");
+  // timer is still running), so it still holds the seed.
+  await expect(modelEmail(page)).toHaveText(EMAIL_SEED);
 
   // Wait past the 250ms debounce window plus jitter.
   await page.waitForTimeout(500);
@@ -155,4 +168,68 @@ test("Reset button re-syncs buffer to the reset external value", async ({ page }
   await page.locator("[data-testid='reset-salary']").click();
   await expect(salaryInput(page)).toHaveValue("50,000");
   await expect(modelSalary(page)).toHaveText("50,000");
+});
+
+// ─── 5. Mount emits no commit (Phase 1666) ─────────────────────────────────
+//
+// The rule: a `Local` binding initialises its buffer from `InitialFrom` at
+// mount and MUST NOT dispatch a commit for doing so. Every case above observes
+// a commit that SHOULD have happened; this one observes one that should not,
+// and until this phase the page could not express it.
+//
+// WHY THE VALUE MIRROR CANNOT SAY IT. A commit at mount dispatches the buffer,
+// and the buffer at mount IS the model's own value — so the dispatch writes
+// back exactly what was already there. `model-email` reads the same either way.
+// Seeding it differently does not help: whatever the seed is, the buffer is
+// initialised FROM it, so the spurious write is still a write of that seed.
+// The two histories are distinguishable only by whether a dispatch occurred,
+// which is why `EmailCommits` counts rather than mirrors.
+//
+// WHY THE SEED IS STILL LOAD-BEARING. With `Email = ""` the buffer at mount
+// holds nothing, and an implementation may reasonably decline to dispatch an
+// empty value — so a zero count would be evidence about emptiness rather than
+// about the flush boundary. The seed puts a real string in the buffer, so zero
+// means the boundary held.
+//
+// GO-RED (recorded, Phase 1666): with a mount-time `SetEmail model.Email`
+// dispatched from a `React.useEffect [||]` in `LocalBindings.fs`, this test
+// fails on the count assertion — `Expected "0", received "1"` — while the
+// `model-email` assertion beside it still passes, which is precisely the gap
+// the count closes.
+
+test("Mount emits no commit: the seeded buffer is not dispatched on load", async ({ page }) => {
+  await page.goto(URL);
+  await waitForPage(page);
+
+  // The buffer is initialised from the model, so it shows the seed...
+  await expect(emailInput(page)).toHaveValue(EMAIL_SEED);
+  // ...and the model still shows the seed, which on its own proves nothing.
+  await expect(modelEmail(page)).toHaveText(EMAIL_SEED);
+  // This is the assertion: no commit has been dispatched.
+  await expect(modelEmailCommits(page)).toHaveText("0");
+
+  // Nor does an unrelated re-render flush it. Typing into a DIFFERENT field
+  // re-renders the whole tree and re-runs every `Local`'s re-sync effect —
+  // the one place a mount-shaped commit would recur after load.
+  await noteInput(page).click();
+  await noteInput(page).type("x");
+  await expect(modelEmailCommits(page)).toHaveText("0");
+});
+
+test("Mount emits no commit: and the counter is not simply stuck at zero", async ({ page }) => {
+  // The go-green half. A count that never moves would pass the test above for
+  // the worst possible reason, and a wired-but-dead observable is the failure
+  // mode this page exists to avoid — it is the same class as the empty seed.
+  await page.goto(URL);
+  await waitForPage(page);
+
+  await expect(modelEmailCommits(page)).toHaveText("0");
+
+  await emailInput(page).click();
+  await emailInput(page).fill("");
+  await emailInput(page).type("changed@example.com");
+  await page.waitForTimeout(500);
+
+  await expect(modelEmail(page)).toHaveText("changed@example.com");
+  await expect(modelEmailCommits(page)).toHaveText("1");
 });
