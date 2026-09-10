@@ -127,10 +127,17 @@ let private ask (key: string) (prompt: string) : Async<string> =
         // care about is inside the assistant's text.
         let doc = System.Text.Json.JsonDocument.Parse raw
 
+        // `JsonElement.GetString()` is nullable — a JSON `null` in either slot
+        // reads back as one — so the text blocks are CHOSEN rather than mapped.
+        // Under F# 10's nullness checking a plain `Seq.map` here is `FS3261`,
+        // and the sample is built as part of the solution, so the lesson would
+        // otherwise teach a shape that warns in the reader's own build. Dropping
+        // a null block is the right handling as well as the quiet one: a content
+        // block with no text contributes no text.
         return
             doc.RootElement.GetProperty("content").EnumerateArray()
             |> Seq.filter (fun b -> b.GetProperty("type").GetString() = "text")
-            |> Seq.map (fun b -> b.GetProperty("text").GetString())
+            |> Seq.choose (fun b -> b.GetProperty("text").GetString() |> Option.ofObj)
             |> String.concat ""
     }
 

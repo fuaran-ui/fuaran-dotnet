@@ -539,7 +539,9 @@ let overlayOnto (target: Map<string, obj>) : Map<string, obj> = defaultInstance.
 /// notification counts to avoid cross-bleed. Not intended for the steady-state
 /// browser path — it also clears the persisted value of every DECLARED key and
 /// the declaration itself (Phase 1532), so a host that resets at runtime
-/// re-declares afterwards. Does NOT touch scoped instances created via
+/// re-declares afterwards
+/// (`docs/migrations/1532-state-store-reset-clears-declarations.md`). Does NOT
+/// touch scoped instances created via
 /// `forScope` — use `resetScope` / `disposeScope` / `resetAllScopes` for those.
 let reset () : unit = defaultInstance.Reset()
 

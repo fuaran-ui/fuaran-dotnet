@@ -20,9 +20,9 @@ module Fuaran.UI.Renderer.BrowserRuntime
 //  session, which is the default and covers most of them.
 //
 //  Consumer apps will replace this with an adapter that routes
-//  `Notify` to `INotificationChannel`, `Navigate` to the SDK router,
-//  `SetState` to the Elmish model, and `InvokeAiTool` to the downstream
-//  orchestration tier's tool registry. The browser runtime is the
+//  `Notify` to the host's own notification channel, `Navigate` to its
+//  router, `SetState` to its model, and `InvokeAiTool` to whatever tool
+//  registry the host drives the tree from. The browser runtime is the
 //  standalone-host shape — the §4l down-shift portability story
 //  requires Fuaran apps run without any platform dependency.
 //
@@ -256,8 +256,8 @@ type BrowserRuntime(layoutObserver: ILayoutObserver option, allowAll: bool, call
             customRegistry.TryGetInScope(scope, moduleId, componentId)
 
         // DENY-by-default (Phase 782). The browser runtime is the standalone
-        // host shape — the BYOK-playground case with no orchestration tier
-        // behind it — which is precisely the host that cannot afford an
+        // host shape — the bring-your-own-key playground case, with no host
+        // tier behind it — which is precisely the host that cannot afford an
         // allow-everything default. `createPermissive ()` is the named opt-out.
         member _.CanDispatch(_) = allowAll
 

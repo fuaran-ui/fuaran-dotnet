@@ -201,3 +201,115 @@ let tests =
               sink.RecordRenderFailure sampleRenderFailure
               Expect.isTrue true "sink swallowed the writer's throw"
           } ]
+
+// ============================================================================
+//  Phase 1648 — the disclosure seam this sink was missing.
+//
+//  Phase 1532 gave `ConsoleSink` a redaction default and left this file
+//  unexamined — it was outside the named file set — while it wrote `UserId` on
+//  five record types and the unbounded free text of an apply-engine error, a
+//  decoder rejection, an authorizer refusal and a render failure beside them.
+//  Same package, same writer seam, same stdout, same defect.
+// ============================================================================
+
+[<Tests>]
+let disclosureTests =
+    testList
+        "ConsoleDevToolsSink — disclosure (Phase 1648)"
+        [ test "both option presets redact by default" {
+              Expect.equal
+                  ConsoleDevToolsOptions.defaults.Disclosure
+                  ConsoleDisclosure.Redacted
+                  "the dev default redacts — a sink is a two-line wiring change away from production"
+
+              Expect.equal
+                  ConsoleDevToolsOptions.denialsAndFailuresOnly.Disclosure
+                  ConsoleDisclosure.Redacted
+                  "and the QUIET mode especially, since it is the one a near-prod diagnostic build reaches for"
+          }
+
+          test "the user id is redacted by default and verbatim on request" {
+              let capture = CaptureWriter()
+
+              let sink =
+                  ConsoleDevToolsSink.createWithWriter (ConsoleDevToolsOptions.defaults, capture)
+
+              sink.RecordOpApply sampleOpApply
+
+              let _, _, rows = List.exactlyOne capture.Groups
+              Expect.equal (rowValue rows "user") (Some "<redacted>") "the reader's id does not reach stdout"
+
+              let verbose = CaptureWriter()
+
+              let loud =
+                  ConsoleDevToolsSink.createWithWriter (
+                      { ConsoleDevToolsOptions.defaults with
+                          Disclosure = ConsoleDisclosure.Verbose },
+                      verbose
+                  )
+
+              loud.RecordOpApply sampleOpApply
+              let _, _, loudRows = List.exactlyOne verbose.Groups
+
+              Expect.equal
+                  (rowValue loudRows "user")
+                  (Some "user-1")
+                  "a developer watching their own machine asks for it by name and gets it"
+          }
+
+          test "free text is truncated, and the truncation SAYS SO" {
+              // A silently-cut message reads as a complete one, and someone
+              // diagnosing from these lines would take the truncation for the
+              // message.
+              let long = String.replicate 40 "node-body "
+
+              let capture = CaptureWriter()
+
+              let sink =
+                  ConsoleDevToolsSink.createWithWriter (ConsoleDevToolsOptions.defaults, capture)
+
+              sink.RecordRenderFailure
+                  { sampleRenderFailure with
+                      ErrorMessage = long }
+
+              let _, _, rows = List.exactlyOne capture.Groups
+              let message = (rowValue rows "message").Value
+
+              Expect.isLessThan message.Length long.Length "the quoted tree content does not ride out whole"
+              Expect.stringEnds message "…<truncated>" "and the line says it was cut"
+          }
+
+          test "the outcome CLASS survives redaction — only the payload is cut" {
+              // The class is the diagnostic content of the line. Redacting it
+              // would trade a disclosure problem for a diagnosis problem.
+              let capture = CaptureWriter()
+
+              let sink =
+                  ConsoleDevToolsSink.createWithWriter (ConsoleDevToolsOptions.defaults, capture)
+
+              sink.RecordOpApply
+                  { sampleOpApply with
+                      Outcome = OpOutcome.ApplyEngineError(String.replicate 40 "detail ") }
+
+              let _, header, _ = List.exactlyOne capture.Groups
+              Expect.stringContains header "apply-engine-error" "the class is still named"
+              Expect.stringContains header "…<truncated>" "and its free text is cut"
+          }
+
+          test "a node id is NOT redacted — an address is not content" {
+              let capture = CaptureWriter()
+
+              let sink =
+                  ConsoleDevToolsSink.createWithWriter (ConsoleDevToolsOptions.defaults, capture)
+
+              sink.RecordOpApply
+                  { sampleOpApply with
+                      Outcome = OpOutcome.NodeNotFound "chart-7" }
+
+              let _, header, _ = List.exactlyOne capture.Groups
+
+              Expect.stringContains
+                  header
+                  "chart-7"
+                  "a node id addresses the tree; it does not quote it, and losing it would lose the diagnosis"
+          } ]

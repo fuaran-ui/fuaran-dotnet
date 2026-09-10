@@ -95,6 +95,21 @@ type ConsoleDevToolsOptions =
         /// Phase 330 — the runtime-validate leg.
         ShowValidateOutcome: bool
         MinSeverity: DevToolsLevel
+        /// Phase 1648 — HOW MUCH of a record this sink discloses, on
+        /// `ConsoleSink`'s seam and with `ConsoleSink`'s default.
+        ///
+        /// This sink was outside the file set Phase 1532 examined, and it
+        /// carried the same defect: it writes `UserId` on five record types
+        /// and, beside them, the unbounded free text an apply-engine error, a
+        /// decoder rejection or a render failure carries — all of which quote
+        /// tree content. "Dev-only" is in the header at the top of this file and
+        /// nowhere in the code, and a sink is a two-line wiring change away from
+        /// a production composition root.
+        ///
+        /// A CONSTRUCTION-TIME argument rather than an ambient environment read,
+        /// for that file's reason: what a deployment discloses is decided where
+        /// the sink is composed, and is visible in that source.
+        Disclosure: ConsoleDisclosure
     }
 
 [<RequireQualifiedAccess>]
@@ -107,7 +122,8 @@ module ConsoleDevToolsOptions =
           ShowProviderCall = true
           ShowCacheStat = true
           ShowValidateOutcome = true
-          MinSeverity = DevToolsLevel.Info }
+          MinSeverity = DevToolsLevel.Info
+          Disclosure = ConsoleDisclosure.Redacted }
 
     /// Quiet diagnostic mode — successful applies suppressed (both by the
     /// `ShowOpApply = false` toggle and the `Warn` floor); only denials +
@@ -124,7 +140,11 @@ module ConsoleDevToolsOptions =
           // A clean validation is Info (suppressed by the Warn floor); findings
           // are Warn/Error, so this quiet mode still narrates a failed validate.
           ShowValidateOutcome = true
-          MinSeverity = DevToolsLevel.Warn }
+          MinSeverity = DevToolsLevel.Warn
+          // Redacted here TOO, and deliberately: the quiet mode is the one a
+          // near-prod diagnostic build reaches for, so it is the last place a
+          // verbose default should survive.
+          Disclosure = ConsoleDisclosure.Redacted }
 
 [<RequireQualifiedAccess>]
 module private Render =
@@ -137,21 +157,36 @@ module private Render =
         | Some v -> v
         | None -> "-"
 
+    // Phase 1648 — the shared rules, from `ConsoleSink`'s own module. One
+    // definition of what "redacted" means, for both console sinks in this
+    // package.
+    let user (d: ConsoleDisclosure) (userId: string) : string = ConsoleRedaction.user d userId
+
+    let userOpt (d: ConsoleDisclosure) (userId: string option) : string =
+        match userId with
+        | Some u -> ConsoleRedaction.user d u
+        | None -> "-"
+
+    let freeText (d: ConsoleDisclosure) (s: string) : string = ConsoleRedaction.freeText d s
+
     /// `(level, short outcome word)` for an op-apply outcome. `Applied` is the
     /// only `Info` outcome; every failure mode is `Warn`.
-    let outcome (o: OpOutcome) : DevToolsLevel * string =
+    let outcome (d: ConsoleDisclosure) (o: OpOutcome) : DevToolsLevel * string =
+        // The outcome CLASS is never redacted — it is the diagnostic content of
+        // the line. Only the free-text payloads are; `NodeNotFound` carries a
+        // node id, which is a tree ADDRESS rather than tree content.
         match o with
         | OpOutcome.Applied -> DevToolsLevel.Info, "applied"
-        | OpOutcome.DecoderRejected reason -> DevToolsLevel.Warn, sprintf "decoder-rejected:%s" reason
+        | OpOutcome.DecoderRejected reason -> DevToolsLevel.Warn, sprintf "decoder-rejected:%s" (freeText d reason)
         | OpOutcome.NodeNotFound nodeId -> DevToolsLevel.Warn, sprintf "node-not-found:%s" nodeId
-        | OpOutcome.ApplyEngineError detail -> DevToolsLevel.Warn, sprintf "apply-engine-error:%s" detail
+        | OpOutcome.ApplyEngineError detail -> DevToolsLevel.Warn, sprintf "apply-engine-error:%s" (freeText d detail)
         // Phase 1525 — the apply succeeded and the durable append did not.
         // Warn, like the other non-Applied outcomes, because the row's
         // `(StreamId, Sequence)` names no record and a reader must know that.
-        | OpOutcome.PersistLost reason -> DevToolsLevel.Warn, sprintf "persist-lost:%s" reason
+        | OpOutcome.PersistLost reason -> DevToolsLevel.Warn, sprintf "persist-lost:%s" (freeText d reason)
 
-    let opApply (t: OpApplyTelemetry) : DevToolsLevel * string * (string * string) list =
-        let level, word = outcome t.Outcome
+    let opApply (d: ConsoleDisclosure) (t: OpApplyTelemetry) : DevToolsLevel * string * (string * string) list =
+        let level, word = outcome d t.Outcome
 
         let header =
             sprintf "op-apply seq=%d %s → %s (%.3fms)" t.Sequence (OpKind.name t.OpKind) word t.TimeToApplyMs
@@ -160,19 +195,21 @@ module private Render =
             [ "stream", t.StreamId
               "nodeId", opt t.NodeId
               "prompt", opt t.PromptId
-              "user", t.UserId
+              "user", user d t.UserId
               "ts", isoTimestamp t.Timestamp ]
 
         level, header, rows
 
-    let deny (t: DenyTelemetry) : DevToolsLevel * string * (string * string) list =
-        let header = sprintf "deny tool=%s — %s" t.ToolName t.Reason
+    let deny (d: ConsoleDisclosure) (t: DenyTelemetry) : DevToolsLevel * string * (string * string) list =
+        // The denial REASON is authorizer text and can quote the tool arguments
+        // it refused, so it is free text like any other.
+        let header = sprintf "deny tool=%s — %s" t.ToolName (freeText d t.Reason)
 
         let rows =
             [ "module", opt t.ActiveModule
               "page", opt t.ActivePage
               "prompt", opt t.PromptId
-              "user", t.UserId
+              "user", user d t.UserId
               "ts", isoTimestamp t.Timestamp ]
 
         DevToolsLevel.Warn, header, rows
@@ -182,7 +219,10 @@ module private Render =
         | Some u -> sprintf "%d in / %d out" u.InputTokens u.OutputTokens
         | None -> "-"
 
-    let providerCall (t: ProviderCallTelemetry) : DevToolsLevel * string * (string * string) list =
+    let providerCall
+        (d: ConsoleDisclosure)
+        (t: ProviderCallTelemetry)
+        : DevToolsLevel * string * (string * string) list =
         // A successful call narrates at Info; any failure outcome is Warn.
         let level =
             if ProviderCallOutcome.isSuccess t.Outcome then
@@ -203,20 +243,23 @@ module private Render =
             [ "tokens", tokens t.TokenUsage
               "session", opt t.SessionId
               "prompt", opt t.PromptId
-              "user", t.UserId
+              "user", user d t.UserId
               "ts", isoTimestamp t.Timestamp ]
 
         level, header, rows
 
-    let renderFailure (t: RenderFailureTelemetry) : DevToolsLevel * string * (string * string) list =
+    let renderFailure
+        (d: ConsoleDisclosure)
+        (t: RenderFailureTelemetry)
+        : DevToolsLevel * string * (string * string) list =
         let header =
             sprintf "render-failure nodeId=%s (%s) [%s]" t.NodeId t.NodeKindName (RenderFailureSource.name t.CaughtBy)
 
         let rows =
-            [ "message", t.ErrorMessage
+            [ "message", freeText d t.ErrorMessage
               "correlation", t.CorrelationId
               "prompt", opt t.PromptId
-              "user", opt t.UserId
+              "user", userOpt d t.UserId
               "ts", isoTimestamp t.Timestamp ]
 
         DevToolsLevel.Error, header, rows
@@ -240,7 +283,10 @@ module private Render =
     /// clean is Info, warnings are Warn, errors are Error — and `NotRun` is
     /// Warn, because a validator that did not run is a wiring problem worth
     /// noticing, not a pass.
-    let validateOutcome (t: ValidateOutcomeTelemetry) : DevToolsLevel * string * (string * string) list =
+    let validateOutcome
+        (d: ConsoleDisclosure)
+        (t: ValidateOutcomeTelemetry)
+        : DevToolsLevel * string * (string * string) list =
         let level =
             match t.Outcome with
             | ValidateOutcome.Clean -> DevToolsLevel.Info
@@ -258,7 +304,7 @@ module private Render =
 
         let detailRows =
             match t.Outcome with
-            | ValidateOutcome.NotRun reason -> [ "reason", reason ]
+            | ValidateOutcome.NotRun reason -> [ "reason", freeText d reason ]
             | _ ->
                 match t.TopCodes with
                 | [] -> []
@@ -267,7 +313,7 @@ module private Render =
         let rows =
             detailRows
             @ [ "prompt", opt t.PromptId
-                "user", opt t.UserId
+                "user", userOpt d t.UserId
                 "ts", isoTimestamp t.Timestamp ]
 
         level, header, rows
@@ -293,22 +339,22 @@ type ConsoleDevToolsSink(options: ConsoleDevToolsOptions, writer: IDevToolsConso
 
     interface IFuaranTelemetrySink with
         member _.RecordOpApply(telemetry: OpApplyTelemetry) : unit =
-            emit options.ShowOpApply (Render.opApply telemetry)
+            emit options.ShowOpApply (Render.opApply options.Disclosure telemetry)
 
         member _.RecordDeny(telemetry: DenyTelemetry) : unit =
-            emit options.ShowDeny (Render.deny telemetry)
+            emit options.ShowDeny (Render.deny options.Disclosure telemetry)
 
         member _.RecordRenderFailure(telemetry: RenderFailureTelemetry) : unit =
-            emit options.ShowRenderFailure (Render.renderFailure telemetry)
+            emit options.ShowRenderFailure (Render.renderFailure options.Disclosure telemetry)
 
         member _.RecordProviderCall(telemetry: ProviderCallTelemetry) : unit =
-            emit options.ShowProviderCall (Render.providerCall telemetry)
+            emit options.ShowProviderCall (Render.providerCall options.Disclosure telemetry)
 
         member _.RecordCacheStat(telemetry: CacheStatTelemetry) : unit =
             emit options.ShowCacheStat (Render.cacheStat telemetry)
 
         member _.RecordValidateOutcome(telemetry: ValidateOutcomeTelemetry) : unit =
-            emit options.ShowValidateOutcome (Render.validateOutcome telemetry)
+            emit options.ShowValidateOutcome (Render.validateOutcome options.Disclosure telemetry)
 
 [<RequireQualifiedAccess>]
 module ConsoleDevToolsSink =
