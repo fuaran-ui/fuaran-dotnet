@@ -81,6 +81,13 @@ param(
     # -SkipValidatorCoverage's reasoning: it reads committed source text with regexes, costs
     # under a second, and needs no build, so no lane wants it dropped.
     [switch] $SkipCodesCheck,
+    # Phase 1648 - the shipped BROWSER SCRIPTS. Three JavaScript files ship in this repo's
+    # packages and run in a reader's browser, and none of them had behavioural coverage of any
+    # kind: Phase 1532 could add only a source-SHAPE guard, which the defect that motivated this
+    # stage (a server-driven ReadFileBody that could not reach a file input, and said nothing
+    # about it) passes cleanly. A switch rather than a lane, on -SkipCodesCheck's reasoning:
+    # node-only, no build, under a second.
+    [switch] $SkipContentJs,
     [switch] $Demo,
 
     # Phase 1553 - the gate LANE, on THIS one file. Tooling that records which gate produced a
@@ -371,6 +378,43 @@ if (-not $SkipCodesCheck) {
     & (Join-Path $PSScriptRoot "scripts/fuaran-codes.ps1") -Check
     if ($LASTEXITCODE -ne 0) {
         Write-Error "FUARAN defect-code check failed (exit $LASTEXITCODE)."
+        exit $LASTEXITCODE
+    }
+}
+
+# ─── The shipped browser scripts (Phase 1648) ────────────────────────────────
+# `tests/content-js/run.mjs` runs the three JavaScript files this repo ships to a reader's
+# browser against a DOM stub and asserts what they DO. Its `--self-test` half perturbs each
+# subject in memory and requires the harness to go RED, because a hand-rolled DOM stub is
+# exactly the kind of test double that can pass by understanding nothing — so the falsifier
+# is named and executed rather than assumed. Both halves run: the harness's own correctness
+# is not a separate concern from the harness's result.
+#
+# `sync-renderer-web.ps1 -SelfTest` is the other half of the same gap. Phase 1532 pinned the
+# fingerprint sidecar's F# READER with an F# round trip, which by construction can only prove
+# one of the format's two writers; this exercises the PowerShell one against the same rules.
+# Offline, no sibling, no file written.
+if (-not $SkipContentJs) {
+    Write-Step "Browser scripts (content-js harness + the sidecar writer's escapes)"
+
+    $contentJs = Join-Path $PSScriptRoot "tests/content-js/run.mjs"
+    if (-not (Test-Path $contentJs)) {
+        Write-Error "content-js harness not found at $contentJs"
+        exit 1
+    }
+
+    node $contentJs
+    if ($LASTEXITCODE -ne 0) { Write-Error "content-js harness failed (exit $LASTEXITCODE)."; exit $LASTEXITCODE }
+
+    node $contentJs --self-test
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "content-js harness go-red self-test failed (exit $LASTEXITCODE) - a case stayed green against a subject with its behaviour removed, so that case proves nothing."
+        exit $LASTEXITCODE
+    }
+
+    & (Join-Path $PSScriptRoot "scripts/sync-renderer-web.ps1") -SelfTest
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "sync-renderer-web writer self-test failed (exit $LASTEXITCODE)."
         exit $LASTEXITCODE
     }
 }

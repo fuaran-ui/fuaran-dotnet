@@ -469,6 +469,46 @@ let kindClass (kind: NodeKind<'Msg>) : string =
         // carries its own scoped classes inside the boundary.
         "fuaran-kind-mount"
 
+/// The chip-kind suffix `Css.filter` takes, for one filter's control kind
+/// (Phase 1648).
+///
+/// This table lived in the SERVER renderer only, and the client emitted a bare
+/// `fuaran-filter` with no suffix at all — so a stylesheet or a host selector
+/// written against `.fuaran-filter-range` styled the static render and not the
+/// hydrated one, silently, and the whole family of them. It moves here for this
+/// file's own stated reason: two renderers spelling one vocabulary inline is
+/// how a vocabulary drifts, and one shared builder cannot.
+///
+/// The mapping is the server's, unchanged, comments and all — this is a move,
+/// not a redesign, and the four legacy chip families it keeps
+/// (`text` / `range` / `toggle` / `choice`) are what the 0.2.0
+/// filters-unification preserved.
+let filterKindClass (kind: FormFieldKind<'Msg>) : string =
+    match kind with
+    | FormFieldKind.Text _
+    | FormFieldKind.TextArea _ -> "text"
+    | FormFieldKind.Range _ -> "range"
+    | FormFieldKind.Toggle _ -> "toggle"
+    | FormFieldKind.Choice _ -> "choice"
+    | FormFieldKind.SegmentedChoice _ -> "segmented"
+    // Phase 1113 — a typeahead chip is a choice chip you can search; it takes
+    // its own class so the stylesheet can size the popup.
+    | FormFieldKind.Combobox _ -> "combobox"
+    | FormFieldKind.Number _
+    | FormFieldKind.RangedNumber _ -> "number"
+    | FormFieldKind.Checkbox _ -> "checkbox"
+    | FormFieldKind.Date _ -> "date"
+    // Phase 725 — a date range is a range chip whose ends are dates; it reuses
+    // the existing `range` chip class rather than minting one.
+    | FormFieldKind.DateRange _ -> "range"
+    // Phase 1130 — each takes its own chip class: a star row and a colour
+    // swatch size nothing like the text chip they would otherwise inherit.
+    | FormFieldKind.Rating _ -> "rating"
+    | FormFieldKind.Color _ -> "color"
+    // Phase 1121 — a token chip is a row of chips beside an entry box; it sizes
+    // like nothing else in this table and takes its own class.
+    | FormFieldKind.Tokens _ -> "tokens"
+
 /// Compose the full className for a node: kind class + semantic style.
 let nodeClassName (kind: NodeKind<'Msg>) (style: SemanticStyle) : string =
     // Per-node hot path — string concat, not `sprintf`. Do not "simplify".

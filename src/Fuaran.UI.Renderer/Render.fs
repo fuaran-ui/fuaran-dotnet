@@ -6303,7 +6303,15 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
         [ // The filter's declared name — the key it writes to `$filters.<name>`
           // and every `Binding.Filter` reader looks it up by.
           prop.key spec.Name
-          prop.className "fuaran-filter"
+          // Phase 1648 — the chip-KIND suffix, which this renderer never
+          // emitted. The server has emitted `fuaran-filter fuaran-filter-<kind>`
+          // since the filters unification while this side emitted a bare
+          // `fuaran-filter`, so a stylesheet or host selector written against
+          // `.fuaran-filter-range` styled the static render and not the hydrated
+          // one — silently, and for the whole family at once. The table is
+          // `Theme.filterKindClass` now, read by both renderers, because two
+          // renderers spelling one vocabulary inline is how a vocabulary drifts.
+          prop.className (Css.filter (Theme.filterKindClass spec.Kind))
           prop.children
               [ Html.span [ prop.className "fuaran-filter-label"; prop.text labelText ]
                 control ] ]

@@ -101,6 +101,42 @@ let inline buttonUnwired (variantClass: string) : string =
 let inline filter (kindClass: string) : string =
     "fuaran-filter fuaran-filter-" + kindClass
 
+/// The per-control class for a plain form field, keyed on the HTML control TYPE
+/// the renderer is about to emit (Phase 1648).
+///
+/// It lives here because two renderers emit it and they had drifted: the client
+/// split the vocabulary per control (`fuaran-form-input` / `-select` /
+/// `-textarea` / `-checkbox` / `-toggle`, plus the `fuaran-form-date` modifier)
+/// while the server emitted one coarse `fuaran-form-field-control` for all of
+/// them. The Phase 431 coverage test aliased the STYLING consequence through
+/// declared absences, so the sheet stayed correct and the EMISSION divergence
+/// stood — which is a latent trap for any host whose own CSS selects on the
+/// class the client gave it and gets the server's instead.
+///
+/// Keyed on the control type rather than on `FormFieldKind` deliberately: the
+/// type is what the markup actually says, both renderers already compute it,
+/// and it keeps this module free of a dependency on the field vocabulary.
+///
+/// `fuaran-form-field-control` is NOT retired by this. It remains the class for
+/// the composite controls that are not a plain input — the combobox's text box,
+/// the tokens box, the rating, the range ends — where BOTH renderers already
+/// agreed on it. This function covers the plain ones, which are where they
+/// disagreed.
+let formControl (controlType: string) : string =
+    match controlType with
+    | "textarea" -> "fuaran-form-textarea"
+    | "select" -> "fuaran-form-select"
+    | "checkbox" -> "fuaran-form-checkbox"
+    | "toggle" -> "fuaran-form-toggle"
+    // The date family carries the per-kind modifier ALONGSIDE the input class,
+    // exactly as the client emits it — `fuaran-form-date` is a declared absence
+    // covered by `fuaran-form-input`, so emitting it alone would be an unstyled
+    // control.
+    | "date"
+    | "time"
+    | "datetime-local" -> "fuaran-form-input fuaran-form-date"
+    | _ -> "fuaran-form-input"
+
 // ─── Vis ───────────────────────────────────────────────────────────────────
 
 /// `fuaran-grid-cell-pill fuaran-pill-<tone>` — emitted per CELL, so this is

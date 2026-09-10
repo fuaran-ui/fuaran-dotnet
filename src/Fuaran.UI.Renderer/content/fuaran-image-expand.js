@@ -99,6 +99,33 @@
   var MARKER = 'data-fuaran-expandable';
   var OVERLAY_CLASS = 'fuaran-image-lightbox';
 
+  /* Phase 1648 — the DOUBLE-LOAD guard, the sibling of this file's twin's
+     `data-fuaran-tables-observed`.
+
+     The header above says the single delegated listener makes this file
+     "idempotent with respect to re-renders", and it does — an anchor appearing
+     after hydration needs no rescan. What it did NOT make idempotent is loading
+     the FILE twice, which is an ordinary thing for a page to do: a host that
+     both bundles it and follows the README's `<script src>` line, or a partial
+     re-injected with its own scripts. Two IIFE runs bound two listeners on
+     `document`, and a click then ran `expand` twice — the first opening an
+     overlay, the second finding `open` non-null. Whether that read as a
+     duplicate overlay or as a swallowed click depended on ordering, which is
+     the worst kind of second-load defect: intermittent and unattributable.
+
+     A ROOT-ELEMENT ATTRIBUTE for the reasons the table file records: it
+     survives whatever the host does, it is visible to whoever is inspecting why
+     an image does or does not expand, and it needs nothing the ES5 baseline
+     lacks. Returning early leaves the FIRST load's listener in charge, which is
+     the one whose closures own the live overlay. */
+  var BOUND = 'data-fuaran-image-expand-bound';
+
+  if (document.documentElement.getAttribute(BOUND) === 'true') {
+    return;
+  }
+
+  document.documentElement.setAttribute(BOUND, 'true');
+
   /* The live overlay, or null. At most one is open at a time: a second
      expansion while one is open would need a stack, and a stack needs a story
      about what Escape means at each level. One is the honest model. */

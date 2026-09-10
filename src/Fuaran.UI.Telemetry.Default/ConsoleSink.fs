@@ -50,8 +50,20 @@ type ConsoleDisclosure =
     /// the default, and never reached by accident: a host asks for it by name.
     | Verbose
 
+/// The two redaction RULES, shared by every console-shaped sink in this package
+/// (Phase 1648).
+///
+/// They were private to `ConsoleSink`, and `ConsoleDevToolsSink` — the same
+/// package, the same writer seam, the same stdout — was never examined for the
+/// same disclosure class. It writes `UserId` on five record types and the
+/// apply-engine / decoder free text beside them, so it carried the whole of the
+/// defect `ConsoleSink`'s redaction closed, in a file nobody had looked at.
+///
+/// Public and shared rather than copied: two sinks with two ideas of what
+/// "redacted" means is a worse outcome than either, and the ceiling and the
+/// marker are exactly the kind of constant that drifts when spelled twice.
 [<RequireQualifiedAccess>]
-module private Format =
+module ConsoleRedaction =
 
     /// What a redacted user id reads as. A fixed marker rather than a hash: the
     /// records already carry prompt and correlation ids for correlation, so a
@@ -65,18 +77,10 @@ module private Format =
     [<Literal>]
     let FreeTextLimit = 120
 
-    let private isoTimestamp (t: DateTimeOffset) : string =
-        t.UtcDateTime.ToString("O", Globalization.CultureInfo.InvariantCulture)
-
-    let private opt (value: string option) : string =
-        match value with
-        | Some v -> v
-        | None -> "-"
-
     /// Truncate a free-text field, MARKING that it was truncated. The marker is
     /// load-bearing: a silently-cut message reads as a complete one, and someone
     /// diagnosing from these lines would take the truncation for the message.
-    let private freeText (disclosure: ConsoleDisclosure) (s: string) : string =
+    let freeText (disclosure: ConsoleDisclosure) (s: string) : string =
         match disclosure with
         | ConsoleDisclosure.Verbose -> s
         | ConsoleDisclosure.Redacted ->
@@ -85,10 +89,27 @@ module private Format =
             else
                 s.Substring(0, FreeTextLimit) + "…<truncated>"
 
-    let private user (disclosure: ConsoleDisclosure) (userId: string) : string =
+    /// The user id, or the fixed marker.
+    let user (disclosure: ConsoleDisclosure) (userId: string) : string =
         match disclosure with
         | ConsoleDisclosure.Verbose -> userId
         | ConsoleDisclosure.Redacted -> RedactedUser
+
+[<RequireQualifiedAccess>]
+module private Format =
+
+    let private isoTimestamp (t: DateTimeOffset) : string =
+        t.UtcDateTime.ToString("O", Globalization.CultureInfo.InvariantCulture)
+
+    let private opt (value: string option) : string =
+        match value with
+        | Some v -> v
+        | None -> "-"
+
+    // Phase 1648 — the two rules moved to the public `ConsoleRedaction` module
+    // above, where the devtools sink in this package reads the same ones.
+    let private freeText = ConsoleRedaction.freeText
+    let private user = ConsoleRedaction.user
 
     let private outcome (disclosure: ConsoleDisclosure) (o: OpOutcome) : string =
         // The outcome CLASS is never redacted — it is the diagnostic content of

@@ -2503,7 +2503,37 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                 v
                 |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.combobox))
 
-            "combobox", (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
+            // Phase 1648 — the NULL COLLAPSE this arm was missing, and the one
+            // place in this renderer that lacked it.
+            //
+            // `ControlValueDefaults.combobox` is `None` — deliberately, because
+            // "no selection" is what a combobox's absent value means and the
+            // codec's collapse keys off exactly that — so the auto-bound
+            // placeholder is `Binding.State(id, None)`. `BindingResolver.resolve`
+            // answers a default-less `State` whose key is absent with
+            // `Resolved Unchecked.defaultof<'T>`, which for a `string` slot is
+            // NULL, so `tryResolve` returned `Some null` and `Option.defaultValue`
+            // — which only replaces `None` — passed it straight through to
+            // `prop.value`. Feliz.ViewEngine's `mkAttr` then threw a
+            // NullReferenceException, and the whole document failed to render on
+            // the commonest shape the docs teach: a `Combobox` field with no
+            // value binding.
+            //
+            // The client renderer has guarded this since Phase 1113 (`if isNull s
+            // || s = "" then None`), and so do the three other resolutions in
+            // THIS file — the filter twin among them. This arm was the omission,
+            // which is why the defect reached a shipped 0.70.0 while every
+            // neighbouring control was fine.
+            //
+            // Fixed HERE rather than at the resolver: making a default-less
+            // `State` resolve to a slot-typed empty instead of the CLR default
+            // would change what "absent" means for every host and every slot
+            // type, which is a wire-semantics decision and not this phase's to
+            // take. Recorded as a finding beside the phase.
+            "combobox",
+            (BindingResolver.tryResolve ctx.Sources v
+             |> Option.bind (fun s -> if isNull s then None else Some s)
+             |> Option.defaultValue "")
         // Phase 1130 — the rating's own branch below builds the control (a star
         // row or a radio group, per what the document can honour), so this
         // tuple carries only the discriminator.
@@ -2831,13 +2861,60 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                 BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue false
 
             Html.input
-                [ prop.className "fuaran-form-field-control"
+                [ prop.className (Css.formControl "toggle")
                   prop.custom ("data-fuaran-field", field.Id)
                   prop.custom ("type", "checkbox")
                   prop.custom ("role", "switch")
                   prop.custom ("aria-checked", (if current then "true" else "false"))
                   if current then
                       prop.custom ("checked", "checked") ]
+        // Phase 1648 — THE SSR FLOOR FOR A CHOICE IS A `<select>`, which is what
+        // the client has always rendered and what the markup has to be.
+        //
+        // The field arm fell through to the generic input arm and emitted
+        // `<input type="choice">`. `choice` is not an HTML input type, so every
+        // browser fell back to `type="text"` per the spec's invalid-value
+        // default: a no-script reader met a free-text box where the hydrated
+        // page shows a dropdown, could type anything at all, and submitted a
+        // value no option offered. The SegmentedChoice arm above was given its
+        // own floor in Phase 1605 for exactly this reason; this is its twin, and
+        // it was left behind.
+        //
+        // Mirrors the client's shape, including the leading `—` placeholder
+        // option that makes "no selection" selectable rather than merely
+        // initial. Inert like every other server-rendered control: the
+        // per-field buffer marker is the only wiring, and `harvestFields` reads
+        // `el.value` off a `<select>` exactly as it does off an `<input>`.
+        | FormFieldKind.Choice(options, value, _) ->
+            let value =
+                value
+                |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.choice))
+
+            // The default-less auto-bind resolves `Unchecked.defaultof<string>`
+            // — null — so the guard is the same one the client applies and the
+            // same one the Combobox arm above needed.
+            let current =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
+
+            let optionItems =
+                Html.option
+                    [ prop.value ""
+                      prop.text "—"
+                      if current.IsNone then
+                          prop.custom ("selected", "selected") ]
+                :: [ for option in resolveOptions ctx options ->
+                         Html.option
+                             [ prop.value option.Value
+                               prop.text option.Label
+                               if current = Some option.Value then
+                                   prop.custom ("selected", "selected") ] ]
+
+            Html.select
+                [ prop.className (Css.formControl "select")
+                  prop.custom ("data-fuaran-field", field.Id)
+                  prop.required field.Required
+                  prop.children optionItems ]
         // Phase 1605 — THE SSR FLOOR FOR A SEGMENTED CHOICE, the second half of
         // that asymmetry. The field arm fell through to the generic input arm
         // too and emitted `type="segmented-choice"`, so a no-script reader met
@@ -2911,17 +2988,26 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                           prop.custom ("data-fuaran-field-compare", opText + ":" + againstText)
                       | None -> () ]
 
+            // Phase 1648 — the per-control class, from the SHARED mapping the
+            // client's split defines (`Css.formControl`). This arm emitted the
+            // coarse `fuaran-form-field-control` for every plain control while
+            // the client emitted `fuaran-form-input` / `-textarea` /
+            // `-checkbox`, plus the `fuaran-form-date` modifier on the date
+            // family. The Phase 431 coverage test aliased the STYLING
+            // consequence through declared absences, so the sheet stayed
+            // correct and the divergence stood — and a host selecting on the
+            // class the client gave it got a different one from the server.
             match controlType with
             | "textarea" ->
                 Html.textarea (
-                    [ prop.className "fuaran-form-field-control"
+                    [ prop.className (Css.formControl controlType)
                       prop.custom ("data-fuaran-field", field.Id)
                       prop.value valueText ]
                     @ ruleAttrs
                 )
             | _ ->
                 Html.input (
-                    [ prop.className "fuaran-form-field-control"
+                    [ prop.className (Css.formControl controlType)
                       prop.custom ("data-fuaran-field", field.Id)
                       prop.custom ("type", controlType)
                       prop.value valueText ]
@@ -2934,7 +3020,16 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
               [ Html.span
                     [ prop.className "fuaran-form-field-label"
                       prop.text (renderText ctx field.Label) ]
-                control ] ]
+                control
+                // Phase 1648 — `FormField.Help` was DROPPED here entirely. The
+                // client has rendered it as `fuaran-form-help` since the slot
+                // existed, so a document declaring help text showed it once the
+                // page hydrated and never on the static floor — which is the
+                // reader least likely to be able to work the control without it.
+                // The same element, the same class, in the same position.
+                match field.Help with
+                | Some help -> Html.div [ prop.className "fuaran-form-help"; prop.text (renderText ctx help) ]
+                | None -> Html.none ] ]
 
 /// A filter rendered with its real control markup (the client renderer's
 /// class vocabulary), inert server-side like every other input. Each control
@@ -2945,32 +3040,10 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
     // 0.2.0 filters-unification: the chip's control is an ordinary
     // FormFieldKind; class vocabulary keeps the four legacy filter families
     // for the shapes that map onto them, with sensible classes for the rest.
-    let kindClass =
-        match spec.Kind with
-        | FormFieldKind.Text _
-        | FormFieldKind.TextArea _ -> "text"
-        | FormFieldKind.Range _ -> "range"
-        | FormFieldKind.Toggle _ -> "toggle"
-        | FormFieldKind.Choice _ -> "choice"
-        | FormFieldKind.SegmentedChoice _ -> "segmented"
-        // Phase 1113 — a typeahead chip is a choice chip you can search; it
-        // takes its own class so the stylesheet can size the popup, and the
-        // client renderer uses the same one.
-        | FormFieldKind.Combobox _ -> "combobox"
-        | FormFieldKind.Number _
-        | FormFieldKind.RangedNumber _ -> "number"
-        | FormFieldKind.Checkbox _ -> "checkbox"
-        | FormFieldKind.Date _ -> "date"
-        // Phase 725 — a date range is a range chip whose ends are dates; it
-        // reuses the existing `range` chip class rather than minting one.
-        | FormFieldKind.DateRange _ -> "range"
-        // Phase 1130 — each takes its own chip class: a star row and a colour
-        // swatch size nothing like the text chip they would otherwise inherit.
-        | FormFieldKind.Rating _ -> "rating"
-        | FormFieldKind.Color _ -> "color"
-        // Phase 1121 — a token chip is a row of chips beside an entry box; it
-        // sizes like nothing else in this table and takes its own class.
-        | FormFieldKind.Tokens _ -> "tokens"
+    // Phase 1648 - the chip-kind table moved to `Theme.filterKindClass`, where the
+    // client renderer reads it too. It lived here alone, and the client emitted a
+    // bare `fuaran-filter` with no suffix at all.
+    let kindClass = Theme.filterKindClass spec.Kind
 
     let labelText = renderText ctx spec.Label
 

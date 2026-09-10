@@ -253,6 +253,63 @@ Two boundaries worth stating, because both are decisions rather than omissions. 
 
 **The value is machine-maintained, in three links.** `Theme.vocabularyFingerprint` is pinned rather than computed, because half the vocabulary is read out of the renderer *sources*, which a shipping package cannot see at runtime. So: the coverage suite recomputes the truth and fails naming the value to pin when the vocabulary moves; `-- CssCheck` (wired into `Check`) fails when the stylesheet's stamp and the constant disagree; and the byte-copy check carries the stamp to every tier. Changing the vocabulary is therefore: run the suite, paste the value it names into `Theme.fs`, run `-- Css`, commit the sheet and its three tier copies in the same change-set. No step of that is remembered rather than enforced.
 
+### 1.5g Three known cross-repo defects, and why they are not fixed here yet (Phase 1648)
+
+Every item below is REAL, MEASURED against the current sheet and renderers, and **not repaired in
+this repo alone**, for one shared reason: each changes the canonical stylesheet, and the canonical
+stylesheet is byte-copied into four sibling reference implementations (§1.5c). A change here with
+the copies unlanded turns `CssCheck` — and the byte-copy assertion §1.5b relies on — red for
+everyone until all five land, which is a repo-wide stop for work that has nothing to do with the
+change. So they are recorded here, with the exact bytes, so the change-set that does land them is an
+edit rather than a re-derivation. The landing order is fixed and is not a preference: **this repo
+first** (its gate is what pins the copies), then `fuaran-ts`, `fuaran-go`, `fuaran-rs`, `fuaran-py`.
+
+**(a) Three fallback/declaration mismatches the 2026-07-30 design-system audit missed.** A
+`var(--X, fallback)` whose fallback disagrees with `:root`'s declaration means unstyled mode and
+styled mode disagree about a metric or a colour — a host that drops the sheet gets a subtly
+different rendering rather than a plainly unstyled one, which is harder to notice and harder to
+attribute. Phase 914dcf7 reconciled six of these; three were missed, and are:
+
+| Token | `:root` declares | Disagreeing fallbacks |
+|---|---|---|
+| `--fuaran-text-sm` | `13px` | `14px`, at four sites |
+| `--fuaran-tone-default-disabled-fg` | `#6b7280` | `#9ca3af`, at two sites |
+| `--fuaran-tone-success-border` | `#6ee7b7` | `#86efac`, at one site |
+
+The fix is the declaration's value at every site — the same direction 914dcf7 took, for its reason:
+the `:root` value is the one a host overriding the token sees, so the fallback is what should move.
+
+**(b) `.fuaran-table-row:hover` claims `cursor: pointer` unconditionally.** The rule
+(shared with `.fuaran-grid-row:hover`) tells every reader that every row is clickable, when only a
+row with a row action is. A pointer cursor over inert content is a promise the markup does not keep,
+and it is the kind of thing a reader learns to distrust rather than reports. The durable fix is a
+renderer-EMITTED interactive-row class that the hover rule consumes — which makes this a
+parity-locked change on both counts, the sheet *and* the class vocabulary (see §1.5d: a new class
+moves the fingerprint, so the stamp and all four copies move with it). Until then a host scopes its
+own neutralisation.
+
+**(c) The two SSR hosts disagree on the file-input class.** `Fuaran.UI.Renderer` emits
+`fuaran-file-upload-input` on a `FileUpload`'s `<input type="file">`; `Fuaran.UI.Renderer.Server`
+emits `fuaran-file-upload-control` for the same element. Both are declared bare hooks — the
+reference sheet holds no opinion on native file-input chrome — so nothing about the SHEET is wrong,
+and that is exactly why it survived: `CssCheck` compares stylesheet BYTES while the coverage scan
+sees NAMES, so a name that is in the vocabulary and unstyled is invisible from either side. A host
+selecting on the class the client gave it gets neither styling nor a DOM match against the static
+render.
+
+**The decided direction is that the SERVER adopts `fuaran-file-upload-input`**, and the reasoning is
+worth keeping because it is not symmetric. The client's name is the older one; it is the one the
+reference sheet's declared-absence note was written about first; and `-control` reads as the wrapper
+in a vocabulary where `fuaran-file-upload` already *is* the wrapper, so it is the more confusing of
+the two names for the element it names. What makes it a cross-repo change rather than a two-line
+edit is §1.5d: retiring `fuaran-file-upload-control` REMOVES a class from the vocabulary, which moves
+`Theme.vocabularyFingerprint`, which restamps the sheet, which moves all four byte copies.
+
+**What is already safe.** The server-driven `ReadFileBody` shim does not depend on either name — it
+resolves the control by `input[type="file"]`, deliberately, because a shim that keyed off a class
+would work against one host and fail silently against the other (Phase 1648). So the divergence is a
+styling and DOM-query trap, and no longer a functional one.
+
 ### 1.6 Interaction state matrix (Phase 12.N) – 84 + 4 = 88 variables
 
 The static palette in §1.1 describes the **idle** appearance of every tone. The interaction matrix adds per-state × per-tone × per-slot tokens so consumers can theme `:hover` / `:focus-visible` / `:active` / `:disabled` independently of the base palette, without monkey-patching `.fuaran-button` / `.fuaran-tab` / `.fuaran-callout-dismiss` etc. Pre-12.N every interactive surface inherited an opinionated `filter: brightness(0.92)` hover with no theme escape hatch; post-12.N the brightness opinion is gone and tokens are the only knob.

@@ -64,7 +64,20 @@
 param(
     [switch] $Check,
     [switch] $Sync,
-    [switch] $SkipBuild
+    [switch] $SkipBuild,
+    # Phase 1648 - the WRITER's own escaping, exercised.
+    #
+    # Phase 1532 fixed the sidecar READER's escapes and pinned them with an F#
+    # round-trip test, and added `ConvertTo-JsonStringValue` below so this writer
+    # agreed. Nothing tested the writer: the F# round trip starts from the F#
+    # writer, so it can only ever prove one of the two halves. That is the same
+    # asymmetry the whole two-writers-of-one-format hazard is about, arriving in
+    # the test suite rather than in the data.
+    #
+    # Runs offline, needs no fuaran-ts, touches no file, and takes milliseconds -
+    # so the gate runs it unconditionally rather than only where a sync is
+    # possible.
+    [switch] $SelfTest
 )
 
 $ErrorActionPreference = "Stop"
@@ -174,6 +187,90 @@ function Format-Fingerprint($fp) {
         "  `"bundleSha256`": `"$(ConvertTo-JsonStringValue $fp.bundleSha256)`""
     )
     "{`n" + ($lines -join ",`n") + "`n}`n"
+}
+
+# ────────────────────────────────────────────────────────── SELF-TEST ────
+#
+# The writer's escaping and the sidecar's canonical SHAPE, against the format
+# `Fingerprint.toJson` / `Fingerprint.parse` define. Exits before any sibling
+# lookup: this half answers a question about two functions in this file.
+
+if ($SelfTest) {
+    $failures = @()
+
+    function Assert-Equal($actual, $expected, $what) {
+        if ($actual -cne $expected) {
+            $script:failures += ("{0}`n    expected: {1}`n    actual:   {2}" -f $what, $expected, $actual)
+        }
+    }
+
+    # The six escapes `Fingerprint.jsonEscape` produces. A quote and a backslash
+    # are the two a real value could plausibly carry (an npm package name, a
+    # path-ish version string); the control characters are the ones a writer
+    # that only handled those two would emit RAW, producing a file no JSON
+    # reader accepts.
+    Assert-Equal (ConvertTo-JsonStringValue 'a"b') 'a\"b' 'a quote escapes'
+    Assert-Equal (ConvertTo-JsonStringValue 'a\b') 'a\\b' 'a backslash escapes'
+    Assert-Equal (ConvertTo-JsonStringValue "a`tb") 'a\u0009b' 'a tab escapes as \\u0009, never as \\t'
+    Assert-Equal (ConvertTo-JsonStringValue "a`nb") 'a\u000ab' 'a newline escapes, with LOWER-CASE hex'
+    Assert-Equal (ConvertTo-JsonStringValue "a`rb") 'a\u000db' 'a carriage return escapes'
+    Assert-Equal (ConvertTo-JsonStringValue ([string][char] 0)) '\u0000' 'a NUL escapes'
+    Assert-Equal (ConvertTo-JsonStringValue 'plain-0.1.0') 'plain-0.1.0' 'an ordinary value passes through untouched'
+
+    # The canonical document: six keys, that order, two-space indent, trailing
+    # newline. Pinned as WHOLE TEXT rather than key by key, because the thing
+    # that has to agree with the F# writer is the bytes.
+    $doc = Format-Fingerprint ([pscustomobject] @{
+            rendererPackage       = '@fuaran-ui/renderer'
+            rendererVersion       = '1.2.3'
+            bundleVersion         = '0.1.0'
+            wireProfile           = '1'
+            vocabularyFingerprint = 'fv1:0123456789abcdef'
+            bundleSha256          = 'ABC123'
+        })
+
+    $expectedDoc = @"
+{
+  "rendererPackage": "@fuaran-ui/renderer",
+  "rendererVersion": "1.2.3",
+  "bundleVersion": "0.1.0",
+  "wireProfile": "1",
+  "vocabularyFingerprint": "fv1:0123456789abcdef",
+  "bundleSha256": "ABC123"
+}
+
+"@ -replace "`r`n", "`n"
+
+    Assert-Equal ($doc -replace "`r`n", "`n") $expectedDoc 'the canonical sidecar document'
+
+    # And a document whose values carry escapes is still parseable JSON with the
+    # original values back - the round trip this writer's half never had.
+    $awkward = Format-Fingerprint ([pscustomobject] @{
+            rendererPackage       = 'pkg"with\quote'
+            rendererVersion       = "1.0`t0"
+            bundleVersion         = '0.1.0'
+            wireProfile           = '1'
+            vocabularyFingerprint = 'fv1:0123456789abcdef'
+            bundleSha256          = 'ABC123'
+        })
+
+    try {
+        $parsed = $awkward | ConvertFrom-Json
+        Assert-Equal $parsed.rendererPackage 'pkg"with\quote' 'an escaped package name round-trips'
+        Assert-Equal $parsed.rendererVersion "1.0`t0" 'an escaped control character round-trips'
+    }
+    catch {
+        $failures += "the sidecar carrying escaped values is not parseable JSON: $_"
+    }
+
+    if ($failures.Count -gt 0) {
+        Write-Host ""
+        Write-Error ("sync-renderer-web writer self-test: {0} failure(s):`n  {1}" -f $failures.Count, ($failures -join "`n  "))
+        exit 1
+    }
+
+    Write-Host "sync-renderer-web writer self-test: the escaping and the canonical document agree with Fingerprint.fs."
+    exit 0
 }
 
 if (-not $Sync) { $Check = $true }

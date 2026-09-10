@@ -261,8 +261,52 @@
         break;
       }
       case "ReadFileBody": {
-        var input = byId(fx.nodeId);
-        var file = input && input.files && input.files[0];
+        // Phase 1648 — RESOLVE TO THE CONTROL'S OWN `<input type=file>`.
+        //
+        // `byId` answers with the element carrying the node marker, and for a
+        // FileUpload that is the WRAPPER — a `<label class="fuaran-file-upload">`
+        // on both SSR hosts. A `<label>` has no `files`, so `input.files` was
+        // `undefined`, the guard below took it as "nothing selected", and the
+        // shim broke out returning nothing and saying nothing: a server-driven
+        // host could not read an uploaded file AT ALL, and the symptom was a
+        // continuation that never fired rather than an error anybody could
+        // attribute.
+        //
+        // The descent is one level and is the same input every other route
+        // writes into — the reader's own pick, and the drop / paste ingest,
+        // which sets `input.files` on this element — so one resolution serves
+        // every way a file arrives.
+        //
+        // `type="file"` rather than a class: the two SSR hosts disagree on the
+        // input's class name (`fuaran-file-upload-input` on the client renderer,
+        // `fuaran-file-upload-control` on the server one — a real divergence,
+        // filed separately), and a shim that keyed off either would work against
+        // one host and fail silently against the other. The input TYPE is the
+        // thing both hosts must agree on, because it is what makes the control a
+        // file control at all.
+        var host = byId(fx.nodeId);
+        var input =
+          host && host.files ? host : host && host.querySelector ? host.querySelector('input[type="file"]') : null;
+        if (!input) {
+          // REFUSE LOUDLY. This is a host/markup defect — the effect named a
+          // node that is not a file control, or is not in the document — and it
+          // is not recoverable here. Silence was the actual defect: the shim
+          // did exactly this and the only observable was an absence.
+          if (global.console && global.console.error) {
+            global.console.error(
+              "[fuaran-live] ReadFileBody: no <input type=\"file\"> reachable from node '" +
+                fx.nodeId +
+                "'" +
+                (host ? " (the node resolved to a <" + (host.tagName || "?").toLowerCase() + "> with no file input inside it)" : " (the node is not in the document)") +
+                ". The continuation will not fire."
+            );
+          }
+          break;
+        }
+        // A resolved input with no selection is the ORDINARY case (the reader
+        // has not picked anything yet) and stays quiet — that is the one
+        // outcome the old silence was right about.
+        var file = input.files && input.files[0];
         if (!file) break;
         var reader = new FileReader();
         // Phase 1548 — report the selection's shape alongside the body. The
