@@ -38,6 +38,7 @@
 open System
 open System.IO
 open System.Text.Json
+open System.Text.RegularExpressions
 open Expecto
 
 open Fuaran.UI
@@ -101,13 +102,31 @@ let private declaredObligations: DeclaredObligation list =
                       { Kind = kindName
                         ClaimId = o.GetProperty("id").GetString()
                         Section = o.GetProperty("section").GetString() }
-              | _ -> () ]
+              | _ -> ()
+
+          // Phase 1696 - the TRAIT obligations, the other SUBJECT population. A
+          // trait rides the node envelope, so its claims are owed by every kind
+          // this host renders and belong to none of them; the subject is the
+          // trait id, which carries a dot no kind name can.
+          match doc.RootElement.TryGetProperty "traits" with
+          | true, traits when traits.ValueKind = JsonValueKind.Array ->
+              for t in traits.EnumerateArray() do
+                  let traitId = t.GetProperty("trait").GetString()
+
+                  for o in t.GetProperty("obligations").EnumerateArray() ->
+                      { Kind = traitId
+                        ClaimId = o.GetProperty("id").GetString()
+                        Section = o.GetProperty("section").GetString() }
+          | _ -> () ]
     | None ->
-        allObligations
-        |> List.map (fun (kind, o) ->
-            { Kind = kind
-              ClaimId = claimId o.Claim
-              Section = o.Section })
+        [ for (kind, o) in allObligations ->
+              { Kind = kind
+                ClaimId = claimId o.Claim
+                Section = o.Section }
+          for (traitId, o) in allTraitObligations ->
+              { Kind = traitId
+                ClaimId = claimId o.Claim
+                Section = o.Section } ]
 
 // ─── The checkers ────────────────────────────────────────────────────────────
 //
@@ -916,6 +935,149 @@ let private checkTreeAccessibleNameAlways () =
         (contains "role=\"treeitem\"" html && contains "role=\"group\"" html)
         "...and the parent genuinely owns a nested group, which is what makes the stated name necessary rather than decorative"
 
+// --- The `style.direction` trait (Phase 1696, WIRE_FORMAT.md 3.1) ------------
+//
+// A trait rides the node ENVELOPE, so these five checkers are written against a
+// kind chosen for being uninteresting: the claims are about the wrapper, and a
+// checker leaning on some kind's own markup would be asserting that kind.
+//
+// Two of the five are COMPARISONS rather than emission assertions, and that is
+// what makes them checkable at all. Rule 4 says `auto` is the absence of a
+// declaration, and the only honest test is that the two emissions are
+// byte-identical: this host DOES emit `dir="auto"` for a bidi-isolated display
+// leaf under the Phase 1114 heuristic, so an "emits nothing" assertion would be
+// false here and true on a host with no heuristic, and a claim that means
+// different things per host is not a conformance claim. Rule 5 says nothing
+// else is derived, and the test is that a declared emission differs from the
+// undeclared one by the direction and its isolation ALONE - a subtraction no
+// single-node assertion can express.
+
+let private directionLeaf (id: string) (direction: TextDirection) (text: string) : Node<obj> =
+    { Id = id
+      Kind =
+        NodeKind.Badge(
+            { Defaults.badge with
+                Label = TextSource.Literal text }
+        )
+      State = None
+      Style =
+        (if direction = TextDirection.Auto then
+             None
+         else
+             Some
+                 { Defaults.style with
+                     Direction = direction })
+      Accessibility = None
+      Motion = None
+      ExtraAttributes = None
+      Tooltip = None
+      Visible = None }
+
+/// The same leaf with `direction` DECLARED at its identity rather than omitted.
+/// The pair is what rule 4 is about.
+let private directionLeafExplicitAuto (id: string) (text: string) : Node<obj> =
+    { directionLeaf id TextDirection.Auto text with
+        Style =
+            Some
+                { Defaults.style with
+                    Direction = TextDirection.Auto } }
+
+/// A declaring container holding one child, so the two claims a single leaf
+/// cannot carry - inheritance and descendant emission - have a tree to act on.
+let private directionBlock (child: Node<obj>) : Node<obj> =
+    { Fuaran.stack
+          "block"
+          { Defaults.stack<obj> with
+              Children = [ child ] } with
+        Style =
+            Some
+                { Defaults.style with
+                    Direction = TextDirection.Rtl } }
+
+let private checkDeclaredDirectionEmitted () =
+    let ltr = render (directionLeaf "d" TextDirection.Ltr "RR123456789IL")
+    let rtl = render (directionLeaf "d" TextDirection.Rtl "\u05E9\u05DC\u05D5\u05DD")
+
+    Expect.isTrue (contains "dir=\"ltr\"" ltr) "a declared ltr direction is emitted on the node's own wrapper"
+    Expect.isTrue (contains "dir=\"rtl\"" rtl) "...and so is a declared rtl one"
+
+    // The twin. Without it a renderer emitting `dir="ltr"` on every node would
+    // pass both assertions above while saying nothing true.
+    let undeclared = render (directionLeaf "d" TextDirection.Auto "plain")
+
+    Expect.isFalse (contains "dir=\"ltr\"" undeclared) "an undeclared node must not carry a direction it never declared"
+
+    Expect.isFalse (contains "dir=\"rtl\"" undeclared) "...in either direction"
+
+let private checkDeclaredRunIsolated () =
+    // The ISOLATION is the class, whose stylesheet rule is `unicode-bidi:
+    // isolate`. `dir` alone states a direction and leaves the text AROUND the
+    // run reordered, which is the half that is invisible when you look only at
+    // the value itself.
+    let ltr = render (directionLeaf "d" TextDirection.Ltr "RR123456789IL")
+    let rtl = render (directionLeaf "d" TextDirection.Rtl "\u05E9\u05DC\u05D5\u05DD")
+
+    Expect.isTrue (contains "fuaran-dir-ltr" ltr) "a declared ltr run carries the isolating class"
+    Expect.isTrue (contains "fuaran-dir-rtl" rtl) "...and so does a declared rtl one"
+
+    let undeclared = render (directionLeaf "d" TextDirection.Auto "plain")
+
+    Expect.isFalse
+        (contains "fuaran-dir-" undeclared)
+        "an undeclared node is isolated by nothing, because it declared nothing"
+
+let private checkDeclarationWinsOverInference () =
+    // An `ltr` reference INSIDE an `rtl` block - the case the whole member
+    // exists for. The nested node must carry its OWN direction rather than
+    // inheriting the container's, and the container must keep its own.
+    let html =
+        render (directionBlock (directionLeaf "ref" TextDirection.Ltr "RR123456789IL"))
+
+    Expect.isTrue (contains "dir=\"rtl\"" html) "the declaring container keeps its own direction"
+
+    Expect.isTrue
+        (contains "dir=\"ltr\"" html)
+        "the nested declaration did not win over the inherited direction - the inference exists for values whose direction is unknown, the declaration for the ones it gets wrong"
+
+let private checkAutoIsNoDeclaration () =
+    // Rule 4 as a BYTE COMPARISON, for the reason in the block above.
+    let omitted = render (directionLeaf "d" TextDirection.Auto "plain")
+    let explicitAuto = render (directionLeafExplicitAuto "d" "plain")
+
+    Expect.equal
+        explicitAuto
+        omitted
+        "a node declaring `auto` must render identically to the same node omitting the member - `auto` IS the absence of a declaration"
+
+let private checkNoDerivedDirectionBehaviour () =
+    // The SUBTRACTION: a declared emission differs from the undeclared one by
+    // the direction attribute and its isolation class, and by nothing else. A
+    // renderer that also flipped an alignment, swapped a layout side or pushed a
+    // direction onto descendants fails here and passes every assertion above.
+    let undeclared = render (directionLeaf "d" TextDirection.Auto "RR123456789IL")
+    let declared = render (directionLeaf "d" TextDirection.Rtl "RR123456789IL")
+
+    let stripped =
+        declared
+            .Replace(" dir=\"rtl\"", "", StringComparison.Ordinal)
+            .Replace(" fuaran-dir-rtl", "", StringComparison.Ordinal)
+
+    Expect.equal
+        stripped
+        undeclared
+        "a declared direction changed something other than the direction and its isolation - no layout side, locale, alignment or descendant direction may be derived from it"
+
+    // ...and the descendant half, stated separately because a single leaf cannot
+    // carry it: an undeclared child inside a declaring parent emits no direction
+    // of its own. Inheritance is the receiving surface's, not a second emission.
+    let html =
+        render (directionBlock (directionLeaf "child" TextDirection.Auto "plain"))
+
+    Expect.equal
+        (Regex.Matches(html, "dir=\"rtl\"").Count)
+        1
+        "exactly one element declared a direction, so exactly one may carry it - a direction pushed onto descendants is a derived behaviour rule 5 forbids"
+
 /// The registry: which (kind, claim) pairs this host asserts, and how.
 ///
 /// Keyed by the claim's WIRE token rather than the DU case, because the
@@ -940,7 +1102,13 @@ let private checkers: ((string * string) * (unit -> unit)) list =
       ("FileUpload", "picker-always-present"), checkPickerAlwaysPresent
       ("FileUpload", "ceiling-recorded-never-enforced"), checkCeilingRecordedNeverEnforced
       ("Modal", "aria-modal-only-when-blocking"), checkAriaModalOnlyWhenBlocking
-      ("Tree", "accessible-name-always"), checkTreeAccessibleNameAlways ]
+      ("Tree", "accessible-name-always"), checkTreeAccessibleNameAlways
+      // Phase 1696 - the node-level trait, keyed by its id rather than a kind.
+      ("style.direction", "declared-direction-emitted"), checkDeclaredDirectionEmitted
+      ("style.direction", "declared-run-isolated"), checkDeclaredRunIsolated
+      ("style.direction", "declaration-wins-over-inference"), checkDeclarationWinsOverInference
+      ("style.direction", "auto-is-no-declaration"), checkAutoIsNoDeclaration
+      ("style.direction", "no-derived-direction-behaviour"), checkNoDerivedDirectionBehaviour ]
 
 /// Obligations this host declares it does NOT check, each with a reason.
 ///

@@ -152,6 +152,26 @@ type ObligationClaim =
     /// would invite a reader to believe this tier enforces it. Both directions
     /// are the claim — an undeclared ceiling emits no marker.
     | CeilingRecordedNeverEnforced
+    /// A declared text direction is EMITTED on the element carrying the node's
+    /// run, so the run resolves in the declared direction rather than from its
+    /// own characters (Phase 1696, the `style.direction` trait, §3.1 rule 1).
+    | DeclaredDirectionEmitted
+    /// A declared run is ISOLATED from the surrounding bidirectional context.
+    /// Direction without isolation is half the contract: the value reads
+    /// correctly and the text around it is reordered (§3.1 rule 2).
+    | DeclaredRunIsolated
+    /// A DECLARATION wins over any direction the host would otherwise infer or
+    /// inherit for that node. The inference exists for values whose direction is
+    /// unknown; the declaration exists for the values it gets wrong (§3.1 rule 3).
+    | DeclarationWinsOverInference
+    /// The identity value of a declaration is the ABSENCE of one: a node
+    /// declaring it renders byte-identically to the same node omitting the
+    /// member (§3.1 rule 4).
+    | AutoIsNoDeclaration
+    /// NO further behaviour is derived from the declaration - not a layout side,
+    /// not a locale, not a text alignment, and not a direction for the node's
+    /// descendants beyond the receiving surface's own inheritance (§3.1 rule 5).
+    | NoDerivedDirectionBehaviour
 
 /// The stable wire token for a claim. This is what the artefact carries and what
 /// a host's checker registry is keyed by, so it may not change without a version
@@ -176,6 +196,11 @@ let claimId (claim: ObligationClaim) : string =
     | ObligationClaim.PickerAlwaysPresent -> "picker-always-present"
     | ObligationClaim.AriaModalOnlyWhenBlocking -> "aria-modal-only-when-blocking"
     | ObligationClaim.CeilingRecordedNeverEnforced -> "ceiling-recorded-never-enforced"
+    | ObligationClaim.DeclaredDirectionEmitted -> "declared-direction-emitted"
+    | ObligationClaim.DeclaredRunIsolated -> "declared-run-isolated"
+    | ObligationClaim.DeclarationWinsOverInference -> "declaration-wins-over-inference"
+    | ObligationClaim.AutoIsNoDeclaration -> "auto-is-no-declaration"
+    | ObligationClaim.NoDerivedDirectionBehaviour -> "no-derived-direction-behaviour"
 
 /// What the claim MEANS, kind-independently — the vocabulary entry a host reads
 /// when it meets a claim id it does not yet implement, so "unchecked" can be
@@ -218,6 +243,16 @@ let claimMeaning (claim: ObligationClaim) : string =
         "the aria-modal inertness claim is emitted for the blocking modality alone; a non-blocking anchored surface carries the dialog role without it, because the page behind it is genuinely still available"
     | ObligationClaim.CeilingRecordedNeverEnforced ->
         "each declared ceiling is recorded as read with a marker carrying no value, and an undeclared ceiling emits no marker at all - the value is withheld because nothing in this tier can act on it"
+    | ObligationClaim.DeclaredDirectionEmitted ->
+        "a declared text direction is emitted on the element carrying the node's run, so the run resolves in the declared direction rather than from its own characters"
+    | ObligationClaim.DeclaredRunIsolated ->
+        "a declared run is isolated from the surrounding bidirectional context, so the text around it is not reordered by the value"
+    | ObligationClaim.DeclarationWinsOverInference ->
+        "a declaration wins over any direction the host would otherwise infer or inherit for that node"
+    | ObligationClaim.AutoIsNoDeclaration ->
+        "the identity value of a declaration is the absence of one - a node declaring it renders byte-identically to the same node omitting the member"
+    | ObligationClaim.NoDerivedDirectionBehaviour ->
+        "no further behaviour is derived from the declaration - not a layout side, not a locale, not an alignment, and not a direction for descendants"
 
 /// The closed vocabulary, in declaration order.
 ///
@@ -243,7 +278,12 @@ let allClaims: ObligationClaim list =
       ObligationClaim.RefusedEmbedSourceOmitted
       ObligationClaim.PickerAlwaysPresent
       ObligationClaim.AriaModalOnlyWhenBlocking
-      ObligationClaim.CeilingRecordedNeverEnforced ]
+      ObligationClaim.CeilingRecordedNeverEnforced
+      ObligationClaim.DeclaredDirectionEmitted
+      ObligationClaim.DeclaredRunIsolated
+      ObligationClaim.DeclarationWinsOverInference
+      ObligationClaim.AutoIsNoDeclaration
+      ObligationClaim.NoDerivedDirectionBehaviour ]
 
 /// One obligation as a row declares it: which claim, the normative sentence for
 /// THIS kind, and the spec section that states it.
@@ -260,6 +300,127 @@ type Obligation =
         /// The spec section that states it (`WIRE_FORMAT.md 3.6.6`).
         Section: string
     }
+
+// ─── Node-level TRAITS (Phase 1696) ──────────────────────────────────────────
+//
+// Every obligation above is owed BY A KIND, and the roster's shape says so: a
+// host reads `kinds`, finds the row, and asserts its claims. A TRAIT is the
+// other population. `style.direction` rides the node ENVELOPE, so it is owed by
+// a `Badge`, a `Markdown` and a `DataGrid` alike and belongs to none of them —
+// and there was no honest place to declare it. Repeating it on forty-three rows
+// would state forty-three separate claims where there is one; declaring it on
+// the one kind a fixture happens to use would be a claim about that fixture.
+//
+// So the obligations a trait owes are declared ONCE, here, with the kinds they
+// ride named explicitly. Everything else is unchanged and deliberately so: the
+// claim vocabulary is the SAME closed set the kind rows draw from (a host
+// enumerates the claims that exist, not the claims per subject), the reporting
+// shape is the same, and the "not checked is not passed" rule reads identically.
+// What a host gains is a second SUBJECT for a claim — a trait id rather than a
+// kind name — which is why a trait's id is the wire PATH of the member it
+// governs: `style.direction` can never collide with a `kind.$type`, and there is
+// no second name to keep in step with the member.
+
+/// Which kinds a trait's obligations ride.
+///
+/// A tagged scope rather than a bare list, because "every kind" must not be
+/// spellable as an empty array: an empty list reads as "no kinds", which is the
+/// opposite claim, and a trait that rode nothing would be a declaration a host
+/// could satisfy by rendering nothing at all.
+[<RequireQualifiedAccess>]
+type TraitScope =
+    /// The trait rides the node envelope, so every kind a host renders owes it.
+    | AllKinds
+    /// The trait rides only the named kinds — a host that renders none of them
+    /// owes nothing, exactly as for a kind row it does not render.
+    | NamedKinds of string list
+
+/// One obligation a TRAIT owes, as the roster declares it.
+///
+/// `Rule` is the ordinal of the numbered rule in the cited section, and it is
+/// carried rather than left to be matched from the prose: §3.1 states five
+/// numbered obligations, a host asserts five checkers, and without the ordinal
+/// the correspondence between them is a reader's reconstruction. A section with
+/// no numbered rules carries `None`.
+type TraitObligation =
+    {
+        Claim: ObligationClaim
+        /// The numbered rule in the cited section this claim is, where the
+        /// section numbers its rules.
+        Rule: int option
+        /// The normative sentence for THIS trait, as the cited section states it.
+        Statement: string
+        /// The spec section that states it (`WIRE_FORMAT.md 3.1`).
+        Section: string
+    }
+
+/// One trait row: a node-level member and the checkable claims a rendering host
+/// owes for it, whatever kind carries it.
+type TraitRow =
+    {
+        /// The trait's identity: the WIRE PATH of the member it governs
+        /// (`style.direction`). A host's checker registry is keyed by it, beside
+        /// the kind names, and the dot is what keeps the two populations
+        /// distinguishable without a second field saying which is which.
+        Trait: string
+        /// What the member declares, in one sentence — the trait-level
+        /// counterpart of a kind row's `Source`.
+        Summary: string
+        /// The kinds whose rendering owes these claims.
+        Scope: TraitScope
+        /// Corpus fixture ids (`nodes/<id>.json`) that carry the trait, so a
+        /// host has payloads to assert against rather than minting its own.
+        Fixtures: string list
+        /// The checkable claims, drawn from the same closed vocabulary the kind
+        /// rows draw from.
+        Obligations: TraitObligation list
+        /// Where the contract is written down: the phase that pinned it plus the
+        /// normative doc section.
+        Contract: string
+    }
+
+/// One trait obligation, spelled at the call site.
+let private owesRule claim rule section statement =
+    { Claim = claim
+      Rule = Some rule
+      Statement = statement
+      Section = section }
+
+/// The declared node-level traits, ordered by trait id (Ordinal), so an addition
+/// lands as one clean insert.
+let allTraits: TraitRow list =
+    [ { Trait = "style.direction"
+        Summary =
+          "the declared base direction of ONE value's own run - the only `SemanticStyle` member that is not presentational, and a correctness statement rather than a stylistic one: a value declared `ltr` inside right-to-left prose is reordered by the Unicode bidirectional algorithm unless the run is isolated, and the reader then reads its digits back in the wrong order"
+        Scope = TraitScope.AllKinds
+        Fixtures = [ "style-direction-ltr-1"; "style-direction-isolated-1" ]
+        Obligations =
+          [ owesRule
+                ObligationClaim.DeclaredDirectionEmitted
+                1
+                "WIRE_FORMAT.md 3.1"
+                "a node whose `style.direction` is `ltr` or `rtl` emits that direction on the element carrying the node's own run - as HTML `dir`, or the receiving surface's equivalent - so the run resolves in the declared direction rather than from its own characters"
+            owesRule
+                ObligationClaim.DeclaredRunIsolated
+                2
+                "WIRE_FORMAT.md 3.1"
+                "the declared run is ISOLATED from the surrounding bidirectional context (`unicode-bidi: isolate`, a `<bdi>` element, or the surface's equivalent). Direction without isolation is half the contract and leaves the neighbouring text reordered around the value"
+            owesRule
+                ObligationClaim.DeclarationWinsOverInference
+                3
+                "WIRE_FORMAT.md 3.1"
+                "the declaration WINS over any direction the host would otherwise infer for that node, an inherited one from an enclosing declared run included - the inference exists for values whose direction is unknown, the declaration for the values the inference gets wrong"
+            owesRule
+                ObligationClaim.AutoIsNoDeclaration
+                4
+                "WIRE_FORMAT.md 3.1"
+                "`auto` is the ABSENCE of a declaration: a node declaring `auto` renders identically in every respect to the same node omitting the member, so the claim is a byte comparison of the two emissions rather than an assertion that nothing is emitted"
+            owesRule
+                ObligationClaim.NoDerivedDirectionBehaviour
+                5
+                "WIRE_FORMAT.md 3.1"
+                "nothing else is derived from it: not a layout side, not a locale, not a text alignment, and not a direction for the node's descendants beyond whatever the receiving surface's own inheritance already does - so a declared run's emission differs from the undeclared one by the direction and its isolation alone" ]
+        Contract = "Phase 1472; Phase 1653; Phase 1696; WIRE_FORMAT.md 3.1 + 13" } ]
 
 // ─── Kind-intrinsic ARIA (Phase 1591) ────────────────────────────────────────
 //
@@ -1067,6 +1228,16 @@ let allObligations: (string * Obligation) list =
     [ for r in all do
           for o in r.Obligations -> r.Kind, o ]
 
+/// Every TRAIT obligation, paired with the trait that owes it (Phase 1696).
+///
+/// The sibling of `allObligations` over the other SUBJECT population. A host's
+/// registry is keyed by `(subject, claim id)` where the subject is a kind name
+/// or a trait id, which is why the two enumerations have the same shape and the
+/// trait id carries a dot no kind name can.
+let allTraitObligations: (string * TraitObligation) list =
+    [ for t in allTraits do
+          for o in t.Obligations -> t.Trait, o ]
+
 // ─── Kind-intrinsic ARIA — the enumeration + the query (Phase 1591) ──────────
 
 /// Every kind-intrinsic emission, paired with the kind that pins it, in table
@@ -1136,24 +1307,40 @@ type ObligationOutcome =
 
 /// One line of a host's obligation report.
 type ObligationReport =
-    { Kind: string
-      ClaimId: string
-      Statement: string
-      Section: string
-      Outcome: ObligationOutcome }
+    {
+        /// The SUBJECT that owes the claim: a canonical kind name, or — since
+        /// Phase 1696 — the id of a node-level trait (`style.direction`). The
+        /// field keeps its name because it is a shipped surface; the dot in a
+        /// trait id is what tells the two populations apart.
+        Kind: string
+        ClaimId: string
+        Statement: string
+        Section: string
+        Outcome: ObligationOutcome
+    }
 
 /// Project the declaration through a host's own answer, producing one report
 /// line per declared obligation. A host supplies `statusOf`; the enumeration is
 /// the declaration's, never the host's, so a NEW obligation appears in the
 /// report the moment it is declared rather than when someone remembers it.
 let reportWith (statusOf: string -> ObligationClaim -> ObligationOutcome) : ObligationReport list =
-    allObligations
-    |> List.map (fun (kind, o) ->
-        { Kind = kind
-          ClaimId = claimId o.Claim
-          Statement = o.Statement
-          Section = o.Section
-          Outcome = statusOf kind o.Claim })
+    [ for (kind, o) in allObligations ->
+          { Kind = kind
+            ClaimId = claimId o.Claim
+            Statement = o.Statement
+            Section = o.Section
+            Outcome = statusOf kind o.Claim }
+      // Phase 1696 — the TRAIT obligations, after the kind ones and in the same
+      // shape. Appended here rather than left to each host to remember: the
+      // whole mechanism is that the ENUMERATION is the declaration's, so a trait
+      // declared tomorrow must reach a host's report without that host changing
+      // anything but its answer.
+      for (traitId, o) in allTraitObligations ->
+          { Kind = traitId
+            ClaimId = claimId o.Claim
+            Statement = o.Statement
+            Section = o.Section
+            Outcome = statusOf traitId o.Claim } ]
 
 /// The report lines a host must SURFACE: everything it did not assert. Empty is
 /// the only silent result — anything else is printed, so an unchecked obligation

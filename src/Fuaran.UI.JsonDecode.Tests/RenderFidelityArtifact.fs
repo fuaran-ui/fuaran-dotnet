@@ -1,4 +1,4 @@
-module Fuaran.UI.JsonDecode.Tests.RenderFidelityArtifact
+﻿module Fuaran.UI.JsonDecode.Tests.RenderFidelityArtifact
 
 // ============================================================================
 //  The generated render-fidelity manifest (Phase 442) — `render-fidelity.json`
@@ -126,6 +126,68 @@ let private writeIntrinsic (w: Utf8JsonWriter) (entries: IntrinsicAria list) : u
 
     w.WriteEndArray()
 
+/// The node-level TRAITS (Phase 1696) — the claims a rendering host owes for a
+/// member that rides the node ENVELOPE rather than any one kind.
+///
+/// A second top-level array beside `kinds`, not a synthetic row inside it: a
+/// trait is owed by every kind that carries the member, and spelling that as
+/// forty-three identical rows would state forty-three claims where there is one.
+/// The claim ids come from the SAME closed `obligationVocabulary`, so a host
+/// enumerates the claims that exist independently of which subject owes them.
+let private writeTraits (w: Utf8JsonWriter) : unit =
+    w.WriteStartArray("traits")
+
+    for t in allTraits do
+        w.WriteStartObject()
+        w.WriteString("trait", t.Trait)
+        w.WriteString("summary", t.Summary)
+
+        w.WriteStartObject("appliesTo")
+
+        match t.Scope with
+        | TraitScope.AllKinds ->
+            w.WriteString("scope", "allKinds")
+            w.WriteStartArray("kinds")
+            w.WriteEndArray()
+        | TraitScope.NamedKinds kinds ->
+            w.WriteString("scope", "namedKinds")
+            w.WriteStartArray("kinds")
+
+            for k in kinds do
+                w.WriteStringValue(k)
+
+            w.WriteEndArray()
+
+        w.WriteEndObject()
+
+        w.WriteStartArray("fixtures")
+
+        for f in t.Fixtures do
+            w.WriteStringValue("nodes/" + f + ".json")
+
+        w.WriteEndArray()
+
+        w.WriteStartArray("obligations")
+
+        for o in t.Obligations do
+            w.WriteStartObject()
+            w.WriteString("id", claimId o.Claim)
+
+            match o.Rule with
+            | Some n -> w.WriteNumber("rule", n)
+            | None -> ()
+
+            w.WriteString("statement", o.Statement)
+            w.WriteString("section", o.Section)
+            w.WriteEndObject()
+
+        w.WriteEndArray()
+
+        w.WriteString("contract", t.Contract)
+        w.WriteEndObject()
+
+    w.WriteEndArray()
+
 let private writeObligations (w: Utf8JsonWriter) (obligations: Obligation list) : unit =
     w.WriteStartArray("obligations")
 
@@ -171,6 +233,11 @@ let toJson () : string =
         + "condition where the emission turns on the kind's own spec and the tier that emits it. A "
         + "consumer reads that to know whether a kind is already announced before authoring a trait "
         + "it does not need; an empty array means the kind announces nothing of itself. "
+        + "Beside kinds, traits declares the obligations owed for a member that rides the node "
+        + "envelope rather than any one kind - a trait is identified by the wire path of the member "
+        + "it governs, names the kinds it applies to, and draws its claim ids from the same closed "
+        + "obligationVocabulary, so a host reports an unchecked trait claim exactly as it reports an "
+        + "unchecked kind claim. "
         + "See WIRE_FORMAT.md 13."
     )
 
@@ -215,6 +282,9 @@ let toJson () : string =
         w.WriteEndObject()
 
     w.WriteEndArray()
+
+    writeTraits w
+
     w.WriteEndObject()
     w.Flush()
 
