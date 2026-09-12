@@ -44,7 +44,9 @@
   pwsh ./run.ps1
 
   Full verify: tool restore → fantomas --check → dotnet build → every
-  Expecto suite.
+  Expecto suite → the Fable stage → the script-backed checks → the
+  generated-artefact drift subset of `Build.fsproj -- Check` (Phase 1674, so
+  this script and CI are ONE gate rather than two overlapping ones).
 
 .EXAMPLE
   pwsh ./run.ps1 -SkipFormat -SkipBuild
@@ -88,6 +90,13 @@ param(
     # about it) passes cleanly. A switch rather than a lane, on -SkipCodesCheck's reasoning:
     # node-only, no build, under a second.
     [switch] $SkipContentJs,
+    # Phase 1674 - the FAKE-only drift subset of Build.fsproj's `Check` target
+    # (AuthoringPack / AuthoringPackDialect / AuthoringPackFamilies / CssCheck /
+    # RendererWebCheck). A switch rather than a lane: it is what stops this script and CI
+    # being two different gates, so no lane should drop it - but it costs a FAKE crack and
+    # a Release build of the decoder, and an inner loop that has just run it wants to skip
+    # the next one.
+    [switch] $SkipDriftChecks,
     [switch] $Demo,
 
     # Phase 1553 - the gate LANE, on THIS one file. Tooling that records which gate produced a
@@ -415,6 +424,34 @@ if (-not $SkipContentJs) {
     & (Join-Path $PSScriptRoot "scripts/sync-renderer-web.ps1") -SelfTest
     if ($LASTEXITCODE -ne 0) {
         Write-Error "sync-renderer-web writer self-test failed (exit $LASTEXITCODE)."
+        exit $LASTEXITCODE
+    }
+}
+
+# ─── The generated artefacts: is every committed one still its generator's output? ──
+# THIS SCRIPT AND CI WERE NOT THE SAME GATE. Five drift targets hang off `Build.fsproj`'s
+# `Check` and nothing here called them, so a green run of this script said nothing about
+# the prompt pack's manifest, the lenient dialect appendix, the per-family pack variants,
+# the four tier stylesheet copies, or the embedded browser-renderer bundle - all of which
+# CI checks on the push. Two campaigns paid for that in a push cycle each (Phase 1637's
+# `languageVersion`; Phase 1670's renderer bundle, which drifted past a green run of this
+# script because the `-SelfTest` above is a different assertion from `-Check`).
+#
+# It calls ONE aggregate rather than five commands, deliberately: `Check` depends on
+# `DriftChecks` and so does this, so the two gates cannot drift apart again by someone
+# adding a sixth target to only one of them. `Build.fs`'s comment on that target carries
+# the membership rule and says why `CodesCheck` / `ContentJsCheck` / `ValidatorCoverage`
+# are NOT in it - each of those is a standalone script both gates already call directly.
+#
+# It runs LAST because it is the slowest stage that is not the suite, and because a
+# regeneration is the remedy for every failure it can report: reaching it means everything
+# that tests BEHAVIOUR has already passed, so the reader knows the red is an artefact.
+if (-not $SkipDriftChecks) {
+    Write-Step "Generated-artefact drift (Build.fsproj -- DriftChecks)"
+
+    dotnet run --project Build.fsproj -- DriftChecks
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Generated-artefact drift check failed (exit $LASTEXITCODE). The failing target names its own remedy - typically 'dotnet fsi docs/tools/authoring-pack.fsx --write' (plus --dialect lenient / --family all), 'dotnet run --project Build.fsproj -- Css', or 'pwsh scripts/sync-renderer-web.ps1 -Sync'."
         exit $LASTEXITCODE
     }
 }

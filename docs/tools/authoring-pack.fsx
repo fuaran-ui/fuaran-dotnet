@@ -2037,6 +2037,32 @@ let private leniencyFamilies: LeniencyFamily list =
           "JUDGEMENT: lossy by construction — §2 rule 5: one past the limit has no representation every "
           + "host holds exactly and decodes to the nearest double. A normalisation that changes the value "
           + "is the definition of not loss-free. Safety net only; the pack never teaches it." }
+      { Name = "null State default as the spelling of absence (Phase 1656)"
+        Class = AlreadyCanonical
+        FixtureIds = [ "lenient-1656-state-default-null" ]
+        Evidence =
+          "JUDGEMENT: the canonical form is the OMITTED key and the leniency accepts the longer "
+          + "\"defaultValue\": null spelling of the same thing, so the byte delta is negative and the "
+          + "omit-every-optional-default rule the dialect passage already states covers it entirely. "
+          + "Loss-free and total on its domain BECAUSE of which target was chosen: null normalises to "
+          + "ABSENCE, not to the slot's typed empty - at a collection slot a declared [] is a claim the "
+          + "seeding rule reads, so normalising into it would fabricate one. That is what separates this "
+          + "from lenient-null-static-options below, which normalises to a typed empty and is "
+          + "never-taught for that reason; the two are different rules at different positions and do not "
+          + "share a family. The initialValue alias takes the same arm, so one fixture pins both." }
+      { Name = "Tagged Static at an I18n argument slot (Phase 1661)"
+        Class = AlreadyCanonical
+        FixtureIds = [ "lenient-1661-i18n-arg-tagged-static" ]
+        Evidence =
+          "JUDGEMENT: at an I18n args slot the BARE value is the canonical form, so the leniency accepts "
+          + "the VERBOSE {\"$type\":\"Static\",\"value\":v} envelope and normalises it away - the byte "
+          + "delta is negative and there is nothing to teach beyond the catalogue's own spelling. Note "
+          + "the direction is the OPPOSITE of the Static-envelope-elision family above, and deliberately "
+          + "so: in a general Binding slot the envelope is canonical and the bare form is the taught "
+          + "shorthand, whereas args is a Binding<JVal> bag whose canonical spelling has always been "
+          + "bare - which is why widening it from a plain JVal bag moved no shipped byte. Total and "
+          + "loss-free on its domain: a VALUELESS Static is excluded and stays tagged, because absence "
+          + "is structural there and has no bare spelling, so no accepted input loses a distinction." }
       { Name = "Navigate target Self stated explicitly (Phase 1536)"
         Class = AlreadyCanonical
         FixtureIds = [ "lenient-navigate-target-self" ]

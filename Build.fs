@@ -878,6 +878,39 @@ let private registerTargets (args: string array) =
 
     Target.create "Check" ignore
 
+    // Phase 1674 - the FAKE-ONLY drift subset of `Check`, named once so `run.ps1` can
+    // reach it.
+    //
+    // WHY IT EXISTS. `run.ps1` and this `Check` target are two gates over one repo, and
+    // they were not the same gate. Five drift targets were reachable ONLY from `Check` -
+    // which CI runs and `run.ps1` never called - so a local full lane went green over a
+    // generated artefact nobody had regenerated, and the red arrived on the push,
+    // attached to whatever change happened to be carrying it. It bit twice in successive
+    // campaigns and each cost a push cycle: Phase 1637's version bump left
+    // `docs/prompt-pack/manifest.json`'s `languageVersion` stale (`AuthoringPack` pins it
+    // to `<Version>`), and Phase 1670's embedded `@fuaran-ui/renderer` bundle drifted past
+    // a green `run.ps1` because that script runs the sync script's WRITER SELF-TEST, which
+    // is a different assertion from `RendererWebCheck`'s byte comparison.
+    //
+    // It is an aggregate rather than five commands copied into `run.ps1`, and that is the
+    // point: `Check` depends on THIS and `run.ps1` calls THIS, so a target added to one
+    // gate cannot be missing from the other. Copying them across would have recreated the
+    // two-lists-that-must-agree shape this repo has now dissolved three times (the Fable
+    // portability list, the FUARAN code registries, the reference-CSS tier copies).
+    //
+    // MEMBERSHIP: a `Check` target whose only entry point is FAKE - the work is a function
+    // in this file, or an fsi/script invocation declared only here. A target that
+    // delegates to a standalone script is deliberately NOT here: `CodesCheck`
+    // (`scripts/fuaran-codes.ps1 -Check`), `ContentJsCheck` (`tests/content-js/run.mjs`)
+    // and `ValidatorCoverageCheck` (the corpus's own `validator/check-coverage.mjs`) are
+    // each declared once and called directly by both gates, which is the same
+    // one-declaration property by a shorter route. Build, Test, Validate and FableCheck
+    // are not drift checks and stay out - `run.ps1` runs its own equivalents and would
+    // otherwise run them twice.
+    Target.create "DriftChecks" ignore
+
+    "DriftChecks" ==> "Check" |> ignore
+
     "Format" ==> "Build" ==> "Test" ==> "All" |> ignore
     "Build" ==> "Pack" |> ignore
     "Build" ==> "Validate" |> ignore
@@ -924,7 +957,7 @@ let private registerTargets (args: string array) =
               "--check" ]
             repoRoot)
 
-    "AuthoringPack" ==> "Check" |> ignore
+    "AuthoringPack" ==> "DriftChecks" |> ignore
 
     // Phase 1647 — the corpus's cross-host coverage projection, run from the AUTHORING
     // side. `validator-coverage.json` declares which of the canonical vocabulary's codes
@@ -976,7 +1009,7 @@ let private registerTargets (args: string array) =
               "lenient" ]
             repoRoot)
 
-    "Build" ==> "AuthoringPackDialect" ==> "Check" |> ignore
+    "Build" ==> "AuthoringPackDialect" ==> "DriftChecks" |> ignore
 
     // Phase 843 — the per-family compiled pack variants' drift check. A pure fsi pass
     // like AuthoringPack: each variant is compiled from committed inputs only (the
@@ -994,7 +1027,7 @@ let private registerTargets (args: string array) =
               "all" ]
             repoRoot)
 
-    "AuthoringPackFamilies" ==> "Check" |> ignore
+    "AuthoringPackFamilies" ==> "DriftChecks" |> ignore
 
     // Phase 432 — the reference stylesheet's tier copies. Two entry points over
     // one pair of functions (see their comment above `dotnet`): `Css` generates,
@@ -1013,7 +1046,7 @@ let private registerTargets (args: string array) =
 
     Target.create "CssCheck" (fun _ -> cssCheck ())
 
-    "CssCheck" ==> "Check" |> ignore
+    "CssCheck" ==> "DriftChecks" |> ignore
 
     // Phase 577 — the embedded browser-renderer assets, on exactly the shape
     // above and for the same reason. `Fuaran.UI.Renderer.Web` embeds a BUILT
@@ -1045,7 +1078,7 @@ let private registerTargets (args: string array) =
 
     Target.create "RendererWebCheck" (fun _ -> syncRendererWeb "-Check")
 
-    "RendererWebCheck" ==> "Check" |> ignore
+    "RendererWebCheck" ==> "DriftChecks" |> ignore
 
     // Phase 1646 — the FUARAN defect-code collision check. The code space is
     // shared by three registries (the tree-time validator's `describe`, the

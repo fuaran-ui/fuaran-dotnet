@@ -175,6 +175,16 @@ against 1 and 99 — two sources for one bound, free to disagree, and the valida
 the constraint the KIND cannot already express, and keep the rule slot off controls that
 cannot honour it — a `pattern` on a `Checkbox`, a `format` on a `TextArea` (`FUARAN100`).
 
+**`Range` is a two-ended SPAN; `RangedNumber` is one bounded scalar.** The catalogue
+lines differ only in the `value` type, which is not enough to choose between them:
+`Range`'s value is a `RangePair` — `{"min":…,"max":…}` — and its `onChange` carries two
+numbers, so it is the two-thumb slider a price band or a date-free "between X and Y"
+filter wants. `RangedNumber`'s value is a single number, so it is the one-thumb slider
+for a quantity, a percentage, a volume. Asking for "a slider from 1 to 10" means
+`RangedNumber`; asking for "a price range filter" means `Range`. `Number` carries no
+`min`/`max` at all — it is a plain numeric input, and a bounded one is `RangedNumber`,
+not a `Number` with a `compare` rule (the paragraph above).
+
 Four rules and the cross-field one, in a whole form — note the start-date field carries
 no `rule` at all, and the end-date field's `compare` reads it at its own id:
 
@@ -600,7 +610,7 @@ TextSource =
 | str
 | Literal { text:str }
 | Bound { binding:Binding_str }
-| I18n { args:{ [key]:any }; key:str }
+| I18n { args:{ [key]:Binding_json | any }; key:str }
 TransformStep =
 | filter { pred:object }
 | project { cols:TransformRename[] }

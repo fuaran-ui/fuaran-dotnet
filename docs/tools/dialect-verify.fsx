@@ -130,7 +130,30 @@ if unproved > 0 then
                 n
                 m
 
-    eprintfn "dialect-verify: %d of %d pair(s) unproved — %s (verdicts written)" unproved checked' detail
+    // Phase 1674 — and say when the whole count is ADVISORY. Phase 1646's split
+    // above made the two classes distinguishable and the line was still read as a
+    // build failure, a third time: a session diagnosing a red `AuthoringPackDialect`
+    // attributed it to this line, when the target was red for an unrelated stale
+    // artefact and this line's pairs were every one of them a deliberately-wrong
+    // teaching example the caller falls back for. The exit code cannot carry the
+    // distinction — the caller owns that policy and needs to see the verdicts — so
+    // the SENTENCE has to, and it has to say the thing a reader wants to know:
+    // whether this, on its own, fails anything.
+    let advisory =
+        failures = 0
+        && verdicts
+           |> Seq.forall (fun line ->
+               match line.Split('\t') with
+               | [| label; verdict |] -> verdict = "ok" || label.StartsWith "hand:"
+               | _ -> true)
+
+    let policy =
+        if advisory then
+            " - ALL on hand-tier pairs, which authoring-pack.fsx's advisory tier falls back to canonical text for. On its own this FAILS NOTHING; a red pack check has another cause"
+        else
+            ""
+
+    eprintfn "dialect-verify: %d of %d pair(s) unproved — %s%s (verdicts written)" unproved checked' detail policy
     exit 3
 else
     printfn "dialect-verify: %d pair(s) proved loss-free through the canonical decoder" checked'
