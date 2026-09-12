@@ -7499,11 +7499,19 @@ and private renderGrid
                                                               (rowKeyOf |> Option.map (fun keyOf -> keyOf row))
                                                               rowIndex
                                                       )
+                                                      // Phase 1701 — the interactive marker is appended
+                                                      // AFTER the selection one, so a row's first paint
+                                                      // (nothing selected yet) is byte-identical to the
+                                                      // static emission every other host produces for
+                                                      // the same grid. Selection is a gesture's
+                                                      // consequence and arrives later, by which point
+                                                      // there is no static render to agree with.
                                                       prop.className (
-                                                          if isSelected then
-                                                              "fuaran-grid-row fuaran-grid-row-selected"
-                                                          else
-                                                              "fuaran-grid-row"
+                                                          (if isSelected then
+                                                               "fuaran-grid-row fuaran-grid-row-selected"
+                                                           else
+                                                               "fuaran-grid-row")
+                                                          + Theme.gridRowInteractiveClass spec.OnRowClick.IsSome
                                                       )
                                                       prop.onClick (fun _ ->
                                                           gridRowSelected (runAction ctx) parentNodeId spec row) ]

@@ -172,6 +172,11 @@ type ObligationClaim =
     /// not a locale, not a text alignment, and not a direction for the node's
     /// descendants beyond the receiving surface's own inheritance (§3.1 rule 5).
     | NoDerivedDirectionBehaviour
+    /// A rendered grid row carries the interactive-row class ONLY where the grid
+    /// declares a row action, so the pointer affordance the reference stylesheet
+    /// keys on that class promises a click exactly where the document declared
+    /// one - and a grid declaring none carries it on no row at all (§3.6.24).
+    | InteractiveRowOnlyWithAction
 
 /// The stable wire token for a claim. This is what the artefact carries and what
 /// a host's checker registry is keyed by, so it may not change without a version
@@ -201,6 +206,7 @@ let claimId (claim: ObligationClaim) : string =
     | ObligationClaim.DeclarationWinsOverInference -> "declaration-wins-over-inference"
     | ObligationClaim.AutoIsNoDeclaration -> "auto-is-no-declaration"
     | ObligationClaim.NoDerivedDirectionBehaviour -> "no-derived-direction-behaviour"
+    | ObligationClaim.InteractiveRowOnlyWithAction -> "interactive-row-only-with-action"
 
 /// What the claim MEANS, kind-independently — the vocabulary entry a host reads
 /// when it meets a claim id it does not yet implement, so "unchecked" can be
@@ -253,6 +259,8 @@ let claimMeaning (claim: ObligationClaim) : string =
         "the identity value of a declaration is the absence of one - a node declaring it renders byte-identically to the same node omitting the member"
     | ObligationClaim.NoDerivedDirectionBehaviour ->
         "no further behaviour is derived from the declaration - not a layout side, not a locale, not an alignment, and not a direction for descendants"
+    | ObligationClaim.InteractiveRowOnlyWithAction ->
+        "a rendered grid row carries the interactive-row class only where the grid declares a row action, and a grid declaring none carries it on no row - the pointer affordance keyed on that class promises a click exactly where the document declared one"
 
 /// The closed vocabulary, in declaration order.
 ///
@@ -283,7 +291,8 @@ let allClaims: ObligationClaim list =
       ObligationClaim.DeclaredRunIsolated
       ObligationClaim.DeclarationWinsOverInference
       ObligationClaim.AutoIsNoDeclaration
-      ObligationClaim.NoDerivedDirectionBehaviour ]
+      ObligationClaim.NoDerivedDirectionBehaviour
+      ObligationClaim.InteractiveRowOnlyWithAction ]
 
 /// One obligation as a row declares it: which claim, the normative sentence for
 /// THIS kind, and the spec section that states it.
@@ -683,7 +692,12 @@ let all: FidelityRow list =
               "hydration, for the client-library form only; a `staticRows` grid has no client-only tier"
           ))
           [ "grid-1" ]
-          "Phase 393; docs/SSR.md (Visualisation, sortable rendered tables)"
+          "Phase 393; Phase 1701; docs/SSR.md (Visualisation, sortable rendered tables); WIRE_FORMAT.md 3.6.24"
+      |> obliged
+          [ owes
+                ObligationClaim.InteractiveRowOnlyWithAction
+                "WIRE_FORMAT.md 3.6.24"
+                "a rendered grid row carries the interactive-row class (`fuaran-grid-row-interactive` in the reference vocabulary) only where the grid declares a row action, and a grid declaring none carries it on no row at all - so the pointer affordance the reference stylesheet keys on that class promises a click exactly where the document declared one. A `staticRows` grid honours no row action in any tier, and so carries the class on no row whatever it declares; a host that renders the bound leg as a hydration placeholder emits no row, and so no class" ]
       |> announces
           [ { pinsRole "the transfer status region beside a transfer-enabled grid" "status" with
                 Live = Some LiveRegionKind.Polite

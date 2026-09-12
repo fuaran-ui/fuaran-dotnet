@@ -267,8 +267,9 @@ rather than a re-derivation. The landing order is fixed and is not a preference:
 **Phase 1674 landed (a) and (c) TOGETHER, and the reason is worth keeping.** (a) moves the sheet's
 bytes and (c) moves the vocabulary fingerprint, which restamps the sheet — so each on its own costs
 the same five-repo sync, and doing them separately would have cost it twice for no separable review.
-(b) remains open: it is the one of the three that also needs a renderer EMISSION change, in five
-renderers, which is a different size of act. See each item.
+(b) was the one of the three that also needed a renderer EMISSION change, in five renderers, which
+is a different size of act; Phase 1701 landed it. All three are closed, and each is kept below with
+what it cost, because the class recurs.
 
 **(a) — LANDED, Phase 1674. Three fallback/declaration mismatches the 2026-07-30 design-system
 audit missed.** A
@@ -290,22 +291,51 @@ renders moved**, which is the whole character of this class of defect: a `var()`
 only where the token is undeclared, so the change is invisible in styled mode by construction and
 visible only in the unstyled mode it was wrong in.
 
-**(b) — STILL OPEN. `.fuaran-table-row:hover` claims `cursor: pointer` unconditionally.** The rule
-(shared with `.fuaran-grid-row:hover`) tells every reader that every row is clickable, when only a
-row with a row action is. A pointer cursor over inert content is a promise the markup does not keep,
-and it is the kind of thing a reader learns to distrust rather than reports. The durable fix is a
-renderer-EMITTED interactive-row class that the hover rule consumes — which makes this a
-parity-locked change on both counts, the sheet *and* the class vocabulary (see §1.5d: a new class
-moves the fingerprint, so the stamp and all four copies move with it). Until then a host scopes its
-own neutralisation.
+**(b) — LANDED, Phase 1701. `.fuaran-table-row:hover` claimed `cursor: pointer` unconditionally.**
+The rule (shared with `.fuaran-grid-row:hover`) told every reader that every row was clickable, when
+only a row whose grid declares `onRowClick` is. A pointer cursor over inert content is a promise the
+markup does not keep, and it is the kind of thing a reader learns to distrust rather than reports; at
+least one host was scoping its own neutralisation to undo it.
 
-**Why Phase 1674 did not take it while it was in the sheet.** (a) and (c) are edits to this repo
-plus a regenerated copy in four others. This one adds an EMISSION change to five renderers — the
-class has to be decided (is a row interactive because the Grid declares a row action, or because the
-row itself carries one?), emitted by the F#, TypeScript, Go, Rust and Python renderers on the same
-condition, and pinned by a render-fidelity obligation, or the hosts disagree about which rows look
-clickable. That is a phase, not an item, and half of it lands in repos this repo's gate cannot
-check.
+**The fix is a renderer-EMITTED class the hover rule consumes.** `fuaran-grid-row-interactive` is
+emitted beside `fuaran-grid-row` on exactly the rows of a grid declaring `onRowClick`, and
+`cursor: pointer` moved onto `.fuaran-grid-row-interactive:hover`. The hover BACKGROUND stayed where
+it was, on every row: it says "this is the row under your pointer", which is true of a row you
+cannot click. Only the promise of a click moved. Being a new class it moved the fingerprint
+(`fv1:e56df5af70231f8e` → `fv1:253483dae447ee83`) and therefore the stamp and all four copies, per
+§1.5d — the cost 1674 predicted, paid once.
+
+**The decision the item left open — is a row interactive because the GRID declares a row action, or
+because the row itself carries one?** The wire answers it: there is no per-row action to carry.
+`onRowClick` is a grid-level closure-bearing slot, so the grid's declaration is the only fact any
+host can read, and every host now reads the same one. Two consequences are worth stating because
+they are the parts a reader is most likely to think are bugs:
+
+- **A `staticRows` grid is marked on no row, whatever it declares.** That mode honours no row action
+  in any tier — its rows are `TextSource` cells, not the row values a declared action is applied to —
+  so `Fuaran.table` pins `OnRowClick` to `None` and the client leg drops a declared one. A marked row
+  there would promise a click nothing can deliver. `fuaran-table-row` therefore carries no pointer at
+  all now, which is exactly what the item was about.
+- **The client tier's SELECTION fallback is deliberately not marked.** A bound row with no declared
+  action still writes the clicked row to the selection store, and where a row key is declared that is
+  visible. But selection is the HOST's fallback rather than the document's declaration: a host with
+  no selection at all (every SSR tier here) would emit a different class set for the same document,
+  and the class has to survive hydration byte-identically. So the marker states what was DECLARED,
+  and a selection-only row renders with the ordinary arrow.
+
+**What the reference SERVER host can and cannot answer for.** It draws a bound grid as a hydration
+placeholder, so it emits no bound row and the positive half of the claim is answered by the hosts
+that render bound rows (`fuaran-ts`'s server tier, `fuaran-go`, `fuaran-py`, `fuaran-rs`). What it
+does answer, and not vacuously, is every negative half — including the static leg, where the
+declaration is in scope at exactly the point the rows are built and must still reach no row. That
+asymmetry is stated in the obligation itself (`WIRE_FORMAT.md` §3.6.24 rule 3) rather than left as a
+gap in one suite.
+
+**Pinned, not merely fixed.** The corpus roster declares
+`DataGrid/interactive-row-only-with-action`, so all five hosts enumerate the claim from the artefact
+and report it unchecked until each asserts it — the §1.5g(c) lesson applied in advance: `CssCheck`
+compares stylesheet BYTES and the coverage scan sees NAMES, so an emission condition is invisible
+from either instrument and needed a third.
 
 **(c) — LANDED, Phase 1674. The two SSR hosts disagreed on the file-input class.** `Fuaran.UI.Renderer` emits
 `fuaran-file-upload-input` on a `FileUpload`'s `<input type="file">`; `Fuaran.UI.Renderer.Server`

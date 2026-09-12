@@ -7831,6 +7831,40 @@ lands; a phase moves NO number._
 
 _(each phase adds one paragraph here, named `fuaran#NNNN — <class>`)_
 
+**fuaran#1701 — ADDITIVE, with one CLASS-VOCABULARY change and one BEHAVIOURAL stylesheet change.**
+The interactive-row class: `cursor: pointer` only where a Grid row has a declared action.
+
+*Class vocabulary.* `Theme.vocabularyFingerprint` moves `fv1:e56df5af70231f8e` →
+`fv1:253483dae447ee83`, because a class ENTERED the vocabulary: `Fuaran.UI.Renderer` emits
+`fuaran-grid-row-interactive` beside `fuaran-grid-row` on exactly the rows of a grid declaring
+`OnRowClick`. `Theme.gridRowInteractiveClass` is the new public helper both tiers would use — the
+reference SERVER renderer draws a bound grid as a hydration placeholder, so it emits no bound row and
+uses it nowhere today, but the helper is where the condition is written down once.
+
+*Stylesheet — and unlike most moves here this one CHANGES WHAT A STYLED HOST RENDERS.*
+`cursor: pointer` left `.fuaran-grid-row:hover, .fuaran-table-row:hover` and now sits on
+`.fuaran-grid-row-interactive:hover` alone. A grid declaring no row action, a `staticRows` grid and a
+markdown table render with the ordinary arrow; a grid declaring one is unchanged. The hover
+BACKGROUND did not move and is still on every row: it says "this is the row under your pointer",
+which is true of a row you cannot click. A host pinning the old fingerprint is refused a sheet
+stamped with the new one, which is the mechanism working — and the failure it prevents is sharper
+than usual, because both wrong outcomes (every row keeps the pointer, or no row has it) look like a
+working page.
+
+*What a host may have to act on.* A host that shipped its own rule to UNDO the old pointer — scoping
+`cursor: default` onto `.fuaran-table-row:hover` — now suppresses the pointer on interactive rows too
+and should drop that declaration when it takes this version.
+
+*Pinned, not merely fixed.* The corpus roster declares
+`DataGrid/interactive-row-only-with-action` (`WIRE_FORMAT.md` §3.6.24 + §13), so every host
+enumerates the claim and reports it unchecked until it asserts it. This tier's checker is in
+`Fuaran.UI.Renderer.Server.Tests/RenderObligationTests.fs` and answers the negative halves the
+placeholder leg can honestly answer — including the static leg, where the declaration is in scope at
+the point the rows are built and must still reach no row.
+
+*No public signature moved* beyond the added helper, so the class is ADDITIVE and rides the draft.
+
+
 **fuaran#1674 — ADDITIVE, with one CLASS-VOCABULARY change and one RECORD WIDENING.** The Tidy-Up
 drain over the reference tier, its gate scripts and the corpus lane.
 

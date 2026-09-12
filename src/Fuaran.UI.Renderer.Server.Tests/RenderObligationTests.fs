@@ -1078,6 +1078,93 @@ let private checkNoDerivedDirectionBehaviour () =
         1
         "exactly one element declared a direction, so exactly one may carry it - a direction pushed onto descendants is a derived behaviour rule 5 forbids"
 
+// --- DataGrid: the interactive-row class (Phase 1701) ---------------------
+
+/// A data-bound grid, with or without a declared row action. The source is a
+/// `Query` rather than a `Static` payload because this host renders the bound
+/// leg as a hydration placeholder either way, which is the point of the first
+/// assertion below.
+let private boundGrid (nodeId: string) (rowAction: bool) : Node<obj> =
+    Fuaran.grid
+        nodeId
+        id
+        { Defaults.grid<Row, obj> with
+            Columns = [ Column.text "Reference" (fun _ -> "") ]
+            Source = Binding.Query("settlements", (fun _ -> Seq.empty), None)
+            RowKeyField = Some "reference"
+            OnRowClick =
+                (if rowAction then
+                     Some(fun (_: Row) -> Action.Chain [])
+                 else
+                     Option.None) }
+
+/// The same grid in `staticRows` mode. The mode honours no row action in any
+/// tier - a static row is a `TextSource` list, not the row value a declared
+/// action is applied to - so the declaration is readable at the point the rows
+/// are built and must still reach no row.
+///
+/// Built by record-updating the erased spec rather than through `Fuaran.table`,
+/// which pins `OnRowClick` to `None` by construction and so cannot express the
+/// input this assertion is about.
+let private staticGrid (nodeId: string) (rowAction: bool) : Node<obj> =
+    let rows: StaticRows =
+        { Headers = [ TextSource.Literal "Reference" ]
+          Rows = [ [ TextSource.Literal "S-1" ] ]
+          Sortable = Option.None
+          DefaultSort = Option.None }
+
+    let node = boundGrid nodeId rowAction
+
+    match node.Kind with
+    | NodeKind.DataGrid spec ->
+        { node with
+            Kind = NodeKind.DataGrid { spec with StaticRows = Some rows } }
+    | _ -> failwith "boundGrid must build a DataGrid"
+
+let private checkInteractiveRowOnlyWithAction () =
+    // What this host can and cannot answer for, stated here because the
+    // asymmetry is the claim's own (§3.6.24 rules 2 and 3) rather than a gap in
+    // this suite. The reference SERVER renderer draws a bound grid as a
+    // hydration placeholder, so it emits no bound row at all and the POSITIVE
+    // half of rule 1 — "a marked row appears where the action is declared" — is
+    // answered by the hosts that render bound rows, not here. What is answered
+    // here, and is not vacuous, is every NEGATIVE half: no leg of this renderer
+    // may emit the marker, and the static leg may not emit it even though the
+    // declaration is in scope at exactly the point the rows are built.
+    let marker = "fuaran-grid-row-interactive"
+
+    // Rule 3 — the placeholder leg emits no row, so no marker, either way.
+    for rowAction in [ true; false ] do
+        let html = render (boundGrid "g" rowAction)
+
+        Expect.isTrue
+            (html |> contains "fuaran-grid-ssr-placeholder")
+            "the bound leg is expected to render as a hydration placeholder here - the assertion below means nothing if it started rendering rows"
+
+        Expect.isFalse
+            (html |> contains marker)
+            "a hydration placeholder emits no row, so it may emit no interactive-row marker - there is nothing on screen for the marker to be about"
+
+    // Rule 2 — the static leg renders real rows AND can read the declaration,
+    // and must still emit no marker: the mode honours no row action in any tier,
+    // so a marked row there would promise a click nothing can deliver.
+    let declaredHtml = render (staticGrid "s" true)
+
+    Expect.isTrue
+        (declaredHtml |> contains "fuaran-table-row")
+        "the static leg is expected to render real rows here - the assertion below means nothing if it stopped"
+
+    Expect.isFalse
+        (declaredHtml |> contains marker)
+        "a `staticRows` grid honours no row action in any tier, so its rows carry no interactive-row marker whatever the grid declares"
+
+    // ...and the undeclared static grid, so the assertion above is known to be
+    // about the DECLARATION rather than about the static leg emitting nothing
+    // interesting.
+    Expect.isFalse
+        (render (staticGrid "s" false) |> contains marker)
+        "a grid declaring no row action carries the interactive-row marker on no row"
+
 /// The registry: which (kind, claim) pairs this host asserts, and how.
 ///
 /// Keyed by the claim's WIRE token rather than the DU case, because the
@@ -1108,7 +1195,9 @@ let private checkers: ((string * string) * (unit -> unit)) list =
       ("style.direction", "declared-run-isolated"), checkDeclaredRunIsolated
       ("style.direction", "declaration-wins-over-inference"), checkDeclarationWinsOverInference
       ("style.direction", "auto-is-no-declaration"), checkAutoIsNoDeclaration
-      ("style.direction", "no-derived-direction-behaviour"), checkNoDerivedDirectionBehaviour ]
+      ("style.direction", "no-derived-direction-behaviour"), checkNoDerivedDirectionBehaviour
+      // Phase 1701 - the row-action affordance.
+      ("DataGrid", "interactive-row-only-with-action"), checkInteractiveRowOnlyWithAction ]
 
 /// Obligations this host declares it does NOT check, each with a reason.
 ///

@@ -143,7 +143,20 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // get is not an unstyled control but a DOM-query trap: a selector or a
 // static-vs-client DOM comparison keyed on `-control` matches one host's output
 // and not the other's, and the two renders are supposed to be the same page.
-let vocabularyFingerprint = "fv1:e56df5af70231f8e"
+// Phase 1701 moved this. ONE class ENTERED the vocabulary --
+// `fuaran-grid-row-interactive`, emitted on a data-bound grid row exactly where
+// the grid declares a row action -- and the reference sheet's pointer
+// declaration MOVED onto it, out of the `.fuaran-grid-row:hover,
+// .fuaran-table-row:hover` rule that had claimed it for every row. So unlike
+// most moves here this one changes what a styled host renders: a row with no
+// declared action loses a pointer cursor it should never have had, and a row
+// with one keeps it. A host pinning the old value would accept a sheet that
+// knows nothing of the class, and would then give every row the pointer again
+// or none of them the pointer at all, depending on which side of the change its
+// sheet came from -- which is exactly the unstyled-control skew this fingerprint
+// exists to catch, in its sharpest form yet, because both outcomes look like a
+// working page.
+let vocabularyFingerprint = "fv1:253483dae447ee83"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;
@@ -349,6 +362,26 @@ let gridPrintBreakClasses (keepRowsTogether: bool) (repeatHeader: bool) : string
      else
          "")
     + (if repeatHeader then " fuaran-grid-repeat-header" else "")
+
+/// Phase 1701 — the row-action affordance marker on a data-bound grid row.
+///
+/// The reference stylesheet's pointer rule keys on THIS class rather than on
+/// `.fuaran-grid-row:hover` / `.fuaran-table-row:hover`, so a pointer promises
+/// interactivity exactly where the document declared a row action and nowhere
+/// else. A grid that declares none keeps the hover background and the ordinary
+/// arrow, which is what its rows are: content.
+///
+/// Emitted on the BOUND leg only, and that is a property of the format rather
+/// than of this renderer. A `staticRows` grid honours no row action in any tier
+/// — a static row is a `TextSource` list, not a `Row` the declared closure could
+/// be applied to — so its rows carry no marker whatever the grid declares; and a
+/// host that renders the bound leg as a hydration placeholder emits no row, and
+/// so no marker.
+///
+/// The leading space matches `gridPrintBreakClasses` above: the caller appends
+/// the fragment to a base class string.
+let gridRowInteractiveClass (hasRowAction: bool) : string =
+    if hasRowAction then " fuaran-grid-row-interactive" else ""
 
 /// Compose a `SemanticStyle` into the BEM-style className the renderer
 /// attaches to every Fuaran-rendered element.  Stable shape regardless of
