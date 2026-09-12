@@ -8324,6 +8324,36 @@ the reconciliation the same phase performs is entirely in the TypeScript tier, w
 emitting `fuaran-form-range*` — a spelling the canonical stylesheet does not style at all.
 `Theme.vocabularyFingerprint` does not move and no tier stylesheet copy is rewritten.
 
+**fuaran#1696 — ADDITIVE at the wire, DU-WIDENING at the source.** The render-fidelity roster gains a
+second SUBJECT population: `traits`, for a member that rides the node ENVELOPE rather than any one
+kind, with `style.direction` (§3.1) as its first entry.
+
+*What moved in `Fuaran.UI.RenderFidelity`.* `ObligationClaim` gains five cases
+(`DeclaredDirectionEmitted`, `DeclaredRunIsolated`, `DeclarationWinsOverInference`,
+`AutoIsNoDeclaration`, `NoDerivedDirectionBehaviour`); `TraitScope`, `TraitObligation` and `TraitRow`
+are new; `allTraits` and `allTraitObligations` are the enumerations; `reportWith` now projects the
+trait obligations after the kind ones. A DU gaining a case is source-breaking at an exhaustive
+`match` — the ordinary class for this module, whose whole point is that a new claim cannot be
+compiled past — and this slot is already BREAKING, so it rides rather than advances.
+`ObligationReport.Kind` keeps its name and now carries the SUBJECT, which is a kind name or a trait
+id; the dot in a trait id is what tells the two populations apart, so no field was added to say
+which.
+
+*What did NOT move.* No wire byte, no renderer behaviour, no class name, no
+`Theme.vocabularyFingerprint`. This host already met all five of §3.1's rules — the emission has been
+correct since Phase 1472 — and what changed is that the claim is now ENUMERABLE, so a regression is
+reported by name rather than noticed by whoever next reads the section.
+`Fuaran.UI.Renderer.Server.Tests` registers five checkers for it, keyed `style.direction/<claim>`.
+
+*Why two of the five are comparisons rather than emission assertions.* Rule 4 says `auto` is the
+absence of a declaration, and this host emits `dir="auto"` for a bidi-isolated display leaf under the
+Phase 1114 heuristic — so "emits nothing" would be false here and true on a host without that
+heuristic, and a claim that means different things per host is not a conformance claim. The checker
+compares the declaring and omitting emissions byte-for-byte instead. Rule 5 says nothing else is
+derived, and the checker subtracts the direction and its isolation class from the declared emission
+and requires what remains to equal the undeclared one — a renderer that also flipped an alignment or
+pushed a direction onto descendants fails there and passes every other assertion.
+
 ## 0.80.0 — the provider-call telemetry record carries the subject it was made under (Phase 1637)
 
 **Additive on the wire, RECORD-WIDENING at the source, and the two are not the same statement — read

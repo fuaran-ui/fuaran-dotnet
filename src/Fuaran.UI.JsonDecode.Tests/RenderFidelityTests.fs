@@ -1,4 +1,4 @@
-module Fuaran.UI.JsonDecode.Tests.RenderFidelityTests
+﻿module Fuaran.UI.JsonDecode.Tests.RenderFidelityTests
 
 // ============================================================================
 //  The render-fidelity manifest's completeness rule (Phase 442) — the Phase 430
@@ -277,6 +277,140 @@ let obligationVocabulary =
                       vocabulary
                       id
                       (sprintf "%s declares '%s', which the vocabulary does not carry" kind id)) ]
+
+[<Tests>]
+let nodeLevelTraits =
+    testList
+        "Fuaran.UI.RenderFidelity - node-level traits (Phase 1696)"
+        [ testCase "every trait id is the wire path of a member, never a kind name" (fun () ->
+              // The dot is what keeps the two SUBJECT populations distinguishable
+              // in a host registry keyed by one string. A trait id spelled like a
+              // kind would collide silently with that kind's own claims.
+              let kindNames = all |> List.map (fun r -> r.Kind) |> Set.ofList
+
+              for t in allTraits do
+                  Expect.stringContains
+                      t.Trait
+                      "."
+                      (sprintf
+                          "'%s' is not a member path - a trait id is the wire path of the member it governs"
+                          t.Trait)
+
+                  Expect.isFalse
+                      (Set.contains t.Trait kindNames)
+                      (sprintf "'%s' collides with a kind name; a host registry could not tell them apart" t.Trait))
+
+          testCase "no trait is declared twice, and no trait declares one claim twice" (fun () ->
+              let ids = allTraits |> List.map (fun t -> t.Trait)
+              Expect.equal (List.distinct ids |> List.length) (List.length ids) "a trait is declared twice"
+
+              let dupes =
+                  allTraits
+                  |> List.collect (fun t -> t.Obligations |> List.map (fun o -> t.Trait, claimId o.Claim))
+                  |> List.countBy id
+                  |> List.filter (fun (_, n) -> n > 1)
+                  |> List.map fst
+
+              Expect.isEmpty
+                  dupes
+                  "a trait declares one claim twice; a host registry would assert whichever came first")
+
+          testCase "every trait obligation carries a statement, a spec section and a distinct rule" (fun () ->
+              for t in allTraits do
+                  Expect.isNonEmpty t.Obligations (sprintf "%s declares no claim at all" t.Trait)
+                  Expect.isNotEmpty t.Summary (sprintf "%s has no summary" t.Trait)
+
+                  for o in t.Obligations do
+                      Expect.isNotEmpty o.Statement (sprintf "%s/%s: no normative statement" t.Trait (claimId o.Claim))
+
+                      Expect.stringContains
+                          o.Section
+                          "WIRE_FORMAT.md"
+                          (sprintf
+                              "%s/%s: an obligation must cite the spec section that states it"
+                              t.Trait
+                              (claimId o.Claim))
+
+                  // Where a section numbers its rules the ordinals must be
+                  // distinct: two claims pointing at rule 3 would leave one of
+                  // the section's rules unclaimed while the count looked right.
+                  let rules = t.Obligations |> List.choose (fun o -> o.Rule)
+
+                  Expect.equal
+                      (List.distinct rules |> List.length)
+                      (List.length rules)
+                      (sprintf "%s: two claims cite the same numbered rule" t.Trait))
+
+          testCase "every trait claim id is in the closed vocabulary" (fun () ->
+              let vocabulary = allClaims |> List.map claimId |> Set.ofList
+
+              for t in allTraits do
+                  for o in t.Obligations do
+                      Expect.isTrue
+                          (Set.contains (claimId o.Claim) vocabulary)
+                          (sprintf
+                              "%s declares '%s', which the closed vocabulary does not carry"
+                              t.Trait
+                              (claimId o.Claim)))
+
+          testCase "every trait fixture is in the corpus manifest" (fun () ->
+              let known = corpusEntries |> List.map (fun e -> e.Id) |> Set.ofList
+
+              let dangling =
+                  allTraits
+                  |> List.collect (fun t -> t.Fixtures |> List.map (fun f -> t.Trait, f))
+                  |> List.filter (fun (_, f) -> not (Set.contains f known))
+
+              Expect.isEmpty
+                  dangling
+                  "a trait names a corpus fixture that does not exist - a host would have no payload to assert against")
+
+          testCase "the style.direction trait declares all five normative §3.1 rules" (fun () ->
+              // The reason this section exists. §3.1 states five numbered render
+              // obligations; a trait that declared four would leave one silently
+              // unowed on every host, which is the state Phase 1696 closed.
+              let direction = allTraits |> List.tryFind (fun t -> t.Trait = "style.direction")
+
+              match direction with
+              | None -> failtest "the style.direction trait is not declared"
+              | Some t ->
+                  Expect.equal
+                      (t.Obligations |> List.choose (fun o -> o.Rule) |> List.sort)
+                      [ 1; 2; 3; 4; 5 ]
+                      "the trait must claim every one of §3.1's five numbered rules"
+
+                  Expect.equal
+                      t.Scope
+                      TraitScope.AllKinds
+                      "style.direction rides the node envelope, so every kind owes it")
+
+          testCase "the emitted artefact carries every trait, in declaration order" (fun () ->
+              use doc = JsonDocument.Parse(RenderFidelityArtifact.toJson ())
+
+              let emitted =
+                  doc.RootElement.GetProperty("traits").EnumerateArray()
+                  |> Seq.map (fun t ->
+                      t.GetProperty("trait").GetString(),
+                      t.GetProperty("appliesTo").GetProperty("scope").GetString(),
+                      t.GetProperty("obligations").EnumerateArray()
+                      |> Seq.map (fun o -> o.GetProperty("id").GetString(), o.GetProperty("rule").GetInt32())
+                      |> List.ofSeq)
+                  |> List.ofSeq
+
+              let declared =
+                  allTraits
+                  |> List.map (fun t ->
+                      t.Trait,
+                      (match t.Scope with
+                       | TraitScope.AllKinds -> "allKinds"
+                       | TraitScope.NamedKinds _ -> "namedKinds"),
+                      t.Obligations
+                      |> List.map (fun o -> claimId o.Claim, Option.defaultValue 0 o.Rule))
+
+              Expect.equal
+                  emitted
+                  declared
+                  "every declared trait must reach the artefact - a host reads the artefact, not this table") ]
 
 [<Tests>]
 let badgeDerivation =
