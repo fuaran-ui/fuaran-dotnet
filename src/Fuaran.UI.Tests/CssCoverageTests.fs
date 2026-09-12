@@ -221,6 +221,120 @@ let private scannedClasses () : Set<string> =
 let private emittedClasses () : Set<string> =
     Set.union (projectedClasses ()) (scannedClasses ())
 
+/// The same scan, narrowed to ONE tier's sources (`client` / `server` / `core`).
+/// Used only by the Lock A mirror below — the coverage assertions above are about
+/// the vocabulary as a whole and must never be narrowed to a tier, or a class the
+/// server emits would read as uncovered because the client does not.
+let private scannedClassesInTier (tier: string) : Set<string> =
+    let dir = Path.Combine(rendererSourceDir, tier)
+
+    if not (Directory.Exists dir) then
+        failwithf
+            "Renderer sources for tier '%s' absent at %s — the fsproj copies them into the test bin. A tier scan with no sources to scan reports every divergence as closed."
+            tier
+            dir
+
+    Directory.EnumerateFiles(dir, "*.fs", SearchOption.AllDirectories)
+    |> Seq.collect (fun path ->
+        let source = Regex.Replace(File.ReadAllText path, @"(?m)//.*$", "")
+
+        stringLiteral.Matches source
+        |> Seq.cast<Match>
+        |> Seq.collect (fun m -> m.Groups[1].Value.Split([| ' '; '\t' |], StringSplitOptions.RemoveEmptyEntries))
+        |> Seq.filter classTokenShape.IsMatch)
+    |> Set.ofSeq
+
+// ─── Phase 1674 — the mirror of fuaran-ts's Lock A divergence allowance ────
+//
+//  fuaran-ts Lock A asserts class-set EQUALITY between its two renderers, with a
+//  closed, spec-cited exception list for the controls whose static floor is
+//  deliberately a DIFFERENT control. Phase 1652 settled that the equality premise
+//  is worth keeping and recorded why (containment is satisfied by a server
+//  renderer that paints nothing, which is the regression class the two grid
+//  families actually were), and it asked for the same allowance, in the same
+//  shape, in the reference tier — "so that the two tiers cannot declare different
+//  exceptions". This is that half.
+//
+//  WHAT IT CANNOT MIRROR, said plainly rather than implied by its absence. The F#
+//  client renderer is Feliz/React and cannot render to an HTML string on .NET, so
+//  there is no per-fixture render to compare and the EQUALITY half of Lock A is
+//  not available here. A source-level equality was measured before this shape was
+//  chosen and rejected on the evidence: 60 tokens appear in the client sources
+//  alone and 11 in the server's, and almost all of them are legitimate — the
+//  interaction vocabulary of a hydrated control against the placeholders of an
+//  inert one, which `render-fidelity.json` already declares tier by tier. A
+//  71-entry list restating that would not be an exception list; it would be a
+//  second copy of the fidelity roster, drifting.
+//
+//  So what is mirrored is the EXCEPTION LIST itself — the same fourteen tokens,
+//  the same four controls, the same section citations — with the assertion that
+//  carries across instruments: each declared token appears on exactly the tier
+//  that claims it and NOT on the other. That is fuaran-ts's own staleness
+//  assertion (an entry whose token no longer appears on the tier it claims is
+//  recording a divergence that has since closed) plus its converse (a token that
+//  has appeared on BOTH tiers means the substitution was closed by one renderer
+//  adopting the other's markup, and the entry now exempts a real drift).
+//
+//  Adding an entry here is a DELIBERATE act with a spec citation, and it is added
+//  to BOTH tiers' lists or to neither. That is the whole point of the mirror.
+
+type private TierDivergence =
+    {
+        Token: string
+        /// The tier that emits it. The other must not.
+        Tier: string
+        Why: string
+    }
+
+let private declaredTierDivergences: TierDivergence list =
+    // 3.6.9 - the combobox's static floor is `<input list>` + `<datalist>`; the
+    // client draws the full listbox popup.
+    [ { Token = "fuaran-combobox-list"
+        Tier = "client"
+        Why = "WIRE_FORMAT.md 3.6.9" }
+      { Token = "fuaran-combobox-option"
+        Tier = "client"
+        Why = "WIRE_FORMAT.md 3.6.9" }
+      // 3.6.19 - the token field's static floor is ONE TEXT INPUT carrying the
+      // tokens comma-separated. A row of static chips with dead remove buttons
+      // would be an affordance inert markup cannot honour.
+      { Token = "fuaran-tokens-list"
+        Tier = "client"
+        Why = "WIRE_FORMAT.md 3.6.19" }
+      { Token = "fuaran-tokens-chip"
+        Tier = "client"
+        Why = "WIRE_FORMAT.md 3.6.19" }
+      { Token = "fuaran-tokens-chip-label"
+        Tier = "client"
+        Why = "WIRE_FORMAT.md 3.6.19" }
+      { Token = "fuaran-tokens-chip-remove"
+        Tier = "client"
+        Why = "WIRE_FORMAT.md 3.6.19" }
+      { Token = "fuaran-tokens-suggestions"
+        Tier = "client"
+        Why = "WIRE_FORMAT.md 3.6.19" }
+      { Token = "fuaran-tokens-option"
+        Tier = "client"
+        Why = "WIRE_FORMAT.md 3.6.19" }
+      { Token = "fuaran-tokens-status"
+        Tier = "client"
+        Why = "WIRE_FORMAT.md 3.6.19" }
+      // 3.6.17 - a writable rating floors on native radios and hydrates to a
+      // slider. The one family named BOTH ways: the floor emits something the
+      // client does not, and the client emits something the floor does not.
+      { Token = "fuaran-rating-choice"
+        Tier = "server"
+        Why = "WIRE_FORMAT.md 3.6.17" }
+      { Token = "fuaran-rating-choice-label"
+        Tier = "server"
+        Why = "WIRE_FORMAT.md 3.6.17" }
+      { Token = "fuaran-rating-hits"
+        Tier = "client"
+        Why = "WIRE_FORMAT.md 3.6.17" }
+      { Token = "fuaran-rating-hit"
+        Tier = "client"
+        Why = "WIRE_FORMAT.md 3.6.17" } ]
+
 // ─── Phase 433 — the vocabulary fingerprint ────────────────────────────────
 //
 //  `Theme.vocabularyFingerprint` is a PINNED constant a served stylesheet is
@@ -333,7 +447,6 @@ let private declaredAbsences: (string * Absence) list =
       "fuaran-filter-checkbox", BareHook "the filter twin of the form checkbox; same posture"
       "fuaran-filter-toggle", BareHook "the filter twin of the form toggle; same posture"
       "fuaran-file-upload-input", BareHook "native file-input chrome, deliberately not restyled"
-      "fuaran-file-upload-control", BareHook "the server renderer's file-input vocabulary; same native chrome"
       "fuaran-layout-separator", BareHook "the element is an <hr>; the reference sheet keeps the native rule"
       "fuaran-island", BareHook "hydration boundary, zero-paint by construction — a rule here would shift layout"
       "fuaran-mount-boundary",
@@ -572,6 +685,76 @@ let tests =
           // is what makes that proof transfer to the TypeScript one. Deleting it
           // would leave the coverage floor canonical-only, which is not what the
           // build target replaced.
+          test "every declared tier divergence is still observed on the tier that claims it, and only there" {
+              let client = scannedClassesInTier "client"
+              let server = scannedClassesInTier "server"
+
+              let tierSet t = if t = "client" then client else server
+              let otherSet t = if t = "client" then server else client
+
+              let vanished =
+                  declaredTierDivergences
+                  |> List.filter (fun d -> not ((tierSet d.Tier).Contains d.Token))
+
+              Expect.isEmpty
+                  (vanished |> List.map _.Token)
+                  (sprintf
+                      "declared tier divergence(s) whose token no longer appears in the %s sources: %s. The substitution closed, or the class was renamed; either way the entry now records a divergence that is not there and would silently permit a real drift on that token. Remove it HERE and in fuaran-ts's DECLARED_TIER_DIVERGENCES - the two lists are one declaration."
+                      "claiming tier"
+                      (String.Join(", ", vanished |> List.map _.Token)))
+
+              let converged =
+                  declaredTierDivergences
+                  |> List.filter (fun d -> (otherSet d.Tier).Contains d.Token)
+
+              Expect.isEmpty
+                  (converged |> List.map _.Token)
+                  (sprintf
+                      "declared tier divergence(s) now emitted by BOTH renderers: %s. That is good news and a stale declaration at once - one tier adopted the other's markup, so the exception is spent and is now exempting a token both tiers are supposed to agree about. Remove it HERE and in fuaran-ts."
+                      (String.Join(", ", converged |> List.map _.Token)))
+          }
+
+          // Phase 1674 - the pin for the file-input class, and the reason it is a
+          // TEST rather than a stylesheet rule or a coverage declaration.
+          //
+          // Until this phase the client renderer emitted `fuaran-file-upload-input`
+          // on a FileUpload's `<input type="file">` and the server emitted
+          // `fuaran-file-upload-control` on the same element. Neither instrument in
+          // this file could see it: the byte comparison below compares STYLESHEETS
+          // and neither name is styled (native file-input chrome is deliberately not
+          // restyled), and the coverage assertions above see both names present and
+          // both declared as bare hooks. A name that is in the vocabulary and
+          // unstyled is invisible from either side - which is exactly how it
+          // survived long enough for two more hosts to copy the server's spelling.
+          //
+          // So the claim is made where it can be checked: the two tiers name the
+          // same element the same way. It is deliberately NOT in
+          // `declaredTierDivergences` above - that list is for substitutions the
+          // spec SANCTIONS, and this was never sanctioned.
+          test "both F# renderers name the file input with the same class" {
+              let client = scannedClassesInTier "client"
+              let server = scannedClassesInTier "server"
+
+              let uploadClasses (set: Set<string>) =
+                  set
+                  |> Set.filter (fun c -> c.StartsWith("fuaran-file-upload", StringComparison.Ordinal))
+
+              let onlyClient = Set.difference (uploadClasses client) (uploadClasses server)
+              let onlyServer = Set.difference (uploadClasses server) (uploadClasses client)
+
+              Expect.isTrue
+                  ((uploadClasses client).Contains "fuaran-file-upload-input")
+                  "the client renderer emits `fuaran-file-upload-input` on the file input"
+
+              Expect.isTrue
+                  ((uploadClasses server).Contains "fuaran-file-upload-input")
+                  "the server renderer emits `fuaran-file-upload-input` on the file input - the two SSR tiers must name one element one way, or a host selector and a static-vs-client DOM comparison written against either is wrong about the other"
+
+              Expect.isEmpty (Set.toList onlyClient) "file-upload class(es) the client emits and the server does not"
+
+              Expect.isEmpty (Set.toList onlyServer) "file-upload class(es) the server emits and the client does not"
+          }
+
           test "the TypeScript tier's stylesheet copy is byte-identical" {
               match tryFindTsCssCopy () with
               | None -> skiptest "fuaran-ts sibling not present in this checkout — byte-copy parity not checked here"

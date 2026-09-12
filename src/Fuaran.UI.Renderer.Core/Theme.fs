@@ -130,7 +130,20 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // fv1:31d200d72663a91a and this value, and a sheet stamped with either styles
 // exactly the same set. The token is declared a non-class in that suite, which
 // is what keeps the coverage assertion honest about it.
-let vocabularyFingerprint = "fv1:533d4239b16f57b7"
+// Phase 1674 moved this, and it is the first move that REMOVES a class without
+// removing an element. `Fuaran.UI.Renderer.Server` emitted
+// `fuaran-file-upload-control` on a FileUpload's `<input type="file">` where
+// `Fuaran.UI.Renderer` emitted `fuaran-file-upload-input` on the same element;
+// the server now emits the client's name and the other LEFT the vocabulary. Both
+// were declared bare hooks -- the reference sheet holds no opinion on native
+// file-input chrome -- so no RULE moved and the sheet renders identically either
+// way. That is also why it survived: `CssCheck` compares stylesheet BYTES while
+// the coverage scan sees NAMES, so a name that is in the vocabulary and unstyled
+// is invisible from either instrument. What a host pinning the old value would
+// get is not an unstyled control but a DOM-query trap: a selector or a
+// static-vs-client DOM comparison keyed on `-control` matches one host's output
+// and not the other's, and the two renders are supposed to be the same page.
+let vocabularyFingerprint = "fv1:e56df5af70231f8e"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;

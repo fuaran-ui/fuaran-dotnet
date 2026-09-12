@@ -253,18 +253,25 @@ Two boundaries worth stating, because both are decisions rather than omissions. 
 
 **The value is machine-maintained, in three links.** `Theme.vocabularyFingerprint` is pinned rather than computed, because half the vocabulary is read out of the renderer *sources*, which a shipping package cannot see at runtime. So: the coverage suite recomputes the truth and fails naming the value to pin when the vocabulary moves; `-- CssCheck` (wired into `Check`) fails when the stylesheet's stamp and the constant disagree; and the byte-copy check carries the stamp to every tier. Changing the vocabulary is therefore: run the suite, paste the value it names into `Theme.fs`, run `-- Css`, commit the sheet and its three tier copies in the same change-set. No step of that is remembered rather than enforced.
 
-### 1.5g Three known cross-repo defects, and why they are not fixed here yet (Phase 1648)
+### 1.5g The cross-repo stylesheet defects, and where each stands (Phases 1648, 1674)
 
-Every item below is REAL, MEASURED against the current sheet and renderers, and **not repaired in
-this repo alone**, for one shared reason: each changes the canonical stylesheet, and the canonical
+Every item below is REAL and MEASURED against the current sheet and renderers. None is repairable in
+this repo alone, for one shared reason: each changes the canonical stylesheet, and the canonical
 stylesheet is byte-copied into four sibling reference implementations (§1.5c). A change here with
 the copies unlanded turns `CssCheck` — and the byte-copy assertion §1.5b relies on — red for
 everyone until all five land, which is a repo-wide stop for work that has nothing to do with the
-change. So they are recorded here, with the exact bytes, so the change-set that does land them is an
-edit rather than a re-derivation. The landing order is fixed and is not a preference: **this repo
-first** (its gate is what pins the copies), then `fuaran-ts`, `fuaran-go`, `fuaran-rs`, `fuaran-py`.
+change. So each is recorded with the exact bytes, so the change-set that does land it is an edit
+rather than a re-derivation. The landing order is fixed and is not a preference: **this repo first**
+(its gate is what pins the copies), then `fuaran-ts`, `fuaran-go`, `fuaran-rs`, `fuaran-py`.
 
-**(a) Three fallback/declaration mismatches the 2026-07-30 design-system audit missed.** A
+**Phase 1674 landed (a) and (c) TOGETHER, and the reason is worth keeping.** (a) moves the sheet's
+bytes and (c) moves the vocabulary fingerprint, which restamps the sheet — so each on its own costs
+the same five-repo sync, and doing them separately would have cost it twice for no separable review.
+(b) remains open: it is the one of the three that also needs a renderer EMISSION change, in five
+renderers, which is a different size of act. See each item.
+
+**(a) — LANDED, Phase 1674. Three fallback/declaration mismatches the 2026-07-30 design-system
+audit missed.** A
 `var(--X, fallback)` whose fallback disagrees with `:root`'s declaration means unstyled mode and
 styled mode disagree about a metric or a colour — a host that drops the sheet gets a subtly
 different rendering rather than a plainly unstyled one, which is harder to notice and harder to
@@ -276,10 +283,14 @@ attribute. Phase 914dcf7 reconciled six of these; three were missed, and are:
 | `--fuaran-tone-default-disabled-fg` | `#6b7280` | `#9ca3af`, at two sites |
 | `--fuaran-tone-success-border` | `#6ee7b7` | `#86efac`, at one site |
 
-The fix is the declaration's value at every site — the same direction 914dcf7 took, for its reason:
-the `:root` value is the one a host overriding the token sees, so the fallback is what should move.
+The fix was the declaration's value at every site — the same direction 914dcf7 took, for its
+reason: the `:root` value is the one a host overriding the token sees, so the fallback is what
+should move. Applied at all seven sites and synced to the four copies. **Nothing a styled host
+renders moved**, which is the whole character of this class of defect: a `var()` fallback applies
+only where the token is undeclared, so the change is invisible in styled mode by construction and
+visible only in the unstyled mode it was wrong in.
 
-**(b) `.fuaran-table-row:hover` claims `cursor: pointer` unconditionally.** The rule
+**(b) — STILL OPEN. `.fuaran-table-row:hover` claims `cursor: pointer` unconditionally.** The rule
 (shared with `.fuaran-grid-row:hover`) tells every reader that every row is clickable, when only a
 row with a row action is. A pointer cursor over inert content is a promise the markup does not keep,
 and it is the kind of thing a reader learns to distrust rather than reports. The durable fix is a
@@ -288,7 +299,15 @@ parity-locked change on both counts, the sheet *and* the class vocabulary (see �
 moves the fingerprint, so the stamp and all four copies move with it). Until then a host scopes its
 own neutralisation.
 
-**(c) The two SSR hosts disagree on the file-input class.** `Fuaran.UI.Renderer` emits
+**Why Phase 1674 did not take it while it was in the sheet.** (a) and (c) are edits to this repo
+plus a regenerated copy in four others. This one adds an EMISSION change to five renderers — the
+class has to be decided (is a row interactive because the Grid declares a row action, or because the
+row itself carries one?), emitted by the F#, TypeScript, Go, Rust and Python renderers on the same
+condition, and pinned by a render-fidelity obligation, or the hosts disagree about which rows look
+clickable. That is a phase, not an item, and half of it lands in repos this repo's gate cannot
+check.
+
+**(c) — LANDED, Phase 1674. The two SSR hosts disagreed on the file-input class.** `Fuaran.UI.Renderer` emits
 `fuaran-file-upload-input` on a `FileUpload`'s `<input type="file">`; `Fuaran.UI.Renderer.Server`
 emits `fuaran-file-upload-control` for the same element. Both are declared bare hooks — the
 reference sheet holds no opinion on native file-input chrome — so nothing about the SHEET is wrong,
@@ -301,9 +320,28 @@ render.
 worth keeping because it is not symmetric. The client's name is the older one; it is the one the
 reference sheet's declared-absence note was written about first; and `-control` reads as the wrapper
 in a vocabulary where `fuaran-file-upload` already *is* the wrapper, so it is the more confusing of
-the two names for the element it names. What makes it a cross-repo change rather than a two-line
-edit is §1.5d: retiring `fuaran-file-upload-control` REMOVES a class from the vocabulary, which moves
-`Theme.vocabularyFingerprint`, which restamps the sheet, which moves all four byte copies.
+the two names for the element it names. What made it a cross-repo change rather than a two-line
+edit is §1.5d: retiring `fuaran-file-upload-control` REMOVED a class from the vocabulary, which moved
+`Theme.vocabularyFingerprint` (`fv1:533d4239b16f57b7` → `fv1:e56df5af70231f8e`), which restamped the
+sheet, which moved all four byte copies. **And it is pinned now rather than merely fixed**, which is
+what closes the pair of blind spots: `CssCoverageTests` asserts that both F# renderers name the file
+input the same way, and can go red (proved by reverting the server to `-control`). That assertion is
+deliberately NOT in the declared-tier-divergence list beside it — that list is for substitutions the
+spec SANCTIONS, and this was never sanctioned.
+
+**The divergence was FIVE-way, not two.** The shard recorded two hosts because two were looked at.
+`fuaran-go`'s and `fuaran-py`'s renderers had both copied the F# SERVER's spelling, so three of the
+five emitted `-control` and two (`fuaran-ts`'s pair, `fuaran-rs`'s server) emitted `-input`. All three
+moved in this change-set — one line each, and no golden anywhere in the estate carried the class, which
+is exactly why nothing was red while three hosts disagreed with two.
+
+**What is NOT done, and is the durable form of this pin**: a `render-fidelity.json` obligation naming
+the class, which would make every host's obligation suite assert it rather than leaving four hosts
+pinned by nothing. It was drafted and withdrawn deliberately: a newly declared obligation turns every
+host's obligation suite RED until that host writes a checker (their suites say so in their headers —
+"a newly declared obligation on a kind this host renders arrives here as a claim with no checker"), so
+it is a five-host change-set of its own and arming it mid-campaign would have stopped four repos for a
+divergence that is now closed.
 
 **What is already safe.** The server-driven `ReadFileBody` shim does not depend on either name — it
 resolves the control by `input[type="file"]`, deliberately, because a shim that keyed off a class

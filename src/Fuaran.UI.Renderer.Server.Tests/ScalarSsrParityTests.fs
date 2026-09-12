@@ -19,6 +19,17 @@ module Fuaran.UI.Renderer.Server.Tests.ScalarSsrParityTests
 //  (`tryResolveScalarText` — Render.fs `renderText`'s Bound arm), pins it to
 //  the canonical corpus value, and then asserts the SERVER HTML carries that
 //  same value as element text. A divergence on either side fails loudly.
+//
+//  WHERE THE LOCK A MIRROR LIVES, and why it is not here (Phase 1674). fuaran-ts's
+//  Lock A asserts class-set equality between its two renderers with a closed,
+//  spec-cited exception list, and Phase 1652 asked for the same allowance in this
+//  tier so the two cannot declare different exceptions. That mirror is in
+//  `Fuaran.UI.Tests/CssCoverageTests.fs`, not in this file, for one reason: it is a
+//  claim about the class VOCABULARY each renderer emits, and the only instrument
+//  this repo has for that is the source scan that suite already owns and already
+//  copies both tiers' sources for. Restating it here would have meant a second
+//  scanner over a second copy of the sources. The same suite carries the
+//  file-input class pin, for the same reason.
 // ============================================================================
 
 open System

@@ -277,13 +277,15 @@
         // which sets `input.files` on this element — so one resolution serves
         // every way a file arrives.
         //
-        // `type="file"` rather than a class: the two SSR hosts disagree on the
-        // input's class name (`fuaran-file-upload-input` on the client renderer,
-        // `fuaran-file-upload-control` on the server one — a real divergence,
-        // filed separately), and a shim that keyed off either would work against
-        // one host and fail silently against the other. The input TYPE is the
-        // thing both hosts must agree on, because it is what makes the control a
-        // file control at all.
+        // `type="file"` rather than a class, and it STAYS that way now that the
+        // two hosts agree. Until Phase 1674 they did not: the client renderer
+        // emitted `fuaran-file-upload-input` and the server `-control` on the
+        // same element, and a shim keyed off either would have worked against one
+        // host and failed silently against the other. The divergence is closed;
+        // the posture is kept, because the input TYPE is the thing both hosts
+        // must agree on -- it is what makes the control a file control at all -
+        // and this resolution does not become wrong if a third host arrives with
+        // its own vocabulary.
         var host = byId(fx.nodeId);
         var input =
           host && host.files ? host : host && host.querySelector ? host.querySelector('input[type="file"]') : null;

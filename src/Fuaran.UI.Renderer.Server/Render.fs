@@ -2068,7 +2068,7 @@ and private renderKind
                           [ prop.className "fuaran-file-upload-label"
                             prop.text (renderText ctx spec.Label) ]
                       Html.input (
-                          [ prop.className "fuaran-file-upload-control"; prop.custom ("type", "file") ]
+                          [ prop.className "fuaran-file-upload-input"; prop.custom ("type", "file") ]
                           @ acceptAttr
                           @ captureAttr
                       ) ] ]
