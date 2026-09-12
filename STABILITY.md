@@ -7831,6 +7831,43 @@ lands; a phase moves NO number._
 
 _(each phase adds one paragraph here, named `fuaran#NNNN — <class>`)_
 
+**fuaran#1698 — ADDITIVE: a NEW PACKAGE, `Fuaran.UI.AiWire`.** No existing surface moves — nothing
+already published gains, loses or changes a member, and no other package in this repository
+references the new one. A consumer that does not want it is unaffected by it.
+
+*What it is.* The minimal portable substrate for speaking an AI provider's own wire format: an
+insertion-ordered `JsonValue` model with total `option`-returning accessors, `JsonHost` (one
+canonical byte-stable writer shared by both hosts; a parser bridged to `System.Text.Json` on .NET
+and to `JSON.parse` under Fable), the provider contract records (`AIProviderMessage`,
+`AIContentPart`, `AIProviderToolCall` / `ToolResult` / `ToolDef`, `TokenUsage`,
+`AIProviderResponse`, `AIProviderCapabilities`, and the closed `AIProviderError` vocabulary), and
+the one-method `IHttpTransport` egress seam over host-agnostic `HttpRequest` / `HttpResponse`
+records. `FSharp.Core` plus `Fable.Core` — the latter reached only from the parser's
+`#if FABLE_COMPILER` arm — and nothing else. It ships its sources under `fable/`, so it is a Fable
+package and is covered by this repository's Fable portability stage from its first commit.
+
+*Why it is published rather than copied again.* This substrate already existed twice in the estate:
+once where it was written, and once as an in-repo copy inside a consumer that could not take the
+original's dependency. Publishing it under a public `Fuaran.UI.*` name lets that consumer delete its
+copy, so the count stays at two rather than becoming three, and gives the wire layer one public home
+a second consumer can adopt without copying anything. The package NAME is the irreversible half of
+that act and was decided by the operator on 2026-09-12; the licence entry was approved with it.
+
+*What it deliberately is not.* Not an SDK. There is no client, no credential store, no provider
+registry, no streaming parser and — the one most likely to be read as a gap — **no retry loop**.
+`AIProviderError.isRetryable` classifies; it never acts. Whether to retry a rate limit is the host's
+call, because in a bring-your-own-key deployment an automatic retry spends the reader's own key.
+
+*It does not reuse `Fuaran.Core.Wire.JVal`, and that is a decision rather than an oversight.* That
+model has no null case, which provider bodies use, and splits integer from float where JSON has one
+numeric type. Substituting it would change round-tripping at the provider boundary, and adding a
+null case to it would be a DU-case addition on a package every domain in the estate compiles
+against.
+
+*Licence.* Apache-2.0, as the rest of the tier. It is a modified copy of the author's own
+Apache-2.0 wire layer under §4(b), and a fix made here is a fix made to this copy.
+
+
 **fuaran#1674 — ADDITIVE, with one CLASS-VOCABULARY change and one RECORD WIDENING.** The Tidy-Up
 drain over the reference tier, its gate scripts and the corpus lane.
 

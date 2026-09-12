@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.AiWire</PackageId>
+    <Description>Portable AI-connector wire substrate — the minimal surface a Fuaran host needs to speak an AI provider's own wire format without taking a dependency on any platform SDK: an insertion-ordered JsonValue model with a byte-stable canonical writer, a host-bridged parser (System.Text.Json on .NET, JSON.parse under Fable), the provider message / tool / response / error contract, and a one-method IHttpTransport egress seam. FSharp.Core only — no System.Net.Http, no host APIs — so the same source drives a .NET server host and a Fable browser host. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Compile order is dependency order: the value model, then the
+         serialization seam over it, then the provider contract, then the
+         egress seam the contract's callers drive. -->
+    <Compile Include="JsonValue.fs" />
+    <Compile Include="JsonHost.fs" />
+    <Compile Include="Contract.fs" />
+    <Compile Include="IHttpTransport.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/, the same shape every
+       client-tier package here uses: a PackageReference Fable consumer needs
+       the source to retranspile. Shipping it is also what enrols this project
+       in the repo's Fable portability stage, which derives its subject set
+       from this very pack path rather than from a hand-kept list. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <!-- Fable.Core: used only under `#if FABLE_COMPILER` for the `[<Emit>]`
+         bridge to the browser's own JSON.parse in JsonHost.fs. Harmless on
+         .NET — that arm is fenced out and never compiled. -->
+    <PackageReference Include="Fable.Core" />
+  </ItemGroup>
+</Project>
