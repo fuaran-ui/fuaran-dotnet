@@ -213,16 +213,59 @@ let bindingExpression (binding: Binding<'T>) : string * string =
 /// One bound binding slot on a node — the slot name, its wire-form expression,
 /// and the `Binding` case it came from. Mirrors the TS `BindingSlotInfo`.
 type BindingSlotInfo =
-    { Slot: string
-      Expression: string
-      Source: string }
+    {
+        Slot: string
+        Expression: string
+        Source: string
+        /// Phase 1674 — the REACTIVE INPUTS this slot reads, as first-class
+        /// entries rather than something a caller decodes out of the expression
+        /// string. See `slotDependencies`.
+        DependsOn: string list
+    }
+
+/// The named reactive inputs one binding reads, in the vocabulary an agent can
+/// join on: `filter:<name>`, `state:<key>`, `query:<name>`, `selection:<nodeId>`.
+///
+/// WHY IT IS A FIELD (Phases 421 + 424, drained by 1674). The edges were all
+/// derivable and none was OFFERED: `Expression` is prose for a human, and a
+/// caller wanting the dependency graph had to decode the whole node from
+/// `getNodeJson` and re-derive them — at which point it is re-implementing the
+/// walk, in JavaScript, against a vocabulary that moves. A filter→consumer or
+/// transform→consumer edge is the thing an agent needs before it can predict
+/// what changing a filter will redraw, and it was the one edge class the
+/// introspection surface described everything around and never stated.
+///
+/// It is a PROJECTION, not new state: every entry comes from
+/// `Fuaran.UI.BindingWalk.usesOfBinding`, the same derivation the validator's reactive
+/// rules run on, so this surface cannot disagree with them about what reads
+/// what. A `Binding.Computed` contributes NOTHING, deliberately and by that
+/// walk's own posture — the closure is handed the whole state bag, so which keys
+/// it reads is unknowable statically, and inventing an edge would be worse than
+/// omitting one. `Binding.Now` likewise participates in no reactive edge.
+///
+/// A transform's PARAMS are the filter→consumer edge in its most useful form:
+/// `TransformParamFilter` names a filter the pipeline reads, so a grid whose
+/// rows are scoped by a chip reports `filter:<chip>` at the slot that carries
+/// the transform.
+let private slotDependencies (binding: Binding<'T>) : string list =
+    Fuaran.UI.BindingWalk.usesOfBinding binding
+    |> List.choose (fun use_ ->
+        match use_ with
+        | Fuaran.UI.BindingWalk.BindingUse.State key -> Some("state:" + key)
+        | Fuaran.UI.BindingWalk.BindingUse.Filter name
+        | Fuaran.UI.BindingWalk.BindingUse.TransformParamFilter name -> Some("filter:" + name)
+        | Fuaran.UI.BindingWalk.BindingUse.Selection nodeId -> Some("selection:" + nodeId)
+        | Fuaran.UI.BindingWalk.BindingUse.Query(name, _) -> Some("query:" + name)
+        | _ -> None)
+    |> List.distinct
 
 let private slotInfo (name: string) (binding: Binding<'T>) : BindingSlotInfo =
     let source, expression = bindingExpression binding
 
     { Slot = name
       Expression = expression
-      Source = source }
+      Source = source
+      DependsOn = slotDependencies binding }
 
 // ─── extractBindingSlots (mirror of AiTools.Tools.extractBindings) ──────────
 //
@@ -832,7 +875,14 @@ let readGeometry (nodeId: string) : NodeGeometry option =
 // envelope. F# lists are materialised to real JS arrays via `Array.ofList`.
 
 let private slotInfoToObj (s: BindingSlotInfo) : obj =
-    createObj [ "slot", box s.Slot; "expression", box s.Expression; "source", box s.Source ]
+    createObj
+        [ "slot", box s.Slot
+          "expression", box s.Expression
+          "source", box s.Source
+          // Phase 1674 — the reactive inputs, as data. Always an array, empty
+          // where there are none: a caller must be able to tell "reads nothing"
+          // from "this surface does not report it", and an absent key cannot.
+          "dependsOn", box (Array.ofList s.DependsOn) ]
 
 let private slotInfosToArray (slots: BindingSlotInfo list) : obj =
     slots |> List.map slotInfoToObj |> Array.ofList |> box

@@ -183,6 +183,94 @@ let tests =
               Expect.equal (bySlot "Trend").Source "State" "Trend source-token"
           }
 
+          // ── Phase 1674 — the dependency edges, as data ────────────────────
+          //
+          // Phases 421 + 424 left this as a shared deferred leg: the edges were
+          // all derivable and none was OFFERED, so a caller wanting the
+          // dependency graph had to decode the node from `getNodeJson` and
+          // re-derive the walk in JavaScript. The filter-consumer edge is the one
+          // an agent needs before it can predict what changing a chip will redraw.
+          test "a slot reports the reactive inputs it reads, in a joinable vocabulary" {
+              let slots = DebugGlobal.extractBindingSlots metricWithTrend.Kind
+
+              let bySlot name =
+                  slots |> List.find (fun s -> s.Slot = name)
+
+              Expect.equal (bySlot "Value").DependsOn [ "query:rev" ] "a Query slot names the query"
+              Expect.equal (bySlot "Trend").DependsOn [ "state:trend" ] "a State slot names the key"
+          }
+
+          test "a Transform's PARAMS are the filter-consumer edge, and it is reported at the slot" {
+              // The edge the two origin phases were actually about: a grid whose
+              // rows are scoped by a filter chip. The filter name is inside the
+              // transform's `params`, not in the slot's own binding case, so
+              // nothing short of the walk finds it.
+              let source =
+                  Fuaran.Core.Embedded
+                      { Schema = [ "dept", Fuaran.Core.StringType ]
+                        Columns = [ Fuaran.Core.Column.create "dept" Fuaran.Core.StringType [ Fuaran.Core.Str "eng" ] ] }
+
+              let pipeline: Fuaran.Core.Transform list =
+                  [ Fuaran.Core.Filter(
+                        Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.Param "dept")
+                    ) ]
+
+              let scoped =
+                  Binding.Transform(
+                      Fuaran.UI.Types.TransformSource.Data(source),
+                      pipeline,
+                      Some
+                          [ { From = Binding.Filter("dept", None)
+                              Name = "dept" } ]
+                  )
+
+              let info =
+                  DebugGlobal.extractBindingSlots (
+                      NodeKind.DataGrid
+                          { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
+                            EditStateKey = None
+                            DefaultSort = None
+                            Source = scoped
+                            RowKey = None
+                            RowKeyField = Some "dept"
+                            Columns = []
+                            OnRowClick = None
+                            Editable = false
+                            Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false
+                            Exportable = false }
+                  )
+
+              Expect.isTrue
+                  (info |> List.exists (fun s -> s.DependsOn |> List.contains "filter:dept"))
+                  "the transform slot names the filter its pipeline reads"
+          }
+
+          test "a Computed binding reports NO edge, and that is the walk's posture rather than a gap" {
+              // `Binding.Computed`'s closure is handed the whole state bag, so
+              // WHICH keys it reads is unknowable statically. Inventing an edge
+              // would be worse than omitting one, and the shared walk already
+              // takes that position - this surface must not take a different one.
+              let computed: Binding<float> = Binding.Computed(fun _ -> 1.0)
+
+              let info =
+                  DebugGlobal.extractBindingSlots (
+                      NodeKind.Progress
+                          { Fuaran.UI.Defaults.progress with
+                              Fraction = computed }
+                  )
+
+              Expect.isTrue
+                  (info |> List.forall (fun s -> List.isEmpty s.DependsOn))
+                  "a Computed slot claims no reactive input"
+          }
+
           test "bindingExpression mirrors BindingProbe.identify" {
               Expect.equal (DebugGlobal.bindingExpression (Binding.Static(Some 1.0))) ("Static", "$static") "Static"
               Expect.equal (DebugGlobal.bindingExpression (binding.state "k" 0.0)) ("State", "$state.k") "State"
