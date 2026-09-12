@@ -7831,6 +7831,37 @@ lands; a phase moves NO number._
 
 _(each phase adds one paragraph here, named `fuaran#NNNN — <class>`)_
 
+**`Fuaran.Core.*` 0.22.0 — ADDITIVE: the pinned substrate moves, and one local workaround it
+obsoletes is removed.** The twelve `Fuaran.Core.*` pins (`Tree`, `Ops`, `OpStream`, `Conformance`,
+`Column`, `DataFrame`, `Wire`, `Function`, `Observer`, `Validator`, `Idl`, `Idl.Codegen`) move
+`0.21.0` → `0.22.0`. The kit's 0.22.0 is additive over 0.21.0, and nothing in this repository's own
+public surface moves with it — no type, member, wire byte, class name or
+`Theme.vocabularyFingerprint` — so a consumer adopts it by restoring, and a consumer that also pins
+`Fuaran.Core.*` directly raises those pins to match.
+
+*The one source change the raise carries.* `SchemaWalk.noSources` is PUBLIC again in
+`Fuaran.Core.DataFrame` 0.22.0. It had gone `internal` in 0.19.0's surface narrowing, which measured
+no caller outside the defining package and did not see this one, so `PreEmitValidate` had been
+spelling it locally as `SchemaWalk.ofMap Map.empty` — the public spelling of exactly that function.
+That local binding and the comment explaining it are gone, and both arms of `producedSchema` now call
+`SchemaWalk.noSources` directly. Identical behaviour: every name misses, so a `Ref` opens the walk,
+which is what the block above it describes and relies on.
+
+*What the conformance census now reports.* The pinned kit ships a new law family,
+`Conformance.constructThenEncodeLaws`, and `docs/core-conformance.md` gains a row for it at **Carried
+by phase** rather than Adopted. That is the family reporting itself by NAME until a `ConstructWitness`
+over this tier's smart constructors is supplied — the census is enrolment by name AND by reflection,
+so a family with no row fails the suite and a family carried by nobody says so out loud. It is
+deliberately not `Not used`: what the family certifies is the AUTHORING surface, and this tier ships
+one, so a reasoned non-use would be a false statement. What it would catch is on the record rather
+than hypothetical — a field widening in memory to a richer carrier keeps a decode/encode corpus green
+over thousands of vectors while breaking every program that BUILDS a value.
+
+*Corpus.* `laws/capability-laws.json` and its `laws/manifest.json` entry are re-emitted for the new
+kit: the sample is drawn from the same seed over the same iteration count, so the 72 vectors are
+byte-identical and only the `kitVersion` stamp moves. Both host capability legs were re-run against
+the re-emitted file and stay green.
+
 **fuaran#1698 — ADDITIVE: a NEW PACKAGE, `Fuaran.UI.AiWire`.** No existing surface moves — nothing
 already published gains, loses or changes a member, and no other package in this repository
 references the new one. A consumer that does not want it is unaffected by it.

@@ -427,6 +427,19 @@ let census: (string * Adoption) list =
       // ---- a sibling host's family ----
       "Conformance.captureReplayLaws", SiblingHost "fuaran-ts / fuaran-go (fuaran#1482)"
 
+      // ---- the family this tier IS the subject of, and has not adopted yet ----
+      // Not `NotUsed`: the mechanism this family certifies is the AUTHORING surface — the smart
+      // constructors an author writes against — and this tier ships one, so a reasoned non-use
+      // would be a false statement. The family arrived with the `0.22.0` pin raise (fuaran-core#126)
+      // and reports not-adopted BY NAME until a `ConstructWitness` over those constructors is
+      // supplied, which is exactly the forcing function it was built to be. What it would catch is
+      // on the record rather than hypothetical: a field widening in memory to a richer carrier
+      // keeps a decode/encode corpus green over thousands of vectors while breaking every program
+      // that BUILDS a value — `@fuaran-ui/ui` 0.26.0, against a fully green corpus.
+      "Conformance.constructThenEncodeLaws",
+      CarriedBy
+          "unfiled — fuaran-core#126 handed the first adoption to this tier's F# smart constructors (the codec and the Corpus.Case list already exist, so the adoption is one ConstructWitness); the row flips to Adopted when that witness is supplied"
+
       // ---- mechanisms this tier does not use ----
       "Conformance.propagationEvalLaws",
       NotUsed
