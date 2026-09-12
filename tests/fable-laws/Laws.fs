@@ -47,6 +47,7 @@ open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
+open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.Merge
 open Fuaran.UI.Renderer
 open FableLaws.TestSupport
@@ -842,4 +843,153 @@ let dateSentinelLines (cases: DateSentinelCase list) : string list =
     :: (cases |> List.map (fun c -> "DATESENTINEL " + c.Name + " " + c.Outcome))
 
 let dateSentinelViolations (cases: DateSentinelCase list) : int =
+    cases |> List.filter (fun c -> not c.Passed) |> List.length
+
+// ── Law 6: the DAG checkpoint's two refusals, on both pipelines ──────────────
+//
+//  Phase 1674. The de-fenced DAG stack was proved Fable-clean once, in 2026-07,
+//  by transpiling it and running a harness under Node — 12/12, including both
+//  checkpoint refusals. That harness lived in a scratchpad and persisted
+//  nothing, so the estate's recorded false-green Fable trap stayed live for
+//  this stack.
+//
+//  It is closed HERE rather than by the `samples/dag-fable-smoke` entry project
+//  the finding suggested, because the marginal coverage of a second entry
+//  project was MEASURED first and is zero on the compile axis: Phase 1606's
+//  derived portability set already enters `Fuaran.UI.OpStream.Dag.Abstractions`
+//  (graph root) and reaches every gated project (17 of 17 covered), and
+//  `Dag.Merge` transpiles as a reference of THIS project. What was genuinely
+//  uncovered is the RUN axis — no assertion about checkpoint behaviour has ever
+//  executed under Node, because the .NET assertions are Expecto, which does not
+//  transpile.
+//
+//  So the two refusals join the harness that already runs on both pipelines and
+//  byte-compares them. That is strictly more assurance than the scratchpad run
+//  had: a divergence between the pipelines in WHICH refusal is reached, or in
+//  whether one is reached at all, differs line-for-line rather than passing as
+//  two independently-green runs.
+//
+//  The three cases, in the order a reader should meet them:
+//   - `honest`    — a checkpoint made by `DagCheckpoint.create` replays, and the
+//                   bounded replay equals the full replay from genesis. Without
+//                   this the two refusals below could both be produced by a
+//                   function that refuses everything.
+//   - `tampered`  — the Snapshot is swapped for a different tree while the
+//                   stored `SnapshotHash` stays honest. Pre-Phase-412 this was
+//                   folded over silently, yielding a tree that never existed.
+//   - `off-spine` — snapshot and hash are BOTH genuine; only the position moved.
+//                   A tree-only hash cannot see this, which is why the hash is
+//                   position-bound.
+
+type CheckpointCase =
+    { Name: string
+      Outcome: string
+      Passed: bool }
+
+/// A fixed actor / envelope / timestamp, so the content hashes are a pure
+/// function of the ops and both pipelines compute the same DAG.
+let private ckActor = Actor.Human "fable-laws"
+
+/// Deliberately a fixed instant rather than `DateTimeOffset.UtcNow`: the record
+/// hash folds the timestamp, and a clock reading would make the DAG (and every
+/// line printed below) different on the two legs of a byte comparison.
+let private ckStamp =
+    System.DateTimeOffset(2026, 9, 12, 0, 0, 0, System.TimeSpan.Zero)
+
+let private ckRecord (parents: string list) (op: TreeOp<obj>) : DagOpRecord<obj> =
+    DagOpRecord.create "s" parents op None ckActor ckStamp OpResultEnvelope.Success
+
+/// Three ops that extend the shared base tree. Each inserts a DISTINCT leaf, so
+/// the three intermediate states are pairwise distinct by construction and the
+/// forged-snapshot case below has a genuinely different tree to substitute.
+let private ckOps: TreeOp<obj> list =
+    [ TreeOp.InsertChild(NodeId "root", unwrap (mkLeafText "k0" "one"))
+      TreeOp.InsertChild(NodeId "root", unwrap (mkLeafText "k1" "two"))
+      TreeOp.InsertChild(NodeId "root", unwrap (mkLeafText "k2" "three")) ]
+
+let checkpointCases () : CheckpointCase list =
+    let initial = unwrap baseTree
+
+    // A linear DAG: genesis -> a -> b.
+    let g = ckRecord [] ckOps[0]
+    let a = ckRecord [ g.Hash ] ckOps[1]
+    let b = ckRecord [ a.Hash ] ckOps[2]
+
+    let records = [ g; a; b ]
+
+    let getRec (h: string) : DagOpRecord<obj> option =
+        records |> List.tryFind (fun r -> r.Hash = h)
+
+    let replayTo (head: string) : Node<obj> option =
+        match DagReplay.replay getRec initial head with
+        | Ok t -> Some t
+        | Error _ -> None
+
+    match replayTo g.Hash, replayTo a.Hash, replayTo b.Hash with
+    | Some atG, Some atA, Some full ->
+        let honest = DagCheckpoint.create "s" a.Hash atA
+
+        let honestOutcome =
+            match DagReplay.replayFromCheckpoint getRec honest b.Hash with
+            | Ok bounded when CanonicalJson.encodeNode bounded = CanonicalJson.encodeNode full ->
+                "replayed-equal-to-full"
+            | Ok _ -> "replayed-but-diverged"
+            | Error _ -> "refused"
+
+        // The forged snapshot must really be a different tree, or the case
+        // certifies nothing — asserted rather than assumed, as its own line.
+        let forgedIsDistinct = CanonicalJson.encodeNode atG <> CanonicalJson.encodeNode atA
+
+        let tampered =
+            { honest with
+                Snapshot = atG
+                SnapshotHash = DagCheckpoint.snapshotHash a.Hash (CanonicalJson.encodeNode atA) }
+
+        let tamperedOutcome =
+            match DagReplay.replayFromCheckpoint getRec tampered b.Hash with
+            | Ok _ -> "TRUSTED"
+            | Error(DagReplayError.SnapshotHashMismatch(atHash, stored, recomputed)) when
+                atHash = a.Hash && stored <> recomputed
+                ->
+                "refused-snapshot-hash-mismatch"
+            | Error _ -> "refused-wrong-class"
+
+        // Genuine snapshot, genuine hash, WRONG position: the checkpoint for `g`
+        // presented as if it bounded `a`. Nothing in the record is forged.
+        let atGCheckpoint = DagCheckpoint.create "s" g.Hash atG
+        let moved = { atGCheckpoint with AtHash = a.Hash }
+
+        let offSpineOutcome =
+            match DagReplay.replayFromCheckpoint getRec moved b.Hash with
+            | Ok _ -> "TRUSTED"
+            | Error(DagReplayError.SnapshotHashMismatch _) -> "refused-snapshot-hash-mismatch"
+            | Error _ -> "refused-wrong-class"
+
+        [ { Name = "forged-snapshot-is-a-distinct-tree"
+            Outcome = (if forgedIsDistinct then "distinct" else "IDENTICAL")
+            Passed = forgedIsDistinct }
+          { Name = "honest"
+            Outcome = honestOutcome
+            Passed = honestOutcome = "replayed-equal-to-full" }
+          { Name = "tampered-snapshot"
+            Outcome = tamperedOutcome
+            Passed = tamperedOutcome = "refused-snapshot-hash-mismatch" }
+          { Name = "genuine-snapshot-moved-position"
+            Outcome = offSpineOutcome
+            Passed = offSpineOutcome = "refused-snapshot-hash-mismatch" } ]
+    | _ ->
+        [ { Name = "fixture"
+            Outcome = "REPLAY-FAILED"
+            Passed = false } ]
+
+let checkpointLines (cases: CheckpointCase list) : string list =
+    let failures = cases |> List.filter (fun c -> not c.Passed)
+
+    ("DAGCHECKPOINT cases="
+     + string (List.length cases)
+     + " failed="
+     + string (List.length failures))
+    :: (cases |> List.map (fun c -> "DAGCHECKPOINT " + c.Name + " " + c.Outcome))
+
+let checkpointViolations (cases: CheckpointCase list) : int =
     cases |> List.filter (fun c -> not c.Passed) |> List.length

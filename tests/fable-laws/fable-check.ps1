@@ -1358,7 +1358,18 @@ if (-not $SkipPortability) {
 # ── 2. The laws ─────────────────────────────────────────────────────────────
 
 $lawsOut = Join-Path $PSScriptRoot 'output'
-$lineShape = '^(MERGE|MERGELAW|MERGEFINDING|MERGEFAIL|ADEQUACY|KIT|KITFAIL|DEFLATE|DEFLATEFAIL|TOTAL) '
+# EVERY prefix the harness emits, and the set is the byte comparison's SUBJECT rather than a
+# display filter: a line the pattern does not name is dropped from BOTH captures, so the two
+# pipelines can disagree about it line-for-line and still compare equal. Only `TOTAL` would then
+# catch the divergence, and only if the violation COUNT moved with it. Phase 1531's two laws
+# (SELECTIONFIELD, DATESENTINEL) and Phase 1674's (DAGCHECKPOINT) each landed a per-case line and
+# none of them was added here, so all three were invisible to the comparison from the day they
+# shipped -- the exact shape of silent-pass this stage exists to refuse.
+#
+# A NEW LAW ADDS ITS PREFIX HERE IN THE SAME CHANGE-SET AS ITS LINES. There is no derivation that
+# would make that automatic without parsing the harness's source, and a pattern derived from the
+# output would admit whatever either leg happened to print.
+$lineShape = '^(MERGE|MERGELAW|MERGEFINDING|MERGEFAIL|ADEQUACY|KIT|KITFAIL|DEFLATE|DEFLATEFAIL|SELECTIONFIELD|DATESENTINEL|DAGCHECKPOINT|TOTAL) '
 
 if (-not $SkipLaws) {
     Write-Stage 'laws — TreeMerge.merge3Way + FoldConfluence.laneFoldLaws + Deflate.inflate, .NET vs Node'

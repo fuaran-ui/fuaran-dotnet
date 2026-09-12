@@ -85,6 +85,17 @@ let main _ =
     for line in Laws.dateSentinelLines dateCases do
         printfn "%s" line
 
+    // ---- law 6: the DAG checkpoint's two refusals, under Node ----
+    // The de-fenced DAG stack's Fable-cleanliness was proved once from a
+    // scratchpad harness that persisted nothing. The COMPILE half is covered by
+    // the derived portability set; this is the RUN half, and it is here rather
+    // than in a second entry project because that measurement was made first
+    // (see the law's header).
+    let checkpointCases = Laws.checkpointCases ()
+
+    for line in Laws.checkpointLines checkpointCases do
+        printfn "%s" line
+
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
@@ -92,6 +103,7 @@ let main _ =
         + Laws.deflateViolations deflateCases
         + Laws.selectionFieldViolations selectionCases
         + Laws.dateSentinelViolations dateCases
+        + Laws.checkpointViolations checkpointCases
 
     printfn "TOTAL violations=%d" violations
 
