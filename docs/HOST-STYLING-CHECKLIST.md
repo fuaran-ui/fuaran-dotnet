@@ -253,7 +253,7 @@ Two boundaries worth stating, because both are decisions rather than omissions. 
 
 **The value is machine-maintained, in three links.** `Theme.vocabularyFingerprint` is pinned rather than computed, because half the vocabulary is read out of the renderer *sources*, which a shipping package cannot see at runtime. So: the coverage suite recomputes the truth and fails naming the value to pin when the vocabulary moves; `-- CssCheck` (wired into `Check`) fails when the stylesheet's stamp and the constant disagree; and the byte-copy check carries the stamp to every tier. Changing the vocabulary is therefore: run the suite, paste the value it names into `Theme.fs`, run `-- Css`, commit the sheet and its three tier copies in the same change-set. No step of that is remembered rather than enforced.
 
-### 1.5g The cross-repo stylesheet defects, and where each stands (Phases 1648, 1674)
+### 1.5g The cross-repo stylesheet defects, and where each stands (Phases 1648, 1674, 1701, 1702)
 
 Every item below is REAL and MEASURED against the current sheet and renderers. None is repairable in
 this repo alone, for one shared reason: each changes the canonical stylesheet, and the canonical
@@ -268,8 +268,9 @@ rather than a re-derivation. The landing order is fixed and is not a preference:
 bytes and (c) moves the vocabulary fingerprint, which restamps the sheet — so each on its own costs
 the same five-repo sync, and doing them separately would have cost it twice for no separable review.
 (b) was the one of the three that also needed a renderer EMISSION change, in five renderers, which
-is a different size of act; Phase 1701 landed it. All three are closed, and each is kept below with
-what it cost, because the class recurs.
+is a different size of act; Phase 1701 landed it. (d) arrived later and from a different direction —
+it was filed by a session that could SEE it and fixed by the first session that could MEASURE it.
+All four are closed, and each is kept below with what it cost, because the class recurs.
 
 **(a) — LANDED, Phase 1674. Three fallback/declaration mismatches the 2026-07-30 design-system
 audit missed.** A
@@ -377,6 +378,50 @@ divergence that is now closed.
 resolves the control by `input[type="file"]`, deliberately, because a shim that keyed off a class
 would work against one host and fail silently against the other (Phase 1648). So the divergence is a
 styling and DOM-query trap, and no longer a functional one.
+
+**(d) — LANDED, Phase 1702. A HIDDEN `.fuaran-tooltip` widened the document at 375px.** Filed by
+Phase 1129 as "7px of scroll width", diagnosed by Phase 1674 to the arithmetic, and fixed here — the
+first of these four that needed a LAYOUT ENGINE rather than a reading, which is why it outlived three
+phases on a machine with no browser binaries. Two independent defects, both measured in Edge 152 at a
+375px viewport, and it is worth separating them because only one is the phantom:
+
+| | Before | After |
+|---|---|---|
+| `documentElement.scrollWidth`, nothing hovered | **482** | **375** |
+| `clientWidth` | 375 | 375 |
+| hidden hint's border box | 346px wide | 0 (collapsed) |
+| revealed hint's border box | 346px | 320px |
+
+1. **`box-sizing` was never declared**, and this sheet imposes no global reset — so
+   `max-inline-size: min(20rem, calc(100vw - 2rem))` was a CONTENT-box cap and the hint's real box
+   was 26px wider than the comment beside it claimed. One declaration; visible in the revealed row
+   above.
+2. **`visibility: hidden` does not take a box out of the scrollable overflow region.** The hint is
+   absolutely positioned, so its bounds still widened the viewport's scroll area while nobody was
+   hovering anything. That is the phantom: a horizontal scrollbar with nothing to scroll to, on a
+   page whose only wide thing is invisible — the worst class of defect to report, because there is
+   nothing to point at. `transform: scale(0)` while hidden collapses it (scrollable overflow is
+   computed from TRANSFORMED boxes), riding the same 120ms delay `visibility` already uses so the
+   fade-OUT still plays.
+
+**Three other candidates were measured and rejected, and the measurements are the reason.**
+`display: none` collapses it and discards the reason the rule says `visibility` in the first place
+(the element stays in the a11y tree's reach for an eagerly-resolved `aria-describedby`). Clipping the
+WRAPPER while it rests collapses it and clips every descendant's focus ring and shadow in the state a
+page spends all its time in. **Clamping the hint to its wrapper (`max-inline-size: 100%`) — the
+candidate that reads best on paper — collapses it and ruins it: measured at 78px wide by 303px tall,
+a column of single words.** A hint on a two-word node is not allowed to be two words wide.
+
+**What is deliberately NOT fixed.** A hint that is actually ON SCREEN near the right edge still
+overflows, by 81px in the same probe. That is not a regression and not an oversight: collision-aware
+flipping needs measurement and is the client-tier enhancement `WIRE_FORMAT.md` §3.1 declines to claim
+for the reference renderer. This phase closed the phantom — overflow caused by something no reader
+can see — and left the visible case exactly where the spec puts it.
+
+**The change is declarations only, so the vocabulary fingerprint did not move** (`fv1:253483dae447ee83`
+before and after) and the sheet was not restamped. It still cost the four-copy sync of §1.5c, because
+the BYTES moved: `CssCheck` compares bytes, and §1.5d's restamp is a second, independent trigger
+rather than the only one.
 
 ### 1.6 Interaction state matrix (Phase 12.N) – 84 + 4 = 88 variables
 
