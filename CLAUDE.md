@@ -27,6 +27,7 @@ Cross-repo development conventions (port allocation, launcher patterns, formatti
 | `Fuaran.UI.Client` | Typed F#/.NET client over the generation endpoint — `generate` + session turn-loop (repair diffs) + the closed repair loop + decode glue |
 | `Fuaran.UI.Cli` | The `fuaran` dotnet tool — `generate` / `validate` / `scaffold` over the public surfaces |
 | `Fuaran.UI.Renderer.Web` | Embedded browser renderer for .NET hosts — the built `@fuaran-ui/renderer` bundle + reference CSS as embedded static web assets, `MapFuaranRenderer()`, and the mount snippet. No Node toolchain on the consumer side |
+| `Fuaran.UI.AiWire` | Portable AI-connector wire substrate — ordered `JsonValue` + byte-stable canonical writer + host-bridged parser, the provider contract records and error vocabulary, and the one-method `IHttpTransport` egress seam. FSharp.Core + Fable.Core only; references no other package here and none references it |
 
 All packs land in `../local-nuget-feed/` for local downstream consumption.
 
