@@ -154,6 +154,15 @@ type ModuleAffordance =
         Fields: FieldAffordance list
         /// Phrases that address the module itself rather than one of its fields.
         Commands: DeclaredCommand list
+        /// WHICH TENANT declared it (Phase 1674). `None` is the page itself;
+        /// `Some scope` is a `Mount` guest, named by the scope its provider
+        /// registered under.
+        ///
+        /// Stamped by `enumerate` from the registration, never by the provider —
+        /// a provider cannot claim a scope it did not register under, which is
+        /// the whole value of the field. Placed LAST so the addition is
+        /// source-compatible at `{ existing with ... }` and at every read.
+        Scope: string option
     }
 
 /// The whole answer. One field, so the shape stays additively extensible — a
@@ -182,7 +191,7 @@ type AffordanceProvider = string option -> AffordanceEnumeration
 // A host registers ONCE, at install time, and the handle it gets back is how a
 // teardown removes it.
 
-let mutable private providers: (int * AffordanceProvider) list = []
+let mutable private providers: (int * string option * AffordanceProvider) list = []
 let mutable private nextProviderId = 0
 
 /// Register a provider. Returns the handle that removes it again; calling the
@@ -192,12 +201,17 @@ let mutable private nextProviderId = 0
 /// with the FIRST declaration of a module id winning — so a host that installs
 /// its own provider ahead of a library's can override that library's account of
 /// a module without the library having to know.
-let registerProvider (provider: AffordanceProvider) : unit -> unit =
+let registerProviderInScope (scope: string option) (provider: AffordanceProvider) : unit -> unit =
     let id = nextProviderId
     nextProviderId <- nextProviderId + 1
-    providers <- providers @ [ id, provider ]
+    providers <- providers @ [ id, scope, provider ]
 
-    fun () -> providers <- providers |> List.filter (fun (existing, _) -> existing <> id)
+    fun () -> providers <- providers |> List.filter (fun (existing, _, _) -> existing <> id)
+
+/// Register a provider for the PAGE itself — `registerProviderInScope None`.
+/// Unchanged signature: a host that never mounts a guest is unaffected by the
+/// tenancy work, which is most of them.
+let registerProvider (provider: AffordanceProvider) : unit -> unit = registerProviderInScope None provider
 
 /// How many providers are currently registered. For a host's own wiring
 /// diagnostics; the enumeration itself is the answer a client reads.
@@ -225,9 +239,11 @@ let clearProviders () : unit =
 let enumerate (moduleId: string option) : AffordanceEnumeration =
     let collected =
         providers
-        |> List.collect (fun (_, provider) ->
+        |> List.collect (fun (_, scope, provider) ->
             try
-                (provider moduleId).Modules
+                // The scope is stamped HERE, from the registration, so a module
+                // carries the tenant that declared it and not one it named.
+                (provider moduleId).Modules |> List.map (fun m -> { m with Scope = scope })
             with ex ->
                 // Skipped, and the remaining providers still answer. Reported
                 // because a provider that threw contributes nothing, which is

@@ -4145,6 +4145,68 @@ let gridTransformParam: Node<obj> =
         ))
         None
 
+/// Phase 1674 — the UNDECLARED param, the one shape no fixture could express.
+///
+/// `grid-transform-param` above declares `dept` in `params` and reads it in a
+/// `filter` step: the ordinary, well-formed case, and every transform fixture in
+/// the corpus is well-formed the same way. This one is deliberately not. The
+/// pipeline's `filter` step names `ghost`, and `params` declares nothing at all
+/// — so the name appears in NO entry rather than in an entry that has not
+/// resolved.
+///
+/// That distinction is the whole fixture, and it is the one the hosts had
+/// silently split on. The prune rule ("an unset filter is no constraint") keys
+/// off the DECLARED-BUT-UNRESOLVED set, so a name that was never declared is not
+/// in it: the step survives the prune and reaches Core's strict `UnboundParam`,
+/// loudly. `fuaran-py` keyed it off the complement of the RESOLVED env instead,
+/// which pruned the step and silently returned every row — the opposite verdict
+/// from the same document. Phase 1654 normalised py to this reading with a
+/// both-direction go-red probe; what it could not do was leave behind a document
+/// that asks the question, because the corpus was another phase's write lane.
+///
+/// It is a ROUND-TRIP fixture rather than a reject one on purpose: nothing about
+/// the bytes is wrong. The document decodes, re-encodes and is perfectly legal
+/// wire — the divergence is in what a host DOES with it, which is why no decode
+/// fixture could ever have caught it and why WIRE_FORMAT.md §3.3 now states
+/// the reading normatively beside it.
+let transformUndeclaredParam: Node<obj> =
+    let source =
+        Fuaran.Core.Embedded
+            { Schema = [ "dept", Fuaran.Core.StringType; "amount", Fuaran.Core.IntType ]
+              Columns =
+                [ Fuaran.Core.Column.create
+                      "dept"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "eng"; Fuaran.Core.Str "sales" ]
+                  Fuaran.Core.Column.create "amount" Fuaran.Core.IntType [ Fuaran.Core.Int 100; Fuaran.Core.Int 90 ] ] }
+
+    let pipeline: Fuaran.Core.Transform list =
+        [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.Param "ghost")) ]
+
+    node
+        "grid-transform-undeclared-param"
+        (NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort = None
+              Source = Binding.Transform(TransformSource.Data(source), pipeline, None)
+              RowKey = Some(fun _ -> "<closure>")
+              RowKeyField = None
+              Columns = []
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false
+              Exportable = false }
+        ))
+        None
+
 /// Phase 610 — the multi-select chip idiom end to end: a `<select multiple>` whose `values` binding
 /// IS `$filters.depts` (handler omitted, so its write-back stores the selection there) beside a
 /// `DataGrid` whose `Transform` scopes rows with an `in`/`param` membership test over that same
@@ -7641,6 +7703,8 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Grid", gridVis
       "Visualisation/Grid (Phase 282 — Binding.Transform compute source)", gridTransform
       "Visualisation/Grid (Phase 424 — parameterised Binding.Transform, filter param from a chip)", gridTransformParam
+      "Visualisation/Grid (Phase 1674 — a filter step naming a param NO params entry declares)",
+      transformUndeclaredParam
       "Layout/Box (Phase 610 — multi-select chip + DataGrid scoped by a list-valued in/param)", multiselectChipListParam
       "Display/Metric (Phase 421 — Binding.Query with a declared dependsOn filter edge)", queryDependsOn
       "Visualisation/Grid (Phase 425 — field-named columns + RowKeyField, closure-free)", gridFieldNamed

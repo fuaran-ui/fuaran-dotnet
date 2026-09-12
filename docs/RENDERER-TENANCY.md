@@ -108,6 +108,47 @@ cleaner of the two ways to give it one — at the price of a breaking interface 
 own version. **That is a product question about what a guest owes its host, not an implementation
 choice**, which is why this note stops here rather than picking.
 
+#### DECIDED (Phase 1674): yes, enumerable — WITH ATTRIBUTION. Option (c), plus a field.
+
+**The ruling.** A `Mount` guest's affordances ARE enumerable by the host page's console, and every
+module now carries the scope that declared it: absent for the page itself, the guest's scope id for a
+mounted one.
+
+**Why the boundary the question contemplated would protect nothing.** `window.__fuaran` runs on the
+host page, and a console on that page already holds the guest's DOM, its `data-fuaran-node-id`
+attributes and its rendered content. Withholding the guest's *declarations* from a caller that can
+read the guest's *output* is not an isolation boundary; it is a gap in a list. What `Mount` actually
+isolates is STATE and DISPATCH, and an affordance declaration is a description of an offer rather
+than the ability to take it — invoking one still goes through the guest's own dispatch path, which is
+where the gate already is and where it should stay. The disclosure risk this area exists to prevent
+is a cross-tenant read of DATA; a phrase a guest publishes so that it can be addressed is the
+opposite of data it holds back.
+
+**What WOULD have been wrong is the unattributed union**, and that is the half the three shapes above
+did not separate out. Without a scope on each module a caller cannot tell a host affordance from a
+guest's, and an agent driving the page by natural language addresses the wrong tenant — a defect that
+presents as the command going to the wrong place, not as an error. So the answer is not (c) as
+written but (c) plus the field.
+
+**Why not (a) or (b).** (a) makes `getAffordances()` with no scope mean one of two things that are
+both wrong, which the note above already says; that dilemma only exists because (a) treats the scope
+as a FILTER. Treated as an ATTRIBUTE it disappears — the no-argument call answers everything and says
+who declared each thing, and a caller that wants one tenant filters on a value it can see. (b) adds a
+member to `IFuaranRuntime`, a published interface with implementors outside this repo, to answer a
+question that does not require one.
+
+**What landed.** `ModuleAffordance` gains `Scope: string option`, placed last (source-compatible at
+`{ existing with … }`). `Affordances.registerProviderInScope` is the scoped registration;
+`registerProvider` is now `registerProviderInScope None`, so a host that never mounts a guest is
+unaffected by any of this. The stamp is applied by `enumerate` FROM THE REGISTRATION — a provider
+cannot claim a scope it did not register under, which is the whole value of the field, and a test
+asserts exactly that against a provider that tries. `getAffordances` emits `scope` on every module,
+`null` for the page itself.
+
+**Still process-global, deliberately.** The registry itself did not move. This ruling says the
+global registry is CORRECT — one page, one registry, with tenancy carried per entry rather than per
+store — so item 3 is closed rather than deferred.
+
 ## What this note deliberately does not cover
 
 `Fuaran.UI.Renderer`'s other module-level mutables that are genuinely process-wide by nature — the

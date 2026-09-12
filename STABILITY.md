@@ -793,6 +793,55 @@ Rationale (per `../workspace/docs/github-packages-mirror-from-forge.md`):
 
 Re-runs of an already-published version are safe because the publish workflow uses `--skip-duplicate` (idempotent push). A failed publish attempt that committed a version bump should bump again rather than reuse the failed version – keep the audit trail linear.
 
+### What proves a RELEASE, as opposed to a build
+
+Every suite in this repo's gate runs against the projects in this checkout — the right lane for "does
+the code agree with itself", and structurally blind to the two ways a release fails a newcomer: a
+package that does not RESTORE at all, and two hosts whose PUBLISHED bytes disagree while their
+sources do not. The clean-machine install smoke
+([`.github/workflows/install-smoke.yml`](.github/workflows/install-smoke.yml)) restores
+`Fuaran.UI` from nuget.org and installs `@fuaran-ui/*` from npm with every local source cleared,
+authors one tree through each tier's own surface, and requires the canonical bytes to match. It runs
+after a successful publish here, weekly, and on demand — its inputs are the registries, not this
+branch. It was green by hand on 2026-07-24 and unautomated until fuaran#1674.
+
+The FIXTURES are the sibling TypeScript implementation's, checked out rather than copied: the smoke
+compares two tiers' encodings of one tree, so the two legs must be the same two legs on both sides or
+the comparison certifies nothing. A copy would drift exactly when it mattered.
+
+### Where the release notes live (the convention, ratified here for all three producers)
+
+**This file is the changelog.** There is no `CHANGELOG.md` in this repository, and adding one would
+split the record in two: the reason a version moved and the surface it moved are the same paragraph,
+and that paragraph belongs beside the surface it describes. The alternative that was on the table —
+release notes generated from tags — was declined for the same reason plus one more: this repository
+publishes FORTY-ONE package ids on one `<Version>`, and a tag-derived note can only say that they
+all moved, never which surface did.
+
+The convention is shared with the other two producers in this family — `fuaran-ts` (which adopted
+it first, at fuaran#1676) and `fuaran-core` — so a reader crossing between them meets one shape:
+
+- One `###` section per notable change, headed `<version> — <what changed> (<citation>)`, or
+  `Recorded breaking change — <version>, <what changed> (<citation>)` when a consumer must act.
+- The section says what moved, **why**, what it costs a consumer, and what certifies it (the fixture,
+  vector or suite). A line that only names the change is not a release note. And where a consumer
+  must DO something, the section says what to do — not only what happened; a mechanism a reader has
+  to translate into an action is half a release note (fuaran#1674, after finding exactly that in the
+  0.78.0 `specHash` entry).
+- The citation is the bare phase ordinal (`Phase NNN` / `fuaran#NNN`) that carried it — a searchable
+  trail rather than a link that rots. Bare ordinals are permitted in OSS files by the operator ruling
+  of 2026-08-24.
+- A section for a version ahead of the newest tag states that it is unreleased, so a reader can tell
+  a shipped change from a queued one. This repository additionally keeps a `## <version> — DRAFT`
+  block with one paragraph per phase riding the slot, which is what makes "several phases, one
+  number" legible; that block is this repo's own and is not asked of the others.
+- The git tag is the release marker; the release notes for a tag are the sections naming versions
+  that tag first published.
+
+**`fuaran-core`'s half is not landed here.** That repository is Apache-2.0 public and is not this
+phase's to edit; ratifying the convention there is a one-section addition to its own `STABILITY.md`,
+carrying this text with the 41-package clause dropped.
+
 ## Re-confirmation gate before public exposure
 
 Before this repo flips public (whether as a public GitHub repository, a published-to-nuget.org package, or surfaced in marketing material), the licensing posture declared in [`LICENSE`](LICENSE) must be re-confirmed by Diametrical Ltd.
@@ -6812,6 +6861,18 @@ decoder restores `false` on absence (`dDef`), the schema is optional by construc
   pinned digest in `ChartProvenanceTests` moved with the change and says at its site that 1585 is
   why. Nothing about verifying an OLD artefact against its OWN recorded bytes changed.
 
+  **What a consumer persisting `specHash` values DOES about it, said here because the paragraph above
+  says what happened and not what to do (added by fuaran#1674, which found the account complete and
+  the instruction missing).** Re-derive once, on adoption. A stored stamp is not invalidated — it
+  still verifies the bytes it was taken over — but it will no longer equal a stamp this tier computes
+  for the same chart, so any comparison that crosses the upgrade boundary must be against a
+  re-derived value. Concretely: if the stamps are an index or a cache key, re-stamp the archive as a
+  one-off migration at adoption; if they are an integrity record kept beside the bytes they cover,
+  do nothing at all, because that comparison never crosses the boundary. The distinction is whether
+  the stamp is compared against a FRESH encode or against its own recorded bytes. Only
+  `Stacked = false` charts are affected — a `true` one still emits the member and its digest is
+  unchanged.
+
 **`Tabs.activeIndex` did NOT follow, and the reason is the value model rather than the posture.**
 Its identity default is `Binding.Static (Some 0)` — a union case carrying a payload — and the
 generated codec renders a union default only for a payload-free case. Declaring it is refused
@@ -7769,6 +7830,43 @@ lands; a phase moves NO number._
 ### What rides 0.81.0
 
 _(each phase adds one paragraph here, named `fuaran#NNNN — <class>`)_
+
+**fuaran#1674 — ADDITIVE, with one CLASS-VOCABULARY change and one RECORD WIDENING.** The Tidy-Up
+drain over the reference tier, its gate scripts and the corpus lane.
+
+*Class vocabulary — the one thing a host may have to act on.* `Theme.vocabularyFingerprint` moves
+`fv1:533d4239b16f57b7` → `fv1:e56df5af70231f8e`, because a class LEFT the vocabulary:
+`Fuaran.UI.Renderer.Server` emitted `fuaran-file-upload-control` on a `FileUpload`'s
+`<input type="file">` where `Fuaran.UI.Renderer` emitted `fuaran-file-upload-input` on the same
+element, and the server adopted the client's name. Both were declared bare hooks — the reference
+sheet holds no opinion on native file-input chrome — so **no rule moved and the page renders
+identically**. What a host acts on is a SELECTOR: anything keyed on `-control` against the static
+render now matches nothing, and anything comparing the static and client DOMs of one document now
+agrees where it previously did not. A host pinning the old fingerprint will be refused a sheet
+stamped with the new one, which is the mechanism working. The same rename landed in `fuaran-go` and
+`fuaran-py`, which had both copied the server's spelling — three of five hosts were on the losing
+name.
+
+*Record widening.* `Affordances.ModuleAffordance` gains `Scope: string option`, placed last:
+source-breaking at a FULL-LITERAL construction (`FS0764`), not breaking at `{ existing with … }` or
+at any read. It carries which tenant declared the module — absent for the page, a `Mount` guest's
+scope id for a guest — and `window.__fuaran.getAffordances` emits it. The product question Phase
+1648 stopped at is decided in `docs/RENDERER-TENANCY.md`: a guest's affordances ARE enumerable by the
+host console, because a console on that page already holds the guest's DOM, and what needed fixing
+was the unattributed union rather than the visibility.
+
+*Additive.* `Affordances.registerProviderInScope` (and `registerProvider` becomes it at `None`, so an
+unscoped host is unaffected). No other public signature moved.
+
+*Stylesheet.* Three `var(--X, fallback)` sites whose fallback disagreed with `:root` now agree
+(`--fuaran-text-sm` ×4, `--fuaran-tone-default-disabled-fg` ×2, `--fuaran-tone-success-border` ×1).
+Invisible in styled mode by construction — a fallback applies only where the token is undeclared.
+
+*Gate, not surface.* `run.ps1` now calls `Build.fsproj -- DriftChecks`, so this repo's script gate
+and CI are one gate rather than two overlapping ones; the prompt pack, its lenient and per-family
+variants, the four tier stylesheet copies and the embedded renderer bundle were all reachable only
+from `Check`. Nothing a consumer restores is affected.
+
 
 **fuaran#1648 — ADDITIVE, with one RECORD WIDENING.** The Tidy-Up drain over the rendering surface.
 

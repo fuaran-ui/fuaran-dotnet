@@ -87,11 +87,41 @@ let private selfTestConfig =
     { DecoderFuzz.boundedConfig with
         MaxPayloadChars = 8 * 1024 }
 
-/// Run a mutant subject and return the distinct verdict classes it produced,
-/// with how many counterexamples there were in total.
-let private classesFrom (subject: DecoderFuzz.Subject) (iterations: int) : string list * int =
+/// Budgets for the ALLOCATION probe alone (Phase 1674). Same allocation
+/// ceilings, a soft TIME budget two orders of magnitude larger.
+///
+/// Why it needs its own: `selfTestBudgets`' 100 ms soft time budget is tuned for
+/// the SLOW mutant, which must breach it by sleeping briefly. The allocation
+/// mutant allocates tens of megabytes, and on a loaded machine that takes longer
+/// than 100 ms — so the harness caught it as a `timeout` before the allocation
+/// ceiling was reached, and the probe reported the wrong class. Seen once in a
+/// Phase 1526 gate run, green on the next two, the file untouched by that phase;
+/// a flake by construction rather than by luck, and one that will flap any
+/// `needs`-gated CI chain downstream of this suite.
+///
+/// The fix is a probe whose allocation is guaranteed to trip FIRST, rather than
+/// accepting `timeout` as an equally-caught outcome. Accepting it would have made
+/// the probe pass while proving nothing about allocation detection at all — which
+/// is the exact shape of decoration this go-red suite exists to refuse, and it
+/// would have passed even against a harness with the allocation check deleted.
+///
+/// 30 s is not a machine measurement. It is a bound chosen so that the ONLY way
+/// this probe can time out is a harness that has stopped running at all, at which
+/// point the whole suite is red for a louder reason. The hard budget is unchanged,
+/// so the watchdog still fires on a genuine hang.
+let private allocationProbeBudgets =
+    { selfTestBudgets with
+        SoftTimeMs = 30000.0 }
+
+/// Run a mutant subject under EXPLICIT budgets and return the distinct verdict
+/// classes it produced, with how many counterexamples there were in total.
+let private classesFromWith
+    (budgets: DecoderFuzz.Budgets)
+    (subject: DecoderFuzz.Subject)
+    (iterations: int)
+    : string list * int =
     let stats =
-        DecoderFuzz.run [ subject ] selfTestBudgets selfTestConfig gateSeed iterations false
+        DecoderFuzz.run [ subject ] budgets selfTestConfig gateSeed iterations false
 
     let classes =
         stats.Counterexamples
@@ -101,8 +131,16 @@ let private classesFrom (subject: DecoderFuzz.Subject) (iterations: int) : strin
 
     classes, List.length stats.Counterexamples
 
-let private expectCaught (subject: DecoderFuzz.Subject) (iterations: int) (expectedClass: string) =
-    let classes, count = classesFrom subject iterations
+let private classesFrom (subject: DecoderFuzz.Subject) (iterations: int) : string list * int =
+    classesFromWith selfTestBudgets subject iterations
+
+let private expectCaughtWith
+    (budgets: DecoderFuzz.Budgets)
+    (subject: DecoderFuzz.Subject)
+    (iterations: int)
+    (expectedClass: string)
+    =
+    let classes, count = classesFromWith budgets subject iterations
 
     if count = 0 then
         failtestf
@@ -114,6 +152,9 @@ let private expectCaught (subject: DecoderFuzz.Subject) (iterations: int) (expec
         classes
         expectedClass
         (sprintf "'%s' should be caught as %s; saw %A" subject.Name expectedClass classes)
+
+let private expectCaught (subject: DecoderFuzz.Subject) (iterations: int) (expectedClass: string) =
+    expectCaughtWith selfTestBudgets subject iterations expectedClass
 
 // Sequenced deliberately. Every test in this list drives the harness with
 // `selfTestBudgets`, whose 100 ms soft time budget exists so the slow mutant
@@ -175,7 +216,11 @@ let goRedSelfTest =
 
                               DecoderFuzz.nodeSubject.Run input)
 
-                  expectCaught broken 400 "overallocated"
+                  // Under the allocation probe's OWN budgets: this mutant must be
+                  // caught for what it ALLOCATES, and under the shared 100 ms
+                  // soft time budget a loaded machine caught it for how long the
+                  // allocating took instead. See `allocationProbeBudgets`.
+                  expectCaughtWith allocationProbeBudgets broken 400 "overallocated"
               }
 
               test "invariant 4 (fixed point): a canonical form that is not a fixed point is caught" {

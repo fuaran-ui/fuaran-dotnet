@@ -3,7 +3,9 @@
 // ============================================================================
 //  Language-neutral wire-format conformance corpus.
 //
-//  The canonical wire-format artefact is the spec (`fuaran-dotnet/docs/WIRE_FORMAT.md`)
+//  The canonical wire-format artefact is the spec (`WIRE_FORMAT.md` at the corpus
+//  root; it MOVED there from `fuaran-dotnet/docs/` on 2026-07-15, and a stub
+//  remains at the old path)
 //  + this corpus (`wire-format-fixtures/` at the WORKSPACE ROOT — a sibling of
 //  the `fuaran-dotnet/` repo, shared with the Wave 9 TypeScript host and any future
 //  conformant host). F# is one conformant host of that contract.
@@ -315,7 +317,7 @@ let private writeManifest
         + "vocabulary is the one WIRE_FORMAT 17.4 names (InvalidFormat / InvalidJson / InvalidEnvelope / "
         + "UnsupportedVersion / DigestMismatch / Oversize / TreeDecode / HistoryDecode / TreeInvalid), NOT "
         + "the eight DecodeError codes: a bundle is a container the node decoder runs inside. "
-        + "See fuaran-dotnet/docs/WIRE_FORMAT.md."
+        + "See WIRE_FORMAT.md at this corpus root."
     )
 
     // Phase 548 — the canonical NodeKind enumeration: the emittable `kind.$type`

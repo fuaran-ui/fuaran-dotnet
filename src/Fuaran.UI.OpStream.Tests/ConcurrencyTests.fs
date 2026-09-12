@@ -47,6 +47,18 @@ let tests =
               // out of order, so the race intermittently errored (about one run in five on
               // 2026-09-06). Admission is named off here so the property under test is the
               // one the test asserts.
+              //
+              // Phase 1674 re-examined this as a standing flake candidate and
+              // REFUTES it, on the mechanism rather than on a run count. With
+              // admission off, neither append can be refused; and neither
+              // assertion below depends on ARRIVAL ORDER - `LatestSequence` is
+              // the sink's O(1) `MaxSequence`, which is 2 whichever record landed
+              // first, and a count of persisted records is a set size. So the
+              // test is load-independent by CONSTRUCTION, not by luck, and there
+              // is no bound left to tighten. Eight consecutive green runs of this
+              // suite corroborate it; they are not the proof, because a flake at
+              // the reported one-run-in-five would show green eight times about
+              // one time in six.
               let sink: IOpStreamSink<TestMsg> =
                   InMemorySink.createWithModes LoadVerification.Full WriteAdmission.Off
 

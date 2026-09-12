@@ -86,13 +86,15 @@ let private salesModule: Affordances.ModuleAffordance =
       Fields = [ countryField; weeksField; noteField ]
       Commands =
         [ { Phrase = "go to sales"
-            Effect = Affordances.CommandEffect.Navigate } ] }
+            Effect = Affordances.CommandEffect.Navigate } ]
+      Scope = None }
 
 let private inventoryModule: Affordances.ModuleAffordance =
     { Id = "inventory"
       Active = false
       Fields = []
-      Commands = [] }
+      Commands = []
+      Scope = None }
 
 let private declaring (modules: Affordances.ModuleAffordance list) : Affordances.AffordanceProvider =
     fun _ -> { Modules = modules }
@@ -503,4 +505,50 @@ let tests =
                   (refusalClassOf reply)
                   (Some "FOREIGN_PROFILE")
                   "widening the minor must not widen the MAJOR check"
+          }
+
+          // ── Phase 1674 — tenancy attribution ──────────────────────────────
+          test "a module carries the scope its PROVIDER registered under, not one it declares" {
+              Affordances.clearProviders ()
+
+              // The guest's own provider claims no scope and even tries to claim
+              // the wrong one: the stamp must come from the registration.
+              let guestModule =
+                  { inventoryModule with
+                      Id = "guest-panel"
+                      Scope = Some "not-my-scope" }
+
+              let undo1 = Affordances.registerProvider (fun _ -> { Modules = [ salesModule ] })
+
+              let undo2 =
+                  Affordances.registerProviderInScope (Some "guest-7") (fun _ -> { Modules = [ guestModule ] })
+
+              let enumeration = Affordances.enumerate None
+
+              let scopeOf id =
+                  enumeration.Modules |> List.tryFind (fun m -> m.Id = id) |> Option.bind _.Scope
+
+              Expect.equal (scopeOf "sales") None "the page's own provider registered unscoped"
+
+              Expect.equal
+                  (scopeOf "guest-panel")
+                  (Some "guest-7")
+                  "the guest's module carries the scope its provider REGISTERED under - a provider cannot claim a scope it did not register in"
+
+              undo1 ()
+              undo2 ()
+              Affordances.clearProviders ()
+          }
+
+          test "registerProvider is registerProviderInScope None - an unscoped host is unaffected" {
+              Affordances.clearProviders ()
+              let undo = Affordances.registerProvider (fun _ -> { Modules = [ inventoryModule ] })
+
+              Expect.equal
+                  (Affordances.enumerate None).Modules.Head.Scope
+                  None
+                  "a host that never mounts a guest sees no scope at all"
+
+              undo ()
+              Affordances.clearProviders ()
           } ]

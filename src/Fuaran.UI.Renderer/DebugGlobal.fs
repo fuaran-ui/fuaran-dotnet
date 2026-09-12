@@ -1026,12 +1026,39 @@ let private fieldAffordanceToObj (field: Affordances.FieldAffordance) : obj =
            | None -> [])
     )
 
+/// Phase 1674 - each module carries WHICH TENANT declared it.
+///
+/// The product question Phase 1648 stopped at was whether a `Mount` guest's
+/// affordances should be enumerable by the host page's console at all. Ruled:
+/// YES, WITH ATTRIBUTION, and the reasoning is that hiding them would be a
+/// boundary protecting nothing. A console on the host page already holds the
+/// guest's DOM, its node ids and its rendered content; what `Mount` isolates is
+/// STATE and DISPATCH, and an affordance declaration is a description of an
+/// offer rather than the ability to take it - INVOKING one still goes through
+/// the guest's own dispatch path, which is where the gate is.
+///
+/// What WOULD have been wrong is the unattributed union, because a caller could
+/// not tell a host affordance from a guest's and an agent driving the page by
+/// natural language would address the wrong tenant. So `scope` is emitted on
+/// every module: absent for the page itself, the guest's scope id for a mounted
+/// one. It is stamped by `Affordances.enumerate` from the REGISTRATION, so a
+/// provider cannot claim a scope it did not register under.
+///
+/// This is option (c) of the three `docs/RENDERER-TENANCY.md` sets out, plus
+/// the attribution the note did not consider. (a) would have made
+/// `getAffordances()` with no scope mean one of two wrong things, and (b) adds
+/// a member to `IFuaranRuntime`, a published interface with implementors outside
+/// this repo - a breaking change to answer a question that does not need one.
 let private moduleAffordanceToObj (m: Affordances.ModuleAffordance) : obj =
     createObj
         [ "id", box m.Id
           "active", box m.Active
           "fields", box (m.Fields |> List.map fieldAffordanceToObj |> Array.ofList)
-          "commands", commandsToArray m.Commands ]
+          "commands", commandsToArray m.Commands
+          "scope",
+          (match m.Scope with
+           | Some scope -> box scope
+           | None -> box null) ]
 
 let private enumerationToObj (enumeration: Affordances.AffordanceEnumeration) : obj =
     createObj [ "modules", box (enumeration.Modules |> List.map moduleAffordanceToObj |> Array.ofList) ]
