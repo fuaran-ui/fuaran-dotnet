@@ -42,14 +42,17 @@ public static partial class Fuaran
             // Generated FragmentDeclSpec ctor is Generated.fs declaration order
             // (Body, Name, Holes, Effect), not the old Name-first hand order.
             // `Name` is a bare string since the swap (the FragmentId wrapper
-            // unwraps at this boundary); `Holes = None` / `Effect = None` ≡ the
-            // old empty-hole-list / pure-deterministic degenerate shape (both
-            // omitted on the wire).
+            // unwraps at this boundary). Phase 1670 — `Holes` / `Effect` are
+            // OMIT-AT-DEFAULT slots rather than options, so the degenerate shape
+            // is the VALUE here (an empty hole list, a pure-deterministic effect)
+            // and the encoder is what omits both from the wire.
             new FsGen.FragmentDeclSpec<object>(
                 options.Body.Inner,
                 options.Name,
-                Fs.None<Microsoft.FSharp.Collections.FSharpList<FsGen.HoleDecl>>(),
-                Fs.None<FsGen.EffectClass>())));
+                Fs.List(Enumerable.Empty<FsGen.HoleDecl>()),
+                new FsGen.EffectClass(
+                    FsGen.DeterminismSource.Deterministic,
+                    FsGen.HostEffect.Pure))));
 
     /// <summary>A reference that expands the named fragment.</summary>
     public static FuaranNode FragmentRef(FragmentRefOptions options) =>
