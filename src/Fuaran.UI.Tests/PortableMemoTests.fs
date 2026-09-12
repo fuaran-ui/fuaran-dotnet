@@ -50,10 +50,9 @@ let private fragment: ParamFragment<unit> =
     { Defaults.fragmentDecl with
         Name = "card"
         Holes =
-            Some
-                [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
-                  HoleDecl.Value("count", HoleValueSpace.IntRange(0, 100), None)
-                  HoleDecl.Slot("content", None) ]
+            [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
+              HoleDecl.Value("count", HoleValueSpace.IntRange(0, 100), None)
+              HoleDecl.Slot("content", None) ]
         Body = body }
 
 let private slotArgs (text: string) : Map<string, Node<unit>> =
@@ -162,9 +161,8 @@ let tests =
               let effecting =
                   { fragment with
                       Effect =
-                          Some
-                              { HostEffect = HostEffect.ReadsHost
-                                Determinism = DeterminismSource.Clock } }
+                          { HostEffect = HostEffect.ReadsHost
+                            Determinism = DeterminismSource.Clock } }
 
               engine.Apply(effecting, "ref1", valueArgs "Hello" 3, slotArgs "x")
               |> ok "first"
@@ -182,11 +180,11 @@ let tests =
               Expect.equal (store :> IFragmentStore<unit>).Bypasses 2 "the store's bypass counter increments each call"
               // The gate is exactly Fuaran.Core's isMemoisable on both axes.
               Expect.isFalse
-                  (FragmentStore.isStoreEligible (effecting.Effect |> Option.defaultValue EffectClass.pureDeterministic))
+                  (FragmentStore.isStoreEligible (effecting.Effect))
                   "an effecting fragment is not store-eligible"
 
               Expect.isTrue
-                  (FragmentStore.isStoreEligible (fragment.Effect |> Option.defaultValue EffectClass.pureDeterministic))
+                  (FragmentStore.isStoreEligible (fragment.Effect))
                   "the pure-deterministic fragment is store-eligible"
           }
 

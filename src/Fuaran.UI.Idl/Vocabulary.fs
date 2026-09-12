@@ -1944,7 +1944,8 @@ let private treeItemRecord =
           req "label" (TUnion("TextSource", [])) ] }
 
 /// A `FragmentDecl`'s two-axis effect class (omitted on the wire when pure +
-/// deterministic — modelled here as an optional field on the kind).
+/// deterministic — since Phase 1670 that is the KIND'S OMIT-AT-DEFAULT rather
+/// than an optional field the author is trusted to leave alone).
 let private effectClassRecord =
     { Name = "EffectClass"
       Fields =
@@ -3120,16 +3121,56 @@ let metaKinds: IdlKind list =
       { Tag = "FragmentDecl"
         Category = "Meta"
         Annotations = Annotations.Empty
-        // holes / effect are omitted for the degenerate fixed-body fragment.
+        // Phase 1670 — `holes` and `effect` are OMIT-AT-DEFAULT, not Optional, and
+        // the difference is the whole of that phase's encoder ruling.
+        //
+        // The spec has always said a zero-hole declaration omits `holes` and a
+        // pure-deterministic one omits `effect`; the `EffectClass` record's own
+        // doc comment in this file said so too ("omitted on the wire when pure +
+        // deterministic"). Modelling both as Optional made that a statement about
+        // what an author SHOULD write rather than about what this host CAN emit,
+        // and the F# encoder duly emitted `"holes":[]` and the redundant
+        // `{"determinism":"Deterministic","hostEffect":"Pure"}` whenever an author
+        // spelled them — bytes the TypeScript and Rust hosts normalise away, so
+        // the same value round-tripped to different documents on different hosts.
+        // The F# round-trip gate compares `encode(decode(bytes))` against bytes F#
+        // itself produced, so it was structurally incapable of noticing.
+        //
+        // Omit-at-default makes the redundant form UNREPRESENTABLE rather than
+        // merely unwritten, which is the estate's one-canonical-form-per-pattern
+        // doctrine applied to the host that owns the encoder. The accepted cost is
+        // named in the ruling: `Some pure` and `None` stop being distinguishable,
+        // because they never did mean different things — every consumer in the tree
+        // read an absent effect as `EffectClass.pureDeterministic`.
+        //
+        // `FragmentRef.args` is the third member of this class and is NOT converted
+        // — see its own note below.
         Fields =
           [ req "body" TNode
             req "name" TStr
-            opt "holes" (TList(TUnion("HoleDecl", [])))
-            opt "effect" (TRecord "EffectClass") ] }
+            omit "holes" (TList(TUnion("HoleDecl", []))) (VList [])
+            omit
+                "effect"
+                (TRecord "EffectClass")
+                (VRecord [ "determinism", VEnum "Deterministic"; "hostEffect", VEnum "Pure" ]) ] }
       { Tag = "FragmentRef"
         Category = "Meta"
         Annotations = Annotations.Empty
         // args omitted for the degenerate name-only ref.
+        //
+        // Phase 1670 — `args` is the twin of `FragmentDecl`'s two fields above and
+        // stays OPTIONAL, for a generator reason rather than a contract one: the
+        // codegen's default-literal renderer (`Codegen.fsDefaultLit`) has arms for
+        // a record, a union, a list and the scalars, and NONE for a map — so
+        // `omit "args" … (VMap [])` is refused as an unsupported default and the
+        // whole vocabulary fails to generate. Adding that arm is a change to the
+        // substrate's IDL engine, which is a different repository and a different
+        // release; recorded here rather than silently left as an asymmetry.
+        //
+        // What that costs today: `Args = Some Map.empty` still encodes as
+        // `"args":{}` where a normalising host omits it. It is the smaller half of
+        // the class — `Fuaran.UI.Fragments.Stdlib` builds every ref canonically and
+        // its suite pins that — but it is the same defect, and it is open.
         Fields = [ req "name" TStr; opt "args" (TMap(TUnion("FragmentArg", []))) ] }
       // Phase 679 — `Switch`: declarative branch selection. Phase 768 widened the
       // selector from a StateStore key to ANY binding, so the wire now carries

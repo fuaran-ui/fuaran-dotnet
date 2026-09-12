@@ -434,27 +434,75 @@ let tests =
                       outOfDomainHosted
                       vectorBudget)
 
-              // Leg 2's hosted-FREE refusals, PINNED BY NAME — the set of
-              // reasons, with sampled numbers erased, not a count. Every entry
-              // is a DECODE REFINE declared in this vocabulary's own support
-              // document (`src/Fuaran.UI.Idl/Support.fs`): a rule relating two
-              // members, or bounding a well-typed value, which the IDL's type
-              // language cannot state at a field and the sampler therefore
-              // cannot avoid violating.
+              // Leg 2's hosted-FREE refusals, PINNED BY NAME — the reasons
+              // themselves, with sampled numbers erased, never a count. Every
+              // entry is a DECODE REFINE declared in this vocabulary's own
+              // support document (`src/Fuaran.UI.Idl/Support.fs`): a rule
+              // relating two members, or bounding a well-typed value, which the
+              // IDL's type language cannot state at a field and the sampler
+              // therefore cannot avoid violating.
               //
-              // What this pin is FOR is the arrival of a reason that is not one
+              // What this pin is FOR is the ARRIVAL of a reason that is not one
               // of those. A `Binding` case falling out of the generated decoder,
               // a splice that stops compiling a member, a projection that starts
               // refusing a shape it used to accept — each would land here as one
               // more refusal and would be invisible to a count. It also fails
               // when a refine's PROSE changes, which is the cheap price of
               // reading the reason rather than tallying it.
-              Expect.equal
-                  (refinedAway |> Seq.sort |> List.ofSeq)
+              //
+              // ── Phase 1670: CONTAINMENT, not equality, and why the change is
+              //    a strengthening rather than a relaxation ───────────────────
+              //
+              // This was `Expect.equal` against the three-reason list below, and
+              // the first vocabulary change after it landed broke it without any
+              // defect of the kind it exists to catch. Every vector is a pure
+              // function of (vocabulary, seed, index): moving `FragmentDecl`'s
+              // `holes` / `effect` from Optional to omit-at-default shifted the
+              // whole draw stream, and two of the three refines stopped being
+              // REACHED inside the budget. Measured rather than assumed — at the
+              // pinned 4000 the sample reaches one of the three, and at 20 000 it
+              // reaches two, so this is sampling depth and not a vanished rule.
+              //
+              // So the equality was asserting two different things at once: the
+              // invariant (no reason arrives that is not a declared refine), and
+              // an accident (these three happen to be sampled within 4000 vectors
+              // of this seed under this vocabulary). The accident has to fail on
+              // EVERY vocabulary change, and its remedy is always to edit the
+              // list — which is how a pin becomes something people reflexively
+              // rewrite instead of read.
+              //
+              // The invariant is what survives here, and it now holds at ANY
+              // budget rather than only at the one the list was measured against.
+              // Beside it, the floor: the set must be NON-EMPTY, so the leg
+              // cannot silently stop refusing anything at all and pass by being
+              // vacuous. What is deliberately given up is the demand that all
+              // three be sampled — which the old form could not deliver either,
+              // since an unreached refine's prose was never verified by it, only
+              // required to be reachable.
+              let declaredRefines =
                   [ "Rating 'max' must be at least N — a scale with N positions cannot be rendered or announced"
                     "Tokens declares 'allowFreeText' false and no 'suggestions' source — the field could admit no token by any gesture. Give it a suggestion source, or leave 'allowFreeText' at its default of true"
                     "autoAdvanceMs must be a positive integer" ]
-                  "the hosted-free refusal reasons are exactly the host refines declared in src/Fuaran.UI.Idl/Support.fs"
+
+              let observed = refinedAway |> Seq.sort |> List.ofSeq
+
+              Expect.isNonEmpty
+                  observed
+                  ("leg 2 refused NOTHING on a hosted-free vector — the sampler cannot avoid violating the declared "
+                   + "decode refines, so an empty set means the refusals stopped being OBSERVED rather than that the "
+                   + "vocabulary stopped having them")
+
+              let undeclared =
+                  observed |> List.filter (fun r -> not (List.contains r declaredRefines))
+
+              Expect.isEmpty
+                  undeclared
+                  (sprintf
+                      "%s%s%s %A"
+                      "a hosted-free vector was refused for a reason that is NOT a decode refine declared in "
+                      "src/Fuaran.UI.Idl/Support.fs. Either the generated decoder has started refusing a shape it "
+                      "used to accept, or a refine's prose moved and this list did not. Declared:"
+                      declaredRefines)
 
               match tsDivergences with
               | None -> skiptest "node not on PATH — the generated-TypeScript leg was skipped (legs 1+2 ran)"

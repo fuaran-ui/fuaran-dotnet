@@ -797,4 +797,51 @@ let all: LenientFixture list =
         VerboseJson =
           """{"id":"len-1661","kind":{"$type":"Markdown","text":{"$type":"I18n","args":{"absent":{"$type":"Static"},"year":1908},"key":"gallery.caption.harbour"}}}"""
         Description =
-          "§5 — a `{\"$type\":\"Static\",\"value\":v}` I18n argument is decode-accepted and normalises to the BARE value, which is why the widening from a JVal bag to a Binding<JVal> bag moves no shipped byte. A valueless `Static` is already canonical and stays tagged: absence is structural and has no bare spelling (Phase 1661)" } ]
+          "§5 — a `{\"$type\":\"Static\",\"value\":v}` I18n argument is decode-accepted and normalises to the BARE value, which is why the widening from a JVal bag to a Binding<JVal> bag moves no shipped byte. A valueless `Static` is already canonical and stays tagged: absence is structural and has no bare spelling (Phase 1661)" }
+
+      // ─── Phase 1670 — the redundant `FragmentDecl` defaults ────────────────
+      //
+      // The parameterised-fragment section has always said `effect` is omitted
+      // when pure-deterministic and a zero-hole declaration omits `holes`. The
+      // TypeScript and Rust hosts implement that as a NORMALISATION; the F# host
+      // carried both slots as options and encoded whatever it was handed, so
+      // `Some pureDeterministic` and `Some []` reached the wire as the redundant
+      // default. Nothing was red: the F# round-trip gate compares
+      // `encode(decode(bytes))` against bytes F# itself produced, so it is
+      // structurally incapable of noticing, and no fixture in the corpus declared
+      // a pure-deterministic effect or an empty hole list — which is how this
+      // survived from Phase 180 to Phase 1670.
+      //
+      // THIS is the fixture that would have caught it, and it is a lenient-accept
+      // vector rather than a round-trip one for a reason worth stating. A
+      // round-trip fixture emitted from an F# value cannot discriminate the two
+      // semantics once the host normalises, because the redundant form is no
+      // longer expressible on the emitting side: the bytes it writes are the
+      // canonical ones either way. The discriminating document is one that
+      // CARRIES the redundant default as INPUT — legal, decode-accepted, and
+      // required to re-encode without it. A host that echoes what it was handed
+      // fails the byte comparison; a host that normalises passes. That is the
+      // whole cross-host claim, stated in bytes.
+      //
+      // Both slots ride in one vector on purpose: a host that fixed `effect`
+      // alone would still emit `"holes":[]` and pass a single-slot fixture.
+      { Id = "lenient-1670-fragment-decl-redundant-defaults"
+        LenientJson =
+          """{"id":"len-1670-frag","kind":{"$type":"FragmentDecl","body":{"id":"len-1670-frag-body","kind":{"$type":"Markdown","text":"Template body"}},"effect":{"determinism":"Deterministic","hostEffect":"Pure"},"holes":[],"name":"card-template"}}"""
+        VerboseJson =
+          """{"id":"len-1670-frag","kind":{"$type":"FragmentDecl","body":{"id":"len-1670-frag-body","kind":{"$type":"Markdown","text":"Template body"}},"name":"card-template"}}"""
+        Description =
+          "Parameterised fragments — a `FragmentDecl` carrying the REDUNDANT pure-deterministic `effect` and an empty `holes` list is decode-accepted and re-encodes with both keys OMITTED. Neither slot is optional-with-a-convention any more: both are omit-at-default on every conformant host, so the redundant form is input-only (Phase 1670)" }
+
+      // ─── Phase 1670 — the `FragmentRef` twin, and why it is NOT here ───────
+      //
+      // `FragmentRefSpec.Args = Some Map.empty` is the third member of the same
+      // class: `"args":{}` where the canonical form omits the key. It is NOT
+      // pinned by a vector, because the F# host does not yet normalise it — the
+      // codegen's default-literal renderer has no map arm, so the field cannot be
+      // declared omit-at-default without a change to the substrate's IDL engine,
+      // which is a different repository and a different release. A vector landed
+      // now would fail the reference host on arrival, which is how a corpus stops
+      // being read. Recorded here rather than left as an unexplained asymmetry;
+      // the note in `Vocabulary.fs` beside the field is the other half.
+      ]

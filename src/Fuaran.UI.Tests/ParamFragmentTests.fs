@@ -20,11 +20,10 @@ let private pf: ParamFragment<unit> =
     { Defaults.fragmentDecl with
         Name = "card"
         Holes =
-            Some
-                [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
-                  HoleDecl.Value("tone", HoleValueSpace.Enum [ "info"; "warn" ], Some(Scalar.Str "info"))
-                  HoleDecl.Slot("content", None)
-                  HoleDecl.Repeat("rows", HoleValueSpace.IntRange(1, 10)) ]
+            [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
+              HoleDecl.Value("tone", HoleValueSpace.Enum [ "info"; "warn" ], Some(Scalar.Str "info"))
+              HoleDecl.Slot("content", None)
+              HoleDecl.Repeat("rows", HoleValueSpace.IntRange(1, 10)) ]
         Body = body }
 
 [<Tests>]
@@ -83,7 +82,7 @@ let tests =
 
               let bad =
                   { pf with
-                      Holes = Some [ HoleDecl.Repeat("rows", HoleValueSpace.AnyString) ] }
+                      Holes = [ HoleDecl.Repeat("rows", HoleValueSpace.AnyString) ] }
 
               Expect.isFalse (Fragment.isTotal bad) "AnyString repeat count is unbounded -> not total"
           }
@@ -105,7 +104,7 @@ let tests =
           }
 
           test "a zero-hole fragment is the degenerate fixed-body case" {
-              let fixedBody = { pf with Holes = None }
+              let fixedBody = { pf with Holes = [] }
               Expect.isEmpty (Fragment.requiredHoles fixedBody) "no holes -> no required args"
               Expect.isTrue (Fragment.isTotal fixedBody) "trivially total"
           } ]

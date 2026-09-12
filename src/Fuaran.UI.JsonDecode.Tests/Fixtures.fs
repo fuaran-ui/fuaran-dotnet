@@ -6112,15 +6112,13 @@ let fragmentDeclParam: Node<obj> =
                 Name = "stat-card"
                 Body = node "param-body" (NodeKind.Markdown({ Text = TextSource.Literal "Parameterised body" })) None
                 Holes =
-                    Some
-                        [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), Some(Scalar.Str "Untitled"))
-                          HoleDecl.Value("count", HoleValueSpace.IntRange(0, 100), None)
-                          HoleDecl.Slot("content", Some "Display")
-                          HoleDecl.Repeat("rows", HoleValueSpace.IntRange(1, 12)) ]
+                    [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), Some(Scalar.Str "Untitled"))
+                      HoleDecl.Value("count", HoleValueSpace.IntRange(0, 100), None)
+                      HoleDecl.Slot("content", Some "Display")
+                      HoleDecl.Repeat("rows", HoleValueSpace.IntRange(1, 12)) ]
                 Effect =
-                    Some
-                        { HostEffect = HostEffect.ReadsHost
-                          Determinism = DeterminismSource.Clock } })
+                    { HostEffect = HostEffect.ReadsHost
+                      Determinism = DeterminismSource.Clock } })
         None
 
 let fragmentRefArgs: Node<obj> =

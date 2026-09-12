@@ -25,6 +25,11 @@
   <ItemGroup>
     <Compile Include="Vocabulary.fs" />
     <Compile Include="Support.fs" />
+    <!-- Phase 1670 — WIRE_FORMAT.md 15.4's evolution policy, applied to this
+         vocabulary's own artifact. Beside the declaration because the
+         optional-field exemption is a fact about THIS wire profile's decode
+         rules, not about IDL diffing in general. -->
+    <Compile Include="WireProfile.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

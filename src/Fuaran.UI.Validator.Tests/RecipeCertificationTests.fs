@@ -52,8 +52,8 @@ let private tabsFragment (declId: string) (effect: EffectClass) : Node<unit> =
         { Defaults.fragmentDecl with
             Name = declId
             Body = placeholderBody
-            Holes = Some [ HoleDecl.Repeat("count", HoleValueSpace.IntRange(1, 7)) ]
-            Effect = Some effect }
+            Holes = [ HoleDecl.Repeat("count", HoleValueSpace.IntRange(1, 7)) ]
+            Effect = effect }
 
 /// Read the bound `count` off the binding map (defaulting to 1 when the harness
 /// has not bound it — never happens for a required repeat hole, but total).

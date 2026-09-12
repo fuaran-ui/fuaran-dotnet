@@ -671,12 +671,14 @@ let private fragmentPlaceholder<'Msg> : Node<'Msg> =
       Visible = Option.None }
 
 let fragmentDecl<'Msg> : FragmentDeclSpec<'Msg> =
-    // `Holes = None` / `Effect = None` since the swap — ≡ the old `[]` /
-    // pure-deterministic degenerate shape (both omitted on the wire).
+    // Phase 1670 — the degenerate shape is now the field's own OMIT-AT-DEFAULT
+    // value rather than a `None` standing in for it, so the wire form and the
+    // host form say the same thing: an empty hole list and a pure-deterministic
+    // effect, both omitted on encode.
     { Name = ""
       Body = fragmentPlaceholder<'Msg>
-      Holes = Option.None
-      Effect = Option.None }
+      Holes = []
+      Effect = EffectClass.pureDeterministic }
 
 let fragmentRef<'Msg> : FragmentRefSpec<'Msg> =
     // `Args = None` since the swap — ≡ the old empty map (omitted on the wire).

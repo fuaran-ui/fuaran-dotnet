@@ -9266,20 +9266,23 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
                 |> Result.bind (decodeNodeAst (descend w) (path + ".body"))
 
             // Phase 180 — `holes` + `effect` are additive; absent ⇒ degenerate
-            // fixed-body (zero holes, pure-deterministic — `None` since the
-            // swap, so the omitted wire form round-trips as omission).
+            // fixed-body (zero holes, pure-deterministic). Phase 1670 — both are
+            // OMIT-AT-DEFAULT slots now, so absence RESTORES the degenerate value
+            // rather than producing a second spelling of it, and the encoder omits
+            // that value again on the way out. This mirrors the generated
+            // decoder's `dDef`, which is the contract this hand-written decoder
+            // exists to reproduce.
             let holesR =
                 match tryField fields "holes" with
-                | None -> Ok None
+                | None -> Ok []
                 | Some h ->
                     requireArray (path + ".holes") h
                     |> Result.bind (traverse (decodeHoleDecl (path + ".holes[]")))
-                    |> Result.map Some
 
             let effectR =
                 match tryField fields "effect" with
-                | None -> Ok None
-                | Some e -> decodeEffectClass (path + ".effect") e |> Result.map Some
+                | None -> Ok EffectClass.pureDeterministic
+                | Some e -> decodeEffectClass (path + ".effect") e
 
             match nameR, bodyR, holesR, effectR with
             | Ok name, Ok body, Ok holes, Ok effect ->

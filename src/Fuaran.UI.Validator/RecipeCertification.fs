@@ -263,7 +263,6 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
             let declId = node.Id
 
             spec.Holes
-            |> Option.defaultValue []
             |> List.choose (fun h ->
                 match h with
                 | HoleDecl.Value(n, space, _) ->
@@ -282,9 +281,9 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
     let effectOf (node: Node<'Msg>) : Fuaran.Core.EffectClass =
         match node.Kind with
         | NodeKind.FragmentDecl spec ->
-            spec.Effect
-            |> Option.map toCoreEffect
-            |> Option.defaultValue Fuaran.Core.Effect.pureDeterministic
+            // Phase 1670 — `Effect` is an omit-at-default slot, so the
+            // degenerate value is already in it and there is nothing to default.
+            toCoreEffect spec.Effect
         | _ -> Fuaran.Core.Effect.pureDeterministic
 
     // Record hole@addr := value into the decl's matching hole default.
@@ -301,7 +300,7 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
 
                 match arg with
                 | Fuaran.Core.ValueArg raw ->
-                    let holes = spec.Holes |> Option.defaultValue []
+                    let holes = spec.Holes
 
                     match holes |> List.tryFind (fun h -> HoleDecl.name h = holeName) with
                     | Some(HoleDecl.Value(n, space, _)) ->
@@ -315,7 +314,7 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
 
                         Ok
                             { node with
-                                Kind = NodeKind.FragmentDecl { spec with Holes = Some holes' } }
+                                Kind = NodeKind.FragmentDecl { spec with Holes = holes' } }
                     | Some(HoleDecl.Repeat(n, space)) ->
                         // A repeat count is recorded the same way — as a bound default the
                         // materialiser reads (there is no in-tree Repeat marker to expand here).
@@ -329,7 +328,7 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
 
                         Ok
                             { node with
-                                Kind = NodeKind.FragmentDecl { spec with Holes = Some holes' } }
+                                Kind = NodeKind.FragmentDecl { spec with Holes = holes' } }
                     | Some(HoleDecl.Slot _) -> Error(sprintf "hole '%s' is a slot, not a value/repeat hole" holeName)
                     | None -> Error(sprintf "no hole named '%s' in fragment decl '%s'" holeName declId)
                 | Fuaran.Core.SlotArg _ ->
@@ -366,7 +365,6 @@ let private boundValues<'Msg> (node: Node<'Msg>) : Map<string, obj> =
     match node.Kind with
     | NodeKind.FragmentDecl spec ->
         spec.Holes
-        |> Option.defaultValue []
         |> List.choose (fun h ->
             match h with
             | HoleDecl.Value(n, _, Some v) -> Some(n, scalarObj v)
@@ -466,13 +464,13 @@ let certifyFragment<'Msg>
     let structureOnly =
         match fragment.Kind with
         | NodeKind.FragmentDecl spec ->
-            match spec.Effect with
-            | Some e ->
-                not (
-                    e.HostEffect = HostEffect.Pure
-                    && e.Determinism = DeterminismSource.Deterministic
-                )
-            | None -> false
+            // Phase 1670 — one shape to test, not two: the degenerate effect is
+            // the field's own default, so "declared pure-deterministic" and
+            // "declared nothing" are the same value and always were.
+            not (
+                spec.Effect.HostEffect = HostEffect.Pure
+                && spec.Effect.Determinism = DeterminismSource.Deterministic
+            )
         | _ -> false
 
     { RecipeName = recipeName

@@ -271,11 +271,7 @@ module FragmentApply =
             slotArgs
             |> Map.toList
             |> List.tryPick (fun (n, sub) ->
-                match
-                    pf.Holes
-                    |> Option.defaultValue []
-                    |> List.tryFind (fun h -> HoleDecl.name h = n)
-                with
+                match pf.Holes |> List.tryFind (fun h -> HoleDecl.name h = n) with
                 | Some(HoleDecl.Slot(_, Some c)) ->
                     let actual = Kind.name sub.Kind
 

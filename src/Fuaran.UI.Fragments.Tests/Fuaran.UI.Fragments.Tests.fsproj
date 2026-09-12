@@ -19,6 +19,11 @@
          itself never references the validator, which is what keeps it
          Fable-clean. -->
     <ProjectReference Include="..\Fuaran.UI.Validator\Fuaran.UI.Validator.fsproj" />
+    <!-- Phase 1670 — the canonical encoder, so the wire-shape assertions below
+         read the BYTES the host emits rather than the record it emits them from.
+         Not the renderer: this is the FSharp.Core-level codec, so no React /
+         Feliz dependency lands under a certification suite. -->
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />

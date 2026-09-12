@@ -334,7 +334,7 @@ type Engine<'Msg>(store: IFragmentStore<'Msg>, reach: StoreReach, sink: IFuaranT
 
         // Serve / store under a real content address — the shipped path.
         let keyed (sk: string) : Result<Derivation<'Msg>, string> =
-            if not (isCacheable (pf.Effect |> Option.defaultValue EffectClass.pureDeterministic)) then
+            if not (isCacheable pf.Effect) then
                 // Effecting / non-deterministic — never consult or populate the store.
                 deriveBypassing (Some sk)
             else
@@ -385,7 +385,7 @@ type Engine<'Msg>(store: IFragmentStore<'Msg>, reach: StoreReach, sink: IFuaranT
             newValueArgs: Map<string, obj>,
             newSlotArgs: Map<string, Node<'Msg>>
         ) : Result<Derivation<'Msg>, string> =
-        if not (isCacheable (pf.Effect |> Option.defaultValue EffectClass.pureDeterministic)) then
+        if not (isCacheable pf.Effect) then
             this.Apply(pf, refId, newValueArgs, newSlotArgs)
         else
             // Phase 210 — the body digest is served from the engine's memo, so a

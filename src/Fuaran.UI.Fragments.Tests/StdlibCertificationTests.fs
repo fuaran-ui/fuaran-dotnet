@@ -24,6 +24,7 @@ open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Fragments
 open Fuaran.UI.Validator.RecipeCertification
+open Fuaran.UI.OpStream.Abstractions
 
 // ─── Local tree walk ─────────────────────────────────────────────────────────
 //
@@ -157,7 +158,7 @@ let tests =
               [ for f in library ->
                     test f.Name {
                         let spec = declSpecOf f
-                        let effect = spec.Effect |> Option.defaultValue EffectClass.pureDeterministic
+                        let effect = spec.Effect
                         let verdict = certifyFragment f.Name f.Decl f.Materialize MaxCases Seed
 
                         Expect.equal
@@ -172,11 +173,7 @@ let tests =
           test "the set carries at least one effecting fragment, so the boundary is exercised and not merely stated" {
               let effecting =
                   library
-                  |> List.filter (fun f ->
-                      declSpecOf f
-                      |> fun s -> s.Effect |> Option.defaultValue EffectClass.pureDeterministic
-                      |> isPureDeterministic
-                      |> not)
+                  |> List.filter (fun f -> declSpecOf f |> fun s -> s.Effect |> isPureDeterministic |> not)
 
               Expect.isNonEmpty
                   effecting
@@ -184,40 +181,44 @@ let tests =
           }
 
           testList
-              "the declaration is in the CANONICAL wire shape — a pure-deterministic effect is OMITTED"
+              "the declaration is in the CANONICAL wire shape — the ENCODER omits, not this library"
               [ for f in library ->
                     test f.Name {
-                        // `WIRE_FORMAT.md`, "Parameterised fragments": `effect`
-                        // is "Omitted when pure-deterministic". The F# type
-                        // carries it as an option and encodes `Some x` verbatim,
-                        // so the redundant explicit default is expressible here
-                        // and round-trips through THIS host without complaint —
-                        // which is exactly why it needs a test rather than care.
-                        // A host that normalises to the specified form
-                        // re-encodes the default away and its corpus
-                        // byte-comparison fails; the first cut of these fixtures
-                        // did precisely that to the Rust host while every F#
-                        // suite stayed green, because F# is the encoder that
-                        // produced the bytes it was checking against.
-                        let spec = declSpecOf f
+                        // `WIRE_FORMAT.md`, "Parameterised fragments": `effect` is
+                        // "Omitted when pure-deterministic", and a zero-hole decl
+                        // omits `holes`.
+                        //
+                        // This test used to inspect the RECORD — `Effect` and
+                        // `Holes` were options, `Some pureDeterministic` and
+                        // `Some []` were expressible, and this library canonicalised
+                        // them by hand on the way in. That was one library's
+                        // discipline standing in for the host's rule: any other
+                        // author could build the redundant form and the F# encoder
+                        // emitted it verbatim, which is how the first cut of these
+                        // fixtures broke the Rust host while every F# suite stayed
+                        // green (F# was the encoder that produced the bytes it was
+                        // checking against).
+                        //
+                        // Phase 1670 moved the rule into the host: both slots are
+                        // omit-at-default, so the redundant form is unrepresentable
+                        // and the canonicalisation happens on encode. The assertion
+                        // therefore moved with it — it reads the BYTES now, which is
+                        // the only place the claim was ever about.
+                        let bytes = CanonicalJson.encodeNode f.Decl
 
-                        match spec.Effect with
-                        | Some e ->
+                        if isPureDeterministic (declSpecOf f).Effect then
                             Expect.isFalse
-                                (isPureDeterministic e)
+                                (bytes.Contains "\"effect\"")
                                 (sprintf
-                                    "fragment '%s' declares an EXPLICIT pure-deterministic effect; the canonical wire form omits it (WIRE_FORMAT, Parameterised fragments)"
+                                    "fragment '%s' is pure-deterministic but its canonical bytes carry an `effect` key; the canonical wire form omits it (WIRE_FORMAT, Parameterised fragments)"
                                     f.Name)
-                        | Option.None -> ()
 
-                        // The same rule from the other side: a zero-hole decl
-                        // omits `holes` rather than carrying an empty list.
-                        match spec.Holes with
-                        | Some hs ->
-                            Expect.isNonEmpty
-                                hs
-                                (sprintf "fragment '%s' carries an empty hole list; the canonical form omits it" f.Name)
-                        | Option.None -> ()
+                        if List.isEmpty (declSpecOf f).Holes then
+                            Expect.isFalse
+                                (bytes.Contains "\"holes\"")
+                                (sprintf
+                                    "fragment '%s' declares no holes but its canonical bytes carry a `holes` key; the canonical form omits it"
+                                    f.Name)
                     } ]
 
           testList
@@ -239,7 +240,6 @@ let tests =
 
                         let declaredSlots =
                             spec.Holes
-                            |> Option.defaultValue []
                             |> List.choose (fun h ->
                                 match h with
                                 | HoleDecl.Slot(n, _) -> Some n
@@ -291,10 +291,7 @@ let tests =
                                     hole)
 
                         for name in bound do
-                            let known =
-                                spec.Holes
-                                |> Option.defaultValue []
-                                |> List.exists (fun h -> HoleDecl.name h = name)
+                            let known = spec.Holes |> List.exists (fun h -> HoleDecl.name h = name)
 
                             Expect.isTrue
                                 known
@@ -402,12 +399,11 @@ let tests =
               for (f, s) in List.zip library signatures do
                   Expect.equal s.Name f.Name "signature order tracks the library"
 
-                  let declared =
-                      (declSpecOf f).Effect |> Option.defaultValue EffectClass.pureDeterministic
+                  let declared = (declSpecOf f).Effect
 
                   Expect.equal s.Effect declared (sprintf "signature for '%s' reports a different effect class" f.Name)
 
-                  let holeCount = (declSpecOf f).Holes |> Option.defaultValue [] |> List.length
+                  let holeCount = (declSpecOf f).Holes |> List.length
                   Expect.equal (List.length s.Holes) holeCount (sprintf "signature for '%s' lost a hole" f.Name)
           }
 

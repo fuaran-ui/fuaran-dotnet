@@ -152,15 +152,13 @@ module Stdlib =
             (declIdOf name)
             { Name = name
               Body = body
-              Holes = (if List.isEmpty holes then Option.None else Some holes)
-              Effect =
-                (if
-                     effect.HostEffect = HostEffect.Pure
-                     && effect.Determinism = DeterminismSource.Deterministic
-                 then
-                     Option.None
-                 else
-                     Some effect) }
+              // Phase 1670 — the canonicalisation this library used to perform
+              // by hand is the FIELD'S rule now (omit-at-default), so both slots
+              // carry the value and the encoder decides whether it reaches the
+              // wire. The library's discipline became the host's, which is where
+              // the original note said it belonged.
+              Holes = holes
+              Effect = effect }
 
     /// Apply a fragment: a `FragmentRef` at a caller-chosen node id, binding the
     /// given holes.

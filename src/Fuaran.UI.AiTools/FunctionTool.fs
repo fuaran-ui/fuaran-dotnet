@@ -90,7 +90,6 @@ let private declHoles (node: Node<'Msg>) : Fuaran.Core.HoleDecl list =
         let declId = node.Id
 
         spec.Holes
-        |> Option.defaultValue []
         |> List.map (fun h ->
             let name = HoleDecl.name h
 
@@ -109,10 +108,7 @@ let private declHoles (node: Node<'Msg>) : Fuaran.Core.HoleDecl list =
 /// non-decl node — it declares no effect surface).
 let private declEffect (node: Node<'Msg>) : Fuaran.Core.EffectClass =
     match node.Kind with
-    | NodeKind.FragmentDecl spec ->
-        spec.Effect
-        |> Option.map toCoreEffect
-        |> Option.defaultValue Fuaran.Core.Effect.pureDeterministic
+    | NodeKind.FragmentDecl spec -> toCoreEffect spec.Effect
     | _ -> Fuaran.Core.Effect.pureDeterministic
 
 // ── the hygienic slot substitution (the renderer's FragmentApply logic,
@@ -212,12 +208,11 @@ let private declBind (addr: string) (arg: Fuaran.Core.Arg<Node<'Msg>>) (node: No
                     // The bound slot is no longer an open hole — drop it from the
                     // decl's declared holes so the composed function's signature
                     // reports only the residual (unbound) holes.
-                    let residualHoles =
-                        spec.Holes
-                        |> Option.map (List.filter (fun h -> HoleDecl.name h <> slotName))
-                        |> Option.bind (function
-                            | [] -> None
-                            | hs -> Some hs)
+                    // Phase 1670 — dropping the last hole leaves the EMPTY list,
+                    // which is the field's omit-at-default, so the two-step
+                    // "filter, then collapse the empty case back to absence" is
+                    // one step now and the encoder still omits `holes`.
+                    let residualHoles = spec.Holes |> List.filter (fun h -> HoleDecl.name h <> slotName)
 
                     Ok
                         { node with

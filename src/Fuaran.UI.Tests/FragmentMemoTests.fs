@@ -44,10 +44,9 @@ let private fragment: ParamFragment<unit> =
     { Defaults.fragmentDecl with
         Name = "card"
         Holes =
-            Some
-                [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
-                  HoleDecl.Value("count", HoleValueSpace.IntRange(0, 100), None)
-                  HoleDecl.Slot("content", None) ]
+            [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
+              HoleDecl.Value("count", HoleValueSpace.IntRange(0, 100), None)
+              HoleDecl.Slot("content", None) ]
         Body = body }
 
 /// The SAME fragment name over a DIFFERENT body (Phase 210) — the soundness
@@ -200,9 +199,8 @@ let tests =
               let effecting =
                   { fragment with
                       Effect =
-                          Some
-                              { HostEffect = HostEffect.ReadsHost
-                                Determinism = DeterminismSource.Clock } }
+                          { HostEffect = HostEffect.ReadsHost
+                            Determinism = DeterminismSource.Clock } }
 
               engine.Apply(effecting, "ref1", valueArgs "Hello" 3, slotArgs "x")
               |> ok "first"

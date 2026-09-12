@@ -78,10 +78,11 @@ let private mkFragment (holeCount: int) : ParamFragment<unit> =
 
     { Defaults.fragmentDecl with
         Name = $"frag{holeCount}"
-        Holes = Some(valueHoles @ [ HoleDecl.Slot("content", None) ])
+        Holes = (valueHoles @ [ HoleDecl.Slot("content", None) ])
         Body = body
-        // `None` ≡ the pure-deterministic default, so it stays cache-admissible.
-        Effect = None }
+        // The pure-deterministic class, which is the field's omit-at-default, so it
+        // stays cache-admissible and never reaches the wire.
+        Effect = EffectClass.pureDeterministic }
 
 let private baseArgs (holeCount: int) : Map<string, obj> =
     [ for i in 0 .. holeCount - 1 -> $"field{i}", v (box $"value-{i}") ]

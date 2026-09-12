@@ -1300,8 +1300,8 @@ and FragmentDeclSpec<'Msg> =
     {
       Body: Node<'Msg>
       Name: string
-      Holes: HoleDecl list option
-      Effect: EffectClass option
+      Holes: HoleDecl list
+      Effect: EffectClass
     }
 
 // Meta
@@ -2338,7 +2338,7 @@ and private encFormSpec<'Msg> (s: FormSpec<'Msg>) : JVal =
     Canon.typed "Form" ([ Some("fields", JArr(List.map encFormField s.Fields)); Some("onSubmit", encAction s.OnSubmit); Some("submitLabel", encTextSource s.SubmitLabel); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
 
 and private encFragmentDeclSpec<'Msg> (s: FragmentDeclSpec<'Msg>) : JVal =
-    Canon.typed "FragmentDecl" ([ Some("body", encNode s.Body); Some("name", JStr s.Name); (s.Holes |> Option.map (fun v -> "holes", JArr(List.map encHoleDecl v))); (s.Effect |> Option.map (fun v -> "effect", encEffectClass v)) ] |> List.choose id)
+    Canon.typed "FragmentDecl" ([ Some("body", encNode s.Body); Some("name", JStr s.Name); (if List.isEmpty s.Holes then None else Some("holes", JArr(List.map encHoleDecl s.Holes))); (if s.Effect = { Determinism = DeterminismSource.Deterministic; HostEffect = HostEffect.Pure } then None else Some("effect", encEffectClass s.Effect)) ] |> List.choose id)
 
 and private encFragmentRefSpec<'Msg> (s: FragmentRefSpec<'Msg>) : JVal =
     Canon.typed "FragmentRef" ([ Some("name", JStr s.Name); (s.Args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)) ] |> List.choose id)
@@ -4038,8 +4038,8 @@ and private decFragmentDeclSpec (j: JVal) : Result<FragmentDeclSpec<obj>, string
     dObj j |> Result.bind (fun __fs ->
     dReq "body" __fs decNode |> Result.bind (fun body ->
     dReq "name" __fs dStr |> Result.bind (fun name ->
-    dOpt "holes" __fs (dList decHoleDecl) |> Result.bind (fun holes ->
-    dOpt "effect" __fs decEffectClass |> Result.bind (fun effect ->
+    dDef "holes" __fs (dList decHoleDecl) ([]) |> Result.bind (fun holes ->
+    dDef "effect" __fs decEffectClass ({ Determinism = DeterminismSource.Deterministic; HostEffect = HostEffect.Pure }) |> Result.bind (fun effect ->
     Ok { Body = body; Name = name; Holes = holes; Effect = effect })))))
 
 and private decFragmentRefSpec (j: JVal) : Result<FragmentRefSpec<obj>, string> =
@@ -4487,7 +4487,7 @@ let mkForm (id: string) (fields: FormField<'Msg> list) (onSubmit: Action<'Msg>) 
     { Id = id; Kind = NodeKind.Form { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkFragmentDecl (id: string) (body: Node<'Msg>) (name: string) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.FragmentDecl { Body = body; Name = name; Holes = None; Effect = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.FragmentDecl { Body = body; Name = name; Holes = []; Effect = { Determinism = DeterminismSource.Deterministic; HostEffect = HostEffect.Pure } }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkFragmentRef (id: string) (name: string) : Node<'Msg> =
     { Id = id; Kind = NodeKind.FragmentRef { Name = name; Args = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }

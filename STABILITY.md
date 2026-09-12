@@ -8141,6 +8141,54 @@ model's value, so a mirrored value reads identically either way. The page's `Ema
 its model counts commits, and the Playwright spec asserts zero at load and one after a debounce
 flush. Sample-only — no shipped surface moves.
 
+**fuaran#1670 — BREAKING on the wire (bytes this host emits move) and BREAKING at F# construction
+and read sites. Nothing a consumer DECODES stops decoding.** The ruling follow-through on the
+`FragmentDecl` encoder.
+
+*The wire.* `FragmentDecl` no longer emits `"holes":[]` for a zero-hole declaration, nor
+`"effect":{"determinism":"Deterministic","hostEffect":"Pure"}` for a pure-deterministic one.
+`WIRE_FORMAT.md` has specified both omissions since parameterised fragments shipped, and the
+TypeScript and Rust hosts implement them as normalisations; this host modelled both slots as options
+and encoded whatever it was handed, so one value round-tripped to two different documents on two
+conformant hosts. Its own round-trip gate could not see it — that gate compares `encode(decode(bytes))`
+against bytes this host produced — and no corpus fixture declared either degenerate value, which is
+how the defect survived from Phase 180. **A document carrying either redundant key still decodes**,
+and re-encodes without it; `lenient/lenient-1670-fragment-decl-redundant-defaults` is the corpus
+vector that pins exactly that, and the §15.4 amendment classes a narrowing of the canonical form
+where the accepted set is unchanged as NO profile step.
+
+*The types.* `FragmentDeclSpec.Holes` is `HoleDecl list` (was `HoleDecl list option`) and
+`FragmentDeclSpec.Effect` is `EffectClass` (was `EffectClass option`). Both are declared OMIT-AT-DEFAULT
+in the IDL, so the encoder's omission is the generated rule rather than a discipline each construction
+site keeps; the redundant form is now unrepresentable rather than merely unwritten. **The accepted cost
+is the ruling's own:** `Some pureDeterministic` and `None` stop being distinguishable — they never did
+mean different things, since every consumer in the tree read an absent effect as
+`EffectClass.pureDeterministic`. Every construction site that wrote `Holes = Some hs` / `Effect = Some e`
+writes the bare value, and every read site that wrote `|> Option.defaultValue EffectClass.pureDeterministic`
+drops it. `Defaults.fragmentDecl` and `mkFragmentDecl` carry the degenerate values, so a
+`{ Defaults.fragmentDecl with … }` copy is unaffected.
+
+*The twin that is NOT fixed, and why it is named rather than quietly left.* `FragmentRefSpec.Args`
+stays `Map<string, FragmentArg> option`, so `Some Map.empty` still encodes as `"args":{}` where a
+normalising host omits it. It is the same defect class; the IDL's default-literal renderer has no arm
+for a map, so declaring the field omit-at-default is a change to the substrate's codegen — a different
+repository and a different release. The spec records `args` as a SHOULD with the reason, rather than a
+MUST the reference host breaks, and the note beside the field in `src/Fuaran.UI.Idl/Vocabulary.fs`
+carries the same account.
+
+*Additive, in the same change-set.* `src/Fuaran.UI.Idl` gains `WireProfile.fs` — `WIRE_FORMAT.md`
+§15.4's evolution policy applied to this vocabulary's own `idl.json`, reported by the regeneration
+command whenever the artifact moves, so a vocabulary change prints its own classification before it
+is committed. Advisory: it prints and does not gate. Not packable (nothing in `Fuaran.UI.Idl` is), so
+no shipped package gains a member. `Fuaran.UI.Fragments.Tests` gains a project reference on
+`Fuaran.UI.OpStream.Abstractions` so its canonical-shape assertions read the emitted BYTES rather
+than the record they were emitted from — the claim was always about the wire.
+
+*The `Range` class vocabulary did not move here.* This host already emitted `fuaran-field-range*`;
+the reconciliation the same phase performs is entirely in the TypeScript tier, which had been
+emitting `fuaran-form-range*` — a spelling the canonical stylesheet does not style at all.
+`Theme.vocabularyFingerprint` does not move and no tier stylesheet copy is rewritten.
+
 ## 0.80.0 — the provider-call telemetry record carries the subject it was made under (Phase 1637)
 
 **Additive on the wire, RECORD-WIDENING at the source, and the two are not the same statement — read

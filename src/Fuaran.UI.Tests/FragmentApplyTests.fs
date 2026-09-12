@@ -32,9 +32,8 @@ let private cardFragment: ParamFragment<unit> =
     { Defaults.fragmentDecl with
         Name = "card"
         Holes =
-            Some
-                [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
-                  HoleDecl.Slot("content", None) ]
+            [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
+              HoleDecl.Slot("content", None) ]
         Body = body }
 
 let private slotArg: Node<unit> = Fuaran.markdown "body" "slot content"
@@ -155,9 +154,8 @@ let tests =
           let constrainedCard (constraintKind: string option) : ParamFragment<unit> =
               { cardFragment with
                   Holes =
-                      Some
-                          [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
-                            HoleDecl.Slot("content", constraintKind) ] }
+                      [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
+                        HoleDecl.Slot("content", constraintKind) ] }
 
           test "a slot arg whose kind matches the constraint binds" {
               let r =

@@ -54,7 +54,7 @@ let private slotArg: Node<unit> = Fuaran.markdown "body" "slot content"
 let private fragmentWith (place: Node<unit> -> Node<unit>) : ParamFragment<unit> =
     { Defaults.fragmentDecl with
         Name = "card"
-        Holes = Some [ HoleDecl.Slot("content", None) ]
+        Holes = [ HoleDecl.Slot("content", None) ]
         Body =
             Fuaran.dashboard
                 "card-root"

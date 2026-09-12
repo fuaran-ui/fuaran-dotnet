@@ -1707,7 +1707,11 @@
         {
           "name": "holes",
           "optionality": {
-            "$type": "optional"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "list",
+              "items": []
+            }
           },
           "type": {
             "$type": "list",
@@ -1721,7 +1725,26 @@
         {
           "name": "effect",
           "optionality": {
-            "$type": "optional"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "record",
+              "fields": [
+                {
+                  "name": "determinism",
+                  "value": {
+                    "$type": "enum",
+                    "case": "Deterministic"
+                  }
+                },
+                {
+                  "name": "hostEffect",
+                  "value": {
+                    "$type": "enum",
+                    "case": "Pure"
+                  }
+                }
+              ]
+            }
           },
           "type": {
             "$type": "record",

@@ -67,12 +67,11 @@ type FragmentSignature =
       Effect: EffectClass }
 
 module Fragment =
-    // Since the swap the generated `FragmentDeclSpec` carries `Holes` /
-    // `Effect` as OPTIONS (`None` ≡ the old `[]` / pure-deterministic
-    // degenerate shape) and `Name` as a bare string — the laws below
-    // materialise the degenerate defaults locally so their surface types are
-    // unchanged.
-    let private holesOf (pf: ParamFragment<'Msg>) : HoleDecl list = pf.Holes |> Option.defaultValue []
+    // Phase 1670 — the generated `FragmentDeclSpec` carries `Holes` / `Effect`
+    // as OMIT-AT-DEFAULT values rather than options, so the degenerate shape no
+    // longer has to be materialised here: an empty hole list IS the degenerate
+    // hole list, and `EffectClass.pureDeterministic` IS the degenerate effect.
+    let private holesOf (pf: ParamFragment<'Msg>) : HoleDecl list = pf.Holes
 
     let private entryOf (h: HoleDecl) : HoleSignatureEntry =
         match h with
@@ -96,7 +95,7 @@ module Fragment =
     let signature (pf: ParamFragment<'Msg>) : FragmentSignature =
         { Name = pf.Name
           Holes = holesOf pf |> List.map entryOf
-          Effect = pf.Effect |> Option.defaultValue EffectClass.pureDeterministic }
+          Effect = pf.Effect }
 
     /// TOTALITY (invariant 1) over the whole fragment: every `Repeat` hole's
     /// count value-space is bounded.
@@ -162,6 +161,7 @@ module Fragment =
             go (holesOf pf) []
             |> Result.map (fun holes ->
                 { pf with
-                    // Preserve the degenerate wire shape: an empty hole list
-                    // stays `None` (omitted), never `Some []`.
-                    Holes = (if List.isEmpty holes then Option.None else Some holes) })
+                    // The degenerate wire shape is preserved by the FIELD now
+                    // (Phase 1670): an empty hole list is the omit-at-default, so
+                    // there is no second spelling of it to pick between here.
+                    Holes = holes })

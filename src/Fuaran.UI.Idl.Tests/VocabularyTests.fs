@@ -102,6 +102,38 @@ let private expectArtifact (name: string) (p: string) (rendered: string) =
                 "%s is not what this repo's vocabulary sources render. Regenerate with FUARAN_REGEN=1 dotnet run --project src/Fuaran.UI.Idl.Tests"
                 name)
 
+// ─── The §15.4 classification (Phase 1670) ─────────────────────────────────
+//
+// `WIRE_FORMAT.md` §15.4 says the classification of a vocabulary change is
+// "derivable, not hand-disciplined" via an IDL diff. The machinery to derive it
+// has existed since Phase 700 and was wired to nothing, so the claim was true of
+// the tool and false of the practice.
+//
+// This is the wiring, and it sits HERE rather than in a target of its own for the
+// same reason the regeneration does: a deliberate vocabulary change goes through
+// exactly one command, so that command is where the change can report its own
+// class without anyone remembering to ask. It prints in BOTH modes — under
+// `FUARAN_REGEN=1` it is the report; on the check path it is extra diagnosis
+// attached to an assertion that is already failing.
+//
+// It never fails a run. §15.4's classification is advisory by design (the
+// substrate's own diff says so in its header): a classifier that gated would make
+// the hand-declared classification unfalsifiable, and the whole value of deriving
+// it independently is that the two can disagree out loud.
+let private reportProfileStep (committed: string) (rendered: string) =
+    if committed <> rendered then
+        match Fuaran.UI.WireProfile.reportBetween committed rendered with
+        | Ok report -> printfn "%s%s%s" System.Environment.NewLine report System.Environment.NewLine
+        | Error e ->
+            // A malformed artifact is not a classification, and saying so is not
+            // the same as saying "no change". The artifact assertion beside this
+            // is the one that decides the run.
+            printfn
+                "%sWIRE_FORMAT.md 15.4 — could not classify this delta: %s%s"
+                System.Environment.NewLine
+                e
+                System.Environment.NewLine
+
 // ─── The emission ──────────────────────────────────────────────────────────
 
 /// The generated module's name is a generator PARAMETER, which is why the tier's
@@ -126,7 +158,11 @@ let tests =
     <| testList
         "Phase 1181 — the vocabulary regenerates in-process"
         [ testCase "idl.json is what this repo's vocabulary renders" (fun _ ->
-              expectArtifact "src/Fuaran.UI.Idl/idl.json" idlPath (Artifact.render Fuaran.UI.Vocabulary.uiIdl))
+              let rendered = Artifact.render Fuaran.UI.Vocabulary.uiIdl
+              // BEFORE the write, so the regeneration path classifies the delta it
+              // is about to erase rather than a delta of nothing.
+              reportProfileStep (read idlPath) rendered
+              expectArtifact "src/Fuaran.UI.Idl/idl.json" idlPath rendered)
 
           testCase "support.json is what this repo's support document renders" (fun _ ->
               expectArtifact
