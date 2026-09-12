@@ -1,4 +1,4 @@
-﻿name: Apply-parity Fable lane
+name: Apply-parity Fable lane
 
 # Phase 192 cross-pipeline apply-parity gate — the Fable half, automated.
 #
@@ -80,7 +80,7 @@ jobs:
           global-json-file: global.json
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -144,7 +144,7 @@ jobs:
           global-json-file: global.json
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -199,7 +199,7 @@ jobs:
           global-json-file: global.json
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20
 
