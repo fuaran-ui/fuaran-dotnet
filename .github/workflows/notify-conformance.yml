@@ -67,7 +67,7 @@ jobs:
         # credential-bearing code nobody reviewed. `# v2.2.2` records which release
         # the digest is; the Dependabot `github-actions` schedule proposes bumps as
         # reviewable PRs, so the pin stays a decision rather than a freeze.
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: 4797739
           private-key: ${{ secrets.FUARAN_WORKSPACE_APP_PRIVATE_KEY }}
