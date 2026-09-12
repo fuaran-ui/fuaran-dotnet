@@ -1,8 +1,8 @@
 {
   "rendererPackage": "@fuaran-ui/renderer",
-  "rendererVersion": "0.21.0",
+  "rendererVersion": "0.23.0",
   "bundleVersion": "0.1.0",
   "wireProfile": "1",
   "vocabularyFingerprint": "fv1:533d4239b16f57b7",
-  "bundleSha256": "01887B9203A307A80AFE34ECD4A1CA4E77A2D1F3929E60B851373F22BE7DB555"
+  "bundleSha256": "80E213EAE4CBA5E58F6594A2A7B69DEDD30CC9969BC94951C4F1AC301A8673A9"
 }
