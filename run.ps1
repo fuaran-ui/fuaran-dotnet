@@ -449,7 +449,7 @@ if (-not $SkipContentJs) {
 if (-not $SkipDriftChecks) {
     Write-Step "Generated-artefact drift (Build.fsproj -- DriftChecks)"
 
-    dotnet run --project Build.fsproj -- DriftChecks
+    dotnet run --project (Join-Path $PSScriptRoot "Build.fsproj") -- DriftChecks
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Generated-artefact drift check failed (exit $LASTEXITCODE). The failing target names its own remedy - typically 'dotnet fsi docs/tools/authoring-pack.fsx --write' (plus --dialect lenient / --family all), 'dotnet run --project Build.fsproj -- Css', or 'pwsh scripts/sync-renderer-web.ps1 -Sync'."
         exit $LASTEXITCODE
