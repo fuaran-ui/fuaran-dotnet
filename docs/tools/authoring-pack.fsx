@@ -1816,6 +1816,27 @@ let private leniencyFamilies: LeniencyFamily list =
         Evidence =
           "Safe (validity restores all-true) but strictly dominated by the bare-array form — an "
           + "intermediate spelling with no reason to teach it." }
+      { Name = "Omit-at-default acceptance (the omitted form IS canonical) — FragmentDecl"
+        Class = AlreadyCanonical
+        FixtureIds = [ "lenient-1670-fragment-decl-redundant-defaults" ]
+        Evidence =
+          "The canonical form is the ABSENT key, and the leniency accepts the redundant explicit "
+          + "default: `\"holes\":[]` on a zero-hole declaration and "
+          + "`{\"determinism\":\"Deterministic\",\"hostEffect\":\"Pure\"}` on a pure-deterministic one. Δ bytes "
+          + "is negative on the accepted side, so there is nothing to teach beyond the canonical rule "
+          + "— which is the same shape the Literal-envelope family below has, at a slot rather than a "
+          + "union case. "
+          + "TOTAL + LOSS-FREE, and the second half is the part worth stating: both slots are declared "
+          + "OMIT-AT-DEFAULT (Phase 1670), so absence and the explicit default denote the same value by "
+          + "construction and the normalisation cannot lose one. The ruling that made them so accepted "
+          + "that cost explicitly — `Some pureDeterministic` and `None` stop being distinguishable — "
+          + "because they never did mean different things: every consumer read an absent effect as "
+          + "pure-deterministic. "
+          + "Both slots ride ONE fixture deliberately: a host that normalised `effect` alone would still "
+          + "emit `\"holes\":[]` and pass a single-slot vector, and the two are one class. "
+          + "`FragmentRef.args` is the third member and is NOT here — no host normalises it yet (the "
+          + "IDL's default-literal renderer has no arm for a map), so the spec records it as a SHOULD "
+          + "and the corpus carries no vector it would fail." }
       { Name = "Literal-envelope acceptance (bare string IS canonical)"
         Class = AlreadyCanonical
         FixtureIds =
