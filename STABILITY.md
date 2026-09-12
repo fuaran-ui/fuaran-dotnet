@@ -8317,6 +8317,36 @@ derived, and the checker subtracts the direction and its isolation class from th
 and requires what remains to equal the undeclared one — a renderer that also flipped an alignment or
 pushed a direction onto descendants fails there and passes every other assertion.
 
+
+**fuaran#1704 — ADDITIVE, with one DU WIDENING, and NO renderer behaviour change on this host.**
+`WIRE_FORMAT.md` §24.7 settles how a host-fed float sequence resolves, and the reference host's
+`render-fidelity.json` gains the two checkable claims that hold every adopting host to it.
+
+*DU widening.* `Fuaran.UI.RenderFidelity.ObligationClaim` gains `FloatSeqReadsElementWise` and
+`FloatSeqAcceptSetClosed`. Source-breaking at an exhaustive `match`, which is the ordinary and
+intended class for this type — a new claim MUST NOT be compilable past, because a host that silently
+ignored one would report conformance it has not checked — and this slot is already BREAKING, so it
+rides rather than advances. `allClaims`, `claimId` and `claimMeaning` grow by two entries each.
+
+*The `Sparkline` row.* It declares the two obligations and adds `state-absent-default` to its
+`fixtures`, which is the corpus's only BOUND-source sparkline: a resolution claim needs a slot a host
+store can reach, and that fixture also pins the half of the row's own fallback prose nothing pinned
+before — what an UNRESOLVED series renders.
+
+*Why a KIND row and not a `traits` entry.* Phase 1696 drew the line and it decides this cleanly: a
+trait is a member of the node ENVELOPE that every kind owes alike, and `SparklineSpec.source` is a
+member of ONE kind's spec. It is also the format's only float-sequence slot, so a trait would be a
+population of one declared as though it rode forty-three rows.
+
+*What did NOT move.* No wire byte, no renderer behaviour, no class name, no
+`Theme.vocabularyFingerprint`. This host's binding store is TYPED: a `float seq` slot resolves the
+whole value or not at all, so there is no element for it to drop and §24.7's element rule is
+satisfied by construction. `Fuaran.UI.Renderer.Server.Tests` registers two checkers all the same,
+keyed `Sparkline/<claim>` — a host that merely HAPPENS to conform today is exactly the host a later
+refactor breaks silently, and the claims are asserted as observable consequences: a series carrying a
+NaN draws its full point count rather than the em-dash, and a store element spelling `"3.5"` does not
+render as the number 3.5 does.
+
 ## 0.80.0 — the provider-call telemetry record carries the subject it was made under (Phase 1637)
 
 **Additive on the wire, RECORD-WIDENING at the source, and the two are not the same statement — read

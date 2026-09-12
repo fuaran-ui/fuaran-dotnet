@@ -1078,6 +1078,93 @@ let private checkNoDerivedDirectionBehaviour () =
         1
         "exactly one element declared a direction, so exactly one may carry it - a direction pushed onto descendants is a derived behaviour rule 5 forbids"
 
+// --- Sparkline float-sequence resolution (Phase 1704, WIRE_FORMAT.md 24.7) ---
+//
+// The claims are about a HOST-FED series, so these two checkers are the only
+// ones in this file that render against a non-empty store. That is not an
+// accident of convenience: a float-sequence slot TYPES its elements at decode,
+// so `[1,"3.5",3]` is a `WRONG_TYPE` and no document can carry the case. The
+// store is the only place a foreign element exists, which is exactly why §24.7
+// is a render obligation and not a codec family.
+//
+// The observable is the emitted `<polyline points="...">`: the lowering yields
+// one point per series element, so counting points counts readings. An
+// assertion on the em-dash alone could not tell a host that read every element
+// from one that read the first two.
+
+/// A sparkline whose series comes from the store, not the document - the shape
+/// the corpus carries at `nodes/state-absent-default.json`'s
+/// `absent-default-sparkline`, reproduced here so the checker renders one node
+/// rather than digging one out of a six-node composite.
+let private boundSparkline: Node<obj> =
+    { Id = "absent-default-sparkline"
+      Kind = NodeKind.Sparkline({ Source = Binding.State("series", None) })
+      State = None
+      Style = None
+      Accessibility = None
+      Motion = None
+      ExtraAttributes = None
+      Tooltip = None
+      Visible = None }
+
+let private renderSeries (series: obj) : string =
+    Render.render
+        { BindingResolver.empty with
+            State = Map.ofList [ "series", series ] }
+        boundSparkline
+
+/// The number of readings the emission shows: one `x,y` pair per series element.
+let private pointCount (html: string) : int =
+    let m = Regex.Match(html, "points=\"([^\"]*)\"")
+
+    if not m.Success then
+        0
+    else
+        m.Groups.[1].Value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length
+
+let private checkFloatSeqReadsElementWise () =
+    // This host's store is TYPED, so the only element that is not a number and
+    // can still reach the resolver is the sentinel itself. That is the case the
+    // claim is about: a NaN keeps its POSITION and the series keeps its length.
+    let finite = renderSeries (box ([ 1.0; 2.0; 3.0; 4.0 ]: float list))
+
+    let withSentinel = renderSeries (box ([ 1.0; Double.NaN; 3.0; 4.0 ]: float list))
+
+    Expect.equal (pointCount finite) 4 "a four-element series draws four readings"
+
+    Expect.equal
+        (pointCount withSentinel)
+        4
+        "a sentinel element neither shortens the series nor suppresses it - a series index is a position, so a dropped reading slides every later one left"
+
+    Expect.isFalse
+        (contains "fuaran-sparkline-empty" withSentinel)
+        "one unreadable element must not throw away the readable ones - the em-dash is the UNRESOLVED case, not the partly-readable one"
+
+let private checkFloatSeqAcceptSetClosed () =
+    // The accept set is §7's and closed. This host never coerces, because its
+    // store is typed and a decimal string is not a `float seq` at all - so the
+    // assertion is that the value 3.5 is nowhere in the emission, and its twin
+    // is that the genuine number 3.5 IS read. Without the twin a host that read
+    // nothing at all would pass.
+    let coerced = renderSeries (box ([| box 0.0; box "3.5"; box 7.0 |]: obj[]))
+
+    let genuine = renderSeries (box ([ 0.0; 3.5; 7.0 ]: float list))
+
+    // The twin FIRST, so the comparison below is against a real render rather
+    // than against two em-dashes agreeing about nothing.
+    Expect.equal (pointCount genuine) 3 "the genuine number is read - the closed set admits JSON numbers"
+
+    // The comparison IS the claim, and it is the only formulation that reads the
+    // same on every host: a host that coerced `"3.5"` would emit byte-identical
+    // markup for the two, whatever its geometry. An assertion that the literal
+    // characters `3.5` are absent would pass on a host that coerced and then
+    // scaled the coordinate away.
+    Expect.notEqual
+        coerced
+        genuine
+        "a decimal string resolved to the number it spells - the decode path at this same slot refuses `\"3.5\"`, so a resolver that accepts it makes the two halves of one slot disagree about what a number is"
+
 /// The registry: which (kind, claim) pairs this host asserts, and how.
 ///
 /// Keyed by the claim's WIRE token rather than the DU case, because the
@@ -1108,7 +1195,10 @@ let private checkers: ((string * string) * (unit -> unit)) list =
       ("style.direction", "declared-run-isolated"), checkDeclaredRunIsolated
       ("style.direction", "declaration-wins-over-inference"), checkDeclarationWinsOverInference
       ("style.direction", "auto-is-no-declaration"), checkAutoIsNoDeclaration
-      ("style.direction", "no-derived-direction-behaviour"), checkNoDerivedDirectionBehaviour ]
+      ("style.direction", "no-derived-direction-behaviour"), checkNoDerivedDirectionBehaviour
+      // Phase 1704 - the two float-sequence resolution claims (§24.7).
+      ("Sparkline", "float-seq-reads-element-wise"), checkFloatSeqReadsElementWise
+      ("Sparkline", "float-seq-accept-set-closed"), checkFloatSeqAcceptSetClosed ]
 
 /// Obligations this host declares it does NOT check, each with a reason.
 ///

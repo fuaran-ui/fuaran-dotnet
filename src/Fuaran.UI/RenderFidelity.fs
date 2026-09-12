@@ -172,6 +172,21 @@ type ObligationClaim =
     /// not a locale, not a text alignment, and not a direction for the node's
     /// descendants beyond the receiving surface's own inheritance (§3.1 rule 5).
     | NoDerivedDirectionBehaviour
+    /// A resolved float SEQUENCE yields exactly one reading per element: an
+    /// element the host cannot read as a number reads as the non-finite
+    /// sentinel, and neither shortens the series nor suppresses the rest of it
+    /// (Phase 1704, §24.7). A series index is a POSITION, so a dropped element
+    /// slides every later reading one place left and the picture stays entirely
+    /// plausible while being wrong.
+    | FloatSeqReadsElementWise
+    /// The element accept set at a float-sequence slot is §7's and is CLOSED: a
+    /// JSON number, or one of the three quoted sentinel spellings. No other
+    /// spelling of a number - a decimal string such as `"3.5"` included - is
+    /// read as one (Phase 1704, §24.7). Accepting whatever the host's own float
+    /// parser accepts would make the accept set the RUNTIME's rather than the
+    /// format's, and would contradict the decode path at the same slot, which
+    /// refuses exactly those spellings.
+    | FloatSeqAcceptSetClosed
 
 /// The stable wire token for a claim. This is what the artefact carries and what
 /// a host's checker registry is keyed by, so it may not change without a version
@@ -201,6 +216,8 @@ let claimId (claim: ObligationClaim) : string =
     | ObligationClaim.DeclarationWinsOverInference -> "declaration-wins-over-inference"
     | ObligationClaim.AutoIsNoDeclaration -> "auto-is-no-declaration"
     | ObligationClaim.NoDerivedDirectionBehaviour -> "no-derived-direction-behaviour"
+    | ObligationClaim.FloatSeqReadsElementWise -> "float-seq-reads-element-wise"
+    | ObligationClaim.FloatSeqAcceptSetClosed -> "float-seq-accept-set-closed"
 
 /// What the claim MEANS, kind-independently — the vocabulary entry a host reads
 /// when it meets a claim id it does not yet implement, so "unchecked" can be
@@ -253,6 +270,10 @@ let claimMeaning (claim: ObligationClaim) : string =
         "the identity value of a declaration is the absence of one - a node declaring it renders byte-identically to the same node omitting the member"
     | ObligationClaim.NoDerivedDirectionBehaviour ->
         "no further behaviour is derived from the declaration - not a layout side, not a locale, not an alignment, and not a direction for descendants"
+    | ObligationClaim.FloatSeqReadsElementWise ->
+        "a resolved float sequence yields exactly one reading per element - an element that is not a number reads as the non-finite sentinel in its own position, and neither shortens the series nor suppresses the rest of it"
+    | ObligationClaim.FloatSeqAcceptSetClosed ->
+        "the element accept set at a float-sequence slot is closed - a JSON number or one of the three quoted sentinel spellings, and no other spelling of a number"
 
 /// The closed vocabulary, in declaration order.
 ///
@@ -283,7 +304,9 @@ let allClaims: ObligationClaim list =
       ObligationClaim.DeclaredRunIsolated
       ObligationClaim.DeclarationWinsOverInference
       ObligationClaim.AutoIsNoDeclaration
-      ObligationClaim.NoDerivedDirectionBehaviour ]
+      ObligationClaim.NoDerivedDirectionBehaviour
+      ObligationClaim.FloatSeqReadsElementWise
+      ObligationClaim.FloatSeqAcceptSetClosed ]
 
 /// One obligation as a row declares it: which claim, the normative sentence for
 /// THIS kind, and the spec section that states it.
@@ -1047,14 +1070,36 @@ let all: FidelityRow list =
       // parity. This was the only geometry-bearing kind in the vocabulary so
       // excluded; `Drawing` has said `none` since Phase 525 for the same reason.
       // `sensitive` stays true - the series values are still author data.
-      row
+      //
+      // Phase 1704 - the two float-sequence RESOLUTION claims (§24.7). They sit
+      // on this KIND row and not in `traits`, and the distinction is the one
+      // Phase 1696 drew: a trait is a member of the node ENVELOPE that every
+      // kind owes alike, and `SparklineSpec.source` is a member of ONE kind's
+      // spec. It is also the format's only float-sequence slot, so a trait
+      // would be a population of one declared as though it rode forty-three.
+      //
+      // `state-absent-default` joins `spark-1` in the fixtures, and it is what
+      // gives the two claims a corpus document to be asserted over: it is the
+      // corpus's only BOUND-source sparkline (`$state.series`), and a resolution
+      // claim needs a slot a host store can reach. It also pins the half of the
+      // fallback prose nothing pinned before - what an UNRESOLVED series renders.
+      (row
           "Sparkline"
           true
           "the series values"
           "the `fuaran-sparkline` hook element wrapping a deterministic SVG built by the shared `DrawingSvg` builder from the bounded `Sparkline` lowering, byte-identical on both sides; an unresolved or empty series keeps the em-dash placeholder - a readable, deterministic stand-in rather than a blank"
           RichTier.None
-          [ "spark-1" ]
-          "Phase 644 4k; Phase 1098; docs/SSR.md (Display.Sparkline)"
+          [ "spark-1"; "state-absent-default" ]
+          "Phase 644 4k; Phase 1098; Phase 1704; WIRE_FORMAT.md 24.7; docs/SSR.md (Display.Sparkline)"
+       |> obliged
+           [ owes
+                 ObligationClaim.FloatSeqReadsElementWise
+                 "WIRE_FORMAT.md 24.7"
+                 "a host-fed series yields exactly one reading per element - an element that is not a number reads as NaN in its OWN position, and the host neither drops it, truncates the series at it, nor abandons the whole series because of it. A series index is a position, so a dropped element slides every later reading one place left"
+             owes
+                 ObligationClaim.FloatSeqAcceptSetClosed
+                 "WIRE_FORMAT.md 24.7"
+                 "an element is a number only where it is a JSON number or one of §7's three quoted sentinels; a decimal string such as `\"3.5\"` is NOT one, because the decode path at this same slot refuses it and a resolver that admitted more would make the accept set its runtime's rather than the format's" ])
 
       plain
           "SplitPanel"
