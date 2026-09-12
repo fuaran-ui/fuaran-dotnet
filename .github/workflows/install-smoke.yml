@@ -60,7 +60,7 @@ jobs:
       # The fixtures only. This repo's own sources are deliberately NOT checked
       # out: a leg that could see them could restore from them.
       - name: Check out the shared install-smoke fixtures
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: fuaran-ui/fuaran-ts
           sparse-checkout: dev-scripts/install-smoke
