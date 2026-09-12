@@ -186,7 +186,15 @@ let private packableProjects =
       // export) and its Giraffe host adapter — Giraffe isolated to the
       // adapter, matching the Fuaran.UI.Giraffe precedent.
       "Fuaran.UI.Site"
-      "Fuaran.UI.Site.Giraffe" ]
+      "Fuaran.UI.Site.Giraffe"
+      // Phase 1698 — the portable AI-connector wire substrate: an ordered
+      // JsonValue model with a byte-stable canonical writer, a host-bridged
+      // parser, the provider contract records, and the IHttpTransport egress
+      // seam. FSharp.Core + Fable.Core only, and referenced by no other
+      // project here: it is a self-contained substrate a host adopts on its
+      // own account, published so the wire layer has ONE public home rather
+      // than a copy per consumer.
+      "Fuaran.UI.AiWire" ]
     |> List.map (fun name -> Path.Combine(repoRoot, "src", name, $"{name}.fsproj"))
     // Phase 304 — the C# authoring veneer packs alongside the F# tier. It is a
     // .csproj (appended after the .fsproj map). Phase 314 appends the Roslyn
