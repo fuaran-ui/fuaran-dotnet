@@ -7889,6 +7889,36 @@ publishable through `enum-tokens.json` and spellable wrongly by any host with ev
 green. They exercise no new vocabulary — only token values in slots the corpus already covered — so a
 host that decodes `email` and `gt` but not `url` and `lt` is now red rather than unmeasured.
 
+**fuaran#1689 — NO CHANGE to this package, and the entry exists to say so.** The program wire
+specification moved to **format version 2**, declaring `ClientEffect.Print` and
+`ClientEffect.Confirm` — the two arms this host has emitted since Phases 1124 and 1537 while the
+specification closed its client-effect vocabulary at six. Not one byte, type, member or rendered
+output moves here. The specification caught up with the emitter, rather than the emitter with the
+specification, which is the unusual direction and the reason to record it.
+
+*Why a consumer should read this anyway.* The version number that governs those bytes changed
+underneath them without their bytes changing. A surface reading this host's client-effect channel is
+now reading a **version-2** document whenever a `Print` or a `Confirm` goes past, and a reader
+certified against version 1 refuses it — correctly, as `unknown-effect-arm`, since no document on
+this wire carries a version member for it to refuse by instead. So a consumer pairing this host with
+its own reader has a version question to answer even though it has no diff to read, which is exactly
+the state nothing else would have told them about.
+
+*What this phase actually landed here.* A byte assertion, where there was none. The two arms had no
+test pinning their encoded output at all — the gap that let this host's bytes and the specification
+diverge for two phases in the first place — so `WireTests.fs` now pins both against the corpus
+vectors verbatim, plus the absence a value equality cannot catch: no continuation member rides a
+`Confirm`, which is that arm's central security property rather than a formatting detail.
+
+*And the answer to the question the phase asked about the authoring surfaces:* they gain **nothing**.
+`WIRE_FORMAT.md` §11 step 6 governs admissions to the tree wire that the VB vocabulary pin covers —
+`Action.Print` and `Action.Confirm` cleared it when they landed. This phase adds no kind, no action
+case and no field on a mapped record; it declares an existing CLIENT-EFFECT arm on a different wire,
+which no authoring surface spells.
+
+*Version.* Rides 0.83.0. Nothing in this package's public surface moves, so the class is below the
+BREAKING one the draft already carries, and the rule above applies unchanged.
+
 ---
 
 ## 0.82.0 — DRAFT: the slot Phase 1691 opens (UNTAGGED — superseded by 0.83.0 before release)

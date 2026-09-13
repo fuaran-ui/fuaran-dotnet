@@ -121,6 +121,47 @@ let clientEffectTests =
                   "other C0 controls escape as \\u00XX, never raw"
           }
 
+          // Phase 1689 — the two arms the program wire specification declared at
+          // format version 2, and the two whose bytes this host emitted for
+          // phases before anything specified them (`Print`, Phase 1124;
+          // `Confirm`, Phase 1537). Nothing here changed to admit them: the DU
+          // is unchanged in shape and the encoder is unchanged in output. What
+          // changed is that these bytes are now the corpus's, so what was an
+          // unpinned emission is a contract — and it had no byte assertion at
+          // all until this phase, which is how an encoder drifts away from a
+          // specification that has just caught up with it.
+          //
+          // The literals below are the corpus vectors verbatim
+          // (`client-effect/print.json`, `client-effect/confirm.json`). If this
+          // host's encoder ever moves, this goes red HERE rather than in
+          // whichever certifying host next reads the corpus.
+          test "Print / Confirm — the format-version-2 arms, byte-for-byte against the corpus" {
+              Expect.equal
+                  (ClientEffect.encode ClientEffect.Print)
+                  """{"kind":"Print"}"""
+                  "the payload-free arm: the discriminator is the whole document"
+
+              Expect.equal (ClientEffect.kind ClientEffect.Print) "Print" "Print's discriminator"
+
+              Expect.equal
+                  (ClientEffect.encode (ClientEffect.Confirm("Settle ORD-4417 for GBP 1250?", "btn-settle#0")))
+                  """{"kind":"Confirm","prompt":"Settle ORD-4417 for GBP 1250?","token":"btn-settle#0"}"""
+                  "declaration order: prompt before token"
+
+              Expect.equal (ClientEffect.kind (ClientEffect.Confirm("p", "t"))) "Confirm" "Confirm's discriminator"
+
+              // The continuations are not on this wire and there is no member
+              // through which they could ride — asserted as an ABSENCE, because
+              // that is the arm's central security property and an encoder that
+              // grew one would still pass the equality above whenever the branch
+              // happened to be empty.
+              let asked =
+                  ClientEffect.encode (ClientEffect.Confirm("Delete this order?", "btn-delete#1"))
+
+              Expect.isFalse (asked.Contains "onConfirm") "no continuation rides the instruction"
+              Expect.isFalse (asked.Contains "onCancel") "no cancel branch rides the instruction"
+          }
+
           test "encodeList wraps a JSON array; kind discriminators are stable" {
               Expect.equal
                   (ClientEffect.encodeList [ ClientEffect.Focus "a"; ClientEffect.Navigate("/x", NavigateTarget.Self) ])
