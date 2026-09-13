@@ -701,7 +701,7 @@
          v0.81.0 is TAGGED, so that slot is released and a corpus change cannot be
          repacked into it. See STABILITY.md "0.82.0 - DRAFT: the slot Phase 1691
          opens". -->
-    <Version>0.82.0</Version>
+    <Version>0.83.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

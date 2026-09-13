@@ -578,14 +578,26 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
             with ex ->
                 Errored(sprintf "State '%s' value did not unbox to expected type: %s" key ex.Message)
         | None ->
-            // `Binding.State` declares its own default, so absence is not
-            // a NotResolved condition — it's the "no override yet" steady
-            // state and resolves to the default. A default-less binding
-            // (`None` since the swap) resolves to the slot's default
-            // representation, matching the pre-swap decode placeholder.
+            // `Binding.State` declares its own default, so an unwritten slot is
+            // not a `NotResolved` condition when a default is DECLARED — it is
+            // the "no override yet" steady state and resolves to the default.
+            //
+            // Phase 1690 — a BARE `State` (no declared default) at an unwritten,
+            // unseeded slot is UNRESOLVED, at every slot type. This arm used to
+            // answer `Resolved Unchecked.defaultof<'T>`, which is not a decision
+            // but a CLR artefact: it means `null` at a reference-typed slot (and
+            // the `Transform` live arm below reads that very null back as
+            // ABSENCE) and a fabricated `0` / `false` at a value-typed one. A
+            // `Metric` labelled "Revenue" then reads `0` where the truth is that
+            // no figure was furnished, and a reader cannot tell the two apart.
+            //
+            // `Filter` and `Selection` — the two arms §24.1 calls this one's
+            // mirrors — already answer `NotResolved` for exactly this case, so
+            // the format's own mirror argument (§24.2) runs in this direction
+            // too. WIRE_FORMAT.md §24.8 is the normative statement.
             match defaultValue with
             | Some d -> Resolved d
-            | None -> Resolved Unchecked.defaultof<'T>
+            | None -> NotResolved
     | Binding.Now(accessor, grain) ->
         // Phase 765 — the host-furnished instant. The clock is NOT read here:
         // `sources.Now` was resolved once, host-side, for the whole render pass,

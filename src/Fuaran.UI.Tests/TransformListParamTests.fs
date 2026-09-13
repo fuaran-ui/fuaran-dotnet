@@ -98,23 +98,26 @@ let tests =
               Expect.equal (rowCount chipSourced BindingResolver.empty) 3 "all rows shown before any selection"
           }
 
-          test "a State-sourced list param on an UNWRITTEN slot is loud, not lenient" {
-              // Pinned deliberately, because the two chip sources differ here and the
-              // difference is Phase 424's, not this phase's. An unset `Filter` source is
-              // `NotResolved` — absence, so the step prunes. An unwritten `State` slot
-              // resolves to a present `null`, which the scalar coercion has read as the
-              // `Null` CELL since 424; a `Null` cell is not a selection, so the membership
-              // test reaches Core's strict `UnboundParam`. Deselecting to `[]` through a
-              // State-sourced chip still prunes (the write stores an empty array); it is
-              // only the never-written slot that differs. The declarative chip idiom the
-              // pack teaches therefore sources the param from `Filter`, where "never
-              // touched" and "cleared" are one answer.
+          test "a State-sourced list param on an UNWRITTEN slot PRUNES, exactly as a Filter-sourced one does" {
+              // Phase 1690 CLOSED the divergence this test used to pin, and the
+              // old text is worth keeping in view because it named the wart and
+              // then recorded the workaround: "an unset `Filter` source is
+              // `NotResolved` — absence, so the step prunes. An unwritten `State`
+              // slot resolves to a present `null` … so the membership test
+              // reaches Core's strict `UnboundParam`. The declarative chip idiom
+              // the pack teaches therefore sources the param from `Filter`, where
+              // 'never touched' and 'cleared' are one answer."
+              //
+              // §24.8 makes a bare `State` unresolved, so the two chip sources now
+              // give one answer at every edge: never written prunes, cleared to
+              // `[]` prunes (the test below), and a real selection filters. The
+              // author no longer has to reach for `Filter` to get the idiom.
               let stateSourced = bindingFrom (Binding.State("depts", None))
 
-              match rowsOf stateSourced BindingResolver.empty with
-              | BindingResolver.Errored m ->
-                  Expect.stringContains m "depts" "the error names the param, rather than silently showing every row"
-              | other -> failtestf "expected a loud Errored, got %A" other
+              Expect.equal
+                  (rowCount stateSourced BindingResolver.empty)
+                  3
+                  "never written is the absence of a constraint, not a constraint nothing satisfies"
           }
 
           test "a State-sourced list param prunes once the slot holds an empty selection" {

@@ -541,25 +541,38 @@ let tests =
           }
 
           test "FUARAN148 reports a visibility predicate nothing in the tree can make true" {
-              // The SILENT HIDE, and the reason this code exists at all.
-              // `visible` is an ordinary `Binding<bool>`, so it follows the
-              // shared `Binding.State` rule: a default-less key nothing has
-              // written resolves to the slot default, which at `bool` is FALSE.
-              // The node is therefore removed — NOT unresolved-and-rendered — and
-              // the slot's own "an unresolved predicate renders" rule cannot see
-              // it, because nothing failed to resolve. Asserted as the resolver
-              // outcome first, so the test states the hazard rather than only the
-              // report.
+              // THE SILENT HIDE IS GONE — Phase 1690 removed the mechanism, and
+              // this test now pins its absence as well as the report.
+              //
+              // Until §24.8 the hazard was real: `visible` is an ordinary
+              // `Binding<bool>`, and a default-less key nothing had written
+              // resolved to `Unchecked.defaultof<bool>` — FALSE. The node was
+              // therefore REMOVED, and the rule directly above ("a node is
+              // removed ONLY on a resolved `false`; content that vanishes because
+              // a source was missing is the one failure a reader cannot see")
+              // could not see it, because nothing had failed to resolve. This
+              // code exists because of that hazard.
+              //
+              // §24.8 rules a bare `State` UNRESOLVED, so the predicate now
+              // fails to resolve and the node RENDERS — the removal rule holds by
+              // construction rather than by warning. FUARAN148 still reports,
+              // because a predicate nothing in the tree can make true is still an
+              // authoring defect and the remedy is unchanged (declare a default);
+              // what it no longer has to compensate for is a fabricated `false`.
               let n =
                   { leaf "banner" with
                       Visible = Some(Binding.State("nobody.writes.this", None)) }
 
               Expect.equal
                   (BindingResolver.nodeVisibility BindingResolver.empty n)
-                  (Some(BindingResolver.Resolved false))
-                  "the hazard: it resolves FALSE rather than failing to resolve"
+                  (Some BindingResolver.NotResolved)
+                  "§24.8 — a bare State does not resolve, so nothing fabricates a FALSE"
 
-              Expect.contains (codesOf n) "FUARAN148" "and the author is told"
+              Expect.isTrue
+                  (BindingResolver.isNodeVisible BindingResolver.empty n)
+                  "and the node therefore RENDERS: no silent hide left to warn about"
+
+              Expect.contains (codesOf n) "FUARAN148" "and the author is still told"
           }
 
           test "…and FUARAN148 is silent once the default is declared" {

@@ -7815,7 +7815,61 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.82.0 — DRAFT: the slot Phase 1691 opens (UNTAGGED — until the next release gesture)
+## 0.83.0 — DRAFT: the slot Phase 1690 opens (UNTAGGED — until the next release gesture)
+
+_**0.82.0 was never tagged**, and this phase's change is of a HIGHER class than the ADDITIVE one that
+slot carried, so under the draft-slot rule the number advances rather than the entry riding. What
+0.82.0 holds is not stranded — it is unreleased, so its content ships in whatever release this slot
+becomes, and its section below is kept as the record of what landed under that number. Class so far:
+BREAKING — what a shipped document RENDERS changes, in one direction, with no type, member or wire
+byte moving. Each phase adds one paragraph under the heading below; a phase moves NO number unless
+its class is higher again._
+
+### What rides 0.83.0
+
+**fuaran#1690 — BREAKING (render): a bare `Binding.State` at an unwritten slot resolves to NOTHING,
+where it used to resolve to the slot's zero value.** `WIRE_FORMAT.md` gains §24.8, the undeclared
+half of §24's declared-default rule, and `BindingResolver.resolve`'s `State` arm answers
+`NotResolved` for a binding carrying no `defaultValue` at a key nothing has written and §24.4 has not
+seeded. It used to answer `Resolved Unchecked.defaultof<'T>`.
+
+*Why the old answer was not a decision.* `Unchecked.defaultof<'T>` means `null` at a reference-typed
+slot — and the `Transform` live arm in the same file reads that very null back as ABSENCE — while
+spelling absence as `0` / `false` at a value-typed one. One expression, two meanings, chosen by the
+CLR rather than by the format. §24.1 already called this case "genuinely unresolved" in the sentence
+immediately before the gap, and `Binding.Filter` and `Binding.Selection` — the two arms §24.1 calls
+this one's mirrors — have always answered that way. Measured across the five conformant hosts before
+the change: two already answered UNRESOLVED, this host and one other resolved the typed placeholder,
+and one resolved its runtime's own name for nothing.
+
+*What a consumer meets, stated in the direction it bites.* A `Metric` or `LabelValueRow` bound to a
+bare `State` shows the `—` placeholder where it showed `0`; a `Sparkline` or grid over one shows its
+empty state; and a node whose `visible` predicate is a bare `State` now RENDERS where it used to be
+silently REMOVED. That last one is a fix rather than a cost: `Fuaran.UI.Renderer.Core`'s own rule is
+that a node is removed only on a resolved `false`, because content that vanishes for want of a source
+is the one failure a reader can neither see nor report — and a fabricated `false` defeated it. It is
+why FUARAN148 exists; that defect code still reports the authoring smell, and no longer has to
+compensate for a resolution.
+
+*The remedy, where the old behaviour was wanted, is one authored member:* declare the default
+(`Binding.State("k", Some 0.0)`), which §24.1 resolves. The bare form used to declare it silently.
+
+*Two consequences inside this repo, both recorded rather than smoothed over.* A `Binding.Expr` /
+`Transform` scalar param sourced from a bare `State` is now UNBOUND, so a non-`filter` step over it
+reaches Core's strict `UnboundParam` — this file's own `evalTransformFrame` contract already said an
+unbound param is loud outside a `filter` step, and the bare `State` was escaping it only by binding a
+fabricated null cell. In a `filter` step it PRUNES, which makes a `State`-sourced multi-select chip
+behave exactly like the `Filter`-sourced one, which is the spelling an author previously had to reach for to get "never touched" and "cleared" to mean one thing.
+
+*What certifies it.* `render-text.json`'s `bare-state-numeric-slot-unresolved` vector, over
+`nodes/state-absent-default.json`'s `absent-default-metric` — the family's first NUMERIC slot, and
+the family's `slotVocabulary` gains `Metric.value` with it. The vector is emitted through this host's
+own resolver, which refuses to write a claim it does not meet, so the emit is the go-red: on the
+pre-change resolver it produced `0` against an expectation of `—`.
+
+---
+
+## 0.82.0 — DRAFT: the slot Phase 1691 opens (UNTAGGED — superseded by 0.83.0 before release)
 
 _**`v0.81.0` is TAGGED**, so the draft slot below it is closed: its heading still reads UNTAGGED because
 it was written before the release gesture, and the tag is what settles it. Nothing may ride 0.81.0 any

@@ -215,27 +215,49 @@ let refusals =
               | other -> failtestf "expected Errored on a param source that resolves to nothing, got %A" other
           }
 
-          test "an UNWRITTEN State key is NULL, so the expression is ABSENT — not an error" {
-              // The distinction this test exists for, and it is not the one the
-              // phase text assumed. `Binding.State(key, None)` on a key nothing
-              // has written resolves to the slot's default representation — that
-              // is the shared `Binding.State` rule, not something `Expr`
-              // chooses — so the param binds to a NULL cell, the arithmetic
-              // propagates null, and the slot is absent.
+          test "an UNWRITTEN State param is UNBOUND, exactly as an unwritten Filter param is" {
+              // Phase 1690 UNIFIED the two, and the direction is worth stating.
               //
-              // Which is right: a form field the reader has not filled in yet is
-              // not an error, and an error surface on an untouched form is a
-              // worse rendering than an empty one. The genuinely-unbound case
-              // above stays loud, so the two are distinguished rather than
-              // collapsed.
+              // This test used to expect `NotResolved`, on the reasoning that
+              // `Binding.State(key, None)` "resolves to the slot's default
+              // representation … so the param binds to a NULL cell, the
+              // arithmetic propagates null, and the slot is absent" — a form
+              // field the reader has not filled in rendering empty rather than
+              // errored. The rendering it wanted was right; the mechanism was a
+              // fabricated null the CLR supplied, and §24.8 rules it out.
+              //
+              // So the answer is now the one the test ABOVE already gives for the
+              // same fact through `Filter`, and it is this file's own settled
+              // rule rather than a new one: `evalTransformFrame`'s contract says
+              // a non-filter step referencing an UNBOUND param surfaces Core's
+              // strict `UnboundParam` loudly, while a `filter` step prunes. The
+              // bare-State param was escaping that rule only by binding a value
+              // nobody wrote.
+              //
+              // An author who wants "untouched renders empty" has the spelling
+              // the format provides for it, and §24.1 makes it normative:
+              // `Binding.State("form.q", Some 0.0)`. The bare form used to
+              // declare that for them, silently.
               match
                   number
                       (sources [])
                       (Fuaran.Core.Binary(Fuaran.Core.Mul, Fuaran.Core.Param "q", num 3.0))
                       (Some [ param "q" (Binding.State("form.q", None)) ])
               with
-              | BindingResolver.NotResolved -> ()
-              | other -> failtestf "expected NotResolved for an unwritten State param, got %A" other
+              | BindingResolver.Errored m ->
+                  Expect.stringContains m "q" "the error names the param rather than substituting a guess"
+              | other -> failtestf "expected Errored for an unbound State param, got %A" other
+          }
+
+          test "…and DECLARING the default is the whole remedy" {
+              // The other half of the change above: the rendering the old test
+              // wanted is one authored character away, and it is the same remedy
+              // FUARAN148 names for a `visible` predicate.
+              number
+                  (sources [])
+                  (Fuaran.Core.Binary(Fuaran.Core.Mul, Fuaran.Core.Param "q", num 3.0))
+                  (Some [ param "q" (Binding.State("form.q", Some(Fuaran.Core.JVal.JFloat 0.0))) ])
+              |> expectFloat "an untouched field with a declared default computes" 0.0
           }
 
           test "a TYPE error is Errored, in the slot's own words" {

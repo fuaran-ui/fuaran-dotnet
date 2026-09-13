@@ -205,7 +205,26 @@ let all: Vector list =
         Sources = noClock
         ExpectedText = "3 days ago"
         Description =
-          "`RelativeTime` reads a signed count of its declared unit directly from the source, so it needs no host instant; the fixture's `LocaleSource.Explicit \"en-US\"` does not change the fallback text" } ]
+          "`RelativeTime` reads a signed count of its declared unit directly from the source, so it needs no host instant; the fixture's `LocaleSource.Explicit \"en-US\"` does not change the fallback text" }
+
+      // ── §24.8 (Phase 1690) — the undeclared half of the declared-default
+      //    rule, and the family's first NUMERIC slot.
+      //
+      //    The one vector this rule needs, and it needs a numeric slot: at a
+      //    text slot every divergent host already produced the empty string by
+      //    accident of its runtime, so a `Fact.value` vector would have gone
+      //    green on hosts that fabricate. The `Metric` is where the four
+      //    behaviours separate — `0` on this host before the ruling, the typed
+      //    placeholder on `fuaran-rs`, the string `undefined` on both
+      //    `fuaran-ts` tiers, the em-dash on `fuaran-go` and `fuaran-py`.
+      { Id = "bare-state-numeric-slot-unresolved"
+        Fixture = "nodes/state-absent-default.json"
+        NodeId = "absent-default-metric"
+        Slot = "Metric.value"
+        Sources = noClock
+        ExpectedText = "—"
+        Description =
+          "a bare `State` — no declared default — at a numeric slot nothing has written and nothing has seeded is UNRESOLVED (§24.8), so the slot renders its absence placeholder and never a fabricated `0`" } ]
     |> List.sortWith (fun a b -> System.String.CompareOrdinal(a.Id, b.Id))
 
 let excluded: Excluded list =

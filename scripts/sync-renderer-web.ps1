@@ -84,7 +84,38 @@ $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$tsRepo = Join-Path (Split-Path $repoRoot -Parent) "fuaran-ts"
+
+# Phase 1690 - FUARAN_TS_ROOT overrides the sibling walk, on the contract the
+# corpus and the stylesheet already have (FUARAN_WIRE_FIXTURES, Phase 1647;
+# FUARAN_CSS_SIBLINGS, Phase 1647). Without it this script resolves the sibling
+# by a `..` hop, so a session working in its own worktree either BUILDS INTO a
+# checkout it does not own, or - with -Check - measures its own embedded copy
+# against whatever that checkout happens to have on disk.
+#
+# Both halves bit on the day this was added. The other checkout's standalone
+# bundle is a GITIGNORED BUILD OUTPUT, so it can be days old and built from
+# sources that have since moved: a five-day-old artefact there reported drift
+# against an embedded copy that a fresh build of the SAME sources reproduced
+# byte for byte. The check was measuring the age of a file rather than the
+# agreement of two sources, and a session cannot fix that without writing into a
+# tree that is not its own.
+#
+# A malformed value is REFUSED rather than ignored, per the FUARAN_CSS_SIBLINGS
+# precedent: falling back to the default would write into, or measure, the very
+# checkout the override was set to leave alone.
+$tsRepo =
+    if ($env:FUARAN_TS_ROOT) {
+        $declared = $env:FUARAN_TS_ROOT.Trim()
+
+        if (-not (Test-Path -LiteralPath $declared -PathType Container)) {
+            throw "FUARAN_TS_ROOT names '$declared', which is not a directory. Refusing to fall back to the sibling walk: the fallback would reach the checkout the override exists to leave alone."
+        }
+
+        (Resolve-Path -LiteralPath $declared).Path
+    }
+    else {
+        Join-Path (Split-Path $repoRoot -Parent) "fuaran-ts"
+    }
 $rendererPkg = Join-Path $tsRepo "packages/renderer"
 $builtBundle = Join-Path $rendererPkg "standalone/fuaran-renderer.global.js"
 $standaloneSrc = Join-Path $rendererPkg "src/standalone.tsx"

@@ -53,15 +53,26 @@ let fileName = "render-text.json"
 /// forward-coupling rule.
 let slotVocabulary: (string * string) list =
     [ "Fact.value", "the `value` TextSource of a `Fact` — the figure beside its label"
-      "Markdown.text", "the `text` TextSource of a `Markdown` node — its raw source before the GFM render (§14)" ]
+      "Markdown.text", "the `text` TextSource of a `Markdown` node — its raw source before the GFM render (§14)"
+      "Metric.value",
+      "the `value` numeric `Binding` of a `Metric` — the figure beside its label. A NUMERIC slot, so its text is the host's rendering of the resolved number, or the em-dash placeholder `—` when the binding does not resolve (§24.8)" ]
 
-/// The text slot a vector names, out of a decoded node. `None` for a slot the
-/// vocabulary above does not carry, and for a node whose kind does not match
-/// the slot's — both of which the caller reports by name rather than skipping.
-let tryTextSlot (slot: string) (node: Node<obj>) : TextSource option =
+/// A slot the family reads, out of a decoded node. Two shapes, because §13's
+/// vocabulary is no longer all `TextSource`: Phase 1690's ruling is about what a
+/// NUMERIC slot renders, and no `TextSource` slot can carry that question.
+///
+/// `None` for a slot the vocabulary above does not carry, and for a node whose
+/// kind does not match the slot's — both of which the caller reports by name
+/// rather than skipping.
+type Slot =
+    | TextSlot of TextSource
+    | NumericSlot of Binding<float>
+
+let trySlot (slot: string) (node: Node<obj>) : Slot option =
     match slot, node.Kind with
-    | "Fact.value", NodeKind.Fact spec -> Some spec.Value
-    | "Markdown.text", NodeKind.Markdown spec -> Some spec.Text
+    | "Fact.value", NodeKind.Fact spec -> Some(TextSlot spec.Value)
+    | "Markdown.text", NodeKind.Markdown spec -> Some(TextSlot spec.Text)
+    | "Metric.value", NodeKind.Metric spec -> Some(NumericSlot spec.Value)
     | _ -> None
 
 /// The node with `id` inside a decoded fixture tree, or `None`.
@@ -118,7 +129,7 @@ let resolvedText (corpusRoot: string) (v: RenderTextFixtures.Vector) : string =
         | None -> failwithf "render-text vector '%s': fixture %s carries no node with id '%s'" v.Id v.Fixture v.NodeId
 
     let slot =
-        match tryTextSlot v.Slot target with
+        match trySlot v.Slot target with
         | Some s -> s
         | None ->
             failwithf
@@ -127,7 +138,30 @@ let resolvedText (corpusRoot: string) (v: RenderTextFixtures.Vector) : string =
                 v.Slot
                 v.NodeId
 
-    Fuaran.UI.Renderer.BindingResolver.resolveTextSource (sourcesOf v.Sources) slot
+    let sources = sourcesOf v.Sources
+
+    match slot with
+    | TextSlot text -> Fuaran.UI.Renderer.BindingResolver.resolveTextSource sources text
+    | NumericSlot binding ->
+        // The em-dash is the ONE branch of the numeric projection this emitter can
+        // produce, and that is deliberate rather than an omission. The
+        // resolved-number branch is `formatNumber`, which each renderer holds its
+        // own copy of (`Fuaran.UI.Renderer.Server`'s is `internal`, and the Fable
+        // client's is a mirror of it) — there is no shared projection in
+        // `Renderer.Core` for this project to call, and manufacturing a third copy
+        // here would be a fourth thing to keep in step, silently, for as long as it
+        // agreed. So a vector that needs a RESOLVED numeric text fails loudly and
+        // names the remedy, exactly as `tryFindNode` fails on an id its walk cannot
+        // reach: the honest signal to share the projection is a vector that needs
+        // it, not this comment.
+        match Fuaran.UI.Renderer.BindingResolver.resolveScalarFloat sources binding with
+        | Fuaran.UI.Renderer.BindingResolver.NotResolved -> "—"
+        | other ->
+            failwithf
+                "render-text vector '%s': the numeric slot '%s' resolved to %A, and this emitter can only prove the UNRESOLVED branch (the em-dash). The resolved-number branch is each renderer's own `formatNumber`; share it into Renderer.Core before authoring a vector that needs it."
+                v.Id
+                v.Slot
+                other
 
 let private description =
     "The Fuaran render-TEXT conformance family (WIRE_FORMAT.md 13). Each vector is "
