@@ -115,6 +115,11 @@ internal static class Program
         //    of the corpus pass, whose §21 shape-limit fixture aborts the process.
         Actions.Run(h);
 
+        // ── The veneer's enum mirrors against the corpus's declared token table
+        //    (Phase 1691). Ahead of the corpus pass for the same reason as the two
+        //    blocks above, and cheap: it reads one artefact and reflects.
+        EnumTokenPin.Run(h);
+
         // ── Full corpus conformance (Phase 306). ───────────────────────────────
         Conformance.Run(h);
 

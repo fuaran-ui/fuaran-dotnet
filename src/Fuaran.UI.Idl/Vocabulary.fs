@@ -47,6 +47,22 @@ open Fuaran.Core.Idl
 // ---------------------------------------------------------------------------
 
 // ─── Enums (bare-string DUs on the wire) ───────────────────────────────────
+//
+// Phase 1691 — THIS IS THE ONE HOME OF THE CASE-TO-WIRE-TOKEN MAPPING, and it
+// is now pinned rather than merely stated. `Declare.enumOf` declares an
+// identity mapping (the token IS the case name); `Declare.enumWith` declares a
+// non-identity one as `(case, wire)` pairs. Six enums use the latter —
+// `LinkProtection`, `TextDirection`, `TextFormat`, `CompareOp`,
+// `SortDirection`, `LiveRegionKind` — and an emitter that derives a token from
+// a case name COMPILES and writes `"Polite"` where the corpus says `"polite"`.
+//
+// A SEVENTH non-identity mapping is a declaration, not a discovery: switching
+// an enum here from `enumOf` to `enumWith` changes `idl.json`, the corpus's
+// `enum-tokens.json` (co-emitted by `--emit-corpus`) and `WIRE_FORMAT.md` 3.5,
+// and reddens `EnumTokenTests` until the corpus is regenerated and the "exactly
+// six" assertion there is updated to acknowledge it.
+
+
 
 let private headingVariant =
     Declare.enumOf "HeadingVariant" [ "Standard"; "Eyebrow"; "Caption"; "Lead" ]

@@ -15,6 +15,11 @@
          mean two different things in two suites. Must compile FIRST: the marked lists below apply
          it. -->
     <Compile Include="..\..\tests\lanes\Lanes.fs" Link="Lanes.fs" />
+    <!-- Phase 1691 — the ONE enum case-to-wire-token table + its artefact renderer, DECLARED ONCE
+         at tests/enum-tokens/EnumTokens.fs and linked (not copied) into the emitter here and the
+         checker in Fuaran.UI.Tests, so the bytes this project WRITES and the bytes that project
+         EXPECTS are produced by one function. Must precede Corpus.fs, which co-emits it. -->
+    <Compile Include="..\..\tests\enum-tokens\EnumTokens.fs" Link="EnumTokens.fs" />
     <!-- Fixtures.fs + RejectFixtures.fs + LenientFixtures.fs are the canonical
          fixture VALUES that generate the workspace-root wire-format-fixtures/
          corpus (Corpus.emit). The test suites below load the emitted corpus,

@@ -691,8 +691,17 @@
          The wire is untouched - both grid members already existed on
          `DataGridSpec`; what moved is the typed facade that could not reach them.
          See STABILITY.md "0.81.0 - the typed grid facade reaches the last two
-         members of its own record". -->
-    <Version>0.81.0</Version>
+         members of its own record".
+
+         0.82.0 (Phase 1691) - the corpus gains `enum-tokens.json`, the declared
+         case-to-wire-token table, and `manifest.json` gains an `enumTokens`
+         pointer to it. ADDITIVE: no wire byte moves and no public member changes
+         - every token published is the token the encoder already emitted. It
+         ADVANCES rather than riding 0.81.0 for the reason above, unchanged:
+         v0.81.0 is TAGGED, so that slot is released and a corpus change cannot be
+         repacked into it. See STABILITY.md "0.82.0 - DRAFT: the slot Phase 1691
+         opens". -->
+    <Version>0.82.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

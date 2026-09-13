@@ -282,6 +282,16 @@ let private writeManifest
     // Co-emitted by `emit` below.
     w.WriteString("renderText", "render-text.json")
 
+    // Phase 1691 — the FIFTH discovery pointer. `enum-tokens.json` answers the
+    // question the four above leave to a reading: for each closed bare-string
+    // enum, which HOST CASE does each wire token belong to? `idl.json` carries
+    // it inside the full structural model, and WIRE_FORMAT.md 3.5 publishes the
+    // token sets without the pairing — so an emitter looking for "what string
+    // do I write for this case" has, until now, had nowhere flat to look and
+    // has repeatedly derived it from the case name instead. Co-emitted by
+    // `emit` below, beside the copy it is derived from.
+    w.WriteString("enumTokens", "enum-tokens.json")
+
     w.WriteString(
         "description",
         "Fuaran canonical wire-format conformance corpus. node-round-trip / op-round-trip "
@@ -750,10 +760,34 @@ let emit (outputDir: string) : unit =
         let authored = Path.Combine(repoRoot, "src", "Fuaran.UI.Idl", "idl.json")
 
         if File.Exists authored then
+            let idlText = File.ReadAllText(authored).Replace("\r\n", "\n")
+
             // LF on every platform, matching every other emitted artefact — a
             // CR here is invisible to `git status` under the repo's eol=lf
             // normalisation and visible only to a byte-comparing consumer.
-            File.WriteAllText(Path.Combine(outputDir, "idl.json"), File.ReadAllText(authored).Replace("\r\n", "\n"))
+            File.WriteAllText(Path.Combine(outputDir, "idl.json"), idlText)
+
+            // Phase 1691 — co-emit the ENUM CASE-TO-WIRE-TOKEN table, from the
+            // same bytes, in the same act.
+            //
+            // A seventh question, and it is not answered by the artefact it is
+            // derived from. `idl.json` carries the mapping, but a consumer has
+            // to understand the whole IDL model to find it; `WIRE_FORMAT.md`
+            // 3.5 publishes the closed sets from the same source but states the
+            // WIRE side only, with no host-case column. Six of this
+            // vocabulary's enums do NOT encode as their bare case name, so an
+            // emitter that derives the token from the case name compiles
+            // perfectly and emits `"polite"` where the fixture says
+            // `"assertive"` — wrong in the direction that still builds, and the
+            // defect Phase 1657 found by perturbation rather than by any gate.
+            // This is the pairing, flat, per case, for any host to check
+            // against.
+            //
+            // Derived here rather than hand-authored for the reason the copy
+            // above is copied here rather than hand-carried: the artefact the
+            // manifest names is written by the same command that writes
+            // everything else the manifest names.
+            Fuaran.Tests.EnumTokens.write outputDir (Fuaran.Tests.EnumTokens.ofIdlJson idlText)
         else
             failwithf "the authored IDL vocabulary is absent at %s — the corpus copy cannot be emitted." authored
     | None ->

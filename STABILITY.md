@@ -7815,6 +7815,47 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.82.0 — DRAFT: the slot Phase 1691 opens (UNTAGGED — until the next release gesture)
+
+_**`v0.81.0` is TAGGED**, so the draft slot below it is closed: its heading still reads UNTAGGED because
+it was written before the release gesture, and the tag is what settles it. Nothing may ride 0.81.0 any
+more, so `<Version>` advances to 0.82.0 and this is the slot subsequent phases append to. Class so far:
+ADDITIVE — a new corpus artefact and new test surface; no type, member or wire byte moves. Each phase
+adds one paragraph under the heading below, in the order it lands; a phase moves NO number._
+
+### What rides 0.82.0
+
+_(each phase adds one paragraph here, named `fuaran#NNNN — <class>`)_
+
+**fuaran#1691 — ADDITIVE: the enum case-to-wire-token table is pinned in the corpus.** A new corpus
+artefact, `enum-tokens.json`, and a new `enumTokens` pointer in `manifest.json`. **No wire byte moves
+and no public member changes** — every token it publishes is the token the encoder already emitted.
+A consumer that ignores the artefact is unaffected by it.
+
+*What it is, and what it is not.* Six of this vocabulary's forty-six closed bare-string enums do not
+encode as their bare case name: `LinkProtection`, `TextDirection`, `TextFormat`, `CompareOp`,
+`SortDirection`, `LiveRegionKind`. `WIRE_FORMAT.md` §3.5 has published the closed token SETS for some
+time, generated from `idl.json` and gated by `--check-spec`, but it states the wire side alone — it
+cannot answer "which host case does this token belong to", which is exactly what an emitter needs.
+This artefact carries the PAIRING, flat, per case, mapped enums first. It is derived from the same
+`idl.json` the corpus already copies and is co-emitted by `--emit-corpus`, so it cannot be
+hand-edited into disagreement with the vocabulary.
+
+*What became a red test.* `EnumTokenTests` in `Fuaran.UI.Tests` drives, per case, the generated
+encoder and decoder, the hand-written policy decoders in `Fuaran.UI.Ops.JsonDecode`, the `enum`
+arrays of the published `schema.json`, and `RenderFidelity.liveRegionToken`; for a mapped enum it
+also asserts each decoder REFUSES the host case name, because a decoder that accepts both spellings
+is what lets a derived-token emitter pass a round trip while writing bytes no other host reads. The
+C# veneer's enum mirrors are pinned in `Fuaran.UI.CSharp.Conformance.Tests` against the corpus
+artefact itself, closing the `ToFs` `_ =>` default — a veneer case with no F# counterpart previously
+authored a different token with nothing red. Measured go-red: flipping one token in `Vocabulary.fs`
+reddens six independent assertions.
+
+*For a consumer.* Nothing to do. For a HOST author, the artefact is the thing to read instead of
+deriving a token from a case name; `manifest.json`'s `enumTokens` key is how to find it.
+
+---
+
 ## 0.81.0 — DRAFT: the slot Phase 1646 opened, which the 2026-09-10 (e) run (fuaran#1656–#1669) rides (UNTAGGED — until the next release gesture)
 
 _**This is the draft slot the 2026-09-10 (e) run rides.** `v0.80.0` is tagged (Phase 1637), so nothing can ride it;

@@ -13,7 +13,13 @@
          and linked (not copied) into every suite that reads the shared wire-format-fixtures corpus,
          so a git worktree resolves it through FUARAN_WIRE_FIXTURES rather than skipping silently.
          Must compile FIRST: the resolvers below delegate to it. -->
-    <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />    <Content Include="..\Fuaran.UI.Renderer\content\fuaran-reference.css">
+    <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />
+    <!-- Phase 1691 — the ONE enum case-to-wire-token table + its artefact renderer, DECLARED ONCE
+         at tests/enum-tokens/EnumTokens.fs and linked (not copied) into the emitter in
+         Fuaran.UI.JsonDecode.Tests and the checker here, so the bytes that project WRITES and the
+         bytes this one EXPECTS are produced by one function. Must precede EnumTokenTests.fs. -->
+    <Compile Include="..\..\tests\enum-tokens\EnumTokens.fs" Link="EnumTokens.fs" />
+    <Content Include="..\Fuaran.UI.Renderer\content\fuaran-reference.css">
       <Link>fuaran-reference.css</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -383,6 +389,9 @@
     <Compile Include="IdlSchemaTests.fs" />
     <Compile Include="IdlOpTests.fs" />
     <Compile Include="IdlFullVocabularyFuzzTests.fs" />
+    <!-- Phase 1691 — the enum case-to-wire-token pin. Follows IdlCertificationSupport.fs, whose
+         canonicalised vocabulary it reads, and the linked EnumTokens.fs above. -->
+    <Compile Include="EnumTokenTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
