@@ -59,6 +59,23 @@ let private abstentionDefault =
 let private otherFamiliesNote =
     "The build-time source-AST walker's codes live in a separate project on this host and are a separate family; they are deliberately not listed as pre-emit coverage."
 
+/// Phase 1692. The corpus's citation arm asks every host to account for each
+/// FUARAN code its SOURCE names, and a sibling host answers by listing them in
+/// `otherFamilies`. This host cannot answer that way and must not pretend to: it
+/// is the host the other two registries LIVE in — the build-time source-AST
+/// walker and the Roslyn analyzer descriptors — and `scripts/fuaran-codes.ps1`
+/// already derives all three from source, collision-checks them, and runs in
+/// this repo's own gate. Re-deriving them here to write a list into this file
+/// would be a second derivation of one fact, and the copy nobody regenerates is
+/// the copy that goes stale — the exact defect the header above records this
+/// whole artefact being written to close. So the declaration POINTS at the
+/// registry instead, and the corpus arm records the row as `own-registry`.
+/// The route is available to the REFERENCE posture only: a subset host owns no
+/// registry, so for it the pointer would be an opt-out rather than an answer.
+[<Literal>]
+let private otherFamiliesSource =
+    "scripts/fuaran-codes.ps1 — this host owns the other two FUARAN registries (the build-time source-AST walker and the analyzer descriptors). That script derives all three from source, refuses a code claimed by two registries for different rules, and runs in this repo's gate. Enumerating them here would be a second derivation of the same fact."
+
 [<Literal>]
 let private machineCheckedNote =
     "Checked by construction: the vocabulary is derived from this host, so `implemented` is the vocabulary. The gate asserts the equality rather than assuming it, which is what catches a hand-edit of this file."
@@ -92,6 +109,7 @@ let toJson () : string =
     line (sprintf "  \"abstentionDefault\": \"%s\"," (esc abstentionDefault))
     line "  \"abstained\": {},"
     line "  \"otherFamilies\": {},"
+    line (sprintf "  \"otherFamiliesSource\": \"%s\"," (esc otherFamiliesSource))
     line (sprintf "  \"otherFamiliesNote\": \"%s\"," (esc otherFamiliesNote))
     line "  \"machineChecked\": true,"
     line (sprintf "  \"machineCheckedNote\": \"%s\"" (esc machineCheckedNote))

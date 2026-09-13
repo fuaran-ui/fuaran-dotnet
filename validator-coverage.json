@@ -94,6 +94,7 @@
   "abstentionDefault": "Not applicable — the reference implements the whole vocabulary by definition.",
   "abstained": {},
   "otherFamilies": {},
+  "otherFamiliesSource": "scripts/fuaran-codes.ps1 — this host owns the other two FUARAN registries (the build-time source-AST walker and the analyzer descriptors). That script derives all three from source, refuses a code claimed by two registries for different rules, and runs in this repo's gate. Enumerating them here would be a second derivation of the same fact.",
   "otherFamiliesNote": "The build-time source-AST walker's codes live in a separate project on this host and are a separate family; they are deliberately not listed as pre-emit coverage.",
   "machineChecked": true,
   "machineCheckedNote": "Checked by construction: the vocabulary is derived from this host, so `implemented` is the vocabulary. The gate asserts the equality rather than assuming it, which is what catches a hand-edit of this file."

@@ -7867,6 +7867,28 @@ the family's `slotVocabulary` gains `Metric.value` with it. The vector is emitte
 own resolver, which refuses to write a claim it does not meet, so the emit is the go-red: on the
 pre-change resolver it produced `0` against an expectation of `—`.
 
+**fuaran#1692 — ADDITIVE (declaration + corpus): `validator-coverage.json` gains
+`otherFamiliesSource`, and two node fixtures carry six wire tokens nothing exercised.** No type,
+member, wire byte or rendered output moves, so this rides the slot rather than advancing it.
+
+*The declaration member.* The conformance corpus's coverage gate now also reads every `FUARAN…` code
+a host's SOURCE names and requires each to be accounted for — the Phase 1666 class, where a
+FUARAN150→FUARAN152 renumbering reached each host's `limits.*` and missed the identical sentence in
+every `decode.*` while every declaration stayed consistent. A sibling host answers by listing its
+non-vocabulary codes in `otherFamilies`. This host cannot answer that way and must not pretend to: it
+is the host the other two FUARAN registries LIVE in, and `scripts/fuaran-codes.ps1` already derives
+all three from source, refuses a collision, and runs in this repo's own gate. So the generated
+declaration POINTS at that registry, and re-deriving the list into this file — the second copy that
+nobody would regenerate — is what the member exists to avoid. The route is available to the
+`reference` posture only.
+
+*The fixtures.* `nodes/form-rule-tokens.json` and `nodes/grid-sort-ascending.json` carry the six
+mapped enum tokens Phase 1691 measured as having no round-trip vector anywhere in the corpus:
+`SortDirection.asc`, `TextFormat.url` / `tel`, and `CompareOp.neq` / `lt` / `lte`. Every one was
+publishable through `enum-tokens.json` and spellable wrongly by any host with every cross-host gate
+green. They exercise no new vocabulary — only token values in slots the corpus already covered — so a
+host that decodes `email` and `gt` but not `url` and `lt` is now red rather than unmeasured.
+
 ---
 
 ## 0.82.0 — DRAFT: the slot Phase 1691 opens (UNTAGGED — superseded by 0.83.0 before release)

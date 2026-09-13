@@ -3113,6 +3113,75 @@ let formFieldRules: Node<obj> =
         ))
         None
 
+/// Phase 1692, carrying Phase 1691's deferred codec-host half. `enum-tokens.json`
+/// publishes the wire token for every mapped enum case; 1691 measured whether the
+/// corpus already exercised each of them in ITS OWN SLOT and found it did not.
+/// Five emittable tokens had no round-trip vector anywhere — `TextFormat.Url`,
+/// `TextFormat.Tel`, and `CompareOp` `Neq` / `Lt` / `Lte` — so a host could have
+/// spelled any of the five wrongly and every cross-host gate would have stayed
+/// green. (Independently re-measured before this fixture was written: `format`
+/// carried only `email`, and `op` only `eq` / `gt` / `gte`, across all 549
+/// fixtures.) This carries all five in one tree, because the alternative is five
+/// near-identical forms and the token is the only thing that differs.
+///
+/// Every compare names a SIBLING FIELD's id, which is where a form field's value
+/// lives, so nothing here trips FUARAN099 (a compare whose key no field owns) —
+/// a fixture that raised a pre-emit defect would be teaching the shape it exists
+/// to pin against.
+let formRuleTokens: Node<obj> =
+    let plain (id: string) (label: string) : FormField<obj> =
+        { Defaults.formField with
+            Id = id
+            Label = TextSource.Literal label
+            Kind =
+                FormFieldKind.Text(
+                    Some(Binding.State(id, Some Fuaran.UI.Defaults.ControlValueDefaults.text)),
+                    Option.None
+                )
+            Required = true }
+
+    let withRule (id: string) (label: string) (rule: FieldRule) : FormField<obj> =
+        { plain id label with Rule = Some rule }
+
+    let noRule: FieldRule =
+        { Compare = None
+          Format = None
+          MaxLength = None
+          Message = None
+          MinLength = None
+          Pattern = None }
+
+    let compare (against: string) (op: CompareOp) : FieldRule =
+        { noRule with
+            Compare =
+                Some
+                    { Against = Binding.State(against, Option.None)
+                      Op = op } }
+
+    node
+        "form-rule-tokens"
+        (NodeKind.Form(
+            { Defaults.form with
+                Fields =
+                    [ withRule
+                          "homepage"
+                          "Homepage"
+                          { noRule with
+                              Format = Some TextFormat.Url }
+                      withRule
+                          "mobile"
+                          "Mobile"
+                          { noRule with
+                              Format = Some TextFormat.Tel }
+                      plain "code" "Access code"
+                      withRule "confirm-code" "Confirm code" (compare "code" CompareOp.Neq)
+                      plain "max-spend" "Ceiling"
+                      withRule "min-spend" "Floor" (compare "max-spend" CompareOp.Lt)
+                      withRule "target-spend" "Target" (compare "max-spend" CompareOp.Lte) ]
+                SubmitLabel = TextSource.Literal "Save" }
+        ))
+        None
+
 /// canonical bytes carry NO `value` key on any field (mirror of the
 /// filters-declarative minimal chip). Pins the round-trip: decode
 /// synthesises the same bindings back, encode omits them again.
@@ -6754,6 +6823,54 @@ let gridBoundSort: Node<obj> =
         ))
         None
 
+/// Phase 1692, the sixth of Phase 1691's unexercised tokens. `SortDirection.Asc`
+/// had no round-trip vector in `defaultSort.direction`: both grids that carry the
+/// slot spell `desc`, and the four corpus occurrences of the string `asc` are a
+/// Transform window's `orderBy[].dir`, which is a different slot on a different
+/// type. So the whole of the enum's wire surface is a single token away from
+/// unmeasured, and this is the other one.
+///
+/// Deliberately the same grid as `grid-bound-sort` with the direction flipped and
+/// nothing else moved: a fixture pair that differs in one token is what makes the
+/// token the subject.
+let gridSortAscending: Node<obj> =
+    let col (label: string) (field: string) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-sort-ascending"
+        (NodeKind.DataGrid(
+            { SortStateKey = Some "ledger-sort"
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort =
+                Some
+                    { Column = 0
+                      Direction = SortDirection.Asc }
+              Source = Binding.State("ledger", Some(Seq.ofList planRows))
+              RowKey = None
+              RowKeyField = Some "month"
+              Columns = [ col "Month" "month"; col "Revenue" "revenue" ]
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false
+              Exportable = false }
+        ))
+        None
+
 /// Phase 863 — the grid's write side, declared: `editStateKey` names where an
 /// edit commits, and the third column is explicitly read-only under a
 /// grid-level `editable: true`. Both are declarations that previously had no
@@ -7692,6 +7809,8 @@ let allNodes: (string * Node<obj>) list =
       "Input/Form (Phase 596 — symmetric auto-bind, omitted-value fields)", formDeclarativeMinimal
       "Input/Form (Phase 864 — declared field rules: format / pattern / length pair / cross-field compare)",
       formFieldRules
+      "Input/Form (Phase 1692, carrying 1691 — the five mapped enum tokens with no round-trip vector anywhere in the corpus: TextFormat url / tel, CompareOp neq / lt / lte)",
+      formRuleTokens
       "Layout/Stack (Phase 426 — declarative tabs + modal + disclosure + select, handlers omitted)", controlsDeclarative
       "Layout/Stack (Phase 426 — closure-authored onSelectTag / onToggle / onChangeMulti sentinels)", multiSelectClosure
       "Layout/Stack (Phase 428 — Action.Call result targets: closure / into State / into Query)", callInto
@@ -7752,6 +7871,8 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)", gridSortStateKey
       "Visualisation/Grid (Phase 861 — bound-path sort: per-column sortable narrowing + a declared initial order)",
       gridBoundSort
+      "Visualisation/Grid (Phase 1692, carrying 1691 — the sixth mapped enum token with no round-trip vector: SortDirection asc in defaultSort.direction)",
+      gridSortAscending
       "Visualisation/Grid (Phase 863 — declared edit destination + per-column read-only narrowing)", gridDeclaredEdit
       "Visualisation/Grid (Phase 934 — declarative row reorder: omit-when-false flag; edits and reorders share one destination)",
       gridReorderable
