@@ -43,7 +43,11 @@
 
       * Do the embedded BYTES still match a freshly built bundle? Answerable
         only where the bundle has been built — it is a gitignored build output
-        in fuaran-ts. Checked when present, reported as NOT CHECKED when not.
+        in fuaran-ts. Checked when present, reported as NOT CHECKED when not,
+        and reported as NOT CHECKED when present but STALE: a build output older
+        than the sources it claims to come from answers for a tree that no
+        longer exists, and comparing against it measures the age of a file
+        rather than the agreement of two sources.
 
     A version-level match with unbuilt bytes is therefore a weaker statement
     than a byte match, and the check says which it made rather than printing one
@@ -117,6 +121,7 @@ $tsRepo =
         Join-Path (Split-Path $repoRoot -Parent) "fuaran-ts"
     }
 $rendererPkg = Join-Path $tsRepo "packages/renderer"
+$rendererSrc = Join-Path $rendererPkg "src"
 $builtBundle = Join-Path $rendererPkg "standalone/fuaran-renderer.global.js"
 $standaloneSrc = Join-Path $rendererPkg "src/standalone.tsx"
 $tsPackageJson = Join-Path $rendererPkg "package.json"
@@ -146,6 +151,60 @@ function Invoke-Pnpm {
 
 function Get-Sha256([string] $path) {
     (Get-FileHash -Path $path -Algorithm SHA256).Hash
+}
+
+# Phase 1690 - the second half of the same finding the FUARAN_TS_ROOT note above
+# records, and the half that override could not reach.
+#
+# The byte comparison below reads a GITIGNORED BUILD OUTPUT in another checkout.
+# Nothing rebuilds it, so it is whatever that checkout last happened to produce -
+# and where the sources have since moved, it describes a tree that no longer
+# exists. Compared against a correctly-synced embedded copy it reports DRIFT, in
+# the direction that invites the repair which would actually BREAK the repo: a
+# `-Sync` from a stale artefact overwrites a current bundle with an old one, and
+# the gate then goes green on the regression.
+#
+# Measured the day this shipped: the sibling's artefact was five days old, six
+# renderer commits behind its own sources, and the embedded copy it called stale
+# was byte-identical to a fresh build of those same sources.
+#
+# So the artefact's own age decides whether it may answer at all. Older than the
+# sources it comes from => NOT CHECKED with the reason, never a drift claim; the
+# strong check keeps running wherever the artefact is genuinely current, which is
+# the ordinary build-then-check flow. It can only ever WITHDRAW a byte
+# comparison, never assert one, so a real drift on a fresh artefact still fails.
+function Get-NewestWriteTimeUtc([string[]] $paths) {
+    $newest = [datetime]::MinValue
+
+    foreach ($path in $paths) {
+        if (-not (Test-Path -LiteralPath $path)) { continue }
+
+        $item = Get-Item -LiteralPath $path -Force
+
+        if ($item.PSIsContainer) {
+            foreach ($file in Get-ChildItem -LiteralPath $path -Recurse -File -Force) {
+                if ($file.LastWriteTimeUtc -gt $newest) { $newest = $file.LastWriteTimeUtc }
+            }
+        }
+        elseif ($item.LastWriteTimeUtc -gt $newest) {
+            $newest = $item.LastWriteTimeUtc
+        }
+    }
+
+    $newest
+}
+
+# A build output is STALE when the sources it is built from have been written
+# since. Unreadable sources (nothing found) answer FALSE rather than TRUE: this
+# guard withdraws a check, and a guard that fires on a question it cannot answer
+# would withdraw every check on a checkout it merely failed to read.
+function Test-BuiltBundleStale([string] $bundlePath, [string[]] $sourcePaths) {
+    if (-not (Test-Path -LiteralPath $bundlePath)) { return $false }
+
+    $newestSource = Get-NewestWriteTimeUtc $sourcePaths
+    if ($newestSource -eq [datetime]::MinValue) { return $false }
+
+    $newestSource -gt (Get-Item -LiteralPath $bundlePath -Force).LastWriteTimeUtc
 }
 
 # Read a single-quoted string constant out of a TypeScript source file. The
@@ -294,13 +353,65 @@ if ($SelfTest) {
         $failures += "the sidecar carrying escaped values is not parseable JSON: $_"
     }
 
+    # Phase 1690 - the staleness guard, in BOTH directions.
+    #
+    # It runs here rather than in a test project because it is what decides
+    # whether the byte check speaks at all: a guard that silently stopped firing
+    # would restore the false-drift class, and one that fired always would
+    # withdraw the strong check estate-wide. Both failures are invisible from a
+    # green gate, so both are asserted on every gate run. Plain files with set
+    # timestamps - no fuaran-ts, no build, milliseconds.
+    $probe = Join-Path ([System.IO.Path]::GetTempPath()) ("sync-renderer-web-selftest-" + [guid]::NewGuid().ToString("n"))
+
+    try {
+        $probeSrc = Join-Path $probe "src"
+        $probeNested = Join-Path $probeSrc "render"
+        New-Item -ItemType Directory -Force -Path $probeNested | Out-Null
+
+        $probeBundle = Join-Path $probe "fuaran-renderer.global.js"
+        $probeSource = Join-Path $probeNested "core.tsx"
+        $probeManifest = Join-Path $probe "package.json"
+
+        Set-Content -LiteralPath $probeBundle -Value "bundle" -NoNewline
+        Set-Content -LiteralPath $probeSource -Value "source" -NoNewline
+        Set-Content -LiteralPath $probeManifest -Value "{}" -NoNewline
+
+        $base = [datetime]::UtcNow.Date.AddDays(-10)
+        (Get-Item -LiteralPath $probeSource).LastWriteTimeUtc = $base
+        (Get-Item -LiteralPath $probeManifest).LastWriteTimeUtc = $base
+
+        # Built AFTER its sources: current, so the byte check must still run.
+        (Get-Item -LiteralPath $probeBundle).LastWriteTimeUtc = $base.AddHours(1)
+        Assert-Equal (Test-BuiltBundleStale $probeBundle @($probeSrc, $probeManifest)) $false 'a bundle built after its sources is not stale'
+
+        # Built BEFORE a source deep in the tree: the recursive walk is what
+        # sees it, and this is the case that shipped a false drift report.
+        (Get-Item -LiteralPath $probeSource).LastWriteTimeUtc = $base.AddHours(2)
+        Assert-Equal (Test-BuiltBundleStale $probeBundle @($probeSrc, $probeManifest)) $true 'a bundle older than a NESTED source is stale'
+
+        # And older than the manifest alone - a version bump with no rebuild.
+        (Get-Item -LiteralPath $probeSource).LastWriteTimeUtc = $base
+        (Get-Item -LiteralPath $probeManifest).LastWriteTimeUtc = $base.AddHours(2)
+        Assert-Equal (Test-BuiltBundleStale $probeBundle @($probeSrc, $probeManifest)) $true 'a bundle older than package.json is stale'
+
+        # Sources it cannot read answer "not stale": the guard WITHDRAWS a
+        # check, so an unanswerable question must not withdraw one.
+        Assert-Equal (Test-BuiltBundleStale $probeBundle @((Join-Path $probe "absent"))) $false 'unreadable sources do not make a bundle stale'
+
+        # No bundle at all is the NOT CHECKED path already, not this one.
+        Assert-Equal (Test-BuiltBundleStale (Join-Path $probe "absent.js") @($probeSrc)) $false 'an absent bundle is not reported stale'
+    }
+    finally {
+        Remove-Item -LiteralPath $probe -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Error ("sync-renderer-web writer self-test: {0} failure(s):`n  {1}" -f $failures.Count, ($failures -join "`n  "))
         exit 1
     }
 
-    Write-Host "sync-renderer-web writer self-test: the escaping and the canonical document agree with Fingerprint.fs."
+    Write-Host "sync-renderer-web writer self-test: the escaping and the canonical document agree with Fingerprint.fs, and the staleness guard fires in both directions."
     exit 0
 }
 
@@ -417,7 +528,19 @@ if ($problems.Count -eq 0) {
             $problems += "the embedded bundle stamps wire profile '$recordedProfile' but the sibling now stamps '$siblingProfile' - re-sync."
         }
 
-        if ($bundleBuilt) {
+        if ($bundleBuilt -and (Test-BuiltBundleStale $builtBundle @($rendererSrc, $tsPackageJson))) {
+            # Present, and disqualified. See Test-BuiltBundleStale above: this
+            # artefact was built from sources that have since moved, so it
+            # cannot answer for them - and the answer it WOULD give is a drift
+            # claim whose remedy regresses the embedded copy.
+            $builtAt = (Get-Item -LiteralPath $builtBundle -Force).LastWriteTimeUtc
+            $sourcesAt = Get-NewestWriteTimeUtc @($rendererSrc, $tsPackageJson)
+
+            Write-Host ("  bytes       NOT CHECKED - the standalone bundle in that checkout was built {0}Z and its renderer sources were written {1}Z, so it predates them" -f $builtAt.ToString("yyyy-MM-dd HH:mm"), $sourcesAt.ToString("yyyy-MM-dd HH:mm"))
+            Write-Host ("              ({0})" -f $builtBundle)
+            Write-Host "              To get the byte check back: rebuild it there (pnpm --filter @fuaran-ui/renderer run build:standalone), or set FUARAN_TS_ROOT to a checkout you own and have built."
+        }
+        elseif ($bundleBuilt) {
             # The strong check. Only available where the bundle has been built,
             # because it is a gitignored build output in fuaran-ts.
             $freshSha = Get-Sha256 $builtBundle

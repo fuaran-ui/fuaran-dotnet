@@ -172,6 +172,22 @@ and vocabulary** match is answerable from committed text always; a **byte** matc
 bundle built in the `fuaran-ts` sibling, and is reported as `NOT CHECKED` when it is not. "Nothing
 to check here" and "everything checked" must not read alike.
 
+**A third case, and it is the one that misleads: the bundle is present but STALE.** That artefact is
+a gitignored build output in a checkout this repo does not own, so nothing rebuilds it — it is
+whatever that checkout last happened to produce, and where its own renderer sources have moved since,
+it describes a tree that no longer exists. Compared against a correctly-synced embedded copy it
+reports **drift**, and the remedy it names would overwrite a current bundle with an old one, leaving
+the gate green on the regression. So the artefact's age decides whether it may answer at all: older
+than the sources it is built from, and the byte check is withdrawn as `NOT CHECKED` naming both
+timestamps, never asserted as drift. The check keeps running wherever the artefact is genuinely
+current — build-then-check, the ordinary flow — and a real drift there still fails. To get the byte
+check back on a stale sibling, rebuild it there, or point `FUARAN_TS_ROOT` at a checkout you own and
+have built.
+
+Measured on 2026-09-13, which is why this paragraph exists: the sibling's artefact was five days old
+and six renderer commits behind its own sources, and the embedded copy it called stale was
+byte-identical to a fresh build of exactly those sources.
+
 The maintainers' rule: **a renderer or stylesheet change re-syncs the embedded copy in the same
 change-set.**
 
