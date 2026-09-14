@@ -6,10 +6,25 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Phase 1647 - the ONE corpus-root resolver, DECLARED ONCE at tests/corpus-root/CorpusRoot.fs
+         and linked (not copied) into every suite that reads the shared wire-format-fixtures corpus,
+         so a git worktree resolves it through FUARAN_WIRE_FIXTURES rather than skipping silently.
+         Must compile FIRST: StyleObserverCorpus.fs and its certification suite delegate to it. -->
+    <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />
     <Compile Include="FlagDerivationTests.fs" />
     <Compile Include="InMemoryStyleObserverTests.fs" />
     <Compile Include="ManifestFlagTests.fs" />
     <Compile Include="ElementRegistrationTests.fs" />
+    <!-- Phase 1752 — the `style-observer/` conformance family: the authored cases, then the writer
+         that PROVES each vector against the reference derivation before writing it. The reference
+         emitter lives HERE rather than in the wholesale corpus emitter because the reference
+         implementation does — and because `style-observer/` is deliberately NOT a directory the
+         wholesale corpus emitter owns, so a regen can never delete it (the teleport/ and laws/
+         precedent). -->
+    <Compile Include="StyleObserverCorpus.fs" />
+    <!-- Phase 1752 — this tier's own certification against the COMMITTED family (it is the fourth
+         of the four hosts the family binds), the go-red property, and the stale-artefact guard. -->
+    <Compile Include="StyleObserverCorpusTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
