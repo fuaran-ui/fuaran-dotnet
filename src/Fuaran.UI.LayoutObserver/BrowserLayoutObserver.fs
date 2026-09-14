@@ -38,10 +38,21 @@ namespace Fuaran.UI.LayoutObserver
 
 open Fable.Core
 open Fable.Core.JsInterop
-open Browser
-open Browser.Types
 open System
 open System.Collections.Generic
+
+// NO `open Browser` / `open Browser.Types` (Phase 1749). Every browser
+// call below goes through `[<Emit>]` over `obj`, so neither open was
+// ever load-bearing — and each cost a package that is not referenced
+// here: `Fable.Browser.Dom` is a CONSUMER's to supply, and adding it
+// would widen this package's published dependency set for two lines
+// nothing reads. Their presence is why this project carried a
+// `<FablePortabilityExemption>` from Phase 1606 until now; with them
+// gone the Fable arm compiles under this project's own nullness-ON
+// settings and the gate compiles it like every other packed tier.
+// If a typed DOM surface is ever genuinely wanted here, that is a
+// versioned act (a new PackageReference on a published package), not
+// a re-added `open`.
 
 // The let bindings + helper
 // functions below originally lived directly under `namespace
@@ -115,7 +126,11 @@ module private Internals =
         }
         return null;
     })($0)""")>]
-    let nearestClippingAncestorRect (element: obj) : obj = jsNative
+    // `objnull`, because the emitted body's last statement is `return null;` —
+    // the no-clipping-ancestor case. Typing it `obj` made the `isNull` test at
+    // the call site an FS3261 under nullness-ON, which is the error saying the
+    // signature was lying rather than the test being wrong.
+    let nearestClippingAncestorRect (element: obj) : objnull = jsNative
 
     [<Emit("new ResizeObserver($0)")>]
     let newResizeObserver (callback: obj array -> unit) : obj = jsNative
@@ -140,8 +155,13 @@ module private Internals =
 
     // ─── Diagnostics ───────────────────────────────────────────
 
+    // `detail` is `objnull`: the only caller boxes an `exn`, and `box` is
+    // `objnull`-typed under F# 10 nullness. Widening the parameter is
+    // honest here — `console.error` accepts anything, null included —
+    // where laundering the argument would assert a non-nullness this
+    // signature has no way to know.
     [<Emit("console.error($0, $1)")>]
-    let private consoleError (message: string) (detail: obj) : unit = jsNative
+    let private consoleError (message: string) (detail: objnull) : unit = jsNative
 
     /// A subscriber threw. The observer isolates it — one broken subscriber must
     /// not stop the others, or the observer itself — but the failure is now SAID
@@ -478,13 +498,21 @@ type BrowserLayoutObserver(options: LayoutObserverOptions) =
                 // element that ALSO carry `data-fuaran-node-id`.
                 let rootEl = registry[rootNodeId]
                 let descendantsObj = propGet rootEl "querySelectorAll"
-                let allDescendants = descendantsObj?call $ (rootEl, "[data-fuaran-node-id]")
+                // `objnull`: the dynamic `?` operator infers a fresh non-null
+                // type variable, so the `isNull` guard below reads as FS3261
+                // without this annotation. A `querySelectorAll` reached through
+                // a dynamic call can return null, and the guard is the handling.
+                let allDescendants: objnull =
+                    descendantsObj?call $ (rootEl, "[data-fuaran-node-id]")
 
+                // A null PATTERN rather than `isNull`, because only the pattern
+                // narrows: `arrayFrom` takes a non-null `obj` on purpose
+                // (`Array.from(null)` throws), so the guard has to be one the
+                // compiler can carry into the other branch.
                 let elements =
-                    if isNull allDescendants then
-                        [||]
-                    else
-                        arrayFrom allDescendants
+                    match allDescendants with
+                    | null -> [||]
+                    | list -> arrayFrom list
 
                 let descendants =
                     elements

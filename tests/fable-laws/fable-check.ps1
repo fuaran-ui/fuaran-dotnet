@@ -341,6 +341,40 @@
   `fable-check.tests.ps1` beside this file — a masking that stops masking turns those red and sends
   the reader back here, rather than leaving this paragraph to age quietly into being wrong.
 
+  THREE DEFECTS THIS STAGE NO LONGER HAS, AND WHY THE RECORD IS HERE (Phase 1749). A 2026-09-14
+  roadmap phase was authored against this stage from a bundle six workers voted during the
+  2026-09-06 campaign — none of whom could fix a gate script, which is under the campaign hard-deny
+  floor. By the time it was dispatched, three of its four claims described a tree that had moved.
+  They are recorded here rather than only in that phase's outcome because this header is what the
+  next person auditing this stage reads, and because a defect list nobody re-checks is re-filed:
+
+    * "THE PORTABILITY SCRATCH ROOT IS PROCESS-GLOBAL, KEYED BY PROJECT NAME, AND WIPED AT START,
+      SO TWO CHECKOUTS DESTROY EACH OTHER'S IN-FLIGHT OUTPUT." True until Phase 1605/1619; see
+      `Get-TreeScratchRoot` below, which keys the leaf on this script's own location. The phase's
+      proposed remedy was a worktree- OR PID-derived suffix: the worktree half is what shipped, and
+      the PID half is declined in that function's own note, because a stable per-tree path is what
+      leaves a failed compile's output on disk to read afterwards. Its go-red proof shipped with it
+      — `fable-check.tests.ps1` runs a SECOND COPY of this script from another path over the same
+      `-SrcRoot` and asserts the two roots differ, which a fixed leaf fails.
+    * "THE PORTABILITY LIST OMITS `Fuaran.UI.Renderer`, THE LARGEST CLIENT-TIER PROJECT." True
+      until Phase 1606 made the set DERIVED from the pack path rather than hand-kept in two places.
+      Renderer has been an entry since; the 1622 measurement table above times it at closure 7.
+      There is no list to omit anything from, which is the point of that derivation.
+    * "`$lineShape` NEEDS `SELECTIONFIELD|DATESENTINEL` SO THE 1531 LAWS' PER-CASE LINES JOIN THE
+      BYTE COMPARISON." Both tokens have been in it since those laws landed, alongside 1674's
+      `DAGCHECKPOINT`. Note what would have happened had this been implemented from the shard
+      instead of checked: nothing, silently — adding a token already present is a no-op, and the
+      phase would have shipped green having changed nothing.
+
+  The fourth claim WAS live and is what 1749 shipped: `Fuaran.UI.LayoutObserver` carried a
+  `<FablePortabilityExemption>` from 1606 because its `#if FABLE_COMPILER` arm opened `Browser` /
+  `Browser.Types` against a `Fable.Browser.Dom` the project does not reference. The exemption's
+  reason held; its implied remedy — add the PackageReference, a versioned widening of a published
+  package's dependency set — did not, because neither `open` was load-bearing: every browser call
+  in that arm goes through `[<Emit>]` over `obj`. Deleting them, plus three signatures that were
+  lying about null, made the arm compile under the project's own nullness-ON settings. The
+  exemption is gone and the project is an ordinary entry here.
+
   METHOD NOTES — both learned the hard way, both recorded in `CLAUDE.md` under "Fable method
   traps", and both binding on anything added here:
 
