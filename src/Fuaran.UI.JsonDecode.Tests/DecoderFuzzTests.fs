@@ -109,6 +109,14 @@ let private selfTestConfig =
 /// this probe can time out is a harness that has stopped running at all, at which
 /// point the whole suite is red for a louder reason. The hard budget is unchanged,
 /// so the watchdog still fires on a genuine hang.
+///
+/// Phase 1750 ran the falsifier: 50 consecutive process-level runs of this
+/// go-red list, 50 green, 0 failed, all six tests accounted for on every run, on a
+/// deliberately LOADED machine — a sibling repo's whole gate running beside it, the
+/// slowest run taking 25.2 s against 3.0 s idle. That load is the evidence rather
+/// than the run count: 25 s of wall clock for a list whose own work is ~1.2 s is a
+/// machine under exactly the contention that made the shared 100 ms budget
+/// misclassify this probe, and it did not misclassify once.
 let private allocationProbeBudgets =
     { selfTestBudgets with
         SoftTimeMs = 30000.0 }

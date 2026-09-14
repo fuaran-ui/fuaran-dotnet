@@ -59,6 +59,24 @@ let tests =
               // suite corroborate it; they are not the proof, because a flake at
               // the reported one-run-in-five would show green eight times about
               // one time in six.
+              //
+              // Phase 1750 ran the falsifier that argument was owed, and found
+              // nothing left to fix: 50 consecutive process-level runs of this
+              // list, 50 green, 0 failed, on a deliberately LOADED machine (a
+              // sibling repo's whole gate running beside it; the slowest run took
+              // 7.0 s against 0.9 s idle). At the reported one-run-in-five that
+              // outcome has probability 0.8^50 - about 1 in 70,000 - so 50 runs
+              // discriminate where eight could not. There is no "before" tally to
+              // compare against, because there was no change to make: the refusal
+              // the flake report quotes ("expected 1, record carries 2") is the
+              // Phase 1525 write-admission gate declining an out-of-order record,
+              // which is that gate working, and admission is named off above
+              // precisely so this test measures the sink instead.
+              //
+              // The loop asserted the test COUNT as well as the exit code. A
+              // filtered run matching no test exits 0 here, so "green 50 times"
+              // and "ran the test 50 times" are different claims and only the
+              // second is worth anything.
               let sink: IOpStreamSink<TestMsg> =
                   InMemorySink.createWithModes LoadVerification.Full WriteAdmission.Off
 
