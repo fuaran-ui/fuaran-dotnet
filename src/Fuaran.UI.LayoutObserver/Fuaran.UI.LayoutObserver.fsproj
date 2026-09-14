@@ -18,12 +18,18 @@
     <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
   </ItemGroup>
   <!-- Phase 1606 — the Fable portability gate derives its set from the pack path
-       above, so this project is in it by default. It is held out, and the reason
-       is the property's value so that an exemption without one cannot be written.
-       tests/fable-laws/fable-check.ps1 prints every exemption on every run. -->
-  <PropertyGroup>
-    <FablePortabilityExemption>Ships fable/ sources but does not compile as a Fable ENTRY project as it stands: BrowserLayoutObserver.fs's #if FABLE_COMPILER arm opens Browser.Dom / Browser.Types while this project references no Fable.Browser.Dom (a consumer supplies it), and the same arm carries three F# 10 nullness errors under this project's own nullness-ON settings. Adding that PackageReference changes the published dependency set, so it is a deliberate versioned act rather than a gate fix. Phase 1606.</FablePortabilityExemption>
-  </PropertyGroup>
+       above, so this project is in it by default, and an exemption is the only
+       way out. It CARRIED one from 1606 until Phase 1749, whose reason was that
+       BrowserLayoutObserver.fs's #if FABLE_COMPILER arm opened Browser /
+       Browser.Types against a Fable.Browser.Dom this project does not reference,
+       and that the arm carried three F# 10 nullness errors besides. The reason
+       held; its implied remedy did not. Neither `open` was load-bearing — every
+       browser call in that arm goes through [<Emit>] over `obj` — so deleting
+       them fixed it with no PackageReference and no widening of the published
+       dependency set, and the three nullness errors were signatures that had
+       been lying about null. The exemption is GONE rather than reworded: this
+       project is gated like every other packed tier now, and a re-added `open`
+       reddens the gate for the author who adds it. -->
   <ItemGroup>
     <!-- The three-way meaning of registering one node id: fresh, unchanged,
          or a REMOUNT under the same id. Outside the observer's
