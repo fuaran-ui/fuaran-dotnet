@@ -327,6 +327,18 @@ let private writeManifest
         + "vocabulary is the one WIRE_FORMAT 17.4 names (InvalidFormat / InvalidJson / InvalidEnvelope / "
         + "UnsupportedVersion / DigestMismatch / Oversize / TreeDecode / HistoryDecode / TreeInvalid), NOT "
         + "the eight DecodeError codes: a bundle is a container the node decoder runs inside. "
+        + "style-observer fixtures (Phase 1752): resolved-style FACTS in, encoded StyleFlag / "
+        + "StyleObservation bytes out. Nothing here is a decoded document, so the inputFile carries "
+        + "the evidence AND the expectations rather than pairing with an expectedFile, and each names "
+        + "a tier. observation: build a StyleInput from `input` under `options`, derive the "
+        + "manifest-free flags and encode each, assert equal to expectedFlags, then encode the whole "
+        + "observation for `nodeId` and assert equal to expectedObservation. per-node-manifest: decode "
+        + "`manifest` — a JSON STRING, fed to the host's own theme-manifest decoder verbatim so no host "
+        + "re-serialises it — run the manifest-aware per-node derivation over `observation`, assert the "
+        + "encoded flags equal expectedManifestFlags. usage-budget: decode `manifest`, pair each "
+        + "nodeAreas entry's observation with its area, run the tree-level budget verification, assert "
+        + "the encoded flags equal expectedBudgetFlags. A tier or flag kind outside a host's vocabulary "
+        + "is REPORTED by name with the vector id, never skipped. "
         + "See WIRE_FORMAT.md at this corpus root."
     )
 
