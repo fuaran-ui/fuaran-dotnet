@@ -461,12 +461,20 @@ let render (case: Case) : string =
 
 // ─── Emission ───────────────────────────────────────────────────────────────
 
+/// The `decoder` every row of this family names. The corpus loader requires the
+/// property on EVERY row, so it is not optional even for a family whose vectors
+/// are not decoded documents; what it names here is the entry point a host
+/// reaches for, which is the same thing it names for `teleport` or
+/// `contract-card`.
+let manifestDecoder = "style-observer"
+
 /// The `manifest.json` row for one case, as the corpus spells its rows.
 let manifestRow (case: Case) =
     sprintf
-        "{ \"id\": \"style-observer-%s\", \"kind\": \"%s\", \"inputFile\": \"%s/%s.json\" }"
+        "{ \"id\": \"style-observer-%s\", \"kind\": \"%s\", \"decoder\": \"%s\", \"inputFile\": \"%s/%s.json\" }"
         (caseId case)
         manifestKind
+        manifestDecoder
         familyDirectory
         (caseId case)
 
