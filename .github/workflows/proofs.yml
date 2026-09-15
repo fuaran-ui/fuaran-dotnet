@@ -60,8 +60,15 @@ jobs:
         with:
           path: proofs/.fstar
           key: fstar-${{ runner.os }}-${{ hashFiles('proofs/fstar-pin.json') }}
-      # -Runs 3 is the reproducibility claim made literal, not a timeout: a timeout says a run
-      # died and nothing about which module. The per-module budgets say that, in modules.json.
-      - name: Proof leg (./proofs/check.ps1 -Runs 3)
+      # -Runs 1, NOT the kit's -Runs 3, and the reduction is measured rather than convenient.
+      # `VocabularyProofs` verifies in 5040s cold on a fast dev machine (proofs/modules.json), so
+      # three cold runs of it alone is over four hours before anything else starts, against a
+      # six-hour job ceiling on a slower runner. The deeper number is memory: that run peaked at
+      # 90.6 GB committed on a 31.5 GB machine, most of the wall clock being paging, so a hosted
+      # runner's smaller page file is the thing most likely to end this job — and it will end it
+      # loudly, which is the correct failure. `proofs.json`'s `proof-leg` policy row declares the
+      # reduced posture, because how many cold runs a check is IS the claim that row carries.
+      # A developer still runs `-Runs 3` by hand; see proofs/README.md, "Running it".
+      - name: Proof leg (./proofs/check.ps1 -Runs 1)
         shell: pwsh
-        run: ./proofs/check.ps1 -Runs 3
+        run: ./proofs/check.ps1 -Runs 1

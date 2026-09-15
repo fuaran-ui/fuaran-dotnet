@@ -5,11 +5,14 @@ This directory holds an **F\* proof leg** over this repository's own wire vocabu
 prover, three models, a claims ladder, and a script that checks each model from a cold cache and
 holds the generated ones to a fresh generation from `src/Fuaran.UI.Idl/idl.json`.
 
+**It is an expensive leg — one cold run is about an hour and a half and peaks at 90 GB of committed
+memory.** "What it costs, measured" below has the numbers before you start one.
+
 Run it:
 
 ```powershell
-pwsh ./proofs/check.ps1            # one cold-cache verification of every model
-pwsh ./proofs/check.ps1 -Runs 3    # what CI runs
+pwsh ./proofs/check.ps1            # one cold-cache verification of every model — what CI runs
+pwsh ./proofs/check.ps1 -Runs 3    # the kit's full reproducibility claim; most of an afternoon
 pwsh ./proofs/check.ps1 -SkipOracleHost   # leave the host families to the ordinary gate
 ```
 
@@ -122,9 +125,11 @@ single declared type each.
 
 ## Running it
 
-- **`-Runs 3` is the CI claim made literal** — three cold-cache verifications of every model, with
-  every SMT query proved three times over varying seeds (`--quake 3`) and every `assume` / `admit`
-  reported as an error.
+- **`-Runs N` is N cold-cache verifications of every model**, with every SMT query proved three
+  times over varying seeds (`--quake 3`) and every `assume` / `admit` reported as an error. **CI
+  runs ONE, not the kit's three**, and the reduction is measured rather than convenient — see "What
+  it costs" below. A developer wanting the kit's full reproducibility claim runs `-Runs 3` by hand
+  and should expect it to take most of an afternoon.
 - **The cache is per invocation** (`proofs/obj/cache-<pid>`), created and removed by the leg, so a
   second run in the same worktree cannot quietly falsify "cold cache".
 - **Each module is measured against a budget and a FLOOR** declared in `modules.json`. An overshoot
@@ -132,7 +137,49 @@ single declared type each.
   An **undershoot fails the leg on the spot**, because a module that verified faster than it can
   possibly verify has not told you it is fast — it has told you the measuring apparatus is broken,
   and everything measured after it shares that apparatus. `-NoFloor` is the deliberate opt-out.
-- **`VocabularyProofs` is the leg's whole cost**, by an order of magnitude. Read its number first.
+- **`VocabularyProofs` is the leg's whole cost**, by two orders of magnitude. Read its number first.
+
+### What it costs, measured
+
+One `check.ps1 -Runs 1` leg on the pinned prover, cold, on a 16-core / 31.5 GB dev machine,
+2026-09-15 — green, every query 3/3 under `--quake`:
+
+| module | measured | budget |
+|---|---|---|
+| `WireDecode` | 17 s | 40 s |
+| `Vocabulary` | 94 s | 190 s |
+| `VocabularyProofs` | **5,040 s** (1 h 24 m) | 10,100 s |
+
+**The binding resource is MEMORY, not time.** At its peak that run held **90.6 GB committed**
+(7.2 GB resident) on a 31.5 GB machine, so most of the 5,040 s is paging. A machine with a smaller
+page file will not merely be slower; it will fail — and it will fail loudly, which is the correct
+failure. That figure, not the wall clock, is why CI runs `-Runs 1`: three cold runs of this one
+module is over four hours before anything else starts, against a six-hour ceiling on a slower
+runner, and the memory is the thing most likely to end the job first. The reduced posture is
+declared on the ladder's `proof-leg` row, so it is a statement rather than something to be inferred
+from a workflow file.
+
+**Where the cost is: the ENVELOPE, not the kinds.** Emitted at a **one-kind** selection the proof
+script still carries **318** of its 682 lemma heads, because the node envelope's five conditional
+members are 32 presence patterns over a closure of records and unions that *every* kind pays for.
+Each further envelope-closed kind adds roughly twenty:
+
+| kinds selected | lemma heads | proof script |
+|---|---|---|
+| 1 | 318 | 237 KB |
+| 3 | 338 | 250 KB |
+| 5 | 348 | 254 KB |
+| 20 (`proofKinds`, adopted) | 682 | 573 KB |
+| 42 (exhaustive expressible) | 71,722 | 114 MB |
+
+So the number to watch is not the kind count. **A new optional member on `nodeFields` DOUBLES the
+envelope's pattern family**, and is the change most likely to push this module past what the
+machine can hold; a new kind of the sort `proofKinds` selects is nearly free.
+
+_(One observation from that session is worth recording and worth not over-reading: a second prover,
+started against a one-kind copy of this script WHILE the 90 GB run was in flight, died at eleven
+minutes with `Fatal error: allocation failure during minor GC`. That is a CONTENTION observation.
+The one-kind script has never been checked on its own, so nothing here claims it cannot be.)_
 
 ## What is not here, and why
 

@@ -115,9 +115,17 @@ generated file's own header. And it covers one direction: everything the encoder
 back exactly, while an independent characterisation of what else the decoder ACCEPTS is a recorded
 halt, not a result.
 
-[`proofs/README.md`](proofs/README.md) is the full statement, [`proofs.json`](proofs.json) is the
-claims ladder in a form a tool can read, and `pwsh ./proofs/check.ps1` runs the leg. Nothing
-generated there ships in a package.
+**It is expensive, and the number is worth knowing before you start one.** One cold run is about an
+hour and a half, almost all of it in the round-trip script, and it peaked at 90 GB of committed
+memory on the machine that measured it — so the leg is a path-filtered CI job of its own rather than
+a stage of the ordinary gate, and that job runs one cold verification rather than the three a
+cheaper leg would. The cost is the node envelope rather than the kind count: a new optional
+`nodeFields` member doubles the emitted presence-pattern family, where a new kind usually costs
+about twenty lemmas.
+
+[`proofs/README.md`](proofs/README.md) is the full statement with the measurements,
+[`proofs.json`](proofs.json) is the claims ladder in a form a tool can read, and
+`pwsh ./proofs/check.ps1` runs the leg. Nothing generated there ships in a package.
 
 ## Repository conventions
 
