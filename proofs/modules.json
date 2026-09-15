@@ -1,0 +1,50 @@
+{
+  "kind": "proofModules",
+  "subject": "fuaran-dotnet",
+  "$comment": "What the proof leg COSTS, declared per module, so that a growth in prover time is named rather than discovered when CI times out. `proofs/check.ps1` (through `proofs/kit/check-proof-leg.ps1`) reads this file: every green CHECK line prints the module's measured seconds beside its budget, and a run over budget prints a named COST warning — never a failure on its own, because prover time varies by machine and by load and a budget is a smoke detector rather than a gate. `check.ps1 -Strict` promotes the warnings to a red leg for a session that wants one. This is NOT `proofs.json`: that file is the claims ladder — what is proved, tested and assumed, at a closed set of levels — and a wall-clock budget is a claim at none of those levels and is not per-claim but per-module. Coverage is checked BOTH ways: a module the leg checks with no entry here, and an entry here for a module the leg does not check, are each a COST warning naming what to do. Hand-authored; the seeding rule below says how a number is arrived at, and bumping one is a recorded act. Each entry also carries a `floorSeconds`, and that number is a GATE rather than a smoke detector: a module that verifies in less than its floor fails the leg on the spot, because a run faster than the module can possibly be is not evidence of speed but of a cache that was not cold. The two rules sit in `seeding` and `floorSeeding` below, and the asymmetry between warning above and failing below is argued in the second of them.",
+  "seeding": {
+    "rule": "budgetSeconds = max(2 x the slowest observed cold-cache run, minimumBudgetSeconds), rounded up to the next 10s.",
+    "toleranceFactor": 2,
+    "minimumBudgetSeconds": 20,
+    "$comment": "The tolerance is applied ONCE, here, when a number is seeded — `check.ps1` multiplies nothing, so the pair it prints is the measurement against the ceiling and there is no second arithmetic to hold in your head. Seed from the SLOWEST observed cold run rather than the median: concurrent sessions on one machine can inflate a cold check by ~1.8x with nothing about the tree changed, so a budget seeded from the median fires on a busy afternoon and teaches a reader to ignore it. `minimumBudgetSeconds` is the floor UNDER THE CEILING, for the sub-5s modules where 2x is inside ordinary process-start noise; it is a different thing from an entry's `floorSeconds`, which is the per-module time floor below, and the two are named apart deliberately."
+  },
+  "floorSeeding": {
+    "rule": "floorSeconds = the FASTEST genuine cold run ever observed, halved, rounded DOWN to the whole second; 0 for a module whose fastest genuine cold run is under 5s.",
+    "divisor": 2,
+    "zeroBelowSeconds": 5,
+    "$comment": "The floor is the budget's mirror and the two are deliberately NOT symmetric in what they do. A budget is a ceiling and a smoke detector: an overshoot is a true measurement of a true cost, so it warns and the leg stays green. A floor is a gate: `check.ps1` FAILS the leg on the spot, naming the module and the time, because a module that verified faster than it can possibly verify has not told you it is fast — it has told you the measurement is worthless, and everything measured after it shares the apparatus. Implausibly fast is the one direction in which a lie looks like good news. Seed from the FASTEST observed rather than the median, and halve on top, for the mirror of the budget's reason: a floor that fires on a fast quiet machine teaches a reader to ignore it, and the failure this catches lands at or near ZERO seconds, so an enormous margin costs nothing in detection. The `zeroBelowSeconds` rule is for the modules where halving lands inside process-start noise: a positive floor there would be a coin toss, and an explicit 0 is a different statement from an absent one and reads as one. An ABSENT `floorSeconds` is a cost finding rather than a failure — a sibling adding a model should no more go red for a floor nobody has measured than for a budget nobody has measured. `check.ps1 -NoFloor` is the deliberate opt-out for a machine genuinely that fast, and it says so in the log. Re-seeding a floor DOWNWARDS is the same recorded act as bumping a budget upwards: the new number, the `fastestSeconds` it came from, and your phase.",
+    "$adopterNote": "Both rules are the kit's, copied verbatim with the template. An adopter that changed one would be declaring a different discipline under the same key names, which is the one edit this file must not carry."
+  },
+  "modules": [
+    {
+      "module": "WireDecode",
+      "budgetSeconds": 40,
+      "measuredSeconds": 17,
+      "floorSeconds": 8,
+      "fastestSeconds": 17,
+      "floorPhase": "fuaran#1754",
+      "phase": "fuaran#1754",
+      "note": "The decode combinators over the `jval` value model, COPIED from the kit's repository and declared in ../copies.json — generic in its numeric carriers, so nothing here re-states the kit's own theorem. Default context, no scoped options; the cost is ordinary and most of the spread between machines is the machine. SEEDED HERE rather than inherited: the kit's own entry is a measurement on a different machine under a different load, and a budget seeded from somebody else's clock is not a measurement. Cold quaked run on this dev machine under the leg's own flags, `check.ps1 -Runs 1 -SkipOracleHost`, with an idle tree: 17s. Budget 40s by the seeding rule (2 x 17 rounded up to the next 10s); floor 8s by floorSeeding (17 halved, rounded down). ONE observation, so the floor is the conservative end of a single sample — re-seed it DOWNWARDS as a recorded act the first time a genuinely faster cold run is seen, per floorSeeding, rather than leaving a gate that fires on a faster runner."
+    },
+    {
+      "module": "Vocabulary",
+      "budgetSeconds": 190,
+      "measuredSeconds": 94,
+      "floorSeconds": 47,
+      "fastestSeconds": 94,
+      "floorPhase": "fuaran#1754",
+      "phase": "fuaran#1754",
+      "note": "The GENERATED model of THIS repository's wire vocabulary, emitted by `Fuaran.Core.Idl.Codegen`'s F* target from `src/Fuaran.UI.Idl/idl.json`. Carries `#set-options \"--ext context_pruning\"` INSIDE the generated file, because it opens the whole decode model and declares dozens of types; if this budget is ever bumped, check the option is still in force before reading the growth as ordinary. Twenty of forty-three kinds are modelled — the selection is `FStarTarget.proofKinds` and the emitted header names each of the other twenty-three with its reason (see README.md 'Coverage' for the measurement that chose it). CHECKED but not EXTRACTED (`$proofOnly` in check.ps1). WHAT A BUMP MEANS HERE: its size is a function of the vocabulary it is generated from, so growth means the VOCABULARY grew — a kind whose types the envelope already carries adds one constructor to three definitions — and the generation diff is what makes any such change deliberate. SEEDED from a cold quaked run on this dev machine under the leg's own flags, idle tree: 94s. Budget 190s by the seeding rule; floor 47s by floorSeeding. ONE observation — see WireDecode's note on re-seeding a floor downwards."
+    },
+    {
+      "module": "VocabularyProofs",
+      "budgetSeconds": 3600,
+      "measuredSeconds": 0,
+      "floorSeconds": 0,
+      "fastestSeconds": 0,
+      "floorPhase": "fuaran#1754",
+      "phase": "fuaran#1754",
+      "note": "PROVISIONAL — NOT YET SEEDED FROM A COMPLETED RUN, and the zeros say so rather than a plausible number saying otherwise. The generated ROUND TRIP over `Vocabulary` (`dec_node (enc_node x) == Ok x` for every value of every modelled type), plus `dec_node_total`. Emitted by the same target from the same walk as the model, ONE LEMMA PER CONSTRUCTOR and one per PRESENCE PATTERN (fuaran-core#168): a constructor with two or more conditional members is split into `...__p<bits>` lemmas whose `requires` pins every conditional member present or absent, so no query carries more than one constructor's object shapes. 682 lemma heads here, 548 of them presence patterns — this vocabulary reaches the split in most of its kinds, which is why this module is the leg's whole cost and why the coverage decision in README.md is a cost decision. THE MOST EXPENSIVE MODULE BY AN ORDER OF MAGNITUDE; read its number before reading any other. The budget is a deliberately loose placeholder so that the leg neither fails nor warns on a number nobody has measured; seeding it from a completed cold run, per `seeding` and `floorSeeding` above, is a recorded act and the next one this entry needs."
+    }
+  ]
+}

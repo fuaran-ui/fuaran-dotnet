@@ -1,0 +1,102 @@
+{
+  "kind": "proofs",
+  "subject": "fuaran-dotnet",
+  "$comment": "This repository's claims ladder, declared as data: `proofs/README.md`'s own ladder — what is PROVED, what is only TESTED, what is ASSUMED — in a schema a tool can read, so the question does not have to be answered by reading prose and hoping two documents use the same words. A `not claimed` item is the ABSENCE of a row, never a row: `proofs/README.md` enumerates those, and enumerating them here would turn a disclaimer into a claim. Levels are the CLOSED set proved | tested | assumed | policy. Authored by hand, never generated: editing the ladder means editing this file and the README together. It is CHECKED rather than trusted by the `Proofs.Ladder` family in `src/Fuaran.UI.Idl.Tests/FStarVocabularyTests.fs`, which holds every row to this tree — a `proved` row's theorem is a top-level declaration of that name in the model it names, that model is one `proofs/check.ps1` actually checks, and every checked module carries at least one row.",
+  "$levels": {
+    "proved": "A theorem in a model the leg actually checks, with no assume and no admit under --report_assumes error. `evidence` names the top-level declaration, the model file, and the pin.",
+    "tested": "A differential or conformance family, not a proof. `evidence` names the cases, and they must exist.",
+    "assumed": "A premise the proof rests on and does not discharge. `evidence.assumption` states it in one sentence, in the terms a reader could go and check it in.",
+    "policy": "The reproducibility posture the proved rows are only as good as — which prover is pinned, how many cold runs a check is, that an edited model without a re-extraction fails. Policy, not algebra: no theorem addresses it."
+  },
+  "$hostFamily": "`Proofs.Ladder` in `src/Fuaran.UI.Idl.Tests/FStarVocabularyTests.fs`, run by `proofs/check.ps1`'s host step and by this repository's ordinary gate. It checks row-to-TREE agreement and deliberately not row-to-PROSE agreement: the second is a human act, and the first is the half a check can settle. A go-red fixture sits beside the theorem clause, so a green ladder is known to be one that could have failed.",
+  "claims": [
+    {
+      "id": "vocabulary-round-trip",
+      "level": "proved",
+      "claim": "The ROUND TRIP over this repository's own wire vocabulary, GENERATED and COMMITTED: `rt_node` proves `dec_node (enc_node x) == Ok x` for every value of every MODELLED type — at every depth, through every list, map, optional member and omit-at-default — by one mutual induction over the family, emitted as one lemma per constructor and one per presence pattern (fuaran-core#168) so that no query carries more than one constructor's object shapes. Emitted by `FStarTarget.proofsModuleFrom` from the same walk that emits `Vocabulary.fst`, so the two files cannot be about different vocabularies, and held to a fresh generation by the `Proofs.Vocabulary` family. THE BOUNDARY, which is the load-bearing half: 'modelled' is twenty of this vocabulary's forty-three kinds, and the other twenty-three are NOT covered by this row — see `vocabulary-coverage` below and the emitted header, which names each one with its reason. It is also a theorem about the GENERATED codec and about no host's hand-written decoder.",
+      "phase": "fuaran#1754",
+      "evidence": {
+        "theorem": "rt_node",
+        "model": "proofs/VocabularyProofs.fst",
+        "prover": "proofs/fstar-pin.json"
+      }
+    },
+    {
+      "id": "vocabulary-decoder-exclusive",
+      "level": "proved",
+      "claim": "Every input reaches exactly one of `Ok` / `Error` in the generated node decoder and never both — the exclusivity half of totality, stated as a lemma because the termination half is discharged by the definition type-checking at `Tot` and so leaves nothing to state.",
+      "phase": "fuaran#1754",
+      "evidence": {
+        "theorem": "dec_node_total",
+        "model": "proofs/VocabularyProofs.fst",
+        "prover": "proofs/fstar-pin.json"
+      }
+    },
+    {
+      "id": "vocabulary-codec-total",
+      "level": "proved",
+      "claim": "The generated encoder and the generated decoder are TOTAL functions of the modelled vocabulary: both type-check at `Tot` under a declared `decreases`, so every input terminates in a value. The proof is the type-checking rather than a lemma, which is why this row names a definition — `dec_node` — and not a theorem. Termination is content here rather than a formality: the decoder descends into a child array obtained BY NAME, so nothing structural is visible at the call site and the measure has to be supplied.",
+      "phase": "fuaran#1754",
+      "evidence": {
+        "theorem": "dec_node",
+        "model": "proofs/Vocabulary.fst",
+        "prover": "proofs/fstar-pin.json"
+      }
+    },
+    {
+      "id": "decode-total",
+      "level": "proved",
+      "claim": "Every decode combinator the generated decoder is built from reaches exactly one outcome on every input, and which one is characterised structurally — so the failure classification is exhaustive rather than merely non-empty. INHERITED BY COPY: `proofs/WireDecode.fst` is the kit's model, copied here and declared in `copies.json`, so this row is the kit's theorem re-checked in this repository's leg rather than a second statement of it.",
+      "phase": "fuaran#1754",
+      "evidence": {
+        "theorem": "decode_total",
+        "model": "proofs/WireDecode.fst",
+        "prover": "proofs/fstar-pin.json"
+      }
+    },
+    {
+      "id": "decode-node-wf",
+      "level": "proved",
+      "claim": "The reference node decoder in the copied combinator model is total on an arbitrary JSON value and succeeds on exactly the well-formed documents. INHERITED BY COPY, as `decode-total` is. Note what it is about: the model's own REFERENCE node shape, not this vocabulary's kinds — the generated decoder's acceptance is `vocabulary-codec-total`'s subject and its characterisation is a named halt in `proofs/README.md`.",
+      "phase": "fuaran#1754",
+      "evidence": {
+        "theorem": "decode_node_wf",
+        "model": "proofs/WireDecode.fst",
+        "prover": "proofs/fstar-pin.json"
+      }
+    },
+    {
+      "id": "parser-null-absorption",
+      "level": "assumed",
+      "claim": "That the parser's absorption of object-member nulls is equivalent to erasing member nulls from the document tree the strict grammar would otherwise produce. INHERITED with the `WireDecode` copy: a copy of a model is a copy of the premises it rests on, and a ladder that took the theorems without the premises would be claiming more than the model does.",
+      "phase": "fuaran#1754",
+      "class": "model-bridge",
+      "closes": "unscheduled",
+      "evidence": {
+        "assumption": "the parser's member-null fork equals erasing member nulls from the strict tree"
+      }
+    },
+    {
+      "id": "vocabulary-coverage",
+      "level": "policy",
+      "claim": "WHICH KINDS THE THEOREMS ABOVE COVER, and that the answer is a computed rule rather than a list. The proof vocabulary is `FStarTarget.proofKinds` — every kind the target can express that introduces no declared type beyond the node envelope's own closure — which selects twenty of this vocabulary's forty-three kinds. The other twenty-three are of two sorts and the emitted header names each with its reason: ONE is a genuine BOUNDARY (`Tabs`, whose `activeIndex` declares `VInt 0` and the model's numeric carriers are opaque, so there is no literal to spell the default with), and twenty-two are held out by a COST CONTROL a measurement could lift. It is a RULE and not a list, which is the property that matters: a kind added over types the model already carries enters at the next regeneration and re-proves itself. The measurement behind choosing this rule over the exhaustive expressible set — including what the exhaustive emission actually is — is in `proofs/README.md` under 'Coverage'. Policy rather than `proved`: it is a statement about the SCOPE of the rows above, and a scope is a claim at none of this ladder's other three levels.",
+      "phase": "fuaran#1754",
+      "evidence": {
+        "document": "proofs/README.md",
+        "rule": "FStarTarget.proofKinds",
+        "header": "proofs/Vocabulary.fst"
+      }
+    },
+    {
+      "id": "proof-leg",
+      "level": "policy",
+      "claim": "Which prover is pinned, how many cold-cache runs a check is, and that a model edited without a regeneration fails the leg — the reproducibility posture the proved rows above are only as good as. Policy, not algebra: no theorem addresses it. The posture also says what the leg COSTS: each module's cold-run budget is declared in `proofs/modules.json`, measured on every run and printed beside the measurement, with an overshoot named as a warning and `check.ps1 -Strict` for a session that wants one red, and each module's time FLOOR declared beside it, which IS a gate. The numbers live there rather than in a row here, because a wall-clock budget is a claim at none of this ladder's four levels and is per module where a row is per claim. The pin itself is ONE number in the kit's repository, and this repository's copy of it is declared in `copies.json` so the sweep names it when it is behind.",
+      "phase": "fuaran#1754",
+      "evidence": {
+        "document": "proofs/README.md",
+        "budgets": "proofs/modules.json",
+        "prover": "proofs/fstar-pin.json"
+      }
+    }
+  ]
+}

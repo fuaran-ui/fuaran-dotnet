@@ -1,6 +1,7 @@
 {
   "kind": "copies",
   "producer": "fuaran-dotnet",
+  "$adoptionNote": "Two kinds of record are declared here and they run in OPPOSITE directions, which is worth reading before the entries. (1) The reference stylesheet — this repository AUTHORS it and four language tiers ship a byte-copy, so `source` is the canonical file and `consumers` are the copies. (2) The PROOF KIT (Phase 1754) — this repository is the kit's first ADOPTER, so the canonical file lives in the kit's repository and the copy is the one here. The registry compares two named files and reports any difference whichever side moved, which is exactly the drift check an adopter wants; what it cannot express is which side is canonical, so every kit record says so in its `regen`: the remedy is always to re-copy FROM the kit's repository, never to push a change the other way. The kit's own manifest carries these entries as `$sources`, inert, with the consumer path left for an adopter to fill; they are filled HERE rather than there because an adopter must be able to adopt without editing the repository it is adopting from. `check` is `bytes` for the pin — a pin is a hash-verified declaration and a byte is a byte — and `fingerprint` for the rest, which are text two platforms may legitimately check out with different line endings.",
   "records": [
     {
       "source": "src/Fuaran.UI.Renderer/content/fuaran-reference.css",
@@ -12,6 +13,78 @@
       ],
       "check": "bytes",
       "regen": "cd Fuaran/Fuaran-UI/fuaran-dotnet; dotnet run --project Build.fsproj -- Css"
+    },
+    {
+      "source": "proofs/fstar-pin.json",
+      "consumers": [
+        "Fuaran/Fuaran-Core/proofs/fstar-pin.json"
+      ],
+      "check": "bytes",
+      "regen": "THE PIN, and the whole reason the kit is worth having: one number, in one place, with every copy of it named. The canonical one is the consumer path above; copy it FROM there to Fuaran/Fuaran-UI/fuaran-dotnet/proofs/fstar-pin.json, then re-run `pwsh ./proofs/check.ps1` — a prover bump is a proof-leg re-check, not a file copy."
+    },
+    {
+      "source": "proofs/kit/check-proof-leg.ps1",
+      "consumers": [
+        "Fuaran/Fuaran-Core/proofs/kit/check-proof-leg.ps1"
+      ],
+      "check": "fingerprint",
+      "regen": "THE ENGINE, copied verbatim. Copy it FROM the consumer path above to Fuaran/Fuaran-UI/fuaran-dotnet/proofs/kit/check-proof-leg.ps1. This repository edits `proofs/check.ps1`, its own caller, and never this file."
+    },
+    {
+      "source": "proofs/kit/templates/check.ps1",
+      "consumers": [
+        "Fuaran/Fuaran-Core/proofs/kit/templates/check.ps1"
+      ],
+      "check": "fingerprint",
+      "regen": "The caller TEMPLATE, kept verbatim beside this repository's edited `proofs/check.ps1` so the shape it was cut from stays visible and its drift is named. Copy it FROM the consumer path above."
+    },
+    {
+      "source": "proofs/kit/templates/modules.json",
+      "consumers": [
+        "Fuaran/Fuaran-Core/proofs/kit/templates/modules.json"
+      ],
+      "check": "fingerprint",
+      "regen": "The cost-declaration TEMPLATE, kept verbatim beside this repository's edited `proofs/modules.json`. It carries the seeding and floor-seeding RULES, which an adopter copies and must not re-word: a changed rule under the same key names would be a different discipline wearing the kit's clothes. Copy it FROM the consumer path above."
+    },
+    {
+      "source": "proofs/kit/templates/ci-proofs-job.yml",
+      "consumers": [
+        "Fuaran/Fuaran-Core/proofs/kit/templates/ci-proofs-job.yml"
+      ],
+      "check": "fingerprint",
+      "regen": "The CI-job TEMPLATE, kept verbatim beside this repository's edited `.github/workflows/proofs.yml`. Its cache key hashes the pin file, which is the whole mechanism by which a pin bump reaches CI with no second edit. Copy it FROM the consumer path above."
+    },
+    {
+      "source": "proofs/kit/templates/oracle.fsproj.template",
+      "consumers": [
+        "Fuaran/Fuaran-Core/proofs/kit/templates/oracle.fsproj.template"
+      ],
+      "check": "fingerprint",
+      "regen": "The never-packed oracle-project TEMPLATE. This repository instantiates NOTHING from it today — every model here is proof-only, so no extraction is diffed and no oracle project exists (see `proofs/README.md`, 'What is not here'). It is carried, and declared, so that the day a model with production code beside it lands here, the template and the two runtime shims are current rather than a year behind. Copy it FROM the consumer path above."
+    },
+    {
+      "source": "proofs/oracle/Prims.fs",
+      "consumers": [
+        "Fuaran/Fuaran-Core/proofs/oracle/Prims.fs"
+      ],
+      "check": "fingerprint",
+      "regen": "The hand-written runtime floor the extractor's output compiles against. It GROWS as models reach for more of F*'s library, so a copy goes stale by the SOURCE moving rather than by anyone editing the copy — which is the drift a registry catches and a reader does not. Copy it FROM the consumer path above."
+    },
+    {
+      "source": "proofs/oracle/FStar_Pervasives_Native.fs",
+      "consumers": [
+        "Fuaran/Fuaran-Core/proofs/oracle/FStar_Pervasives_Native.fs"
+      ],
+      "check": "fingerprint",
+      "regen": "The second half of the same runtime floor. Copy it FROM the consumer path above."
+    },
+    {
+      "source": "proofs/WireDecode.fst",
+      "consumers": [
+        "Fuaran/Fuaran-Core/proofs/WireDecode.fst"
+      ],
+      "check": "fingerprint",
+      "regen": "A MODEL, not scaffolding: the decode-combinator model the generated `Vocabulary.fst` opens, generic in its numeric carriers. Its theorems are re-checked by this repository's leg and appear on this repository's ladder (`decode-total`, `decode-node-wf`) — and so does the premise they rest on (`parser-null-absorption`), because a copy of a model is a copy of its premises. Copy it FROM the consumer path above; a theorem that moves there is a finding here before it is a red gate nobody caused."
     }
   ]
 }

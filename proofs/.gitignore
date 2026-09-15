@@ -1,0 +1,7 @@
+# The proof leg (proofs/check.ps1, Phase 1754) installs the pinned F* release beside the models and
+# keeps its checked-module cache and its fresh extractions under obj/. Neither is source: the
+# release is a hash-verified download declared in fstar-pin.json, and the cache is PER INVOCATION
+# (obj/cache-<pid>, one per running check.ps1) so that "cold cache" cannot be falsified by a second
+# run in the same worktree.
+.fstar/
+obj/

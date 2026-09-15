@@ -98,6 +98,27 @@ Without it the corpus-parity suites fail by design ("`wire-format-fixtures/manif
 than passing over an absent oracle. The `local` NuGet source in `nuget.config` is an optional developer
 shadow feed; it is not needed to build or test from a clean clone.
 
+## The proof tier
+
+This repository carries an F\* proof leg over its own wire vocabulary, in [`proofs/`](proofs/).
+It proves ONE theorem and its scope is the whole of the care: for every value of every **modelled**
+kind of `src/Fuaran.UI.Idl/idl.json`, decoding its encoding returns that value, and every input
+reaches exactly one of `Ok` / `Error`. The models are **generated** from that vocabulary by the same
+IDL engine that generates the tier's structural layer, and held to a fresh generation on every run,
+so a kind added to the vocabulary re-proves itself rather than waiting for a hand-written clause.
+
+**What it does not prove, stated here rather than left to be assumed.** It is not about any host's
+decoder — every conformant host ships a hand-written, tuned decoder certified against the shared
+wire-format conformance corpus, and neither is evidence about the other. It covers twenty of the
+vocabulary's forty-three kinds, for a measured cost reason, with every excluded kind named in the
+generated file's own header. And it covers one direction: everything the encoder can produce is read
+back exactly, while an independent characterisation of what else the decoder ACCEPTS is a recorded
+halt, not a result.
+
+[`proofs/README.md`](proofs/README.md) is the full statement, [`proofs.json`](proofs.json) is the
+claims ladder in a form a tool can read, and `pwsh ./proofs/check.ps1` runs the leg. Nothing
+generated there ships in a package.
+
 ## Repository conventions
 
 See [`CLAUDE.md`](CLAUDE.md) for repo conventions (build pipeline, formatting mandate, sample port allocation).
