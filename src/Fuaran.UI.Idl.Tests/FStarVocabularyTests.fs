@@ -249,7 +249,7 @@ let generationTests =
               Expect.equal
                   refused
                   [ "Tabs" ]
-                  "the set of kinds the F* target cannot express has moved. `Tabs` is refused because `Tabs.activeIndex` declares `Static 0` and the model's numeric carriers are opaque, so there is no literal to spell it with (the Core ask is in proofs/README.md). A change here is a vocabulary or backend change and needs the README's refusal list moved with it.") ]
+                  "the set of kinds the F* target cannot express has moved. `Tabs` is refused because `Tabs.activeIndex` is a `Binding<int>` omitted at the declared default `Static { value = 0 }`, and the model's opaque numeric carriers have no literal to spell that default's inner `VInt 0` with (the Core ask is in proofs/README.md). A change here is a vocabulary or backend change and needs the README's refusal list moved with it.") ]
 
 // ─── Family 2: the claims ladder ───────────────────────────────────────────
 //
