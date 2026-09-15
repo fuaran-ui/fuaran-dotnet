@@ -7815,7 +7815,7 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.83.0 — DRAFT: the slot Phase 1690 opens (UNTAGGED — until the next release gesture)
+## 0.83.0 — the slot Phase 1690 opened, the 2026-09-15 cohort raise rides — released 2026-09-15 as `v0.83.0`
 
 _**0.82.0 was never tagged**, and this phase's change is of a HIGHER class than the ADDITIVE one that
 slot carried, so under the draft-slot rule the number advances rather than the entry riding. What
@@ -7999,7 +7999,7 @@ deriving a token from a case name; `manifest.json`'s `enumTokens` key is how to 
 
 ---
 
-## 0.81.0 — DRAFT: the slot Phase 1646 opened, which the 2026-09-10 (e) run (fuaran#1656–#1669) rides (UNTAGGED — until the next release gesture)
+## 0.81.0 — the slot Phase 1646 opened, which the 2026-09-10 (e) run (fuaran#1656–#1669) rides — released as `v0.81.0`
 
 _**This is the draft slot the 2026-09-10 (e) run rides.** `v0.80.0` is tagged (Phase 1637), so nothing can ride it;
 Phase 1646 (5095855) advanced `<Version>` to 0.81.0 by hand for its typed-grid facade widening (its entry is below), and
