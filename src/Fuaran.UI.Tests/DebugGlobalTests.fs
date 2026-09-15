@@ -212,7 +212,7 @@ let tests =
 
               let pipeline: Fuaran.Core.Transform list =
                   [ Fuaran.Core.Filter(
-                        Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.Param "dept")
+                        Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.ColExpr.Param "dept")
                     ) ]
 
               let scoped =

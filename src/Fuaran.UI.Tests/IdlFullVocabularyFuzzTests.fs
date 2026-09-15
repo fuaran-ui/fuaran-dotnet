@@ -83,6 +83,72 @@ module G = Fuaran.UI.Generated
 //  to the full (ship) lane. Four cases, ~4000 vectors × three legs.
 // ---------------------------------------------------------------------------
 
+/// **The hosted-slot boundary, owned by this tier since Core 0.23.0.** `Idl.Gen.usesHosted` was
+/// removed from the substrate (Core's ruling of 2026-09-10: the cross-host fuzz leg the boundary was
+/// written for is not Core's to run, and the vocabulary-scale sweep is owned by the UI tier now).
+/// This is that predicate, carried here with its meaning intact: does an authored value POPULATE a
+/// `THosted` slot anywhere under its declared type? Precise, not conservative — it walks the value
+/// alongside its declared type and reports only a slot that is actually populated, so an optional
+/// hosted field sampled absent does not count. A vector that populates one is outside leg 2's
+/// domain (the F# decoder cannot read a hosted codec's grammar), and is recorded as such rather than
+/// counted as a failure.
+let private usesHosted (idl: Idl) (v: IdlValue) : bool =
+    let rec subst (m: Map<string, IdlType>) (t: IdlType) : IdlType =
+        match t with
+        | TVar v ->
+            match Map.tryFind v m with
+            | Some r -> r
+            | None -> t
+        | TList inner -> TList(subst m inner)
+        | TMap inner -> TMap(subst m inner)
+        | TUnion(n, args) -> TUnion(n, List.map (subst m) args)
+        | other -> other
+
+    let rec go (t: IdlType) (value: IdlValue) : bool =
+        match t, value with
+        | THosted _, _ -> true
+        | TList inner, VList xs -> xs |> List.exists (go inner)
+        | TMap vt, VMap entries -> entries |> List.exists (fun (_, ev) -> go vt ev)
+        | TRecord n, VRecord fs ->
+            match idl.Records |> List.tryFind (fun r -> r.Name = n) with
+            | Some r -> fields r.Fields fs
+            | None -> false
+        | TUnion(n, args), VUnion(tag, fs) ->
+            match idl.Unions |> List.tryFind (fun u -> u.Name = n) with
+            | Some u when List.length u.Params = List.length args ->
+                match u.Cases |> List.tryFind (fun c -> c.Tag = tag) with
+                | Some c ->
+                    let m = Map.ofList (List.zip u.Params args)
+                    fields (c.Fields |> List.map (fun f -> { f with Type = subst m f.Type })) fs
+                | None -> false
+            | _ -> false
+        | TKind, VUnion(tag, fs) ->
+            match idl.Kinds |> List.tryFind (fun k -> k.Tag = tag) with
+            | Some k -> fields k.Fields fs
+            | None -> false
+        | TOp, VUnion(tag, fs) ->
+            match idl.Ops |> List.tryFind (fun o -> o.Tag = tag) with
+            | Some o -> fields o.Fields fs
+            | None -> false
+        | TNode, VNode(_, kindTag, fs) -> node kindTag fs []
+        | TNode, VNodeEnv(_, envelope, kindTag, fs) -> node kindTag fs envelope
+        | _ -> false
+
+    and fields (declared: IdlField list) (authored: (string * IdlValue) list) : bool =
+        declared
+        |> List.exists (fun f ->
+            match authored |> List.tryFind (fun (n, _) -> n = f.Name) with
+            | Some(_, av) when av <> VAbsent -> go f.Type av
+            | _ -> false)
+
+    and node (kindTag: string) (kindFields: (string * IdlValue) list) (envelope: (string * IdlValue) list) : bool =
+        fields idl.NodeFields envelope
+        || (match idl.Kinds |> List.tryFind (fun k -> k.Tag = kindTag) with
+            | Some k -> fields k.Fields kindFields
+            | None -> false)
+
+    go TNode v
+
 /// The seed. Any value works; it is pinned so the gate is the SAME vectors on
 /// every run and every machine.
 let private seed = 20260818
@@ -321,7 +387,7 @@ let tests =
               // change in WHICH refusals occur (a `Binding` case falling out of
               // the generated decoder would land here silently as one more
               // refusal), and a bare count hides it.
-              let hostedVectors = vs |> List.map (Gen.usesHosted vocabulary)
+              let hostedVectors = vs |> List.map (usesHosted vocabulary)
 
               let mutable compared = 0
               let mutable outOfDomainHosted = 0

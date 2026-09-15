@@ -156,7 +156,7 @@ let tests =
                             Fuaran.Core.Binary(
                                 Fuaran.Core.Gt,
                                 Fuaran.Core.Col "n",
-                                Fuaran.Core.Lit(Fuaran.Core.Int threshold)
+                                Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int threshold)
                             )
                         )
                         Fuaran.Core.Project [ "over", "over" ] ],
@@ -205,10 +205,10 @@ let tests =
                                 [ Fuaran.Core.Binary(
                                       Fuaran.Core.Gt,
                                       Fuaran.Core.Col "n",
-                                      Fuaran.Core.Lit(Fuaran.Core.Int 3)
+                                      Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int 3)
                                   ),
-                                  Fuaran.Core.Lit(Fuaran.Core.Str "busy") ],
-                                Fuaran.Core.Lit(Fuaran.Core.Str "quiet")
+                                  Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "busy") ],
+                                Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "quiet")
                             )
                         )
                         Fuaran.Core.Project [ "label", "label" ] ],

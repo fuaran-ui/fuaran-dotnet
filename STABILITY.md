@@ -7919,6 +7919,43 @@ which no authoring surface spells.
 *Version.* Rides 0.83.0. Nothing in this package's public surface moves, so the class is below the
 BREAKING one the draft already carries, and the rule above applies unchanged.
 
+**Cohort raise `fuaran-core-0.24.0` (2026-09-15) — BREAKING (surface): `Fuaran.Core.*` 0.22.0 → 0.24.0,
+and `Fuaran.UI.OpStream.Abstractions` drops `ChainBreakReason` and `Verify.classify`.** The Core ask
+Phase 1525 recorded in `docs/CORE-API-ASKS.md` — `ChainBreak.Reason` as a closed DU — landed in Core
+0.23.0, so the workaround goes exactly as that entry said it would: the domain's shadow DU and the
+string-matching classifier are removed, `Verify.ofChainBreak` matches `Fuaran.Core.ChainBreakReason`
+directly (a total match the compiler checks; Core's `Unrecognised` still projects onto
+`VerificationError.HashMismatch`, since that DU is shipped and closed), and the ask entry is closed.
+That removal is the one public-surface move; nothing else in any package is added, removed or
+retyped. Two consumers across the estate were swept for either symbol and none was found.
+
+*What the span cost the sources, otherwise.* Two `[<RequireQualifiedAccess>]` unions Core 0.23.0 adds
+reuse older case names — `NowGrain.Date` / `.Timestamp` beside `Cell.Date` / `.Timestamp`, and
+`Slot.Lit` / `.Param` beside `ColExpr.Lit` / `.Param` — so every `Fuaran.Core.Date` / `.Lit` spelling
+here now resolves to the newer union and is qualified by type (`Fuaran.Core.Cell.Date`,
+`Fuaran.Core.ColExpr.Lit`; fourteen files, no behaviour change). `ColExpr.Now` is a leaf in
+`JsonDecode`'s expression walk. `Sort` keys and `Limit` bounds are `Slot<_>`, which reaches only test
+literals and the C# facade test — the wire decoder never constructed either directly. And
+`Idl.Gen.usesHosted`, REMOVED by Core 0.23.0 with the ruling that the vocabulary-scale sweep is this
+tier's, is carried into `IdlFullVocabularyFuzzTests` with its meaning intact.
+
+*The census.* The pinned kit ships seven law families it did not at 0.22.0. ADOPTED: `containerLaws`
+over the tier's `canHold` (with a stated limit the test asserts — the interior-graft arm is unreachable
+because `withChildren` is a no-op on a leaf by design, so the adequacy guard is asserted red for that
+arm alone); `chainBreakReasonLaws` and `dagBreakReasonLaws` (this tier is the CONSUMER of the
+classification `ofChainBreak` now projects, so the walkers minting only named cases is what its
+`Unrecognised` arm rests on); and `slotParamLaws` / `nowLaws` — the two Phase-125 asks this tier
+routed to Core, certified at this pin from the ServerDriven project beside the incremental families.
+NOT USED, with the reason: `codecInjectivityLaws` (it needs `'Op : equality`, and `TreeOp<obj>` is
+obj-erased — equality by encoding would make the collision law vacuous; the codec round-trips against
+the wire corpus instead) and `diffContainedLaws` (no contained diff is derived here).
+`docs/core-conformance.md` re-renders: 45 adopted of 59.
+
+*Version.* Rides 0.83.0: the draft already carries BREAKING, and a surface removal is that class,
+not a higher one. This is the entry the release gesture tags — every public-path consumer of
+Fuaran.UI 0.80.0 has been held at Core ≤ 0.22.0 precisely because 0.80.0's `classify` read the
+`Reason` getter as a string, and the tag is what lets them follow.
+
 ---
 
 ## 0.82.0 — DRAFT: the slot Phase 1691 opens (UNTAGGED — superseded by 0.83.0 before release)

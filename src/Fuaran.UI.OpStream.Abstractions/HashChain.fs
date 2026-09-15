@@ -193,58 +193,22 @@ type WriteAdmission =
     /// silent fast path.
     | Off
 
-/// Core's `ChainBreak` carries its reason as an untyped `string` (Phase 1525,
-/// finding L-A8). This DU is the domain's typed classification of the values
-/// Core actually emits, so a reason Core adds LATER is reported as
-/// `Unrecognised` rather than silently taking whichever arm happened to be the
-/// fallback.
-///
-/// **The durable fix is a Core API ask, and it is recorded rather than
-/// implied:** `Fuaran.Core.ChainBreak.Reason` should itself be a closed DU, so
-/// the mapping below is a total match the compiler checks instead of a string
-/// comparison that goes quietly wrong. That change belongs in the substrate
-/// repo — this domain pins a released substrate version and cannot make it — so
-/// the ask lives in `docs/CORE-API-ASKS.md` beside the classifier that needs it.
-[<RequireQualifiedAccess>]
-type ChainBreakReason =
-    /// The record's sequence is not the one the walk expected — a gap, a
-    /// reordering or a truncation.
-    | SequenceMismatch
-    /// The record's `PreviousHash` does not name its predecessor's `Hash`.
-    | PreviousHashLinkBroken
-    /// The record's `Hash` does not recompute from its own fields.
-    | HashMismatch
-    /// A reason string this domain does not know. Reported AS unknown — the
-    /// chain is genuinely broken (Core returns a break only when it is), but
-    /// this domain will not claim to know which check failed.
-    | Unrecognised of reason: string
-
+/// The Core ask Phase 1525 (finding L-A8) recorded here LANDED in Fuaran.Core 0.23.0:
+/// `Fuaran.Core.ChainBreak.Reason` is the closed `ChainBreakReason` DU, so the
+/// domain's shadow of it and `Verify.classify` — a string comparison against
+/// literals copied out of the substrate's source — are gone, exactly as the ask's
+/// own "when it lands" said they would be. `ofChainBreak` below is now a total
+/// match the compiler checks; a reason Core adds later is a compile error here,
+/// not a quiet reclassification.
 module Verify =
-
-    /// Core's documented reason strings, classified. Enumerated explicitly, and
-    /// with an honest `Unrecognised` arm, because the pre-1525 form matched two
-    /// of them and swept EVERY other value — including a reason Core might add
-    /// tomorrow — into `HashMismatch`, which is a claim about which check failed
-    /// that nothing had established.
-    let classify (b: Fuaran.Core.ChainBreak) : ChainBreakReason =
-        match b.Reason with
-        | "sequence-number mismatch" -> ChainBreakReason.SequenceMismatch
-        | "prev-hash link broken" -> ChainBreakReason.PreviousHashLinkBroken
-        // Core spells the digest failure differently per walker — the op walk
-        // says "tampered op/actor/seq", the capture walk "tampered capture" —
-        // and both mean the same thing here.
-        | "hash mismatch (tampered op/actor/seq)"
-        | "hash mismatch (tampered capture)" -> ChainBreakReason.HashMismatch
-        | other -> ChainBreakReason.Unrecognised other
-
     /// Map Core's 0-based, segment-relative `ChainBreak` onto the domain's
     /// 1-based absolute `VerificationError`. `offset0` is the Core-basis index
     /// of the segment's first record (0 for a genesis-anchored stream).
     let private ofChainBreak (offset0: int) (b: Fuaran.Core.ChainBreak) : VerificationError =
         let seq1 = b.Index + offset0 + 1
 
-        match classify b with
-        | ChainBreakReason.SequenceMismatch ->
+        match b.Reason with
+        | Fuaran.Core.ChainBreakReason.SequenceMismatch ->
             // Expected/Got are Core's stringified 0-based segment-relative seqs.
             let parse (s: string) =
                 match System.Int32.TryParse s with
@@ -252,15 +216,17 @@ module Verify =
                 | false, _ -> seq1
 
             VerificationError.OutOfOrder(parse b.Expected, parse b.Got)
-        | ChainBreakReason.PreviousHashLinkBroken -> VerificationError.PreviousHashMismatch(seq1, b.Expected, b.Got)
-        | ChainBreakReason.HashMismatch
-        // An unrecognised reason still projects onto `HashMismatch`, because
-        // `VerificationError` is a shipped closed DU and a new case would break
-        // every exhaustive consumer match (a major bump this additive phase does
-        // not take). The projection is no longer SILENT: `classify` is public, so
-        // a caller that needs the distinction reads the typed reason directly,
-        // and the Core ask above is what removes the projection entirely.
-        | ChainBreakReason.Unrecognised _ -> VerificationError.HashMismatch(seq1, b.Expected, b.Got)
+        | Fuaran.Core.ChainBreakReason.PrevHashLinkBroken ->
+            VerificationError.PreviousHashMismatch(seq1, b.Expected, b.Got)
+        | Fuaran.Core.ChainBreakReason.HashMismatch
+        // Core's `Unrecognised` is the honest arm for a reason that arrives from
+        // OUTSIDE its own walkers (a host verifier, a wire boundary); both walkers
+        // this module runs mint only the three named cases, which Core certifies
+        // (`Conformance.chainBreakReasonLaws`). It still projects onto
+        // `HashMismatch`, because `VerificationError` is a shipped closed DU and a
+        // new case would break every exhaustive consumer match; a caller that needs
+        // the distinction reads `ChainBreak.Reason` itself, which is now typed.
+        | Fuaran.Core.ChainBreakReason.Unrecognised _ -> VerificationError.HashMismatch(seq1, b.Expected, b.Got)
 
     /// Verify a CONTIGUOUS SEGMENT of a stream against an anchor the caller
     /// already trusts: assert (a) the first record links to

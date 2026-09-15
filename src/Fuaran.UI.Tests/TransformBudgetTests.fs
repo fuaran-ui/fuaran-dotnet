@@ -37,7 +37,8 @@ let private tableOf (n: int) : Table =
 
 /// An `n`-step pipeline of no-op sorts. Every step is legal and cheap, so what
 /// a refusal measures is the DECLARATION, not the evaluator's opinion of it.
-let private pipelineOf (n: int) : Transform list = [ for _ in 1..n -> Sort [ "v", Asc ] ]
+let private pipelineOf (n: int) : Transform list =
+    [ for _ in 1..n -> Sort [ Fuaran.Core.Slot.Lit "v", Asc ] ]
 
 let private resolveRows (table: Table) (pipeline: Transform list) =
     BindingResolver.resolve<Row seq>

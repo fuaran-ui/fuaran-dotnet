@@ -47,7 +47,7 @@ let private embeddedSource =
           Columns = [ Fuaran.Core.Column.create "dept" Fuaran.Core.StringType [ Fuaran.Core.Str "eng" ] ] }
 
 let private paramPipeline: Fuaran.Core.Transform list =
-    [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.Param "dept")) ]
+    [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.ColExpr.Param "dept")) ]
 
 let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<Msg> =
     { Id = "grid"
@@ -505,7 +505,11 @@ let tests =
                       (Binding.Transform(
                           TransformSource.Data(Fuaran.Core.Ref "orders"),
                           [ Fuaran.Core.Filter(
-                                Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.Param "dept")
+                                Fuaran.Core.Binary(
+                                    Fuaran.Core.Eq,
+                                    Fuaran.Core.Col "dept",
+                                    Fuaran.Core.ColExpr.Param "dept"
+                                )
                             ) ],
                           Some
                               [ { From = Binding.Filter("dept", None)

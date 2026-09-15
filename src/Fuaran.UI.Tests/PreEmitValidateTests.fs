@@ -1841,7 +1841,7 @@ let tests =
                           Source =
                               Binding.Transform(
                                   TransformSource.Data(Fuaran.Core.DataSource.Ref "revenue-by-quarter"),
-                                  [ Fuaran.Core.Transform.Sort [ "quarter", Fuaran.Core.Asc ] ],
+                                  [ Fuaran.Core.Transform.Sort [ Fuaran.Core.Slot.Lit "quarter", Fuaran.Core.Asc ] ],
                                   None
                               )
                           XField = "quarter"

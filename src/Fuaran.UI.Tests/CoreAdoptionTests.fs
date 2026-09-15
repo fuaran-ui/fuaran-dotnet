@@ -246,6 +246,74 @@ let tests =
 
                   failtestf "Fuaran.UI witness failed Core certify:\n%s" msg
 
+          testCase "the Fuaran.UI container predicate certifies under Core's containerLaws"
+          <| fun _ ->
+              // `canHold` is declared on this generator and is what `Ops.Apply.apply` routes
+              // structural ops through (`applyContained`); Core 0.24.0 makes child-blindness the
+              // DOMAIN's obligation, so it is certified here alongside the base run.
+              //
+              // The family's ADEQUACY guard is legitimately red for this witness, and that is
+              // asserted rather than stepped around. Its third arm builds the offender it wants
+              // refused by giving a fresh leaf a child through `ReplaceChildren`; this witness's
+              // `withChildren` is a no-op on a leaf BY DESIGN (the comment beside `canHold` says so,
+              // and `witnessLaws` admits it), so the malformed graft can never be constructed and
+              // the arm is unreachable — by the witness's own shape, which is the stronger
+              // guarantee. The two substantive laws are asserted by name; the adequacy law is
+              // asserted red FOR THAT ARM and no other.
+              let results = CoreConf.containerLaws nodew idw opGen 20260619 200
+
+              let byPrefix (prefix: string) =
+                  match
+                      results
+                      |> List.filter (fun r -> r.Law.StartsWith(prefix, System.StringComparison.Ordinal))
+                  with
+                  | [ one ] -> one
+                  | other -> failtestf "expected exactly one law starting '%s', found %d" prefix (List.length other)
+
+              let childBlind = byPrefix "canHold is child-blind"
+              let invariant = byPrefix "applyContained preserves the container invariant"
+              let adequacy = byPrefix "sample adequacy"
+
+              Expect.isTrue childBlind.Passed (sprintf "child-blindness: %A" childBlind.Counterexample)
+              Expect.isTrue invariant.Passed (sprintf "container invariant: %A" invariant.Counterexample)
+
+              Expect.isFalse
+                  adequacy.Passed
+                  "the interior-graft arm has become reachable — the witness now lets a leaf carry children, so the third law is live and this test should assert it green instead"
+
+              match adequacy.Counterexample with
+              | Some text ->
+                  Expect.stringContains
+                      text
+                      "never reached interior graft"
+                      "the ONLY arm the guard may report unreached is the interior graft; any other unreached arm is a generator regression"
+              | None -> failtest "a red adequacy law must say which arm it never reached"
+
+          testCase "the kit's classified chain walkers never mint Unrecognised (chainBreakReasonLaws)"
+          <| fun _ ->
+              // Self-contained in the pinned kit. Enrolled because this tier is the CONSUMER of the
+              // classification: `HashChain.ofChainBreak` projects `ChainBreak.Reason` onto
+              // `VerificationError`, and its `Unrecognised` arm is only honest if the walkers this
+              // tier runs (`firstChainBreakWith` / `firstCaptureBreak`) mint the three named cases
+              // for every break they can produce — which is exactly what the family certifies.
+              CoreConf.chainBreakReasonLaws 20260619 200
+              |> List.filter (fun r -> not r.Passed)
+              |> List.map (fun r -> sprintf "  %s — %A" r.Law r.Counterexample)
+              |> function
+                  | [] -> ()
+                  | failures -> failtestf "chainBreakReasonLaws at this pin:\n%s" (String.concat "\n" failures)
+
+          testCase "the kit's classified DAG walker never mints Unrecognised (dagBreakReasonLaws)"
+          <| fun _ ->
+              // The DAG twin, for the same reason: `Fuaran.UI.OpStream.Dag.*` verifies through
+              // `Dag.firstBreak` and reports its `DagBreakReason`.
+              CoreConf.dagBreakReasonLaws 20260619 200
+              |> List.filter (fun r -> not r.Passed)
+              |> List.map (fun r -> sprintf "  %s — %A" r.Law r.Counterexample)
+              |> function
+                  | [] -> ()
+                  | failures -> failtestf "dagBreakReasonLaws at this pin:\n%s" (String.concat "\n" failures)
+
           testCase "Core skeleton ops + invert operate over a concrete Fuaran.UI tree"
           <| fun _ ->
               let tree = mkStack "root" [ mkStack "a" [] ]
@@ -609,7 +677,7 @@ module Columnar =
     /// Chosen to reach the three schema-shaping directions the walk must model:
     /// unchanged, appending, and closing.
     let private refinementMenu: (string * Transform list) list =
-        [ "sort", [ Sort [ "headcount", Asc ] ]
+        [ "sort", [ Sort [ Fuaran.Core.Slot.Lit "headcount", Asc ] ]
           "filter", [ Filter(Binary(Gt, Col "headcount", Lit(Int 4))) ]
           "derive", [ Derive("total", Binary(Add, Col "headcount", Lit(Int 1))) ]
           "project", [ Project [ "dept", "dept"; "spend", "cost" ] ]

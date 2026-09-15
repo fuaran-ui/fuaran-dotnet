@@ -121,7 +121,7 @@ internal static class FacadeVocabulary
             "Binding.Transform",
             Href(Binding.Transform<string>(
                 TransformSource.Data(global::Fuaran.Core.DataSource.NewRef("sales")),
-                [global::Fuaran.Core.Transform.NewLimit(1, 0)])),
+                [global::Fuaran.Core.Transform.NewLimit(global::Fuaran.Core.Slot<int>.NewLit(1), global::Fuaran.Core.Slot<int>.NewLit(0))])),
             "\"$type\":\"Transform\"");
 
         Encodes("FuaranAction.SetState", Click(FuaranAction.SetState("k", 1)), "\"$type\":\"SetState\"");

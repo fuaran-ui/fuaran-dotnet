@@ -121,7 +121,9 @@ let private pipelines: (string * Transform list) list =
       "filter then groupBy (maintained groups)",
       [ Filter(Binary(Gt, Col "a", Lit(Int 0)))
         GroupBy([ "b" ], [ { Name = "n"; Fn = Count; Of = "a" } ]) ]
-      "sort then filter (merged order)", [ Sort [ "a", Asc ]; Filter(Binary(Gt, Col "a", Lit(Int 1))) ]
+      "sort then filter (merged order)",
+      [ Sort [ Fuaran.Core.Slot.Lit "a", Asc ]
+        Filter(Binary(Gt, Col "a", Lit(Int 1))) ]
       "partitioned window (bounded frame)",
       [ Window
             { PartitionBy = [ "b" ]
@@ -141,7 +143,7 @@ let private pipelines: (string * Transform list) list =
               As = "prev" } ]
       // Two declines with different reasons: a verb the seam does not classify as row-local, and a
       // window whose frame is unbounded. Both must fall back INSIDE the seam and still answer right.
-      "limit (declines — verb is not row-local)", [ Limit(3, 0) ]
+      "limit (declines — verb is not row-local)", [ Limit(Fuaran.Core.Slot.Lit 3, Fuaran.Core.Slot.Lit 0) ]
       "unbounded window (declines — frame is unbounded)",
       [ Window
             { PartitionBy = []
@@ -502,7 +504,24 @@ let tests =
                     // evaluator. It cannot see `BindingWalk`, so the tier-shaped cone property is
                     // stated separately below and the census row cites the pair.
                     CoreConf.dirtyPropagationLaws seed iterations
-                    |> assertAllPassed "Conformance.dirtyPropagationLaws" ]
+                    |> assertAllPassed "Conformance.dirtyPropagationLaws"
+
+                testCase "slotParamLaws certifies a param in a Sort / Limit slot at this pin"
+                <| fun _ ->
+                    // The UI tier ASKED for this (Phase 125, routed to Core and cut as 0.23.0): a
+                    // sort key or a limit bound may be a named param, resolved from the same env
+                    // `ColExpr.Param` reads. Self-contained over Core's own pipelines; enrolled
+                    // because the live-Transform seam this tier consumes is where such a param
+                    // would be bound.
+                    CoreConf.slotParamLaws seed iterations
+                    |> assertAllPassed "Conformance.slotParamLaws"
+
+                testCase "nowLaws certifies the pinned evaluation clock at this pin"
+                <| fun _ ->
+                    // The other Phase-125 ask: a `now` literal at a grain evaluates under a pinned
+                    // `ClockWitness` and never reads the host's clock — the determinism this
+                    // tier's byte-stable projections rest on. Self-contained, same posture.
+                    CoreConf.nowLaws seed iterations |> assertAllPassed "Conformance.nowLaws" ]
 
           // ---- (a) + (b) over the tier's own live path ----
 

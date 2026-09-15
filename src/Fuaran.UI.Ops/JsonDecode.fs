@@ -3058,8 +3058,10 @@ let private scanExpr (expr: Fuaran.Core.ColExpr) : struct (int * bool) =
         if count <= Fuaran.UI.WireLimits.MaxExprNodes then
             match e with
             | Fuaran.Core.Col _ -> sawCol <- true
-            | Fuaran.Core.Lit _
-            | Fuaran.Core.Param _ -> ()
+            | Fuaran.Core.ColExpr.Lit _
+            | Fuaran.Core.ColExpr.Param _
+            // A `now` literal at a grain (Core 0.23.0) is a leaf: no column, no children.
+            | Fuaran.Core.Now _ -> ()
             | Fuaran.Core.Binary(_, l, r) ->
                 walk l
                 walk r

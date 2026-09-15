@@ -4131,7 +4131,7 @@ let gridTransform: Node<obj> =
 
     let pipeline: Fuaran.Core.Transform list =
         [ Fuaran.Core.Filter(
-              Fuaran.Core.Binary(Fuaran.Core.Gt, Fuaran.Core.Col "amount", Fuaran.Core.Lit(Fuaran.Core.Int 0))
+              Fuaran.Core.Binary(Fuaran.Core.Gt, Fuaran.Core.Col "amount", Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int 0))
           )
           Fuaran.Core.GroupBy(
               [ "dept" ],
@@ -4140,7 +4140,7 @@ let gridTransform: Node<obj> =
                    Of = "amount" }
                 : Fuaran.Core.Agg) ]
           )
-          Fuaran.Core.Sort [ "total", Fuaran.Core.Desc ] ]
+          Fuaran.Core.Sort [ Fuaran.Core.Slot.Lit "total", Fuaran.Core.Desc ] ]
 
     node
         "grid-transform"
@@ -4181,7 +4181,9 @@ let gridTransformParam: Node<obj> =
                   Fuaran.Core.Column.create "amount" Fuaran.Core.IntType [ Fuaran.Core.Int 100; Fuaran.Core.Int 90 ] ] }
 
     let pipeline: Fuaran.Core.Transform list =
-        [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.Param "dept")) ]
+        [ Fuaran.Core.Filter(
+              Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.ColExpr.Param "dept")
+          ) ]
 
     node
         "grid-transform-param"
@@ -4250,7 +4252,9 @@ let transformUndeclaredParam: Node<obj> =
                   Fuaran.Core.Column.create "amount" Fuaran.Core.IntType [ Fuaran.Core.Int 100; Fuaran.Core.Int 90 ] ] }
 
     let pipeline: Fuaran.Core.Transform list =
-        [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.Param "ghost")) ]
+        [ Fuaran.Core.Filter(
+              Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.ColExpr.Param "ghost")
+          ) ]
 
     node
         "grid-transform-undeclared-param"
@@ -4527,7 +4531,7 @@ let masterDetailPreselected: Node<obj> =
                                         Fuaran.Core.Binary(
                                             Fuaran.Core.Eq,
                                             Fuaran.Core.Col "id",
-                                            Fuaran.Core.Param "ticketId"
+                                            Fuaran.Core.ColExpr.Param "ticketId"
                                         )
                                     ) ],
                                   Some
@@ -4778,7 +4782,9 @@ let masterDetailPreselectedSecondRow: Node<obj> =
           Name = "ticketId" }
 
     let filterById =
-        Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "id", Fuaran.Core.Param "ticketId"))
+        Fuaran.Core.Filter(
+            Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "id", Fuaran.Core.ColExpr.Param "ticketId")
+        )
 
     node
         "master-detail-preselected-second-row"
@@ -4879,7 +4885,7 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                                           TransformSource.Data(source),
                                           [ filterById
                                             Fuaran.Core.Project [ "note", "note" ]
-                                            Fuaran.Core.Limit(1, 0) ],
+                                            Fuaran.Core.Limit(Fuaran.Core.Slot.Lit 1, Fuaran.Core.Slot.Lit 0) ],
                                           Some [ ticketIdParam ]
                                       )
                                   ) }
@@ -4974,7 +4980,7 @@ let nowEnvironmentBinding: Node<obj> =
                                         "daysOverdue",
                                         Fuaran.Core.ApplyFn(
                                             Fuaran.Core.DateDiffDays,
-                                            [ Fuaran.Core.Param "today"; Fuaran.Core.Col "due" ]
+                                            [ Fuaran.Core.ColExpr.Param "today"; Fuaran.Core.Col "due" ]
                                         )
                                     ) ],
                                   Some
@@ -5070,7 +5076,7 @@ let nowGrain: Node<obj> =
                                         "daysOverdue",
                                         Fuaran.Core.ApplyFn(
                                             Fuaran.Core.DateDiffDays,
-                                            [ Fuaran.Core.Param "today"; Fuaran.Core.Col "due" ]
+                                            [ Fuaran.Core.ColExpr.Param "today"; Fuaran.Core.Col "due" ]
                                         )
                                     ) ],
                                   Some
@@ -5152,7 +5158,8 @@ let formatSince: Node<obj> =
 // keeping it apart from the params fixture below means a host that decodes the
 // expression but never resolves a param fails exactly one of the two.
 let exprScalar: Node<obj> =
-    let lit (s: string) = Fuaran.Core.Lit(Fuaran.Core.Str s)
+    let lit (s: string) =
+        Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str s)
 
     let md (id: string) (b: Binding<string>) : Node<obj> =
         node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
@@ -5179,8 +5186,8 @@ let exprScalar: Node<obj> =
                                   Binding.Expr(
                                       Fuaran.Core.Binary(
                                           Fuaran.Core.Mul,
-                                          Fuaran.Core.Lit(Fuaran.Core.Float 12.5),
-                                          Fuaran.Core.Lit(Fuaran.Core.Float 4.0)
+                                          Fuaran.Core.ColExpr.Lit(Fuaran.Core.Float 12.5),
+                                          Fuaran.Core.ColExpr.Lit(Fuaran.Core.Float 4.0)
                                       ),
                                       None
                                   ) }
@@ -5192,8 +5199,8 @@ let exprScalar: Node<obj> =
                           Fuaran.Core.Case(
                               [ Fuaran.Core.Binary(
                                     Fuaran.Core.And,
-                                    Fuaran.Core.Lit(Fuaran.Core.Bool true),
-                                    Fuaran.Core.Not(Fuaran.Core.Lit(Fuaran.Core.Bool false))
+                                    Fuaran.Core.ColExpr.Lit(Fuaran.Core.Bool true),
+                                    Fuaran.Core.Not(Fuaran.Core.ColExpr.Lit(Fuaran.Core.Bool false))
                                 ),
                                 lit "ready" ],
                               lit "blocked"
@@ -5204,7 +5211,7 @@ let exprScalar: Node<obj> =
                       "expr-null-test"
                       (Binding.Expr(
                           Fuaran.Core.Case(
-                              [ Fuaran.Core.IsNull(Fuaran.Core.Lit Fuaran.Core.Null), lit "empty" ],
+                              [ Fuaran.Core.IsNull(Fuaran.Core.ColExpr.Lit Fuaran.Core.Null), lit "empty" ],
                               lit "has a value"
                           ),
                           None
@@ -5226,7 +5233,8 @@ let exprScalar: Node<obj> =
 // SUBSTITUTION rather than through the scalar environment, so a host that wires
 // only the scalar path passes every other vector here and fails that one.
 let exprParamsStateSelection: Node<obj> =
-    let lit (s: string) = Fuaran.Core.Lit(Fuaran.Core.Str s)
+    let lit (s: string) =
+        Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str s)
 
     let md (id: string) (b: Binding<string>) : Node<obj> =
         node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
@@ -5243,11 +5251,11 @@ let exprParamsStateSelection: Node<obj> =
                       (Binding.Expr(
                           Fuaran.Core.ApplyFn(
                               Fuaran.Core.Concat,
-                              [ Fuaran.Core.Param "firstName"
+                              [ Fuaran.Core.ColExpr.Param "firstName"
                                 lit " "
-                                Fuaran.Core.Param "lastName"
+                                Fuaran.Core.ColExpr.Param "lastName"
                                 lit " - "
-                                Fuaran.Core.Param "track" ]
+                                Fuaran.Core.ColExpr.Param "track" ]
                           ),
                           Some
                               [ { From = Binding.State("form.firstName", None)
@@ -5266,8 +5274,8 @@ let exprParamsStateSelection: Node<obj> =
                                   Binding.Expr(
                                       Fuaran.Core.Binary(
                                           Fuaran.Core.Mul,
-                                          Fuaran.Core.Param "unitPrice",
-                                          Fuaran.Core.Param "quantity"
+                                          Fuaran.Core.ColExpr.Param "unitPrice",
+                                          Fuaran.Core.ColExpr.Param "quantity"
                                       ),
                                       Some
                                           [ { From =
@@ -5285,7 +5293,7 @@ let exprParamsStateSelection: Node<obj> =
                   md
                       "asof-day"
                       (Binding.Expr(
-                          Fuaran.Core.ApplyFn(Fuaran.Core.Concat, [ lit "As of "; Fuaran.Core.Param "today" ]),
+                          Fuaran.Core.ApplyFn(Fuaran.Core.Concat, [ lit "As of "; Fuaran.Core.ColExpr.Param "today" ]),
                           Some
                               [ { From = Binding.Now((fun (o: obj) -> JStr(unbox<string> o)), Some TimeGrain.Day)
                                   Name = "today" } ]
@@ -5294,7 +5302,7 @@ let exprParamsStateSelection: Node<obj> =
                       "membership"
                       (Binding.Expr(
                           Fuaran.Core.Case(
-                              [ Fuaran.Core.InParam(Fuaran.Core.Param "status", "openStatuses"), lit "open" ],
+                              [ Fuaran.Core.InParam(Fuaran.Core.ColExpr.Param "status", "openStatuses"), lit "open" ],
                               lit "closed"
                           ),
                           Some
@@ -5392,7 +5400,7 @@ let scalarTransformComposition: Node<obj> =
                                             Fuaran.Core.Binary(
                                                 Fuaran.Core.Eq,
                                                 Fuaran.Core.Col "severity",
-                                                Fuaran.Core.Lit(Fuaran.Core.Str "critical")
+                                                Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "critical")
                                             )
                                         )
                                         Fuaran.Core.GroupBy(
@@ -5421,11 +5429,11 @@ let scalarTransformComposition: Node<obj> =
                                                 Fuaran.Core.Binary(
                                                     Fuaran.Core.Eq,
                                                     Fuaran.Core.Col "id",
-                                                    Fuaran.Core.Param "ticketId"
+                                                    Fuaran.Core.ColExpr.Param "ticketId"
                                                 )
                                             )
                                             Fuaran.Core.Project [ "alert", "alert" ]
-                                            Fuaran.Core.Limit(1, 0) ],
+                                            Fuaran.Core.Limit(Fuaran.Core.Slot.Lit 1, Fuaran.Core.Slot.Lit 0) ],
                                           Some
                                               [ { From =
                                                     Binding.Selection(
@@ -5482,9 +5490,11 @@ let filterableStaticDashboard: Node<obj> =
         Binding.Transform(
             TransformSource.Data(source),
             [ Fuaran.Core.Filter(
-                  Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "region", Fuaran.Core.Param "region")
+                  Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "region", Fuaran.Core.ColExpr.Param "region")
               )
-              Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "genre", Fuaran.Core.Param "genre")) ],
+              Fuaran.Core.Filter(
+                  Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "genre", Fuaran.Core.ColExpr.Param "genre")
+              ) ],
             Some
                 [ { From = Binding.Filter("region", None)
                     Name = "region" }
@@ -5984,10 +5994,10 @@ let switchOnTransformScalar: Node<obj> =
                                   [ Fuaran.Core.Binary(
                                         Fuaran.Core.Gt,
                                         Fuaran.Core.Col "n",
-                                        Fuaran.Core.Lit(Fuaran.Core.Int 3)
+                                        Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int 3)
                                     ),
-                                    Fuaran.Core.Lit(Fuaran.Core.Str "busy") ],
-                                  Fuaran.Core.Lit(Fuaran.Core.Str "quiet")
+                                    Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "busy") ],
+                                  Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "quiet")
                               )
                           )
                           Fuaran.Core.Project [ "label", "label" ] ],
@@ -6049,8 +6059,8 @@ let switchPredicate: Node<obj> =
                               Binding.Expr(
                                   Fuaran.Core.Binary(
                                       Fuaran.Core.Gt,
-                                      Fuaran.Core.Param "itemCount",
-                                      Fuaran.Core.Lit(Fuaran.Core.Int 3)
+                                      Fuaran.Core.ColExpr.Param "itemCount",
+                                      Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int 3)
                                   ),
                                   Some
                                       [ { From = Binding.State("cart.itemCount", None)
@@ -6140,8 +6150,8 @@ let nodeVisible: Node<obj> =
                       (Binding.Expr(
                           Fuaran.Core.Binary(
                               Fuaran.Core.Gt,
-                              Fuaran.Core.Param "itemCount",
-                              Fuaran.Core.Lit(Fuaran.Core.Int 3)
+                              Fuaran.Core.ColExpr.Param "itemCount",
+                              Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int 3)
                           ),
                           Some
                               [ { From = Binding.State("cart.itemCount", None)
@@ -7418,10 +7428,10 @@ let a11yWrapperTransformLabel: Node<obj> =
                                   [ Fuaran.Core.Binary(
                                         Fuaran.Core.Gt,
                                         Fuaran.Core.Col "n",
-                                        Fuaran.Core.Lit(Fuaran.Core.Int 2)
+                                        Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int 2)
                                     ),
-                                    Fuaran.Core.Lit(Fuaran.Core.Str "3 open alerts") ],
-                                  Fuaran.Core.Lit(Fuaran.Core.Str "No open alerts")
+                                    Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "3 open alerts") ],
+                                  Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "No open alerts")
                               )
                           )
                           Fuaran.Core.Project [ "label", "label" ] ],

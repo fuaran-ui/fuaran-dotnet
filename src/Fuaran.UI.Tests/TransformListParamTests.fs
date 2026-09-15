@@ -158,7 +158,7 @@ let tests =
               // reaches Core unbound. Core stays strict; the host does not guess.
               let scalarPipeline: Fuaran.Core.Transform list =
                   [ Fuaran.Core.Filter(
-                        Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.Param "depts")
+                        Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.ColExpr.Param "depts")
                     ) ]
 
               let binding: Binding<obj seq> =
@@ -198,7 +198,7 @@ let tests =
               Expect.equal
                   substituted
                   [ Fuaran.Core.Filter(
-                        Fuaran.Core.InList(Fuaran.Core.Col "dept", [ Fuaran.Core.Lit(Fuaran.Core.Str "eng") ])
+                        Fuaran.Core.InList(Fuaran.Core.Col "dept", [ Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "eng") ])
                     ) ]
                   "InParam resolves to InList by substitution, never through the scalar env"
 

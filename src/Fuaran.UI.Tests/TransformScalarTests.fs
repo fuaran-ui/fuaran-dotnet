@@ -53,9 +53,11 @@ let private table =
 let private r42Binding: Binding<string> =
     Binding.Transform(
         TransformSource.Data(table),
-        [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "id", Fuaran.Core.Param "ticketId"))
+        [ Fuaran.Core.Filter(
+              Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "id", Fuaran.Core.ColExpr.Param "ticketId")
+          )
           Fuaran.Core.Project [ "alert", "alert" ]
-          Fuaran.Core.Limit(1, 0) ],
+          Fuaran.Core.Limit(Fuaran.Core.Slot.Lit 1, Fuaran.Core.Slot.Lit 0) ],
         Some
             [ { From =
                   Binding.Selection(
@@ -71,7 +73,11 @@ let private countBinding<'T> (severity: string) : Binding<'T> =
     Binding.Transform(
         TransformSource.Data(table),
         [ Fuaran.Core.Filter(
-              Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "severity", Fuaran.Core.Lit(Fuaran.Core.Str severity))
+              Fuaran.Core.Binary(
+                  Fuaran.Core.Eq,
+                  Fuaran.Core.Col "severity",
+                  Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str severity)
+              )
           )
           Fuaran.Core.GroupBy(
               [],
@@ -144,11 +150,11 @@ let tests =
                             Fuaran.Core.Binary(
                                 Fuaran.Core.Eq,
                                 Fuaran.Core.Col "id",
-                                Fuaran.Core.Lit(Fuaran.Core.Str "TCK-9999")
+                                Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "TCK-9999")
                             )
                         )
                         Fuaran.Core.Project [ "alert", "alert" ]
-                        Fuaran.Core.Limit(1, 0) ],
+                        Fuaran.Core.Limit(Fuaran.Core.Slot.Lit 1, Fuaran.Core.Slot.Lit 0) ],
                       None
                   )
 

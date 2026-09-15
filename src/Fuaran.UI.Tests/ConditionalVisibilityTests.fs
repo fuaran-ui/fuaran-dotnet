@@ -93,9 +93,13 @@ let private countLabelTransform (threshold: int) : Binding<'T> =
           Fuaran.Core.Derive(
               "label",
               Fuaran.Core.Case(
-                  [ Fuaran.Core.Binary(Fuaran.Core.Gt, Fuaran.Core.Col "n", Fuaran.Core.Lit(Fuaran.Core.Int threshold)),
-                    Fuaran.Core.Lit(Fuaran.Core.Str "busy") ],
-                  Fuaran.Core.Lit(Fuaran.Core.Str "quiet")
+                  [ Fuaran.Core.Binary(
+                        Fuaran.Core.Gt,
+                        Fuaran.Core.Col "n",
+                        Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int threshold)
+                    ),
+                    Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "busy") ],
+                  Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "quiet")
               )
           )
           Fuaran.Core.Project [ "label", "label" ] ],
@@ -114,7 +118,7 @@ let private labelInBoolSlot: Binding<bool> =
 
     Binding.Transform(
         TransformSource.Data source,
-        [ Fuaran.Core.Derive("label", Fuaran.Core.Lit(Fuaran.Core.Str "busy"))
+        [ Fuaran.Core.Derive("label", Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "busy"))
           Fuaran.Core.Project [ "label", "label" ] ],
         None
     )
@@ -151,7 +155,11 @@ let private countExceedsTransform (threshold: int) : Binding<bool> =
           )
           Fuaran.Core.Derive(
               "over",
-              Fuaran.Core.Binary(Fuaran.Core.Gt, Fuaran.Core.Col "n", Fuaran.Core.Lit(Fuaran.Core.Int threshold))
+              Fuaran.Core.Binary(
+                  Fuaran.Core.Gt,
+                  Fuaran.Core.Col "n",
+                  Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int threshold)
+              )
           )
           Fuaran.Core.Project [ "over", "over" ] ],
         None

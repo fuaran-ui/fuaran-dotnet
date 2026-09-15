@@ -74,6 +74,20 @@ type Adoption =
 let private certifyTest =
     "the Fuaran.UI witness certifies end-to-end via the unified Conformance.certify"
 
+let private containerTest =
+    "the Fuaran.UI container predicate certifies under Core's containerLaws"
+
+let private chainBreakReasonTest =
+    "the kit's classified chain walkers never mint Unrecognised (chainBreakReasonLaws)"
+
+let private dagBreakReasonTest =
+    "the kit's classified DAG walker never mints Unrecognised (dagBreakReasonLaws)"
+
+let private slotParamTest =
+    "slotParamLaws certifies a param in a Sort / Limit slot at this pin"
+
+let private nowTest = "nowLaws certifies the pinned evaluation clock at this pin"
+
 let private hashFnTest =
     "the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)"
 
@@ -223,6 +237,34 @@ let census: (string * Adoption) list =
       "Conformance.witnessLaws", Adopted(certifyTest, "Conformance.certify")
       "Conformance.diffLaws", Adopted(certifyTest, "Conformance.certify")
       "Conformance.streamLaws", Adopted(certifyTest, "Conformance.certify (also Conformance.certifyStream)")
+      // ---- the 0.24.0 kit's additions (Core 0.22.0 -> 0.24.0, 2026-09-15) ----
+      // The row `certify`'s stream laws assume — a content id determines its op only if the op codec
+      // is injective — and the one the tier CANNOT run: the family needs `'Op : equality` to state
+      // "two DISTINCT ops encode alike", and `TreeOp<obj>` is obj-erased and carries no equality.
+      // Supplying equality by canonical encoding would make the collision law vacuous (distinct
+      // would then MEAN differently encoded). The codec's round trip is certified byte-stably
+      // against the wire corpus instead (`JsonDecode.Tests` fixtures + the fuaran-ts parity leg),
+      // which is the collision-free claim in the only form this tier's op type admits.
+      "Conformance.codecInjectivityLaws",
+      NotUsed
+          "op-codec injectivity over an `'Op : equality` witness — `TreeOp<obj>` is obj-erased and has no equality to state distinctness with; the codec round-trips byte-stably against the wire corpus (`JsonDecode.Tests`, fuaran-ts parity), which is the same claim in the form this op type admits"
+      // `canHold` is declared on the generator and routed through `Ops.Apply.apply`'s
+      // `applyContained`. Adopted WITH A STATED LIMIT the test asserts: the family's third arm
+      // builds its offender by giving a fresh leaf a child through `ReplaceChildren`, which this
+      // witness's `withChildren` refuses by design, so that arm is unreachable and the adequacy
+      // guard is red for it alone.
+      "Conformance.containerLaws", Adopted(containerTest, "Conformance.containerLaws")
+      // The container-aware twin of `Diff.toOps` has no call site here: the tier diffs through
+      // `certify`'s `diffLaws` and applies through `applyContained`, but derives no contained script.
+      "Conformance.diffContainedLaws",
+      NotUsed
+          "`Diff.toOpsContained` under a `CanHold` — this tier applies structural ops through `applyContained` but derives no contained diff script; `Diff.toOps` is certified through `certify`"
+      // The two classified break walkers are self-contained over the kit's own walkers, and this
+      // tier is the CONSUMER of their classification: `HashChain.ofChainBreak` projects
+      // `ChainBreak.Reason` (typed since Core 0.23.0 — the Phase 1525 ask, landed) onto
+      // `VerificationError`, so its honesty rests on the walkers minting only named cases.
+      "Conformance.chainBreakReasonLaws", Adopted(chainBreakReasonTest, "Conformance.chainBreakReasonLaws")
+      "Conformance.dagBreakReasonLaws", Adopted(dagBreakReasonTest, "Conformance.dagBreakReasonLaws")
       "Conformance.hashFnLaws", Adopted(hashFnTest, "Conformance.hashFnLaws")
       "Conformance.hashFnAdversarialLaws", Adopted(hashFnTest, "Conformance.hashFnAdversarialLaws")
 
@@ -326,6 +368,10 @@ let census: (string * Adoption) list =
       "Conformance.compositionLaws", Adopted(compositionTest, "Conformance.compositionLaws")
       "Conformance.packLoadingLaws", Adopted(packLoadingTest, "Conformance.packLoadingLaws")
       "Conformance.paramLaws", Adopted(paramTest, "Conformance.paramLaws")
+      // The two Phase-125 asks this tier routed to Core (cut as 0.23.0), enrolled from the
+      // ServerDriven project beside the incremental families for the same reason those are.
+      "Conformance.slotParamLaws", Adopted(slotParamTest, "Conformance.slotParamLaws")
+      "Conformance.nowLaws", Adopted(nowTest, "Conformance.nowLaws")
       "Conformance.deferredLaws", Adopted(deferredTest, "Conformance.deferredLaws")
       // Not named by 1478's task list, assigned to it because it is the precondition of the memo
       // families that phase carries: `applyMemo`'s content-addressed key is a tree encoding, and a

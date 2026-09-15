@@ -201,8 +201,8 @@ let private cellToObj (c: Fuaran.Core.Cell) : obj =
     | Fuaran.Core.Float f -> box f
     | Fuaran.Core.Bool b -> box b
     | Fuaran.Core.Str s -> box s
-    | Fuaran.Core.Date s -> box s
-    | Fuaran.Core.Timestamp s -> box s
+    | Fuaran.Core.Cell.Date s -> box s
+    | Fuaran.Core.Cell.Timestamp s -> box s
     | Fuaran.Core.Null -> null
 
 /// Coerce a resolved scalar to a `Cell`. Every numeric arm yields `Float` (int/float are
@@ -818,8 +818,8 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
                          | Fuaran.Core.Float _ -> "float"
                          | Fuaran.Core.Bool _ -> "bool"
                          | Fuaran.Core.Str _ -> "string"
-                         | Fuaran.Core.Date _ -> "date"
-                         | Fuaran.Core.Timestamp _ -> "timestamp"
+                         | Fuaran.Core.Cell.Date _ -> "date"
+                         | Fuaran.Core.Cell.Timestamp _ -> "timestamp"
                          | Fuaran.Core.Null -> "null")
                         ex.Message
                 )
@@ -1154,8 +1154,8 @@ let cellToText (c: Fuaran.Core.Cell) : Result<string, string> =
     | Fuaran.Core.Int i -> Ok(string i)
     | Fuaran.Core.Float f -> Ok(string f)
     | Fuaran.Core.Bool b -> Ok(if b then "true" else "false")
-    | Fuaran.Core.Date s -> Ok s
-    | Fuaran.Core.Timestamp s -> Ok s
+    | Fuaran.Core.Cell.Date s -> Ok s
+    | Fuaran.Core.Cell.Timestamp s -> Ok s
     | Fuaran.Core.Null -> Error "Transform yielded a null cell in a text slot"
 
 /// Coerce a result cell to a numeric-slot float.
@@ -1170,8 +1170,8 @@ let cellToFloat (c: Fuaran.Core.Cell) : Result<float, string> =
                 s
         )
     | Fuaran.Core.Bool _ -> Error "Transform yielded a bool cell in a numeric slot"
-    | Fuaran.Core.Date s
-    | Fuaran.Core.Timestamp s ->
+    | Fuaran.Core.Cell.Date s
+    | Fuaran.Core.Cell.Timestamp s ->
         Error(
             sprintf
                 "Transform yielded a date cell ('%s') in a numeric slot — project a numeric column, or aggregate with count / sum / mean"
@@ -1201,8 +1201,8 @@ let cellToBool (c: Fuaran.Core.Cell) : Result<bool, string> =
                 "a text cell ('%s') is not a boolean — compare it (`=`, `isNull`) rather than relying on a truthiness rule the hosts do not share"
                 s
         )
-    | Fuaran.Core.Date s
-    | Fuaran.Core.Timestamp s -> Error(sprintf "a date cell ('%s') is not a boolean" s)
+    | Fuaran.Core.Cell.Date s
+    | Fuaran.Core.Cell.Timestamp s -> Error(sprintf "a date cell ('%s') is not a boolean" s)
     | Fuaran.Core.Null -> Error "a null cell is not a boolean — test presence with `isNull`"
 
 /// Resolve a binding in a SCALAR slot: `Binding.Transform` evaluates through the

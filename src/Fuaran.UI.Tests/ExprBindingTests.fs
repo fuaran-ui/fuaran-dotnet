@@ -39,8 +39,11 @@ open Fuaran.UI.Renderer
 /// tests use.
 let private nn (v: 'a) : obj = box v |> Unchecked.nonNull
 
-let private lit (s: string) = Fuaran.Core.Lit(Fuaran.Core.Str s)
-let private num (f: float) = Fuaran.Core.Lit(Fuaran.Core.Float f)
+let private lit (s: string) =
+    Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str s)
+
+let private num (f: float) =
+    Fuaran.Core.ColExpr.Lit(Fuaran.Core.Float f)
 
 let private sources (state: (string * obj) list) : BindingResolver.BindingSources =
     { BindingResolver.empty with
@@ -87,8 +90,8 @@ let operatorSemantics =
                   Fuaran.Core.Case(
                       [ Fuaran.Core.Binary(
                             Fuaran.Core.And,
-                            Fuaran.Core.Lit(Fuaran.Core.Bool true),
-                            Fuaran.Core.Not(Fuaran.Core.Lit(Fuaran.Core.Bool false))
+                            Fuaran.Core.ColExpr.Lit(Fuaran.Core.Bool true),
+                            Fuaran.Core.Not(Fuaran.Core.ColExpr.Lit(Fuaran.Core.Bool false))
                         ),
                         lit "ready" ],
                       lit "blocked"
@@ -101,7 +104,7 @@ let operatorSemantics =
               let isEmpty (subject: Fuaran.Core.ColExpr) =
                   Fuaran.Core.Case([ Fuaran.Core.IsNull subject, lit "empty" ], lit "has a value")
 
-              text (sources []) (isEmpty (Fuaran.Core.Lit Fuaran.Core.Null)) None
+              text (sources []) (isEmpty (Fuaran.Core.ColExpr.Lit Fuaran.Core.Null)) None
               |> expectText "isNull of null" "empty"
 
               text (sources []) (isEmpty (lit "x")) None
@@ -138,7 +141,9 @@ let paramResolution =
                   srcs
                   (Fuaran.Core.ApplyFn(
                       Fuaran.Core.Concat,
-                      [ Fuaran.Core.Param "firstName"; lit " "; Fuaran.Core.Param "lastName" ]
+                      [ Fuaran.Core.ColExpr.Param "firstName"
+                        lit " "
+                        Fuaran.Core.ColExpr.Param "lastName" ]
                   ))
                   (Some
                       [ param "firstName" (Binding.State("form.firstName", None))
@@ -151,7 +156,11 @@ let paramResolution =
 
               number
                   srcs
-                  (Fuaran.Core.Binary(Fuaran.Core.Mul, Fuaran.Core.Param "unitPrice", Fuaran.Core.Param "quantity"))
+                  (Fuaran.Core.Binary(
+                      Fuaran.Core.Mul,
+                      Fuaran.Core.ColExpr.Param "unitPrice",
+                      Fuaran.Core.ColExpr.Param "quantity"
+                  ))
                   (Some
                       [ param "unitPrice" (Binding.State("form.unitPrice", None))
                         param "quantity" (Binding.State("form.quantity", None)) ])
@@ -162,7 +171,7 @@ let paramResolution =
               // Without this the test above passes for a host that folded the
               // expression once and cached it, which is the whole failure mode a
               // "derived value over mutable state" case exists to avoid.
-              let e = Fuaran.Core.Binary(Fuaran.Core.Mul, Fuaran.Core.Param "q", num 3.0)
+              let e = Fuaran.Core.Binary(Fuaran.Core.Mul, Fuaran.Core.ColExpr.Param "q", num 3.0)
 
               let ps = Some [ param "q" (Binding.State("form.q", None)) ]
 
@@ -176,7 +185,7 @@ let paramResolution =
               // that wired only the scalar path fails here and nowhere else.
               let e =
                   Fuaran.Core.Case(
-                      [ Fuaran.Core.InParam(Fuaran.Core.Param "status", "openStatuses"), lit "open" ],
+                      [ Fuaran.Core.InParam(Fuaran.Core.ColExpr.Param "status", "openStatuses"), lit "open" ],
                       lit "closed"
                   )
 
@@ -208,7 +217,7 @@ let refusals =
               match
                   number
                       (sources [])
-                      (Fuaran.Core.Binary(Fuaran.Core.Mul, Fuaran.Core.Param "q", num 3.0))
+                      (Fuaran.Core.Binary(Fuaran.Core.Mul, Fuaran.Core.ColExpr.Param "q", num 3.0))
                       (Some [ param "q" (Binding.Filter("chip.q", None)) ])
               with
               | BindingResolver.Errored _ -> ()
@@ -241,7 +250,7 @@ let refusals =
               match
                   number
                       (sources [])
-                      (Fuaran.Core.Binary(Fuaran.Core.Mul, Fuaran.Core.Param "q", num 3.0))
+                      (Fuaran.Core.Binary(Fuaran.Core.Mul, Fuaran.Core.ColExpr.Param "q", num 3.0))
                       (Some [ param "q" (Binding.State("form.q", None)) ])
               with
               | BindingResolver.Errored m ->
@@ -255,7 +264,7 @@ let refusals =
               // FUARAN148 names for a `visible` predicate.
               number
                   (sources [])
-                  (Fuaran.Core.Binary(Fuaran.Core.Mul, Fuaran.Core.Param "q", num 3.0))
+                  (Fuaran.Core.Binary(Fuaran.Core.Mul, Fuaran.Core.ColExpr.Param "q", num 3.0))
                   (Some [ param "q" (Binding.State("form.q", Some(Fuaran.Core.JVal.JFloat 0.0))) ])
               |> expectFloat "an untouched field with a declared default computes" 0.0
           }
@@ -270,7 +279,7 @@ let refusals =
               // The discriminator between "could not be computed" and "computed
               // to nothing". Collapsing them is how a host ends up rendering an
               // error surface for an empty value, or an empty value for an error.
-              match text (sources []) (Fuaran.Core.Lit Fuaran.Core.Null) None with
+              match text (sources []) (Fuaran.Core.ColExpr.Lit Fuaran.Core.Null) None with
               | BindingResolver.NotResolved -> ()
               | other -> failtestf "expected NotResolved on a null result, got %A" other
           } ]
@@ -291,7 +300,7 @@ let oneAlgebra =
                   Fuaran.Core.ApplyFn(
                       Fuaran.Core.Concat,
                       [ lit "total: "
-                        Fuaran.Core.Cast(Fuaran.Core.StringType, Fuaran.Core.Param "q") ]
+                        Fuaran.Core.Cast(Fuaran.Core.StringType, Fuaran.Core.ColExpr.Param "q") ]
                   )
 
               let srcs = sources [ "form.q", nn 7.0 ]

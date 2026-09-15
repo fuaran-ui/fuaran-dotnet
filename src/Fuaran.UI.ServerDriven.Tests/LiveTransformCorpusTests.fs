@@ -159,7 +159,8 @@ let private stepOf (j: JVal) : Transform =
             j
             |> field "by"
             |> asArr
-            |> List.map (fun b -> asStr (field "column" b), sortDirOf (asStr (field "direction" b)))
+            |> List.map (fun b ->
+                Fuaran.Core.Slot.Lit(asStr (field "column" b)), sortDirOf (asStr (field "direction" b)))
         )
     | "window" ->
         let fn =
