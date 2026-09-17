@@ -40,6 +40,17 @@ open Fuaran.UI.Tests.IdlCertification
 
 let private opFixtures = lazy (familyFixtures "ops")
 
+/// The generated JSON schema for a vocabulary.
+///
+/// `Gen.jsonSchema` reports a refusal as DATA rather than throwing, so a target
+/// that will not render this vocabulary is a failing test naming the refusal —
+/// which is what these cases are about — rather than an exception carrying no
+/// vocabulary-level account of what it could not render.
+let private schemaFor (idl: Idl) : string =
+    match Gen.jsonSchema idl with
+    | Ok text -> text
+    | Error e -> failtestf "the schema target refused the vocabulary: %s" (CodegenError.describe e)
+
 /// The op tags the corpus actually exercises — the coverage denominator.
 let private coveredTags =
     lazy
@@ -241,7 +252,7 @@ let tests =
           // ── the derived artefacts pick the vocabulary up ─────────────────
 
           testCase "the schema gains the second root and the op definitions" (fun _ ->
-              let schema = Gen.jsonSchema vocabulary
+              let schema = schemaFor vocabulary
 
               Expect.stringContains schema "#/$defs/TreeOp" "the root alternation names TreeOp"
               Expect.stringContains schema "\"NodeKind\"" "the kind alternation is named, for TKind to reference"
@@ -253,7 +264,7 @@ let tests =
               // The whole additive claim: a domain that declares no ops gets
               // exactly the single-root schema it had before the op vocabulary
               // existed.
-              let schema = Gen.jsonSchema { vocabulary with Ops = [] }
+              let schema = schemaFor { vocabulary with Ops = [] }
               Expect.stringContains schema "\"$ref\":\"#/$defs/Node\"" "single root"
               Expect.isFalse (schema.Contains "TreeOp") "no op vocabulary leaks in")
 

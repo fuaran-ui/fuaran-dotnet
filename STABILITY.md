@@ -7815,6 +7815,94 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.84.0 — DRAFT: the slot the 2026-09-17 cohort raise opens (UNTAGGED)
+
+_**`v0.83.0` is TAGGED**, so the draft slot below it is closed: nothing may ride 0.83.0 any more,
+`<Version>` advances to 0.84.0, and this is the slot subsequent phases append to. Class so far:
+ADDITIVE — the pinned substrate moves and no type, member, wire byte or rendered output of any
+`Fuaran.UI.*` package changes. Each phase adds one paragraph under the heading below, in the order
+it lands; a phase moves NO number unless its class is higher again._
+
+### What rides 0.84.0
+
+**Cohort raise `fuaran-core-0.26.0` (2026-09-17) — ADDITIVE here, over a Core release that is
+BREAKING in one of its packages: `Fuaran.Core.*` 0.25.0 → 0.26.0, all twelve pins together.**
+
+*What Core 0.26.0 breaks, stated in full because the number does not say it.* `Fuaran.Core.Idl.Codegen`
+moves its refusals from exceptions to data. `CodegenError` gains two cases — `RequiredEnvelopeField`
+and `UnsupportedConstruct` — so an exhaustive match over it needs the new arms; and `Gen.fsharpTypes`
+/ `Gen.jsonSchema` answer `Result<string, CodegenError>` where they answered `string`, which is the
+signature-level break. No `failwith` remains in the generator. Additively, a `Required`
+node-envelope member carrying a declared default is now EMITTED rather than refused.
+
+*Why none of that reaches a consumer of this package.* `Fuaran.Core.Idl` and `Fuaran.Core.Idl.Codegen`
+are build-time-only pins here — `src/Fuaran.UI.Idl` declares this repo's own wire vocabulary with
+them, and the suite beside it regenerates the generated structural layer — and neither reaches a
+shipped `Fuaran.UI.*` package, because that layer is committed SOURCE: a consumer of the language
+tier needs the emission and never the emitter. Every other `Fuaran.Core.*` package in the raise
+moves additively. So this entry's own class is ADDITIVE, and a consumer adopting it has no source
+edit to make.
+
+*The source changes, both in one test project.* Two call sites of `Gen.jsonSchema` take the
+`Result`, in the shape each file already used for a refusal it must report rather than throw:
+`src/Fuaran.UI.Tests/IdlSchemaTests.fs` unwraps it INSIDE the existing `lazy` — that binding is lazy
+precisely so a failure here is a failing test rather than a module initialiser that takes the
+assembly's whole test discovery down, and a refusal is now one more such failure, named through
+`CodegenError.describe`; `src/Fuaran.UI.Tests/IdlOpTests.fs` gains a `schemaFor` helper doing the
+same for the two cases that generate a schema per vocabulary. Nothing in a shipped project changed,
+and no exhaustive match over `CodegenError` exists in this repo to gain the two new arms — the one
+place that inspects a refusal already went through `CodegenError.describe`.
+
+*The census, which the raise moved for a reason worth recording.* `docs/core-conformance.md`
+re-renders at the new pin: **48 adopted of 63**, where 0.25.0 read 45 of 59. Only ONE of those four
+new rows is a new family. The other three — `Conformance.opAlgebra`, `Conformance.reducer`,
+`Conformance.compositionPilot` — were shipped all along and INVISIBLE, because the census's roster
+reflected over method NAMES (`Laws` / `LawsWith` / `laws` / `lawsWith`) and those three carry none
+of those shapes. Two of them are families this tier was already running, folded into the `certify`
+and `certifyStream` aggregates it certifies through. The kit's 0.26.0 roster records the same
+finding and moves its own check to reflection over the RETURN TYPE — every entry point answering
+`LawResult list` — so the mirror here moves with it; a name shape is a convention a family can
+escape by being named well, and the return type is what a law family is. At this pin the two
+enumerations agree on all 63 families in both directions, where the name-shaped one found 60.
+`Conformance.columnarOpLawsWith` is the genuinely new entry point, reached through the
+`columnarOpLaws` spelling that delegates to it; `Conformance.compositionPilot` is Not used, needing
+two structurally-distinct artifact witnesses and a memoised composition across them, which this tier
+does not have.
+
+*The exported law corpus moves with the pin, and it is the half that lives outside this repo.* The
+capability-law vectors are DERIVED from the pinned kit, so a raise that leaves them unregenerated
+publishes a corpus certifying the hosts against a kit the substrate no longer ships. Re-emitting at
+0.26.0 changes exactly ONE line — `"kitVersion": "0.25.0"` → `"0.26.0"` — and every vector byte is
+unchanged, which is itself the useful finding: `capabilityLaws` draws the identical sample at the
+new pin, so the sibling hosts' capability legs answer exactly as before and the declared kit version
+is all that moves. The hand-curated `laws/manifest.json` carries the same version for that family
+and is corrected beside it.
+
+*Two GENERATED artefacts moved, both because a test in this repo refused the stale copy rather than
+because the raise chose to touch them.* Neither changes a public member, a wire byte or a rendered
+output.
+
+`src/Fuaran.UI.Idl/idl.json` gains a `harden` block — fifteen lines naming the gated kind, the
+placeholder kind and field, the value- and text-literal cases, and `TextSource.Literal` as a
+transparent union. Every one of those was already true of this repo's vocabulary sources and already
+relied upon by the decoder and the generated schema; what changed is that the 0.26.0 renderer
+DECLARES them in the structural artefact instead of leaving them implicit. `support.json` and
+`src/Fuaran.UI/Generated.fs` regenerate byte-identical, which is the load-bearing half: the
+structural layer is unmoved, so no authoring type and no decode path changes.
+
+`proofs/VocabularyProofs.fst` shrinks from 5,939 lines to 1,668, and the size IS the change. The
+0.26.0 F* target replaces the per-presence-pattern proof split with a presence-LOOKUP split: a
+constructor with k conditional members costs `2k + r'` lemmas where it cost `2^k`, each lemma
+reading one key off the encoded object with every other conditional member left free. The theorem
+set is the same round-trip claim over the same vocabulary — 20 of 43 kinds modelled, unchanged —
+proved in a shape a solver can discharge. This repo is the reason that target changed: Phase 1754
+measured 71,722 lemmas in a 114 MB script at this vocabulary, which is the number the new shape
+exists to retire. `proofs/Vocabulary.fst` regenerates byte-identical.
+
+*Version.* Opens 0.84.0, because `v0.83.0` is tagged and this change cannot ride a released slot.
+
+---
+
 ## 0.83.0 — the slot Phase 1690 opened, the 2026-09-15 cohort raise rides — released 2026-09-15 as `v0.83.0`
 
 _**0.82.0 was never tagged**, and this phase's change is of a HIGHER class than the ADDITIVE one that

@@ -425,6 +425,21 @@
       "name": "TrendPolarity"
     }
   ],
+  "harden": {
+    "gatedKind": "Custom",
+    "placeholderField": "text",
+    "placeholderKind": "Markdown",
+    "textLiteralCase": "Literal",
+    "textLiteralField": "text",
+    "transparentUnions": [
+      {
+        "case": "Literal",
+        "union": "TextSource"
+      }
+    ],
+    "valueLiteralCase": "Static",
+    "valueLiteralField": "value"
+  },
   "kinds": [
     {
       "category": "Display",

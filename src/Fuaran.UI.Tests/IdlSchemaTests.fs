@@ -60,7 +60,16 @@ open Fuaran.UI.Tests.IdlCertification
 /// can throw, and a throw in a module initialiser takes the WHOLE assembly's
 /// test discovery with it, reported against whichever module lost the race. A
 /// failure here must be a failing test, never an assembly that will not load.
-let private schemaText = lazy (Gen.jsonSchema vocabulary)
+///
+/// `Gen.jsonSchema` reports a refusal as DATA rather than throwing, so the
+/// refusal is unwrapped here — inside the `lazy`, for the same reason: a
+/// vocabulary the target cannot render is a failing test in this module, never
+/// a module initialiser that takes the assembly down with it.
+let private schemaText =
+    lazy
+        (match Gen.jsonSchema vocabulary with
+         | Ok text -> text
+         | Error e -> failtestf "the schema target refused this repository's vocabulary: %s" (CodegenError.describe e))
 
 let private schema = lazy (JsonSchema.FromText schemaText.Value)
 

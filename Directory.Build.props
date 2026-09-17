@@ -700,8 +700,20 @@
          ADVANCES rather than riding 0.81.0 for the reason above, unchanged:
          v0.81.0 is TAGGED, so that slot is released and a corpus change cannot be
          repacked into it. See STABILITY.md "0.82.0 - DRAFT: the slot Phase 1691
+         opens".
+
+         0.84.0 (the 2026-09-17 cohort raise) - the twelve Fuaran.Core.* pins move
+         0.25.0 -> 0.26.0. Core 0.26.0 is BREAKING in Fuaran.Core.Idl.Codegen (two
+         new CodegenError cases; Gen.fsharpTypes and Gen.jsonSchema answer
+         Result<string, CodegenError> where they answered string), but that package
+         is a BUILD-TIME-ONLY pin here and reaches no shipped Fuaran.UI.* package -
+         the generated structural layer is committed source, so a consumer needs the
+         emission and never the emitter. This slot's own class is therefore ADDITIVE:
+         no type, member, wire byte or rendered output moves. It ADVANCES rather than
+         riding 0.83.0 for the reason above, unchanged: v0.83.0 is TAGGED. See
+         STABILITY.md "0.84.0 - DRAFT: the slot the 2026-09-17 cohort raise
          opens". -->
-    <Version>0.83.0</Version>
+    <Version>0.84.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

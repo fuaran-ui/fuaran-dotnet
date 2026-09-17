@@ -27,7 +27,8 @@
        type-check at `Tot` is the termination proof; the lemma states that every input
        reaches exactly one of `Ok` / `Error` and never both.
 
-   THE SHAPE — one lemma per constructor, one per presence pattern (fuaran-core Phase 168).
+   THE SHAPE — one lemma per constructor, and the presence split LINEAR in the conditional
+   members (fuaran-core Phase 182, replacing Phase 168's per-pattern split).
    A constructor with k conditional members (optional, or omitted at its default) encodes
    to 2^k object shapes, and a lemma over the whole constructor puts all of them in ONE
    query. Measured at a twenty-kind vocabulary whose node envelope carried five optional
@@ -37,17 +38,18 @@
    isolation is in the emitted shape instead. `rt_<T>` is the round trip over a type — for a
    type with several constructors, a CASE SPLIT whose arms cite `rt_<T>__<Ctor>`, one
    constructor's arm alone under `C__<T>__<Ctor>? x`. A constructor with
-   2 or more conditional members is split further: `rt_<T>__<Ctor>__p<bits>` proves ONE
-   presence pattern, its `requires` pinning every conditional member present or absent so
-   the encoder's nested match collapses to one object literal in the query, and the
-   constructor's lemma is a split on exactly those members citing each. The family is still
-   one mutual induction — a kind's children reach `rt_node` — on the lexicographic measure
-   `%[x; tier]`, because the split lemmas recurse on the SAME value and differ only in how
-   much of it they have fixed. Every query therefore carries at most one constructor's
-   shapes, and a wide envelope or a wide kind costs 2^k small lemmas rather than one it
-   cannot discharge. The rlimit precedent Phase 150 took (`--z3rlimit 200` in this file)
-   is retired with the shape that needed it: the leg's own rlimit is what these are
-   checked under, and a query that wants more is a query the split has failed to isolate.
+   2 or more conditional members is proved from its members' LOOKUPS instead of in one
+   query: `lk_<T>__<Ctor>__<member>` reads one key off the encoded object with every OTHER
+   conditional member left free — one lemma for a member that is always emitted, two for a
+   conditional one — and the constructor's lemma cites them a member at a time. That is
+   2k + r' lemmas where Phase 168 emitted 2^k, and it is why a sixteen-conditional kind
+   costs thirty-odd lemmas rather than 65,536 (`fuaran#1754` measured 71,722 of them in a
+   114 MB script at the UI vocabulary). The family is still one mutual induction — a kind's
+   children reach `rt_node` — on the lexicographic measure `%[x; tier]`; the lookups are
+   NOT in it, since they recurse on nothing, which is what lets each carry the scoped
+   `--fuel` its own walk needs. The rlimit precedent Phase 150 took (`--z3rlimit 200` in
+   this file) stays retired: the leg's own rlimit is what these are checked under, and a
+   query that wants more is a query the split has failed to isolate.
 
    WHAT IS NOT PROVED HERE, and why. The `wf` CHARACTERISATION — `Ok? (dec el) == wf el`,
    which Phase 135 carries for its hand-written reference vocabulary — is not restated over
@@ -102,332 +104,902 @@ let rt_e_math_display (#num #flt: eqtype) (x: e_math_display) : Lemma (ensures d
 let rt_e_scroll_orientation (#num #flt: eqtype) (x: e_scroll_orientation) : Lemma (ensures dec_e_scroll_orientation (enc_e_scroll_orientation #num #flt x) == Ok x) = ()
 
 (* ======================================================================================
-   2. THE ROUND TRIP. One mutual induction over the whole family, recursing on the MODEL
+   2. THE PRESENCE LOOKUPS. One member's key read off the encoded object, with every
+      conditional member other than that one left FREE — so a constructor with k of them
+      costs 2k + r' lemmas rather than 2^k, and no query has to hold more than one key's
+      walk. Each carries its own scoped fuel: `find_field` pushes through a key it is not
+      looking for, and the default two unfoldings do not reach past the second. Emitted
+      only for a constructor at or above the split threshold, and only from its first
+      conditional member on — everything before that is reached without a branch.
+   ====================================================================================== *)
+
+(* lk_node__Node__accessibility__present — accessibility present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_node__Node__accessibility__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> get_prop "accessibility" (enc_node #num #flt x) == Ok (enc_r_accessibility (Some?.v f0)))) = ()
+#pop-options
+
+(* lk_node__Node__accessibility__absent — accessibility absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_node__Node__accessibility__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0)) (ensures (Error? (get_prop "accessibility" (enc_node #num #flt x)))) = ()
+#pop-options
+
+(* lk_node__Node__state__present — state present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_node__Node__state__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f1)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> get_prop "state" (enc_node #num #flt x) == Ok (enc_r_state_behaviour (Some?.v f1)))) = ()
+#pop-options
+
+(* lk_node__Node__state__absent — state absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_node__Node__state__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f1)) (ensures (Error? (get_prop "state" (enc_node #num #flt x)))) = ()
+#pop-options
+
+(* lk_node__Node__style__present — style present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_node__Node__style__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f2)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> get_prop "style" (enc_node #num #flt x) == Ok (enc_r_semantic_style (Some?.v f2)))) = ()
+#pop-options
+
+(* lk_node__Node__style__absent — style absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_node__Node__style__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f2)) (ensures (Error? (get_prop "style" (enc_node #num #flt x)))) = ()
+#pop-options
+
+(* lk_node__Node__tooltip__present — tooltip present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_node__Node__tooltip__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f3)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> get_prop "tooltip" (enc_node #num #flt x) == Ok (enc_u_text_source (Some?.v f3)))) = ()
+#pop-options
+
+(* lk_node__Node__tooltip__absent — tooltip absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_node__Node__tooltip__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f3)) (ensures (Error? (get_prop "tooltip" (enc_node #num #flt x)))) = ()
+#pop-options
+
+(* lk_node__Node__visible__present — visible present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_node__Node__visible__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f4)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> get_prop "visible" (enc_node #num #flt x) == Ok (enc_u_binding__bool (Some?.v f4)))) = ()
+#pop-options
+
+(* lk_node__Node__visible__absent — visible absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_node__Node__visible__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f4)) (ensures (Error? (get_prop "visible" (enc_node #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Callout__dismissable__present — dismissable not at its default *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Callout__dismissable__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> not (f1 = false) | _ -> false)) (ensures (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> get_prop "dismissable" (enc_vkind #num #flt x) == Ok (JBool f1) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Callout__dismissable__absent — dismissable at its default *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Callout__dismissable__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> f1 = false | _ -> false)) (ensures (Error? (get_prop "dismissable" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Callout__heading__present — heading present *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Callout__heading__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> Some? f2 | _ -> false)) (ensures (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> get_prop "heading" (enc_vkind #num #flt x) == Ok (enc_u_text_source (Some?.v f2)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Callout__heading__absent — heading absent *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Callout__heading__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> None? f2 | _ -> false)) (ensures (Error? (get_prop "heading" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Callout__icon__present — icon present *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Callout__icon__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> Some? f3 | _ -> false)) (ensures (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> get_prop "icon" (enc_vkind #num #flt x) == Ok (JStr (Some?.v f3)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Callout__icon__absent — icon absent *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Callout__icon__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> None? f3 | _ -> false)) (ensures (Error? (get_prop "icon" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Callout__tone__present — tone not at its default *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Callout__tone__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> get_prop "tone" (enc_vkind #num #flt x) == Ok (enc_e_tone_variant f4) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Callout__tone__absent — tone at its default *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Callout__tone__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> f4 = C__e_tone_variant__Default | _ -> false)) (ensures (Error? (get_prop "tone" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Embed__aspect_ratio__present — aspectRatio not at its default *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Embed__aspect_ratio__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Embed f0 f1 f2 f3 -> not (f0 = C__e_image_aspect__Natural) | _ -> false)) (ensures (match x with | C__vkind__Embed f0 f1 f2 f3 -> get_prop "aspectRatio" (enc_vkind #num #flt x) == Ok (enc_e_image_aspect f0) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Embed__aspect_ratio__absent — aspectRatio at its default *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Embed__aspect_ratio__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Embed f0 f1 f2 f3 -> f0 = C__e_image_aspect__Natural | _ -> false)) (ensures (Error? (get_prop "aspectRatio" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Embed__permissions__present — permissions not at its default *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Embed__permissions__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Embed f0 f1 f2 f3 -> not (f1 = []) | _ -> false)) (ensures (match x with | C__vkind__Embed f0 f1 f2 f3 -> get_prop "permissions" (enc_vkind #num #flt x) == Ok (JArr (enc_items_l_e_embed_permission f1)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Embed__permissions__absent — permissions at its default *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Embed__permissions__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Embed f0 f1 f2 f3 -> f1 = [] | _ -> false)) (ensures (Error? (get_prop "permissions" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Embed__src — src — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Embed__src (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Embed? x)) (ensures (match x with | C__vkind__Embed f0 f1 f2 f3 -> get_prop "src" (enc_vkind #num #flt x) == Ok (enc_u_binding__str f2) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Embed__title — title — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Embed__title (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Embed? x)) (ensures (match x with | C__vkind__Embed f0 f1 f2 f3 -> get_prop "title" (enc_vkind #num #flt x) == Ok (enc_u_text_source f3) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Fact__emphasis__present — emphasis not at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Fact__emphasis__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> not (f0 = false) | _ -> false)) (ensures (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> get_prop "emphasis" (enc_vkind #num #flt x) == Ok (JBool f0) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Fact__emphasis__absent — emphasis at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Fact__emphasis__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> f0 = false | _ -> false)) (ensures (Error? (get_prop "emphasis" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Fact__help__present — help present *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Fact__help__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> Some? f1 | _ -> false)) (ensures (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> get_prop "help" (enc_vkind #num #flt x) == Ok (enc_u_text_source (Some?.v f1)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Fact__help__absent — help absent *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Fact__help__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "help" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Fact__icon__present — icon present *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Fact__icon__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> Some? f2 | _ -> false)) (ensures (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> get_prop "icon" (enc_vkind #num #flt x) == Ok (JStr (Some?.v f2)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Fact__icon__absent — icon absent *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Fact__icon__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> None? f2 | _ -> false)) (ensures (Error? (get_prop "icon" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Fact__label — label — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Fact__label (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Fact? x)) (ensures (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> get_prop "label" (enc_vkind #num #flt x) == Ok (enc_u_text_source f3) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Fact__tone__present — tone not at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Fact__tone__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> get_prop "tone" (enc_vkind #num #flt x) == Ok (enc_e_tone_variant f4) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Fact__tone__absent — tone at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Fact__tone__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> f4 = C__e_tone_variant__Default | _ -> false)) (ensures (Error? (get_prop "tone" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Fact__value — value — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Fact__value (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Fact? x)) (ensures (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> get_prop "value" (enc_vkind #num #flt x) == Ok (enc_u_text_source f5) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__accept_paste__present — acceptPaste not at its default *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__accept_paste__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "acceptPaste" (enc_vkind #num #flt x) == Ok (JBool f1) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__accept_paste__absent — acceptPaste at its default *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__accept_paste__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false | _ -> false)) (ensures (Error? (get_prop "acceptPaste" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__capture__present — capture present *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__capture__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f2 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "capture" (enc_vkind #num #flt x) == Ok (enc_e_capture_source (Some?.v f2)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__capture__absent — capture absent *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__capture__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f2 | _ -> false)) (ensures (Error? (get_prop "capture" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__destination__present — destination present *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__destination__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f3 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "destination" (enc_vkind #num #flt x) == Ok (JStr (Some?.v f3)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__destination__absent — destination absent *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__destination__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f3 | _ -> false)) (ensures (Error? (get_prop "destination" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__disabled__present — disabled present *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__disabled__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f4 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "disabled" (enc_vkind #num #flt x) == Ok (enc_u_binding__bool (Some?.v f4)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__disabled__absent — disabled absent *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__disabled__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f4 | _ -> false)) (ensures (Error? (get_prop "disabled" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__drop_target__present — dropTarget not at its default *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__drop_target__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f5 = false) | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "dropTarget" (enc_vkind #num #flt x) == Ok (JBool f5) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__drop_target__absent — dropTarget at its default *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__drop_target__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f5 = false | _ -> false)) (ensures (Error? (get_prop "dropTarget" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__label — label — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__label (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__FileUpload? x)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "label" (enc_vkind #num #flt x) == Ok (enc_u_text_source f6) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__max_bytes__present — maxBytes present *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__max_bytes__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f7 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "maxBytes" (enc_vkind #num #flt x) == Ok (JInt (Some?.v f7)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__max_bytes__absent — maxBytes absent *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__max_bytes__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f7 | _ -> false)) (ensures (Error? (get_prop "maxBytes" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__max_files__present — maxFiles present *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__max_files__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f8 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "maxFiles" (enc_vkind #num #flt x) == Ok (JInt (Some?.v f8)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__max_files__absent — maxFiles absent *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__max_files__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f8 | _ -> false)) (ensures (Error? (get_prop "maxFiles" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__multiple — multiple — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__multiple (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__FileUpload? x)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "multiple" (enc_vkind #num #flt x) == Ok (JBool f9) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__on_select__present — onSelect present *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__on_select__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f10 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "onSelect" (enc_vkind #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__FileUpload__on_select__absent — onSelect absent *)
+#push-options "--fuel 26 --ifuel 4"
+let lk_vkind__FileUpload__on_select__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f10 | _ -> false)) (ensures (Error? (get_prop "onSelect" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Icon__label__present — label present *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Icon__label__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> Some? f1 | _ -> false)) (ensures (match x with | C__vkind__Icon f0 f1 f2 f3 -> get_prop "label" (enc_vkind #num #flt x) == Ok (JStr (Some?.v f1)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Icon__label__absent — label absent *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Icon__label__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "label" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Icon__size__present — size not at its default *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Icon__size__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> not (f2 = C__e_icon_size__Medium) | _ -> false)) (ensures (match x with | C__vkind__Icon f0 f1 f2 f3 -> get_prop "size" (enc_vkind #num #flt x) == Ok (enc_e_icon_size f2) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Icon__size__absent — size at its default *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Icon__size__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> f2 = C__e_icon_size__Medium | _ -> false)) (ensures (Error? (get_prop "size" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Icon__tone__present — tone not at its default *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Icon__tone__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> not (f3 = C__e_tone_variant__Default) | _ -> false)) (ensures (match x with | C__vkind__Icon f0 f1 f2 f3 -> get_prop "tone" (enc_vkind #num #flt x) == Ok (enc_e_tone_variant f3) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Icon__tone__absent — tone at its default *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Icon__tone__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> f3 = C__e_tone_variant__Default | _ -> false)) (ensures (Error? (get_prop "tone" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Link__protection__present — protection present *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Link__protection__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> Some? f3 | _ -> false)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> get_prop "protection" (enc_vkind #num #flt x) == Ok (enc_e_link_protection (Some?.v f3)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Link__protection__absent — protection absent *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Link__protection__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> None? f3 | _ -> false)) (ensures (Error? (get_prop "protection" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Link__rel__present — rel present *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Link__rel__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> Some? f4 | _ -> false)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> get_prop "rel" (enc_vkind #num #flt x) == Ok (JStr (Some?.v f4)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Link__rel__absent — rel absent *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Link__rel__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> None? f4 | _ -> false)) (ensures (Error? (get_prop "rel" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Link__target__present — target present *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Link__target__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> Some? f5 | _ -> false)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> get_prop "target" (enc_vkind #num #flt x) == Ok (JStr (Some?.v f5)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Link__target__absent — target absent *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_vkind__Link__target__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> None? f5 | _ -> false)) (ensures (Error? (get_prop "target" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Progress__caveat__present — caveat present *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Progress__caveat__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> Some? f0 | _ -> false)) (ensures (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> get_prop "caveat" (enc_vkind #num #flt x) == Ok (enc_u_text_source (Some?.v f0)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Progress__caveat__absent — caveat absent *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Progress__caveat__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "caveat" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Progress__fraction — fraction — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Progress__fraction (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Progress? x)) (ensures (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> get_prop "fraction" (enc_vkind #num #flt x) == Ok (enc_u_binding__flt f1) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Progress__indeterminate__present — indeterminate not at its default *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Progress__indeterminate__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> not (f2 = false) | _ -> false)) (ensures (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> get_prop "indeterminate" (enc_vkind #num #flt x) == Ok (JBool f2) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Progress__indeterminate__absent — indeterminate at its default *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Progress__indeterminate__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> f2 = false | _ -> false)) (ensures (Error? (get_prop "indeterminate" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Progress__label__present — label present *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Progress__label__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> Some? f3 | _ -> false)) (ensures (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> get_prop "label" (enc_vkind #num #flt x) == Ok (enc_u_text_source (Some?.v f3)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Progress__label__absent — label absent *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Progress__label__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> None? f3 | _ -> false)) (ensures (Error? (get_prop "label" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Progress__tone__present — tone not at its default *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Progress__tone__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> get_prop "tone" (enc_vkind #num #flt x) == Ok (enc_e_tone_variant f4) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Progress__tone__absent — tone at its default *)
+#push-options "--fuel 14 --ifuel 4"
+let lk_vkind__Progress__tone__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> f4 = C__e_tone_variant__Default | _ -> false)) (ensures (Error? (get_prop "tone" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__ScrollArea__max_height__present — maxHeight present *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__ScrollArea__max_height__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> Some? f1 | _ -> false)) (ensures (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> get_prop "maxHeight" (enc_vkind #num #flt x) == Ok (JInt (Some?.v f1)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__ScrollArea__max_height__absent — maxHeight absent *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__ScrollArea__max_height__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "maxHeight" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__ScrollArea__max_width__present — maxWidth present *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__ScrollArea__max_width__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> Some? f2 | _ -> false)) (ensures (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> get_prop "maxWidth" (enc_vkind #num #flt x) == Ok (JInt (Some?.v f2)) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__ScrollArea__max_width__absent — maxWidth absent *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__ScrollArea__max_width__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> None? f2 | _ -> false)) (ensures (Error? (get_prop "maxWidth" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__ScrollArea__orientation — orientation — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__ScrollArea__orientation (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__ScrollArea? x)) (ensures (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> get_prop "orientation" (enc_vkind #num #flt x) == Ok (enc_e_scroll_orientation f3) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Toast__dismissable__present — dismissable not at its default *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Toast__dismissable__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Toast f0 f1 f2 f3 -> not (f0 = true) | _ -> false)) (ensures (match x with | C__vkind__Toast f0 f1 f2 f3 -> get_prop "dismissable" (enc_vkind #num #flt x) == Ok (JBool f0) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Toast__dismissable__absent — dismissable at its default *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Toast__dismissable__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Toast f0 f1 f2 f3 -> f0 = true | _ -> false)) (ensures (Error? (get_prop "dismissable" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_vkind__Toast__message — message — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Toast__message (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Toast? x)) (ensures (match x with | C__vkind__Toast f0 f1 f2 f3 -> get_prop "message" (enc_vkind #num #flt x) == Ok (enc_u_text_source f1) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Toast__open — open — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Toast__open (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Toast? x)) (ensures (match x with | C__vkind__Toast f0 f1 f2 f3 -> get_prop "open" (enc_vkind #num #flt x) == Ok (enc_u_binding__bool f2) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Toast__tone__present — tone not at its default *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Toast__tone__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Toast f0 f1 f2 f3 -> not (f3 = C__e_tone_variant__Default) | _ -> false)) (ensures (match x with | C__vkind__Toast f0 f1 f2 f3 -> get_prop "tone" (enc_vkind #num #flt x) == Ok (enc_e_tone_variant f3) | _ -> True)) = ()
+#pop-options
+
+(* lk_vkind__Toast__tone__absent — tone at its default *)
+#push-options "--fuel 12 --ifuel 4"
+let lk_vkind__Toast__tone__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Toast f0 f1 f2 f3 -> f3 = C__e_tone_variant__Default | _ -> false)) (ensures (Error? (get_prop "tone" (enc_vkind #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__described_by__present — describedBy present *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_accessibility__Mk__described_by__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> get_prop "describedBy" (enc_r_accessibility #num #flt x) == Ok (JStr (Some?.v f0)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__described_by__absent — describedBy absent *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_accessibility__Mk__described_by__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0)) (ensures (Error? (get_prop "describedBy" (enc_r_accessibility #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__hidden__present — hidden present *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_accessibility__Mk__hidden__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f1)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> get_prop "hidden" (enc_r_accessibility #num #flt x) == Ok (enc_u_binding__bool (Some?.v f1)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__hidden__absent — hidden absent *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_accessibility__Mk__hidden__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f1)) (ensures (Error? (get_prop "hidden" (enc_r_accessibility #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__label__present — label present *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_accessibility__Mk__label__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f2)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> get_prop "label" (enc_r_accessibility #num #flt x) == Ok (enc_u_binding__str (Some?.v f2)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__label__absent — label absent *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_accessibility__Mk__label__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f2)) (ensures (Error? (get_prop "label" (enc_r_accessibility #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__labelled_by__present — labelledBy present *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_accessibility__Mk__labelled_by__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f3)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> get_prop "labelledBy" (enc_r_accessibility #num #flt x) == Ok (JStr (Some?.v f3)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__labelled_by__absent — labelledBy absent *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_accessibility__Mk__labelled_by__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f3)) (ensures (Error? (get_prop "labelledBy" (enc_r_accessibility #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__live_region__present — liveRegion present *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_accessibility__Mk__live_region__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f4)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> get_prop "liveRegion" (enc_r_accessibility #num #flt x) == Ok (enc_e_live_region_kind (Some?.v f4)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__live_region__absent — liveRegion absent *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_accessibility__Mk__live_region__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f4)) (ensures (Error? (get_prop "liveRegion" (enc_r_accessibility #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__role__present — role present *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_accessibility__Mk__role__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f5)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> get_prop "role" (enc_r_accessibility #num #flt x) == Ok ((Some?.v f5)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__role__absent — role absent *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_accessibility__Mk__role__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f5)) (ensures (Error? (get_prop "role" (enc_r_accessibility #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__bool__Selection__default_value__present — defaultValue present *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__bool__Selection__default_value__present (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Selection f0 f1 f2 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_binding__bool__Selection f0 f1 f2 -> get_prop "defaultValue" (enc_u_binding__bool #num #flt x) == Ok (JBool (Some?.v f0)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__bool__Selection__default_value__absent — defaultValue absent *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__bool__Selection__default_value__absent (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Selection f0 f1 f2 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "defaultValue" (enc_u_binding__bool #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__bool__Selection__field__present — field present *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__bool__Selection__field__present (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Selection f0 f1 f2 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_binding__bool__Selection f0 f1 f2 -> get_prop "field" (enc_u_binding__bool #num #flt x) == Ok (JStr (Some?.v f1)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__bool__Selection__field__absent — field absent *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__bool__Selection__field__absent (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Selection f0 f1 f2 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "field" (enc_u_binding__bool #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__bool__Selection__node_id — nodeId — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__bool__Selection__node_id (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__Selection? x)) (ensures (match x with | C__u_binding__bool__Selection f0 f1 f2 -> get_prop "nodeId" (enc_u_binding__bool #num #flt x) == Ok (JStr f2) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__bool__Local__codec__present — codec present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__bool__Local__codec__present (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "codec" (enc_u_binding__bool #num #flt x) == Ok (enc_u_format (Some?.v f0)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__bool__Local__codec__absent — codec absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__bool__Local__codec__absent (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "codec" (enc_u_binding__bool #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__bool__Local__commit_to__present — commitTo present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__bool__Local__commit_to__present (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "commitTo" (enc_u_binding__bool #num #flt x) == Ok (JStr (Some?.v f1)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__bool__Local__commit_to__absent — commitTo absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__bool__Local__commit_to__absent (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "commitTo" (enc_u_binding__bool #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__bool__Local__flush_on — flushOn — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__bool__Local__flush_on (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__Local? x)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "flushOn" (enc_u_binding__bool #num #flt x) == Ok (enc_u_local_flush_trigger f2) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__bool__Local__format — format — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__bool__Local__format (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__Local? x)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "format" (enc_u_binding__bool #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__bool__Local__initial_from — initialFrom — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__bool__Local__initial_from (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__Local? x)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "initialFrom" (enc_u_binding__bool #num #flt x) == Ok (enc_u_binding__bool f4) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__bool__Local__on_commit__present — onCommit present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__bool__Local__on_commit__present (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f5 | _ -> false)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "onCommit" (enc_u_binding__bool #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__bool__Local__on_commit__absent — onCommit absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__bool__Local__on_commit__absent (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> None? f5 | _ -> false)) (ensures (Error? (get_prop "onCommit" (enc_u_binding__bool #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__bool__Local__parse — parse — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__bool__Local__parse (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__Local? x)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "parse" (enc_u_binding__bool #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__flt__Selection__default_value__present — defaultValue present *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__flt__Selection__default_value__present (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Selection f0 f1 f2 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_binding__flt__Selection f0 f1 f2 -> get_prop "defaultValue" (enc_u_binding__flt #num #flt x) == Ok (JFloat (Some?.v f0)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__flt__Selection__default_value__absent — defaultValue absent *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__flt__Selection__default_value__absent (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Selection f0 f1 f2 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "defaultValue" (enc_u_binding__flt #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__flt__Selection__field__present — field present *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__flt__Selection__field__present (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Selection f0 f1 f2 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_binding__flt__Selection f0 f1 f2 -> get_prop "field" (enc_u_binding__flt #num #flt x) == Ok (JStr (Some?.v f1)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__flt__Selection__field__absent — field absent *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__flt__Selection__field__absent (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Selection f0 f1 f2 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "field" (enc_u_binding__flt #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__flt__Selection__node_id — nodeId — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__flt__Selection__node_id (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (C__u_binding__flt__Selection? x)) (ensures (match x with | C__u_binding__flt__Selection f0 f1 f2 -> get_prop "nodeId" (enc_u_binding__flt #num #flt x) == Ok (JStr f2) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__flt__Local__codec__present — codec present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__flt__Local__codec__present (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "codec" (enc_u_binding__flt #num #flt x) == Ok (enc_u_format (Some?.v f0)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__flt__Local__codec__absent — codec absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__flt__Local__codec__absent (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "codec" (enc_u_binding__flt #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__flt__Local__commit_to__present — commitTo present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__flt__Local__commit_to__present (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "commitTo" (enc_u_binding__flt #num #flt x) == Ok (JStr (Some?.v f1)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__flt__Local__commit_to__absent — commitTo absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__flt__Local__commit_to__absent (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "commitTo" (enc_u_binding__flt #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__flt__Local__flush_on — flushOn — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__flt__Local__flush_on (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (C__u_binding__flt__Local? x)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "flushOn" (enc_u_binding__flt #num #flt x) == Ok (enc_u_local_flush_trigger f2) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__flt__Local__format — format — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__flt__Local__format (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (C__u_binding__flt__Local? x)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "format" (enc_u_binding__flt #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__flt__Local__initial_from — initialFrom — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__flt__Local__initial_from (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (C__u_binding__flt__Local? x)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "initialFrom" (enc_u_binding__flt #num #flt x) == Ok (enc_u_binding__flt f4) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__flt__Local__on_commit__present — onCommit present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__flt__Local__on_commit__present (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f5 | _ -> false)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "onCommit" (enc_u_binding__flt #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__flt__Local__on_commit__absent — onCommit absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__flt__Local__on_commit__absent (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> None? f5 | _ -> false)) (ensures (Error? (get_prop "onCommit" (enc_u_binding__flt #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__flt__Local__parse — parse — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__flt__Local__parse (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (C__u_binding__flt__Local? x)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "parse" (enc_u_binding__flt #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__json__Selection__default_value__present — defaultValue present *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__json__Selection__default_value__present (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Selection f0 f1 f2 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_binding__json__Selection f0 f1 f2 -> get_prop "defaultValue" (enc_u_binding__json #num #flt x) == Ok ((Some?.v f0)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__json__Selection__default_value__absent — defaultValue absent *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__json__Selection__default_value__absent (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Selection f0 f1 f2 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "defaultValue" (enc_u_binding__json #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__json__Selection__field__present — field present *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__json__Selection__field__present (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Selection f0 f1 f2 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_binding__json__Selection f0 f1 f2 -> get_prop "field" (enc_u_binding__json #num #flt x) == Ok (JStr (Some?.v f1)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__json__Selection__field__absent — field absent *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__json__Selection__field__absent (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Selection f0 f1 f2 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "field" (enc_u_binding__json #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__json__Selection__node_id — nodeId — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__json__Selection__node_id (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (C__u_binding__json__Selection? x)) (ensures (match x with | C__u_binding__json__Selection f0 f1 f2 -> get_prop "nodeId" (enc_u_binding__json #num #flt x) == Ok (JStr f2) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__json__Local__codec__present — codec present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__json__Local__codec__present (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "codec" (enc_u_binding__json #num #flt x) == Ok (enc_u_format (Some?.v f0)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__json__Local__codec__absent — codec absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__json__Local__codec__absent (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "codec" (enc_u_binding__json #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__json__Local__commit_to__present — commitTo present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__json__Local__commit_to__present (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "commitTo" (enc_u_binding__json #num #flt x) == Ok (JStr (Some?.v f1)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__json__Local__commit_to__absent — commitTo absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__json__Local__commit_to__absent (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "commitTo" (enc_u_binding__json #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__json__Local__flush_on — flushOn — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__json__Local__flush_on (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (C__u_binding__json__Local? x)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "flushOn" (enc_u_binding__json #num #flt x) == Ok (enc_u_local_flush_trigger f2) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__json__Local__format — format — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__json__Local__format (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (C__u_binding__json__Local? x)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "format" (enc_u_binding__json #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__json__Local__initial_from — initialFrom — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__json__Local__initial_from (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (C__u_binding__json__Local? x)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "initialFrom" (enc_u_binding__json #num #flt x) == Ok (enc_u_binding__json f4) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__json__Local__on_commit__present — onCommit present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__json__Local__on_commit__present (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f5 | _ -> false)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "onCommit" (enc_u_binding__json #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__json__Local__on_commit__absent — onCommit absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__json__Local__on_commit__absent (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> None? f5 | _ -> false)) (ensures (Error? (get_prop "onCommit" (enc_u_binding__json #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__json__Local__parse — parse — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__json__Local__parse (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (C__u_binding__json__Local? x)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "parse" (enc_u_binding__json #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__str__Selection__default_value__present — defaultValue present *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__str__Selection__default_value__present (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Selection f0 f1 f2 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_binding__str__Selection f0 f1 f2 -> get_prop "defaultValue" (enc_u_binding__str #num #flt x) == Ok (JStr (Some?.v f0)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__str__Selection__default_value__absent — defaultValue absent *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__str__Selection__default_value__absent (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Selection f0 f1 f2 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "defaultValue" (enc_u_binding__str #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__str__Selection__field__present — field present *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__str__Selection__field__present (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Selection f0 f1 f2 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_binding__str__Selection f0 f1 f2 -> get_prop "field" (enc_u_binding__str #num #flt x) == Ok (JStr (Some?.v f1)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__str__Selection__field__absent — field absent *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__str__Selection__field__absent (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Selection f0 f1 f2 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "field" (enc_u_binding__str #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__str__Selection__node_id — nodeId — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_u_binding__str__Selection__node_id (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (C__u_binding__str__Selection? x)) (ensures (match x with | C__u_binding__str__Selection f0 f1 f2 -> get_prop "nodeId" (enc_u_binding__str #num #flt x) == Ok (JStr f2) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__str__Local__codec__present — codec present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__str__Local__codec__present (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "codec" (enc_u_binding__str #num #flt x) == Ok (enc_u_format (Some?.v f0)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__str__Local__codec__absent — codec absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__str__Local__codec__absent (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "codec" (enc_u_binding__str #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__str__Local__commit_to__present — commitTo present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__str__Local__commit_to__present (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "commitTo" (enc_u_binding__str #num #flt x) == Ok (JStr (Some?.v f1)) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__str__Local__commit_to__absent — commitTo absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__str__Local__commit_to__absent (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "commitTo" (enc_u_binding__str #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__str__Local__flush_on — flushOn — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__str__Local__flush_on (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (C__u_binding__str__Local? x)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "flushOn" (enc_u_binding__str #num #flt x) == Ok (enc_u_local_flush_trigger f2) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__str__Local__format — format — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__str__Local__format (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (C__u_binding__str__Local? x)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "format" (enc_u_binding__str #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__str__Local__initial_from — initialFrom — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__str__Local__initial_from (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (C__u_binding__str__Local? x)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "initialFrom" (enc_u_binding__str #num #flt x) == Ok (enc_u_binding__str f4) | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__str__Local__on_commit__present — onCommit present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__str__Local__on_commit__present (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f5 | _ -> false)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "onCommit" (enc_u_binding__str #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
+#pop-options
+
+(* lk_u_binding__str__Local__on_commit__absent — onCommit absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__str__Local__on_commit__absent (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> None? f5 | _ -> false)) (ensures (Error? (get_prop "onCommit" (enc_u_binding__str #num #flt x)))) = ()
+#pop-options
+
+(* lk_u_binding__str__Local__parse — parse — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_u_binding__str__Local__parse (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (C__u_binding__str__Local? x)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "parse" (enc_u_binding__str #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
+#pop-options
+
+(* lk_r_state_behaviour__Mk__on_empty__present — onEmpty present *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_r_state_behaviour__Mk__on_empty__present (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> Some? f0)) (ensures (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> get_prop "onEmpty" (enc_r_state_behaviour #num #flt x) == Ok (enc_node (Some?.v f0)))) = ()
+#pop-options
+
+(* lk_r_state_behaviour__Mk__on_empty__absent — onEmpty absent *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_r_state_behaviour__Mk__on_empty__absent (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> None? f0)) (ensures (Error? (get_prop "onEmpty" (enc_r_state_behaviour #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_state_behaviour__Mk__on_error__present — onError present *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_r_state_behaviour__Mk__on_error__present (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> Some? f1)) (ensures (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> get_prop "onError" (enc_r_state_behaviour #num #flt x) == Ok (JStr "<closure>"))) = ()
+#pop-options
+
+(* lk_r_state_behaviour__Mk__on_error__absent — onError absent *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_r_state_behaviour__Mk__on_error__absent (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> None? f1)) (ensures (Error? (get_prop "onError" (enc_r_state_behaviour #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_state_behaviour__Mk__on_loading__present — onLoading present *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_r_state_behaviour__Mk__on_loading__present (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> Some? f2)) (ensures (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> get_prop "onLoading" (enc_r_state_behaviour #num #flt x) == Ok (enc_node (Some?.v f2)))) = ()
+#pop-options
+
+(* lk_r_state_behaviour__Mk__on_loading__absent — onLoading absent *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_r_state_behaviour__Mk__on_loading__absent (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> None? f2)) (ensures (Error? (get_prop "onLoading" (enc_r_state_behaviour #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_semantic_style__Mk__direction__present — direction not at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_semantic_style__Mk__direction__present (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto))) (ensures (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> get_prop "direction" (enc_r_semantic_style #num #flt x) == Ok (enc_e_text_direction f0))) = ()
+#pop-options
+
+(* lk_r_semantic_style__Mk__direction__absent — direction at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_semantic_style__Mk__direction__absent (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto)) (ensures (Error? (get_prop "direction" (enc_r_semantic_style #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_semantic_style__Mk__emphasis__present — emphasis not at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_semantic_style__Mk__emphasis__present (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f1 = C__e_emphasis__Normal))) (ensures (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> get_prop "emphasis" (enc_r_semantic_style #num #flt x) == Ok (enc_e_emphasis f1))) = ()
+#pop-options
+
+(* lk_r_semantic_style__Mk__emphasis__absent — emphasis at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_semantic_style__Mk__emphasis__absent (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f1 = C__e_emphasis__Normal)) (ensures (Error? (get_prop "emphasis" (enc_r_semantic_style #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_semantic_style__Mk__role__present — role not at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_semantic_style__Mk__role__present (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f2 = C__e_style_role__None))) (ensures (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> get_prop "role" (enc_r_semantic_style #num #flt x) == Ok (enc_e_style_role f2))) = ()
+#pop-options
+
+(* lk_r_semantic_style__Mk__role__absent — role at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_semantic_style__Mk__role__absent (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f2 = C__e_style_role__None)) (ensures (Error? (get_prop "role" (enc_r_semantic_style #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_semantic_style__Mk__tone__present — tone not at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_semantic_style__Mk__tone__present (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f3 = C__e_tone_variant__Default))) (ensures (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> get_prop "tone" (enc_r_semantic_style #num #flt x) == Ok (enc_e_tone_variant f3))) = ()
+#pop-options
+
+(* lk_r_semantic_style__Mk__tone__absent — tone at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_semantic_style__Mk__tone__absent (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f3 = C__e_tone_variant__Default)) (ensures (Error? (get_prop "tone" (enc_r_semantic_style #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_semantic_style__Mk__voice__present — voice not at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_semantic_style__Mk__voice__present (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f4 = C__e_font_voice__Default))) (ensures (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> get_prop "voice" (enc_r_semantic_style #num #flt x) == Ok (enc_e_font_voice f4))) = ()
+#pop-options
+
+(* lk_r_semantic_style__Mk__voice__absent — voice at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_semantic_style__Mk__voice__absent (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f4 = C__e_font_voice__Default)) (ensures (Error? (get_prop "voice" (enc_r_semantic_style #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_semantic_style__Mk__weight__present — weight not at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_semantic_style__Mk__weight__present (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f5 = C__e_style_weight__Standard))) (ensures (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> get_prop "weight" (enc_r_semantic_style #num #flt x) == Ok (enc_e_style_weight f5))) = ()
+#pop-options
+
+(* lk_r_semantic_style__Mk__weight__absent — weight at its default *)
+#push-options "--fuel 16 --ifuel 4"
+let lk_r_semantic_style__Mk__weight__absent (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f5 = C__e_style_weight__Standard)) (ensures (Error? (get_prop "weight" (enc_r_semantic_style #num #flt x)))) = ()
+#pop-options
+
+(* ======================================================================================
+   3. THE ROUND TRIP. One mutual induction over the whole family, recursing on the MODEL
       value — F*'s subterm order spans a mutual inductive family, so each case needs only
-      the sub-lemmas of the members it carries. ONE LEMMA PER CONSTRUCTOR, and one per
-      PRESENCE PATTERN where a constructor's conditional members warrant it (the header
-      says why): no query carries more than one constructor's object shapes.
+      the sub-lemmas of the members it carries. ONE LEMMA PER CONSTRUCTOR: a wide one is
+      proved by citing section 2's lookups, a member at a time, rather than by carrying
+      its object shapes into this query.
    ====================================================================================== *)
 
 let rec rt_node (#num #flt: eqtype) (x: node num flt) : Lemma (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 2]) =
   match x with
   | C__node__Node i k f0 f1 f2 f3 f4 ->
-    (match f0 with
-      | None ->
-        (match f1 with
-          | None ->
-            (match f2 with
-              | None ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p00000 #num #flt x
-                      | Some _ ->
-                        rt_node__p00001 #num #flt x
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p00010 #num #flt x
-                      | Some _ ->
-                        rt_node__p00011 #num #flt x
-                    )
-                )
-              | Some _ ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p00100 #num #flt x
-                      | Some _ ->
-                        rt_node__p00101 #num #flt x
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p00110 #num #flt x
-                      | Some _ ->
-                        rt_node__p00111 #num #flt x
-                    )
-                )
-            )
-          | Some _ ->
-            (match f2 with
-              | None ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p01000 #num #flt x
-                      | Some _ ->
-                        rt_node__p01001 #num #flt x
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p01010 #num #flt x
-                      | Some _ ->
-                        rt_node__p01011 #num #flt x
-                    )
-                )
-              | Some _ ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p01100 #num #flt x
-                      | Some _ ->
-                        rt_node__p01101 #num #flt x
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p01110 #num #flt x
-                      | Some _ ->
-                        rt_node__p01111 #num #flt x
-                    )
-                )
-            )
-        )
-      | Some _ ->
-        (match f1 with
-          | None ->
-            (match f2 with
-              | None ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p10000 #num #flt x
-                      | Some _ ->
-                        rt_node__p10001 #num #flt x
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p10010 #num #flt x
-                      | Some _ ->
-                        rt_node__p10011 #num #flt x
-                    )
-                )
-              | Some _ ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p10100 #num #flt x
-                      | Some _ ->
-                        rt_node__p10101 #num #flt x
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p10110 #num #flt x
-                      | Some _ ->
-                        rt_node__p10111 #num #flt x
-                    )
-                )
-            )
-          | Some _ ->
-            (match f2 with
-              | None ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p11000 #num #flt x
-                      | Some _ ->
-                        rt_node__p11001 #num #flt x
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p11010 #num #flt x
-                      | Some _ ->
-                        rt_node__p11011 #num #flt x
-                    )
-                )
-              | Some _ ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p11100 #num #flt x
-                      | Some _ ->
-                        rt_node__p11101 #num #flt x
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        rt_node__p11110 #num #flt x
-                      | Some _ ->
-                        rt_node__p11111 #num #flt x
-                    )
-                )
-            )
-        )
-    )
-
-(* rt_node__p00000 — accessibility absent, state absent, style absent, tooltip absent, visible absent *)
-and rt_node__p00000 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && None? f1 && None? f2 && None? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p00001 — accessibility absent, state absent, style absent, tooltip absent, visible present *)
-and rt_node__p00001 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && None? f1 && None? f2 && None? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p00010 — accessibility absent, state absent, style absent, tooltip present, visible absent *)
-and rt_node__p00010 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && None? f1 && None? f2 && Some? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p00011 — accessibility absent, state absent, style absent, tooltip present, visible present *)
-and rt_node__p00011 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && None? f1 && None? f2 && Some? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p00100 — accessibility absent, state absent, style present, tooltip absent, visible absent *)
-and rt_node__p00100 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && None? f1 && Some? f2 && None? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p00101 — accessibility absent, state absent, style present, tooltip absent, visible present *)
-and rt_node__p00101 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && None? f1 && Some? f2 && None? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p00110 — accessibility absent, state absent, style present, tooltip present, visible absent *)
-and rt_node__p00110 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && None? f1 && Some? f2 && Some? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p00111 — accessibility absent, state absent, style present, tooltip present, visible present *)
-and rt_node__p00111 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && None? f1 && Some? f2 && Some? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p01000 — accessibility absent, state present, style absent, tooltip absent, visible absent *)
-and rt_node__p01000 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && Some? f1 && None? f2 && None? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p01001 — accessibility absent, state present, style absent, tooltip absent, visible present *)
-and rt_node__p01001 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && Some? f1 && None? f2 && None? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p01010 — accessibility absent, state present, style absent, tooltip present, visible absent *)
-and rt_node__p01010 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && Some? f1 && None? f2 && Some? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p01011 — accessibility absent, state present, style absent, tooltip present, visible present *)
-and rt_node__p01011 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && Some? f1 && None? f2 && Some? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p01100 — accessibility absent, state present, style present, tooltip absent, visible absent *)
-and rt_node__p01100 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && Some? f1 && Some? f2 && None? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p01101 — accessibility absent, state present, style present, tooltip absent, visible present *)
-and rt_node__p01101 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && Some? f1 && Some? f2 && None? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p01110 — accessibility absent, state present, style present, tooltip present, visible absent *)
-and rt_node__p01110 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && Some? f1 && Some? f2 && Some? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p01111 — accessibility absent, state present, style present, tooltip present, visible present *)
-and rt_node__p01111 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0 && Some? f1 && Some? f2 && Some? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p10000 — accessibility present, state absent, style absent, tooltip absent, visible absent *)
-and rt_node__p10000 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && None? f1 && None? f2 && None? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p10001 — accessibility present, state absent, style absent, tooltip absent, visible present *)
-and rt_node__p10001 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && None? f1 && None? f2 && None? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p10010 — accessibility present, state absent, style absent, tooltip present, visible absent *)
-and rt_node__p10010 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && None? f1 && None? f2 && Some? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p10011 — accessibility present, state absent, style absent, tooltip present, visible present *)
-and rt_node__p10011 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && None? f1 && None? f2 && Some? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p10100 — accessibility present, state absent, style present, tooltip absent, visible absent *)
-and rt_node__p10100 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && None? f1 && Some? f2 && None? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p10101 — accessibility present, state absent, style present, tooltip absent, visible present *)
-and rt_node__p10101 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && None? f1 && Some? f2 && None? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p10110 — accessibility present, state absent, style present, tooltip present, visible absent *)
-and rt_node__p10110 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && None? f1 && Some? f2 && Some? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p10111 — accessibility present, state absent, style present, tooltip present, visible present *)
-and rt_node__p10111 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && None? f1 && Some? f2 && Some? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p11000 — accessibility present, state present, style absent, tooltip absent, visible absent *)
-and rt_node__p11000 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && Some? f1 && None? f2 && None? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p11001 — accessibility present, state present, style absent, tooltip absent, visible present *)
-and rt_node__p11001 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && Some? f1 && None? f2 && None? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p11010 — accessibility present, state present, style absent, tooltip present, visible absent *)
-and rt_node__p11010 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && Some? f1 && None? f2 && Some? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p11011 — accessibility present, state present, style absent, tooltip present, visible present *)
-and rt_node__p11011 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && Some? f1 && None? f2 && Some? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p11100 — accessibility present, state present, style present, tooltip absent, visible absent *)
-and rt_node__p11100 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && Some? f1 && Some? f2 && None? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p11101 — accessibility present, state present, style present, tooltip absent, visible present *)
-and rt_node__p11101 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && Some? f1 && Some? f2 && None? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p11110 — accessibility present, state present, style present, tooltip present, visible absent *)
-and rt_node__p11110 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && Some? f1 && Some? f2 && Some? f3 && None? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
-
-(* rt_node__p11111 — accessibility present, state present, style present, tooltip present, visible present *)
-and rt_node__p11111 (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0 && Some? f1 && Some? f2 && Some? f3 && Some? f4)) (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 -> rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
+    (match f0 with | None -> lk_node__Node__accessibility__absent #num #flt x | Some _ -> lk_node__Node__accessibility__present #num #flt x);
+    (match f1 with | None -> lk_node__Node__state__absent #num #flt x | Some _ -> lk_node__Node__state__present #num #flt x);
+    (match f2 with | None -> lk_node__Node__style__absent #num #flt x | Some _ -> lk_node__Node__style__present #num #flt x);
+    (match f3 with | None -> lk_node__Node__tooltip__absent #num #flt x | Some _ -> lk_node__Node__tooltip__present #num #flt x);
+    (match f4 with | None -> lk_node__Node__visible__absent #num #flt x | Some _ -> lk_node__Node__visible__present #num #flt x);
+    rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
 
 and rt_vkind (#num #flt: eqtype) (x: vkind num flt) : Lemma (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 2]) =
   match x with
@@ -459,153 +1031,11 @@ and rt_vkind__Badge (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C_
 and rt_vkind__Callout (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Callout? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__vkind__Callout f0 f1 f2 f3 f4 ->
-    (if f1 = false then
-      (match f2 with
-        | None ->
-          (match f3 with
-            | None ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Callout__p0000 #num #flt x
-              else
-                rt_vkind__Callout__p0001 #num #flt x
-              )
-            | Some _ ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Callout__p0010 #num #flt x
-              else
-                rt_vkind__Callout__p0011 #num #flt x
-              )
-          )
-        | Some _ ->
-          (match f3 with
-            | None ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Callout__p0100 #num #flt x
-              else
-                rt_vkind__Callout__p0101 #num #flt x
-              )
-            | Some _ ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Callout__p0110 #num #flt x
-              else
-                rt_vkind__Callout__p0111 #num #flt x
-              )
-          )
-      )
-    else
-      (match f2 with
-        | None ->
-          (match f3 with
-            | None ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Callout__p1000 #num #flt x
-              else
-                rt_vkind__Callout__p1001 #num #flt x
-              )
-            | Some _ ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Callout__p1010 #num #flt x
-              else
-                rt_vkind__Callout__p1011 #num #flt x
-              )
-          )
-        | Some _ ->
-          (match f3 with
-            | None ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Callout__p1100 #num #flt x
-              else
-                rt_vkind__Callout__p1101 #num #flt x
-              )
-            | Some _ ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Callout__p1110 #num #flt x
-              else
-                rt_vkind__Callout__p1111 #num #flt x
-              )
-          )
-      )
-    )
-
-(* rt_vkind__Callout__p0000 — dismissable at its default, heading absent, icon absent, tone at its default *)
-and rt_vkind__Callout__p0000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> f1 = false && None? f2 && None? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p0001 — dismissable at its default, heading absent, icon absent, tone not at its default *)
-and rt_vkind__Callout__p0001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> f1 = false && None? f2 && None? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p0010 — dismissable at its default, heading absent, icon present, tone at its default *)
-and rt_vkind__Callout__p0010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> f1 = false && None? f2 && Some? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p0011 — dismissable at its default, heading absent, icon present, tone not at its default *)
-and rt_vkind__Callout__p0011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> f1 = false && None? f2 && Some? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p0100 — dismissable at its default, heading present, icon absent, tone at its default *)
-and rt_vkind__Callout__p0100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> f1 = false && Some? f2 && None? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p0101 — dismissable at its default, heading present, icon absent, tone not at its default *)
-and rt_vkind__Callout__p0101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> f1 = false && Some? f2 && None? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p0110 — dismissable at its default, heading present, icon present, tone at its default *)
-and rt_vkind__Callout__p0110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> f1 = false && Some? f2 && Some? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p0111 — dismissable at its default, heading present, icon present, tone not at its default *)
-and rt_vkind__Callout__p0111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> f1 = false && Some? f2 && Some? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p1000 — dismissable not at its default, heading absent, icon absent, tone at its default *)
-and rt_vkind__Callout__p1000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> not (f1 = false) && None? f2 && None? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p1001 — dismissable not at its default, heading absent, icon absent, tone not at its default *)
-and rt_vkind__Callout__p1001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> not (f1 = false) && None? f2 && None? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p1010 — dismissable not at its default, heading absent, icon present, tone at its default *)
-and rt_vkind__Callout__p1010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> not (f1 = false) && None? f2 && Some? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p1011 — dismissable not at its default, heading absent, icon present, tone not at its default *)
-and rt_vkind__Callout__p1011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> not (f1 = false) && None? f2 && Some? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p1100 — dismissable not at its default, heading present, icon absent, tone at its default *)
-and rt_vkind__Callout__p1100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> not (f1 = false) && Some? f2 && None? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p1101 — dismissable not at its default, heading present, icon absent, tone not at its default *)
-and rt_vkind__Callout__p1101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> not (f1 = false) && Some? f2 && None? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p1110 — dismissable not at its default, heading present, icon present, tone at its default *)
-and rt_vkind__Callout__p1110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> not (f1 = false) && Some? f2 && Some? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Callout__p1111 — dismissable not at its default, heading present, icon present, tone not at its default *)
-and rt_vkind__Callout__p1111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Callout f0 f1 f2 f3 f4 -> not (f1 = false) && Some? f2 && Some? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
+    (if f1 = false then lk_vkind__Callout__dismissable__absent #num #flt x else lk_vkind__Callout__dismissable__present #num #flt x);
+    (match f2 with | None -> lk_vkind__Callout__heading__absent #num #flt x | Some _ -> lk_vkind__Callout__heading__present #num #flt x);
+    (match f3 with | None -> lk_vkind__Callout__icon__absent #num #flt x | Some _ -> lk_vkind__Callout__icon__present #num #flt x);
+    (if f4 = C__e_tone_variant__Default then lk_vkind__Callout__tone__absent #num #flt x else lk_vkind__Callout__tone__present #num #flt x);
+    rt_u_text_source #num #flt f0; (match f2 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
 
 and rt_vkind__CodeBlock (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__CodeBlock? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -618,39 +1048,11 @@ and rt_vkind__Disclosure (#num #flt: eqtype) (x: vkind num flt) : Lemma (require
 and rt_vkind__Embed (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Embed? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__vkind__Embed f0 f1 f2 f3 ->
-    (if f0 = C__e_image_aspect__Natural then
-      (if f1 = [] then
-        rt_vkind__Embed__p00 #num #flt x
-      else
-        rt_vkind__Embed__p01 #num #flt x
-      )
-    else
-      (if f1 = [] then
-        rt_vkind__Embed__p10 #num #flt x
-      else
-        rt_vkind__Embed__p11 #num #flt x
-      )
-    )
-
-(* rt_vkind__Embed__p00 — aspectRatio at its default, permissions at its default *)
-and rt_vkind__Embed__p00 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Embed f0 f1 f2 f3 -> f0 = C__e_image_aspect__Natural && f1 = [] | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Embed f0 f1 f2 f3 -> rt_e_image_aspect #num #flt f0; rt_items_l_e_embed_permission #num #flt [] f1; rt_u_binding__str #num #flt f2; rt_u_text_source #num #flt f3
-
-(* rt_vkind__Embed__p01 — aspectRatio at its default, permissions not at its default *)
-and rt_vkind__Embed__p01 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Embed f0 f1 f2 f3 -> f0 = C__e_image_aspect__Natural && not (f1 = []) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Embed f0 f1 f2 f3 -> rt_e_image_aspect #num #flt f0; rt_items_l_e_embed_permission #num #flt [] f1; rt_u_binding__str #num #flt f2; rt_u_text_source #num #flt f3
-
-(* rt_vkind__Embed__p10 — aspectRatio not at its default, permissions at its default *)
-and rt_vkind__Embed__p10 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Embed f0 f1 f2 f3 -> not (f0 = C__e_image_aspect__Natural) && f1 = [] | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Embed f0 f1 f2 f3 -> rt_e_image_aspect #num #flt f0; rt_items_l_e_embed_permission #num #flt [] f1; rt_u_binding__str #num #flt f2; rt_u_text_source #num #flt f3
-
-(* rt_vkind__Embed__p11 — aspectRatio not at its default, permissions not at its default *)
-and rt_vkind__Embed__p11 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Embed f0 f1 f2 f3 -> not (f0 = C__e_image_aspect__Natural) && not (f1 = []) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Embed f0 f1 f2 f3 -> rt_e_image_aspect #num #flt f0; rt_items_l_e_embed_permission #num #flt [] f1; rt_u_binding__str #num #flt f2; rt_u_text_source #num #flt f3
+    (if f0 = C__e_image_aspect__Natural then lk_vkind__Embed__aspect_ratio__absent #num #flt x else lk_vkind__Embed__aspect_ratio__present #num #flt x);
+    (if f1 = [] then lk_vkind__Embed__permissions__absent #num #flt x else lk_vkind__Embed__permissions__present #num #flt x);
+    lk_vkind__Embed__src #num #flt x;
+    lk_vkind__Embed__title #num #flt x;
+    rt_e_image_aspect #num #flt f0; rt_items_l_e_embed_permission #num #flt [] f1; rt_u_binding__str #num #flt f2; rt_u_text_source #num #flt f3
 
 and rt_vkind__ErrorBoundary (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__ErrorBoundary? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -659,2696 +1061,28 @@ and rt_vkind__ErrorBoundary (#num #flt: eqtype) (x: vkind num flt) : Lemma (requ
 and rt_vkind__Fact (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Fact? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
-    (if f0 = false then
-      (match f1 with
-        | None ->
-          (match f2 with
-            | None ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Fact__p0000 #num #flt x
-              else
-                rt_vkind__Fact__p0001 #num #flt x
-              )
-            | Some _ ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Fact__p0010 #num #flt x
-              else
-                rt_vkind__Fact__p0011 #num #flt x
-              )
-          )
-        | Some _ ->
-          (match f2 with
-            | None ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Fact__p0100 #num #flt x
-              else
-                rt_vkind__Fact__p0101 #num #flt x
-              )
-            | Some _ ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Fact__p0110 #num #flt x
-              else
-                rt_vkind__Fact__p0111 #num #flt x
-              )
-          )
-      )
-    else
-      (match f1 with
-        | None ->
-          (match f2 with
-            | None ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Fact__p1000 #num #flt x
-              else
-                rt_vkind__Fact__p1001 #num #flt x
-              )
-            | Some _ ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Fact__p1010 #num #flt x
-              else
-                rt_vkind__Fact__p1011 #num #flt x
-              )
-          )
-        | Some _ ->
-          (match f2 with
-            | None ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Fact__p1100 #num #flt x
-              else
-                rt_vkind__Fact__p1101 #num #flt x
-              )
-            | Some _ ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Fact__p1110 #num #flt x
-              else
-                rt_vkind__Fact__p1111 #num #flt x
-              )
-          )
-      )
-    )
-
-(* rt_vkind__Fact__p0000 — emphasis at its default, help absent, icon absent, tone at its default *)
-and rt_vkind__Fact__p0000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> f0 = false && None? f1 && None? f2 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p0001 — emphasis at its default, help absent, icon absent, tone not at its default *)
-and rt_vkind__Fact__p0001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> f0 = false && None? f1 && None? f2 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p0010 — emphasis at its default, help absent, icon present, tone at its default *)
-and rt_vkind__Fact__p0010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> f0 = false && None? f1 && Some? f2 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p0011 — emphasis at its default, help absent, icon present, tone not at its default *)
-and rt_vkind__Fact__p0011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> f0 = false && None? f1 && Some? f2 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p0100 — emphasis at its default, help present, icon absent, tone at its default *)
-and rt_vkind__Fact__p0100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> f0 = false && Some? f1 && None? f2 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p0101 — emphasis at its default, help present, icon absent, tone not at its default *)
-and rt_vkind__Fact__p0101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> f0 = false && Some? f1 && None? f2 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p0110 — emphasis at its default, help present, icon present, tone at its default *)
-and rt_vkind__Fact__p0110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> f0 = false && Some? f1 && Some? f2 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p0111 — emphasis at its default, help present, icon present, tone not at its default *)
-and rt_vkind__Fact__p0111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> f0 = false && Some? f1 && Some? f2 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p1000 — emphasis not at its default, help absent, icon absent, tone at its default *)
-and rt_vkind__Fact__p1000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> not (f0 = false) && None? f1 && None? f2 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p1001 — emphasis not at its default, help absent, icon absent, tone not at its default *)
-and rt_vkind__Fact__p1001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> not (f0 = false) && None? f1 && None? f2 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p1010 — emphasis not at its default, help absent, icon present, tone at its default *)
-and rt_vkind__Fact__p1010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> not (f0 = false) && None? f1 && Some? f2 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p1011 — emphasis not at its default, help absent, icon present, tone not at its default *)
-and rt_vkind__Fact__p1011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> not (f0 = false) && None? f1 && Some? f2 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p1100 — emphasis not at its default, help present, icon absent, tone at its default *)
-and rt_vkind__Fact__p1100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> not (f0 = false) && Some? f1 && None? f2 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p1101 — emphasis not at its default, help present, icon absent, tone not at its default *)
-and rt_vkind__Fact__p1101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> not (f0 = false) && Some? f1 && None? f2 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p1110 — emphasis not at its default, help present, icon present, tone at its default *)
-and rt_vkind__Fact__p1110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> not (f0 = false) && Some? f1 && Some? f2 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
-
-(* rt_vkind__Fact__p1111 — emphasis not at its default, help present, icon present, tone not at its default *)
-and rt_vkind__Fact__p1111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> not (f0 = false) && Some? f1 && Some? f2 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
+    (if f0 = false then lk_vkind__Fact__emphasis__absent #num #flt x else lk_vkind__Fact__emphasis__present #num #flt x);
+    (match f1 with | None -> lk_vkind__Fact__help__absent #num #flt x | Some _ -> lk_vkind__Fact__help__present #num #flt x);
+    (match f2 with | None -> lk_vkind__Fact__icon__absent #num #flt x | Some _ -> lk_vkind__Fact__icon__present #num #flt x);
+    lk_vkind__Fact__label #num #flt x;
+    (if f4 = C__e_tone_variant__Default then lk_vkind__Fact__tone__absent #num #flt x else lk_vkind__Fact__tone__present #num #flt x);
+    lk_vkind__Fact__value #num #flt x;
+    (match f1 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_text_source #num #flt f3; rt_e_tone_variant #num #flt f4; rt_u_text_source #num #flt f5
 
 and rt_vkind__FileUpload (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__FileUpload? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    (if f1 = false then
-      (match f2 with
-        | None ->
-          (match f3 with
-            | None ->
-              (match f4 with
-                | None ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00000000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00000001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00000010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00000011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00000100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00000101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00000110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00000111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00001000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00001001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00001010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00001011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00001100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00001101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00001110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00001111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-                | Some _ ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00010000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00010001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00010010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00010011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00010100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00010101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00010110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00010111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00011000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00011001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00011010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00011011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00011100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00011101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00011110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00011111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-              )
-            | Some _ ->
-              (match f4 with
-                | None ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00100000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00100001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00100010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00100011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00100100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00100101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00100110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00100111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00101000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00101001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00101010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00101011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00101100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00101101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00101110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00101111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-                | Some _ ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00110000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00110001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00110010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00110011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00110100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00110101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00110110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00110111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00111000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00111001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00111010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00111011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00111100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00111101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p00111110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p00111111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-              )
-          )
-        | Some _ ->
-          (match f3 with
-            | None ->
-              (match f4 with
-                | None ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01000000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01000001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01000010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01000011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01000100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01000101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01000110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01000111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01001000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01001001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01001010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01001011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01001100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01001101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01001110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01001111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-                | Some _ ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01010000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01010001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01010010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01010011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01010100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01010101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01010110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01010111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01011000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01011001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01011010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01011011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01011100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01011101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01011110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01011111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-              )
-            | Some _ ->
-              (match f4 with
-                | None ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01100000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01100001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01100010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01100011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01100100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01100101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01100110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01100111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01101000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01101001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01101010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01101011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01101100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01101101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01101110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01101111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-                | Some _ ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01110000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01110001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01110010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01110011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01110100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01110101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01110110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01110111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01111000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01111001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01111010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01111011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01111100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01111101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p01111110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p01111111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-              )
-          )
-      )
-    else
-      (match f2 with
-        | None ->
-          (match f3 with
-            | None ->
-              (match f4 with
-                | None ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10000000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10000001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10000010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10000011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10000100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10000101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10000110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10000111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10001000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10001001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10001010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10001011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10001100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10001101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10001110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10001111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-                | Some _ ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10010000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10010001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10010010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10010011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10010100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10010101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10010110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10010111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10011000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10011001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10011010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10011011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10011100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10011101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10011110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10011111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-              )
-            | Some _ ->
-              (match f4 with
-                | None ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10100000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10100001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10100010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10100011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10100100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10100101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10100110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10100111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10101000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10101001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10101010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10101011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10101100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10101101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10101110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10101111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-                | Some _ ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10110000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10110001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10110010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10110011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10110100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10110101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10110110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10110111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10111000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10111001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10111010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10111011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10111100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10111101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p10111110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p10111111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-              )
-          )
-        | Some _ ->
-          (match f3 with
-            | None ->
-              (match f4 with
-                | None ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11000000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11000001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11000010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11000011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11000100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11000101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11000110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11000111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11001000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11001001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11001010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11001011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11001100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11001101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11001110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11001111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-                | Some _ ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11010000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11010001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11010010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11010011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11010100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11010101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11010110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11010111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11011000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11011001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11011010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11011011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11011100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11011101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11011110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11011111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-              )
-            | Some _ ->
-              (match f4 with
-                | None ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11100000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11100001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11100010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11100011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11100100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11100101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11100110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11100111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11101000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11101001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11101010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11101011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11101100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11101101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11101110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11101111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-                | Some _ ->
-                  (if f5 = false then
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11110000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11110001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11110010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11110011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11110100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11110101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11110110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11110111 #num #flt x
-                            )
-                        )
-                    )
-                  else
-                    (match f7 with
-                      | None ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11111000 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11111001 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11111010 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11111011 #num #flt x
-                            )
-                        )
-                      | Some _ ->
-                        (match f8 with
-                          | None ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11111100 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11111101 #num #flt x
-                            )
-                          | Some _ ->
-                            (match f10 with
-                              | None ->
-                                rt_vkind__FileUpload__p11111110 #num #flt x
-                              | Some _ ->
-                                rt_vkind__FileUpload__p11111111 #num #flt x
-                            )
-                        )
-                    )
-                  )
-              )
-          )
-      )
-    )
-
-(* rt_vkind__FileUpload__p00000000 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00000000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00000001 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00000001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00000010 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00000010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00000011 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00000011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00000100 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00000100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00000101 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00000101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00000110 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00000110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00000111 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00000111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00001000 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00001000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00001001 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00001001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00001010 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00001010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00001011 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00001011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00001100 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00001100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00001101 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00001101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00001110 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00001110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00001111 — acceptPaste at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00001111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00010000 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00010000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00010001 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00010001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00010010 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00010010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00010011 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00010011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00010100 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00010100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00010101 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00010101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00010110 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00010110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00010111 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00010111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00011000 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00011000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00011001 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00011001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00011010 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00011010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00011011 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00011011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00011100 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00011100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00011101 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00011101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00011110 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00011110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00011111 — acceptPaste at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00011111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00100000 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00100000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00100001 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00100001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00100010 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00100010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00100011 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00100011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00100100 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00100100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00100101 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00100101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00100110 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00100110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00100111 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00100111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00101000 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00101000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00101001 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00101001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00101010 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00101010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00101011 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00101011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00101100 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00101100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00101101 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00101101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00101110 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00101110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00101111 — acceptPaste at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00101111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00110000 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00110000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00110001 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00110001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00110010 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00110010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00110011 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00110011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00110100 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00110100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00110101 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00110101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00110110 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00110110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00110111 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00110111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00111000 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00111000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00111001 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00111001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00111010 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00111010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00111011 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00111011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00111100 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p00111100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00111101 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p00111101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00111110 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p00111110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p00111111 — acceptPaste at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p00111111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01000000 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01000000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01000001 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01000001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01000010 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01000010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01000011 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01000011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01000100 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01000100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01000101 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01000101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01000110 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01000110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01000111 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01000111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01001000 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01001000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01001001 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01001001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01001010 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01001010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01001011 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01001011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01001100 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01001100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01001101 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01001101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01001110 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01001110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01001111 — acceptPaste at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01001111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01010000 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01010000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01010001 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01010001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01010010 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01010010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01010011 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01010011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01010100 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01010100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01010101 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01010101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01010110 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01010110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01010111 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01010111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01011000 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01011000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01011001 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01011001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01011010 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01011010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01011011 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01011011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01011100 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01011100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01011101 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01011101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01011110 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01011110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01011111 — acceptPaste at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01011111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01100000 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01100000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01100001 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01100001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01100010 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01100010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01100011 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01100011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01100100 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01100100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01100101 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01100101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01100110 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01100110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01100111 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01100111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01101000 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01101000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01101001 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01101001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01101010 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01101010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01101011 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01101011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01101100 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01101100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01101101 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01101101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01101110 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01101110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01101111 — acceptPaste at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01101111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01110000 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01110000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01110001 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01110001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01110010 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01110010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01110011 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01110011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01110100 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01110100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01110101 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01110101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01110110 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01110110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01110111 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01110111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01111000 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01111000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01111001 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01111001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01111010 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01111010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01111011 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01111011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01111100 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p01111100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01111101 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p01111101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01111110 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p01111110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p01111111 — acceptPaste at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p01111111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10000000 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10000000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10000001 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10000001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10000010 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10000010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10000011 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10000011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10000100 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10000100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10000101 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10000101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10000110 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10000110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10000111 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10000111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10001000 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10001000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10001001 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10001001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10001010 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10001010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10001011 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10001011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10001100 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10001100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10001101 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10001101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10001110 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10001110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10001111 — acceptPaste not at its default, capture absent, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10001111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10010000 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10010000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10010001 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10010001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10010010 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10010010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10010011 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10010011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10010100 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10010100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10010101 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10010101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10010110 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10010110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10010111 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10010111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10011000 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10011000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10011001 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10011001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10011010 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10011010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10011011 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10011011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10011100 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10011100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10011101 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10011101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10011110 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10011110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10011111 — acceptPaste not at its default, capture absent, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10011111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10100000 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10100000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10100001 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10100001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10100010 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10100010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10100011 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10100011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10100100 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10100100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10100101 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10100101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10100110 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10100110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10100111 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10100111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10101000 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10101000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10101001 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10101001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10101010 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10101010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10101011 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10101011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10101100 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10101100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10101101 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10101101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10101110 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10101110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10101111 — acceptPaste not at its default, capture absent, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10101111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10110000 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10110000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10110001 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10110001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10110010 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10110010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10110011 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10110011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10110100 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10110100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10110101 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10110101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10110110 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10110110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10110111 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10110111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10111000 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10111000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10111001 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10111001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10111010 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10111010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10111011 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10111011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10111100 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p10111100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10111101 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p10111101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10111110 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p10111110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p10111111 — acceptPaste not at its default, capture absent, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p10111111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && None? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11000000 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11000000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11000001 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11000001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11000010 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11000010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11000011 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11000011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11000100 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11000100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11000101 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11000101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11000110 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11000110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11000111 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11000111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11001000 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11001000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11001001 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11001001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11001010 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11001010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11001011 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11001011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11001100 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11001100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11001101 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11001101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11001110 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11001110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11001111 — acceptPaste not at its default, capture present, destination absent, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11001111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11010000 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11010000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11010001 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11010001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11010010 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11010010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11010011 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11010011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11010100 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11010100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11010101 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11010101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11010110 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11010110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11010111 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11010111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11011000 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11011000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11011001 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11011001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11011010 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11011010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11011011 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11011011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11011100 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11011100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11011101 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11011101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11011110 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11011110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11011111 — acceptPaste not at its default, capture present, destination absent, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11011111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && None? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11100000 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11100000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11100001 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11100001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11100010 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11100010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11100011 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11100011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11100100 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11100100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11100101 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11100101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11100110 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11100110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11100111 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11100111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11101000 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11101000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11101001 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11101001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11101010 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11101010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11101011 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11101011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11101100 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11101100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11101101 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11101101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11101110 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11101110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11101111 — acceptPaste not at its default, capture present, destination present, disabled absent, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11101111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && None? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11110000 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11110000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11110001 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11110001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11110010 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11110010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11110011 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11110011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && f5 = false && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11110100 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11110100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11110101 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11110101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11110110 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11110110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11110111 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11110111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && f5 = false && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11111000 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11111000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11111001 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11111001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11111010 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11111010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11111011 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes absent, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11111011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && None? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11111100 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect absent *)
-and rt_vkind__FileUpload__p11111100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11111101 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles absent, onSelect present *)
-and rt_vkind__FileUpload__p11111101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && None? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11111110 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect absent *)
-and rt_vkind__FileUpload__p11111110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && None? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
-
-(* rt_vkind__FileUpload__p11111111 — acceptPaste not at its default, capture present, destination present, disabled present, dropTarget not at its default, maxBytes present, maxFiles present, onSelect present *)
-and rt_vkind__FileUpload__p11111111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) && Some? f2 && Some? f3 && Some? f4 && not (f5 = false) && Some? f7 && Some? f8 && Some? f10 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
+    (if f1 = false then lk_vkind__FileUpload__accept_paste__absent #num #flt x else lk_vkind__FileUpload__accept_paste__present #num #flt x);
+    (match f2 with | None -> lk_vkind__FileUpload__capture__absent #num #flt x | Some _ -> lk_vkind__FileUpload__capture__present #num #flt x);
+    (match f3 with | None -> lk_vkind__FileUpload__destination__absent #num #flt x | Some _ -> lk_vkind__FileUpload__destination__present #num #flt x);
+    (match f4 with | None -> lk_vkind__FileUpload__disabled__absent #num #flt x | Some _ -> lk_vkind__FileUpload__disabled__present #num #flt x);
+    (if f5 = false then lk_vkind__FileUpload__drop_target__absent #num #flt x else lk_vkind__FileUpload__drop_target__present #num #flt x);
+    lk_vkind__FileUpload__label #num #flt x;
+    (match f7 with | None -> lk_vkind__FileUpload__max_bytes__absent #num #flt x | Some _ -> lk_vkind__FileUpload__max_bytes__present #num #flt x);
+    (match f8 with | None -> lk_vkind__FileUpload__max_files__absent #num #flt x | Some _ -> lk_vkind__FileUpload__max_files__present #num #flt x);
+    lk_vkind__FileUpload__multiple #num #flt x;
+    (match f10 with | None -> lk_vkind__FileUpload__on_select__absent #num #flt x | Some _ -> lk_vkind__FileUpload__on_select__present #num #flt x);
+    rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
 
 and rt_vkind__Heading (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Heading? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -3357,156 +1091,18 @@ and rt_vkind__Heading (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (
 and rt_vkind__Icon (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Icon? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__vkind__Icon f0 f1 f2 f3 ->
-    (match f1 with
-      | None ->
-        (if f2 = C__e_icon_size__Medium then
-          (if f3 = C__e_tone_variant__Default then
-            rt_vkind__Icon__p000 #num #flt x
-          else
-            rt_vkind__Icon__p001 #num #flt x
-          )
-        else
-          (if f3 = C__e_tone_variant__Default then
-            rt_vkind__Icon__p010 #num #flt x
-          else
-            rt_vkind__Icon__p011 #num #flt x
-          )
-        )
-      | Some _ ->
-        (if f2 = C__e_icon_size__Medium then
-          (if f3 = C__e_tone_variant__Default then
-            rt_vkind__Icon__p100 #num #flt x
-          else
-            rt_vkind__Icon__p101 #num #flt x
-          )
-        else
-          (if f3 = C__e_tone_variant__Default then
-            rt_vkind__Icon__p110 #num #flt x
-          else
-            rt_vkind__Icon__p111 #num #flt x
-          )
-        )
-    )
-
-(* rt_vkind__Icon__p000 — label absent, size at its default, tone at its default *)
-and rt_vkind__Icon__p000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> None? f1 && f2 = C__e_icon_size__Medium && f3 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Icon f0 f1 f2 f3 -> rt_e_icon_size #num #flt f2; rt_e_tone_variant #num #flt f3
-
-(* rt_vkind__Icon__p001 — label absent, size at its default, tone not at its default *)
-and rt_vkind__Icon__p001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> None? f1 && f2 = C__e_icon_size__Medium && not (f3 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Icon f0 f1 f2 f3 -> rt_e_icon_size #num #flt f2; rt_e_tone_variant #num #flt f3
-
-(* rt_vkind__Icon__p010 — label absent, size not at its default, tone at its default *)
-and rt_vkind__Icon__p010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> None? f1 && not (f2 = C__e_icon_size__Medium) && f3 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Icon f0 f1 f2 f3 -> rt_e_icon_size #num #flt f2; rt_e_tone_variant #num #flt f3
-
-(* rt_vkind__Icon__p011 — label absent, size not at its default, tone not at its default *)
-and rt_vkind__Icon__p011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> None? f1 && not (f2 = C__e_icon_size__Medium) && not (f3 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Icon f0 f1 f2 f3 -> rt_e_icon_size #num #flt f2; rt_e_tone_variant #num #flt f3
-
-(* rt_vkind__Icon__p100 — label present, size at its default, tone at its default *)
-and rt_vkind__Icon__p100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> Some? f1 && f2 = C__e_icon_size__Medium && f3 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Icon f0 f1 f2 f3 -> rt_e_icon_size #num #flt f2; rt_e_tone_variant #num #flt f3
-
-(* rt_vkind__Icon__p101 — label present, size at its default, tone not at its default *)
-and rt_vkind__Icon__p101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> Some? f1 && f2 = C__e_icon_size__Medium && not (f3 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Icon f0 f1 f2 f3 -> rt_e_icon_size #num #flt f2; rt_e_tone_variant #num #flt f3
-
-(* rt_vkind__Icon__p110 — label present, size not at its default, tone at its default *)
-and rt_vkind__Icon__p110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> Some? f1 && not (f2 = C__e_icon_size__Medium) && f3 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Icon f0 f1 f2 f3 -> rt_e_icon_size #num #flt f2; rt_e_tone_variant #num #flt f3
-
-(* rt_vkind__Icon__p111 — label present, size not at its default, tone not at its default *)
-and rt_vkind__Icon__p111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Icon f0 f1 f2 f3 -> Some? f1 && not (f2 = C__e_icon_size__Medium) && not (f3 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Icon f0 f1 f2 f3 -> rt_e_icon_size #num #flt f2; rt_e_tone_variant #num #flt f3
+    (match f1 with | None -> lk_vkind__Icon__label__absent #num #flt x | Some _ -> lk_vkind__Icon__label__present #num #flt x);
+    (if f2 = C__e_icon_size__Medium then lk_vkind__Icon__size__absent #num #flt x else lk_vkind__Icon__size__present #num #flt x);
+    (if f3 = C__e_tone_variant__Default then lk_vkind__Icon__tone__absent #num #flt x else lk_vkind__Icon__tone__present #num #flt x);
+    rt_e_icon_size #num #flt f2; rt_e_tone_variant #num #flt f3
 
 and rt_vkind__Link (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Link? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
-    (match f3 with
-      | None ->
-        (match f4 with
-          | None ->
-            (match f5 with
-              | None ->
-                rt_vkind__Link__p000 #num #flt x
-              | Some _ ->
-                rt_vkind__Link__p001 #num #flt x
-            )
-          | Some _ ->
-            (match f5 with
-              | None ->
-                rt_vkind__Link__p010 #num #flt x
-              | Some _ ->
-                rt_vkind__Link__p011 #num #flt x
-            )
-        )
-      | Some _ ->
-        (match f4 with
-          | None ->
-            (match f5 with
-              | None ->
-                rt_vkind__Link__p100 #num #flt x
-              | Some _ ->
-                rt_vkind__Link__p101 #num #flt x
-            )
-          | Some _ ->
-            (match f5 with
-              | None ->
-                rt_vkind__Link__p110 #num #flt x
-              | Some _ ->
-                rt_vkind__Link__p111 #num #flt x
-            )
-        )
-    )
-
-(* rt_vkind__Link__p000 — protection absent, rel absent, target absent *)
-and rt_vkind__Link__p000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> None? f3 && None? f4 && None? f5 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Link f0 f1 f2 f3 f4 f5 -> rt_u_binding__str #num #flt f1; rt_u_text_source #num #flt f2; (match f3 with | None -> () | Some w -> rt_e_link_protection #num #flt w)
-
-(* rt_vkind__Link__p001 — protection absent, rel absent, target present *)
-and rt_vkind__Link__p001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> None? f3 && None? f4 && Some? f5 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Link f0 f1 f2 f3 f4 f5 -> rt_u_binding__str #num #flt f1; rt_u_text_source #num #flt f2; (match f3 with | None -> () | Some w -> rt_e_link_protection #num #flt w)
-
-(* rt_vkind__Link__p010 — protection absent, rel present, target absent *)
-and rt_vkind__Link__p010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> None? f3 && Some? f4 && None? f5 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Link f0 f1 f2 f3 f4 f5 -> rt_u_binding__str #num #flt f1; rt_u_text_source #num #flt f2; (match f3 with | None -> () | Some w -> rt_e_link_protection #num #flt w)
-
-(* rt_vkind__Link__p011 — protection absent, rel present, target present *)
-and rt_vkind__Link__p011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> None? f3 && Some? f4 && Some? f5 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Link f0 f1 f2 f3 f4 f5 -> rt_u_binding__str #num #flt f1; rt_u_text_source #num #flt f2; (match f3 with | None -> () | Some w -> rt_e_link_protection #num #flt w)
-
-(* rt_vkind__Link__p100 — protection present, rel absent, target absent *)
-and rt_vkind__Link__p100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> Some? f3 && None? f4 && None? f5 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Link f0 f1 f2 f3 f4 f5 -> rt_u_binding__str #num #flt f1; rt_u_text_source #num #flt f2; (match f3 with | None -> () | Some w -> rt_e_link_protection #num #flt w)
-
-(* rt_vkind__Link__p101 — protection present, rel absent, target present *)
-and rt_vkind__Link__p101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> Some? f3 && None? f4 && Some? f5 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Link f0 f1 f2 f3 f4 f5 -> rt_u_binding__str #num #flt f1; rt_u_text_source #num #flt f2; (match f3 with | None -> () | Some w -> rt_e_link_protection #num #flt w)
-
-(* rt_vkind__Link__p110 — protection present, rel present, target absent *)
-and rt_vkind__Link__p110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> Some? f3 && Some? f4 && None? f5 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Link f0 f1 f2 f3 f4 f5 -> rt_u_binding__str #num #flt f1; rt_u_text_source #num #flt f2; (match f3 with | None -> () | Some w -> rt_e_link_protection #num #flt w)
-
-(* rt_vkind__Link__p111 — protection present, rel present, target present *)
-and rt_vkind__Link__p111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> Some? f3 && Some? f4 && Some? f5 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Link f0 f1 f2 f3 f4 f5 -> rt_u_binding__str #num #flt f1; rt_u_text_source #num #flt f2; (match f3 with | None -> () | Some w -> rt_e_link_protection #num #flt w)
+    (match f3 with | None -> lk_vkind__Link__protection__absent #num #flt x | Some _ -> lk_vkind__Link__protection__present #num #flt x);
+    (match f4 with | None -> lk_vkind__Link__rel__absent #num #flt x | Some _ -> lk_vkind__Link__rel__present #num #flt x);
+    (match f5 with | None -> lk_vkind__Link__target__absent #num #flt x | Some _ -> lk_vkind__Link__target__present #num #flt x);
+    rt_u_binding__str #num #flt f1; rt_u_text_source #num #flt f2; (match f3 with | None -> () | Some w -> rt_e_link_protection #num #flt w)
 
 and rt_vkind__List (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__List? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -3523,192 +1119,20 @@ and rt_vkind__Math (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__
 and rt_vkind__Progress (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Progress? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__vkind__Progress f0 f1 f2 f3 f4 ->
-    (match f0 with
-      | None ->
-        (if f2 = false then
-          (match f3 with
-            | None ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Progress__p0000 #num #flt x
-              else
-                rt_vkind__Progress__p0001 #num #flt x
-              )
-            | Some _ ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Progress__p0010 #num #flt x
-              else
-                rt_vkind__Progress__p0011 #num #flt x
-              )
-          )
-        else
-          (match f3 with
-            | None ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Progress__p0100 #num #flt x
-              else
-                rt_vkind__Progress__p0101 #num #flt x
-              )
-            | Some _ ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Progress__p0110 #num #flt x
-              else
-                rt_vkind__Progress__p0111 #num #flt x
-              )
-          )
-        )
-      | Some _ ->
-        (if f2 = false then
-          (match f3 with
-            | None ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Progress__p1000 #num #flt x
-              else
-                rt_vkind__Progress__p1001 #num #flt x
-              )
-            | Some _ ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Progress__p1010 #num #flt x
-              else
-                rt_vkind__Progress__p1011 #num #flt x
-              )
-          )
-        else
-          (match f3 with
-            | None ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Progress__p1100 #num #flt x
-              else
-                rt_vkind__Progress__p1101 #num #flt x
-              )
-            | Some _ ->
-              (if f4 = C__e_tone_variant__Default then
-                rt_vkind__Progress__p1110 #num #flt x
-              else
-                rt_vkind__Progress__p1111 #num #flt x
-              )
-          )
-        )
-    )
-
-(* rt_vkind__Progress__p0000 — caveat absent, indeterminate at its default, label absent, tone at its default *)
-and rt_vkind__Progress__p0000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> None? f0 && f2 = false && None? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p0001 — caveat absent, indeterminate at its default, label absent, tone not at its default *)
-and rt_vkind__Progress__p0001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> None? f0 && f2 = false && None? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p0010 — caveat absent, indeterminate at its default, label present, tone at its default *)
-and rt_vkind__Progress__p0010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> None? f0 && f2 = false && Some? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p0011 — caveat absent, indeterminate at its default, label present, tone not at its default *)
-and rt_vkind__Progress__p0011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> None? f0 && f2 = false && Some? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p0100 — caveat absent, indeterminate not at its default, label absent, tone at its default *)
-and rt_vkind__Progress__p0100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> None? f0 && not (f2 = false) && None? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p0101 — caveat absent, indeterminate not at its default, label absent, tone not at its default *)
-and rt_vkind__Progress__p0101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> None? f0 && not (f2 = false) && None? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p0110 — caveat absent, indeterminate not at its default, label present, tone at its default *)
-and rt_vkind__Progress__p0110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> None? f0 && not (f2 = false) && Some? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p0111 — caveat absent, indeterminate not at its default, label present, tone not at its default *)
-and rt_vkind__Progress__p0111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> None? f0 && not (f2 = false) && Some? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p1000 — caveat present, indeterminate at its default, label absent, tone at its default *)
-and rt_vkind__Progress__p1000 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> Some? f0 && f2 = false && None? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p1001 — caveat present, indeterminate at its default, label absent, tone not at its default *)
-and rt_vkind__Progress__p1001 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> Some? f0 && f2 = false && None? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p1010 — caveat present, indeterminate at its default, label present, tone at its default *)
-and rt_vkind__Progress__p1010 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> Some? f0 && f2 = false && Some? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p1011 — caveat present, indeterminate at its default, label present, tone not at its default *)
-and rt_vkind__Progress__p1011 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> Some? f0 && f2 = false && Some? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p1100 — caveat present, indeterminate not at its default, label absent, tone at its default *)
-and rt_vkind__Progress__p1100 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> Some? f0 && not (f2 = false) && None? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p1101 — caveat present, indeterminate not at its default, label absent, tone not at its default *)
-and rt_vkind__Progress__p1101 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> Some? f0 && not (f2 = false) && None? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p1110 — caveat present, indeterminate not at its default, label present, tone at its default *)
-and rt_vkind__Progress__p1110 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> Some? f0 && not (f2 = false) && Some? f3 && f4 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
-
-(* rt_vkind__Progress__p1111 — caveat present, indeterminate not at its default, label present, tone not at its default *)
-and rt_vkind__Progress__p1111 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Progress f0 f1 f2 f3 f4 -> Some? f0 && not (f2 = false) && Some? f3 && not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Progress f0 f1 f2 f3 f4 -> (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
+    (match f0 with | None -> lk_vkind__Progress__caveat__absent #num #flt x | Some _ -> lk_vkind__Progress__caveat__present #num #flt x);
+    lk_vkind__Progress__fraction #num #flt x;
+    (if f2 = false then lk_vkind__Progress__indeterminate__absent #num #flt x else lk_vkind__Progress__indeterminate__present #num #flt x);
+    (match f3 with | None -> lk_vkind__Progress__label__absent #num #flt x | Some _ -> lk_vkind__Progress__label__present #num #flt x);
+    (if f4 = C__e_tone_variant__Default then lk_vkind__Progress__tone__absent #num #flt x else lk_vkind__Progress__tone__present #num #flt x);
+    (match f0 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_u_binding__flt #num #flt f1; (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); rt_e_tone_variant #num #flt f4
 
 and rt_vkind__ScrollArea (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__ScrollArea? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__vkind__ScrollArea f0 f1 f2 f3 ->
-    (match f1 with
-      | None ->
-        (match f2 with
-          | None ->
-            rt_vkind__ScrollArea__p00 #num #flt x
-          | Some _ ->
-            rt_vkind__ScrollArea__p01 #num #flt x
-        )
-      | Some _ ->
-        (match f2 with
-          | None ->
-            rt_vkind__ScrollArea__p10 #num #flt x
-          | Some _ ->
-            rt_vkind__ScrollArea__p11 #num #flt x
-        )
-    )
-
-(* rt_vkind__ScrollArea__p00 — maxHeight absent, maxWidth absent *)
-and rt_vkind__ScrollArea__p00 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> None? f1 && None? f2 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__ScrollArea f0 f1 f2 f3 -> rt_items_l_node #num #flt [] f0; rt_e_scroll_orientation #num #flt f3
-
-(* rt_vkind__ScrollArea__p01 — maxHeight absent, maxWidth present *)
-and rt_vkind__ScrollArea__p01 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> None? f1 && Some? f2 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__ScrollArea f0 f1 f2 f3 -> rt_items_l_node #num #flt [] f0; rt_e_scroll_orientation #num #flt f3
-
-(* rt_vkind__ScrollArea__p10 — maxHeight present, maxWidth absent *)
-and rt_vkind__ScrollArea__p10 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> Some? f1 && None? f2 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__ScrollArea f0 f1 f2 f3 -> rt_items_l_node #num #flt [] f0; rt_e_scroll_orientation #num #flt f3
-
-(* rt_vkind__ScrollArea__p11 — maxHeight present, maxWidth present *)
-and rt_vkind__ScrollArea__p11 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> Some? f1 && Some? f2 | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__ScrollArea f0 f1 f2 f3 -> rt_items_l_node #num #flt [] f0; rt_e_scroll_orientation #num #flt f3
+    (match f1 with | None -> lk_vkind__ScrollArea__max_height__absent #num #flt x | Some _ -> lk_vkind__ScrollArea__max_height__present #num #flt x);
+    (match f2 with | None -> lk_vkind__ScrollArea__max_width__absent #num #flt x | Some _ -> lk_vkind__ScrollArea__max_width__present #num #flt x);
+    lk_vkind__ScrollArea__orientation #num #flt x;
+    rt_items_l_node #num #flt [] f0; rt_e_scroll_orientation #num #flt f3
 
 and rt_vkind__Skeleton (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Skeleton? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -3725,679 +1149,22 @@ and rt_vkind__SummaryList (#num #flt: eqtype) (x: vkind num flt) : Lemma (requir
 and rt_vkind__Toast (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Toast? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__vkind__Toast f0 f1 f2 f3 ->
-    (if f0 = true then
-      (if f3 = C__e_tone_variant__Default then
-        rt_vkind__Toast__p00 #num #flt x
-      else
-        rt_vkind__Toast__p01 #num #flt x
-      )
-    else
-      (if f3 = C__e_tone_variant__Default then
-        rt_vkind__Toast__p10 #num #flt x
-      else
-        rt_vkind__Toast__p11 #num #flt x
-      )
-    )
-
-(* rt_vkind__Toast__p00 — dismissable at its default, tone at its default *)
-and rt_vkind__Toast__p00 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Toast f0 f1 f2 f3 -> f0 = true && f3 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Toast f0 f1 f2 f3 -> rt_u_text_source #num #flt f1; rt_u_binding__bool #num #flt f2; rt_e_tone_variant #num #flt f3
-
-(* rt_vkind__Toast__p01 — dismissable at its default, tone not at its default *)
-and rt_vkind__Toast__p01 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Toast f0 f1 f2 f3 -> f0 = true && not (f3 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Toast f0 f1 f2 f3 -> rt_u_text_source #num #flt f1; rt_u_binding__bool #num #flt f2; rt_e_tone_variant #num #flt f3
-
-(* rt_vkind__Toast__p10 — dismissable not at its default, tone at its default *)
-and rt_vkind__Toast__p10 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Toast f0 f1 f2 f3 -> not (f0 = true) && f3 = C__e_tone_variant__Default | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Toast f0 f1 f2 f3 -> rt_u_text_source #num #flt f1; rt_u_binding__bool #num #flt f2; rt_e_tone_variant #num #flt f3
-
-(* rt_vkind__Toast__p11 — dismissable not at its default, tone not at its default *)
-and rt_vkind__Toast__p11 (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Toast f0 f1 f2 f3 -> not (f0 = true) && not (f3 = C__e_tone_variant__Default) | _ -> false)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__vkind__Toast f0 f1 f2 f3 -> rt_u_text_source #num #flt f1; rt_u_binding__bool #num #flt f2; rt_e_tone_variant #num #flt f3
+    (if f0 = true then lk_vkind__Toast__dismissable__absent #num #flt x else lk_vkind__Toast__dismissable__present #num #flt x);
+    lk_vkind__Toast__message #num #flt x;
+    lk_vkind__Toast__open #num #flt x;
+    (if f3 = C__e_tone_variant__Default then lk_vkind__Toast__tone__absent #num #flt x else lk_vkind__Toast__tone__present #num #flt x);
+    rt_u_text_source #num #flt f1; rt_u_binding__bool #num #flt f2; rt_e_tone_variant #num #flt f3
 
 and rt_r_accessibility (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 2]) =
   match x with
   | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 ->
-    (match f0 with
-      | None ->
-        (match f1 with
-          | None ->
-            (match f2 with
-              | None ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p000000 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p000001 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p000010 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p000011 #num #flt x
-                        )
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p000100 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p000101 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p000110 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p000111 #num #flt x
-                        )
-                    )
-                )
-              | Some _ ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p001000 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p001001 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p001010 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p001011 #num #flt x
-                        )
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p001100 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p001101 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p001110 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p001111 #num #flt x
-                        )
-                    )
-                )
-            )
-          | Some _ ->
-            (match f2 with
-              | None ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p010000 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p010001 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p010010 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p010011 #num #flt x
-                        )
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p010100 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p010101 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p010110 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p010111 #num #flt x
-                        )
-                    )
-                )
-              | Some _ ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p011000 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p011001 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p011010 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p011011 #num #flt x
-                        )
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p011100 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p011101 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p011110 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p011111 #num #flt x
-                        )
-                    )
-                )
-            )
-        )
-      | Some _ ->
-        (match f1 with
-          | None ->
-            (match f2 with
-              | None ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p100000 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p100001 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p100010 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p100011 #num #flt x
-                        )
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p100100 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p100101 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p100110 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p100111 #num #flt x
-                        )
-                    )
-                )
-              | Some _ ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p101000 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p101001 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p101010 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p101011 #num #flt x
-                        )
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p101100 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p101101 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p101110 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p101111 #num #flt x
-                        )
-                    )
-                )
-            )
-          | Some _ ->
-            (match f2 with
-              | None ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p110000 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p110001 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p110010 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p110011 #num #flt x
-                        )
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p110100 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p110101 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p110110 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p110111 #num #flt x
-                        )
-                    )
-                )
-              | Some _ ->
-                (match f3 with
-                  | None ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p111000 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p111001 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p111010 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p111011 #num #flt x
-                        )
-                    )
-                  | Some _ ->
-                    (match f4 with
-                      | None ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p111100 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p111101 #num #flt x
-                        )
-                      | Some _ ->
-                        (match f5 with
-                          | None ->
-                            rt_r_accessibility__p111110 #num #flt x
-                          | Some _ ->
-                            rt_r_accessibility__p111111 #num #flt x
-                        )
-                    )
-                )
-            )
-        )
-    )
-
-(* rt_r_accessibility__p000000 — describedBy absent, hidden absent, label absent, labelledBy absent, liveRegion absent, role absent *)
-and rt_r_accessibility__p000000 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && None? f2 && None? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p000001 — describedBy absent, hidden absent, label absent, labelledBy absent, liveRegion absent, role present *)
-and rt_r_accessibility__p000001 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && None? f2 && None? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p000010 — describedBy absent, hidden absent, label absent, labelledBy absent, liveRegion present, role absent *)
-and rt_r_accessibility__p000010 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && None? f2 && None? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p000011 — describedBy absent, hidden absent, label absent, labelledBy absent, liveRegion present, role present *)
-and rt_r_accessibility__p000011 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && None? f2 && None? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p000100 — describedBy absent, hidden absent, label absent, labelledBy present, liveRegion absent, role absent *)
-and rt_r_accessibility__p000100 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && None? f2 && Some? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p000101 — describedBy absent, hidden absent, label absent, labelledBy present, liveRegion absent, role present *)
-and rt_r_accessibility__p000101 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && None? f2 && Some? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p000110 — describedBy absent, hidden absent, label absent, labelledBy present, liveRegion present, role absent *)
-and rt_r_accessibility__p000110 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && None? f2 && Some? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p000111 — describedBy absent, hidden absent, label absent, labelledBy present, liveRegion present, role present *)
-and rt_r_accessibility__p000111 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && None? f2 && Some? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p001000 — describedBy absent, hidden absent, label present, labelledBy absent, liveRegion absent, role absent *)
-and rt_r_accessibility__p001000 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && Some? f2 && None? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p001001 — describedBy absent, hidden absent, label present, labelledBy absent, liveRegion absent, role present *)
-and rt_r_accessibility__p001001 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && Some? f2 && None? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p001010 — describedBy absent, hidden absent, label present, labelledBy absent, liveRegion present, role absent *)
-and rt_r_accessibility__p001010 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && Some? f2 && None? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p001011 — describedBy absent, hidden absent, label present, labelledBy absent, liveRegion present, role present *)
-and rt_r_accessibility__p001011 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && Some? f2 && None? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p001100 — describedBy absent, hidden absent, label present, labelledBy present, liveRegion absent, role absent *)
-and rt_r_accessibility__p001100 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && Some? f2 && Some? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p001101 — describedBy absent, hidden absent, label present, labelledBy present, liveRegion absent, role present *)
-and rt_r_accessibility__p001101 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && Some? f2 && Some? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p001110 — describedBy absent, hidden absent, label present, labelledBy present, liveRegion present, role absent *)
-and rt_r_accessibility__p001110 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && Some? f2 && Some? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p001111 — describedBy absent, hidden absent, label present, labelledBy present, liveRegion present, role present *)
-and rt_r_accessibility__p001111 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && None? f1 && Some? f2 && Some? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p010000 — describedBy absent, hidden present, label absent, labelledBy absent, liveRegion absent, role absent *)
-and rt_r_accessibility__p010000 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && None? f2 && None? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p010001 — describedBy absent, hidden present, label absent, labelledBy absent, liveRegion absent, role present *)
-and rt_r_accessibility__p010001 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && None? f2 && None? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p010010 — describedBy absent, hidden present, label absent, labelledBy absent, liveRegion present, role absent *)
-and rt_r_accessibility__p010010 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && None? f2 && None? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p010011 — describedBy absent, hidden present, label absent, labelledBy absent, liveRegion present, role present *)
-and rt_r_accessibility__p010011 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && None? f2 && None? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p010100 — describedBy absent, hidden present, label absent, labelledBy present, liveRegion absent, role absent *)
-and rt_r_accessibility__p010100 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && None? f2 && Some? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p010101 — describedBy absent, hidden present, label absent, labelledBy present, liveRegion absent, role present *)
-and rt_r_accessibility__p010101 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && None? f2 && Some? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p010110 — describedBy absent, hidden present, label absent, labelledBy present, liveRegion present, role absent *)
-and rt_r_accessibility__p010110 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && None? f2 && Some? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p010111 — describedBy absent, hidden present, label absent, labelledBy present, liveRegion present, role present *)
-and rt_r_accessibility__p010111 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && None? f2 && Some? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p011000 — describedBy absent, hidden present, label present, labelledBy absent, liveRegion absent, role absent *)
-and rt_r_accessibility__p011000 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && Some? f2 && None? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p011001 — describedBy absent, hidden present, label present, labelledBy absent, liveRegion absent, role present *)
-and rt_r_accessibility__p011001 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && Some? f2 && None? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p011010 — describedBy absent, hidden present, label present, labelledBy absent, liveRegion present, role absent *)
-and rt_r_accessibility__p011010 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && Some? f2 && None? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p011011 — describedBy absent, hidden present, label present, labelledBy absent, liveRegion present, role present *)
-and rt_r_accessibility__p011011 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && Some? f2 && None? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p011100 — describedBy absent, hidden present, label present, labelledBy present, liveRegion absent, role absent *)
-and rt_r_accessibility__p011100 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && Some? f2 && Some? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p011101 — describedBy absent, hidden present, label present, labelledBy present, liveRegion absent, role present *)
-and rt_r_accessibility__p011101 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && Some? f2 && Some? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p011110 — describedBy absent, hidden present, label present, labelledBy present, liveRegion present, role absent *)
-and rt_r_accessibility__p011110 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && Some? f2 && Some? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p011111 — describedBy absent, hidden present, label present, labelledBy present, liveRegion present, role present *)
-and rt_r_accessibility__p011111 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0 && Some? f1 && Some? f2 && Some? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p100000 — describedBy present, hidden absent, label absent, labelledBy absent, liveRegion absent, role absent *)
-and rt_r_accessibility__p100000 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && None? f2 && None? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p100001 — describedBy present, hidden absent, label absent, labelledBy absent, liveRegion absent, role present *)
-and rt_r_accessibility__p100001 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && None? f2 && None? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p100010 — describedBy present, hidden absent, label absent, labelledBy absent, liveRegion present, role absent *)
-and rt_r_accessibility__p100010 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && None? f2 && None? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p100011 — describedBy present, hidden absent, label absent, labelledBy absent, liveRegion present, role present *)
-and rt_r_accessibility__p100011 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && None? f2 && None? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p100100 — describedBy present, hidden absent, label absent, labelledBy present, liveRegion absent, role absent *)
-and rt_r_accessibility__p100100 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && None? f2 && Some? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p100101 — describedBy present, hidden absent, label absent, labelledBy present, liveRegion absent, role present *)
-and rt_r_accessibility__p100101 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && None? f2 && Some? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p100110 — describedBy present, hidden absent, label absent, labelledBy present, liveRegion present, role absent *)
-and rt_r_accessibility__p100110 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && None? f2 && Some? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p100111 — describedBy present, hidden absent, label absent, labelledBy present, liveRegion present, role present *)
-and rt_r_accessibility__p100111 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && None? f2 && Some? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p101000 — describedBy present, hidden absent, label present, labelledBy absent, liveRegion absent, role absent *)
-and rt_r_accessibility__p101000 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && Some? f2 && None? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p101001 — describedBy present, hidden absent, label present, labelledBy absent, liveRegion absent, role present *)
-and rt_r_accessibility__p101001 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && Some? f2 && None? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p101010 — describedBy present, hidden absent, label present, labelledBy absent, liveRegion present, role absent *)
-and rt_r_accessibility__p101010 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && Some? f2 && None? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p101011 — describedBy present, hidden absent, label present, labelledBy absent, liveRegion present, role present *)
-and rt_r_accessibility__p101011 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && Some? f2 && None? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p101100 — describedBy present, hidden absent, label present, labelledBy present, liveRegion absent, role absent *)
-and rt_r_accessibility__p101100 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && Some? f2 && Some? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p101101 — describedBy present, hidden absent, label present, labelledBy present, liveRegion absent, role present *)
-and rt_r_accessibility__p101101 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && Some? f2 && Some? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p101110 — describedBy present, hidden absent, label present, labelledBy present, liveRegion present, role absent *)
-and rt_r_accessibility__p101110 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && Some? f2 && Some? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p101111 — describedBy present, hidden absent, label present, labelledBy present, liveRegion present, role present *)
-and rt_r_accessibility__p101111 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && None? f1 && Some? f2 && Some? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p110000 — describedBy present, hidden present, label absent, labelledBy absent, liveRegion absent, role absent *)
-and rt_r_accessibility__p110000 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && None? f2 && None? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p110001 — describedBy present, hidden present, label absent, labelledBy absent, liveRegion absent, role present *)
-and rt_r_accessibility__p110001 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && None? f2 && None? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p110010 — describedBy present, hidden present, label absent, labelledBy absent, liveRegion present, role absent *)
-and rt_r_accessibility__p110010 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && None? f2 && None? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p110011 — describedBy present, hidden present, label absent, labelledBy absent, liveRegion present, role present *)
-and rt_r_accessibility__p110011 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && None? f2 && None? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p110100 — describedBy present, hidden present, label absent, labelledBy present, liveRegion absent, role absent *)
-and rt_r_accessibility__p110100 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && None? f2 && Some? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p110101 — describedBy present, hidden present, label absent, labelledBy present, liveRegion absent, role present *)
-and rt_r_accessibility__p110101 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && None? f2 && Some? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p110110 — describedBy present, hidden present, label absent, labelledBy present, liveRegion present, role absent *)
-and rt_r_accessibility__p110110 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && None? f2 && Some? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p110111 — describedBy present, hidden present, label absent, labelledBy present, liveRegion present, role present *)
-and rt_r_accessibility__p110111 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && None? f2 && Some? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p111000 — describedBy present, hidden present, label present, labelledBy absent, liveRegion absent, role absent *)
-and rt_r_accessibility__p111000 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && Some? f2 && None? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p111001 — describedBy present, hidden present, label present, labelledBy absent, liveRegion absent, role present *)
-and rt_r_accessibility__p111001 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && Some? f2 && None? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p111010 — describedBy present, hidden present, label present, labelledBy absent, liveRegion present, role absent *)
-and rt_r_accessibility__p111010 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && Some? f2 && None? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p111011 — describedBy present, hidden present, label present, labelledBy absent, liveRegion present, role present *)
-and rt_r_accessibility__p111011 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && Some? f2 && None? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p111100 — describedBy present, hidden present, label present, labelledBy present, liveRegion absent, role absent *)
-and rt_r_accessibility__p111100 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && Some? f2 && Some? f3 && None? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p111101 — describedBy present, hidden present, label present, labelledBy present, liveRegion absent, role present *)
-and rt_r_accessibility__p111101 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && Some? f2 && Some? f3 && None? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p111110 — describedBy present, hidden present, label present, labelledBy present, liveRegion present, role absent *)
-and rt_r_accessibility__p111110 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && Some? f2 && Some? f3 && Some? f4 && None? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
-
-(* rt_r_accessibility__p111111 — describedBy present, hidden present, label present, labelledBy present, liveRegion present, role present *)
-and rt_r_accessibility__p111111 (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0 && Some? f1 && Some? f2 && Some? f3 && Some? f4 && Some? f5)) (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
+    (match f0 with | None -> lk_r_accessibility__Mk__described_by__absent #num #flt x | Some _ -> lk_r_accessibility__Mk__described_by__present #num #flt x);
+    (match f1 with | None -> lk_r_accessibility__Mk__hidden__absent #num #flt x | Some _ -> lk_r_accessibility__Mk__hidden__present #num #flt x);
+    (match f2 with | None -> lk_r_accessibility__Mk__label__absent #num #flt x | Some _ -> lk_r_accessibility__Mk__label__present #num #flt x);
+    (match f3 with | None -> lk_r_accessibility__Mk__labelled_by__absent #num #flt x | Some _ -> lk_r_accessibility__Mk__labelled_by__present #num #flt x);
+    (match f4 with | None -> lk_r_accessibility__Mk__live_region__absent #num #flt x | Some _ -> lk_r_accessibility__Mk__live_region__present #num #flt x);
+    (match f5 with | None -> lk_r_accessibility__Mk__role__absent #num #flt x | Some _ -> lk_r_accessibility__Mk__role__present #num #flt x);
+    (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
 
 and rt_u_binding__bool (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 2]) =
   match x with
@@ -4430,42 +1197,10 @@ and rt_u_binding__bool__Filter (#num #flt: eqtype) (x: u_binding__bool num flt) 
 and rt_u_binding__bool__Selection (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__Selection? x)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__u_binding__bool__Selection f0 f1 f2 ->
-    (match f0 with
-      | None ->
-        (match f1 with
-          | None ->
-            rt_u_binding__bool__Selection__p00 #num #flt x
-          | Some _ ->
-            rt_u_binding__bool__Selection__p01 #num #flt x
-        )
-      | Some _ ->
-        (match f1 with
-          | None ->
-            rt_u_binding__bool__Selection__p10 #num #flt x
-          | Some _ ->
-            rt_u_binding__bool__Selection__p11 #num #flt x
-        )
-    )
-
-(* rt_u_binding__bool__Selection__p00 — defaultValue absent, field absent *)
-and rt_u_binding__bool__Selection__p00 (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Selection f0 f1 f2 -> None? f0 && None? f1 | _ -> false)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__bool__Selection f0 f1 f2 -> ()
-
-(* rt_u_binding__bool__Selection__p01 — defaultValue absent, field present *)
-and rt_u_binding__bool__Selection__p01 (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Selection f0 f1 f2 -> None? f0 && Some? f1 | _ -> false)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__bool__Selection f0 f1 f2 -> ()
-
-(* rt_u_binding__bool__Selection__p10 — defaultValue present, field absent *)
-and rt_u_binding__bool__Selection__p10 (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Selection f0 f1 f2 -> Some? f0 && None? f1 | _ -> false)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__bool__Selection f0 f1 f2 -> ()
-
-(* rt_u_binding__bool__Selection__p11 — defaultValue present, field present *)
-and rt_u_binding__bool__Selection__p11 (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Selection f0 f1 f2 -> Some? f0 && Some? f1 | _ -> false)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__bool__Selection f0 f1 f2 -> ()
+    (match f0 with | None -> lk_u_binding__bool__Selection__default_value__absent #num #flt x | Some _ -> lk_u_binding__bool__Selection__default_value__present #num #flt x);
+    (match f1 with | None -> lk_u_binding__bool__Selection__field__absent #num #flt x | Some _ -> lk_u_binding__bool__Selection__field__present #num #flt x);
+    lk_u_binding__bool__Selection__node_id #num #flt x;
+    ()
 
 and rt_u_binding__bool__State (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__State? x)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -4482,82 +1217,14 @@ and rt_u_binding__bool__Computed (#num #flt: eqtype) (x: u_binding__bool num flt
 and rt_u_binding__bool__Local (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__Local? x)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 ->
-    (match f0 with
-      | None ->
-        (match f1 with
-          | None ->
-            (match f5 with
-              | None ->
-                rt_u_binding__bool__Local__p000 #num #flt x
-              | Some _ ->
-                rt_u_binding__bool__Local__p001 #num #flt x
-            )
-          | Some _ ->
-            (match f5 with
-              | None ->
-                rt_u_binding__bool__Local__p010 #num #flt x
-              | Some _ ->
-                rt_u_binding__bool__Local__p011 #num #flt x
-            )
-        )
-      | Some _ ->
-        (match f1 with
-          | None ->
-            (match f5 with
-              | None ->
-                rt_u_binding__bool__Local__p100 #num #flt x
-              | Some _ ->
-                rt_u_binding__bool__Local__p101 #num #flt x
-            )
-          | Some _ ->
-            (match f5 with
-              | None ->
-                rt_u_binding__bool__Local__p110 #num #flt x
-              | Some _ ->
-                rt_u_binding__bool__Local__p111 #num #flt x
-            )
-        )
-    )
-
-(* rt_u_binding__bool__Local__p000 — codec absent, commitTo absent, onCommit absent *)
-and rt_u_binding__bool__Local__p000 (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && None? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__bool #num #flt f4
-
-(* rt_u_binding__bool__Local__p001 — codec absent, commitTo absent, onCommit present *)
-and rt_u_binding__bool__Local__p001 (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && None? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__bool #num #flt f4
-
-(* rt_u_binding__bool__Local__p010 — codec absent, commitTo present, onCommit absent *)
-and rt_u_binding__bool__Local__p010 (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && Some? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__bool #num #flt f4
-
-(* rt_u_binding__bool__Local__p011 — codec absent, commitTo present, onCommit present *)
-and rt_u_binding__bool__Local__p011 (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && Some? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__bool #num #flt f4
-
-(* rt_u_binding__bool__Local__p100 — codec present, commitTo absent, onCommit absent *)
-and rt_u_binding__bool__Local__p100 (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && None? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__bool #num #flt f4
-
-(* rt_u_binding__bool__Local__p101 — codec present, commitTo absent, onCommit present *)
-and rt_u_binding__bool__Local__p101 (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && None? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__bool #num #flt f4
-
-(* rt_u_binding__bool__Local__p110 — codec present, commitTo present, onCommit absent *)
-and rt_u_binding__bool__Local__p110 (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && Some? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__bool #num #flt f4
-
-(* rt_u_binding__bool__Local__p111 — codec present, commitTo present, onCommit present *)
-and rt_u_binding__bool__Local__p111 (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && Some? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__bool #num #flt f4
+    (match f0 with | None -> lk_u_binding__bool__Local__codec__absent #num #flt x | Some _ -> lk_u_binding__bool__Local__codec__present #num #flt x);
+    (match f1 with | None -> lk_u_binding__bool__Local__commit_to__absent #num #flt x | Some _ -> lk_u_binding__bool__Local__commit_to__present #num #flt x);
+    lk_u_binding__bool__Local__flush_on #num #flt x;
+    lk_u_binding__bool__Local__format #num #flt x;
+    lk_u_binding__bool__Local__initial_from #num #flt x;
+    (match f5 with | None -> lk_u_binding__bool__Local__on_commit__absent #num #flt x | Some _ -> lk_u_binding__bool__Local__on_commit__present #num #flt x);
+    lk_u_binding__bool__Local__parse #num #flt x;
+    (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__bool #num #flt f4
 
 and rt_u_binding__bool__Format (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__Format? x)) (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -4671,42 +1338,10 @@ and rt_u_binding__flt__Filter (#num #flt: eqtype) (x: u_binding__flt num flt) : 
 and rt_u_binding__flt__Selection (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (C__u_binding__flt__Selection? x)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__u_binding__flt__Selection f0 f1 f2 ->
-    (match f0 with
-      | None ->
-        (match f1 with
-          | None ->
-            rt_u_binding__flt__Selection__p00 #num #flt x
-          | Some _ ->
-            rt_u_binding__flt__Selection__p01 #num #flt x
-        )
-      | Some _ ->
-        (match f1 with
-          | None ->
-            rt_u_binding__flt__Selection__p10 #num #flt x
-          | Some _ ->
-            rt_u_binding__flt__Selection__p11 #num #flt x
-        )
-    )
-
-(* rt_u_binding__flt__Selection__p00 — defaultValue absent, field absent *)
-and rt_u_binding__flt__Selection__p00 (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Selection f0 f1 f2 -> None? f0 && None? f1 | _ -> false)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__flt__Selection f0 f1 f2 -> ()
-
-(* rt_u_binding__flt__Selection__p01 — defaultValue absent, field present *)
-and rt_u_binding__flt__Selection__p01 (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Selection f0 f1 f2 -> None? f0 && Some? f1 | _ -> false)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__flt__Selection f0 f1 f2 -> ()
-
-(* rt_u_binding__flt__Selection__p10 — defaultValue present, field absent *)
-and rt_u_binding__flt__Selection__p10 (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Selection f0 f1 f2 -> Some? f0 && None? f1 | _ -> false)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__flt__Selection f0 f1 f2 -> ()
-
-(* rt_u_binding__flt__Selection__p11 — defaultValue present, field present *)
-and rt_u_binding__flt__Selection__p11 (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Selection f0 f1 f2 -> Some? f0 && Some? f1 | _ -> false)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__flt__Selection f0 f1 f2 -> ()
+    (match f0 with | None -> lk_u_binding__flt__Selection__default_value__absent #num #flt x | Some _ -> lk_u_binding__flt__Selection__default_value__present #num #flt x);
+    (match f1 with | None -> lk_u_binding__flt__Selection__field__absent #num #flt x | Some _ -> lk_u_binding__flt__Selection__field__present #num #flt x);
+    lk_u_binding__flt__Selection__node_id #num #flt x;
+    ()
 
 and rt_u_binding__flt__State (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (C__u_binding__flt__State? x)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -4723,82 +1358,14 @@ and rt_u_binding__flt__Computed (#num #flt: eqtype) (x: u_binding__flt num flt) 
 and rt_u_binding__flt__Local (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (C__u_binding__flt__Local? x)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 ->
-    (match f0 with
-      | None ->
-        (match f1 with
-          | None ->
-            (match f5 with
-              | None ->
-                rt_u_binding__flt__Local__p000 #num #flt x
-              | Some _ ->
-                rt_u_binding__flt__Local__p001 #num #flt x
-            )
-          | Some _ ->
-            (match f5 with
-              | None ->
-                rt_u_binding__flt__Local__p010 #num #flt x
-              | Some _ ->
-                rt_u_binding__flt__Local__p011 #num #flt x
-            )
-        )
-      | Some _ ->
-        (match f1 with
-          | None ->
-            (match f5 with
-              | None ->
-                rt_u_binding__flt__Local__p100 #num #flt x
-              | Some _ ->
-                rt_u_binding__flt__Local__p101 #num #flt x
-            )
-          | Some _ ->
-            (match f5 with
-              | None ->
-                rt_u_binding__flt__Local__p110 #num #flt x
-              | Some _ ->
-                rt_u_binding__flt__Local__p111 #num #flt x
-            )
-        )
-    )
-
-(* rt_u_binding__flt__Local__p000 — codec absent, commitTo absent, onCommit absent *)
-and rt_u_binding__flt__Local__p000 (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && None? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__flt #num #flt f4
-
-(* rt_u_binding__flt__Local__p001 — codec absent, commitTo absent, onCommit present *)
-and rt_u_binding__flt__Local__p001 (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && None? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__flt #num #flt f4
-
-(* rt_u_binding__flt__Local__p010 — codec absent, commitTo present, onCommit absent *)
-and rt_u_binding__flt__Local__p010 (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && Some? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__flt #num #flt f4
-
-(* rt_u_binding__flt__Local__p011 — codec absent, commitTo present, onCommit present *)
-and rt_u_binding__flt__Local__p011 (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && Some? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__flt #num #flt f4
-
-(* rt_u_binding__flt__Local__p100 — codec present, commitTo absent, onCommit absent *)
-and rt_u_binding__flt__Local__p100 (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && None? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__flt #num #flt f4
-
-(* rt_u_binding__flt__Local__p101 — codec present, commitTo absent, onCommit present *)
-and rt_u_binding__flt__Local__p101 (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && None? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__flt #num #flt f4
-
-(* rt_u_binding__flt__Local__p110 — codec present, commitTo present, onCommit absent *)
-and rt_u_binding__flt__Local__p110 (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && Some? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__flt #num #flt f4
-
-(* rt_u_binding__flt__Local__p111 — codec present, commitTo present, onCommit present *)
-and rt_u_binding__flt__Local__p111 (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && Some? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__flt #num #flt f4
+    (match f0 with | None -> lk_u_binding__flt__Local__codec__absent #num #flt x | Some _ -> lk_u_binding__flt__Local__codec__present #num #flt x);
+    (match f1 with | None -> lk_u_binding__flt__Local__commit_to__absent #num #flt x | Some _ -> lk_u_binding__flt__Local__commit_to__present #num #flt x);
+    lk_u_binding__flt__Local__flush_on #num #flt x;
+    lk_u_binding__flt__Local__format #num #flt x;
+    lk_u_binding__flt__Local__initial_from #num #flt x;
+    (match f5 with | None -> lk_u_binding__flt__Local__on_commit__absent #num #flt x | Some _ -> lk_u_binding__flt__Local__on_commit__present #num #flt x);
+    lk_u_binding__flt__Local__parse #num #flt x;
+    (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__flt #num #flt f4
 
 and rt_u_binding__flt__Format (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (C__u_binding__flt__Format? x)) (ensures dec_u_binding__flt (enc_u_binding__flt #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -4864,42 +1431,10 @@ and rt_u_binding__json__Filter (#num #flt: eqtype) (x: u_binding__json num flt) 
 and rt_u_binding__json__Selection (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (C__u_binding__json__Selection? x)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__u_binding__json__Selection f0 f1 f2 ->
-    (match f0 with
-      | None ->
-        (match f1 with
-          | None ->
-            rt_u_binding__json__Selection__p00 #num #flt x
-          | Some _ ->
-            rt_u_binding__json__Selection__p01 #num #flt x
-        )
-      | Some _ ->
-        (match f1 with
-          | None ->
-            rt_u_binding__json__Selection__p10 #num #flt x
-          | Some _ ->
-            rt_u_binding__json__Selection__p11 #num #flt x
-        )
-    )
-
-(* rt_u_binding__json__Selection__p00 — defaultValue absent, field absent *)
-and rt_u_binding__json__Selection__p00 (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Selection f0 f1 f2 -> None? f0 && None? f1 | _ -> false)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__json__Selection f0 f1 f2 -> ()
-
-(* rt_u_binding__json__Selection__p01 — defaultValue absent, field present *)
-and rt_u_binding__json__Selection__p01 (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Selection f0 f1 f2 -> None? f0 && Some? f1 | _ -> false)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__json__Selection f0 f1 f2 -> ()
-
-(* rt_u_binding__json__Selection__p10 — defaultValue present, field absent *)
-and rt_u_binding__json__Selection__p10 (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Selection f0 f1 f2 -> Some? f0 && None? f1 | _ -> false)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__json__Selection f0 f1 f2 -> ()
-
-(* rt_u_binding__json__Selection__p11 — defaultValue present, field present *)
-and rt_u_binding__json__Selection__p11 (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Selection f0 f1 f2 -> Some? f0 && Some? f1 | _ -> false)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__json__Selection f0 f1 f2 -> ()
+    (match f0 with | None -> lk_u_binding__json__Selection__default_value__absent #num #flt x | Some _ -> lk_u_binding__json__Selection__default_value__present #num #flt x);
+    (match f1 with | None -> lk_u_binding__json__Selection__field__absent #num #flt x | Some _ -> lk_u_binding__json__Selection__field__present #num #flt x);
+    lk_u_binding__json__Selection__node_id #num #flt x;
+    ()
 
 and rt_u_binding__json__State (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (C__u_binding__json__State? x)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -4916,82 +1451,14 @@ and rt_u_binding__json__Computed (#num #flt: eqtype) (x: u_binding__json num flt
 and rt_u_binding__json__Local (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (C__u_binding__json__Local? x)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 ->
-    (match f0 with
-      | None ->
-        (match f1 with
-          | None ->
-            (match f5 with
-              | None ->
-                rt_u_binding__json__Local__p000 #num #flt x
-              | Some _ ->
-                rt_u_binding__json__Local__p001 #num #flt x
-            )
-          | Some _ ->
-            (match f5 with
-              | None ->
-                rt_u_binding__json__Local__p010 #num #flt x
-              | Some _ ->
-                rt_u_binding__json__Local__p011 #num #flt x
-            )
-        )
-      | Some _ ->
-        (match f1 with
-          | None ->
-            (match f5 with
-              | None ->
-                rt_u_binding__json__Local__p100 #num #flt x
-              | Some _ ->
-                rt_u_binding__json__Local__p101 #num #flt x
-            )
-          | Some _ ->
-            (match f5 with
-              | None ->
-                rt_u_binding__json__Local__p110 #num #flt x
-              | Some _ ->
-                rt_u_binding__json__Local__p111 #num #flt x
-            )
-        )
-    )
-
-(* rt_u_binding__json__Local__p000 — codec absent, commitTo absent, onCommit absent *)
-and rt_u_binding__json__Local__p000 (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && None? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__json #num #flt f4
-
-(* rt_u_binding__json__Local__p001 — codec absent, commitTo absent, onCommit present *)
-and rt_u_binding__json__Local__p001 (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && None? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__json #num #flt f4
-
-(* rt_u_binding__json__Local__p010 — codec absent, commitTo present, onCommit absent *)
-and rt_u_binding__json__Local__p010 (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && Some? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__json #num #flt f4
-
-(* rt_u_binding__json__Local__p011 — codec absent, commitTo present, onCommit present *)
-and rt_u_binding__json__Local__p011 (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && Some? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__json #num #flt f4
-
-(* rt_u_binding__json__Local__p100 — codec present, commitTo absent, onCommit absent *)
-and rt_u_binding__json__Local__p100 (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && None? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__json #num #flt f4
-
-(* rt_u_binding__json__Local__p101 — codec present, commitTo absent, onCommit present *)
-and rt_u_binding__json__Local__p101 (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && None? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__json #num #flt f4
-
-(* rt_u_binding__json__Local__p110 — codec present, commitTo present, onCommit absent *)
-and rt_u_binding__json__Local__p110 (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && Some? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__json #num #flt f4
-
-(* rt_u_binding__json__Local__p111 — codec present, commitTo present, onCommit present *)
-and rt_u_binding__json__Local__p111 (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && Some? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__json #num #flt f4
+    (match f0 with | None -> lk_u_binding__json__Local__codec__absent #num #flt x | Some _ -> lk_u_binding__json__Local__codec__present #num #flt x);
+    (match f1 with | None -> lk_u_binding__json__Local__commit_to__absent #num #flt x | Some _ -> lk_u_binding__json__Local__commit_to__present #num #flt x);
+    lk_u_binding__json__Local__flush_on #num #flt x;
+    lk_u_binding__json__Local__format #num #flt x;
+    lk_u_binding__json__Local__initial_from #num #flt x;
+    (match f5 with | None -> lk_u_binding__json__Local__on_commit__absent #num #flt x | Some _ -> lk_u_binding__json__Local__on_commit__present #num #flt x);
+    lk_u_binding__json__Local__parse #num #flt x;
+    (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__json #num #flt f4
 
 and rt_u_binding__json__Format (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (C__u_binding__json__Format? x)) (ensures dec_u_binding__json (enc_u_binding__json #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -5052,42 +1519,10 @@ and rt_u_binding__str__Filter (#num #flt: eqtype) (x: u_binding__str num flt) : 
 and rt_u_binding__str__Selection (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (C__u_binding__str__Selection? x)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__u_binding__str__Selection f0 f1 f2 ->
-    (match f0 with
-      | None ->
-        (match f1 with
-          | None ->
-            rt_u_binding__str__Selection__p00 #num #flt x
-          | Some _ ->
-            rt_u_binding__str__Selection__p01 #num #flt x
-        )
-      | Some _ ->
-        (match f1 with
-          | None ->
-            rt_u_binding__str__Selection__p10 #num #flt x
-          | Some _ ->
-            rt_u_binding__str__Selection__p11 #num #flt x
-        )
-    )
-
-(* rt_u_binding__str__Selection__p00 — defaultValue absent, field absent *)
-and rt_u_binding__str__Selection__p00 (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Selection f0 f1 f2 -> None? f0 && None? f1 | _ -> false)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__str__Selection f0 f1 f2 -> ()
-
-(* rt_u_binding__str__Selection__p01 — defaultValue absent, field present *)
-and rt_u_binding__str__Selection__p01 (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Selection f0 f1 f2 -> None? f0 && Some? f1 | _ -> false)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__str__Selection f0 f1 f2 -> ()
-
-(* rt_u_binding__str__Selection__p10 — defaultValue present, field absent *)
-and rt_u_binding__str__Selection__p10 (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Selection f0 f1 f2 -> Some? f0 && None? f1 | _ -> false)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__str__Selection f0 f1 f2 -> ()
-
-(* rt_u_binding__str__Selection__p11 — defaultValue present, field present *)
-and rt_u_binding__str__Selection__p11 (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Selection f0 f1 f2 -> Some? f0 && Some? f1 | _ -> false)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__str__Selection f0 f1 f2 -> ()
+    (match f0 with | None -> lk_u_binding__str__Selection__default_value__absent #num #flt x | Some _ -> lk_u_binding__str__Selection__default_value__present #num #flt x);
+    (match f1 with | None -> lk_u_binding__str__Selection__field__absent #num #flt x | Some _ -> lk_u_binding__str__Selection__field__present #num #flt x);
+    lk_u_binding__str__Selection__node_id #num #flt x;
+    ()
 
 and rt_u_binding__str__State (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (C__u_binding__str__State? x)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -5104,82 +1539,14 @@ and rt_u_binding__str__Computed (#num #flt: eqtype) (x: u_binding__str num flt) 
 and rt_u_binding__str__Local (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (C__u_binding__str__Local? x)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 ->
-    (match f0 with
-      | None ->
-        (match f1 with
-          | None ->
-            (match f5 with
-              | None ->
-                rt_u_binding__str__Local__p000 #num #flt x
-              | Some _ ->
-                rt_u_binding__str__Local__p001 #num #flt x
-            )
-          | Some _ ->
-            (match f5 with
-              | None ->
-                rt_u_binding__str__Local__p010 #num #flt x
-              | Some _ ->
-                rt_u_binding__str__Local__p011 #num #flt x
-            )
-        )
-      | Some _ ->
-        (match f1 with
-          | None ->
-            (match f5 with
-              | None ->
-                rt_u_binding__str__Local__p100 #num #flt x
-              | Some _ ->
-                rt_u_binding__str__Local__p101 #num #flt x
-            )
-          | Some _ ->
-            (match f5 with
-              | None ->
-                rt_u_binding__str__Local__p110 #num #flt x
-              | Some _ ->
-                rt_u_binding__str__Local__p111 #num #flt x
-            )
-        )
-    )
-
-(* rt_u_binding__str__Local__p000 — codec absent, commitTo absent, onCommit absent *)
-and rt_u_binding__str__Local__p000 (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && None? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__str #num #flt f4
-
-(* rt_u_binding__str__Local__p001 — codec absent, commitTo absent, onCommit present *)
-and rt_u_binding__str__Local__p001 (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && None? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__str #num #flt f4
-
-(* rt_u_binding__str__Local__p010 — codec absent, commitTo present, onCommit absent *)
-and rt_u_binding__str__Local__p010 (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && Some? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__str #num #flt f4
-
-(* rt_u_binding__str__Local__p011 — codec absent, commitTo present, onCommit present *)
-and rt_u_binding__str__Local__p011 (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 && Some? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__str #num #flt f4
-
-(* rt_u_binding__str__Local__p100 — codec present, commitTo absent, onCommit absent *)
-and rt_u_binding__str__Local__p100 (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && None? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__str #num #flt f4
-
-(* rt_u_binding__str__Local__p101 — codec present, commitTo absent, onCommit present *)
-and rt_u_binding__str__Local__p101 (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && None? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__str #num #flt f4
-
-(* rt_u_binding__str__Local__p110 — codec present, commitTo present, onCommit absent *)
-and rt_u_binding__str__Local__p110 (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && Some? f1 && None? f5 | _ -> false)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__str #num #flt f4
-
-(* rt_u_binding__str__Local__p111 — codec present, commitTo present, onCommit present *)
-and rt_u_binding__str__Local__p111 (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 && Some? f1 && Some? f5 | _ -> false)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__str #num #flt f4
+    (match f0 with | None -> lk_u_binding__str__Local__codec__absent #num #flt x | Some _ -> lk_u_binding__str__Local__codec__present #num #flt x);
+    (match f1 with | None -> lk_u_binding__str__Local__commit_to__absent #num #flt x | Some _ -> lk_u_binding__str__Local__commit_to__present #num #flt x);
+    lk_u_binding__str__Local__flush_on #num #flt x;
+    lk_u_binding__str__Local__format #num #flt x;
+    lk_u_binding__str__Local__initial_from #num #flt x;
+    (match f5 with | None -> lk_u_binding__str__Local__on_commit__absent #num #flt x | Some _ -> lk_u_binding__str__Local__on_commit__present #num #flt x);
+    lk_u_binding__str__Local__parse #num #flt x;
+    (match f0 with | None -> () | Some w -> rt_u_format #num #flt w); rt_u_local_flush_trigger #num #flt f2; rt_u_binding__str #num #flt f4
 
 and rt_u_binding__str__Format (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (C__u_binding__str__Format? x)) (ensures dec_u_binding__str (enc_u_binding__str #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -5204,659 +1571,21 @@ and rt_u_binding__str__Invoke (#num #flt: eqtype) (x: u_binding__str num flt) : 
 and rt_r_state_behaviour (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (ensures dec_r_state_behaviour (enc_r_state_behaviour #num #flt x) == Ok x) (decreases %[x; 2]) =
   match x with
   | C__r_state_behaviour__Mk f0 f1 f2 ->
-    (match f0 with
-      | None ->
-        (match f1 with
-          | None ->
-            (match f2 with
-              | None ->
-                rt_r_state_behaviour__p000 #num #flt x
-              | Some _ ->
-                rt_r_state_behaviour__p001 #num #flt x
-            )
-          | Some _ ->
-            (match f2 with
-              | None ->
-                rt_r_state_behaviour__p010 #num #flt x
-              | Some _ ->
-                rt_r_state_behaviour__p011 #num #flt x
-            )
-        )
-      | Some _ ->
-        (match f1 with
-          | None ->
-            (match f2 with
-              | None ->
-                rt_r_state_behaviour__p100 #num #flt x
-              | Some _ ->
-                rt_r_state_behaviour__p101 #num #flt x
-            )
-          | Some _ ->
-            (match f2 with
-              | None ->
-                rt_r_state_behaviour__p110 #num #flt x
-              | Some _ ->
-                rt_r_state_behaviour__p111 #num #flt x
-            )
-        )
-    )
-
-(* rt_r_state_behaviour__p000 — onEmpty absent, onError absent, onLoading absent *)
-and rt_r_state_behaviour__p000 (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> None? f0 && None? f1 && None? f2)) (ensures dec_r_state_behaviour (enc_r_state_behaviour #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_state_behaviour__Mk f0 f1 f2 -> (match f0 with | None -> () | Some w -> rt_node #num #flt w); (match f2 with | None -> () | Some w -> rt_node #num #flt w)
-
-(* rt_r_state_behaviour__p001 — onEmpty absent, onError absent, onLoading present *)
-and rt_r_state_behaviour__p001 (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> None? f0 && None? f1 && Some? f2)) (ensures dec_r_state_behaviour (enc_r_state_behaviour #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_state_behaviour__Mk f0 f1 f2 -> (match f0 with | None -> () | Some w -> rt_node #num #flt w); (match f2 with | None -> () | Some w -> rt_node #num #flt w)
-
-(* rt_r_state_behaviour__p010 — onEmpty absent, onError present, onLoading absent *)
-and rt_r_state_behaviour__p010 (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> None? f0 && Some? f1 && None? f2)) (ensures dec_r_state_behaviour (enc_r_state_behaviour #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_state_behaviour__Mk f0 f1 f2 -> (match f0 with | None -> () | Some w -> rt_node #num #flt w); (match f2 with | None -> () | Some w -> rt_node #num #flt w)
-
-(* rt_r_state_behaviour__p011 — onEmpty absent, onError present, onLoading present *)
-and rt_r_state_behaviour__p011 (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> None? f0 && Some? f1 && Some? f2)) (ensures dec_r_state_behaviour (enc_r_state_behaviour #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_state_behaviour__Mk f0 f1 f2 -> (match f0 with | None -> () | Some w -> rt_node #num #flt w); (match f2 with | None -> () | Some w -> rt_node #num #flt w)
-
-(* rt_r_state_behaviour__p100 — onEmpty present, onError absent, onLoading absent *)
-and rt_r_state_behaviour__p100 (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> Some? f0 && None? f1 && None? f2)) (ensures dec_r_state_behaviour (enc_r_state_behaviour #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_state_behaviour__Mk f0 f1 f2 -> (match f0 with | None -> () | Some w -> rt_node #num #flt w); (match f2 with | None -> () | Some w -> rt_node #num #flt w)
-
-(* rt_r_state_behaviour__p101 — onEmpty present, onError absent, onLoading present *)
-and rt_r_state_behaviour__p101 (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> Some? f0 && None? f1 && Some? f2)) (ensures dec_r_state_behaviour (enc_r_state_behaviour #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_state_behaviour__Mk f0 f1 f2 -> (match f0 with | None -> () | Some w -> rt_node #num #flt w); (match f2 with | None -> () | Some w -> rt_node #num #flt w)
-
-(* rt_r_state_behaviour__p110 — onEmpty present, onError present, onLoading absent *)
-and rt_r_state_behaviour__p110 (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> Some? f0 && Some? f1 && None? f2)) (ensures dec_r_state_behaviour (enc_r_state_behaviour #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_state_behaviour__Mk f0 f1 f2 -> (match f0 with | None -> () | Some w -> rt_node #num #flt w); (match f2 with | None -> () | Some w -> rt_node #num #flt w)
-
-(* rt_r_state_behaviour__p111 — onEmpty present, onError present, onLoading present *)
-and rt_r_state_behaviour__p111 (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (requires (match x with | C__r_state_behaviour__Mk f0 f1 f2 -> Some? f0 && Some? f1 && Some? f2)) (ensures dec_r_state_behaviour (enc_r_state_behaviour #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_state_behaviour__Mk f0 f1 f2 -> (match f0 with | None -> () | Some w -> rt_node #num #flt w); (match f2 with | None -> () | Some w -> rt_node #num #flt w)
+    (match f0 with | None -> lk_r_state_behaviour__Mk__on_empty__absent #num #flt x | Some _ -> lk_r_state_behaviour__Mk__on_empty__present #num #flt x);
+    (match f1 with | None -> lk_r_state_behaviour__Mk__on_error__absent #num #flt x | Some _ -> lk_r_state_behaviour__Mk__on_error__present #num #flt x);
+    (match f2 with | None -> lk_r_state_behaviour__Mk__on_loading__absent #num #flt x | Some _ -> lk_r_state_behaviour__Mk__on_loading__present #num #flt x);
+    (match f0 with | None -> () | Some w -> rt_node #num #flt w); (match f2 with | None -> () | Some w -> rt_node #num #flt w)
 
 and rt_r_semantic_style (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 2]) =
   match x with
   | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 ->
-    (if f0 = C__e_text_direction__Auto then
-      (if f1 = C__e_emphasis__Normal then
-        (if f2 = C__e_style_role__None then
-          (if f3 = C__e_tone_variant__Default then
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p000000 #num #flt x
-              else
-                rt_r_semantic_style__p000001 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p000010 #num #flt x
-              else
-                rt_r_semantic_style__p000011 #num #flt x
-              )
-            )
-          else
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p000100 #num #flt x
-              else
-                rt_r_semantic_style__p000101 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p000110 #num #flt x
-              else
-                rt_r_semantic_style__p000111 #num #flt x
-              )
-            )
-          )
-        else
-          (if f3 = C__e_tone_variant__Default then
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p001000 #num #flt x
-              else
-                rt_r_semantic_style__p001001 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p001010 #num #flt x
-              else
-                rt_r_semantic_style__p001011 #num #flt x
-              )
-            )
-          else
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p001100 #num #flt x
-              else
-                rt_r_semantic_style__p001101 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p001110 #num #flt x
-              else
-                rt_r_semantic_style__p001111 #num #flt x
-              )
-            )
-          )
-        )
-      else
-        (if f2 = C__e_style_role__None then
-          (if f3 = C__e_tone_variant__Default then
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p010000 #num #flt x
-              else
-                rt_r_semantic_style__p010001 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p010010 #num #flt x
-              else
-                rt_r_semantic_style__p010011 #num #flt x
-              )
-            )
-          else
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p010100 #num #flt x
-              else
-                rt_r_semantic_style__p010101 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p010110 #num #flt x
-              else
-                rt_r_semantic_style__p010111 #num #flt x
-              )
-            )
-          )
-        else
-          (if f3 = C__e_tone_variant__Default then
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p011000 #num #flt x
-              else
-                rt_r_semantic_style__p011001 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p011010 #num #flt x
-              else
-                rt_r_semantic_style__p011011 #num #flt x
-              )
-            )
-          else
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p011100 #num #flt x
-              else
-                rt_r_semantic_style__p011101 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p011110 #num #flt x
-              else
-                rt_r_semantic_style__p011111 #num #flt x
-              )
-            )
-          )
-        )
-      )
-    else
-      (if f1 = C__e_emphasis__Normal then
-        (if f2 = C__e_style_role__None then
-          (if f3 = C__e_tone_variant__Default then
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p100000 #num #flt x
-              else
-                rt_r_semantic_style__p100001 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p100010 #num #flt x
-              else
-                rt_r_semantic_style__p100011 #num #flt x
-              )
-            )
-          else
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p100100 #num #flt x
-              else
-                rt_r_semantic_style__p100101 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p100110 #num #flt x
-              else
-                rt_r_semantic_style__p100111 #num #flt x
-              )
-            )
-          )
-        else
-          (if f3 = C__e_tone_variant__Default then
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p101000 #num #flt x
-              else
-                rt_r_semantic_style__p101001 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p101010 #num #flt x
-              else
-                rt_r_semantic_style__p101011 #num #flt x
-              )
-            )
-          else
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p101100 #num #flt x
-              else
-                rt_r_semantic_style__p101101 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p101110 #num #flt x
-              else
-                rt_r_semantic_style__p101111 #num #flt x
-              )
-            )
-          )
-        )
-      else
-        (if f2 = C__e_style_role__None then
-          (if f3 = C__e_tone_variant__Default then
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p110000 #num #flt x
-              else
-                rt_r_semantic_style__p110001 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p110010 #num #flt x
-              else
-                rt_r_semantic_style__p110011 #num #flt x
-              )
-            )
-          else
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p110100 #num #flt x
-              else
-                rt_r_semantic_style__p110101 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p110110 #num #flt x
-              else
-                rt_r_semantic_style__p110111 #num #flt x
-              )
-            )
-          )
-        else
-          (if f3 = C__e_tone_variant__Default then
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p111000 #num #flt x
-              else
-                rt_r_semantic_style__p111001 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p111010 #num #flt x
-              else
-                rt_r_semantic_style__p111011 #num #flt x
-              )
-            )
-          else
-            (if f4 = C__e_font_voice__Default then
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p111100 #num #flt x
-              else
-                rt_r_semantic_style__p111101 #num #flt x
-              )
-            else
-              (if f5 = C__e_style_weight__Standard then
-                rt_r_semantic_style__p111110 #num #flt x
-              else
-                rt_r_semantic_style__p111111 #num #flt x
-              )
-            )
-          )
-        )
-      )
-    )
-
-(* rt_r_semantic_style__p000000 — direction at its default, emphasis at its default, role at its default, tone at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p000000 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p000001 — direction at its default, emphasis at its default, role at its default, tone at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p000001 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p000010 — direction at its default, emphasis at its default, role at its default, tone at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p000010 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p000011 — direction at its default, emphasis at its default, role at its default, tone at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p000011 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p000100 — direction at its default, emphasis at its default, role at its default, tone not at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p000100 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p000101 — direction at its default, emphasis at its default, role at its default, tone not at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p000101 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p000110 — direction at its default, emphasis at its default, role at its default, tone not at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p000110 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p000111 — direction at its default, emphasis at its default, role at its default, tone not at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p000111 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p001000 — direction at its default, emphasis at its default, role not at its default, tone at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p001000 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p001001 — direction at its default, emphasis at its default, role not at its default, tone at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p001001 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p001010 — direction at its default, emphasis at its default, role not at its default, tone at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p001010 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p001011 — direction at its default, emphasis at its default, role not at its default, tone at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p001011 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p001100 — direction at its default, emphasis at its default, role not at its default, tone not at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p001100 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p001101 — direction at its default, emphasis at its default, role not at its default, tone not at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p001101 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p001110 — direction at its default, emphasis at its default, role not at its default, tone not at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p001110 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p001111 — direction at its default, emphasis at its default, role not at its default, tone not at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p001111 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p010000 — direction at its default, emphasis not at its default, role at its default, tone at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p010000 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p010001 — direction at its default, emphasis not at its default, role at its default, tone at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p010001 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p010010 — direction at its default, emphasis not at its default, role at its default, tone at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p010010 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p010011 — direction at its default, emphasis not at its default, role at its default, tone at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p010011 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p010100 — direction at its default, emphasis not at its default, role at its default, tone not at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p010100 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p010101 — direction at its default, emphasis not at its default, role at its default, tone not at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p010101 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p010110 — direction at its default, emphasis not at its default, role at its default, tone not at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p010110 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p010111 — direction at its default, emphasis not at its default, role at its default, tone not at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p010111 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p011000 — direction at its default, emphasis not at its default, role not at its default, tone at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p011000 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p011001 — direction at its default, emphasis not at its default, role not at its default, tone at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p011001 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p011010 — direction at its default, emphasis not at its default, role not at its default, tone at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p011010 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p011011 — direction at its default, emphasis not at its default, role not at its default, tone at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p011011 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p011100 — direction at its default, emphasis not at its default, role not at its default, tone not at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p011100 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p011101 — direction at its default, emphasis not at its default, role not at its default, tone not at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p011101 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p011110 — direction at its default, emphasis not at its default, role not at its default, tone not at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p011110 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p011111 — direction at its default, emphasis not at its default, role not at its default, tone not at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p011111 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> f0 = C__e_text_direction__Auto && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p100000 — direction not at its default, emphasis at its default, role at its default, tone at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p100000 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p100001 — direction not at its default, emphasis at its default, role at its default, tone at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p100001 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p100010 — direction not at its default, emphasis at its default, role at its default, tone at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p100010 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p100011 — direction not at its default, emphasis at its default, role at its default, tone at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p100011 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p100100 — direction not at its default, emphasis at its default, role at its default, tone not at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p100100 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p100101 — direction not at its default, emphasis at its default, role at its default, tone not at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p100101 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p100110 — direction not at its default, emphasis at its default, role at its default, tone not at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p100110 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p100111 — direction not at its default, emphasis at its default, role at its default, tone not at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p100111 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p101000 — direction not at its default, emphasis at its default, role not at its default, tone at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p101000 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p101001 — direction not at its default, emphasis at its default, role not at its default, tone at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p101001 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p101010 — direction not at its default, emphasis at its default, role not at its default, tone at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p101010 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p101011 — direction not at its default, emphasis at its default, role not at its default, tone at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p101011 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p101100 — direction not at its default, emphasis at its default, role not at its default, tone not at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p101100 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p101101 — direction not at its default, emphasis at its default, role not at its default, tone not at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p101101 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p101110 — direction not at its default, emphasis at its default, role not at its default, tone not at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p101110 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p101111 — direction not at its default, emphasis at its default, role not at its default, tone not at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p101111 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && f1 = C__e_emphasis__Normal && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p110000 — direction not at its default, emphasis not at its default, role at its default, tone at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p110000 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p110001 — direction not at its default, emphasis not at its default, role at its default, tone at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p110001 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p110010 — direction not at its default, emphasis not at its default, role at its default, tone at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p110010 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p110011 — direction not at its default, emphasis not at its default, role at its default, tone at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p110011 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p110100 — direction not at its default, emphasis not at its default, role at its default, tone not at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p110100 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p110101 — direction not at its default, emphasis not at its default, role at its default, tone not at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p110101 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p110110 — direction not at its default, emphasis not at its default, role at its default, tone not at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p110110 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p110111 — direction not at its default, emphasis not at its default, role at its default, tone not at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p110111 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && f2 = C__e_style_role__None && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p111000 — direction not at its default, emphasis not at its default, role not at its default, tone at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p111000 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p111001 — direction not at its default, emphasis not at its default, role not at its default, tone at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p111001 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p111010 — direction not at its default, emphasis not at its default, role not at its default, tone at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p111010 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p111011 — direction not at its default, emphasis not at its default, role not at its default, tone at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p111011 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && f3 = C__e_tone_variant__Default && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p111100 — direction not at its default, emphasis not at its default, role not at its default, tone not at its default, voice at its default, weight at its default *)
-and rt_r_semantic_style__p111100 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p111101 — direction not at its default, emphasis not at its default, role not at its default, tone not at its default, voice at its default, weight not at its default *)
-and rt_r_semantic_style__p111101 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && f4 = C__e_font_voice__Default && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p111110 — direction not at its default, emphasis not at its default, role not at its default, tone not at its default, voice not at its default, weight at its default *)
-and rt_r_semantic_style__p111110 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && f5 = C__e_style_weight__Standard)) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-(* rt_r_semantic_style__p111111 — direction not at its default, emphasis not at its default, role not at its default, tone not at its default, voice not at its default, weight not at its default *)
-and rt_r_semantic_style__p111111 (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemma (requires (match x with | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> not (f0 = C__e_text_direction__Auto) && not (f1 = C__e_emphasis__Normal) && not (f2 = C__e_style_role__None) && not (f3 = C__e_tone_variant__Default) && not (f4 = C__e_font_voice__Default) && not (f5 = C__e_style_weight__Standard))) (ensures dec_r_semantic_style (enc_r_semantic_style #num #flt x) == Ok x) (decreases %[x; 0]) =
-  match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
+    (if f0 = C__e_text_direction__Auto then lk_r_semantic_style__Mk__direction__absent #num #flt x else lk_r_semantic_style__Mk__direction__present #num #flt x);
+    (if f1 = C__e_emphasis__Normal then lk_r_semantic_style__Mk__emphasis__absent #num #flt x else lk_r_semantic_style__Mk__emphasis__present #num #flt x);
+    (if f2 = C__e_style_role__None then lk_r_semantic_style__Mk__role__absent #num #flt x else lk_r_semantic_style__Mk__role__present #num #flt x);
+    (if f3 = C__e_tone_variant__Default then lk_r_semantic_style__Mk__tone__absent #num #flt x else lk_r_semantic_style__Mk__tone__present #num #flt x);
+    (if f4 = C__e_font_voice__Default then lk_r_semantic_style__Mk__voice__absent #num #flt x else lk_r_semantic_style__Mk__voice__present #num #flt x);
+    (if f5 = C__e_style_weight__Standard then lk_r_semantic_style__Mk__weight__absent #num #flt x else lk_r_semantic_style__Mk__weight__present #num #flt x);
+    rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
 
 and rt_u_text_source (#num #flt: eqtype) (x: u_text_source num flt) : Lemma (ensures dec_u_text_source (enc_u_text_source #num #flt x) == Ok x) (decreases %[x; 2]) =
   match x with
@@ -5927,7 +1656,7 @@ and rt_items_l_u_text_source (#num #flt: eqtype) (acc: list (u_text_source num f
   | y :: t -> rt_u_text_source #num #flt y; rt_items_l_u_text_source #num #flt (y :: acc) t
 
 (* ======================================================================================
-   3. TOTALITY. That the decoders type-check at `Tot` is the termination proof; what the
+   4. TOTALITY. That the decoders type-check at `Tot` is the termination proof; what the
       lemma adds is that the outcome is exactly one of the two, for EVERY input — the
       failure classification is exhaustive rather than merely non-empty.
    ====================================================================================== *)

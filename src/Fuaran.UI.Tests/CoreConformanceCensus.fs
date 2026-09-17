@@ -77,6 +77,12 @@ let private certifyTest =
 let private containerTest =
     "the Fuaran.UI container predicate certifies under Core's containerLaws"
 
+/// The stream-only aggregate's adopter, beside `certifyTest` above: `certifyStream` runs the
+/// reducer laws first and the op-stream laws only if the reducer proved total, so a family folded
+/// into it is reached here and nowhere else in this repo.
+let private certifyStreamTest =
+    "the Phase-406 StreamEntry witness certifies via Conformance.certifyStream (consumption)"
+
 let private chainBreakReasonTest =
     "the kit's classified chain walkers never mint Unrecognised (chainBreakReasonLaws)"
 
@@ -470,6 +476,31 @@ let census: (string * Adoption) list =
       "Conformance.aggregateParityLaws", Adopted(aggregateParityTest, "Conformance.aggregateParityLaws")
       "Conformance.schemaWalkLaws", Adopted(schemaWalkTest, "Conformance.schemaWalkLaws")
 
+      // ---- the roster's own widening (Core 0.25.0 -> 0.26.0) ----
+      // Three of these four were SHIPPED before this pin and simply invisible: the roster
+      // predicate above reflected over name shape until 0.26.0, and `opAlgebra`, `reducer` and
+      // `compositionPilot` carry none of the four shapes it matched. So they arrive here as new
+      // rows without being new families, and two of them were being RUN by this tier the whole
+      // time — folded into the aggregates it already certifies through, which is exactly why a
+      // name-shaped roster was the wrong instrument. `columnarOpLawsWith` is the one genuinely
+      // new entry point.
+      "Conformance.opAlgebra", Adopted(certifyTest, "Conformance.certify")
+      "Conformance.reducer", Adopted(certifyStreamTest, "Conformance.certifyStream")
+      // Reached through the family beside it rather than by its own name: `columnarOpLaws` is the
+      // no-argument spelling that delegates here, so the enrolled test runs this family's laws
+      // without naming it — the same shape as the `certify`-ported rows above.
+      "Conformance.columnarOpLawsWith", Adopted(columnarOpTest, "Conformance.columnarOpLaws")
+      // Not adopted, and the mechanism is precise: the pilot needs TWO structurally-distinct
+      // `ArtifactWitness`es plus an `embed` between them, and certifies `applyMemo` ACROSS that
+      // boundary. This tier ships one artifact witness (FastPath patterns) — `compositionLaws`
+      // above runs it against itself — and its one cross-witness use, `FunctionTool.composeIntoSlot`,
+      // takes the second witness from its CALLER and memoises nothing. `Fuaran.UI.Memo` adopts the
+      // applyMemo cache MODEL, not the operator, so there is no cross-witness-composed function
+      // here to hand the memo half.
+      "Conformance.compositionPilot",
+      NotUsed
+          "Fuaran.Core.Function's applyMemo over a cross-witness composeAcross — the tier supplies one ArtifactWitness and no memoised cross-witness composition, so the pilot has no second witness or memo key to run against"
+
       // ---- a sibling host's family ----
       "Conformance.captureReplayLaws", SiblingHost "fuaran-ts / fuaran-go (fuaran#1482)"
 
@@ -532,16 +563,23 @@ let private conformanceAssembly = typeof<Fuaran.Core.LawResult>.Assembly
 let private lawModules =
     [ "Conformance"; "FoldConfluence"; "IncrementalDelta"; "WireNullTolerance" ]
 
-/// Core's roster predicate, character for character. The names are deliberately NOT all
-/// `*Laws`-suffixed — `IncrementalDelta.laws`, `FoldConfluence.laneFoldLawsWith` — so a narrower
-/// predicate here would silently disagree with Core's about the size of the shipped set.
-let private isLawEntry (m: MethodInfo) =
-    let n = m.Name
+/// Core's roster predicate, character for character — which is over the RETURN TYPE since the
+/// 0.26.0 kit, not over the name shape.
+///
+/// The name-shape predicate this replaced matched `Laws` / `LawsWith` / `laws` / `lawsWith`, and
+/// the kit's own roster records what that missed: `opAlgebra`, `reducer` and `compositionPilot`
+/// answer with `LawResult list` and end in none of those four shapes, so every reader that
+/// reflected over NAMES was blind to them — including two of the three families `certify` and
+/// `certifyStream` are BUILT FROM. A name shape is a convention a family can escape by being
+/// named well; answering with `LawResult list` is what a law family IS, which is why the kit
+/// moved its own check to this rule and why the mirror here moves with it.
+///
+/// Measured at the 0.26.0 pin: this predicate and the kit's own `SampleAdequacy.census` agree on
+/// all 63 families, in both directions. The name-shape one found 60.
+let private lawResultList =
+    typedefof<list<_>>.MakeGenericType [| typeof<Fuaran.Core.LawResult> |]
 
-    n.EndsWith("Laws", StringComparison.Ordinal)
-    || n.EndsWith("LawsWith", StringComparison.Ordinal)
-    || n = "laws"
-    || n = "lawsWith"
+let private isLawEntry (m: MethodInfo) = m.ReturnType = lawResultList
 
 let private shippedFamilies () : string list =
     [ for moduleName in lawModules do
