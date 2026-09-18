@@ -5576,3 +5576,206 @@ let reservedStateKeyRuleTests =
               finally
                   StateKeyPolicy.clearReservedForTests ()
           } ]
+
+// ─── FUARAN153 / FUARAN154 — the severity/tone coherence family (Phase 1734) ──
+//
+//  The promoted form of the comparative harness's `ToneTracksSeverity`
+//  criterion shape, read against the LANGUAGE's own closed variant vocabulary
+//  rather than against a task's prompt. Both directions are asserted for each
+//  code: the contradiction fires, and every near-miss the narrowings
+//  deliberately admit stays silent — a rule that has not been shown to stay
+//  quiet is a rule nobody can size the false-positive cost of.
+
+let private toneDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.BadgeToneContradictsLabel _
+            | PreEmitDefect.PillToneContradictsValue _ -> true
+            | _ -> false)
+
+let private badgeOf (id: string) (label: TextSource) (variant: BadgeVariant) : Node<Msg> =
+    Fuaran.badge
+        id
+        { Defaults.badge with
+            Label = label
+            Variant = variant }
+
+/// A grid whose single column is a `TonedPill` over `map`, falling back to
+/// `dflt`. Every other slot is filled so the fixture raises none of the grid's
+/// OTHER codes — FUARAN077 and FUARAN078 would otherwise ride along and make
+/// the assertions ambiguous.
+let private pillGridWith (id: string) (map: Map<string, ToneVariant>) (dflt: ToneVariant) : Node<Msg> =
+    { Id = id
+      Kind =
+        NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort = None
+              Source = Binding.Static(Some Seq.empty)
+              RowKey = None
+              RowKeyField = Some "id"
+              Columns =
+                [ { Label = "Status"
+                    Value = None
+                    Field = Some "status"
+                    Sortable = None
+                    Editable = None
+                    Format = CellFormat.None
+                    Kind = CellKindErased.TonedPill("status", map, dflt)
+                    Width = ColumnWidth.Auto } ]
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false
+              Exportable = false }
+        )
+      State = None
+      Style = None
+      Accessibility = None
+      Motion = Defaults.Motion.none
+      ExtraAttributes = None
+      Tooltip = None
+      Visible = None }
+
+let private pillGrid (id: string) (map: Map<string, ToneVariant>) : Node<Msg> = pillGridWith id map ToneVariant.Default
+
+[<Tests>]
+let severityToneCoherenceTests =
+    testList
+        "PreEmitValidate — FUARAN153/154, severity/tone coherence (Phase 1734)"
+        [ test "FUARAN153: a badge reading Critical toned Success is reported" {
+              let tree =
+                  dashboard "root" [ badgeOf "b" (TextSource.Literal "Critical") BadgeVariant.Success ]
+
+              match PreEmitValidate.validate tree with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.BadgeToneContradictsLabel("b", "Critical", "Success"))
+                      "the defect is raised, carrying the label and the severity the tone claims"
+
+                  let code, severity, _ =
+                      describe (PreEmitDefect.BadgeToneContradictsLabel("b", "Critical", "Success"))
+
+                  Expect.equal code "FUARAN153" "stable code"
+
+                  Expect.equal severity DefectSeverity.Warning "gate-strengthening: green on arrival, ratcheted later"
+              | Ok() -> failtest "Expected FUARAN153, got Ok"
+          }
+
+          test "FUARAN153 reads the label trimmed and case-insensitively" {
+              let tree =
+                  dashboard "root" [ badgeOf "b" (TextSource.Literal "  critical  ") BadgeVariant.Info ]
+
+              Expect.contains
+                  (toneDefects tree)
+                  (PreEmitDefect.BadgeToneContradictsLabel("b", "  critical  ", "Info"))
+                  "the comparison is trimmed and case-insensitive; the finding quotes the label VERBATIM"
+          }
+
+          test "FUARAN153 is silent when the label and the tone AGREE" {
+              let tree =
+                  dashboard "root" [ badgeOf "b" (TextSource.Literal "Critical") BadgeVariant.Critical ]
+
+              Expect.isEmpty (toneDefects tree) "no contradiction: the word and the tone name one severity"
+          }
+
+          test "FUARAN153 is silent on a tone that claims NO severity" {
+              // Neutral and Brand are a design choice, not a severity claim —
+              // the second of the three narrowings the defect case records.
+              let tree =
+                  dashboard
+                      "root"
+                      [ badgeOf "n" (TextSource.Literal "Critical") BadgeVariant.Neutral
+                        badgeOf "r" (TextSource.Literal "Critical") BadgeVariant.Brand ]
+
+              Expect.isEmpty (toneDefects tree) "a monochrome badge is left alone"
+          }
+
+          test "FUARAN153 is silent on a label that names no severity" {
+              // The ordinary case, and the reason the rule is quiet on almost
+              // every real tree: domain values are not severity words.
+              let tree =
+                  dashboard
+                      "root"
+                      [ badgeOf "a" (TextSource.Literal "Baking") BadgeVariant.Success
+                        badgeOf "b" (TextSource.Literal "Error") BadgeVariant.Success
+                        badgeOf "c" (TextSource.Literal "OK") BadgeVariant.Critical ]
+
+              Expect.isEmpty
+                  (toneDefects tree)
+                  "no synonym list: Error and OK are English, not the closed wire vocabulary"
+          }
+
+          test "FUARAN153 is silent on a label it cannot read" {
+              // A bound label is not known until runtime; a query that cannot be
+              // answered returns no match rather than a guess.
+              let tree =
+                  dashboard "root" [ badgeOf "b" (TextSource.Bound(Binding.State("s", None))) BadgeVariant.Success ]
+
+              Expect.isEmpty (toneDefects tree) "a Bound label is unreadable here, so nothing is claimed about it"
+          }
+
+          test "FUARAN154: a TonedPill painting Critical in the Success tone is reported" {
+              let tree =
+                  dashboard "root" [ pillGrid "g" (Map.ofList [ "Critical", ToneVariant.Success ]) ]
+
+              match PreEmitValidate.validate tree with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.PillToneContradictsValue("g", "Critical", "Success"))
+                      "the defect is raised, carrying the map key and the tone it maps to"
+
+                  let code, severity, _ =
+                      describe (PreEmitDefect.PillToneContradictsValue("g", "Critical", "Success"))
+
+                  Expect.equal code "FUARAN154" "stable code"
+                  Expect.equal severity DefectSeverity.Warning "the family is warn-class throughout"
+              | Ok() -> failtest "Expected FUARAN154, got Ok"
+          }
+
+          test "FUARAN154 reports EVERY contradicting entry, not the first" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ pillGrid
+                            "g"
+                            (Map.ofList
+                                [ "Critical", ToneVariant.Success
+                                  "Success", ToneVariant.Critical
+                                  "Warning", ToneVariant.Warning
+                                  "Baking", ToneVariant.Success ]) ]
+
+              let found = toneDefects tree
+
+              Expect.contains found (PreEmitDefect.PillToneContradictsValue("g", "Critical", "Success")) "first entry"
+              Expect.contains found (PreEmitDefect.PillToneContradictsValue("g", "Success", "Critical")) "second entry"
+
+              Expect.equal
+                  (List.length found)
+                  2
+                  "the agreeing entry and the domain value are silent; a map is not judged as a whole"
+          }
+
+          test "FUARAN154 does not judge the column's DEFAULT tone" {
+              // The default is the fallback for values the map does not name, so
+              // it makes no severity claim about any particular value — and a
+              // rule that judged it would fire on every deliberately-toned
+              // column whose fallback disagrees with one of its entries.
+              let tree =
+                  dashboard
+                      "root"
+                      [ pillGridWith "g" (Map.ofList [ "Baking", ToneVariant.Warning ]) ToneVariant.Critical ]
+
+              Expect.isEmpty (toneDefects tree) "the default is out of scope by construction"
+          } ]

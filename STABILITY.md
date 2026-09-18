@@ -7815,13 +7815,67 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.84.0 — DRAFT: the slot the 2026-09-17 cohort raise opens (UNTAGGED)
+## 0.85.0 — DRAFT: severity/tone coherence, the first promoted validator family (Phase 1734) (UNTAGGED)
+
+_**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride
+0.84.0 any more, `<Version>` advances to 0.85.0, and this is the slot subsequent phases append to.
+Class so far: ADDITIVE — two new warn-class pre-emit codes and nothing else; no type, member, wire
+byte or rendered output of any `Fuaran.UI.*` package changes. Each phase adds one paragraph under
+the heading below, in the order it lands; a phase moves NO number unless its class is higher again._
+
+### What rides 0.85.0
+
+**FUARAN153 / FUARAN154 — the severity/tone coherence family (Phase 1734). ADDITIVE: two new
+Warning-class pre-emit codes.**
+
+`PreEmitValidate` gains two codes and `PreEmitDefect` two cases. A `Badge` whose LITERAL label is the
+name of one of the language's own severity-bearing variants, carrying a DIFFERENT severity-bearing
+variant, is FUARAN153; the same contradiction at a `TonedPill` grid column — a map entry whose key
+names a severity and whose mapped tone names another — is FUARAN154.
+
+*Why it is additive rather than breaking.* Both are **Warning** severity, so neither fails a
+`Validate` run that was passing: warnings print and do not fail the build, which is the
+gate-strengthening posture — green on arrival, ratcheted later if the estate decides to. No kind,
+spec, field, wire byte or rendered output moves; the walk gains two per-node reads and the tree it
+reads is unchanged. `PreEmitDefect` is a closed DU and it GAINS two cases, so a consumer with an
+exhaustive `match` over it sees a new incomplete-match warning — the same class every prior code
+addition in this document carried, and the reason the family is announced here rather than only in
+the vocabulary.
+
+*What it obliges elsewhere.* The generated `validator/defect-vocabulary.json` in the wire corpus and
+this repo's `validator-coverage.json` are regenerated in the same change-set
+(`dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-vocabulary <corpus>`); the byte-identity
+gate in `ValidatorCoverageTests` is red until both land. It obliges the four sibling hosts NOTHING:
+each declares an `abstentionDefault`, no host conformance runner reads the `validator/` directory,
+and message-parity is scoped to codes at least two non-reference hosts implement — so a
+reference-only warn-class addition is the ordinary case here, as FUARAN142–146 / 148 / 149 were.
+
+*What it does NOT claim.* The rule reads the closed wire vocabulary and nothing else: there is no
+synonym list, so "Error", "Failed" and "OK" are invisible to it, and a tone that carries no severity
+claim (`Neutral` / `Brand` / `Default` / `Subdued`) is never a contradiction. A `Bound` or `I18n`
+label is unreadable before emission and is left alone, and a `TonedPill`'s `default` tone is out of
+scope because it makes no claim about any particular value. Widening any of those is a later phase
+with the evidence that demanded it.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged. **No escape hatch is created or widened**: both codes only REPORT
+on a document that was already legal, introduce no seam, registry or generated-code step, and add no
+default that fails open.
+
+---
+
+## 0.84.0 — the slot the 2026-09-17 cohort raise opened — released 2026-09-17 as `v0.84.0`
 
 _**`v0.83.0` is TAGGED**, so the draft slot below it is closed: nothing may ride 0.83.0 any more,
 `<Version>` advances to 0.84.0, and this is the slot subsequent phases append to. Class so far:
 ADDITIVE — the pinned substrate moves and no type, member, wire byte or rendered output of any
 `Fuaran.UI.*` package changes. Each phase adds one paragraph under the heading below, in the order
 it lands; a phase moves NO number unless its class is higher again._
+
+_**Closed 2026-09-18 (Phase 1734).** `v0.84.0` is on origin at `30b91ebf` — this heading read
+"DRAFT … (UNTAGGED)" after the release gesture had been made, which is the one state the draft-slot
+rule cannot tolerate, since it invites the next phase to ride a slot that is already somebody's
+contract. Nothing may ride 0.84.0 any more; 0.85.0 above is the open slot._
 
 ### What rides 0.84.0
 

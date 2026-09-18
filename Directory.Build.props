@@ -713,7 +713,7 @@
          riding 0.83.0 for the reason above, unchanged: v0.83.0 is TAGGED. See
          STABILITY.md "0.84.0 - DRAFT: the slot the 2026-09-17 cohort raise
          opens". -->
-    <Version>0.84.0</Version>
+    <Version>0.85.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

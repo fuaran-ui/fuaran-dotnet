@@ -329,6 +329,64 @@ type PreEmitDefect =
     /// host on the far side of a round trip, hours later and with no author in
     /// the room.
     | SkeletonRowsOutOfRange of nodeId: string * rows: int
+    /// **FUARAN153 (Warning)**. A `Badge` states a severity in WORDS and
+    /// contradicts it in TONE: its literal label IS the name of one of the
+    /// language's own severity-bearing variants, and its `variant` is a
+    /// DIFFERENT severity-bearing variant — a badge reading "Critical" toned
+    /// `Success`. The reader is told two incompatible things about the same
+    /// datum by the same element, and the tone is what a reader scanning a
+    /// dashboard acts on first.
+    ///
+    /// The first member of the severity/tone coherence family (Phase 1734) —
+    /// the pre-emit projection of the comparative harness's
+    /// `ToneTracksSeverity` criterion shape. That shape takes its severity→tone
+    /// mapping from a task's prompt; this rule takes it from the LANGUAGE,
+    /// which is what makes it decidable here at all: a pre-emit validator never
+    /// sees a prompt, so a promoted rule may only read what the tree and the
+    /// closed wire vocabulary already carry.
+    ///
+    /// **The narrowing is the design, not a gap** (FUARAN102's rule: few false
+    /// positives beats coverage, because a Warning that is occasionally wrong
+    /// gets suppressed and a suppressed rule protects nothing). Three
+    /// deliberate limits:
+    ///
+    /// - The label must be a severity variant's own NAME, compared trimmed and
+    ///   case-insensitively against the closed `BadgeVariant` vocabulary. No
+    ///   synonym list — "Error", "Failed", "OK" are English, and judging them
+    ///   would make the rule an opinion about prose rather than a reading of
+    ///   the wire vocabulary.
+    /// - BOTH sides must name a severity. `Neutral` and `Brand` carry no
+    ///   severity claim, so a "Critical" badge toned `Neutral` is a monochrome
+    ///   design decision and is left alone; only a disagreement between two
+    ///   severity claims is a contradiction.
+    /// - Only a `TextSource.Literal` label is read. A `Bound` or `I18n` label
+    ///   is not known until runtime, and a query that cannot be answered
+    ///   returns no match rather than a guess.
+    ///
+    /// Carries the node's id, the literal label, and the declared variant.
+    | BadgeToneContradictsLabel of nodeId: string * label: string * variant: string
+    /// **FUARAN154 (Warning)**. FUARAN153's class at a grid column: a
+    /// `TonedPill` cell maps a field VALUE that names one of the language's own
+    /// severity-bearing tones to a DIFFERENT severity-bearing tone — a column
+    /// that paints the row reading "Critical" in the `Success` tone.
+    ///
+    /// The second member of the same family, and it is a separate code rather
+    /// than a second case of FUARAN153 because the evidence is a different
+    /// shape: FUARAN153 reads one node's own two slots, this reads an entry of
+    /// a declared value→tone map, so the two findings name different things and
+    /// a reader suppressing one should not lose the other.
+    ///
+    /// The same three narrowings apply, read at the map: the KEY must be a
+    /// severity-bearing `ToneVariant`'s own name (trimmed, case-insensitive),
+    /// the mapped tone must be a different severity-bearing one, and a key that
+    /// names no severity is left alone — which is every ordinary domain value
+    /// ("Baking", "In transit"), so the rule is silent on the common case by
+    /// construction. The column's `default` tone is deliberately NOT judged: it
+    /// is the fallback for values the map does not name, so it makes no
+    /// severity claim about any particular value.
+    ///
+    /// Carries the grid node's id, the map key, and the tone it maps to.
+    | PillToneContradictsValue of nodeId: string * value: string * tone: string
     /// **FUARAN092 (Warning)**. A `Link` declares `protection: "email"` on an
     /// href that is statically known NOT to be a `mailto:` (Phase 812). The
     /// Email protection strategy only has meaning over a mailto address — on
@@ -2130,6 +2188,25 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             nodeId
             rows
             WireLimits.MaxSkeletonRows
+    | PreEmitDefect.BadgeToneContradictsLabel(nodeId, label, variant) ->
+        "FUARAN153",
+        DefectSeverity.Warning,
+        sprintf
+            "Badge '%s' reads \"%s\" and is toned %s — the label and the tone name two different severities, and the tone is what a reader scanning the page acts on first. Tone it %s to agree with the word, or reword the label to the severity you meant. If the badge is deliberately untoned, Neutral and Brand carry no severity claim and this rule is silent on them"
+            nodeId
+            label
+            variant
+            label
+    | PreEmitDefect.PillToneContradictsValue(nodeId, value, tone) ->
+        "FUARAN154",
+        DefectSeverity.Warning,
+        sprintf
+            "a TonedPill column on '%s' paints the value \"%s\" in the %s tone — the value names one severity and the tone names another, so every row carrying it is coloured against what it says. Map \"%s\" to the %s tone, or drop the entry and let the column's default carry it"
+            nodeId
+            value
+            tone
+            value
+            value
     | PreEmitDefect.UnsafeUrlScheme(nodeId, slot, reason) ->
         "FUARAN142",
         DefectSeverity.Warning,
@@ -2756,6 +2833,92 @@ let private staleDateLiteral (kind: NodeKind<'Msg>) : string option =
     else
         None
 
+// ── FUARAN153/154 — the severity/tone coherence family (Phase 1734) ──────────
+//
+//  The pre-emit projection of the comparative harness's `ToneTracksSeverity`
+//  criterion shape. That shape reads its severity→tone mapping off a task's
+//  prompt; these rules read it off the LANGUAGE's own closed variant
+//  vocabulary, which is the whole reason the class is promotable at all — a
+//  pre-emit validator never sees a prompt, so it may only read what the tree
+//  and the wire vocabulary already carry.
+//
+//  Purely lexical, node-local, clock-free and Fable-portable: the same three
+//  properties FUARAN102 records, and for the same reason.
+
+/// The severity a `BadgeVariant` CLAIMS, or `None` when it claims none.
+/// `Neutral` and `Brand` claim nothing — a badge toned either is making a
+/// design choice rather than a severity statement, so no word beside it can
+/// contradict it, and the rules below stay silent.
+let private badgeSeverity (v: BadgeVariant) : string option =
+    match v with
+    | BadgeVariant.Success -> Some "Success"
+    | BadgeVariant.Warning -> Some "Warning"
+    | BadgeVariant.Critical -> Some "Critical"
+    | BadgeVariant.Info -> Some "Info"
+    | BadgeVariant.Neutral
+    | BadgeVariant.Brand -> None
+
+/// The severity a `ToneVariant` claims. `Default`, `Subdued` and `Brand` claim
+/// none, for `badgeSeverity`'s reason.
+let private toneSeverity (v: ToneVariant) : string option =
+    match v with
+    | ToneVariant.Success -> Some "Success"
+    | ToneVariant.Warning -> Some "Warning"
+    | ToneVariant.Critical -> Some "Critical"
+    | ToneVariant.Info -> Some "Info"
+    | ToneVariant.Default
+    | ToneVariant.Subdued
+    | ToneVariant.Brand -> None
+
+/// The severity a LITERAL names, or `None` when it names none — trimmed and
+/// compared case-insensitively against the four severity-bearing variant names
+/// that `BadgeVariant` and `ToneVariant` share, and against NOTHING ELSE.
+///
+/// The absence of a synonym list is deliberate. "Error", "Failed", "OK",
+/// "Passed" are English, and admitting them would make the rule an opinion
+/// about prose rather than a reading of the closed wire vocabulary — which is
+/// exactly the line that separates a promotable language-level invariant from
+/// a task's own rubric predicate. Widening it is a later phase with the census
+/// evidence that demanded it, not an edit here.
+let private severityNamed (s: string) : string option =
+    if System.String.IsNullOrEmpty s then
+        None
+    else
+        match String.map lowerAscii (s.Trim()) with
+        | "success" -> Some "Success"
+        | "warning" -> Some "Warning"
+        | "critical" -> Some "Critical"
+        | "info" -> Some "Info"
+        | _ -> None
+
+/// FUARAN153's verdict for one `Badge`: the literal label and the severity its
+/// tone claims, when both name a severity and the two disagree. A `Bound` or
+/// `I18n` label is not known until runtime, so it returns no match rather than
+/// a guess.
+let private badgeToneContradiction (spec: BadgeSpec) : (string * string) option =
+    match spec.Label with
+    | TextSource.Literal label ->
+        match severityNamed label, badgeSeverity spec.Variant with
+        | Some said, Some toned when said <> toned -> Some(label, toned)
+        | _ -> None
+    | TextSource.Bound _
+    | TextSource.I18n _ -> None
+
+/// FUARAN154's verdicts for one `TonedPill` column: every map entry whose KEY
+/// names a severity and whose mapped tone names a DIFFERENT one.
+///
+/// The column's `default` is deliberately not judged — it is the fallback for
+/// values the map does not name, so it makes no severity claim about any
+/// particular value. `Map.toList` is ordinally sorted, so the findings are
+/// deterministic across hosts.
+let private pillToneContradictions (map: Map<string, ToneVariant>) : (string * string) list =
+    map
+    |> Map.toList
+    |> List.choose (fun (value, tone) ->
+        match severityNamed value, toneSeverity tone with
+        | Some said, Some painted when said <> painted -> Some(value, painted)
+        | _ -> None)
+
 /// A binding the Phase 426 control write-back default can write to — the
 /// FUARAN069 inert-control condition.
 ///
@@ -3187,6 +3350,17 @@ let private validateCore
         | Some literal -> defects.Add(PreEmitDefect.DateLiteralWhereNowPlausible(n.Id, literal))
         | None -> ()
 
+        // FUARAN153 (Phase 1734) — a Badge that states one severity in words
+        // and a different one in tone. Sited here beside FUARAN102 because it
+        // is the same shape of check: per-node, purely lexical, reading only
+        // this node's own two slots. The narrowings are on the defect case.
+        match n.Kind with
+        | NodeKind.Badge spec ->
+            match badgeToneContradiction spec with
+            | Some(label, variant) -> defects.Add(PreEmitDefect.BadgeToneContradictsLabel(n.Id, label, variant))
+            | None -> ()
+        | _ -> ()
+
         // FUARAN109 / FUARAN111 (Phase 727) — the per-node half of the
         // accessibility family. Sited here rather than in the per-kind arms
         // below because the trait it reads lives on the NODE, not in any kind
@@ -3323,6 +3497,16 @@ let private validateCore
             for col in spec.Columns do
                 if col.Value.IsNone && col.Field.IsNone then
                     defects.Add(PreEmitDefect.BlankGridColumn(nodeIdStr, col.Label))
+
+                // FUARAN154 (Phase 1734) — FUARAN153's class at a column: a
+                // TonedPill entry that paints a severity value in a different
+                // severity's tone. The map's keys are literals in the tree, so
+                // this is decidable here for the same reason the badge is.
+                match col.Kind with
+                | CellKindErased.TonedPill(_, map, _) ->
+                    for value, tone in pillToneContradictions map do
+                        defects.Add(PreEmitDefect.PillToneContradictsValue(nodeIdStr, value, tone))
+                | _ -> ()
 
             if spec.RowKey.IsNone && spec.RowKeyField.IsNone then
                 defects.Add(PreEmitDefect.UnstableRowIdentity nodeIdStr)
