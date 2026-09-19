@@ -246,7 +246,15 @@ let tests =
                         "form-combobox-query.json", [ "country" ]
                         "form-tokens-query.json", [ "role" ]
                         "grid-transform-param.json", [ "dept" ]
-                        "expr-params-state-selection.json", [ "statuses" ] ]
+                        "expr-params-state-selection.json", [ "statuses" ]
+                        // Phase 1784 — the one shape the others could not
+                        // express: the `Filters` node is PRESENT and declares
+                        // `region`, and the same consumer's other edge names a
+                        // chip it does not declare. Every other entry here
+                        // dangles only because its fixture has no `Filters`
+                        // sibling at all. Unaffected by 1785: this fixture's
+                        // chips declare, and nothing in it writes a filter back.
+                        "filters-param-source-undeclared.json", [ "genre" ] ]
 
                   for (name, names) in expected do
                       let g = graphOf name (File.ReadAllText(Path.Combine(d, name)))
@@ -273,12 +281,13 @@ let tests =
                         "filters-1.json"
                         "filters-date-range.json"
                         "filters-declarative.json"
-                        // Phase 1784's negative wiring pair, both of which declare
-                        // chips. They are listed here because the corpus grew, not
-                        // because anything in the projection moved — this list is
-                        // the one assertion in the suite that a fixture ADDED to a
-                        // repo this one does not own can redden, which is exactly
-                        // the hazard the byte-total test below declines to take on.
+                        // Phase 1784's pair — both carry a `Filters` node, and
+                        // they are the corpus's second and third documents to
+                        // carry one BESIDE a declared filter edge. Note this list
+                        // is the one assertion in the suite that a fixture ADDED
+                        // to a repo this one does not own can redden, which is
+                        // the hazard the byte-total test below declines to take
+                        // on; adding these two is all that was owed.
                         "filters-param-source-declared.json"
                         "filters-param-source-undeclared.json"
                         "filters-rating-colour.json"

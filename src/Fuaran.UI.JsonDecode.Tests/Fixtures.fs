@@ -5575,6 +5575,154 @@ let filterableStaticDashboard: Node<obj> =
         ))
         None
 
+// ── Phase 1784 — the negative wiring pair ────────────────────────────────
+//
+// The corpus could not express ONE document shape, and it is the shape that
+// matters: a `Filters` node IS present and declaring chips, and a consumer's
+// declared edge names a chip it does NOT declare. Measured over all 230 node
+// fixtures before this pair landed — eight carried a `Filters` node, six
+// carried a declared filter edge, and exactly ONE carried both
+// (`filterable-static-dashboard`), where every edge resolves. So every
+// dangling reference in the corpus dangled only because a single-node fixture
+// had nowhere to put a `Filters` sibling, and a host could pass the whole
+// suite while treating an UNDECLARED chip exactly as it treats an UNSET one.
+//
+// The two documents differ in exactly one thing — whether the `Filters` node
+// declares `genre` — so the pair isolates that variable and nothing else. The
+// control resolves both of its edges; the negative resolves `region` and
+// leaves `genre` grounded in nothing, which is a `DanglingFilterReference`
+// (FUARAN075, an Error) on the reference host.
+//
+// They are ROUND-TRIP fixtures rather than reject ones for the same reason the
+// transform twin (`grid-transform-undeclared-param`) is: nothing about the
+// bytes is wrong. Both documents decode, re-encode and are perfectly legal
+// wire. The divergence is in what a host DOES with them, and the sharp version
+// of that is the one no decode fixture could reach — at RESOLUTION time the two
+// documents are indistinguishable, because an undeclared chip and an unset chip
+// both resolve to nothing and the lenient "unset ⇒ no constraint" prune drops
+// the step either way. A resolver alone therefore returns the unfiltered set
+// for both, silently. The pre-emit rule is the whole of the guard, which is why
+// it is an Error and why these fixtures exist to make a host show it has one.
+
+/// The shared feed for the Phase 1784 pair: two rows, one column per chip plus
+/// a measure, so a scoped read is observably narrower than an unscoped one.
+let private filterEdgeTable =
+    Fuaran.Core.Embedded
+        { Schema =
+            [ "region", Fuaran.Core.StringType
+              "genre", Fuaran.Core.StringType
+              "amount", Fuaran.Core.IntType ]
+          Columns =
+            [ Fuaran.Core.Column.create
+                  "region"
+                  Fuaran.Core.StringType
+                  [ Fuaran.Core.Str "emea"; Fuaran.Core.Str "amer" ]
+              Fuaran.Core.Column.create
+                  "genre"
+                  Fuaran.Core.StringType
+                  [ Fuaran.Core.Str "drama"; Fuaran.Core.Str "docs" ]
+              Fuaran.Core.Column.create "amount" Fuaran.Core.IntType [ Fuaran.Core.Int 100; Fuaran.Core.Int 90 ] ] }
+
+/// A declarative chip (the 423 shape): it declares `name` and reads its own
+/// `$filters.<name>` slot. A self-read is a DECLARATION rather than a
+/// consumption, so it is the grid's param sources below that consume these.
+let private filterEdgeChip (name: string) (label: string) (options: (string * string) list) : FilterSpec<obj> =
+    { Name = name
+      Label = TextSource.Literal label
+      Kind =
+        FormFieldKind.Choice(
+            Binding.Static(Some [ for value, optLabel in options -> { Value = value; Label = optLabel } ]),
+            Some(Binding.Filter(name, None)),
+            None
+        ) }
+
+/// The consumer both documents share: a `Transform` whose pipeline filters on
+/// two params, each sourced from a `Binding.Filter` of the same name. Both
+/// params are referenced by the pipeline, so neither is FUARAN076's shape; what
+/// varies between the two documents is only whether a chip declares the name.
+let private filterEdgeSource () : Binding<Row seq> =
+    Binding.Transform(
+        TransformSource.Data(filterEdgeTable),
+        [ Fuaran.Core.Filter(
+              Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "region", Fuaran.Core.ColExpr.Param "region")
+          )
+          Fuaran.Core.Filter(
+              Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "genre", Fuaran.Core.ColExpr.Param "genre")
+          ) ],
+        Some
+            [ { From = Binding.Filter("region", None)
+                Name = "region" }
+              { From = Binding.Filter("genre", None)
+                Name = "genre" } ]
+    )
+
+/// `declaredChips` is the ONLY thing that varies between the pair.
+let private filterEdgeDoc (id: string) (declaredChips: FilterSpec<obj> list) : Node<obj> =
+    let fieldCol (label: string) (field: string) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    node
+        id
+        (NodeKind.Box(
+            { Layout = BoxLayout.Auto
+              Role = BoxRole.Dashboard
+              Heading = Some(TextSource.Literal "Catalogue")
+              Children =
+                [ node "edge-chips" (NodeKind.Filters({ Items = declaredChips })) None
+                  node
+                      "scoped-grid"
+                      (NodeKind.DataGrid(
+                          { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
+                            EditStateKey = None
+                            DefaultSort = None
+                            Source = filterEdgeSource ()
+                            RowKey = None
+                            RowKeyField = Some "region"
+                            Columns = [ fieldCol "Region" "region"; fieldCol "Amount" "amount" ]
+                            OnRowClick = None
+                            Editable = false
+                            Reorderable = false
+                            TransferInKey = None
+                            TransferOutKey = None
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false
+                            Exportable = false }
+                      ))
+                      None ]
+              KeepTogether = false
+              BreakBefore = false }
+        ))
+        None
+
+/// Phase 1784 — the CONTROL. Both declared edges name a chip the `Filters` node
+/// declares, so the document is fully wired and the reference host's pre-emit
+/// validator raises nothing.
+let filtersParamSourceDeclared: Node<obj> =
+    filterEdgeDoc
+        "filters-param-source-declared"
+        [ filterEdgeChip "region" "Region" [ "emea", "EMEA"; "amer", "Americas" ]
+          filterEdgeChip "genre" "Genre" [ "drama", "Drama"; "docs", "Documentary" ] ]
+
+/// Phase 1784 — the NEGATIVE. Byte-for-byte the control minus the `genre` chip:
+/// the `Filters` node is present and declares `region`, the grid reads `region`
+/// (which resolves) and `genre` (which no chip declares). The undeclared name
+/// must surface as the rule's finding and must NOT quietly resolve to an unset
+/// chip's "no constraint".
+let filtersParamSourceUndeclared: Node<obj> =
+    filterEdgeDoc
+        "filters-param-source-undeclared"
+        [ filterEdgeChip "region" "Region" [ "emea", "EMEA"; "amer", "Americas" ] ]
+
 /// Phase 421 — a `Metric` whose `Source` is a host-computed `Query` that declares its filter
 /// dependency edge (`dependsOn`). Proves the `dependsOn` wire (omitted-when-empty elsewhere) — the
 /// tree owns the edge, the host closure owns the predicate.
@@ -7841,6 +7989,10 @@ let allNodes: (string * Node<obj>) list =
       gridTonedPill
       "Layout/Box (filterable-static dashboard — Filters params wired through Transform to chart + grid)",
       filterableStaticDashboard
+      "Layout/Box (Phase 1784 — the CONTROL of the negative wiring pair: a Filters node declaring both chips a Transform param source reads)",
+      filtersParamSourceDeclared
+      "Layout/Box (Phase 1784 — a Transform param source naming a chip the PRESENT Filters node does not declare; the control is `filters-param-source-declared`)",
+      filtersParamSourceUndeclared
       "Layout/Box (master-detail — grid + detail card State-bound with a pre-selected defaultValue)",
       masterDetailPreselected
       "Layout/Box (master-detail — Selection defaultValue naming a NON-FIRST row: prune-vs-seed is observable)",
