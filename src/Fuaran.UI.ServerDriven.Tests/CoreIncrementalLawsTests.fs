@@ -141,16 +141,33 @@ let private pipelines: (string * Transform list) list =
               Fn = Lag
               Of = "a"
               As = "prev" } ]
-      // Two declines with different reasons: a verb the seam does not classify as row-local, and a
-      // window whose frame is unbounded. Both must fall back INSIDE the seam and still answer right.
-      "limit (declines — verb is not row-local)", [ Limit(Fuaran.Core.Slot.Lit 3, Fuaran.Core.Slot.Lit 0) ]
-      "unbounded window (declines — frame is unbounded)",
+      // Top-N, ADMITTED since the 0.27.0 substrate (Phase 207): a `Limit` over literal bounds is
+      // `TruncateOrder` and the steps before it stop re-evaluating every row. It sat in this roster
+      // as the DECLINE class until that pin, and it is kept — renamed — because the class it
+      // reaches moved rather than disappeared, and an admitted verb that nothing drew would be an
+      // admission this tier never exercised.
+      "limit (restricted — top-N over literal bounds)", [ Limit(Fuaran.Core.Slot.Lit 3, Fuaran.Core.Slot.Lit 0) ]
+      // A window over the WHOLE frame with a running aggregate. Its name claimed a decline until
+      // 2026-09-19 and it had not declined for several substrate versions — measured at 0.26.0 and
+      // 0.27.0 alike, it plans `RowLocal` — so the label is corrected to what it does. It stays for
+      // the reason it has actually been earning: a `CumulSum` recomputes its column over the whole
+      // frame, which is the shape the 0.27.0 substrate found a stale-cache defect in (Phase 208).
+      "unbounded window (restricted — running aggregate over the whole frame)",
       [ Window
             { PartitionBy = []
               OrderBy = [ "a", Asc ]
               Fn = CumulSum
               Of = "a"
-              As = "run" } ] ]
+              As = "run" } ]
+      // THE decline class, and the only pipeline in this roster that reaches one at the 0.27.0
+      // substrate: grouping the GROUP table needs a second level of row-to-group and per-group
+      // aggregate state, so the seam refuses it as data (`AggregateStepRepeated`) and answers
+      // through the reference evaluator. It declined at 0.26.0 too, under the reason that pin
+      // called `AggregateStepNotLast`, so the adequacy it carries is not new coverage — it is the
+      // coverage the `limit` entry above used to carry before the substrate admitted it.
+      "groupBy over a groupBy (declines — a second aggregating step)",
+      [ GroupBy([ "b" ], [ { Name = "n"; Fn = Count; Of = "a" } ])
+        GroupBy([ "n" ], [ { Name = "m"; Fn = Count; Of = "n" } ]) ] ]
 
 /// One generated case: the source, the source after an edit stream, and the pipeline read over both.
 type private Case =

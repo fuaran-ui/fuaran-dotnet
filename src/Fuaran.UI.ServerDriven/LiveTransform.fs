@@ -173,7 +173,7 @@ type LiveTransformStore(capacity: int, identityColumn: string) =
             // again — and records the reason in the footprint rather than
             // silently reusing a cache nothing vouches for.
             let delta =
-                match Delta.diff idw prior.Source source with
+                match Delta.diff idw (Incremental.source prior) source with
                 | Ok d -> d
                 | Error _ -> FullRefresh
 
