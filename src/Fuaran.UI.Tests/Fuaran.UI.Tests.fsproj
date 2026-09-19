@@ -397,6 +397,10 @@
     <!-- Phase 1691 — the enum case-to-wire-token pin. Follows IdlCertificationSupport.fs, whose
          canonicalised vocabulary it reads, and the linked EnumTokens.fs above. -->
     <Compile Include="EnumTokenTests.fs" />
+    <!-- Phase 1783 — the charter walk's by-construction evidence: what a cleared
+         state key IS on the wire, decided against the reference resolver rather
+         than against a reading of the types. -->
+    <Compile Include="ClearStateKeyProbeTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
