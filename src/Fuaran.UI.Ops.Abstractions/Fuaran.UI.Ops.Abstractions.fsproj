@@ -34,6 +34,12 @@
          server-driven tier both need, takes no transport dependency, and is
          Fable-clean (no IO, no clock, no Browser.*). -->
     <Compile Include="UploadSink.fs" />
+    <!-- Phase 1743: the escape-hatch report vocabulary — three states, a
+         finding, a section, and the canonical document they render as. Here
+         because the report is a WIRE two independent producers emit and a third
+         tier reads by shape, and because it names no host: the predicates live
+         beside the things they observe. Fable-clean (no IO, no clock). -->
+    <Compile Include="Hatches.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />

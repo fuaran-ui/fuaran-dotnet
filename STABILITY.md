@@ -7937,6 +7937,45 @@ another. All ten positions, inclusions and exclusions alike, are pinned as a tab
 changes. The canonical wiring rendering over the shared corpus moves by 8 bytes on exactly one
 fixture — the multi-select shape this phase exists for — and is byte-stable again afterwards.
 
+**The runtime escape-hatch report (Phase 1743). ADDITIVE: one new module in
+`Fuaran.UI.Ops.Abstractions`, one new module and one new record + registry member in
+`Fuaran.UI.Renderer`, and one new member on the debug-only in-page surface.**
+
+`Fuaran.UI.Ops.Abstractions` gains `Fuaran.UI.Ops.Hatches`: the report vocabulary — `HatchState`
+(`Open` / `Closed` / `Undecided`), `HatchFinding`, `HatchSection`, their canonical `hatchSection`
+document, and the `summary` line that renders **"hatches open: none"** when, and only when, every
+finding in a section is closed. It holds no predicate: a predicate belongs beside the thing it
+observes. `Fuaran.UI.Renderer` gains `RuntimeHatches`, the three predicates only a RUNNING host can
+answer — is a guest renderer registered, is the content-hash floor in force, is the in-page
+introspection surface live — plus `Runtime.CustomRendererRegistration` and
+`CustomRendererRegistry.Registrations`, which names what is registered where `Count` only counted it.
+`window.__fuaran` gains `hatches()` and its schema version moves to **0.4.0**.
+
+*Why it is additive.* Every addition is a new type, module or member; nothing existing moves. The
+report reads state the host already held and computes a value — no render path is touched, no wire
+vocabulary changes, and no validator verdict moves. `DebugOptions` gains a required field
+(`Registry`), which would break a full-literal construction — but that record is part of
+`Fuaran.UI.Renderer.DebugGlobal`, declared above as an **unstable surface** with `DebugOptions.defaults
+with …` as its documented construction idiom, so the classification is unchanged and the draft slot's
+ADDITIVE class holds.
+
+*The third state is the contract.* A consumer reads three states or it has not read this document. The
+registry member exists because the runtime interface exposes per-key lookups and no enumeration, so a
+host that does not hand over its registry gets `Undecided` with the reason and the remedy — never
+`Closed`. An inventory's whole worth is its completeness, and a report that renders "I could not see
+this door" as "this door is closed" puts a claim behind something nobody checked.
+
+*What it does NOT claim.* Three predicates, not fifteen: the report covers the doors this tier can
+observe at runtime and says nothing about the rest, which are decided by a composition walk in another
+tier entirely or remain prose. The document is emitted; it is **not** signed here, and a consumer that
+needs provenance for it wraps it as it would any other emitted document.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged. **No escape hatch is created or widened**: every addition only
+REPORTS on doors that already existed, registers no seam, selects from no registry, generates no code
+and adds no default that fails open — the new member is served from the surface whose own opt-in gate
+is unchanged.
+
 ---
 
 ## 0.84.0 — the slot the 2026-09-17 cohort raise opened — released 2026-09-17 as `v0.84.0`

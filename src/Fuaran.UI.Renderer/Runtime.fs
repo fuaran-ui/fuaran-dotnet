@@ -111,6 +111,27 @@ module JsonBridge =
 /// keyed on `(moduleId, componentId)`, and pass it into the runtime
 /// constructor (`MutableRuntime` for tests, `BrowserRuntime` for the
 /// browser).
+/// One registered custom renderer, as a DESCRIPTION rather than as the thing
+/// itself (Phase 1743). The render function is a closure and is deliberately
+/// absent: this record exists so a host can REPORT which guest renderers it
+/// admits, and a report that handed back the renderer would be a second way to
+/// reach it.
+///
+/// `HasContentHash` is the mediation half of the same fact. A registration
+/// carrying a hash is one a tree's own declared hash can be checked against; one
+/// without it is a renderer no declared hash can ever match, which is a
+/// different posture and is why the flag rides beside the ids rather than being
+/// inferred from them.
+type CustomRendererRegistration =
+    {
+        /// The render scope the renderer is reachable from; `None` is the root
+        /// scope a plain `render` runs under.
+        Scope: string option
+        ModuleId: string
+        ComponentId: string
+        HasContentHash: bool
+    }
+
 type CustomRendererRegistry() =
     // Phase 783 — the key gains a RENDER SCOPE. It was `(moduleId, componentId)`
     // process-wide, and lookup was a raw `TryGetValue` on ids taken straight off
@@ -233,6 +254,28 @@ type CustomRendererRegistry() =
 
     /// True when at least one renderer is registered.
     member _.Count: int = renderers.Count
+
+    /// **What is registered, not merely how much** (Phase 1743). `Count` answers
+    /// a cardinality across every scope and names nothing, so a report built on
+    /// it could say a door was open and not say what opened it — which is half a
+    /// finding, and the half an assessor cannot act on.
+    ///
+    /// Deterministically ordered, because a dictionary's enumeration order is
+    /// not: a report whose findings reorder between two runs over the same
+    /// registry reads as a change when nothing changed. The render function
+    /// itself is deliberately NOT carried — it is a closure, it is not
+    /// describable, and nothing that reports on a door needs to be able to open
+    /// it.
+    member _.Registrations: CustomRendererRegistration list =
+        [ for entry in renderers do
+              let scope, moduleId, componentId = entry.Key
+              let _, contentHash = entry.Value
+
+              { Scope = scope
+                ModuleId = moduleId
+                ComponentId = componentId
+                HasContentHash = contentHash.IsSome } ]
+        |> List.sortBy (fun r -> r.Scope, r.ModuleId, r.ComponentId)
 
 /// Describes a host-effecting action presented to the dispatch policy gate
 /// (`IFuaranRuntime.CanDispatch`, Phase 119) BEFORE the renderer invokes the
