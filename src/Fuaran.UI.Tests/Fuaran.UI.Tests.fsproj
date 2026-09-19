@@ -413,6 +413,9 @@
          state key IS on the wire, decided against the reference resolver rather
          than against a reading of the types. -->
     <Compile Include="ClearStateKeyProbeTests.fs" />
+    <!-- Phase 1799 — the guard under the two census spellings the pack teaches: every
+         taught fragment pinned as decoding, every warned-against shape as refused. -->
+    <Compile Include="CensusSpellingTeachingTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
