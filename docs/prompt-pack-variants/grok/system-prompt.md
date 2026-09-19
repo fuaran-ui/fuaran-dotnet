@@ -1231,6 +1231,37 @@ switches — e.g. a post-submission confirmation: `onSubmit` runs
 `{ "$type": "SetState", "key": "submitted", "value": "yes" }` and a
 `Switch` with `"stateKey": "submitted"` shows the success panel.
 
+## Clearing a filter — `SetState` to `[]`, never an omitted value and never `""`
+
+A filtered view almost always wants a **Clear** control beside it, and there is exactly
+one spelling for it. `SetState` **always** carries a value: `value` (a literal) or
+`valueFrom` (a binding), never neither. To clear a filter, write the **empty array**:
+
+```json
+{"id":"clear-service-filter","kind":{"$type":"Button","icon":"x","label":"Clear filter","onClick":{"$type":"SetState","key":"service","value":[]},"variant":"Tertiary"}}
+```
+
+An empty array is read as **unset**, so the filter step that reads that key is dropped
+and the consumer shows **everything** again. It works whether the key feeds a single
+value or a multi-select, and it overrides a `defaultValue`.
+
+Three near-misses, all of which look right and are not:
+
+- **Omitting the value** — `{ "$type": "SetState", "key": "service" }` — is refused at
+  decode (`missing required field 'value'`) and takes the **whole document** with it.
+  This is the most common way to lose an otherwise-perfect answer.
+- **`"value": null`** is refused too. `null` is not a value anywhere in Fuaran; absence
+  is expressed by leaving a key out of an object, and a value slot is never left out.
+- **`"value": ""`** is the dangerous one, because it *parses*. The empty string is a
+  real value, so the filter survives and matches rows whose field is empty — the table
+  comes back **blank** instead of unfiltered. Green document, wrong screen.
+
+The same rule reaches anything a key drives, but "clear" means whatever unset means for
+that consumer: a `Switch` on a **boolean** key is closed with
+`{ "$type": "SetState", "key": "quick-add-open", "value": false }`, not with `[]`. Write
+the value that means "off" for the thing being read; `[]` is the one that means
+"no filter".
+
 ## Empty states and other actionable messages — a Card `Box`, not a `Callout`
 
 `Callout` is a **banner**: a message with no action. It carries its own chrome

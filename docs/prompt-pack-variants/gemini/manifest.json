@@ -6,20 +6,20 @@
   "artifacts": { "systemPrompt": "system-prompt.md", "fewShot": "few-shot.jsonl" },
   "schema": "../../prompt-pack/schema.json",
   "schemaNote": "The wire schema is the CONTRACT, not a compiled dimension — every variant shares the canonical artefact rather than carrying a copy.",
-  "variantSha256": "sha256:8d6ad72a4ccba012595e514d0cd0d44c73499e4d07f48d60b44365121e390220",
-  "bytes": { "systemPrompt": 93934, "fewShot": 14175, "total": 108109 },
+  "variantSha256": "sha256:4031ee9170d64b18fd63921a70e02af107e96f92794763a8501ff5d019782341",
+  "bytes": { "systemPrompt": 95750, "fewShot": 14175, "total": 109925 },
   "source": {
     "pack": "docs/prompt-pack",
-    "systemPromptSha256": "sha256:879f07890311ffc6e623808ea5cb8523c83d36ba30dd70ecbe262f72c3db0e3b",
+    "systemPromptSha256": "sha256:6db6df4b797d4c1341ca539b596856f6fdcf14a980ee3eead2c7b234570ba732",
     "fewShotSha256": "sha256:6cc54daf56c6b0180b81d8afd3ddc044caa80e682aa74c1c81a6009f1687cbe0"
   },
   "index": {
     "file": "../../tools/section-demand-index.json",
-    "sha256": "sha256:7ce3d88e1e2f7f94f254042e339a2ab5c884353e16de5066f01f8778b74c2b66"
+    "sha256": "sha256:d994a7be841a9f7b6eccc8d4c3dbd3df0cf800ec2054667b06c86fabb142285a"
   },
   "dimensions": {
     "dialect": { "value": "canonical", "why": "no per-family dialect verdict on record \u2014 canonical is the default artifact" },
-    "sections": { "included": 29, "excluded": 0, "unknownDefaultedIn": 27 },
+    "sections": { "included": 30, "excluded": 0, "unknownDefaultedIn": 28 },
     "perHost": { "enabled": false, "why": "default OFF — no --host-manifest supplied" }
   },
   "alwaysCore": {
@@ -233,6 +233,14 @@
       "class": "unknown",
       "alwaysCore": true,
       "why": "always-core (cross-family-flip \u2014 needed by claude-opus, grok)",
+      "evidence": []
+    },
+    {
+      "key": "Clearing a filter \u2014 \u0060SetState\u0060 to \u0060[]\u0060, never an omitted value and never \u0060\u0022\u0022\u0060",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
       "evidence": []
     },
     {
