@@ -26,9 +26,10 @@ module Fuaran.UI.WiringGraph
 //
 //    channel    control (the driver)              consumer (the reader)
 //    ───────    ──────────────────────            ──────────────────────
-//    Filter     a `Filters` chip declaration      a `Binding.Filter` read, a
-//                                                 `Query.dependsOn` name, or a
-//                                                 param whose source is a filter
+//    Filter     a `Filters` chip declaration,     a `Binding.Filter` read, a
+//               or a control whose write-back      `Query.dependsOn` name, or a
+//               slot is bound to a filter          param whose source is a filter
+//               (Phase 1785)
 //    State      an `Action.SetState`, or an       a `Binding.State` read
 //               `Action.Call` landing `into:
 //               State <key>`
@@ -38,9 +39,10 @@ module Fuaran.UI.WiringGraph
 //
 //  ── WHERE THIS LIVES, AND WHY NOT BESIDE THE DECODER ───────────────────────
 //
-//  Every input is `BindingWalk.collect`'s `TreeBindingFacts`, which is in this
-//  package, and the four rules above are `PreEmitValidate`'s, also in this
-//  package. The projection is derived from the walk rather than performing one:
+//  Every input is `BindingWalk.collectFacts`'s `TreeFacts` — the published
+//  `TreeBindingFacts` plus the filter-channel write direction Phase 1785 added
+//  beside it — which is in this package, and the four rules above are
+//  `PreEmitValidate`'s, also in this package. The projection is derived from the walk rather than performing one:
 //  a second walk of the spec vocabulary is precisely the drift the walk exists
 //  to prevent, and the walk's own forward-coupling note is the reason a new
 //  binding-bearing slot reaches this graph with nothing here edited.
@@ -87,6 +89,18 @@ type ControlKind =
     /// row-click write; charts / tables / maps through host closures).
     /// FUARAN071's subject.
     | SelectionProducer
+    /// A control whose WRITE-BACK slot is bound to `Binding.Filter`, so the
+    /// renderer's write-back default commits the changed value to the filter
+    /// store (Phase 1785). The corpus's `multiselect-chip-list-param` is the
+    /// shape: a `Select` whose `values` binds a filter that a grid's `Transform`
+    /// param then reads.
+    ///
+    /// Distinct from `DeclaredFilter`, and the distinction is not cosmetic. A
+    /// chip DECLARES a name the host furnishes a slot for; this control declares
+    /// nothing and merely writes an existing name. Nothing is wrong with a tree
+    /// that has one and no other producer — which is why it is not express, see
+    /// [[ControlKind.isExpress]].
+    | FilterWriteBack
 
 /// What a consumer's read is worth as evidence of an edge.
 [<RequireQualifiedAccess>]
@@ -206,6 +220,7 @@ module ControlKind =
         | ControlKind.FetchIntoState -> "fetch-into-state"
         | ControlKind.FetchIntoQuery -> "fetch-into-query"
         | ControlKind.SelectionProducer -> "selection-producer"
+        | ControlKind.FilterWriteBack -> "filter-write-back"
 
     /// True when the control is an EXPRESS declaration to drive — something an
     /// author wrote in order to make a consumer move — rather than a capability
@@ -223,7 +238,18 @@ module ControlKind =
         | ControlKind.StateWrite
         | ControlKind.FetchIntoState
         | ControlKind.FetchIntoQuery -> true
-        | ControlKind.SelectionProducer -> false
+        | ControlKind.SelectionProducer
+        // Phase 1785 — read off the shipped rules like every other entry here,
+        // and the answer is that there is no rule. A chip that drives nothing is
+        // FUARAN074's decorative trap because an author wrote a DECLARATION in
+        // order to make something move; a control whose value slot happens to be
+        // a filter has declared nothing, and a tree where nothing else reads that
+        // filter is an ordinary tree — the host may furnish the slot, and
+        // `ConsumerKind.ValueRead`'s note is the same argument on the other end.
+        // Reporting every such control undriven would bury the findings this
+        // case exists to surface, which is exactly why `SelectionProducer` sits
+        // on this line.
+        | ControlKind.FilterWriteBack -> false
 
 module ConsumerKind =
     /// The kind's stable token. Part of [[render]]'s byte contract.
@@ -234,21 +260,42 @@ module ConsumerKind =
 
 // ── the projection ──────────────────────────────────────────────────────────
 
-/// A chip's read of its OWN filter is a declaration, not consumption — the
-/// declarative-chip shape, where the chip both declares the name and binds its
-/// own value slot to it. FUARAN074 excludes exactly this, and so must the edge
-/// set, or every declared chip would resolve against itself and the decorative
-/// trap would be unreachable.
+/// A control's read of its OWN filter is not consumption, on either of the two
+/// ways a node can come to drive one.
+///
+/// For a `DeclaredFilter` it is the declarative-chip shape, where the chip both
+/// declares the name and binds its own value slot to it. FUARAN074 excludes
+/// exactly this, and so must the edge set, or every declared chip would resolve
+/// against itself and the decorative trap would be unreachable.
+///
+/// For a `FilterWriteBack` (Phase 1785) it is the SAME SLOT seen from both
+/// sides: a `Select` whose `values` binds `Binding.Filter "depts"` reads that
+/// binding to render its current selection and writes it back on change, so the
+/// walk records one read and one write on one node. An edge there would be a
+/// self-loop asserting the control drives a reader, when the reader is itself.
 let private isSelfRead (control: WiringControl) (consumer: WiringConsumer) : bool =
-    control.Kind = ControlKind.DeclaredFilter
+    (control.Kind = ControlKind.DeclaredFilter
+     || control.Kind = ControlKind.FilterWriteBack)
     && consumer.Kind = ConsumerKind.ValueRead
     && consumer.NodeId = control.NodeId
 
 /// The projection over facts a caller already has. Prefer this wherever
-/// `BindingWalk.collect` has already run — `PreEmitValidate` performs ONE walk
-/// per validation and every rule reads those facts, and this projection is
-/// cheap over them and expensive beside them.
-let ofFacts (facts: BindingWalk.TreeBindingFacts) : WiringGraph =
+/// `BindingWalk.collectFacts` has already run — a caller performing ONE walk and
+/// reading it several ways is the shape this serves, and the projection is cheap
+/// over those facts and expensive beside them.
+///
+/// **It takes `TreeFacts`, not `TreeBindingFacts`, and that is a correctness
+/// choice rather than a convenience (Phase 1785).** The filter-channel write
+/// direction is not recoverable from the published facts record: `Uses` records
+/// a `Binding.Filter` read without saying which SLOT held it, so a `Select`
+/// whose `values` writes a filter and a `Text` that merely reads one are
+/// indistinguishable there. Accepting the narrower record would mean answering
+/// the same tree two different ways depending on which entry point a caller
+/// reached for, with the poorer answer available by accident — so the parameter
+/// is the one that carries both halves, and there is nothing to reach for.
+let ofFacts (treeFacts: BindingWalk.TreeFacts) : WiringGraph =
+    let facts = treeFacts.Bindings
+
     let controls =
         // Filter — the chips. `DeclaredFilters` is (declaring node id, name).
         // NOTE `WiringControl.` on the first field of every construction below:
@@ -289,6 +336,25 @@ let ofFacts (facts: BindingWalk.TreeBindingFacts) : WiringGraph =
                          Name = name
                          Kind = ControlKind.FetchIntoQuery }
                | None -> None))
+        // Filter — the write-back positions (Phase 1785). A control whose
+        // write-back slot is bound to `Binding.Filter` commits to that filter on
+        // the reference host, so it DRIVES the name it writes; recorded as a
+        // control on the same channel as a chip, under its own kind.
+        //
+        // Deduplicated against the declared chips above rather than appended
+        // blind: a `Filters` chip is both a declaration and a write-back
+        // position, and the two would otherwise render as two controls for one
+        // node driving one name. The walk already excludes a chip's own slot for
+        // a sharper reason (it would name the wrong filter on the cross-reading
+        // shape); this guard covers the case from the other side, so the
+        // projection cannot produce a duplicate even if that ever changed.
+        @ (treeFacts.FilterWrites
+           |> List.filter (fun (writer, name) -> not (facts.DeclaredFilters |> List.contains (writer, name)))
+           |> List.map (fun (writer, name) ->
+               { WiringControl.NodeId = writer
+                 Channel = WiringChannel.Filter
+                 Name = name
+                 Kind = ControlKind.FilterWriteBack }))
         // Selection — the producing nodes. The NAME is the producer's own id,
         // which is what a `Binding.Selection` names.
         @ (facts.Nodes
@@ -392,7 +458,7 @@ let ofFacts (facts: BindingWalk.TreeBindingFacts) : WiringGraph =
 /// The projection over a decoded tree. Pure and total: it reads the tree and
 /// nothing else, performs no IO, resolves no host store, and returns the same
 /// graph for the same tree on every host and every run.
-let project<'Msg> (root: Node<'Msg>) : WiringGraph = ofFacts (BindingWalk.collect root)
+let project<'Msg> (root: Node<'Msg>) : WiringGraph = ofFacts (BindingWalk.collectFacts root)
 
 // ── the canonical rendering ─────────────────────────────────────────────────
 

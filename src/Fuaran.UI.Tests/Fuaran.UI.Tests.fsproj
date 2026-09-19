@@ -225,6 +225,9 @@
          family (with the sibling-permutation falsifier run both ways), and
          the acceptance criterion that no render path reads it. -->
     <Compile Include="WiringGraphTests.fs" />
+    <!-- Phase 1785 — the filter-channel write direction the walk now records:
+         the closed list of write-back positions, and the projection it grounds. -->
+    <Compile Include="FilterWriteWalkTests.fs" />
     <!-- DeadOnDecodeTests pins Phase 430's slot capability table + lint. -->
     <Compile Include="DeadOnDecodeTests.fs" />
     <!-- Phase 924 — the decode-side inertness report, and (the load-bearing

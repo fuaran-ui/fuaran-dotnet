@@ -488,6 +488,41 @@ type TreeBindingFacts =
         TransformSites: TransformSiteDecl list
     }
 
+/// `TreeBindingFacts`, plus the write DIRECTION on a channel that record does
+/// not carry (Phase 1785).
+///
+/// **Why a record BESIDE `TreeBindingFacts` rather than a field on it.** That
+/// record is published — it is in `v0.83.0` and `v0.84.0` — and a field added to
+/// a published F# record breaks every full-literal construction of it (FS0764),
+/// whatever the intent. This one has never shipped, so it grows freely, and the
+/// published record is reached through it unchanged. `collect` still returns
+/// exactly what it always returned; `collectFacts` is the same single walk
+/// returning both halves, so the two can never enumerate different positions.
+///
+/// It is a composite rather than a second walk for the reason the wiring
+/// projection's own header gives: a second walk of the spec vocabulary is
+/// precisely the drift the walk exists to prevent.
+type TreeFacts =
+    {
+        /// The published facts, byte-for-byte what `collect` returns.
+        Bindings: TreeBindingFacts
+        /// Every write-back position that commits to the FILTER store, as
+        /// (writing node id, filter name), in walk order.
+        ///
+        /// The closed list of positions is derived in `collect` from the
+        /// reference host's own write-back path; see the note there for which
+        /// positions are on it, and — more usefully — which two the walk treats
+        /// as State write-backs and this list deliberately excludes.
+        ///
+        /// A `Filters` chip's own value slot is NOT here: the renderer writes a
+        /// chip's DECLARED `FilterSpec.Name`, not whatever its value slot binds,
+        /// so a chip declaring `alpha` while reading `beta` writes `alpha`. That
+        /// destination is `TreeBindingFacts.DeclaredFilters` and recording it
+        /// again here would both duplicate it and, on the cross-reading shape,
+        /// name the wrong filter.
+        FilterWrites: (string * string) list
+    }
+
 /// Binding usages read by a single binding, recursing into a `Local` binding's
 /// re-sync source, `I18n` `{arg}` sub-bindings, a `Format` binding's numeric
 /// source, and a parameterised `Transform`'s param sources — the same
@@ -1095,6 +1130,34 @@ let isWriteBackTarget<'T> (binding: Binding<'T>) : bool =
         destination.IsSome || opaque
     | _ -> false
 
+/// The FILTER name a write-back slot commits to — `writeBackTargetOf`'s twin on
+/// the other store (Phase 1785).
+///
+/// **It mirrors the reference write-back path arm for arm, and that is the whole
+/// derivation.** `Fuaran.UI.Renderer`'s `writeBackTo` writes on exactly two
+/// binding shapes: `Binding.State(key, _)` to the state store, and
+/// `Binding.Filter(name, _)` to the filter store; every other shape is a no-op,
+/// which is the FUARAN069 inert-control condition. `writeBackTargetOf` answers
+/// the first arm and said nothing about the second, so a control driving a
+/// filter — a `Select` whose `values` binds `Binding.Filter` — was recorded by
+/// this walk as a READ alone and projected as an ungrounded consumer.
+///
+/// Two deliberate asymmetries with `writeBackTargetOf`, each read off the
+/// renderer rather than chosen:
+///
+///  * **A `Binding.Local` contributes nothing.** `writeBackTo` never receives one
+///    (its `_` arm would drop it); a buffer's commit is flushed by `commitLocalTo`,
+///    which CONSTRUCTS a `Binding.State` and so can only ever reach the state
+///    store. There is no path by which a buffer commits to a filter.
+///  * **The default is not consulted.** `writeBackTo` matches
+///    `Binding.Filter(name, _)`, so a slot carrying a default writes exactly as
+///    one without does. Note this is WIDER than `isWriteBackTarget`, which admits
+///    `Binding.Filter(_, None)` only — see the note on that function.
+let filterWriteTargetOf<'T> (binding: Binding<'T>) : string option =
+    match binding with
+    | Binding.Filter(name, _) -> Some name
+    | _ -> None
+
 /// The write-side facts of one `FormFieldKind`'s value slot.
 type FormFieldWrite =
     {
@@ -1144,6 +1207,42 @@ let formFieldWriteFacts<'Msg> (kind: FormFieldKind<'Msg>) : FormFieldWrite =
     | FormFieldKind.Color(h, v) -> slot v h.IsSome
     | FormFieldKind.Tokens(_, h, _, v) -> slot v h.IsSome
 
+/// `filterWriteTargetOf` over a `FormFieldKind`'s value slot (Phase 1785) — the
+/// filter-channel twin of `formFieldWriteFacts`, and a sibling rather than a
+/// field on `FormFieldWrite` because that record is published.
+///
+/// One arm per case, deliberately duplicating the match above rather than
+/// factoring it: the slot's type differs per case (`Binding<string>`,
+/// `Binding<float>`, `Binding<bool>`, …), so there is no erased slot for the two
+/// to share, and one arm per case is what makes a new field kind a compile error
+/// in BOTH — which is the property the duplication is paying for.
+///
+/// A HANDLER is not consulted, and the difference from `formFieldWriteFacts` is
+/// the point: that function reports opacity, because a closure may write
+/// anywhere. Here the question is which filter this slot commits to, and a
+/// present handler means the closure wins and no store is touched at all —
+/// `fieldChange` dispatches and returns. The caller that needs "a handler may
+/// have written something unseen" already has `FormFieldWrite.Opaque`.
+let formFieldFilterWrite<'Msg> (kind: FormFieldKind<'Msg>) : string option =
+    let slot (v: Binding<'T> option) = v |> Option.bind filterWriteTargetOf
+
+    match kind with
+    | FormFieldKind.Text(v, _) -> slot v
+    | FormFieldKind.Number(v, _) -> slot v
+    | FormFieldKind.Checkbox(v, _) -> slot v
+    | FormFieldKind.Toggle(v, _) -> slot v
+    | FormFieldKind.TextArea(v, _, _) -> slot v
+    | FormFieldKind.RangedNumber(v, _, _, _, _) -> slot v
+    | FormFieldKind.Range(v, _, _, _, _) -> slot v
+    | FormFieldKind.Choice(_, v, _) -> slot v
+    | FormFieldKind.Combobox(_, _, _, v) -> slot v
+    | FormFieldKind.SegmentedChoice(_, v, _, _) -> slot v
+    | FormFieldKind.Date(v, _, _, _, _, _) -> slot v
+    | FormFieldKind.DateRange(v, _, _, _, _, _) -> slot v
+    | FormFieldKind.Rating(_, _, _, v) -> slot v
+    | FormFieldKind.Color(_, v) -> slot v
+    | FormFieldKind.Tokens(_, _, _, v) -> slot v
+
 // Phase 1152 — see the note above `callsOfAction`. The inner `recordStateAction`
 // walk classifies `Action.Dispatch` as an opaque writer, so it names the marked
 // case. The directive sits on the WHOLE declaration rather than on that inner
@@ -1151,11 +1250,16 @@ let formFieldWriteFacts<'Msg> (kind: FormFieldKind<'Msg>) : FormFieldWrite =
 // it, is not parseable by Fantomas — and an unformattable file fails the gate.
 #nowarn "44"
 
-/// Collect the tree-wide binding facts for `node` (see `TreeBindingFacts`),
-/// descending through layout children, error-boundary subtrees, and
+/// Collect the tree-wide binding facts for `node` (see `TreeBindingFacts`) AND
+/// the filter-channel write direction beside them (see `TreeFacts`), in ONE
+/// walk, descending through layout children, error-boundary subtrees, and
 /// fragment-decl bodies (`FragmentRef` carries no body; a `Mount` guest is an
 /// opaque isolation boundary — both contribute their own node id only).
-let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
+///
+/// `collect` is this function's `Bindings` half and is the entry point every
+/// shipped rule still uses; prefer this one where the write direction is wanted,
+/// so the two halves come from the same walk rather than from two.
+let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
     let uses = ResizeArray<NodeBindingUse>()
     let declaredFilters = ResizeArray<string * string>()
     let calls = ResizeArray<CallUse>()
@@ -1166,6 +1270,9 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
     let stateReads = System.Collections.Generic.HashSet<string>()
     let stateWrites = ResizeArray<string * string>()
     let mutable opaqueReader = false
+
+    // ── The Phase 1785 filter-channel write direction (see `TreeFacts`) ──
+    let filterWrites = ResizeArray<string * string>()
 
     // ── The write-side projection FUARAN103 runs on ──
     let stateWriteKeys = System.Collections.Generic.HashSet<string>()
@@ -1205,13 +1312,54 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         target |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
         noteOpaqueIf opaque
 
+    /// Phase 1785 — ONE write-back position, folded into BOTH channels.
+    ///
+    /// **The single call is the anti-drift property, not a convenience.** The
+    /// state half and the filter half are two questions about the same slot, and
+    /// a position that answered one without the other is exactly the defect this
+    /// phase closes; asking them at one call site makes it impossible for the two
+    /// enumerations to diverge as the vocabulary grows.
+    ///
+    /// The closed list of positions this is called from is derived from the
+    /// reference host's own write-back path (`writeBackTo` in the client
+    /// renderer, reached directly or through `fieldChange`): `Disclosure.open`,
+    /// `Tabs.activeIndex`, `Tabs.activeTag`, `Modal.open`, `Select.value`,
+    /// `Select.values`, every `Form` field's value slot, and an editable
+    /// `DataGrid`'s `source` commit destination.
+    ///
+    /// **`Stepper.activeStep` and `Toast.open` are NOT on it**, and the exclusion
+    /// is evidence rather than an oversight: both are treated as write-back
+    /// positions by the STATE projection below, and the reference renderer writes
+    /// neither — it resolves `ActiveStep` for display and never calls the
+    /// write-back path for it, and a `Toast`'s dismiss button carries no handler
+    /// at all. Both keep their existing state-side `noteWriteBack` call, so
+    /// nothing a shipped rule reads moves; what they do not get is a claim that
+    /// they drive a filter, which on this host they cannot. A position that
+    /// cannot be shown writing on the reference host is not on this list.
+    let noteWriteBackOf (writer: string) (binding: Binding<'T>) =
+        noteWriteBack (writeBackTargetOf binding)
+
+        filterWriteTargetOf binding
+        |> Option.iter (fun name -> filterWrites.Add(writer, name))
+
     /// A `FormFieldKind`'s value slot is a write-back DESTINATION.
     /// `implicitKey` is what the Phase 694 auto-bind writes when the slot is
     /// ABSENT: the field's own id inside a form, and NOTHING on a filter chip,
     /// whose channel is the FilterStore rather than the State store.
-    let recordFormFieldWrites (implicitKey: string option) (kind: FormFieldKind<'Msg>) =
+    ///
+    /// Phase 1785 — `writer` is the node holding the field, and `onChip` says
+    /// whether this is a `Filters` chip's slot rather than a `Form` field's. A
+    /// chip contributes NO filter write here: the renderer writes the chip's
+    /// declared `FilterSpec.Name`, not whatever its value slot binds, so on the
+    /// cross-reading shape (declare `alpha`, read `beta`) reading the slot would
+    /// name the wrong filter. That destination is already `DeclaredFilters`.
+    let recordFormFieldWrites (writer: string) (onChip: bool) (implicitKey: string option) (kind: FormFieldKind<'Msg>) =
         let facts = formFieldWriteFacts kind
         noteWriteBack (facts.Target, facts.Opaque)
+
+        if not onChip then
+            formFieldFilterWrite kind
+            |> Option.iter (fun name -> filterWrites.Add(writer, name))
 
         if facts.SlotAbsent then
             implicitKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
@@ -1394,16 +1542,18 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             | NodeKind.SplitPanel s -> [], s.Children
             | NodeKind.SummaryList s -> usesOfTextOpt s.Heading, s.Children
             | NodeKind.Stepper s ->
+                // Phase 1785 — state half only; see `noteWriteBackOf` for why
+                // this position is off the filter-write list.
                 noteWriteBack (writeBackTargetOf s.ActiveStep)
                 noteOpaqueIf s.OnSelect.IsSome
                 usesOfBinding s.ActiveStep, s.Children
             | NodeKind.Disclosure s ->
-                noteWriteBack (writeBackTargetOf s.Open)
+                noteWriteBackOf readerId s.Open
                 noteOpaqueIf s.OnToggle.IsSome
                 (usesOfText s.Heading @ usesOfBinding s.Open), s.Children
             | NodeKind.Tabs s ->
-                noteWriteBack (writeBackTargetOf s.ActiveIndex)
-                s.ActiveTag |> Option.iter (writeBackTargetOf >> noteWriteBack)
+                noteWriteBackOf readerId s.ActiveIndex
+                s.ActiveTag |> Option.iter (noteWriteBackOf readerId)
                 noteOpaqueIf (s.OnSelect.IsSome || s.OnSelectTag.IsSome)
 
                 let headerUses =
@@ -1418,7 +1568,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 // Modal's OnDismiss is the wire-survivable Action slot (Phase 428).
                 s.OnDismiss |> Option.iter (recordCalls inUses readerId)
                 // A dismissable modal's close gesture writes its own `open` slot.
-                noteWriteBack (writeBackTargetOf s.Open)
+                noteWriteBackOf readerId s.Open
                 (usesOfTextOpt s.Heading @ usesOfBinding s.Open), s.Children
             | NodeKind.ScrollArea s -> [], s.Children
             // ── Display ──
@@ -1488,6 +1638,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
 
                 labelUses t.Items, []
             | NodeKind.Toast t ->
+                // Phase 1785 — state half only; see `noteWriteBackOf`.
                 noteWriteBack (writeBackTargetOf t.Open)
                 usesOfText t.Message @ usesOfBinding t.Open, []
             | NodeKind.CodeBlock _ -> [], []
@@ -1533,8 +1684,8 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 noteOpaqueIf fu.OnSelect.IsSome
                 usesOfText fu.Label @ usesOfBindingOpt fu.Disabled, []
             | NodeKind.Select s ->
-                noteWriteBack (writeBackTargetOf s.Value)
-                s.Values |> Option.iter (writeBackTargetOf >> noteWriteBack)
+                noteWriteBackOf readerId s.Value
+                s.Values |> Option.iter (noteWriteBackOf readerId)
                 noteOpaqueIf (s.OnChange.IsSome || s.OnChangeMulti.IsSome)
 
                 let uses =
@@ -1554,7 +1705,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                     let fieldUses =
                         f.Fields
                         |> List.collect (fun field ->
-                            recordFormFieldWrites (Some field.Id) field.Kind
+                            recordFormFieldWrites readerId false (Some field.Id) field.Kind
 
                             usesOfText field.Label
                             @ usesOfTextOpt field.Help
@@ -1573,7 +1724,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                     |> List.collect (fun (fs: FilterSpec<_>) ->
                         // No implicit key: an absent value slot on a chip
                         // auto-binds to the FILTER store, not the State store.
-                        recordFormFieldWrites None fs.Kind
+                        recordFormFieldWrites readerId true None fs.Kind
 
                         usesOfText fs.Label
                         @ usesOfFormFieldKind (Some(BindingUse.Filter fs.Name)) fs.Kind)
@@ -1598,7 +1749,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 g.EditStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
 
                 if g.Editable && g.EditStateKey.IsNone then
-                    noteWriteBack (writeBackTargetOf g.Source)
+                    noteWriteBackOf readerId g.Source
 
                 // A row-click handler is a closure over the row: an arbitrary
                 // action per row, so an arbitrary write.
@@ -1760,24 +1911,32 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         |> List.map (fun (k, ds) -> k, ds |> List.map snd)
         |> Map.ofList
 
-    { Uses = List.ofSeq uses
-      DeclaredFilters = List.ofSeq declaredFilters
-      Calls = List.ofSeq calls
-      Closures = List.ofSeq closures
-      Nodes = nodes |> Seq.fold (fun acc (KeyValue(k, v)) -> Map.add k v acc) Map.empty
-      StateKeys =
-        { Writes = List.ofSeq stateWrites
-          Reads = Set.ofSeq stateReads
-          OpaqueReader = opaqueReader
-          WriteKeys = Set.ofSeq stateWriteKeys
-          OpaqueWriter = opaqueWriter
-          SwitchSelectors = List.ofSeq switchSelectors
-          TransformInertSources = List.ofSeq transformInertSources
-          VisibleStateSources = List.ofSeq visibleStateSources
-          Seeds = List.ofSeq seeds
-          InlineTables = List.ofSeq inlineTables
-          LiveTransformSites = liveTransformSitesByKey }
-      TransformSites = allTransformSites }
+    { Bindings =
+        { Uses = List.ofSeq uses
+          DeclaredFilters = List.ofSeq declaredFilters
+          Calls = List.ofSeq calls
+          Closures = List.ofSeq closures
+          Nodes = nodes |> Seq.fold (fun acc (KeyValue(k, v)) -> Map.add k v acc) Map.empty
+          StateKeys =
+            { Writes = List.ofSeq stateWrites
+              Reads = Set.ofSeq stateReads
+              OpaqueReader = opaqueReader
+              WriteKeys = Set.ofSeq stateWriteKeys
+              OpaqueWriter = opaqueWriter
+              SwitchSelectors = List.ofSeq switchSelectors
+              TransformInertSources = List.ofSeq transformInertSources
+              VisibleStateSources = List.ofSeq visibleStateSources
+              Seeds = List.ofSeq seeds
+              InlineTables = List.ofSeq inlineTables
+              LiveTransformSites = liveTransformSitesByKey }
+          TransformSites = allTransformSites }
+      FilterWrites = List.ofSeq filterWrites }
+
+/// The tree-wide binding facts for `node` (see `TreeBindingFacts`) — the
+/// `Bindings` half of `collectFacts`, unchanged, and what every shipped rule
+/// reads. A caller that also wants the write direction calls `collectFacts`, so
+/// both halves come from one walk.
+let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts = (collectFacts root).Bindings
 
 /// Phase 1075 — the SEED MAP for a tree: the value each `$state.<key>` slot
 /// carries before anything else has said anything.

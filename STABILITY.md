@@ -7901,6 +7901,42 @@ admission gates are not engaged. **No escape hatch is created or widened**: the 
 total function over a tree, introduces no seam, registry, host callback or generated-code step, and
 reads nothing outside the tree it is handed.
 
+**The binding walk records a filter WRITE (Phase 1785). ADDITIVE: three new members on
+`Fuaran.UI.BindingWalk` and one new case on a type this version introduced.**
+
+`BindingWalk` gains `filterWriteTargetOf`, the filter-channel twin of `writeBackTargetOf`;
+`formFieldFilterWrite`, its form-field form; the record `TreeFacts`; and `collectFacts`, the one walk
+that returns both halves. `WiringGraph` gains the control kind `FilterWriteBack` and its
+`filter-write-back` rendering token, and `ofFacts` now takes `TreeFacts`.
+
+The defect closed is that the walk answered "where does this tree write?" on the State channel only.
+The reference renderer's write-back default commits a changed value to the filter store whenever the
+control's value slot is a `Binding.Filter` — a `Select` whose `values` binds one, say — and the walk
+recorded that slot as a READ alone, so the wiring projection reported the control as an ungrounded
+consumer and the reader it drives as grounded by nothing. The tree looked broken and was not.
+
+**Nothing an existing consumer can observe moves.** `collect` returns the same `TreeBindingFacts` it
+always returned, byte for byte, and is now that one walk's `Bindings` half rather than a second walk.
+The write direction rides `TreeFacts` BESIDE the published record rather than as a field on it,
+because a field added to a published F# record breaks every full-literal construction of it: this
+release stays additive by the shape of the change rather than by intent. Measured rather than
+asserted — every shipped pre-emit rule was run over all 230 shared-corpus node fixtures on both
+validator arms before and after, and the 113 reported defects across 14 codes are byte-identical.
+
+The closed list of write-back positions is derived from the reference host's own write-back path
+rather than from the vocabulary's shape: `Select.value`, `Select.values`, `Tabs.activeIndex`,
+`Tabs.activeTag`, `Disclosure.open`, `Modal.open`, every `Form` field value slot, and an editable
+`DataGrid`'s `source` commit destination. `Stepper.activeStep` and `Toast.open` are treated as
+write-back positions by the State projection and are deliberately absent here, because the reference
+renderer writes neither — a position that cannot be shown writing is not on the list. A `Filters`
+chip's value slot is absent too, and for a sharper reason: the renderer writes a chip's DECLARED
+name, so reading the slot would name the wrong filter on a chip that declares one name and reads
+another. All ten positions, inclusions and exclusions alike, are pinned as a table in the suite.
+
+**No kind is added, merged or retired**, and no wire byte, rendered output or validator verdict
+changes. The canonical wiring rendering over the shared corpus moves by 8 bytes on exactly one
+fixture — the multi-select shape this phase exists for — and is byte-stable again afterwards.
+
 ---
 
 ## 0.84.0 — the slot the 2026-09-17 cohort raise opened — released 2026-09-17 as `v0.84.0`
