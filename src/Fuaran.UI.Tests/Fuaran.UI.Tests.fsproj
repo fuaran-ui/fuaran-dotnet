@@ -216,6 +216,10 @@
     <!-- FilterWiringValidateTests pins the consolidated 421/424/425 validator
          follow-up (FUARAN074-078 over BindingWalk). -->
     <Compile Include="FilterWiringValidateTests.fs" />
+    <!-- Phase 1784: the corpus's negative wiring pair, bound to FUARAN075 — and
+         the measurement that says why the pre-emit rule is the whole guard
+         (resolution returns the unfiltered set for both documents). -->
+    <Compile Include="FilterEdgeCorpusTests.fs" />
     <!-- Phase 1736: the wiring-graph projection — what it says about the
          corpus wiring fixtures, its byte stability over the whole nodes/
          family (with the sibling-permutation falsifier run both ways), and
