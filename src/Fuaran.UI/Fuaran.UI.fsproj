@@ -104,6 +104,16 @@
          class rather than re-walking the spec vocabulary; holds no signature
          search of its own (see the module's `Delegation`). -->
     <Compile Include="StructuralQuery.fs" />
+    <!-- Phase 1736: the wiring graph — which controls drive which consumers,
+         over the four reactive channels, as plain data with the node ids on
+         both ends. A read-only PROJECTION of `BindingWalk.collect`'s facts: it
+         decides nothing, is read by no render path and by no validator, and
+         every rule that reads a slice of the same relation (FUARAN070–075 /
+         098) keeps its own derivation. Here rather than in the apply-engine
+         package because every input and every neighbouring rule is in THIS
+         one; compiled after BindingWalk (the sole input) and depending on
+         nothing else in the tier. -->
+    <Compile Include="WiringGraph.fs" />
     <!-- Phase 924: the decode-side inertness report — which of a DECODED
          tree's affordances are inert, derived from WireSurvivability's verdicts
          and SlotCapability's postures rather than a second list. Compiles last

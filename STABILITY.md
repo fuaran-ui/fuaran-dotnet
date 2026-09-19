@@ -7819,9 +7819,10 @@ document that declares no ceiling is exactly the control it was.
 
 _**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride
 0.84.0 any more, `<Version>` advances to 0.85.0, and this is the slot subsequent phases append to.
-Class so far: ADDITIVE — two new warn-class pre-emit codes and nothing else; no type, member, wire
-byte or rendered output of any `Fuaran.UI.*` package changes. Each phase adds one paragraph under
-the heading below, in the order it lands; a phase moves NO number unless its class is higher again._
+Class so far: ADDITIVE — two new warn-class pre-emit codes and one new read-only projection module
+in `Fuaran.UI`; no type, member, wire byte or rendered output of any `Fuaran.UI.*` package changes.
+Each phase adds one paragraph under the heading below, in the order it lands; a phase moves NO
+number unless its class is higher again._
 
 ### What rides 0.85.0
 
@@ -7861,6 +7862,44 @@ with the evidence that demanded it.
 admission gates are not engaged. **No escape hatch is created or widened**: both codes only REPORT
 on a document that was already legal, introduce no seam, registry or generated-code step, and add no
 default that fails open.
+
+**`Fuaran.UI.WiringGraph` — the wiring graph of a decoded tree (Phase 1736). ADDITIVE: one new
+module in `Fuaran.UI`.**
+
+`Fuaran.UI` gains `WiringGraph`: a read-only projection of `BindingWalk.collect`'s facts onto the
+question *which controls drive which consumers*, over the four reactive channels (state, filter,
+query, selection), with the node ids on both ends. `project : Node<'Msg> -> WiringGraph` and
+`ofFacts : BindingWalk.TreeBindingFacts -> WiringGraph` return the graph; `render : WiringGraph ->
+string` is a canonical, deterministic, sorted rendering of it. Six new public types
+(`WiringChannel`, `ControlKind`, `ConsumerKind`, `WiringControl`, `WiringConsumer`, `WiringEdge`,
+`UnresolvedWiring`, `WiringGraph`) and three companion-module helpers.
+
+*Why it is additive.* Nothing existing moves. No type, member, field, wire byte, validator code or
+rendered output of any `Fuaran.UI.*` package changes; the walk it reads is untouched; every pre-emit
+rule that reads a slice of the same relation (FUARAN070–075, FUARAN098) keeps its own derivation,
+and none of them calls this module. It is additive in the purest sense available — a new file, a
+new module name, and no edit to any existing one but the project's compile list.
+
+*Why it is in `Fuaran.UI` and not `Fuaran.UI.Ops`.* Every input is in this package —
+`BindingWalk.collect`'s `TreeBindingFacts` — and so is every rule that reads a slice of the graph.
+The apply-engine package sits above this one and could call the walk, but it holds no analysis
+surface, so a reader looking for the wiring graph would not find it there.
+
+*What it does NOT claim.* It DECIDES nothing: it reports controls, consumers, resolved edges and
+unresolved ends, and it raises no defect and no code. Three limits ride the data rather than being
+left to be discovered. A consumer carries whether its read is a plain value read (host-feedable,
+which is exactly why FUARAN075 exempts one) or an edge the tree asserts. The graph carries the
+`OpaqueReader` / `OpaqueWriter` flags, because under a `Binding.Computed` closure or a registered
+`Custom` renderer the absence of a read proves nothing. And it carries `UntaggedStateReads`, because
+a `DataGrid`'s `sortStateKey` is a plain string the renderer reads with no binding to attribute, so
+absence from the consumer list is not absence of a reader. State writes are taken from the
+reader-tagged `StateKeys.Writes`, not the wider untagged `WriteKeys`, since a projection whose
+contract is ids on both ends cannot serve an end it cannot name.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged. **No escape hatch is created or widened**: the module is a pure
+total function over a tree, introduces no seam, registry, host callback or generated-code step, and
+reads nothing outside the tree it is handed.
 
 ---
 
