@@ -106,8 +106,15 @@ open Fuaran.UI.Telemetry.Abstractions
 /// own `0.2.0`: the two surface-version LINES are independent (they started
 /// apart at 0.2.0/0.1.0 and stay apart), while the member's name and payload
 /// shape are parity-locked, which is the property that matters.
+///
+/// **0.4.0** adds `hatches()` — the runtime section of the escape-hatch report
+/// (Phase 1743): which of the doors that only a RUNNING host can see are open,
+/// what admitted each, and which the host declined to let this surface decide.
+/// Additive; the TS mirror does not carry it, which is the 0.2.0 situation
+/// again and is handled the same way — the two version lines are independent,
+/// and a member both carry stays parity-locked.
 [<Literal>]
-let Version = "0.3.0"
+let Version = "0.4.0"
 
 /// The compilation symbol that opts a build in to the console global. Named
 /// here so the gate, its documentation and the tests that pin it all quote one
@@ -716,6 +723,16 @@ type DebugOptions =
         /// host — `apply` then returns the `unwired` envelope and the relay does
         /// not advertise the capability.
         ApplyHandler: ApplyHandler option
+        /// The host's custom-renderer registry, for `hatches()` (Phase 1743).
+        ///
+        /// `None` is not "none registered" and is never reported as such: the
+        /// interface this surface is handed exposes per-key lookups and no
+        /// enumeration, so a host that wants that door DECIDED hands over the
+        /// registry it populated (`MutableRuntime.Registry` /
+        /// `BrowserRuntime.CustomRendererRegistry`). Left out, the finding says
+        /// UNDECIDED and says why — which is the honest answer, and the reason
+        /// this is an option rather than a default.
+        Registry: Runtime.CustomRendererRegistry option
     }
 
 [<RequireQualifiedAccess>]
@@ -726,7 +743,8 @@ module DebugOptions =
     let defaults: DebugOptions =
         { Sinks = DebugSinks.none
           Hub = ChangeHub.pageHub
-          ApplyHandler = None }
+          ApplyHandler = None
+          Registry = None }
 
 /// The policy-gated apply pipeline: read-only host → `Unwired`; the gate denies
 /// (FGP 3) → `Denied`, with the diagnostic routed through `IFuaranRuntime.Warn`
@@ -802,6 +820,7 @@ let helpText =
     + "  .findNodes(kind)          ids of every node whose kind === <kind>\n"
     + "  .getNodeJson(id)          one node's own canonical wire JSON, whole subtree\n"
     + "  .getAffordances(mod?)     declared natural-language commands, values + aliases\n"
+    + "  .hatches()                runtime escape-hatch report: open / closed / undecided\n"
     + "  .apply(op)                policy-gated TreeOp mutation (JSON string or object; default-deny)\n"
     + "  .treeRevision()           opaque token identifying the current tree state\n"
     + "  .subscribe(cb)            committed-tree-change signal; returns an unsubscribe fn\n"
@@ -1113,6 +1132,29 @@ let private moduleAffordanceToObj (m: Affordances.ModuleAffordance) : obj =
 let private enumerationToObj (enumeration: Affordances.AffordanceEnumeration) : obj =
     createObj [ "modules", box (enumeration.Modules |> List.map moduleAffordanceToObj |> Array.ofList) ]
 
+// ─── §7.7 hatches() — the runtime escape-hatch report ───────────────────────
+//
+// The same members the canonical `hatchSection` document renders, spelled the
+// same way, plus the one-line `summary` a console caller wants first. The
+// document's own `kind` and `version` ride along, because a caller that copies
+// this object out of the console and hands it to tooling is handing over the
+// document rather than a view of it.
+
+let private hatchFindingToObj (finding: Fuaran.UI.Ops.Hatches.HatchFinding) : obj =
+    createObj
+        [ "predicate", box finding.Predicate
+          "hatch", box finding.Hatch
+          "state", box (Fuaran.UI.Ops.Hatches.stateWire finding.State)
+          "account", box finding.Account ]
+
+let private hatchSectionToObj (section: Fuaran.UI.Ops.Hatches.HatchSection) : obj =
+    createObj
+        [ "kind", box Fuaran.UI.Ops.Hatches.Kind
+          "version", box Fuaran.UI.Ops.Hatches.Version
+          "section", box section.Section
+          "summary", box (Fuaran.UI.Ops.Hatches.summary section)
+          "findings", box (section.Findings |> List.map hatchFindingToObj |> Array.ofList) ]
+
 /// `undefined` / `null` / a non-string argument all mean "the whole page". A
 /// console caller types `getAffordances()`; the narrowing form is opt-in.
 let private moduleFilterOf (argument: obj) : string option =
@@ -1209,6 +1251,16 @@ let buildGlobalWith
               System.Func<obj, obj>(fun moduleId -> enumerationToObj (Affordances.enumerate (moduleFilterOf moduleId)))
           )
           "apply", box (System.Func<obj, obj>(fun op -> applyResultToObj (applyResult runtime options (opToJson op))))
+          // Phase 1743 — observed per CALL, never captured: the content-hash
+          // floor is raise-only but a host may raise it after the first render,
+          // and a registration made at startup must not be reported from a
+          // surface instance built before it. The same reasoning `treeRevision`
+          // states one member up.
+          "hatches",
+          box (
+              System.Func<obj>(fun () ->
+                  hatchSectionToObj (RuntimeHatches.observe options.Registry (debugGlobalEnabled ())))
+          )
           "help", box (System.Func<obj>(fun () -> box helpText)) ]
 
 /// `buildGlobalWith` in the historical positional shape.

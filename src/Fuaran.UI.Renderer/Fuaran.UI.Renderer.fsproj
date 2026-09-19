@@ -51,6 +51,12 @@
     <Compile Include="Diagnostics.fs" />
     <Compile Include="FragmentApply.fs" />
     <Compile Include="Runtime.fs" />
+    <!-- Phase 1743 — the runtime-reported escape-hatch predicates. After
+         Runtime.fs, whose registry it enumerates, and BEFORE DebugGlobal.fs,
+         which projects the section it builds onto the in-page surface. Pure over
+         its arguments (it reads no process state), so every branch is reachable
+         from the .NET suite. -->
+    <Compile Include="RuntimeHatches.fs" />
     <Compile Include="StateStore.fs" />
     <Compile Include="FilterStore.fs" />
     <Compile Include="SelectionStore.fs" />

@@ -105,6 +105,11 @@
          resolveSlot / childNodes + the applyGateDecision default-deny gate).
          The live cross-host browser assertion is the env-gated tail. -->
     <Compile Include="DebugGlobalTests.fs" />
+    <!-- Phase 1743 — the runtime escape-hatch report: the three-valued answer,
+         and the distinction between "read it, found nothing" and "never read
+         it" that the whole report exists to keep. Beside DebugGlobalTests
+         because the surface it is published on is that file's subject. -->
+    <Compile Include="HatchesTests.fs" />
     <!-- Phase 739 — the committed-tree-change hub + the DevTools relay page
          peer (profile relay@1.0). RelayTests pins the parts a corpus of
          exchanges cannot reach (coalescing, the two postures of "off", the
