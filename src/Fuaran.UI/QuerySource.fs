@@ -10,10 +10,17 @@ module Fuaran.UI.QuerySource
 //  RELATION TO `Fuaran.Core.Query` (fuaran-core#46). The Core ships the
 //  declarative data-acquisition contract — `Query` (with `ResultSchema`),
 //  `QueryResult`, `QueryError`, the default-deny `QueryRegistry`, typed param
-//  validation, and `Query.invoke (resolve: Query -> Result<QueryResult,string>)`.
-//  Its header states the **async envelope is not yet shipped — the host wraps the
-//  synchronous Core resolver in its own async at the boundary** (and points here,
-//  fuaran#323). This module is that async wrapper + the UI gate. It is expressed
+//  validation, and `Query.invoke`. When this module was written that entry point
+//  read `resolve: Query -> Result<QueryResult, string>` and the Core header said
+//  the **async envelope is not yet shipped — the host wraps the synchronous Core
+//  resolver in its own async at the boundary** (pointing here, fuaran#323). Core
+//  Phase 198 has since SHIPPED that envelope on the seam: a resolver answers
+//  `Deferred<QueryResult>` and `invoke` returns
+//  `Result<Deferred<QueryResult>, QueryError>`, so the substrate can now say *not
+//  yet* for itself. That does not retire this module — the UI gate below is the
+//  half Core never had — but it does mean the follow-on named at the end of this
+//  block inherits the envelope rather than inventing one. This module is the
+//  async wrapper + the UI gate. It is expressed
 //  over the already-pinned `Fuaran.Core.Column` (`Schema` / `Table` / `DataSource`)
 //  + `Fuaran.Core.DataFrame` (`Transform`) types, NOT `Fuaran.Core.Query` — so it
 //  takes no new pin and stays the interim, portability-clean seam the phase

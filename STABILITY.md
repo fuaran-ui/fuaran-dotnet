@@ -7937,6 +7937,73 @@ another. All ten positions, inclusions and exclusions alike, are pinned as a tab
 changes. The canonical wiring rendering over the shared corpus moves by 8 bytes on exactly one
 fixture — the multi-select shape this phase exists for — and is byte-stable again afterwards.
 
+**Cohort raise `fuaran-core-0.27.0` (2026-09-19) — ADDITIVE here, over a Core release that is
+BREAKING in six of its packages: `Fuaran.Core.*` 0.26.0 → 0.27.0, all twelve pins together.**
+
+*What Core 0.27.0 breaks, stated in full because the number does not say it.* Seven of its ten
+entries are breaking. The query seam's resolver and `Query.invoke` / `QueryRegistry.dispatch` now
+answer in the `Deferred` envelope (Phase 198) and the capability seam's three dispatch members do
+the same (Phase 210), so a body returns `Ready v` / `Failed m` where it returned `Ok v` / `Error m`
+and a caller handles settled / pending / refused. `arbitrate` and its types leave `AiSurface` for
+`Arbitration` in `Fuaran.Core.Ops` (Phase 192). `IncrementalEval`'s representation becomes PRIVATE
+(Phase 208), so a field read becomes an accessor call and a state cannot be constructed or copied.
+Three unions widen: `PropagationError` gains `EvalUndeclaredRead` and the propagation drivers now
+REFUSE an evaluator that reads a node it did not declare (Phase 209); `StepIncrementality` gains
+`TruncateOrder` (Phase 207) and `FallBackReason` gains `AggregateStepRepeated` (Phase 202), both
+declared last so no existing tag moved.
+
+*Why almost none of that reaches a consumer of these packages, and exactly where it does.* No
+member, type, field, wire byte, validator verdict or rendered output of any `Fuaran.UI.*` package
+moves, so this entry's own class is ADDITIVE and an adopting consumer has no forced source edit.
+The two retyped seams are not consumed here at all — `Fuaran.UI.AiTools` reaches the capability
+registry through `validateArgs` and its own `Fuaran.UI.Types.Deferred`, never through
+`Capability.invoke`, and `Fuaran.UI.QuerySource` is expressed over `Fuaran.Core.Column` /
+`.DataFrame` and takes no `Fuaran.Core.Query` pin. Nothing here calls `arbitrate`; the census
+already answers for `Fuaran.Core.AiSurface` as not used. **The one place a consumer inherits a
+widening through a published member of this repo** is `Fuaran.UI.ServerDriven`'s
+`LiveTransformEvaluation.Footprint`: a `RecomputeFootprint` carries `Recompute.FullRecompute(_,
+reason)`, and `FallBackReason` gained a case — so an exhaustive `match` on a fall-back reason read
+off that record gains an arm. That is an `FS0025` incomplete-match warning, which this document's
+[Semver](#semver) section classes as not breaking, and it is named here rather than left to be met.
+`IncrementalEval` itself appears on no surface of any package shipped from this repo.
+
+*The source change, one line in one shipped project.*
+`src/Fuaran.UI.ServerDriven/LiveTransform.fs` read `prior.Source` to derive the delta between the
+source a primed state was last evaluated against and the one handed in now; Phase 208 made that
+field private, so it reads `Incremental.source prior` — the accessor Core's own substitution table
+names for it. Behaviour is identical: the accessor returns the same field. Nothing else in the
+repository read an `IncrementalEval` field, which the build confirmed rather than a search claiming
+it — `Incremental.result` and `Incremental.footprint` were already in use at the two other reads.
+
+*A build that succeeded and should not have, recorded because it will recur.* The first `Debug`
+build after the pin moved reported zero errors while `Release` reported the `FS1093` above: MSBuild
+saw no input newer than the `Debug` outputs and did not recompile the project the break was in. A
+pin raise changes no `.fs` file, so incremental build is at its least trustworthy exactly when a
+substrate contract has moved. The gate builds `Release`, so the gate would have caught it; a
+session iterating in `Debug` would not have.
+
+*The census moves by one character, and that is the finding.* `docs/core-conformance.md` re-renders
+at the new pin: **48 adopted of 63**, identical to 0.26.0 in every row, with only the declared kit
+version changing. Core 0.27.0 ships no new public law family and retires none — `capabilityLaws`
+grew from 4 laws to 7 and `propagationEvalLaws` from 4 entries to 6, but both are the same family
+entry points, and this tier reads `AllPassed` rather than asserting a law count or indexing
+positionally into the results, so neither growth reaches a row. No classification had to be made.
+
+*The exported law corpus moves with the pin, and it is the half that lives outside this repo.* The
+capability-law vectors are DERIVED from the pinned kit, so a raise that leaves them unregenerated
+publishes a corpus certifying the sibling hosts against a kit the substrate no longer ships.
+Re-emitting at 0.27.0 changes exactly ONE line — `"kitVersion": "0.26.0"` → `"0.27.0"` — and every
+vector byte is unchanged, the same outcome the 0.26.0 raise recorded and for the same reason: the
+envelope rides `invoke`, and this family draws only `validateArgs`, `invocationKey`, the
+declaration codec and registry enumeration, none of which moved. The hand-curated
+`laws/manifest.json` carries the version for that family and is corrected beside it. The `laws/`
+directory is a declared copy of no host, so no bundled snapshot re-syncs.
+
+*Version.* Rides 0.85.0. The slot is untagged and its standing class is ADDITIVE; this entry's
+class is ADDITIVE too, so under the draft-slot rule it appends rather than advancing. A Core
+release being breaking is not this package's class — what decides the number here is whether a
+`Fuaran.UI.*` member moved, and none did.
+
 ---
 
 ## 0.84.0 — the slot the 2026-09-17 cohort raise opened — released 2026-09-17 as `v0.84.0`
