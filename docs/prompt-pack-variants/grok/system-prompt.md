@@ -899,44 +899,6 @@ If you have a specific column count, emit `{"$type":"Grid","cols":N}`. If you wa
 responsive auto-tiling (the CSS auto-grid instinct), emit `{"$type":"Auto"}` — do not
 emit a `Grid` and omit `cols`.
 
-## Two members that get missed — a `project` step takes `cols`, and every `Box` states its `layout`
-
-A census over stored emissions put these two ahead of every other spelling defect: 51
-`project` steps naming their member `columns`, and 10 `Box` nodes carrying no `layout` at
-all. Both are refused at decode, and a refusal takes the **whole document** with it — the
-rest of the answer can be perfect and still score nothing.
-
-**A `project` step's member is `cols`, and its entries are rename PAIRS.**
-
-```json
-{"$type":"project","cols":[{"a":"alert","b":"alert"},{"a":"owner","b":"Assigned to"}]}
-```
-
-`a` is the column read from the input; `b` is the name it carries in the output. Keeping a
-column unchanged means writing the same string twice — `{"a":"dept","b":"dept"}` selects
-`dept` and leaves it called `dept`. Two near-misses, both refused:
-
-- **`"columns": ["dept","amount"]`** — `columns` is a `DataGrid`'s member, not a pipeline
-  step's. The step is refused for the `cols` it does not have.
-- **`"cols": ["dept","amount"]`** — the right member with the wrong contents. A bare string
-  is not a rename pair, so renaming the member alone does not rescue this; every entry
-  carries both `a` and `b`.
-
-`cols` on a **layout** is an unrelated member of a different type — `{"$type":"Grid","cols":3}`
-is an integer column count. A pipeline step's `cols` is always an array of pairs.
-
-**Every `Box` states its `layout`. There is no default and no fallback.**
-
-```json
-{"id":"reports","kind":{"$type":"Box","children":[{"id":"reports-note","kind":{"$type":"Markdown","text":"No reports yet."}}],"layout":{"$type":"Auto"},"role":"Group"}}
-```
-
-`layout` and `role` are both required on every `Box`, including a nested one sitting inside
-a parent that already declared its own. When the arrangement genuinely does not matter,
-`{"$type":"Auto"}` is the member to WRITE rather than the member to leave out: it is a real
-layout — renderer-owned responsive tiling — and it costs one line. Omitting `layout` is
-refused at decode; it is not read as "arrange these however you like".
-
 ## Which tabular shape — `columns` vs `staticRows` vs a Markdown table
 
 Three shapes carry tabular content and they are not interchangeable. Decide by what the
