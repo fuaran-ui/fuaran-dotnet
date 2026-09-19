@@ -317,6 +317,48 @@ let tests =
                   "nothing on the filter channel is ungrounded any more"
           }
 
+          test "the corpus fixture this phase exists for is grounded, and only it moved" {
+              // The other side of the row Phase 1785 removed from
+              // `WiringGraphTests`' ungrounded-edge table. Asserted over the
+              // shared corpus rather than a hand-built twin, because the claim is
+              // about a document nobody here authored.
+              match Fuaran.Tests.CorpusRoot.tryFind () with
+              | None -> skiptest Fuaran.Tests.CorpusRoot.AbsentSkipReason
+              | Some root ->
+                  let path = System.IO.Path.Combine(root, "nodes", "multiselect-chip-list-param.json")
+
+                  if not (System.IO.File.Exists path) then
+                      skiptest "the corpus does not carry this fixture"
+                  else
+
+                      let g =
+                          match Ops.JsonDecode.decodeNodeObj (System.IO.File.ReadAllText path) with
+                          | Ok node -> WiringGraph.project node
+                          | Error e -> failtestf "the fixture failed to decode: %s at %s" e.Code e.Path
+
+                      Expect.isTrue
+                          (g.Controls
+                           |> List.exists (fun c ->
+                               c.NodeId = "dept-chip"
+                               && c.Channel = WiringGraph.WiringChannel.Filter
+                               && c.Kind = WiringGraph.ControlKind.FilterWriteBack))
+                          "the multi-select that writes `depts` is a control"
+
+                      Expect.isTrue
+                          (g.Edges
+                           |> List.exists (fun e -> e.Control = "dept-chip" && e.Consumer = "dept-grid"))
+                          "and it grounds the grid param that reads it"
+
+                      Expect.isEmpty
+                          (g.Unresolved
+                           |> List.filter (fun u ->
+                               match u with
+                               | WiringGraph.UnresolvedWiring.UngroundedConsumer r ->
+                                   r.Channel = WiringGraph.WiringChannel.Filter
+                               | _ -> false))
+                          "so nothing in this fixture is ungrounded on the filter channel"
+          }
+
           test "a filter-writing control is not EXPRESS, so it is never reported undriven" {
               // Read off the shipped rules like every other entry in that split:
               // no rule fires on a control whose value slot happens to be a

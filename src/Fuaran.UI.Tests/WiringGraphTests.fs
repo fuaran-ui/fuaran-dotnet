@@ -230,12 +230,22 @@ let tests =
                   // edges the TREE asserts — FUARAN075's subjects. A plain
                   // `Binding.Filter` value read is host-feedable and is
                   // deliberately NOT in this projection's declared-edge set.
+                  //
+                  // Phase 1785 — `multiselect-chip-list-param` left this table,
+                  // and its departure is that phase's whole point rather than an
+                  // expectation relaxed to fit. Its grid's param reads `depts`,
+                  // which the `Select` beside it WRITES through the renderer's
+                  // write-back default; the walk recorded that slot as a read
+                  // alone, so the graph reported an edge grounded by nothing. The
+                  // fixture is unchanged, the reader is unchanged, and the tree
+                  // was never defective — the projection now says so. It is
+                  // asserted from the other side in `FilterWriteWalkTests`, over
+                  // this same fixture, so the row is covered rather than dropped.
                   let expected =
                       [ "query-dependson.json", [ "region"; "status" ]
                         "form-combobox-query.json", [ "country" ]
                         "form-tokens-query.json", [ "role" ]
                         "grid-transform-param.json", [ "dept" ]
-                        "multiselect-chip-list-param.json", [ "depts" ]
                         "expr-params-state-selection.json", [ "statuses" ] ]
 
                   for (name, names) in expected do
@@ -263,6 +273,14 @@ let tests =
                         "filters-1.json"
                         "filters-date-range.json"
                         "filters-declarative.json"
+                        // Phase 1784's negative wiring pair, both of which declare
+                        // chips. They are listed here because the corpus grew, not
+                        // because anything in the projection moved — this list is
+                        // the one assertion in the suite that a fixture ADDED to a
+                        // repo this one does not own can redden, which is exactly
+                        // the hazard the byte-total test below declines to take on.
+                        "filters-param-source-declared.json"
+                        "filters-param-source-undeclared.json"
                         "filters-rating-colour.json"
                         "filters-segmented.json"
                         "filters-tokens.json"
