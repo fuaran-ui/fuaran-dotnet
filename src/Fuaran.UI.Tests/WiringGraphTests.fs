@@ -236,7 +236,14 @@ let tests =
                         "form-tokens-query.json", [ "role" ]
                         "grid-transform-param.json", [ "dept" ]
                         "multiselect-chip-list-param.json", [ "depts" ]
-                        "expr-params-state-selection.json", [ "statuses" ] ]
+                        "expr-params-state-selection.json", [ "statuses" ]
+                        // Phase 1784 — the one shape the six above could not
+                        // express: the `Filters` node is PRESENT and declares
+                        // `region`, and the same consumer's other edge names a
+                        // chip it does not declare. Every other entry here
+                        // dangles only because its fixture has no `Filters`
+                        // sibling at all.
+                        "filters-param-source-undeclared.json", [ "genre" ] ]
 
                   for (name, names) in expected do
                       let g = graphOf name (File.ReadAllText(Path.Combine(d, name)))
@@ -263,6 +270,11 @@ let tests =
                         "filters-1.json"
                         "filters-date-range.json"
                         "filters-declarative.json"
+                        // Phase 1784's pair — both carry a `Filters` node, and
+                        // they are the corpus's second and third documents to
+                        // carry one BESIDE a declared filter edge.
+                        "filters-param-source-declared.json"
+                        "filters-param-source-undeclared.json"
                         "filters-rating-colour.json"
                         "filters-segmented.json"
                         "filters-tokens.json"
