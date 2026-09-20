@@ -28,20 +28,31 @@ let private rejectEntries = snd corpus |> List.filter (fun e -> e.Kind = "reject
 /// hint; the wrap deliberately does not invent one). Named, never counted —
 /// the same posture as `SchemaConformance.schemaInexpressibleRejects`.
 ///
-/// The list is EMPTY since fuaran#1085 retired its only member,
+/// The list was EMPTY between fuaran#1085 — which retired its only member,
 /// `reject-transform-source-empty-wrapper` (fuaran#815 / Phase 822 — the
 /// un-unwrappable State wrapper, whose refusal was Core's rather than this
-/// decoder's). That shape is an ACCEPT now: under fuaran#1075's seeding rule a
-/// sibling reader's declaration fills the slot, so a Transform source carrying
-/// no data of its own decodes to a live source over the empty initial
-/// snapshot.
+/// decoder's; that shape is an ACCEPT now, since under fuaran#1075's seeding
+/// rule a sibling reader's declaration fills the slot) — and Phase 1821, which
+/// is the "next Core-surfaced refusal" the paragraph below anticipated.
 ///
-/// Kept rather than deleted, because the mechanism is what matters: the wrap
-/// exists, and the next Core-surfaced refusal belongs here rather than being
-/// rediscovered. Each entry is asserted hint-LESS below — the inverse pin. If
-/// the wrap ever gains a recovery hint, this fails and the list shrinks
-/// deliberately rather than the exemption quietly outliving its reason.
-let private coreWrappedHintlessRejects: Set<string> = Set.empty
+/// Its two members are the 0.28.0 column-member rename's ambiguity refusals: a
+/// `project` step, or a `sort` key, carrying BOTH the canonical spelling and
+/// its decode alias. The decision that both-present is refused rather than
+/// resolved belongs to the dataframe codec, so the refusal arrives through the
+/// `coreError` wrap and carries no UI-layer shape hint — there is no single
+/// repaired document to hint at, since removing either member is a valid
+/// repair and they may name different columns.
+///
+/// Kept rather than deleted when empty, because the mechanism is what matters:
+/// the wrap exists, and the next Core-surfaced refusal belongs here rather
+/// than being rediscovered. Each entry is asserted hint-LESS below — the
+/// inverse pin. If the wrap ever gains a recovery hint, this fails and the
+/// list shrinks deliberately rather than the exemption quietly outliving its
+/// reason.
+let private coreWrappedHintlessRejects: Set<string> =
+    Set.ofList
+        [ "reject-transform-project-columns-and-cols"
+          "reject-transform-sort-key-column-and-col" ]
 
 let private checkError
     (e: Corpus.FixtureEntry)

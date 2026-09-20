@@ -585,7 +585,7 @@ TextSource =
 | I18n { args:{ [key]:Binding_json | any }; key:str }
 TransformStep =
 | filter { pred:object }
-| project { cols:TransformRename[] }
+| project { columns:TransformRename[] }
 | derive { expr:object; name:str }
 | groupBy { aggs:TransformAgg[]; keys:str[] }
 | join { how:"inner"|"left"|"right"|"outer"|"semi"|"anti"; on:TransformRename[]; source:object }
@@ -618,7 +618,7 @@ TabHeader { label:TextSource; disabled?:Binding_bool; icon?:str }
 TrackEntry { kind:"Subtitles"|"Captions"|"Descriptions"|"Chapters"; label:TextSource; src:Binding_str; srcLang:str; default?:bool }
 TransformAgg { fn:AggFn; name:str; of:str }
 TransformRename { a:str; b:str }
-TransformSortKey { col:str; dir?:"asc"|"desc" }
+TransformSortKey { column:str; dir?:"asc"|"desc" }
 TreeItem { id:str; label:TextSource; children?:TreeItem[]; icon?:str }
 ViewBox { height:num; minX:num; minY:num; width:num }
 AggFn = "sum"|"mean"|"min"|"max"|"count"|"median"|"stddev"|"first"|"last"|"countDistinct"
@@ -889,7 +889,7 @@ read the same embedded source:
 
 <!-- fuaran:example fixture=lenient-scalar-transform-composition-compact -->
 ```json
-{"id":"scalar-transform-composition","kind":{"$type":"Box","children":[{"id":"scalar-ticket-grid","kind":{"$type":"DataGrid","columns":[{"field":"id","kind":{"$type":"Text"},"label":"Ticket"},{"field":"severity","kind":{"$type":"Text"},"label":"Severity"}],"rowKeyField":"id","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"alert":["TCK-2041 breaches SLA in 2 hours","TCK-2042 breaches SLA in 5 hours","TCK-2043 breaches SLA in 9 hours"],"id":["TCK-2041","TCK-2042","TCK-2043"],"severity":["critical","high","critical"]}}}}},{"id":"critical-count-badge","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[{"$type":"filter","pred":{"$type":"binary","left":{"$type":"col","name":"severity"},"op":"eq","right":{"$type":"lit","cell":{"$type":"Str","value":"critical"}}}},{"$type":"groupBy","aggs":[{"fn":"count","name":"n","of":"id"}],"keys":[]}],"source":{"columns":{"alert":["TCK-2041 breaches SLA in 2 hours","TCK-2042 breaches SLA in 5 hours","TCK-2043 breaches SLA in 9 hours"],"id":["TCK-2041","TCK-2042","TCK-2043"],"severity":["critical","high","critical"]}}}},"variant":"Critical"}},{"id":"sla-warning","kind":{"$type":"Callout","body":{"$type":"Bound","binding":{"$type":"Transform","params":[{"from":{"$type":"Selection","defaultValue":"TCK-2041","field":"id","nodeId":"scalar-ticket-grid"},"name":"ticketId"}],"pipeline":[{"$type":"filter","pred":{"$type":"binary","left":{"$type":"col","name":"id"},"op":"eq","right":{"$type":"param","name":"ticketId"}}},{"$type":"project","cols":[{"a":"alert","b":"alert"}]},{"$type":"limit","n":1,"offset":0}],"source":{"columns":{"alert":["TCK-2041 breaches SLA in 2 hours","TCK-2042 breaches SLA in 5 hours","TCK-2043 breaches SLA in 9 hours"],"id":["TCK-2041","TCK-2042","TCK-2043"],"severity":["critical","high","critical"]}}}},"heading":"SLA breach imminent","tone":"Warning"}}],"layout":{"$type":"Auto"},"role":"Dashboard"}}
+{"id":"scalar-transform-composition","kind":{"$type":"Box","children":[{"id":"scalar-ticket-grid","kind":{"$type":"DataGrid","columns":[{"field":"id","kind":{"$type":"Text"},"label":"Ticket"},{"field":"severity","kind":{"$type":"Text"},"label":"Severity"}],"rowKeyField":"id","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"alert":["TCK-2041 breaches SLA in 2 hours","TCK-2042 breaches SLA in 5 hours","TCK-2043 breaches SLA in 9 hours"],"id":["TCK-2041","TCK-2042","TCK-2043"],"severity":["critical","high","critical"]}}}}},{"id":"critical-count-badge","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[{"$type":"filter","pred":{"$type":"binary","left":{"$type":"col","name":"severity"},"op":"eq","right":{"$type":"lit","cell":{"$type":"Str","value":"critical"}}}},{"$type":"groupBy","aggs":[{"fn":"count","name":"n","of":"id"}],"keys":[]}],"source":{"columns":{"alert":["TCK-2041 breaches SLA in 2 hours","TCK-2042 breaches SLA in 5 hours","TCK-2043 breaches SLA in 9 hours"],"id":["TCK-2041","TCK-2042","TCK-2043"],"severity":["critical","high","critical"]}}}},"variant":"Critical"}},{"id":"sla-warning","kind":{"$type":"Callout","body":{"$type":"Bound","binding":{"$type":"Transform","params":[{"from":{"$type":"Selection","defaultValue":"TCK-2041","field":"id","nodeId":"scalar-ticket-grid"},"name":"ticketId"}],"pipeline":[{"$type":"filter","pred":{"$type":"binary","left":{"$type":"col","name":"id"},"op":"eq","right":{"$type":"param","name":"ticketId"}}},{"$type":"project","columns":[{"a":"alert","b":"alert"}]},{"$type":"limit","n":1,"offset":0}],"source":{"columns":{"alert":["TCK-2041 breaches SLA in 2 hours","TCK-2042 breaches SLA in 5 hours","TCK-2043 breaches SLA in 9 hours"],"id":["TCK-2041","TCK-2042","TCK-2043"],"severity":["critical","high","critical"]}}}},"heading":"SLA breach imminent","tone":"Warning"}}],"layout":{"$type":"Auto"},"role":"Dashboard"}}
 ```
 <!-- /fuaran:example -->
 

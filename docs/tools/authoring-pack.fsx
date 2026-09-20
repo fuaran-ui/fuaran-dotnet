@@ -1935,8 +1935,10 @@ let private leniencyFamilies: LeniencyFamily list =
             "lenient-tonedpill-tonemap-alias" ]
         Evidence =
           "Total (same concept, same semantics, §3.6 table; canonical wins when both present) but "
-          + "token-neutral or negative — the canonical names are as short or shorter (route vs href, "
-          + "cols vs columns, map vs toneMap). Synonym safety net, not compression." }
+          + "token-neutral or negative — the canonical names are as short or shorter (route vs href, a "
+          + "Grid LAYOUT's cols vs columns, map vs toneMap). Synonym safety net, not compression. The "
+          + "layout pair is not the dataframe algebra's: there `columns` is canonical and `cols` the "
+          + "alias, which is the opposite direction." }
       { Name = "Pill tag carrying a tone map (→ TonedPill)"
         Class = SafeNotTaught
         FixtureIds = [ "lenient-tonedpill-pill-tag" ]
@@ -1988,6 +1990,18 @@ let private leniencyFamilies: LeniencyFamily list =
         Evidence =
           "cumSum→cumulSum is a superseded-spelling seam — §16's own admission law says backward "
           + "compatibility is NOT an admission ground; teaching it would resurrect a retired spelling." }
+      { Name = "Legacy abbreviated column-member spellings"
+        Class = NeverTaught
+        FixtureIds = [ "lenient-transform-column-member-legacy" ]
+        Evidence =
+          "cols→columns on a project step, and col→column on a sort key and a window frame-ordering "
+          + "entry (0.28.0): a superseded-spelling seam on the window-function precedent above, and "
+          + "refused by §16's admission law for the same reason — backward compatibility is not a "
+          + "ground. It is also token-NEGATIVE in the direction that matters: the abbreviation is the "
+          + "shorter string, so teaching it would trade the canonical spelling for three bytes and "
+          + "resurrect the name the rename exists to retire. Accepted on decode, never taught, and "
+          + "never emitted. Note the Grid-LAYOUT cols/columns pair in the alias family above runs the "
+          + "OPPOSITE way and is a different member entirely." }
       { Name = "Opaque-sentinel recovery"
         Class = NeverTaught
         FixtureIds =

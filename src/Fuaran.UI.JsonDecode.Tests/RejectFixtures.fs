@@ -315,6 +315,37 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "Masonry cols 0 — refused: a column count names how many columns the children fill, so a non-positive one describes a layout no renderer can realise. Refused rather than canonicalised to `Auto`, unlike a column-less `Grid`: that leniency works because `Auto` already means the browser's own choice, and masonry has no such case for the rewrite to land on" }
+      // ─── 0.28.0 — the spelled-out column member, and its one refusal ─────
+      // A `Masonry`/`Grid` `cols` is a column COUNT on a layout, and is NOT
+      // touched by the dataframe algebra's rename above — which is exactly why
+      // these two fixtures sit here, next to each other: the two members share
+      // a spelling and nothing else, and a host that renames both has read the
+      // rule as being about the string rather than about what the member names.
+      //
+      // Inside the dataframe algebra the rule does apply, and each renamed
+      // member keeps its old spelling as a decode alias. Giving BOTH is refused
+      // rather than resolved, because the two spellings could carry different
+      // values and there is no non-arbitrary winner — the same ambiguity
+      // refusal every other aliased member of this algebra already makes. The
+      // path is the pipeline rather than the step: the refusal comes back from
+      // the shared dataframe codec, which the host surfaces at the slot it
+      // handed over.
+      { Id = "reject-transform-project-columns-and-cols"
+        Json =
+          """{"id":"p2","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"Transform","pipeline":[{"$type":"project","columns":[{"a":"dept","b":"dept"}],"cols":[{"a":"dept","b":"team"}]}],"source":{"columns":{"dept":{"validity":[true],"values":["ops"]}},"schema":[{"name":"dept","type":"string"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source.pipeline"
+        IsOp = false
+        Description =
+          "a project step carrying BOTH `columns` (canonical since 0.28.0) and `cols` (its decode alias) — refused as ambiguous rather than resolved to either, since the two lists here disagree and no reading of the document says which the author meant" }
+      { Id = "reject-transform-sort-key-column-and-col"
+        Json =
+          """{"id":"s2","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"Transform","pipeline":[{"$type":"sort","by":[{"column":"dept","col":"salary","dir":"asc"}]}],"source":{"columns":{"dept":{"validity":[true],"values":["ops"]},"salary":{"validity":[true],"values":[100]}},"schema":[{"name":"dept","type":"string"},{"name":"salary","type":"int"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source.pipeline"
+        IsOp = false
+        Description =
+          "a sort key carrying BOTH `column` (canonical since 0.28.0) and `col` (its decode alias) — refused as ambiguous, on the same rule as the project step beside it. The two name different columns here, so accepting either would silently sort by a column the author may not have meant" }
       // Phase 1080 — `srcSet: null` is REFUSED, and this is the fixture that
       // makes the missing-list-field decode class a wire law rather than each
       // host's reading. An ABSENT `srcSet` is the empty list; a PRESENT `null`

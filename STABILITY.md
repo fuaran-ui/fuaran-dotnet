@@ -7819,8 +7819,11 @@ document that declares no ceiling is exactly the control it was.
 
 _**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride
 0.84.0 any more, `<Version>` advances to 0.85.0, and this is the slot subsequent phases append to.
-Class so far: ADDITIVE — two new warn-class pre-emit codes and one new read-only projection module
-in `Fuaran.UI`; no type, member, wire byte or rendered output of any `Fuaran.UI.*` package changes.
+Class so far: **WIRE-BREAKING** — raised from ADDITIVE by Phase 1821's `Fuaran.Core.*` 0.28.0 raise,
+which moves the canonical bytes of a `project` step's and a sort/window key's column member. No
+managed type, member, record field or union case of any `Fuaran.UI.*` package changes, and no decoder
+breaks; what breaks is a consumer that COMPARES the canonical bytes. Everything else on this slot is
+additive — two new warn-class pre-emit codes and one new read-only projection module in `Fuaran.UI`.
 Each phase adds one paragraph under the heading below, in the order it lands; a phase moves NO
 number unless its class is higher again._
 
@@ -8096,6 +8099,61 @@ member changes shape, no wire byte moves, and the only behavioural change is the
 message on six inputs that were refused before and are refused now. Under the draft-slot rule an
 additive entry on an untagged slot whose standing class is already ADDITIVE appends rather than
 advancing the number.
+
+**Cohort raise `fuaran-core-0.28.0` (Phase 1821) — a column-naming wire member of the dataframe
+algebra is spelled out in full. `Fuaran.Core.*` 0.27.0 → 0.28.0, all twelve pins together. WIRE
+BYTES MOVE; no managed type, member, record field or union case does.**
+
+*The rule Core 0.28.0 states, in its own words.* A wire member whose only honest name is "the column"
+or "the columns" is spelled out — `column` for one, `columns` for a list — and never abbreviated;
+every other member is named for the ROLE its columns play in the step, and an abbreviation survives
+only as a decode alias. Two members move: a `project` step's rename list is `columns` (was `cols`),
+and a `sort` key's and a `window`'s frame-ordering entry's column is `column` (was `col`). Nothing
+else in the algebra moves — `keys`, `by`, `of`, `as`, `name`, `on`, `partitionBy`, `index`, `values`,
+`idVars`, `valueVars` and a pair's `a` / `b` all name a role rather than a column.
+
+*Two things the rename deliberately does NOT reach, stated because each is one character from
+something that did move.* The `col` EXPRESSION's `$type` tag — `{"$type":"col","name":…}` — names a
+KIND of expression rather than a column, and is untouched everywhere, a `sort` key's own `column`
+included. And a `Box`'s `Grid` / `Masonry` layout `cols` is a column COUNT on a layout, outside the
+dataframe algebra entirely: there `cols` remains canonical and `columns` remains its decode alias,
+which is the OPPOSITE direction to this change. Both are pinned by fixtures that did not move.
+
+*What this costs a consumer.* The canonical encode's bytes change for any tree carrying one of those
+two members, so a consumer that COMPARES bytes — a conformance corpus, a golden-file test, a stored
+document hashed for equality — sees a diff. No decoder breaks: each old spelling is kept as a decode
+alias, accepted indefinitely and never emitted, so a document written before 0.28.0 decodes to the
+same tree and normalises to the spelled-out name the first time it is re-encoded. A document carrying
+BOTH spellings of one member is refused as ambiguous rather than silently resolved — the two could
+name different columns — which is the behaviour every other aliased member of this algebra already
+has. The refusal arrives through the cross-pillar `coreError` wrap as `WRONG_TYPE` at the pipeline
+slot, carrying no `ExpectedShape` hint, since removing either member is a valid repair and there is
+no single repaired document to point at.
+
+*What moves in this repository.* Twelve `Fuaran.Core.*` pins; `SchemaGen`'s `TransformStep.project`
+required member and `TransformSortKey`'s, so `schema.json` states the spelled-out names (the aliases
+are deliberately absent from the schema — it describes what an emitter should WRITE, and the encoder
+never writes them); the fixture tables that feed the corpus; and `docs/core-conformance.md`, whose
+census line names the pinned kit version. `laws/capability-laws.json` is re-emitted for the new
+`kitVersion` with its vectors unchanged, and the hand-curated `laws/manifest.json` beside it is
+corrected to match — Core's own cut re-stamped `transform-laws.json` and left that index at 0.27.0.
+
+*What moves in the corpus.* Five `nodes/` fixtures and three `lenient/` expectations re-encode with
+the new spellings; `schema.json` states them; one new `lenient/` pair certifies alias-in /
+canonical-out across all three sites at once, and two new `reject/` fixtures certify the both-present
+refusal. Every other fixture's bytes are unchanged, the layout-`cols` fixtures included.
+
+*Version.* Rides 0.85.0, **and it raises the slot's standing class from ADDITIVE to WIRE-BREAKING** —
+the pinned substrate's canonical bytes move, which breaks a byte-comparing consumer while breaking no
+decoder and moving no managed surface. That raise is the part worth reading rather than the number.
+Under the draft-slot rule an entry of a HIGHER class than the draft already carries ADVANCES the
+number, because the number is what tells a consumer what adopting the slot costs, and "additive" over
+a wire break is false. This entry does not advance it, for one reason and not because the rule was
+read as satisfied: `<Version>` lives in `Directory.Build.props`, which a concurrent release-train
+phase holds, and two sessions moving one release number is how a slot gets cut, withdrawn and re-cut
+inside a day. So the class is recorded here and the number is left to the session that owns it — and
+whoever performs the release gesture on this slot must carry WIRE-BREAKING into it rather than
+inheriting the additive class the heading was opened with.
 
 ---
 

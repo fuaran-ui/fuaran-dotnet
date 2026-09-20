@@ -677,7 +677,12 @@ let private defs: (string * J) list =
       "TransformStep",
       union
           [ duCase "filter" [ "pred" ] [ "pred", object_ ]
-            duCase "project" [ "cols" ] [ "cols", arrayOf (ref "TransformRename") ]
+            // `0.28.0` — the member is `columns`, not `cols`: a member whose only
+            // honest name is "the columns" is spelled out in full. `cols` stays a
+            // DECODE alias and is deliberately absent here — the schema describes
+            // what a model should EMIT, and offering both spellings would teach the
+            // one the encoder never writes.
+            duCase "project" [ "columns" ] [ "columns", arrayOf (ref "TransformRename") ]
             duCase "derive" [ "expr"; "name" ] [ "expr", object_; "name", str ]
             duCase "groupBy" [ "aggs"; "keys" ] [ "aggs", arrayOf (ref "TransformAgg"); "keys", arrayOf str ]
             duCase
@@ -707,8 +712,10 @@ let private defs: (string * J) list =
             duCase "intersect" [ "source" ] [ "source", object_ ]
             duCase "except" [ "source" ] [ "source", object_ ] ]
 
-      // A column rename pair — `project.cols` and `join.on` both carry it, and
-      // both read `a` / `b` through the same `pairOf`.
+      // A column rename pair — `project.columns` and `join.on` both carry it, and
+      // both read `a` / `b` through the same `pairOf`. `a` / `b` name a POSITION in
+      // a pair rather than a column, which is why the `0.28.0` spelling rule does
+      // not reach them.
       "TransformRename", record [ "a"; "b" ] [ "a", str; "b", str ]
 
       // One aggregate of a `groupBy`. Its `fn` is the SECOND position reading
@@ -721,7 +728,11 @@ let private defs: (string * J) list =
       // One ordering key — `sort.by` and `window.orderBy`. `dir` is optional
       // because a directionless key is unambiguously ascending (the SQL
       // default), which is what the decoder reads it as.
-      "TransformSortKey", record [ "col" ] [ "col", str; "dir", ref "SortDir" ]
+      // `0.28.0` — the member is `column`, not `col`, for the same reason
+      // `project.columns` is spelled out. `col` stays a decode alias and is not
+      // offered here. Note this is a MEMBER name: the `col` EXPRESSION's `$type`
+      // tag names a kind of expression and is untouched.
+      "TransformSortKey", record [ "column" ] [ "column", str; "dir", ref "SortDir" ]
 
       "SortDir", enumDef [ "asc"; "desc" ]
       "JoinKind", enumDef [ "inner"; "left"; "right"; "outer"; "semi"; "anti" ]

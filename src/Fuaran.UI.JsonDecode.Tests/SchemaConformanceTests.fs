@@ -267,7 +267,33 @@ let private schemaInexpressibleRejects: Set<string> =
           // either one, this test fails and the entry goes, instead of the
           // exemption outliving its reason.
           "reject-local-codec-no-inverse"
-          "reject-local-oncommit-and-committo" ]
+          "reject-local-oncommit-and-committo"
+
+          // ─── Phase 1821 — the 0.28.0 column-member rename's ambiguity pair ─
+          //
+          // A `project` step, or a `sort` key, carrying BOTH the canonical
+          // spelling (`columns` / `column`) and its decode alias (`cols` /
+          // `col`). Filed for the `reject-local-oncommit-and-committo` reason —
+          // expressible in principle, not emitted — rather than a dialect
+          // limit: `not: { required: ["cols"] }` on the `project` arm states
+          // exactly this exclusion and Draft 2020-12 has the keyword.
+          //
+          // Two things keep it unemitted, and they compound. The schema does
+          // not set `additionalProperties: false` anywhere, matching the
+          // decoder's tolerance of unknown keys, so an alias reads to it as an
+          // ordinary unknown member. And the emitted schema is consumed by
+          // provider structured-output dialects whose keyword subsets are
+          // narrow — the same argument already recorded for `window.n`'s
+          // `if`/`then` relation, and the reason the schema is content to say
+          // LESS than the decoder here rather than something DIFFERENT. An
+          // alias is a decode-only spelling the encoder never emits, so a
+          // schema that never mentions it is still a correct description of
+          // what a conformant emitter produces.
+          //
+          // Pinned INVERSELY like every entry here: the day `SchemaGen` states
+          // the exclusion, this fails and the two entries go.
+          "reject-transform-project-columns-and-cols"
+          "reject-transform-sort-key-column-and-col" ]
 
 // Phase 1068 — `schemaTypeErasedBindingRejects` is GONE, and its deletion is the
 // point rather than a tidy-up. Phase 1064 found four reject fixtures the emitted
@@ -407,7 +433,7 @@ type private StepProbe =
       Complete: string }
 
 let private completeWindowStep =
-    """{"$type":"window","partitionBy":["km"],"orderBy":[{"col":"km","dir":"asc"}],"fn":"cumulSum","of":"split","as":"cumulative"}"""
+    """{"$type":"window","partitionBy":["km"],"orderBy":[{"column":"km","dir":"asc"}],"fn":"cumulSum","of":"split","as":"cumulative"}"""
 
 let private completeGroupByStep =
     """{"$type":"groupBy","keys":[],"aggs":[{"name":"n","fn":"count","of":"km"}]}"""
@@ -421,7 +447,7 @@ let private stepProbes: StepProbe list =
       { Id = "window-missing-fn"
         Why = "a window step with no `fn`"
         Defective =
-          """{"$type":"window","partitionBy":["km"],"orderBy":[{"col":"km","dir":"asc"}],"of":"split","as":"cumulative"}"""
+          """{"$type":"window","partitionBy":["km"],"orderBy":[{"column":"km","dir":"asc"}],"of":"split","as":"cumulative"}"""
         Complete = completeWindowStep }
       // The same member name at the other slot that reads it — a `groupBy`
       // aggregate. Same decoder error text, different position, so the two are
@@ -440,15 +466,15 @@ let private stepProbes: StepProbe list =
         Complete = completeGroupByStep }
       { Id = "step-without-discriminator"
         Why = "a step object with no `$type`"
-        Defective = """{"cols":[{"a":"km","b":"km"}]}"""
-        Complete = """{"$type":"project","cols":[{"a":"km","b":"km"}]}""" }
+        Defective = """{"columns":[{"a":"km","b":"km"}]}"""
+        Complete = """{"$type":"project","columns":[{"a":"km","b":"km"}]}""" }
       // An enum value outside the closed window vocabulary. The legacy `cumSum`
       // spelling the decoder still admits is deliberately NOT the probe here —
       // that one is a §16 alias, and the schema carries canonical spellings only.
       { Id = "unknown-window-fn"
         Why = "a window `fn` outside the closed vocabulary"
         Defective =
-          """{"$type":"window","partitionBy":["km"],"orderBy":[{"col":"km","dir":"asc"}],"fn":"runningTotal","of":"split","as":"cumulative"}"""
+          """{"$type":"window","partitionBy":["km"],"orderBy":[{"column":"km","dir":"asc"}],"fn":"runningTotal","of":"split","as":"cumulative"}"""
         Complete = completeWindowStep } ]
 
 [<Tests>]
