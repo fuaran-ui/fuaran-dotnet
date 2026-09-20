@@ -3479,4 +3479,30 @@ let uiIdl: Idl =
           opt "visible" (bindingOf TBool) ]
       Ops = treeOps
       Wire = WireShape.Default
-      Harden = HardenPolicy.Default }
+      // The hardening vocabulary (fuaran-core#116), declared TOKEN BY TOKEN
+      // rather than taken from the IDL engine's `HardenPolicy.Default`.
+      //
+      // Taking the default declared the FIELD and not the TOKENS: this
+      // vocabulary said nothing about how IT spells the gated kind, the inert
+      // placeholder or the two literal cases, and inherited whatever the engine
+      // happened to mean by them — a constant that exists to reproduce
+      // pre-fuaran-core#116 behaviour for vocabularies that have not spoken, not
+      // a declaration by one that has. Spelled out, a rename on either side is a
+      // one-line edit at the site that owns the names, and fuaran-core#180 can
+      // retire the default without changing what this vocabulary means.
+      //
+      // Every token below is the name this vocabulary already uses, so the
+      // rendered `idl.json` is byte-for-byte the artifact the default produced.
+      // That unchanged artifact IS the evidence the substitution is faithful —
+      // `VocabularyTests` renders the vocabulary and fails on any byte that
+      // moves, so a token mis-spelled here is a red gate rather than a silent
+      // re-meaning of the published document.
+      Harden =
+        { GatedKind = "Custom"
+          PlaceholderKind = "Markdown"
+          PlaceholderField = "text"
+          TextLiteralCase = "Literal"
+          TextLiteralField = "text"
+          ValueLiteralCase = "Static"
+          ValueLiteralField = "value"
+          TransparentUnions = [ "TextSource", "Literal" ] } }
