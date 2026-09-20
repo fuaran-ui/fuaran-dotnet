@@ -7815,7 +7815,7 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.85.0 — DRAFT: severity/tone coherence, the first promoted validator family (Phase 1734) (UNTAGGED)
+## 0.85.0 — the slot Phase 1734 opened, which Phase 1821's column-naming rename raised to WIRE-BREAKING — released 2026-09-20 as `v0.85.0`
 
 _**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride
 0.84.0 any more, `<Version>` advances to 0.85.0, and this is the slot subsequent phases append to.
@@ -7826,6 +7826,33 @@ breaks; what breaks is a consumer that COMPARES the canonical bytes. Everything 
 additive — two new warn-class pre-emit codes and one new read-only projection module in `Fuaran.UI`.
 Each phase adds one paragraph under the heading below, in the order it lands; a phase moves NO
 number unless its class is higher again._
+
+_**Closed 2026-09-20 (Phase 1778).** `v0.85.0` is on origin at `fcb69d7`, and nuget.org's own index
+serves 0.85.0 for every public `Fuaran.UI.*` id. **Nothing may ride 0.85.0 any more.** The next
+commit that moves a public contract advances `<Version>` to 0.86.0 and opens that heading above this
+one in the same change-set, exactly as Phase 1734 opened this one after `v0.84.0`._
+
+_**The class carried into the release is WIRE-BREAKING, not the ADDITIVE one this heading was opened
+with.** The raise is Phase 1821's, whose entry below asks in as many words that whoever performs the
+release gesture carry it rather than inherit the opening class, and leaves the number to the session
+that owns `Directory.Build.props`. This is that session. The number did not have to move for the
+rename: 0.85.0 was untagged and pinned by no public consumer when the class rose, so under the
+draft-slot rule the rename rode the slot it found, and the slot is released at the class it ends up
+carrying. A consumer adopting 0.85.0 from 0.84.0 reads that entry first — no managed type, member,
+record field or union case moves and no decoder breaks, so the whole cost falls on a consumer that
+COMPARES canonical bytes._
+
+_**Why this phase closed the slot without opening the next one**, since a reader who knows the
+draft-slot rule will expect both in one commit. `<Version>` is not only the next slot's number: it is
+also what the downstream version-freshness pre-flight reads as this tier's LATEST, and the phase that
+closed this slot is the one that raised the publishable evaluation cohort's consumer onto the
+RELEASED 0.85.0. Advancing to an empty 0.86.0 would have graded that consumer's freshly-correct pin
+STALE on a GATING check whose only offered remedy — raise the pin to `<Version>` — cannot be taken,
+because 0.86.0 is unpublished and that consumer declares a public restore path. That was measured
+rather than reasoned. So the number waits for the change that rides it, which is what both
+precedents in this file actually did: 0.85.0 was opened by Phase 1734 landing content on it, and
+0.79.0 by a shim that was already additive past the tagged `v0.78.1`. The guard against riding a
+released slot is this paragraph and the bold line above it, not a number sitting one ahead._
 
 ### What rides 0.85.0
 

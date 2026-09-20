@@ -712,7 +712,26 @@
          no type, member, wire byte or rendered output moves. It ADVANCES rather than
          riding 0.83.0 for the reason above, unchanged: v0.83.0 is TAGGED. See
          STABILITY.md "0.84.0 - DRAFT: the slot the 2026-09-17 cohort raise
-         opens". -->
+         opens".
+
+         0.85.0 IS NOW RELEASED - tagged v0.85.0 at fcb69d7 and served by
+         nuget.org for every public Fuaran.UI.* id - so this standing number is a
+         public contract and NOTHING MAY RIDE IT. The NEXT commit that moves a
+         public contract advances it to 0.86.0 and opens that slot's STABILITY.md
+         heading in the same change-set, exactly as Phase 1734 did for 0.85.0
+         after v0.84.0. Phase 1778 deliberately did NOT advance it, and the
+         reason is worth reading before someone "tidies" it: this number is also
+         what the downstream version-freshness pre-flight reads as the language
+         tier's latest, and the publishable cohort's consumer pins the RELEASED
+         0.85.0. Advancing to an empty 0.86.0 would grade that consumer's tier
+         pin STALE on a GATING check whose only offered remedy - raise the pin to
+         this number - cannot be taken, because 0.86.0 is unpublished and that
+         consumer declares a public restore path. Measured, not reasoned: a pin
+         one minor behind this number reports "STALE ... raise the pin to
+         fuaran-dotnet's <Version>". So the slot opens with the change that rides
+         it, which is also what both precedents here did. See STABILITY.md
+         "0.85.0 - the slot Phase 1734 opened, which Phase 1821's column-naming
+         rename raised to WIRE-BREAKING - released 2026-09-20 as v0.85.0". -->
     <Version>0.85.0</Version>
   </PropertyGroup>
 
