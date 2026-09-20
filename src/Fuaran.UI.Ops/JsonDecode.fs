@@ -1739,6 +1739,61 @@ let wrongNodeKindHint =
 
     primitives + ", or " + String.concat " | " structural
 
+/// The node-kind NEAR-MISS table (Phase 1772) — the `accessibilityNearMisses` /
+/// `formFieldNearMisses` discipline applied to the `kind` discriminator itself.
+///
+/// `wrongNodeKindHint` above already rides every `WRONG_NODE_KIND`, so the
+/// refusal was never silent about the vocabulary; what it could not say is which
+/// of forty-two kinds an author who wrote `Split` meant. A list of everything is
+/// the right answer for an arbitrary unknown token and the wrong one for a token
+/// whose repair is known, and a repair turn handed the whole vocabulary has to
+/// re-derive the answer somebody has already written down.
+///
+/// Every entry is a token the 2026-09-03 corpus triage RECORDED in an authored
+/// acceptance block, with the repair that triage named, and nothing else. A
+/// speculative entry would teach a spelling nobody reaches for and would state a
+/// repair nobody measured — and a refusal that confidently names the wrong repair
+/// is worse than one that names none.
+///
+/// The triage found four sub-shapes and all four are here, because the repair
+/// differs by SHAPE rather than by token:
+///   - near-miss spelling of a shipped kind — `Split`, `Upload`
+///   - foreign-vocabulary leak              — `Card`
+///   - category-versus-leaf                 — `TextInput`, `Checkbox`
+///   - mode-versus-kind                     — `MultiSelect`
+///
+/// Two of those shapes have no shipped KIND to name: a checkbox is a control
+/// inside a `Form`, not a node, and multi-selection is a slot on `Select` rather
+/// than a kind of its own. So an entry carries a repair CLAUSE, not a bare kind
+/// name — writing all six as "the shipped kind is X" would have made three false.
+///
+/// IT STAYS A REFUSAL. The table is read ONLY on the path that has already
+/// decided the discriminator is unknown, so it changes what the refusal SAYS and
+/// never whether it refuses. No alias is admitted and no lenient vector exists: a
+/// silent alias is a vocabulary admission, and those are the charter's to gate.
+///
+/// `KindNearMissTests` pins both directions of the table's integrity — every
+/// LEFT-hand token absent from `knownNodeKinds` (an entry that became a real kind
+/// would be unreachable, and the table would then advertise a repair for a
+/// spelling that decodes) and every kind named on the RIGHT present in it.
+let nodeKindNearMisses =
+    [ "Split", "the shipped kind is 'SplitPanel'"
+      "Upload", "the shipped kind is 'FileUpload'"
+      "Card", "the shipped kind is 'Box'"
+      "TextInput", "not a node kind — a single-line text field is a 'Form' field with kind 'Text'"
+      "Checkbox", "not a node kind — a checkbox is a 'Form' field with kind 'Checkbox'"
+      "MultiSelect", "not a node kind — multi-selection is the 'Select' kind with 'multiple' set" ]
+
+/// Walked in declaration order, so which repair surfaces is deterministic across
+/// the five hosts — the `accessibilityNearMiss` rule, for the same reason.
+///
+/// `None` for a token the table does not carry, and that is the load-bearing
+/// half: it is what keeps every other token's refusal byte-identical to the
+/// pre-1772 message.
+let nodeKindNearMiss (discriminator: string) : string option =
+    nodeKindNearMisses
+    |> List.tryPick (fun (token, repair) -> if token = discriminator then Some repair else None)
+
 // ─── The TreeOp vocabulary, as a DECLARATION ────────────────────────────────
 //
 // Phase 1104. `knownNodeKinds` above gave the node half of the wire vocabulary a
@@ -9451,11 +9506,21 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
             | _, _, Error e, _
             | _, _, _, Error e -> Error e
         | Ok s ->
-            err
-                DecodeErrorCode.WRONG_NODE_KIND
-                (path + ".$type")
-                (sprintf "unknown NodeKind discriminator '%s'" s)
-                (Some wrongNodeKindHint)
+            // Phase 1772 — a RECORDED near-miss token is answered with the repair
+            // the 2026-09-03 triage named; every other token keeps the pre-1772
+            // message byte for byte, which is the acceptance and is why the repair
+            // is APPENDED to that message rather than replacing it.
+            //
+            // The hint is `wrongNodeKindHint` in both cases. A near-miss author
+            // gets the specific repair AND the whole vocabulary: narrowing the hint
+            // to the one kind would trade a true statement about the vocabulary for
+            // a guess about the intent, and the guess is the half that can be wrong.
+            let message =
+                match nodeKindNearMiss s with
+                | Some repair -> sprintf "unknown NodeKind discriminator '%s' — %s" s repair
+                | None -> sprintf "unknown NodeKind discriminator '%s'" s
+
+            err DecodeErrorCode.WRONG_NODE_KIND (path + ".$type") message (Some wrongNodeKindHint)
 
 and private decodeAccessibility (path: string) (j: Json) : Result<Accessibility, DecodeError> =
     match requireObject path j with

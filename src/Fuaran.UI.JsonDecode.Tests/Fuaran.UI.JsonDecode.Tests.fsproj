@@ -179,6 +179,11 @@
     <Compile Include="HostOnlyEnvelopeTests.fs" />
     <Compile Include="StaticTableSourceTests.fs" />
     <Compile Include="IdlCopyTests.fs" />
+    <!-- Phase 1772 — the node-kind near-miss table: each recorded token answered
+         with its repair, and the byte-identity control that keeps every other
+         token's refusal exactly as it was. Reads no corpus fixture: the subject
+         is a message, and the corpus pins no WRONG_NODE_KIND vector. -->
+    <Compile Include="KindNearMissTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

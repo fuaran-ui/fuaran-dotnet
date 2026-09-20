@@ -8043,6 +8043,60 @@ class is ADDITIVE too, so under the draft-slot rule it appends rather than advan
 release being breaking is not this package's class — what decides the number here is whether a
 `Fuaran.UI.*` member moved, and none did.
 
+### Near-miss diagnostics on the node-kind discriminator (Phase 1772)
+
+`Fuaran.UI.Ops.JsonDecode` gains two public values — `nodeKindNearMisses`, a table of recorded
+near-miss discriminator tokens with the repair each names, and `nodeKindNearMiss`, its lookup — and
+the `WRONG_NODE_KIND` refusal now appends that repair to its message for the six tokens the table
+carries. The mechanism is the one `accessibilityNearMisses` and `formFieldNearMisses` already use on
+two other surfaces, applied to the `kind` discriminator; no second mechanism was introduced.
+
+*What the table contains, and why it cannot grow by inspection.* Every entry is a token a
+2026-09-03 corpus triage RECORDED in an authored acceptance block, with the repair that triage
+named: `Split` → `SplitPanel` and `Upload` → `FileUpload` (near-miss spellings), `Card` → `Box`
+(another component library's vocabulary reaching for what this one ships as `Box`), `TextInput` and
+`Checkbox` (a control inside a `Form`, not a node), and `MultiSelect` (a slot on `Select`, not a
+kind). Three of the six therefore carry a repair CLAUSE rather than a kind name, because for those
+shapes there is no shipped kind to name and "the shipped kind is X" would have been false.
+
+*It is a refusal, and stays one.* The table is consulted only on the path that has already decided
+the discriminator is unknown, so it changes what the refusal says and never whether it refuses. No
+alias is admitted, no lenient-accept vector is added, and the kind set does not move — so **the
+vocabulary-growth charter is not engaged**, which is the fact this paragraph exists to record.
+
+*Scope of the text change, stated exactly because a message is a contract to a repair turn.* A token
+the table does not carry keeps its pre-1772 message byte for byte; the repair is appended to the
+existing message rather than replacing it, and the `ExpectedShape` hint is `wrongNodeKindHint` — the
+whole vocabulary — in both cases. A near-miss author gains the specific repair without losing the
+general list. Both directions are pinned in the decoder's own test project, and the table's
+integrity is pinned in both of its own: every tabled token is asserted absent from `knownNodeKinds`
+(an entry that became a real kind would be unreachable) and every kind a repair names is asserted
+present in it.
+
+*The wire corpus is untouched, and that is measured rather than asserted.* No reject vector pins
+`WRONG_NODE_KIND`, and no corpus file carries a copy of the message, so no fixture moves and no
+host's conformance leg is affected. The one token that also exists in another vocabulary —
+`Checkbox`, a `FormFieldKind` carried by three committed node fixtures nested inside a `Form` — is
+unreached by this change, since the table sits at the node discriminator's fall-through; a test
+holds that line with those fixtures' own bytes.
+
+*The other hosts are NOT changed here.* If this message belongs in the specification's refusal
+vocabulary, that is its own phase rather than something slipped in beside a reference-host
+diagnostic.
+
+*A correction to the phase's own premise, recorded because the next reader will meet the same
+sentence.* Phase 1772 was written against "the decoder answers each with `UNKNOWN_DU_CASE` and
+nothing else". The code is `WRONG_NODE_KIND`, and the refusal already carried the full vocabulary
+hint — so the gap was never silence. It was that a list of forty-two kinds is the right answer for an
+arbitrary unknown token and the wrong one for a token whose repair is already recorded. Smaller than
+the phase claimed, and still worth closing.
+
+*Version.* Rides 0.85.0. ADDITIVE: two values are added to a public module, no existing type or
+member changes shape, no wire byte moves, and the only behavioural change is the text of an error
+message on six inputs that were refused before and are refused now. Under the draft-slot rule an
+additive entry on an untagged slot whose standing class is already ADDITIVE appends rather than
+advancing the number.
+
 ---
 
 ## 0.84.0 — the slot the 2026-09-17 cohort raise opened — released 2026-09-17 as `v0.84.0`
