@@ -254,7 +254,16 @@ let tests =
                         // dangles only because its fixture has no `Filters`
                         // sibling at all. Unaffected by 1785: this fixture's
                         // chips declare, and nothing in it writes a filter back.
-                        "filters-param-source-undeclared.json", [ "genre" ] ]
+                        "filters-param-source-undeclared.json", [ "genre" ]
+                        // Phase 1800 — the same shape on the OTHER arm. The
+                        // param-source entry above and this one are the corpus's
+                        // only two documents where a `Filters` node is present
+                        // and a declared edge still names a chip it does not
+                        // declare; every other entry here dangles only for want
+                        // of a `Filters` sibling. Both arms now have one, so a
+                        // host that grounded `dependsOn` against the wrong set —
+                        // or against nothing — is visible in this projection.
+                        "filters-dependson-undeclared.json", [ "genre" ] ]
 
                   for (name, names) in expected do
                       let g = graphOf name (File.ReadAllText(Path.Combine(d, name)))
@@ -281,6 +290,10 @@ let tests =
                         "filters-1.json"
                         "filters-date-range.json"
                         "filters-declarative.json"
+                        // Phase 1800's pair — the `dependsOn` arm's twins, added
+                        // for exactly the reason the 1784 note below gives.
+                        "filters-dependson-declared.json"
+                        "filters-dependson-undeclared.json"
                         // Phase 1784's pair — both carry a `Filters` node, and
                         // they are the corpus's second and third documents to
                         // carry one BESIDE a declared filter edge. Note this list
