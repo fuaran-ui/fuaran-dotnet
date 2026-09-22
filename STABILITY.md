@@ -7952,6 +7952,58 @@ specification. Removing it moves a generated corpus artefact that five hosts rea
 phase's acceptance ("every host's conformance leg is green without a code change") excludes by
 construction; it is a successor's work, not an oversight of this one.
 
+**fuaran#1820 — ADDITIVE, and the axis it moves is the RELAY PROFILE rather than this package's
+semver.** The DevTools relay contract carries its own profile id, `relay@<major>.<minor>`, which
+versions independently of both `core@1.0` and of `<Version>` here (`DEVTOOLS_RELAY.md` §1.3). A new
+request type is a minor bump on THAT axis (§5.3), and it is the binding one: a client negotiates a
+session against the relay profile and never against a package version, so the profile is what tells
+it what it may ask for. This entry records the move because the profile id is a public contract this
+package emits, not because the package's own number changes — it does not, and nothing here obliges
+it to.
+
+**The move: `relay@1.3` → `relay@1.5`, one minor at the specification's own count, two at this
+peer's.** `Relay.Profile` advances past `relay@1.4` without ever having declared it, and that is
+honest rather than a skip. `relay@1.4` added `treeSource` (§6.5) — a DECLARATION a page peer makes by
+OMITTING, since "absent means page" — and the `UPSTREAM_UNAVAILABLE` refusal class, which §9.3 says is
+raised only by a peer declaring `"upstream"`. This peer's tree is in the page by construction: it IS
+the renderer. So its `hello.ok` already carried exactly what §6.5 requires of a page peer at 1.4, and
+§5.1's superset obligation over every earlier minor of major 1 holds unbroken at 1.5. A client
+accepting only `relay@1.3` is still answered at `relay@1.3` (§6.3's selection), which is what makes
+the bump additive for the whole existing population.
+
+**What is added:** the request type `hatches`, the capability of the same name gating it, and the
+`hatches.ok` response (`DEVTOOLS_RELAY.md` §7.8). The response payload IS the Phase-1743
+`hatchSection` document — `kind` / `version` / `section` / `findings`, the runtime section, carried as
+an embedded object exactly the way §7.7 carries a node. `RelaySurface` gains one member, `Hatches`,
+read per request and never captured.
+
+**No existing exchange changes, and that is the load-bearing claim.** A capability introduced after
+the negotiated minor is neither advertised nor served (§6.3), so a `relay@1.0`–`relay@1.3` session is
+byte-for-byte what it was: `hello.ok` names the same capability set, a `hatches` request inside such a
+session is refused `CAPABILITY_ABSENT` — the same answer a genuine peer at that minor would give — and
+no other request type, payload or refusal class moves. Four tests in `RelayTests.fs` pin those
+sentences, including the withholding in both directions.
+
+**One vocabulary, joined by BYTES.** The document is not re-described on the wire: the payload is the
+document's own encoder (`Fuaran.UI.Ops.Hatches.encodeSection`) read straight into the transported
+shape, so what a relay client stores is what `renderSection` would have written to a file, and a
+consumer that accepts the document from disk accepts this one unchanged. The in-page surface's
+`summary` line is deliberately NOT carried — it is a console convenience computed from `findings`,
+not a member of the document, and putting it on the wire would make this a third spelling of a
+vocabulary the phase exists to keep at one. This is also the whole of the cross-pillar join: the
+composition-section producer lives in another tier and reads this shape, never this package's types,
+and no package dependency is added in either direction.
+
+**What does NOT ship, and why it is a rule rather than a shortfall.** No corpus vector lands under
+`wire-format-fixtures/devtools-relay/`, and the family's manifest keeps `"profile": "relay@1.4"`. The
+corpus's own §12.1 governs this: a fixture for a request type introduced by a minor bump lands when a
+**second** host serves it, and the manifest's profile advances with the FIXTURES, not with the
+document — because every host runs the whole family, so a vector pinning an exchange a host cannot yet
+have is a failing gate rather than a finding. `hatches` is served by this host alone, so its four
+vectors are ENUMERATED on §12.1's waiting list, beside `read.affordances`, and land with the second
+implementation. `RelayCorpusTests`' required-type set records the same omission for the same reason,
+in the same place it already records `read.affordances`'.
+
 ## 0.85.0 — the slot Phase 1734 opened, which Phase 1821's column-naming rename raised to WIRE-BREAKING — released 2026-09-20 as `v0.85.0`
 
 _**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride

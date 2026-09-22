@@ -740,6 +740,15 @@ let tests =
                             // deliberately absent: one host serves it, so the
                             // family has not reached it and demanding a fixture
                             // here would turn the sibling host's gate red.
+                            //
+                            // `hatches` (`relay@1.5`, §7.8) is deliberately
+                            // absent for the same reason and is on the same
+                            // waiting list: Phase 1820 shipped it in this host
+                            // alone, so its fixtures land with the second host
+                            // that serves it. That is the whole of §12.1 — the
+                            // manifest's `profile` advances with the FIXTURES,
+                            // not with the document, and this list is what would
+                            // otherwise quietly demand otherwise.
                             "read.nodeJson"
                             "apply"
                             "subscribe"

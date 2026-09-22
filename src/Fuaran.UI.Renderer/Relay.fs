@@ -9,7 +9,7 @@ module Fuaran.UI.Renderer.Relay
 //  script — can inspect, and where the host permits edit, a live Fuaran UI.
 //
 //  The contract is specified language-neutrally in the wire-format
-//  specification repository (`DEVTOOLS_RELAY.md`, profile `relay@1.3`) with an
+//  specification repository (`DEVTOOLS_RELAY.md`, profile `relay@1.5`) with an
 //  executable fixture family beside it; this module is written to that document
 //  and pinned against those fixtures by the .NET test runner. Section
 //  references in the comments below are to that document. F# is the SECOND
@@ -59,7 +59,7 @@ open Fable.Core.JsInterop
 /// (§6.3, and see `selectProfile`), so advancing this is additive for every
 /// existing client.
 [<Literal>]
-let Profile = "relay@1.3"
+let Profile = "relay@1.5"
 
 /// The minor that introduced `read.affordances` (§7.6).
 [<Literal>]
@@ -71,6 +71,17 @@ let private AffordancesMinor = 1
 /// the read set skips from 1 to 3 with no gap in the contract.
 [<Literal>]
 let private NodeJsonMinor = 3
+
+/// The minor that introduced `hatches` (§7.8, Phase 1820).
+///
+/// `relay@1.4` added no request type either — it added `treeSource` (§6.5), a
+/// DECLARATION a page peer makes by omitting, so this peer serves 1.4 by
+/// construction: its `hello.ok` carries no `treeSource` and that is exactly what
+/// §6.5 rule 1 says a page peer's must carry. Declaring 1.5 therefore claims
+/// nothing about this peer that is not already true, and §5.1's superset
+/// obligation over every earlier minor of major 1 holds unbroken.
+[<Literal>]
+let private HatchesMinor = 5
 
 /// The envelope field whose presence marks a message as a relay message
 /// (§3.2 check 4, §4). `$`-prefixed to mark it spec-reserved.
@@ -263,6 +274,14 @@ type RelaySurface =
         /// verbatim: an encoding with sentinels IS the canonical encoding, and a
         /// host must not refuse the read because a node contains one.
         NodeJson: string -> NodeJsonLookup
+        /// `relay@1.5` — this host's RUNTIME escape-hatch report (§7.8), the
+        /// Phase-1743 `hatchSection` document.
+        ///
+        /// Read per call, never captured: two of the three findings are
+        /// observations of live process state (the registry's registrations, the
+        /// custom-hash floor), and a captured section would report the posture at
+        /// the render that happened to precede a registration.
+        Hatches: unit -> Fuaran.UI.Ops.Hatches.HatchSection
         /// The host's gated apply, taking the canonical JSON this peer produced
         /// from the client's structured op (§8.2).
         Apply: string -> DebugGlobal.ApplyResult
@@ -418,12 +437,21 @@ let private readTypes =
       "read.tree"
       "read.findNodes" ]
 
-/// Reads added after `relay@1.0`, paired with the minor that introduced each.
-/// Keeping the minor beside the name is what lets `capabilitiesFor` answer a
-/// client at the profile it negotiated instead of advertising entry points that
+/// Request types added after `relay@1.0`, paired with the minor that introduced
+/// each. Keeping the minor beside the name is what lets `capabilitiesFor` answer
+/// a client at the profile it negotiated instead of advertising entry points that
 /// do not exist in the profile it speaks.
+///
+/// The name says READ because every member was one until `hatches` (§7.8), which
+/// is a report about the HOST's posture rather than a read of the tree or the
+/// DOM — so it is a bare token like `apply` and `subscribe`, not a `read.*` one,
+/// and §7's "read entry points" do not cover it. The list is the minor-gate, not
+/// a claim about what a member reads; the name is left alone because it is what
+/// every §6.3 reference in this module and in the corpus runner already calls.
 let private versionedReadTypes =
-    [ AffordancesMinor, "read.affordances"; NodeJsonMinor, "read.nodeJson" ]
+    [ AffordancesMinor, "read.affordances"
+      NodeJsonMinor, "read.nodeJson"
+      HatchesMinor, "hatches" ]
 
 let private requestTypes =
     "hello" :: "apply" :: "subscribe" :: "unsubscribe" :: readTypes
@@ -651,6 +679,36 @@ let private geometryPayload (geometry: DebugGlobal.NodeGeometry) : (string * Rel
       "overflowing", RelayValue.Bool geometry.Overflowing
       "hidden", RelayValue.Bool geometry.Hidden ]
 
+// ─── §7.8 `hatches` — this host's runtime escape-hatch report ───────────────
+//
+// The response payload IS the Phase-1743 `hatchSection` document: that document's
+// own encoder (`Hatches.encodeSection`) read straight into the transported shape
+// through `ofJVal`, exactly the way §7.7 carries a node. No second projection and
+// no second vocabulary — what a client receives here is byte-for-byte what
+// `Hatches.renderSection` would have written to a file, so a consumer that
+// accepts the document from disk accepts this one without knowing, or needing to
+// know, which way it arrived. That byte join is also the whole of the
+// cross-pillar contract: the composition-section producer lives in another tier
+// and reads this shape, never this package's types.
+//
+// `summary` is deliberately NOT carried, even though the in-page surface's object
+// has it (`DebugGlobal.hatchSectionToObj`). It is a console convenience computed
+// from `findings` by `Hatches.summary`, not a member of the document; putting it
+// on the wire would make this payload a THIRD spelling of the vocabulary the
+// phase exists to keep at one, and a client that wants the line can compute it
+// from the findings it already holds.
+
+let private hatchesPayload (section: Fuaran.UI.Ops.Hatches.HatchSection) : (string * RelayValue) list =
+    match ofJVal (Fuaran.UI.Ops.Hatches.encodeSection section) with
+    | RelayValue.Obj fields -> fields
+    // Unreachable: `encodeSection` builds a `Json.kindObj`, an object by
+    // construction. The arm exists because `JVal` has no object-only type, and it
+    // degrades to an EMPTY payload rather than to an invented field or a raise —
+    // a runner asserting the document's declared fields then fails loudly, which
+    // is the honest outcome, and this module raises nothing because a throw here
+    // would take the host's message listener down with it.
+    | _ -> []
+
 // ─── The peer ───────────────────────────────────────────────────────────────
 
 /// Build a relay page peer over a live-surface lookup.
@@ -829,6 +887,19 @@ let createPeer (surfaceSource: unit -> RelaySurface option) (options: RelayOptio
                     id
                     (requestType + ".ok")
                     [ "node", node; "treeRevision", RelayValue.Str(surface.TreeRevision()) ]
+
+    /// §7.8 — this host's runtime escape-hatch report, observed at the moment of
+    /// the request.
+    ///
+    /// It takes no payload field, and that is a property of the question rather
+    /// than an omission: "which doors are open on this host" has no parameters,
+    /// and narrowing it to one predicate would let a client read a partial
+    /// section as a whole one. The payload object is still REQUIRED to be present
+    /// and to be an object — the dispatcher's own check, shared with every other
+    /// type — so a client that sends `{}` is served and one that sends a string
+    /// is refused, exactly as §4 says.
+    let readHatches (surface: RelaySurface) id requestType =
+        response id (requestType + ".ok") (hatchesPayload (surface.Hatches()))
 
     // ── apply (§8) ──────────────────────────────────────────────────────────
 
@@ -1100,6 +1171,7 @@ let createPeer (surfaceSource: unit -> RelaySurface option) (options: RelayOptio
                                         | "read.findNodes" -> Some(readFindNodes surface id requestType payload)
                                         | "read.affordances" -> Some(readAffordances surface id requestType payload)
                                         | "read.nodeJson" -> Some(readNodeJson surface id requestType payload)
+                                        | "hatches" -> Some(readHatches surface id requestType)
                                         | "apply" -> Some(applyOp surface id requestType payload)
                                         | "subscribe" -> Some(subscribe surface id requestType payload)
                                         | "unsubscribe" -> Some(unsubscribe id requestType payload)
@@ -1161,6 +1233,14 @@ let surfaceOf
             match DebugGlobal.findNode id tree with
             | None -> NodeJsonLookup.NodeMissing
             | Some node -> NodeJsonLookup.Encoded(ofJVal (Fuaran.UI.Generated.encodeNodeJson node))
+      // The SAME call the in-page surface makes (`DebugGlobal.buildGlobalWith`'s
+      // `hatches()`), with the same two arguments, so the two surfaces cannot
+      // report a different posture for one host state — which is the §7.8
+      // acceptance, and is why the section is observed here rather than
+      // re-derived from anything this module knows. `options.Registry` being
+      // `None` is NOT "none registered" and is never reported as such; the
+      // finding says UNDECIDED and says why (see `DebugOptions.Registry`).
+      Hatches = fun () -> RuntimeHatches.observe options.Registry (DebugGlobal.debugGlobalEnabled ())
       Apply = DebugGlobal.applyResult runtime options }
 
 // ─── The published live surface ─────────────────────────────────────────────

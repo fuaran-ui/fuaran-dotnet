@@ -124,6 +124,9 @@ let private testSurface: RelaySurface =
       FindNodes = fun _ -> []
       Affordances = Affordances.enumerate
       NodeJson = fun _ -> NodeJsonLookup.NodeMissing
+      // A host that hands over no registry: every runtime finding this surface
+      // can produce, and the one an affordance test never asks for (§7.8).
+      Hatches = fun () -> RuntimeHatches.observe None false
       Apply = fun _ -> DebugGlobal.ApplyResult.Unwired "read-only" }
 
 let private peer () =

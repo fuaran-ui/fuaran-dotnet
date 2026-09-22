@@ -18,6 +18,7 @@ module Fuaran.UI.Tests.Relay
 // ============================================================================
 
 open Expecto
+open Fuaran.Core
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
@@ -124,6 +125,19 @@ let private request (id: string) (requestType: string) (payload: (string * Relay
           "id", RelayValue.Str id
           "type", RelayValue.Str requestType
           "payload", RelayValue.Obj payload ]
+
+/// A second, independent reading of the peer's own `ofJVal` (which is private to
+/// `Relay.fs`, and is the thing under test here). Re-stated rather than exposed
+/// on purpose: a test that called the conversion it is asserting about would
+/// pass whatever that conversion did, including the wrong thing.
+let rec private jvalToRelay (value: JVal) : RelayValue =
+    match value with
+    | JStr s -> RelayValue.Str s
+    | JInt i -> RelayValue.Num(float i)
+    | JBool b -> RelayValue.Bool b
+    | JFloat f -> RelayValue.Num f
+    | JArr items -> RelayValue.Arr(items |> List.map jvalToRelay)
+    | JObj fields -> RelayValue.Obj(fields |> List.map (fun (key, item) -> key, jvalToRelay item))
 
 let private refusalClass (envelope: RelayValue option) : string option =
     envelope
@@ -740,6 +754,206 @@ let tests =
                         (idsFor "Nonexistent")
                         (Some(RelayValue.Arr []))
                         "an unrecognised kind is [], never a refusal (§7.5)"
+                } ]
+
+          testList
+              "hatches (§7.8, `relay@1.5`)"
+              [ test "the payload IS the hatchSection document — one vocabulary, not a relayed copy of one" {
+                    // The acceptance this phase is measured against: a client
+                    // that stores this payload has stored the Phase-1743
+                    // document, and a consumer that reads that document off disk
+                    // reads this one without knowing which way it arrived. The
+                    // assertion is made against the document's OWN encoder, so
+                    // adding a member here that the document lacks — a `summary`
+                    // line, a host label, a timestamp — fails this test rather
+                    // than quietly minting a second spelling on the wire.
+                    let hub, _ = manualHub ()
+                    let surface = surfaceWith hub None true
+
+                    let peer =
+                        Relay.createPeer
+                            (fun () -> Some surface)
+                            { RelayOptions.defaults with
+                                OptedIn = true }
+
+                    let payload =
+                        peer.Handle(request "h-1" "hatches" [])
+                        |> Option.bind (RelayValue.field "payload")
+
+                    let expected =
+                        Fuaran.UI.Ops.Hatches.encodeSection (surface.Hatches()) |> jvalToRelay
+
+                    Expect.equal payload (Some expected) "the response payload is the canonical document"
+                }
+
+                test "the document's declared members are present, in order, and no others" {
+                    // The hand-written oracle beside the derived one above. If
+                    // both the encoder and a derived assertion moved together —
+                    // the ordinary shape of an accidental wire change — one
+                    // derived assertion cannot catch it and this one can.
+                    let hub, _ = manualHub ()
+
+                    let peer =
+                        Relay.createPeer
+                            (fun () -> Some(surfaceWith hub None true))
+                            { RelayOptions.defaults with
+                                OptedIn = true }
+
+                    let payload =
+                        peer.Handle(request "h-1" "hatches" [])
+                        |> Option.bind (RelayValue.field "payload")
+
+                    match payload with
+                    | Some(RelayValue.Obj fields as document) ->
+                        Expect.equal
+                            (fields |> List.map fst)
+                            [ "kind"; "version"; "section"; "findings" ]
+                            "the four members §7.8 declares, in the document's own order"
+
+                        Expect.equal
+                            (RelayValue.stringField "kind" document)
+                            (Some Fuaran.UI.Ops.Hatches.Kind)
+                            "the document names itself, so a consumer can tell what it holds"
+
+                        Expect.equal
+                            (RelayValue.stringField "section" document)
+                            (Some Fuaran.UI.Ops.Hatches.RuntimeSection)
+                            "a host reports the RUNTIME walk; no host can report the composition one"
+                    | other -> failtestf "expected an object payload, got %A" other
+                }
+
+                test "the states track the host state, and a registry never handed over is UNDECIDED" {
+                    // The whole worth of the report is that it cannot say
+                    // "closed" when it means "I could not see". A host that
+                    // handed over no registry gets UNDECIDED here exactly as it
+                    // does on the in-page surface; a host that registered a guest
+                    // renderer gets OPEN, and the relay says so without the
+                    // client reaching into the page to find out.
+                    let hub, _ = manualHub ()
+
+                    let peerWith (registry: Runtime.CustomRendererRegistry option) =
+                        let surface =
+                            Relay.surfaceOf
+                                hostTree
+                                hostSources
+                                (StubRuntime(true))
+                                { DebugGlobal.DebugOptions.defaults with
+                                    Hub = hub
+                                    Registry = registry }
+
+                        Relay.createPeer
+                            (fun () -> Some surface)
+                            { RelayOptions.defaults with
+                                OptedIn = true }
+
+                    let stateOf (peer: RelayPeer) =
+                        peer.Handle(request "h-1" "hatches" [])
+                        |> Option.bind (RelayValue.field "payload")
+                        |> Option.bind (RelayValue.field "findings")
+                        |> Option.bind RelayValue.asList
+                        |> Option.defaultValue []
+                        |> List.tryPick (fun finding ->
+                            if
+                                RelayValue.stringField "predicate" finding = Some
+                                    RuntimeHatches.CustomRendererRegistered
+                            then
+                                RelayValue.stringField "state" finding
+                            else
+                                None)
+
+                    Expect.equal
+                        (stateOf (peerWith None))
+                        (Some "undecided")
+                        "no registry handed over is never reported as closed"
+
+                    let registry = Runtime.CustomRendererRegistry()
+                    registry.Register("guest", "Panel", (fun _ -> Unchecked.defaultof<_>))
+
+                    Expect.equal
+                        (stateOf (peerWith (Some registry)))
+                        (Some "open")
+                        "a registered guest renderer is an open door, and the report says so"
+                }
+
+                test "the capability is withheld from a session that predates it (§6.3)" {
+                    // A capability introduced after the negotiated minor is not
+                    // advertised and not served: its request type does not exist
+                    // in the profile the client speaks, so naming it would tell
+                    // that client about an entry point its own contract says is
+                    // not there.
+                    let hub, _ = manualHub ()
+
+                    let peer =
+                        Relay.createPeer
+                            (fun () -> Some(surfaceWith hub None true))
+                            { RelayOptions.defaults with
+                                OptedIn = true }
+
+                    let capabilitiesAt (accepts: string) =
+                        peer.Handle(
+                            RelayValue.Obj
+                                [ Relay.RelayKey, RelayValue.Str accepts
+                                  "dir", RelayValue.Str "request"
+                                  "id", RelayValue.Str "h-1"
+                                  "type", RelayValue.Str "hello"
+                                  "payload", RelayValue.Obj [ "accepts", RelayValue.Arr [ RelayValue.Str accepts ] ] ]
+                        )
+                        |> Option.bind (RelayValue.field "payload")
+                        |> Option.bind (RelayValue.field "capabilities")
+                        |> Option.bind RelayValue.asList
+                        |> Option.defaultValue []
+                        |> List.choose RelayValue.asString
+
+                    Expect.isTrue
+                        (List.contains "hatches" (capabilitiesAt Relay.Profile))
+                        "a current session is told about it"
+
+                    Expect.isFalse
+                        (List.contains "hatches" (capabilitiesAt "relay@1.3"))
+                        "a relay@1.3 session is not, and the relay@1.3 fixtures are the standing evidence"
+                }
+
+                test "a relay@1.3 client asking for it gets CAPABILITY_ABSENT, not UNKNOWN_MESSAGE" {
+                    // The answer must not depend on which peer happened to
+                    // receive the request. A genuine relay@1.3 peer refuses this
+                    // with UNKNOWN_MESSAGE because the type is outside its closed
+                    // set; this peer knows the type and is withholding it at the
+                    // client's own minor, which is what CAPABILITY_ABSENT means
+                    // (§10.1, and the same rule read.nodeJson is gated by).
+                    let hub, _ = manualHub ()
+
+                    let peer =
+                        Relay.createPeer
+                            (fun () -> Some(surfaceWith hub None true))
+                            { RelayOptions.defaults with
+                                OptedIn = true }
+
+                    let reply =
+                        peer.Handle(
+                            RelayValue.Obj
+                                [ Relay.RelayKey, RelayValue.Str "relay@1.3"
+                                  "dir", RelayValue.Str "request"
+                                  "id", RelayValue.Str "h-1"
+                                  "type", RelayValue.Str "hatches"
+                                  "payload", RelayValue.Obj [] ]
+                        )
+
+                    Expect.equal (refusalClass reply) (Some "CAPABILITY_ABSENT") "withheld at the session's own minor"
+                }
+
+                test "an opted-out host answers NOT_OPTED_IN and reaches the surface for nothing" {
+                    // The report names what a deployment admits, so a peer that
+                    // is not opted in must not produce one: the posture check
+                    // short-circuits before any surface lookup (§11.1, §9.3).
+                    let hub, _ = manualHub ()
+
+                    let peer =
+                        Relay.createPeer (fun () -> Some(surfaceWith hub None true)) RelayOptions.defaults
+
+                    Expect.equal
+                        (refusalClass (peer.Handle(request "h-1" "hatches" [])))
+                        (Some "NOT_OPTED_IN")
+                        "off by default, for this read as for every other"
                 } ]
 
           testList
