@@ -156,7 +156,12 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // sheet came from -- which is exactly the unstyled-control skew this fingerprint
 // exists to catch, in its sharpest form yet, because both outcomes look like a
 // working page.
-let vocabularyFingerprint = "fv1:253483dae447ee83"
+// Phase 1812 — `fuaran-unknown-placeholder` joins the vocabulary: the §15.3
+// labelled degrade a behind reader renders when no `fallback` was authored.
+// A sheet pinned to the old value would render that placeholder as a bare text
+// run, which is exactly the unstyled-diagnostic class the placeholder rule
+// exists to prevent.
+let vocabularyFingerprint = "fv1:5da0294509d8be2b"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;

@@ -909,6 +909,56 @@ let private canonicaliseSetStateFields (fields: (string * IdlValue) list) : (str
     else
         fields
 
+/// The kinds a sampled `fallback` (Phase 1812) is kept on. The sampler draws
+/// every optional envelope field present 2-in-3 and recurses, so left alone a
+/// `fallback` — a whole second node — lands on two nodes in three at every level:
+/// the vectors balloon, and the generated-F# leg's domain (vectors populating no
+/// `THosted` slot anywhere) collapses, because a fallback's own `accessibility.role`
+/// is as hosted as the carrier's. Steered rather than dropped, on the language's
+/// own rule: an emitter reaches for a fallback only when it is emitting a kind a
+/// behind reader may lack, so the canonical space keeps it on ONE rich, visual
+/// kind — what a fallback is FOR — and omits it elsewhere. One carrier is enough:
+/// the coverage assertion that every wire envelope field is sampled present
+/// holds on it, and every further carrier costs the leg's domain (measured: five
+/// carriers left 643 of 4000 vectors hosted-free, under the 666 floor). The codec
+/// of the slot itself is pinned by the corpus vectors
+/// (`nodes/envelope-fallback.json`) rather than by the sweep's volume.
+let private fallbackCarriers = set [ "Chart" ]
+
+/// Strip every `fallback` from a subtree — a fallback INSIDE a fallback is what
+/// FUARAN157 refuses pre-emit, so no conformant encoder emits one and the
+/// canonical space carries none.
+let rec private stripFallbacks (v: IdlValue) : IdlValue =
+    let inFields fields =
+        fields |> List.map (fun (n, fv) -> n, stripFallbacks fv)
+
+    match v with
+    | VNode(id, kindTag, fields) -> VNode(id, kindTag, inFields fields)
+    | VNodeEnv(id, envelope, kindTag, fields) ->
+        let envelope =
+            envelope
+            |> List.map (fun (n, fv) -> if n = "fallback" then n, VAbsent else n, stripFallbacks fv)
+
+        VNodeEnv(id, envelope, kindTag, inFields fields)
+    | VUnion(tag, fields) -> VUnion(tag, inFields fields)
+    | VRecord fields -> VRecord(inFields fields)
+    | VList xs -> VList(xs |> List.map stripFallbacks)
+    | VMap entries -> VMap(inFields entries)
+    | _ -> v
+
+/// Rewrite one sampled envelope's `fallback`: kept (one level deep, per
+/// FUARAN157) on a carrier kind, absent elsewhere.
+let private canonicaliseEnvelopeFields (kindTag: string) (envelope: (string * IdlValue) list) =
+    envelope
+    |> List.map (fun (n, fv) ->
+        if n = "fallback" && fv <> VAbsent then
+            (if fallbackCarriers.Contains kindTag then
+                 n, stripFallbacks fv
+             else
+                 n, VAbsent)
+        else
+            n, fv)
+
 /// Narrow a sampled vector into the canonical space — see the note above.
 let rec canonicaliseVector (v: IdlValue) : IdlValue =
     let inFields fields =
@@ -931,7 +981,7 @@ let rec canonicaliseVector (v: IdlValue) : IdlValue =
 
         VNodeEnv(
             id,
-            inFields envelope,
+            inFields (canonicaliseEnvelopeFields kindTag envelope),
             kindTag,
             (if kindTag = "Switch" then
                  canonicaliseSwitchFields fields

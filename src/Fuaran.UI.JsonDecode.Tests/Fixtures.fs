@@ -7524,11 +7524,9 @@ let a11ySpeak: Node<obj> =
     node
         "a11y-speak"
         (NodeKind.Callout(
-            { Body = TextSource.Literal "All systems operational."
-              Dismissable = false
-              Tone = ToneVariant.Success
-              Heading = None
-              Icon = None }
+            { Defaults.callout with
+                Body = TextSource.Literal "All systems operational."
+                Tone = ToneVariant.Success }
         ))
         (Some
             { Label = Some(Binding.Static(Some "Service status"))
