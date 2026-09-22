@@ -1,6 +1,5 @@
 namespace Fuaran.UI.StyleObserver
 
-open System.Text
 open Fuaran.UI.ThemeManifest
 
 // ─── Manifest-aware flag derivation (Phase 146) ─────────────────
@@ -47,11 +46,34 @@ module ManifestFlags =
     /// DOCUMENT order — a projection consumer may rely on that — so the
     /// ordering lives here, at the one site where order is a contract.
     let private comparePaths (a: string) (b: string) : int =
+        // Code points, with UTF-16 surrogate pairs decoded by hand: this
+        // project is Fable-gated, and `String.EnumerateRunes` / `Rune` are
+        // outside the subset Fable compiles. Code-point order is UTF-8 byte
+        // order, which is what the Python (`str` comparison), Go
+        // (`sort.Strings`) and Rust (`str` `Ord`) hosts compare by.
+        let codePoints (s: string) =
+            seq {
+                let mutable i = 0
+
+                while i < s.Length do
+                    let hi = int s[i]
+
+                    if hi >= 0xD800 && hi <= 0xDBFF && i + 1 < s.Length then
+                        let lo = int s[i + 1]
+
+                        if lo >= 0xDC00 && lo <= 0xDFFF then
+                            yield 0x10000 + ((hi - 0xD800) <<< 10) + (lo - 0xDC00)
+                            i <- i + 2
+                        else
+                            yield hi
+                            i <- i + 1
+                    else
+                        yield hi
+                        i <- i + 1
+            }
+
         let compareSegment (x: string) (y: string) =
-            Seq.compareWith
-                (fun (p: Rune) (q: Rune) -> compare p.Value q.Value)
-                (x.EnumerateRunes())
-                (y.EnumerateRunes())
+            Seq.compareWith compare (codePoints x) (codePoints y)
 
         Seq.compareWith compareSegment (a.Split '.') (b.Split '.')
 
