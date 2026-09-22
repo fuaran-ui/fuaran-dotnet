@@ -15,7 +15,7 @@
   },
   "index": {
     "file": "../../tools/section-demand-index.json",
-    "sha256": "sha256:f788db51e6e996dad7bd55064f4e2560192e4b397d1f3148ae7a740100d431af"
+    "sha256": "sha256:b32d71cba9a3bd594b4eb5892980b41203115c6fa928fa6e547bff5e334b228f"
   },
   "dimensions": {
     "dialect": { "value": "lenient", "why": "flip record line 809: | \u0060gpt-5.6-terra@low\u0060 | 11/12 (was 10/12) | \u22126.3% | **ADOPT** \u2014 same |" },

@@ -132,10 +132,37 @@ public sealed class FuaranNode
             Inner.Kind,
             Inner.Accessibility,
             Inner.ExtraAttributes,
+            Inner.Fallback,
             Inner.Motion,
             Inner.State,
             Inner.Style,
             Fs.Some(hint.Inner),
+            Inner.Visible));
+
+    /// <summary>
+    /// Attach an author-declared <c>fallback</c> (Fuaran-UI Phase 1812) — a full
+    /// node that a reader BEHIND this node's kind renders in place of its
+    /// labelled placeholder (WIRE_FORMAT §3.1 / §15.3). A current reader decodes
+    /// it, preserves it and never renders it.
+    /// </summary>
+    /// <remarks>
+    /// Reach for it sparingly: it costs bytes on every reader and is shown by
+    /// none that is current. Build it from kinds every reader has — the validator
+    /// refuses a fallback that carries the kind it stands in for
+    /// (<c>FUARAN156</c>) and a fallback nested inside a fallback
+    /// (<c>FUARAN157</c>). Returns a new handle; the receiver is unchanged.
+    /// </remarks>
+    public FuaranNode WithFallback(FuaranNode fallback) =>
+        new(new FsNode(
+            Inner.Id,
+            Inner.Kind,
+            Inner.Accessibility,
+            Inner.ExtraAttributes,
+            Fs.Some(fallback.Inner),
+            Inner.Motion,
+            Inner.State,
+            Inner.Style,
+            Inner.Tooltip,
             Inner.Visible));
 
     /// <summary>
@@ -170,6 +197,7 @@ public sealed class FuaranNode
             Inner.Kind,
             Inner.Accessibility,
             Inner.ExtraAttributes,
+            Inner.Fallback,
             Inner.Motion,
             Inner.State,
             Inner.Style,
@@ -210,6 +238,7 @@ public sealed class FuaranNode
             Inner.Kind,
             Inner.Accessibility,
             Inner.ExtraAttributes,
+            Inner.Fallback,
             Inner.Motion,
             Inner.State,
             updated.Equals(global::Fuaran.UI.Defaults.style)

@@ -53,6 +53,7 @@ let tests =
                     Style = None
                     Accessibility = None
                     Motion = None
+                    Fallback = None
                     ExtraAttributes = None
                     Tooltip = None
                     Visible = None }
@@ -60,6 +61,7 @@ let tests =
               let filled =
                   { bare with
                       Motion = Some Motion.PulseDuringLoad
+                      Fallback = None
                       ExtraAttributes = Some(Map.ofList [ "data-testid", "probe"; "id", "p" ]) }
 
               let bareWire: string = CanonicalJson.encodeNode bare

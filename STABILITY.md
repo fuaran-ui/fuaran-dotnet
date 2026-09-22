@@ -7852,6 +7852,67 @@ prevent.
 
 ### What rides this slot
 
+**fuaran#1812 — BREAKING on `Fuaran.UI` at two record shapes; ADDITIVE on the wire (two optional
+envelope fields, NO profile step); RIDES this slot.** Two additions to the node envelope, taken
+together because each costs the full §11 forward-coupling sweep and paying it twice buys nothing:
+an author-declared **`fallback`** — a full node a reader BEHIND this node's kind renders in place
+of its §15.3 placeholder — and **`accessibility.speak`**, the node's spoken rendering for a voice
+surface.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI` — `Node<'Msg>` | Gains `Fallback: Node<'Msg> option`. | **A full literal of the record** (FS0764): every `{ Id = …; Kind = …; Accessibility = …; ExtraAttributes = …; Motion = …; State = …; Style = …; Tooltip = …; Visible = … }` in a consumer stops compiling until it names `Fallback`. The forty-odd generated smart constructors, `Fuaran.*` builders and copy-and-update forms are unchanged. The C# facade's positional `FsNode` constructions were updated in-tree; `FuaranNode.WithFallback` lands beside `WithTooltip`. |
+| `Fuaran.UI` — `Accessibility` | Gains `Speak: TextSource option`. | A full literal of the record; `Defaults.Accessibility.empty` and every `{ empty with … }` form compile unchanged. |
+| `Fuaran.UI` — `BehindView<'Msg>` | New: `Rendered of Node \| Placeholder of kind * requiredProfile option` — what a behind reader shows for one decoded node. | Nobody; additive. |
+| `Fuaran.UI` — `PreEmitDefect` | Gains `FallbackRepeatsKind of nodeId * kind` — **FUARAN156 (Error)** — and `NestedFallback of nodeId * innerId` — **FUARAN157 (Error)**. | An exhaustive match over `PreEmitDefect`. |
+| `Fuaran.UI.Ops` — `JsonDecode.BehindReader` | New module: `decodeNodeTolerant[WithPolicy]`, `liftFallback[WithPolicy]`, `view[WithPolicy]` — the §15 composition of `Fuaran.Core.Versioning` with this host's policy-gated node decoder, in the library rather than only in the corpus emitter's test bridge. | Nobody; additive. |
+| `Fuaran.UI.Renderer` / `.Server` | `renderBehind` (client: `RenderContext -> BehindView -> ReactElement`; server: `BindingSources -> BehindView -> string`, plus `renderBehindToElement`). A `Rendered` view renders as any node; a `Placeholder` is the labelled degrade (`fuaran-unknown-placeholder`, `data-fuaran-kind`, `data-fuaran-requires`, "needs `core@1.4`"), byte-identical on both hosts. | Nobody; additive. |
+| Wire — node envelope | `fallback` (optional, a full `Node`; omitted when absent). `accessibility.speak` (optional `TextSource`; bare-string canonical literal like `tooltip`). Every pre-1812 document is byte-unchanged and still valid. | Every roster codec host, in this change-set: a host that dropped either field on re-encode fails `nodes/envelope-fallback.json` / `nodes/a11y-speak.json`. |
+
+**What each reader does with `fallback`.** A CURRENT reader decodes it, preserves it and never
+renders it — the reactive walk (`Render.collectKeys`) deliberately does not subscribe its bindings,
+and the analysis walk (`BindingWalk`) deliberately does, with the asymmetry recorded in the
+walk-conformance census. A BEHIND reader lifts it out of the `Unknown`'s preserved payload through
+the SAME policy-gated decoder a top-level node meets, and renders it where the placeholder would have
+gone; the preserved bytes are never edited, so must-ignore-but-preserve and the hash chain are
+untouched. `TreeOp`s address into it like any child position (its ids share the document's one id
+space, and the apply lens reaches it exactly as it reaches `state.onEmpty`); the fallback's ROOT
+behaves as a State arm's root does.
+
+**Three rules, all pre-emit.** FUARAN156 refuses a fallback whose subtree carries the kind it stands
+in for — the reference host's computable half of §3.1's "strictly lower profile" rule, since this
+vocabulary carries no per-kind profile table and sits at one profile; FUARAN157 refuses a fallback
+inside a fallback; §8.1 uniqueness holds across the subtree because the validator walks it.
+
+**Escape-hatch inventory — CONFIRMED no new hatch.** The lifted subtree is decoded by
+`decodeNodeObjWithPolicy` — the same `DecodePolicy` gate as the root — and a test pins it: a policy
+that refuses `Markdown` at the root refuses the `Markdown` fallback too and the reader degrades to the
+placeholder. No relaxed mediation; `docs/security/ESCAPE-HATCHES.md` gains nothing.
+
+**Corpus.** `nodes/envelope-fallback.json` (a `Chart` with a `Box`-of-`Markdown` fallback carrying
+`speak`) and `nodes/a11y-speak.json` pin the wire; `envelope/envelope-unknown-fallback.json` is the
+behind-reader vector (unknown kind + `requiredProfile` + fallback, preserved verbatim);
+`a11y-contract.json` gains the `speak` obligation and the `a11y-speak` behaviour vector, whose
+exhaustive attribute list is how a host that leaked `speak` into `aria-label` is caught;
+`validator/defect-vocabulary.json` gains FUARAN156 / FUARAN157; `schema.json` / `idl.json` carry both
+fields. WIRE_FORMAT §3.1 (the envelope, the accessibility record, a sixth render obligation, and the
+fallback section), §8.1 and §15.3 state the rules.
+
+**Vocabulary charter.** Tier engaged: §2.1, spec-record FIELD additions — no kind, no case, two
+optional fields. §1.1 demand evidence waived by operator mandate (2026-09-19, requirement
+`adaptive-card-borrowings`); §1.2 irreducibility holds (neither field is a composition of existing
+envelope fields — the placeholder has no author-supplied content, and `label` is a NAME, not speech);
+§1.3's cost is this sweep, paid once for both. FUARAN156 / FUARAN157 were allocated by
+`scripts/fuaran-codes.ps1 -Next -Count 2`.
+
+**Wire profile — NO STEP, and the shard's "a profile minor" was wrong.** `WireProfile` classifies
+both changes `Additive` / no step under §15.4 as amended by Phase 1670: an optional field is absorbed
+by §2 rule 2 without consulting the profile. The profile stays `core@1.0`.
+
+*Version.* Rides this slot. The change is BREAKING on two record shapes — the class this slot
+already carries (1810's `Format.Date`) — and additive on the wire, so under the draft-slot rule it
+rides rather than advances; `<Version>` is not moved, for the reason this heading records.
+
 **fuaran#1810 — BREAKING on `Fuaran.UI` at `Format.Date`'s shape; ADDITIVE on the wire (a profile
 minor); the change that minted this number.** A time of day can now be displayed. `Format.Date`
 carries the platform formatter's own pair — `dateStyle` / `timeStyle`, `Intl.DateTimeFormat`'s model

@@ -2043,7 +2043,14 @@ let private stateBehaviourRecord =
 let private liveRegionKind =
     Declare.enumWith "LiveRegionKind" [ "Polite", "polite"; "Assertive", "assertive"; "Off", "off" ]
 
-/// `{ "describedBy"?, "hidden"?, "label"?, "labelledBy"?, "liveRegion"?, "role"? }`.
+/// `{ "describedBy"?, "hidden"?, "label"?, "labelledBy"?, "liveRegion"?, "role"?, "speak"? }`.
+///
+/// `speak` (Fuaran-UI Phase 1812) is the node's SPOKEN rendering for a voice
+/// surface — a `TextSource`, because it is authored content that is translated,
+/// exactly as `tooltip` is. It is inert to every visual renderer: it never
+/// reaches `aria-label` (the accessible NAME is `label`, and a speech line that
+/// leaked into it would rename the node for every screen reader), and it changes
+/// no visual or ARIA output. Its consumer is the speech projection.
 ///
 /// `role` stays `THosted`: `AriaRole` carries a `Custom of string` case that emits
 /// its payload verbatim, so the wire position genuinely admits any string — the
@@ -2070,7 +2077,8 @@ let private accessibilityRecord =
               (THosted
                   { FSharp = "Fuaran.UI.HostPrelude.AriaRole"
                     Encode = "Fuaran.UI.HostPrelude.encAriaRole"
-                    Decode = "Fuaran.UI.HostPrelude.decAriaRole" }) ] }
+                    Decode = "Fuaran.UI.HostPrelude.decAriaRole" })
+          opt "speak" TS ] }
 
 // ─── Display kinds (flat `$type`-discriminated) ────────────────────────────
 
@@ -3446,6 +3454,25 @@ let uiIdl: Idl =
           // able to hold everything the authoring type holds (Phase 694), not because
           // the wire has anything to say about them.
           hostOnly "extraAttributes" "Map<string, string> option" "None"
+          // Fuaran-UI Phase 1812 — the AUTHOR-DECLARED FALLBACK. A full `Node`
+          // that a reader BEHIND this node's kind (WIRE_FORMAT.md §15.3: the kind
+          // decodes as a transport-only `Unknown`) renders IN PLACE of its labelled
+          // placeholder. It sits on the envelope, not in the kind's spec, for the
+          // one reason that decides it: a reader that does not understand the kind
+          // cannot open the spec, and the envelope is the only place it can still
+          // find something to show.
+          //
+          // A CURRENT reader decodes it, preserves it (it re-encodes byte-for-byte
+          // like any other field) and never renders it — it has the real node. A
+          // behind reader lifts it out of the preserved payload without removing
+          // it from the bytes, so must-ignore-but-preserve is untouched.
+          //
+          // The validator (FUARAN156 / FUARAN157) refuses a fallback that carries
+          // the kind it stands in for — a fallback the behind reader also cannot
+          // read is no fallback — and a fallback nested inside a fallback; NodeId
+          // uniqueness (§8.1) holds across the subtree, which is what lets a
+          // `TreeOp` address a node inside it like any child position (§3.1).
+          opt "fallback" TNode
           hostOnly "motion" "Motion option" "None"
           opt "state" (TRecord "StateBehaviour")
           opt "style" (TRecord "SemanticStyle")

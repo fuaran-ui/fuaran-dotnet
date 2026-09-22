@@ -1589,6 +1589,15 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
             sb.OnLoading |> Option.iter (walk inUses)
         | None -> ()
 
+        // Phase 1812 — the author-declared `fallback` is a wire-encoded node a
+        // BEHIND reader renders in place of this one (WIRE_FORMAT §3.1). Its
+        // readers are real to analysis — a dangling reference inside it is a
+        // defect the behind reader meets first — so the walk descends. The
+        // reactive walk (`Render.collectKeys`) deliberately does NOT: a current
+        // reader never renders the fallback, and the census in
+        // `WalkConformanceTests` records the asymmetry with its reason.
+        n.Fallback |> Option.iter (walk inUses)
+
         // Phase 692 — one exhaustive match over the flat vocabulary, where this
         // was four nested ones under the category envelope. Every arm yields
         // `(the bindings it reads, the children to walk)`; only the container

@@ -412,6 +412,7 @@ let private bareNode (id: string) (kind: NodeKind<Msg>) : Node<Msg> =
       Style = None
       Accessibility = Option.None
       Motion = Defaults.Motion.none
+      Fallback = None
       ExtraAttributes = Option.None
       Tooltip = None
       Visible = None }

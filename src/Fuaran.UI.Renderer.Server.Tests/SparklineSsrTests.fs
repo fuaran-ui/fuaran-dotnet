@@ -41,6 +41,7 @@ let private sparkline (series: float list option) : Node<obj> =
     { Id = "spark"
       Kind = NodeKind.Sparkline { Source = Binding.Static series }
       Accessibility = Option.None
+      Fallback = None
       ExtraAttributes = Option.None
       Tooltip = Option.None
       Visible = None

@@ -181,6 +181,7 @@ module Node =
                 | None -> Map.empty
 
             { node with
+                Fallback = None
                 ExtraAttributes = Some(Map.add trimmedKey value current) }
 
     /// The reserved `ExtraAttributes` key that marks a node as a hydration
@@ -215,6 +216,7 @@ module Node =
             let trimmed = Map.remove IslandAttributeKey m
 
             { node with
+                Fallback = None
                 ExtraAttributes = (if Map.isEmpty trimmed then None else Some trimmed) }
         | _ -> node
 
@@ -1217,6 +1219,7 @@ module Fuaran =
           Style = Option.None
           Accessibility = accessibility
           Motion = Defaults.Motion.none
+          Fallback = None
           ExtraAttributes = Option.None
           Tooltip = Option.None
           Visible = Option.None }

@@ -402,6 +402,32 @@ type PreEmitDefect =
     ///
     /// Carries the reading node's id.
     | UnstyledDateFormat of nodeId: string
+    /// **FUARAN156 (Error)**. A node's author-declared `fallback` (Phase 1812)
+    /// carries, somewhere in its subtree, a node of the very KIND it stands in
+    /// for. The fallback exists for a reader BEHIND that kind — one that
+    /// decodes the node as a transport-only `Unknown` (WIRE_FORMAT §15.3) —
+    /// so a fallback that needs the same kind is one that reader cannot show
+    /// either: it is no fallback. This is the reference host's computable half
+    /// of §3.1's profile rule ("a fallback is readable at a profile strictly
+    /// lower than the node's own"): the vocabulary carries no per-kind
+    /// profile table, so the kind the node itself introduces is the one kind
+    /// the rule can name, and it is exactly the kind the behind reader is
+    /// known to lack. An Error, because the shape is a promise the document
+    /// cannot keep, and a Warning would ship it.
+    ///
+    /// Carries the declaring node's id and the repeated wire kind.
+    | FallbackRepeatsKind of nodeId: string * kind: string
+    /// **FUARAN157 (Error)**. A `fallback` nested inside a `fallback` (Phase
+    /// 1812). A behind reader lifts ONE level: the fallback of the node it
+    /// cannot read. A fallback's own fallback is never consulted — the reader
+    /// that reached the outer one can read every kind in it (FUARAN156), so the
+    /// inner one has no reader — and admitting it would make the depth a
+    /// fallback can hide unbounded. Refused pre-emit rather than at decode
+    /// because the shape is structurally legal and the rule is semantic.
+    ///
+    /// Carries the declaring node's id and the id of the nested node that
+    /// carries the inner fallback.
+    | NestedFallback of nodeId: string * innerId: string
     /// **FUARAN092 (Warning)**. A `Link` declares `protection: "email"` on an
     /// href that is statically known NOT to be a `mailto:` (Phase 812). The
     /// Email protection strategy only has meaning over a mailto address — on
@@ -2228,6 +2254,21 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         sprintf
             "'%s' formats an instant with a Date format that declares neither dateStyle nor timeStyle, so nothing says what the reader is shown. Declare dateStyle for a date, timeStyle for a time of day, or both for a date-time"
             nodeId
+    | PreEmitDefect.FallbackRepeatsKind(nodeId, kind) ->
+        "FUARAN156",
+        DefectSeverity.Error,
+        sprintf
+            "'%s' declares a fallback that itself contains a %s — the kind it stands in for. A reader that needs the fallback is one that cannot read %s, so this fallback would be a placeholder too. Build the fallback from kinds every reader has (a Markdown or a Box of them)"
+            nodeId
+            kind
+            kind
+    | PreEmitDefect.NestedFallback(nodeId, innerId) ->
+        "FUARAN157",
+        DefectSeverity.Error,
+        sprintf
+            "'%s' declares a fallback in which '%s' declares a fallback of its own. A behind reader lifts one fallback — the one on the node it cannot read — and never consults a fallback's fallback, so the inner one has no reader. Remove it, or make the inner node plain"
+            nodeId
+            innerId
     | PreEmitDefect.UnsafeUrlScheme(nodeId, slot, reason) ->
         "FUARAN142",
         DefectSeverity.Warning,
@@ -3397,6 +3438,57 @@ let private validateCore
         // spec: one site covers every kind at once, and a kind the language
         // newly declares interactive is reached with no arm to remember.
         accessibilityDefects n |> List.iter defects.Add
+
+        // Phase 1812 — the author-declared `fallback` (WIRE_FORMAT §3.1 /
+        // §15.3). It is a full node a behind reader renders in place of this
+        // one, so it is WALKED like any subtree: NodeId uniqueness (§8.1), the
+        // depth bound and every per-node rule reach it. Two rules are its own,
+        // judged here because they are about the pair (node, fallback) rather
+        // than about either alone: FUARAN156 refuses a fallback that carries
+        // the kind it stands in for, and FUARAN157 a fallback nested inside
+        // it. Both sweep the whole fallback subtree — structural children AND
+        // the `State` arms, since a same-kind node hidden in an `onEmpty` arm
+        // is still one the behind reader cannot show.
+        match n.Fallback with
+        | Some fallback ->
+            let standsInFor = wireKindName n.Kind
+            let mutable repeated = false
+
+            let rec sweep (m: Node<'Msg>) =
+                if not repeated && wireKindName m.Kind = standsInFor then
+                    repeated <- true
+                    defects.Add(PreEmitDefect.FallbackRepeatsKind(n.Id, standsInFor))
+
+                if m.Fallback.IsSome then
+                    defects.Add(PreEmitDefect.NestedFallback(n.Id, m.Id))
+
+                match m.State with
+                | Some sb ->
+                    sb.OnEmpty |> Option.iter sweep
+                    sb.OnLoading |> Option.iter sweep
+                | None -> ()
+
+                match m.Kind with
+                | NodeKind.Box s -> s.Children |> List.iter sweep
+                | NodeKind.SplitPanel s -> s.Children |> List.iter sweep
+                | NodeKind.Tabs s -> s.Children |> List.iter sweep
+                | NodeKind.Stepper s -> s.Children |> List.iter sweep
+                | NodeKind.SummaryList s -> s.Children |> List.iter sweep
+                | NodeKind.Disclosure s -> s.Children |> List.iter sweep
+                | NodeKind.Modal s -> s.Children |> List.iter sweep
+                | NodeKind.ScrollArea s -> s.Children |> List.iter sweep
+                | NodeKind.ErrorBoundary s ->
+                    sweep s.Child
+                    sweep s.Fallback
+                | NodeKind.Switch s ->
+                    s.Cases |> List.iter (fun c -> sweep c.Child)
+                    sweep s.Default
+                | NodeKind.FragmentDecl s -> sweep s.Body
+                | _ -> ()
+
+            sweep fallback
+            walk fallback
+        | None -> ()
 
         // FUARAN110's evidence — judged after the walk, see the declaration.
         for (slot, target) in accessibilityRefs n do

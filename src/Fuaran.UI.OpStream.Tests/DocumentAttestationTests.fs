@@ -91,6 +91,7 @@ let private sampleTree: Node<obj> =
     { Id = "markdown-1"
       Kind = NodeKind.Markdown { Text = TextSource.Literal "Updated hourly." }
       Accessibility = None
+      Fallback = None
       ExtraAttributes = None
       Motion = None
       State = None

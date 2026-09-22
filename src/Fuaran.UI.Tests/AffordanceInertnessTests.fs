@@ -40,6 +40,7 @@ let private node (id: string) (kind: NodeKind<Msg>) : Node<Msg> =
       Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }

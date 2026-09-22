@@ -214,6 +214,7 @@ let private seedingGrid (id: string) (key: string) : Node<Msg> =
       State = None
       Style = None
       Accessibility = None
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None
@@ -232,6 +233,7 @@ let private gridWithSource (id: string) (source: Binding<Fuaran.Core.Row seq>) :
           State = None
           Style = None
           Accessibility = None
+          Fallback = None
           ExtraAttributes = None
           Tooltip = None
           Visible = None
@@ -373,6 +375,7 @@ let private sortGrid
       Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }
@@ -421,6 +424,7 @@ let private editGrid
       Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }
@@ -460,6 +464,7 @@ let private pagedGrid
       Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }
@@ -671,6 +676,7 @@ let private advancingSwitch
                 Default = markdown (id + "-default") "nothing selected"
                 AutoAdvanceMs = autoAdvanceMs }
       Accessibility = None
+      Fallback = None
       ExtraAttributes = None
       Motion = None
       State = None
@@ -702,6 +708,7 @@ let private breakBox
       State = None
       Style = None
       Accessibility = None
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None
@@ -758,6 +765,7 @@ let private repeatHeaderGrid (id: string) (columns: ColumnErased<Msg> list) : No
           State = None
           Style = None
           Accessibility = None
+          Fallback = None
           ExtraAttributes = None
           Tooltip = None
           Visible = None
@@ -797,6 +805,7 @@ let private exportableGrid (id: string) (source: Binding<Row seq>) (columns: Col
           State = None
           Style = None
           Accessibility = None
+          Fallback = None
           ExtraAttributes = None
           Tooltip = None
           Visible = None
@@ -1661,6 +1670,7 @@ let tests =
                     Style = None
                     Accessibility = None
                     Motion = Defaults.Motion.none
+                    Fallback = None
                     ExtraAttributes = None
                     Tooltip = None
                     Visible = None }
@@ -4133,6 +4143,7 @@ let tests =
                               State = None
                               Style = None
                               Accessibility = None
+                              Fallback = None
                               ExtraAttributes = None
                               Tooltip = None
                               Visible = None
@@ -4679,6 +4690,7 @@ let private transferGrid
               StaticRows = None }
         )
       Accessibility = None
+      Fallback = None
       ExtraAttributes = None
       Motion = None
       State = None
@@ -5642,6 +5654,7 @@ let private pillGridWith (id: string) (map: Map<string, ToneVariant>) (dflt: Ton
       Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }
@@ -5850,4 +5863,93 @@ let unstyledDateFormatTests =
               Expect.contains found (PreEmitDefect.UnstyledDateFormat "a") "first reader"
               Expect.contains found (PreEmitDefect.UnstyledDateFormat "c") "second reader"
               Expect.equal (List.length found) 2 "the styled reader between them is silent"
+          } ]
+
+// ─── FUARAN156 / FUARAN157 — the author-declared `fallback` (Phase 1812) ─────
+//
+//  A fallback is a node a BEHIND reader renders in place of the one it cannot
+//  read. Two rules are the pair's own: it must not carry the kind it stands in
+//  for (the behind reader cannot show that either), and it must not nest. And
+//  the walk reaches it, so §8.1's id uniqueness holds across it.
+
+let private withFallback (fallback: Node<Msg>) (n: Node<Msg>) : Node<Msg> = { n with Fallback = Some fallback }
+
+let private fallbackDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.FallbackRepeatsKind _
+            | PreEmitDefect.NestedFallback _
+            | PreEmitDefect.DuplicateNodeId _ -> true
+            | _ -> false)
+
+[<Tests>]
+let fallbackTests =
+    testList
+        "PreEmitValidate — FUARAN156 / FUARAN157, the author-declared fallback (Phase 1812)"
+        [ test "a fallback built from other kinds is silent" {
+              let tree =
+                  dashboard "root" [ markdown "m" "body" |> withFallback (dashboard "m-alt" []) ]
+
+              Expect.isEmpty (fallbackDefects tree) "a Dashboard stands in for a Markdown"
+          }
+
+          test "FUARAN156: a fallback that carries the kind it stands in for is an Error" {
+              let tree =
+                  dashboard "root" [ markdown "m" "body" |> withFallback (markdown "m-alt" "same kind") ]
+
+              match fallbackDefects tree with
+              | [ PreEmitDefect.FallbackRepeatsKind("m", "Markdown") as d ] ->
+                  let code, severity, _ = PreEmitValidate.describe d
+                  Expect.equal code "FUARAN156" "stable code"
+                  Expect.equal severity DefectSeverity.Error "a promise the document cannot keep"
+              | other -> failtestf "Expected exactly FUARAN156 on 'm', got %A" other
+          }
+
+          test "FUARAN156 is silent when the fallback uses other kinds — and sees a same-kind node hidden deeper" {
+              let ok =
+                  dashboard
+                      "root"
+                      [ markdown "m" "body"
+                        |> withFallback (dashboard "m-alt" [ dashboard "m-alt-badge" [] ]) ]
+
+              Expect.isEmpty (fallbackDefects ok) "a Dashboard of a Dashboard stands in for a Markdown"
+
+              let deep =
+                  dashboard
+                      "root"
+                      [ markdown "m" "body"
+                        |> withFallback (
+                            dashboard "m-alt" [ dashboard "m-alt-inner" [ markdown "m-alt-deep" "same kind" ] ]
+                        ) ]
+
+              Expect.equal
+                  (fallbackDefects deep)
+                  [ PreEmitDefect.FallbackRepeatsKind("m", "Markdown") ]
+                  "the sweep reaches the whole subtree, and reports the pair once"
+          }
+
+          test "FUARAN157: a fallback nested inside a fallback is an Error naming both nodes" {
+              let inner = markdown "m-alt" "alt" |> withFallback (dashboard "m-alt-alt" [])
+
+              let tree = dashboard "root" [ dashboard "b" [] |> withFallback inner ]
+
+              match fallbackDefects tree with
+              | [ PreEmitDefect.NestedFallback("b", "m-alt") as d ] ->
+                  let code, severity, _ = PreEmitValidate.describe d
+                  Expect.equal code "FUARAN157" "stable code"
+                  Expect.equal severity DefectSeverity.Error "the inner fallback has no reader"
+              | other -> failtestf "Expected exactly FUARAN157 on ('b', 'm-alt'), got %A" other
+          }
+
+          test "§8.1 — NodeId uniqueness holds ACROSS the fallback subtree" {
+              let tree =
+                  dashboard "root" [ dashboard "b" [] |> withFallback (markdown "root" "reuses the root id") ]
+
+              Expect.contains
+                  (fallbackDefects tree)
+                  (PreEmitDefect.DuplicateNodeId("root", 2))
+                  "the walk counts the fallback's ids"
           } ]

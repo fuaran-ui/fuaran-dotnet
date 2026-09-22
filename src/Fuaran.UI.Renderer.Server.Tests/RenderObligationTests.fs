@@ -969,6 +969,7 @@ let private directionLeaf (id: string) (direction: TextDirection) (text: string)
                      Direction = direction })
       Accessibility = None
       Motion = None
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }
@@ -1190,6 +1191,7 @@ let private boundSparkline: Node<obj> =
       Style = None
       Accessibility = None
       Motion = None
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }

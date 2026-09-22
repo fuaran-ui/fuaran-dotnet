@@ -720,6 +720,7 @@ and Accessibility =
       LabelledBy: string option
       LiveRegion: LiveRegionKind option
       Role: Fuaran.UI.HostPrelude.AriaRole option
+      Speak: TextSource option
     }
 
 and ButtonGroupItem<'Msg> =
@@ -1628,6 +1629,7 @@ and Node<'Msg> =
       Kind: NodeKind<'Msg>
       Accessibility: Accessibility option
       ExtraAttributes: (Map<string, string> option)
+      Fallback: Node<'Msg> option
       Motion: (Motion option)
       State: StateBehaviour<'Msg> option
       Style: SemanticStyle option
@@ -2021,7 +2023,7 @@ let rec private encNodeKind (k: NodeKind<'Msg>) : JVal =
 and private encNode (n: Node<'Msg>) : JVal =
     let kind = encNodeKind n.Kind
 
-    JObj([ Some("id", JStr n.Id); Some("kind", kind); (n.Accessibility |> Option.map (fun v -> "accessibility", encAccessibility v)); None; None; (n.State |> Option.map (fun v -> "state", encStateBehaviour v)); (n.Style |> Option.map (fun v -> "style", encSemanticStyle v)); (n.Tooltip |> Option.map (fun v -> "tooltip", encTextSource v)); (n.Visible |> Option.map (fun v -> "visible", (encBinding JBool) v)) ] |> List.choose id)
+    JObj([ Some("id", JStr n.Id); Some("kind", kind); (n.Accessibility |> Option.map (fun v -> "accessibility", encAccessibility v)); None; (n.Fallback |> Option.map (fun v -> "fallback", encNode v)); None; (n.State |> Option.map (fun v -> "state", encStateBehaviour v)); (n.Style |> Option.map (fun v -> "style", encSemanticStyle v)); (n.Tooltip |> Option.map (fun v -> "tooltip", encTextSource v)); (n.Visible |> Option.map (fun v -> "visible", (encBinding JBool) v)) ] |> List.choose id)
 
 and private encAction<'Msg> (v: Action<'Msg>) : JVal =
     match v with
@@ -2220,7 +2222,7 @@ and private encTextSource (v: TextSource) : JVal =
     | TextSource.I18n (key, args) -> Canon.typed "I18n" [ "key", JStr key; "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encI18nArg v))) args ]
 
 and private encAccessibility (s: Accessibility) : JVal =
-    JObj([ (s.DescribedBy |> Option.map (fun v -> "describedBy", JStr v)); (s.Hidden |> Option.map (fun v -> "hidden", (encBinding JBool) v)); (s.Label |> Option.map (fun v -> "label", (encBinding JStr) v)); (s.LabelledBy |> Option.map (fun v -> "labelledBy", JStr v)); (s.LiveRegion |> Option.map (fun v -> "liveRegion", encLiveRegionKind v)); (s.Role |> Option.map (fun v -> "role", Fuaran.UI.HostPrelude.encAriaRole v)) ] |> List.choose id)
+    JObj([ (s.DescribedBy |> Option.map (fun v -> "describedBy", JStr v)); (s.Hidden |> Option.map (fun v -> "hidden", (encBinding JBool) v)); (s.Label |> Option.map (fun v -> "label", (encBinding JStr) v)); (s.LabelledBy |> Option.map (fun v -> "labelledBy", JStr v)); (s.LiveRegion |> Option.map (fun v -> "liveRegion", encLiveRegionKind v)); (s.Role |> Option.map (fun v -> "role", Fuaran.UI.HostPrelude.encAriaRole v)); (s.Speak |> Option.map (fun v -> "speak", encTextSource v)) ] |> List.choose id)
 
 and private encButtonGroupItem<'Msg> (s: ButtonGroupItem<'Msg>) : JVal =
     JObj([ Some("label", encTextSource s.Label); (s.OnClick |> Option.map (fun v -> "onClick", JStr "<closure>")) ] |> List.choose id)
@@ -2986,12 +2988,13 @@ and private decNode (j: JVal) : Result<Node<obj>, string> =
     dReq "kind" __fs decNodeKind |> Result.bind (fun kind ->
     dOpt "accessibility" __fs decAccessibility |> Result.bind (fun accessibility ->
     Ok (None) |> Result.bind (fun extraAttributes ->
+    dOpt "fallback" __fs decNode |> Result.bind (fun fallback ->
     Ok (None) |> Result.bind (fun motion ->
     dOpt "state" __fs decStateBehaviour |> Result.bind (fun state ->
     dOpt "style" __fs decSemanticStyle |> Result.bind (fun style ->
     dOpt "tooltip" __fs decTextSource |> Result.bind (fun tooltip ->
     dOpt "visible" __fs (decBinding dBool) |> Result.bind (fun visible ->
-    Ok { Id = id; Kind = kind; Accessibility = accessibility; ExtraAttributes = extraAttributes; Motion = motion; State = state; Style = style; Tooltip = tooltip; Visible = visible }))))))))))
+    Ok { Id = id; Kind = kind; Accessibility = accessibility; ExtraAttributes = extraAttributes; Fallback = fallback; Motion = motion; State = state; Style = style; Tooltip = tooltip; Visible = visible })))))))))))
 
 and private decAction (j: JVal) : Result<Action<obj>, string> =
     match j with
@@ -3687,7 +3690,8 @@ and private decAccessibility (j: JVal) : Result<Accessibility, string> =
     dOpt "labelledBy" __fs dStr |> Result.bind (fun labelledBy ->
     dOpt "liveRegion" __fs decLiveRegionKind |> Result.bind (fun liveRegion ->
     dOpt "role" __fs Fuaran.UI.HostPrelude.decAriaRole |> Result.bind (fun role ->
-    Ok { DescribedBy = describedBy; Hidden = hidden; Label = label; LabelledBy = labelledBy; LiveRegion = liveRegion; Role = role })))))))
+    dOpt "speak" __fs decTextSource |> Result.bind (fun speak ->
+    Ok { DescribedBy = describedBy; Hidden = hidden; Label = label; LabelledBy = labelledBy; LiveRegion = liveRegion; Role = role; Speak = speak }))))))))
 
 and private decButtonGroupItem (j: JVal) : Result<ButtonGroupItem<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -4462,130 +4466,130 @@ let runValidator (reg: Validator.Registry<Node<'Msg>, string>) (root: Node<'Msg>
 // defaults are filled, other optionals default to None.
 
 let mkBadge (id: string) (label: TextSource) (variant: BadgeVariant) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Badge { Label = label; Variant = variant }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Badge { Label = label; Variant = variant }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkBox (id: string) (children: Node<'Msg> list) (layout: BoxLayout) (role: BoxRole) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Box { Children = children; Heading = None; Layout = layout; Role = role; KeepTogether = false; BreakBefore = false }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Box { Children = children; Heading = None; Layout = layout; Role = role; KeepTogether = false; BreakBefore = false }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkButton (id: string) (label: TextSource) (onClick: Action<'Msg>) (variant: ButtonVariant) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Button { Label = label; OnClick = onClick; Variant = variant; Icon = None; Tooltip = None; Disabled = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Button { Label = label; OnClick = onClick; Variant = variant; Icon = None; Tooltip = None; Disabled = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkCallout (id: string) (body: TextSource) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Callout { Body = body; Dismissable = false; Tone = ToneVariant.Default; Heading = None; Icon = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Callout { Body = body; Dismissable = false; Tone = ToneVariant.Default; Heading = None; Icon = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkChart (id: string) (kind: ChartKind) (source: Binding<Fuaran.Core.Row seq>) (xField: string) (yFields: string list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = false; XField = xField; YFields = yFields; Title = None; ValueFormat = None; XTitle = None; YTitle = None; Subtitle = None; LegendPosition = None; DataLabels = None; XScale = None; Annotations = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = false; XField = xField; YFields = yFields; Title = None; ValueFormat = None; XTitle = None; YTitle = None; Subtitle = None; LegendPosition = None; DataLabels = None; XScale = None; Annotations = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkCodeBlock (id: string) (code: string) (copyable: bool) (highlightLines: int list) (language: string) (lineNumbers: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.CodeBlock { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.CodeBlock { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<string, JVal>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Custom { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = None; ExposedNodeIds = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Custom { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = None; ExposedNodeIds = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<Fuaran.Core.Row seq>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Reorderable = false; TransferInKey = None; TransferOutKey = None; KeepRowsTogether = false; RepeatHeader = false; Exportable = false; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Reorderable = false; TransferInKey = None; TransferOutKey = None; KeepRowsTogether = false; RepeatHeader = false; Exportable = false; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkDisclosure (id: string) (children: Node<'Msg> list) (defaultOpen: bool) (heading: TextSource) (``open``: Binding<bool>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = None; Open = ``open`` }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = None; Open = ``open`` }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkDrawing (id: string) (shapes: Shape list) (style: DrawStyle) (viewBox: ViewBox) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Drawing { Description = None; Shapes = shapes; Style = style; Title = None; ViewBox = viewBox }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Drawing { Description = None; Shapes = shapes; Style = style; Title = None; ViewBox = viewBox }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkEmbed (id: string) (src: Binding<string>) (title: TextSource) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Embed { AspectRatio = ImageAspect.Natural; Permissions = []; Src = src; Title = title }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Embed { AspectRatio = ImageAspect.Natural; Permissions = []; Src = src; Title = title }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkErrorBoundary (id: string) (child: Node<'Msg>) (fallback: Node<'Msg>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.ErrorBoundary { Child = child; Fallback = fallback }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.ErrorBoundary { Child = child; Fallback = fallback }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkFact (id: string) (label: TextSource) (value: TextSource) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Fact { Emphasis = false; Help = None; Icon = None; Label = label; Tone = ToneVariant.Default; Value = value }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Fact { Emphasis = false; Help = None; Icon = None; Label = label; Tone = ToneVariant.Default; Value = value }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkFileUpload (id: string) (accept: string list) (label: TextSource) (multiple: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None; AcceptPaste = false; DropTarget = false; Capture = None; Destination = None; MaxBytes = None; MaxFiles = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None; AcceptPaste = false; DropTarget = false; Capture = None; Destination = None; MaxBytes = None; MaxFiles = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkFilters (id: string) (items: FilterSpec<'Msg> list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkForm (id: string) (fields: FormField<'Msg> list) (onSubmit: Action<'Msg>) (submitLabel: TextSource) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Form { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Form { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkFragmentDecl (id: string) (body: Node<'Msg>) (name: string) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.FragmentDecl { Body = body; Name = name; Holes = []; Effect = { Determinism = DeterminismSource.Deterministic; HostEffect = HostEffect.Pure } }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.FragmentDecl { Body = body; Name = name; Holes = []; Effect = { Determinism = DeterminismSource.Deterministic; HostEffect = HostEffect.Pure } }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkFragmentRef (id: string) (name: string) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.FragmentRef { Name = name; Args = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.FragmentRef { Name = name; Args = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkHeading (id: string) (level: int) (text: TextSource) (variant: HeadingVariant) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Heading { Level = level; Text = text; Variant = variant }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Heading { Level = level; Text = text; Variant = variant }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkIcon (id: string) (icon: string) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Icon { Icon = icon; Size = IconSize.Medium; Tone = ToneVariant.Default; Label = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Icon { Icon = icon; Size = IconSize.Medium; Tone = ToneVariant.Default; Label = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkImage (id: string) (alt: TextSource) (src: Binding<string>) (variant: ImageVariant) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant; Fit = ImageFit.Natural; AspectRatio = ImageAspect.Natural; Loading = ImageLoading.Eager; SrcSet = []; Expandable = false; Caption = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant; Fit = ImageFit.Natural; AspectRatio = ImageAspect.Natural; Loading = ImageLoading.Eager; SrcSet = []; Expandable = false; Caption = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkLabelValueRow (id: string) (label: TextSource) (value: Binding<float>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.LabelValueRow { Emphasis = false; Format = CellFormat.None; Label = label; Value = value; Help = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.LabelValueRow { Emphasis = false; Format = CellFormat.None; Label = label; Value = value; Help = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkLink (id: string) (href: Binding<string>) (label: TextSource) (download: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None; Protection = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None; Protection = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkList (id: string) (items: TextSource list) (ordered: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.List { Items = items; Ordered = ordered }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.List { Items = items; Ordered = ordered }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkMap (id: string) (centreLatitude: float) (centreLongitude: float) (source: Binding<MapMarker list>) (zoom: int) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Map { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Map { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkMarkdown (id: string) (text: TextSource) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Markdown { Text = text }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Markdown { Text = text }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkMath (id: string) (source: string) (display: MathDisplay) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Math { Source = source; Display = display }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Math { Source = source; Display = display }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkMedia (id: string) (kind: MediaKind) (label: TextSource) (src: Binding<string>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Media { Controls = true; Kind = kind; Label = label; Loop = false; Src = src; Tracks = []; Transcript = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Media { Controls = true; Kind = kind; Label = label; Loop = false; Src = src; Tracks = []; Transcript = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkMetric (id: string) (label: TextSource) (value: Binding<float>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Metric { Label = label; Value = value; Format = CellFormat.None; Tone = ToneVariant.Default; Weight = StyleWeight.Standard; Emphasis = Emphasis.Normal; Trend = None; TrendFormat = None; TrendPolarity = TrendPolarity.HigherIsBetter; Icon = None; Subtext = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Metric { Label = label; Value = value; Format = CellFormat.None; Tone = ToneVariant.Default; Weight = StyleWeight.Standard; Emphasis = Emphasis.Normal; Trend = None; TrendFormat = None; TrendPolarity = TrendPolarity.HigherIsBetter; Icon = None; Subtext = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkModal (id: string) (children: Node<'Msg> list) (dismissable: bool) (``open``: Binding<bool>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Modal { Children = children; Dismissable = dismissable; OnDismiss = None; Open = ``open``; Heading = None; Modality = ModalityKind.Modal; Anchor = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Modal { Children = children; Dismissable = dismissable; OnDismiss = None; Open = ``open``; Heading = None; Modality = ModalityKind.Modal; Anchor = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkMount (id: string) (capabilities: string list) (channel: GuestChannel) (scopeId: string) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Mount { Capabilities = capabilities; Channel = channel; Inputs = None; OnBubble = None; ScopeId = scopeId }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Mount { Capabilities = capabilities; Channel = channel; Inputs = None; OnBubble = None; ScopeId = scopeId }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkProgress (id: string) (fraction: Binding<float>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Progress { Fraction = fraction; Indeterminate = false; Tone = ToneVariant.Default; Label = None; Caveat = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Progress { Fraction = fraction; Indeterminate = false; Tone = ToneVariant.Default; Label = None; Caveat = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkScrollArea (id: string) (children: Node<'Msg> list) (orientation: ScrollOrientation) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkSelect (id: string) (label: TextSource) (source: Binding<SelectOption list>) (value: Binding<string>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; OnChangeMulti = None; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; OnChangeMulti = None; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkSkeleton (id: string) (rows: int) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Skeleton { Rows = rows }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Skeleton { Rows = rows }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkSparkline (id: string) (source: Binding<float list>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Sparkline { Source = source }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Sparkline { Source = source }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkSplitPanel (id: string) (children: Node<'Msg> list) (weight: float) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.SplitPanel { Children = children; Weight = weight }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.SplitPanel { Children = children; Weight = weight }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkStepper (id: string) (activeStep: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkSummaryList (id: string) (children: Node<'Msg> list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.SummaryList { Children = children; Heading = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.SummaryList { Children = children; Heading = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None); AutoAdvanceMs = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None); AutoAdvanceMs = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkTabs (id: string) (children: Node<'Msg> list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = Binding.Static(Some(0)); Children = children; Orientation = Orientation.Horizontal; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = Binding.Static(Some(0)); Children = children; Orientation = Orientation.Horizontal; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkToast (id: string) (message: TextSource) (``open``: Binding<bool>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Toast { Dismissable = true; Message = message; Open = ``open``; Tone = ToneVariant.Default }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Toast { Dismissable = true; Message = message; Open = ``open``; Tone = ToneVariant.Default }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkTree (id: string) (items: TreeItem list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Tree { ExpandedStateKey = None; Items = items; OnSelect = None; SelectionStateKey = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+    { Id = id; Kind = NodeKind.Tree { ExpandedStateKey = None; Items = items; OnSelect = None; SelectionStateKey = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }

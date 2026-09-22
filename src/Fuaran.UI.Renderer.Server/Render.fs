@@ -3579,6 +3579,31 @@ let renderToElement (sources: BindingResolver.BindingSources) (node: Node<obj>) 
 let render (sources: BindingResolver.BindingSources) (node: Node<obj>) : string =
     Render.htmlView (renderToElement sources node)
 
+/// Phase 1812 — the BEHIND reader's render (WIRE_FORMAT §15.3): a `Rendered`
+/// view (the node, or the `fallback` lifted from an `Unknown`) renders as any
+/// node does; a `Placeholder` is the labelled degrade, byte-identical to the
+/// client's. Produce the view with `Fuaran.UI.Ops.JsonDecode.BehindReader.view`.
+let renderBehindToElement (sources: BindingResolver.BindingSources) (view: BehindView<obj>) : ReactElement =
+    match view with
+    | BehindView.Rendered node -> renderToElement sources node
+    | BehindView.Placeholder(kind, required) ->
+        let label =
+            match required with
+            | Some p -> sprintf "needs %s" p
+            | None -> sprintf "unknown kind %s" kind
+
+        Html.div
+            [ prop.className "fuaran-unknown-placeholder"
+              prop.custom ("data-fuaran-kind", kind)
+              match required with
+              | Some p -> prop.custom ("data-fuaran-requires", p)
+              | None -> ()
+              prop.text label ]
+
+/// `renderBehindToElement` to an HTML string.
+let renderBehind (sources: BindingResolver.BindingSources) (view: BehindView<obj>) : string =
+    Render.htmlView (renderBehindToElement sources view)
+
 /// Render a no-dynamic-bindings `Node<obj>` tree to an HTML string — the common
 /// static-SSR case. Bakes in `BindingResolver.empty`, so a host with no dynamic
 /// bindings renders a tree in one call, identical to `render BindingResolver.empty

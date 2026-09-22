@@ -99,6 +99,24 @@ let private unknownNodeReq =
 let private unknownNodeBadReq =
     """{"id":"h1","kind":{"$type":"hologram"},"requiredProfile":"not-a-profile","shimmer":true}"""
 
+/// Phase 1812 — the unknown kind CARRYING an author-declared `fallback`: the
+/// canonical bytes of a known node the behind reader can show, in the envelope
+/// key position (`fallback` sorts before `id` under Ordinal order). The fallback
+/// is derived through the real codec so it is exactly the bytes the encoder
+/// emits; the outer object is hand-authored because no host can author it.
+let private fallbackNode: string =
+    let raw =
+        """{"id":"h1-fallback","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"A hologram would appear here."}}}"""
+
+    match decodeNodeObj raw with
+    | Ok n -> CanonicalJson.encodeNode n
+    | Error e -> failwithf "EnvelopeFixtures: fallback node failed to decode (%s)" e.Code
+
+let unknownNodeWithFallback =
+    "{\"fallback\":"
+    + fallbackNode
+    + ",\"id\":\"h1\",\"kind\":{\"$type\":\"hologram\"},\"requiredProfile\":\"core@1.4\",\"shimmer\":true}"
+
 /// The `$payload` / `$profile` envelope (payload first — `$payload` sorts before
 /// `$profile` under the canonical Ordinal key order).
 let private enveloped (payload: string) (profile: string) : string =
@@ -141,6 +159,11 @@ let all: EnvelopeFixture list =
         Expect = RoundTrip
         Description =
           "Behind unknown kind with a malformed requiredProfile — no label, bytes still preserved (WIRE_FORMAT 15.3)" }
+      { Id = "envelope-unknown-fallback"
+        Enveloped = enveloped unknownNodeWithFallback "core@1.4"
+        Expect = RoundTrip
+        Description =
+          "Behind unknown kind carrying an author-declared fallback (Phase 1812) — payload preserved verbatim, fallback included; a behind reader lifts and renders the fallback in place of the placeholder (WIRE_FORMAT 3.1, 15.3)" }
       { Id = "envelope-foreign-major"
         Enveloped = enveloped knownNode "core@2.0"
         Expect = ForeignRefuse

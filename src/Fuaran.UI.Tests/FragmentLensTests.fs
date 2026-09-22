@@ -38,6 +38,7 @@ let private bare (id: string) (kind: NodeKind<unit>) : Node<unit> =
       Style = None
       Accessibility = None
       Motion = None
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }

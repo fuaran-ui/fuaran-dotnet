@@ -163,6 +163,7 @@ let private liveGrid
       State = None
       Style = None
       Accessibility = None
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None

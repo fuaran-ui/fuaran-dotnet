@@ -127,6 +127,7 @@ let tests =
                                 LabelledBy = None
                                 DescribedBy = None
                                 Role = None
+                                Speak = None
                                 LiveRegion = None
                                 Hidden = None } }
 
@@ -184,6 +185,7 @@ let tests =
                     Style = None
                     Accessibility = None
                     Motion = Defaults.Motion.none
+                    Fallback = None
                     ExtraAttributes = None
                     Tooltip = None
                     Visible = None }

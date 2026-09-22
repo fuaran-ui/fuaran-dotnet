@@ -45,6 +45,20 @@ The optional node keys `state` / `style` / `accessibility` (shapes in the catalo
 are omitted entirely when empty / all-default. `None`/empty fields are **omitted**,
 never emitted as `null`.
 
+**`accessibility.speak`** is the node's SPOKEN rendering for a voice surface — a
+`TextSource` beside `label`, read aloud by a speech projection and ignored by every
+visual renderer. It is not the accessible name: `label` names the node, `speak` is what
+a listener hears, and the two may differ (`"label": "Service status"`, `"speak": "Service
+status: all systems operational."`). Emit it only when the spoken line should differ from
+what the node already shows.
+
+**`fallback`** is an author-declared node a reader BEHIND this node's kind renders in
+place of a placeholder. Reach for it **sparingly** — only when you know you are emitting a
+kind above the floor profile your readers may hold — and build it from kinds every reader
+has (a `Markdown`, or a `Box` of them): a fallback that carries the kind it stands in for is
+refused (`FUARAN156`), as is a fallback inside a fallback (`FUARAN157`). Its `id`s share the
+document's one id space. A current reader never renders it, so it is pure cost there.
+
 ## Containers nest under `children`
 
 Layout primitives (`Box`, `Tabs`, `Stepper`, `SummaryList`, `Disclosure`, `SplitPanel`,
@@ -227,7 +241,7 @@ section), so omit it or emit the sentinel string `"<closure>"`.
 
 <!-- fuaran:signature-catalogue -->
 ```ts
-Node { id:str; kind:NodeKind; accessibility?:Accessibility; state?:StateBehaviour; style?:SemanticStyle; tooltip?:TextSource; visible?:Binding_bool }
+Node { id:str; kind:NodeKind; accessibility?:Accessibility; fallback?:Node; state?:StateBehaviour; style?:SemanticStyle; tooltip?:TextSource; visible?:Binding_bool }
 NodeKind =
 | LayoutKind
 | DisplayKind
@@ -598,7 +612,7 @@ TransformStep =
 | union { source:object }
 | intersect { source:object }
 | except { source:object }
-Accessibility { describedBy?:str; hidden?:Binding_bool; label?:Binding_str; labelledBy?:str; liveRegion?:"polite"|"assertive"|"off"; role?:str }
+Accessibility { describedBy?:str; hidden?:Binding_bool; label?:Binding_str; labelledBy?:str; liveRegion?:"polite"|"assertive"|"off"; role?:str; speak?:TextSource }
 ColumnErased { kind:CellKindErased; label:str; editable?:bool; field?:str; format?:CellFormat; sortable?:bool; width?:ColumnWidth }
 CompareRule { against:Binding_json; op:"eq"|"neq"|"lt"|"lte"|"gt"|"gte" }
 ContentHash { algorithm:str; hash:str; strictness:"StrictReplay"|"AdvisoryWarning"|"Enforced" }

@@ -84,6 +84,7 @@ let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<
       Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }
@@ -134,6 +135,7 @@ let private gridNamingFields
       Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }
@@ -294,6 +296,7 @@ let tests =
                     Style = None
                     Accessibility = None
                     Motion = Defaults.Motion.none
+                    Fallback = None
                     ExtraAttributes = None
                     Tooltip = None
                     Visible = None }

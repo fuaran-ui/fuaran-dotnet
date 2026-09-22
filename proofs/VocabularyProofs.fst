@@ -115,53 +115,63 @@ let rt_e_scroll_orientation (#num #flt: eqtype) (x: e_scroll_orientation) : Lemm
    ====================================================================================== *)
 
 (* lk_node__Node__accessibility__present — accessibility present *)
-#push-options "--fuel 18 --ifuel 4"
-let lk_node__Node__accessibility__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f0)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> get_prop "accessibility" (enc_node #num #flt x) == Ok (enc_r_accessibility (Some?.v f0)))) = ()
+#push-options "--fuel 20 --ifuel 4"
+let lk_node__Node__accessibility__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> Some? f0)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> get_prop "accessibility" (enc_node #num #flt x) == Ok (enc_r_accessibility (Some?.v f0)))) = ()
 #pop-options
 
 (* lk_node__Node__accessibility__absent — accessibility absent *)
-#push-options "--fuel 18 --ifuel 4"
-let lk_node__Node__accessibility__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f0)) (ensures (Error? (get_prop "accessibility" (enc_node #num #flt x)))) = ()
+#push-options "--fuel 20 --ifuel 4"
+let lk_node__Node__accessibility__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> None? f0)) (ensures (Error? (get_prop "accessibility" (enc_node #num #flt x)))) = ()
+#pop-options
+
+(* lk_node__Node__fallback__present — fallback present *)
+#push-options "--fuel 20 --ifuel 4"
+let lk_node__Node__fallback__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> Some? f1)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> get_prop "fallback" (enc_node #num #flt x) == Ok (enc_node (Some?.v f1)))) = ()
+#pop-options
+
+(* lk_node__Node__fallback__absent — fallback absent *)
+#push-options "--fuel 20 --ifuel 4"
+let lk_node__Node__fallback__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> None? f1)) (ensures (Error? (get_prop "fallback" (enc_node #num #flt x)))) = ()
 #pop-options
 
 (* lk_node__Node__state__present — state present *)
-#push-options "--fuel 18 --ifuel 4"
-let lk_node__Node__state__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f1)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> get_prop "state" (enc_node #num #flt x) == Ok (enc_r_state_behaviour (Some?.v f1)))) = ()
+#push-options "--fuel 20 --ifuel 4"
+let lk_node__Node__state__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> Some? f2)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> get_prop "state" (enc_node #num #flt x) == Ok (enc_r_state_behaviour (Some?.v f2)))) = ()
 #pop-options
 
 (* lk_node__Node__state__absent — state absent *)
-#push-options "--fuel 18 --ifuel 4"
-let lk_node__Node__state__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f1)) (ensures (Error? (get_prop "state" (enc_node #num #flt x)))) = ()
+#push-options "--fuel 20 --ifuel 4"
+let lk_node__Node__state__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> None? f2)) (ensures (Error? (get_prop "state" (enc_node #num #flt x)))) = ()
 #pop-options
 
 (* lk_node__Node__style__present — style present *)
-#push-options "--fuel 18 --ifuel 4"
-let lk_node__Node__style__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f2)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> get_prop "style" (enc_node #num #flt x) == Ok (enc_r_semantic_style (Some?.v f2)))) = ()
+#push-options "--fuel 20 --ifuel 4"
+let lk_node__Node__style__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> Some? f3)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> get_prop "style" (enc_node #num #flt x) == Ok (enc_r_semantic_style (Some?.v f3)))) = ()
 #pop-options
 
 (* lk_node__Node__style__absent — style absent *)
-#push-options "--fuel 18 --ifuel 4"
-let lk_node__Node__style__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f2)) (ensures (Error? (get_prop "style" (enc_node #num #flt x)))) = ()
+#push-options "--fuel 20 --ifuel 4"
+let lk_node__Node__style__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> None? f3)) (ensures (Error? (get_prop "style" (enc_node #num #flt x)))) = ()
 #pop-options
 
 (* lk_node__Node__tooltip__present — tooltip present *)
-#push-options "--fuel 18 --ifuel 4"
-let lk_node__Node__tooltip__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f3)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> get_prop "tooltip" (enc_node #num #flt x) == Ok (enc_u_text_source (Some?.v f3)))) = ()
+#push-options "--fuel 20 --ifuel 4"
+let lk_node__Node__tooltip__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> Some? f4)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> get_prop "tooltip" (enc_node #num #flt x) == Ok (enc_u_text_source (Some?.v f4)))) = ()
 #pop-options
 
 (* lk_node__Node__tooltip__absent — tooltip absent *)
-#push-options "--fuel 18 --ifuel 4"
-let lk_node__Node__tooltip__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f3)) (ensures (Error? (get_prop "tooltip" (enc_node #num #flt x)))) = ()
+#push-options "--fuel 20 --ifuel 4"
+let lk_node__Node__tooltip__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> None? f4)) (ensures (Error? (get_prop "tooltip" (enc_node #num #flt x)))) = ()
 #pop-options
 
 (* lk_node__Node__visible__present — visible present *)
-#push-options "--fuel 18 --ifuel 4"
-let lk_node__Node__visible__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> Some? f4)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> get_prop "visible" (enc_node #num #flt x) == Ok (enc_u_binding__bool (Some?.v f4)))) = ()
+#push-options "--fuel 20 --ifuel 4"
+let lk_node__Node__visible__present (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> Some? f5)) (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> get_prop "visible" (enc_node #num #flt x) == Ok (enc_u_binding__bool (Some?.v f5)))) = ()
 #pop-options
 
 (* lk_node__Node__visible__absent — visible absent *)
-#push-options "--fuel 18 --ifuel 4"
-let lk_node__Node__visible__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 -> None? f4)) (ensures (Error? (get_prop "visible" (enc_node #num #flt x)))) = ()
+#push-options "--fuel 20 --ifuel 4"
+let lk_node__Node__visible__absent (#num #flt: eqtype) (x: node num flt) : Lemma (requires (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> None? f5)) (ensures (Error? (get_prop "visible" (enc_node #num #flt x)))) = ()
 #pop-options
 
 (* lk_vkind__Callout__dismissable__present — dismissable not at its default *)
@@ -535,63 +545,73 @@ let lk_vkind__Toast__tone__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma
 #pop-options
 
 (* lk_r_accessibility__Mk__described_by__present — describedBy present *)
-#push-options "--fuel 16 --ifuel 4"
-let lk_r_accessibility__Mk__described_by__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f0)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> get_prop "describedBy" (enc_r_accessibility #num #flt x) == Ok (JStr (Some?.v f0)))) = ()
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__described_by__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> Some? f0)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> get_prop "describedBy" (enc_r_accessibility #num #flt x) == Ok (JStr (Some?.v f0)))) = ()
 #pop-options
 
 (* lk_r_accessibility__Mk__described_by__absent — describedBy absent *)
-#push-options "--fuel 16 --ifuel 4"
-let lk_r_accessibility__Mk__described_by__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f0)) (ensures (Error? (get_prop "describedBy" (enc_r_accessibility #num #flt x)))) = ()
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__described_by__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> None? f0)) (ensures (Error? (get_prop "describedBy" (enc_r_accessibility #num #flt x)))) = ()
 #pop-options
 
 (* lk_r_accessibility__Mk__hidden__present — hidden present *)
-#push-options "--fuel 16 --ifuel 4"
-let lk_r_accessibility__Mk__hidden__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f1)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> get_prop "hidden" (enc_r_accessibility #num #flt x) == Ok (enc_u_binding__bool (Some?.v f1)))) = ()
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__hidden__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> Some? f1)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> get_prop "hidden" (enc_r_accessibility #num #flt x) == Ok (enc_u_binding__bool (Some?.v f1)))) = ()
 #pop-options
 
 (* lk_r_accessibility__Mk__hidden__absent — hidden absent *)
-#push-options "--fuel 16 --ifuel 4"
-let lk_r_accessibility__Mk__hidden__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f1)) (ensures (Error? (get_prop "hidden" (enc_r_accessibility #num #flt x)))) = ()
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__hidden__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> None? f1)) (ensures (Error? (get_prop "hidden" (enc_r_accessibility #num #flt x)))) = ()
 #pop-options
 
 (* lk_r_accessibility__Mk__label__present — label present *)
-#push-options "--fuel 16 --ifuel 4"
-let lk_r_accessibility__Mk__label__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f2)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> get_prop "label" (enc_r_accessibility #num #flt x) == Ok (enc_u_binding__str (Some?.v f2)))) = ()
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__label__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> Some? f2)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> get_prop "label" (enc_r_accessibility #num #flt x) == Ok (enc_u_binding__str (Some?.v f2)))) = ()
 #pop-options
 
 (* lk_r_accessibility__Mk__label__absent — label absent *)
-#push-options "--fuel 16 --ifuel 4"
-let lk_r_accessibility__Mk__label__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f2)) (ensures (Error? (get_prop "label" (enc_r_accessibility #num #flt x)))) = ()
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__label__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> None? f2)) (ensures (Error? (get_prop "label" (enc_r_accessibility #num #flt x)))) = ()
 #pop-options
 
 (* lk_r_accessibility__Mk__labelled_by__present — labelledBy present *)
-#push-options "--fuel 16 --ifuel 4"
-let lk_r_accessibility__Mk__labelled_by__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f3)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> get_prop "labelledBy" (enc_r_accessibility #num #flt x) == Ok (JStr (Some?.v f3)))) = ()
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__labelled_by__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> Some? f3)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> get_prop "labelledBy" (enc_r_accessibility #num #flt x) == Ok (JStr (Some?.v f3)))) = ()
 #pop-options
 
 (* lk_r_accessibility__Mk__labelled_by__absent — labelledBy absent *)
-#push-options "--fuel 16 --ifuel 4"
-let lk_r_accessibility__Mk__labelled_by__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f3)) (ensures (Error? (get_prop "labelledBy" (enc_r_accessibility #num #flt x)))) = ()
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__labelled_by__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> None? f3)) (ensures (Error? (get_prop "labelledBy" (enc_r_accessibility #num #flt x)))) = ()
 #pop-options
 
 (* lk_r_accessibility__Mk__live_region__present — liveRegion present *)
-#push-options "--fuel 16 --ifuel 4"
-let lk_r_accessibility__Mk__live_region__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f4)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> get_prop "liveRegion" (enc_r_accessibility #num #flt x) == Ok (enc_e_live_region_kind (Some?.v f4)))) = ()
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__live_region__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> Some? f4)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> get_prop "liveRegion" (enc_r_accessibility #num #flt x) == Ok (enc_e_live_region_kind (Some?.v f4)))) = ()
 #pop-options
 
 (* lk_r_accessibility__Mk__live_region__absent — liveRegion absent *)
-#push-options "--fuel 16 --ifuel 4"
-let lk_r_accessibility__Mk__live_region__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f4)) (ensures (Error? (get_prop "liveRegion" (enc_r_accessibility #num #flt x)))) = ()
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__live_region__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> None? f4)) (ensures (Error? (get_prop "liveRegion" (enc_r_accessibility #num #flt x)))) = ()
 #pop-options
 
 (* lk_r_accessibility__Mk__role__present — role present *)
-#push-options "--fuel 16 --ifuel 4"
-let lk_r_accessibility__Mk__role__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> Some? f5)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> get_prop "role" (enc_r_accessibility #num #flt x) == Ok ((Some?.v f5)))) = ()
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__role__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> Some? f5)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> get_prop "role" (enc_r_accessibility #num #flt x) == Ok ((Some?.v f5)))) = ()
 #pop-options
 
 (* lk_r_accessibility__Mk__role__absent — role absent *)
-#push-options "--fuel 16 --ifuel 4"
-let lk_r_accessibility__Mk__role__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 -> None? f5)) (ensures (Error? (get_prop "role" (enc_r_accessibility #num #flt x)))) = ()
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__role__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> None? f5)) (ensures (Error? (get_prop "role" (enc_r_accessibility #num #flt x)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__speak__present — speak present *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__speak__present (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> Some? f6)) (ensures (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> get_prop "speak" (enc_r_accessibility #num #flt x) == Ok (enc_u_text_source (Some?.v f6)))) = ()
+#pop-options
+
+(* lk_r_accessibility__Mk__speak__absent — speak absent *)
+#push-options "--fuel 18 --ifuel 4"
+let lk_r_accessibility__Mk__speak__absent (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (requires (match x with | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> None? f6)) (ensures (Error? (get_prop "speak" (enc_r_accessibility #num #flt x)))) = ()
 #pop-options
 
 (* lk_u_binding__bool__Selection__default_value__present — defaultValue present *)
@@ -1014,13 +1034,14 @@ let lk_r_semantic_style__Mk__weight__absent (#num #flt: eqtype) (x: r_semantic_s
 
 let rec rt_node (#num #flt: eqtype) (x: node num flt) : Lemma (ensures dec_node (enc_node #num #flt x) == Ok x) (decreases %[x; 2]) =
   match x with
-  | C__node__Node i k f0 f1 f2 f3 f4 ->
+  | C__node__Node i k f0 f1 f2 f3 f4 f5 ->
     (match f0 with | None -> lk_node__Node__accessibility__absent #num #flt x | Some _ -> lk_node__Node__accessibility__present #num #flt x);
-    (match f1 with | None -> lk_node__Node__state__absent #num #flt x | Some _ -> lk_node__Node__state__present #num #flt x);
-    (match f2 with | None -> lk_node__Node__style__absent #num #flt x | Some _ -> lk_node__Node__style__present #num #flt x);
-    (match f3 with | None -> lk_node__Node__tooltip__absent #num #flt x | Some _ -> lk_node__Node__tooltip__present #num #flt x);
-    (match f4 with | None -> lk_node__Node__visible__absent #num #flt x | Some _ -> lk_node__Node__visible__present #num #flt x);
-    rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f2 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f3 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
+    (match f1 with | None -> lk_node__Node__fallback__absent #num #flt x | Some _ -> lk_node__Node__fallback__present #num #flt x);
+    (match f2 with | None -> lk_node__Node__state__absent #num #flt x | Some _ -> lk_node__Node__state__present #num #flt x);
+    (match f3 with | None -> lk_node__Node__style__absent #num #flt x | Some _ -> lk_node__Node__style__present #num #flt x);
+    (match f4 with | None -> lk_node__Node__tooltip__absent #num #flt x | Some _ -> lk_node__Node__tooltip__present #num #flt x);
+    (match f5 with | None -> lk_node__Node__visible__absent #num #flt x | Some _ -> lk_node__Node__visible__present #num #flt x);
+    rt_vkind #num #flt k; (match f0 with | None -> () | Some w -> rt_r_accessibility #num #flt w); (match f1 with | None -> () | Some w -> rt_node #num #flt w); (match f2 with | None -> () | Some w -> rt_r_state_behaviour #num #flt w); (match f3 with | None -> () | Some w -> rt_r_semantic_style #num #flt w); (match f4 with | None -> () | Some w -> rt_u_text_source #num #flt w); (match f5 with | None -> () | Some w -> rt_u_binding__bool #num #flt w)
 
 and rt_vkind (#num #flt: eqtype) (x: vkind num flt) : Lemma (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 2]) =
   match x with
@@ -1178,14 +1199,15 @@ and rt_vkind__Toast (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C_
 
 and rt_r_accessibility (#num #flt: eqtype) (x: r_accessibility num flt) : Lemma (ensures dec_r_accessibility (enc_r_accessibility #num #flt x) == Ok x) (decreases %[x; 2]) =
   match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 ->
+  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 ->
     (match f0 with | None -> lk_r_accessibility__Mk__described_by__absent #num #flt x | Some _ -> lk_r_accessibility__Mk__described_by__present #num #flt x);
     (match f1 with | None -> lk_r_accessibility__Mk__hidden__absent #num #flt x | Some _ -> lk_r_accessibility__Mk__hidden__present #num #flt x);
     (match f2 with | None -> lk_r_accessibility__Mk__label__absent #num #flt x | Some _ -> lk_r_accessibility__Mk__label__present #num #flt x);
     (match f3 with | None -> lk_r_accessibility__Mk__labelled_by__absent #num #flt x | Some _ -> lk_r_accessibility__Mk__labelled_by__present #num #flt x);
     (match f4 with | None -> lk_r_accessibility__Mk__live_region__absent #num #flt x | Some _ -> lk_r_accessibility__Mk__live_region__present #num #flt x);
     (match f5 with | None -> lk_r_accessibility__Mk__role__absent #num #flt x | Some _ -> lk_r_accessibility__Mk__role__present #num #flt x);
-    (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w)
+    (match f6 with | None -> lk_r_accessibility__Mk__speak__absent #num #flt x | Some _ -> lk_r_accessibility__Mk__speak__present #num #flt x);
+    (match f1 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); (match f2 with | None -> () | Some w -> rt_u_binding__str #num #flt w); (match f4 with | None -> () | Some w -> rt_e_live_region_kind #num #flt w); (match f6 with | None -> () | Some w -> rt_u_text_source #num #flt w)
 
 and rt_u_binding__bool (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (ensures dec_u_binding__bool (enc_u_binding__bool #num #flt x) == Ok x) (decreases %[x; 2]) =
   match x with
@@ -1592,6 +1614,24 @@ and rt_u_binding__str__Invoke (#num #flt: eqtype) (x: u_binding__str num flt) : 
   match x with
   | C__u_binding__str__Invoke f0 f1 -> rt_items_l_r_invoke_arg #num #flt [] f0
 
+and rt_u_text_source (#num #flt: eqtype) (x: u_text_source num flt) : Lemma (ensures dec_u_text_source (enc_u_text_source #num #flt x) == Ok x) (decreases %[x; 2]) =
+  match x with
+  | C__u_text_source__Literal _ -> rt_u_text_source__Literal #num #flt x
+  | C__u_text_source__Bound _ -> rt_u_text_source__Bound #num #flt x
+  | C__u_text_source__I18n _ _ -> rt_u_text_source__I18n #num #flt x
+
+and rt_u_text_source__Literal (#num #flt: eqtype) (x: u_text_source num flt) : Lemma (requires (C__u_text_source__Literal? x)) (ensures dec_u_text_source (enc_u_text_source #num #flt x) == Ok x) (decreases %[x; 1]) =
+  match x with
+  | C__u_text_source__Literal f0 -> ()
+
+and rt_u_text_source__Bound (#num #flt: eqtype) (x: u_text_source num flt) : Lemma (requires (C__u_text_source__Bound? x)) (ensures dec_u_text_source (enc_u_text_source #num #flt x) == Ok x) (decreases %[x; 1]) =
+  match x with
+  | C__u_text_source__Bound f0 -> rt_u_binding__str #num #flt f0
+
+and rt_u_text_source__I18n (#num #flt: eqtype) (x: u_text_source num flt) : Lemma (requires (C__u_text_source__I18n? x)) (ensures dec_u_text_source (enc_u_text_source #num #flt x) == Ok x) (decreases %[x; 1]) =
+  match x with
+  | C__u_text_source__I18n f0 f1 -> rt_entries_m_json #num #flt [] f0
+
 and rt_r_state_behaviour (#num #flt: eqtype) (x: r_state_behaviour num flt) : Lemma (ensures dec_r_state_behaviour (enc_r_state_behaviour #num #flt x) == Ok x) (decreases %[x; 2]) =
   match x with
   | C__r_state_behaviour__Mk f0 f1 f2 ->
@@ -1610,24 +1650,6 @@ and rt_r_semantic_style (#num #flt: eqtype) (x: r_semantic_style num flt) : Lemm
     (if f4 = C__e_font_voice__Default then lk_r_semantic_style__Mk__voice__absent #num #flt x else lk_r_semantic_style__Mk__voice__present #num #flt x);
     (if f5 = C__e_style_weight__Standard then lk_r_semantic_style__Mk__weight__absent #num #flt x else lk_r_semantic_style__Mk__weight__present #num #flt x);
     rt_e_text_direction #num #flt f0; rt_e_emphasis #num #flt f1; rt_e_style_role #num #flt f2; rt_e_tone_variant #num #flt f3; rt_e_font_voice #num #flt f4; rt_e_style_weight #num #flt f5
-
-and rt_u_text_source (#num #flt: eqtype) (x: u_text_source num flt) : Lemma (ensures dec_u_text_source (enc_u_text_source #num #flt x) == Ok x) (decreases %[x; 2]) =
-  match x with
-  | C__u_text_source__Literal _ -> rt_u_text_source__Literal #num #flt x
-  | C__u_text_source__Bound _ -> rt_u_text_source__Bound #num #flt x
-  | C__u_text_source__I18n _ _ -> rt_u_text_source__I18n #num #flt x
-
-and rt_u_text_source__Literal (#num #flt: eqtype) (x: u_text_source num flt) : Lemma (requires (C__u_text_source__Literal? x)) (ensures dec_u_text_source (enc_u_text_source #num #flt x) == Ok x) (decreases %[x; 1]) =
-  match x with
-  | C__u_text_source__Literal f0 -> ()
-
-and rt_u_text_source__Bound (#num #flt: eqtype) (x: u_text_source num flt) : Lemma (requires (C__u_text_source__Bound? x)) (ensures dec_u_text_source (enc_u_text_source #num #flt x) == Ok x) (decreases %[x; 1]) =
-  match x with
-  | C__u_text_source__Bound f0 -> rt_u_binding__str #num #flt f0
-
-and rt_u_text_source__I18n (#num #flt: eqtype) (x: u_text_source num flt) : Lemma (requires (C__u_text_source__I18n? x)) (ensures dec_u_text_source (enc_u_text_source #num #flt x) == Ok x) (decreases %[x; 1]) =
-  match x with
-  | C__u_text_source__I18n f0 f1 -> rt_entries_m_json #num #flt [] f0
 
 and rt_items_l_str (#num #flt: eqtype) (acc: list (string)) (xs: list (string)) : Lemma (ensures dec_items_l_str acc (enc_items_l_str #num #flt xs) == Ok (rev_app acc xs)) (decreases %[xs; 2]) =
   match xs with

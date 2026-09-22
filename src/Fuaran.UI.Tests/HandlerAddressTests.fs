@@ -95,6 +95,7 @@ let rec private nodesUnder (op: TreeOp<obj>) : Node<obj> list =
             Style = None
             Accessibility = None
             Motion = None
+            Fallback = None
             ExtraAttributes = None
             Tooltip = None
             Visible = None } ]

@@ -150,6 +150,7 @@ let tests =
                     Style = Option.None
                     Accessibility = Option.None
                     Motion = Option.None
+                    Fallback = None
                     ExtraAttributes = Option.None
                     Tooltip = None
                     Visible = None }

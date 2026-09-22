@@ -43,6 +43,7 @@ let private fragment: ParamFragment<unit> =
                         Style = None
                         Accessibility = None
                         Motion = None
+                        Fallback = None
                         ExtraAttributes = None
                         Tooltip = None
                         Visible = None } ] }

@@ -56,6 +56,7 @@ let private node (id: string) (kind: NodeKind<obj>) (accessibility: Accessibilit
       Style = None
       Accessibility = accessibility
       Motion = None
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }
@@ -7503,6 +7504,83 @@ let gridSortStateKey: Node<obj> =
 //    and on the semantic-element kinds (`Link`, `Button`, `Image`), because a
 //    placement-sensitive consumer projects them differently and needs both.
 
+// ─── Phase 1812 — `accessibility.speak` and the envelope `fallback` ─────────
+//
+// Two optional fields, one sweep (charter §2.1 field tier, both). `speak` is the
+// node's SPOKEN rendering — a `TextSource` like `tooltip` — inert to every visual
+// renderer and never a source for `aria-label`; the a11y contract's behaviour
+// vector for this fixture lists the projection EXHAUSTIVELY without it, which is
+// how a host that leaked it into the name is caught. `fallback` is the
+// author-declared node a BEHIND reader renders in place of its placeholder; a
+// CURRENT reader — every host that round-trips this fixture — decodes it,
+// preserves it and never renders it. Its kind is deliberately NOT the kind it
+// stands in for (FUARAN156), it carries no fallback of its own (FUARAN157), and
+// its ids are unique across the whole document (§8.1).
+
+/// `speak` beside a Static name: the name is what `aria-label` carries, the
+/// speech line is what a voice surface reads, and the two are different text
+/// on purpose so a host that projected the wrong one is caught by bytes.
+let a11ySpeak: Node<obj> =
+    node
+        "a11y-speak"
+        (NodeKind.Callout(
+            { Body = TextSource.Literal "All systems operational."
+              Dismissable = false
+              Tone = ToneVariant.Success
+              Heading = None
+              Icon = None }
+        ))
+        (Some
+            { Label = Some(Binding.Static(Some "Service status"))
+              LabelledBy = None
+              DescribedBy = None
+              Role = Some AriaRole.Status
+              Speak = Some(TextSource.Literal "Service status: all systems are operational as of the last check.")
+              LiveRegion = Some LiveRegionKind.Polite
+              Hidden = None })
+
+/// A `Chart` carrying an author-declared `fallback` — a `Box` of `Markdown` a
+/// behind reader can always show — with a `speak` line on the fallback's own
+/// envelope, so the two fields ride one vector. The fallback's `Bound` text
+/// reads a State key, which is what the walk-conformance census pins as read by
+/// analysis and NOT subscribed by a current reader.
+let envelopeFallback: Node<obj> =
+    let chart =
+        { Defaults.chart<obj> with
+            Kind = ChartKind.Line
+            Source = Binding.Static(Some [])
+            XField = "month"
+            YFields = [ "revenue" ]
+            Title = Some(TextSource.Literal "Revenue by month") }
+
+    let alt =
+        node
+            "envelope-fallback-alt"
+            (NodeKind.Box(
+                { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+                  Role = BoxRole.Group
+                  Heading = None
+                  Children =
+                    [ node
+                          "envelope-fallback-alt-text"
+                          (NodeKind.Markdown(
+                              { Text = TextSource.Literal "Revenue by month: a chart would appear here." }
+                          ))
+                          None
+                      node
+                          "envelope-fallback-alt-total"
+                          (NodeKind.Markdown({ Text = TextSource.Bound(Binding.State("revenue.total", None)) }))
+                          None ]
+                  KeepTogether = false
+                  BreakBefore = false }
+            ))
+            (Some
+                { Defaults.Accessibility.empty with
+                    Speak = Some(TextSource.Literal "Revenue by month, shown as a summary.") })
+
+    { node "envelope-fallback" (NodeKind.Chart chart) None with
+        Fallback = Some alt }
+
 /// The maximal shape: every one of the six slots populated at once, on an
 /// ordinary wrapper. `hidden` is an explicit `Static false` — distinct on the
 /// wire from an omitted `hidden`, and a host that collapses the two loses the
@@ -7523,6 +7601,7 @@ let a11yWrapperAllSlots: Node<obj> =
               LabelledBy = Some "a11y-wrapper-heading"
               DescribedBy = Some "a11y-wrapper-note"
               Role = Some AriaRole.Region
+              Speak = None
               LiveRegion = Some LiveRegionKind.Polite
               Hidden = Some(Binding.Static(Some false)) })
 
@@ -7549,6 +7628,7 @@ let a11yWrapperStateBound: Node<obj> =
               // passthrough, so this fixture goes red on any host that folds
               // case anywhere along the wire-to-attribute path.
               Role = Some(AriaRole.Custom "doc-pageFooter")
+              Speak = None
               LiveRegion = Some LiveRegionKind.Off
               Hidden = Some(Binding.State("footerCollapsed", Some false)) })
 
@@ -7570,6 +7650,7 @@ let a11yAlertAssertive: Node<obj> =
               LabelledBy = None
               DescribedBy = None
               Role = Some AriaRole.Alert
+              Speak = None
               LiveRegion = Some LiveRegionKind.Assertive
               Hidden = None })
 
@@ -7590,6 +7671,7 @@ let a11yLinkLabelled: Node<obj> =
               LabelledBy = None
               DescribedBy = None
               Role = None
+              Speak = None
               LiveRegion = None
               Hidden = None })
 
@@ -7611,6 +7693,7 @@ let a11yButtonNamed: Node<obj> =
               LabelledBy = None
               DescribedBy = None
               Role = Some AriaRole.Button
+              Speak = None
               LiveRegion = None
               Hidden = None })
 
@@ -7631,6 +7714,7 @@ let a11yImageDecorative: Node<obj> =
               LabelledBy = None
               DescribedBy = None
               Role = None
+              Speak = None
               LiveRegion = None
               Hidden = Some(Binding.Static(Some true)) })
 
@@ -7703,6 +7787,7 @@ let a11yWrapperTransformLabel: Node<obj> =
               LabelledBy = None
               DescribedBy = None
               Role = Some AriaRole.Region
+              Speak = None
               LiveRegion = None
               Hidden = None })
 
@@ -7811,6 +7896,7 @@ let tooltipIconButton: Node<obj> =
                               LabelledBy = None
                               DescribedBy = Some "tooltip-icon-button-note"
                               Role = None
+                              Speak = None
                               LiveRegion = None
                               Hidden = None }) with
                       Tooltip = Some(TextSource.Literal "Exports the rows currently shown, not the whole table.") }
@@ -8198,6 +8284,9 @@ let allNodes: (string * Node<obj>) list =
       "Binding.Format (number/currency/percent/date/relativeTime across locales)", formatBindings
       "Accessibility (Phase 955 — all six trait slots at once on a wrapper; Static label, named role, polite)",
       a11yWrapperAllSlots
+      "Accessibility (Phase 1812 — `speak`: the spoken rendering beside a Static name; inert to ARIA)", a11ySpeak
+      "Node envelope (Phase 1812 — an author-declared `fallback` subtree, preserved by a current reader and never rendered by it; `speak` on the fallback's envelope)",
+      envelopeFallback
       "Accessibility (Phase 955 — State-bound label + hidden, mixed-case custom role doc-pageFooter, off)",
       a11yWrapperStateBound
       "Accessibility (Phase 955 — the announcement pair: role alert + liveRegion assertive)", a11yAlertAssertive

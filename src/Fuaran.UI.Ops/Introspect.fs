@@ -381,6 +381,12 @@ let private nonStructuralSlots (node: Node<'Msg>) : (string * Node<'Msg>) list *
           | None -> ()
           match onEmpty with
           | Some n -> "state.onEmpty", n
+          | None -> ()
+          // Phase 1812 — the author-declared `fallback` is a node-valued
+          // envelope slot like the two State arms: reached by the same lens,
+          // rebuilt through the same put.
+          match node.Fallback with
+          | Some n -> "fallback", n
           | None -> () ]
 
     let hasLoading = onLoading.IsSome
@@ -393,11 +399,17 @@ let private nonStructuralSlots (node: Node<'Msg>) : (string * Node<'Msg>) list *
             else
                 None, replacements
 
-        let empty, _ =
+        let empty, afterEmpty =
             if hasEmpty then
                 Some(List.head afterLoading), List.tail afterLoading
             else
                 None, afterLoading
+
+        let fallback =
+            if node.Fallback.IsSome then
+                Some(List.head afterEmpty)
+            else
+                None
 
         { node with
             State =
@@ -405,7 +417,8 @@ let private nonStructuralSlots (node: Node<'Msg>) : (string * Node<'Msg>) list *
                 |> Option.map (fun s ->
                     { s with
                         OnLoading = loading
-                        OnEmpty = empty }) },
+                        OnEmpty = empty })
+            Fallback = fallback },
         rest
 
     // Kind-held nodes, in a fixed order the rebuild mirrors exactly.
@@ -982,6 +995,7 @@ let canonicalFormKind (kind: NodeKind<'Msg>) : NodeKind<'Msg> =
           Style = None
           Accessibility = None
           Motion = None
+          Fallback = None
           ExtraAttributes = None
           // A scratch envelope: no node-level trait can be carried by a bare
           // `NodeKind`, so the tooltip and the visibility predicate are `None`

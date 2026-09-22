@@ -2088,7 +2088,11 @@ let private defs: (string * J) list =
             "describedBy", str
             "role", ref "AriaRole"
             "liveRegion", ref "LiveRegionKind"
-            "hidden", binding "bool" ]
+            "hidden", binding "bool"
+            // Phase 1812 — `speak`, the node's spoken rendering for a voice
+            // surface: a `TextSource` like `tooltip`, optional, inert to every
+            // visual renderer and never a source for `aria-label`.
+            "speak", ref "TextSource" ]
 
       "Node",
       // `state` and `style` are optional on the flat wire — omitted when empty /
@@ -2112,7 +2116,12 @@ let private defs: (string * J) list =
             // other; the RULE it carries (a resolved `false` removes the node,
             // an unresolved one renders it) is renderer semantics, which no
             // schema can state and \§3.1 does.
-            "visible", binding "bool" ]
+            "visible", binding "bool"
+            // Phase 1812 — the author-declared `fallback`: a full `Node` a
+            // reader BEHIND this node's kind renders in place of its labelled
+            // placeholder (§3.1 / §15.3). Optional, omitted when absent, and a
+            // self-reference on the node schema like `state.onEmpty` is.
+            "fallback", ref "Node" ]
 
       // ── TreeOp (§3.4) ─────────────────────────────────────────────────────
       "TreeOp",

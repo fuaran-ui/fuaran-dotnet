@@ -147,6 +147,7 @@ let private dispatchingButton: Node<obj> =
       Style = None
       Accessibility = None
       Motion = None
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }

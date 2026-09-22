@@ -2687,3 +2687,27 @@ module Kind =
         | NodeKind.FragmentDecl _
         | NodeKind.FragmentRef _
         | NodeKind.Mount _ -> NodeCategory.Structural
+
+// ─── Behind reader (Phase 1812) ───────────────────────────────────────────
+
+/// What a reader BEHIND the producer's profile shows for one decoded node
+/// (WIRE_FORMAT §15.3 + the Phase 1812 `fallback`). A current reader never
+/// constructs one — it decodes every kind and renders the tree — so this is the
+/// one place the language names the degraded case in its own vocabulary.
+///
+/// `Rendered` carries a node this reader CAN render: the node itself when its
+/// kind was known, or the author-declared `fallback` lifted out of a transport-only
+/// `Unknown`'s preserved payload (through the ordinary policy-gated node decoder,
+/// so the same admission rules a top-level node meets apply to it — no relaxed
+/// mediation, no new escape hatch). `Placeholder` is the labelled degrade the
+/// section has always specified — "needs `core@1.4`" when the artifact declared a
+/// `requiredProfile`, else the unknown kind by name — reached only when no
+/// fallback was authored or the authored one was itself unreadable.
+///
+/// Lives here rather than beside the renderers so that the client renderer, which
+/// takes no dependency on `Fuaran.UI.Ops`, can render one; the decode side that
+/// produces it is `Fuaran.UI.Ops.JsonDecode.BehindReader`.
+[<RequireQualifiedAccess>]
+type BehindView<'Msg> =
+    | Rendered of Node<'Msg>
+    | Placeholder of kind: string * requiredProfile: string option

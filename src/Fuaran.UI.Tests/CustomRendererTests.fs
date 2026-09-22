@@ -106,6 +106,7 @@ let tests =
                     Style = None
                     Accessibility = Defaults.Accessibility.none
                     Motion = Defaults.Motion.none
+                    Fallback = None
                     ExtraAttributes = None
                     Tooltip = None
                     Visible = None }

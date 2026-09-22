@@ -562,3 +562,115 @@ let nonFirstRowSelectionIntent =
                   (sprintf
                       "the masking-killer pipeline (filter -> project -> limit 1) is gone; remaining pipelines: %A"
                       found)) ]
+
+// ─── Phase 1812 — the behind reader lifts the `fallback` and preserves the bytes ─
+
+[<Tests>]
+let behindReaderTests =
+    let parse (s: string) =
+        match Fuaran.Core.Decode.parse s with
+        | Ok jv -> jv
+        | Error m -> failwithf "parse: %s" m
+
+    let hologramWith (fallback: string option) =
+        let fb =
+            match fallback with
+            | Some f -> "\"fallback\":" + f + ","
+            | None -> ""
+
+        "{"
+        + fb
+        + "\"id\":\"h1\",\"kind\":{\"$type\":\"hologram\"},\"requiredProfile\":\"core@1.4\",\"shimmer\":true}"
+
+    let markdownFallback =
+        """{"id":"h1-fallback","kind":{"$type":"Markdown","text":"A hologram would appear here."}}"""
+
+    testList
+        "BehindReader (Phase 1812) — tolerant decode, the lifted fallback, the preserved bytes"
+        [ testCase "a known kind is Rendered as itself" (fun () ->
+              let jv = parse """{"id":"m1","kind":{"$type":"Markdown","text":"hi"}}"""
+
+              match Fuaran.UI.Ops.JsonDecode.BehindReader.decodeNodeTolerant jv with
+              | Ok d ->
+                  match Fuaran.UI.Ops.JsonDecode.BehindReader.view d with
+                  | Fuaran.UI.Types.BehindView.Rendered n -> Expect.equal n.Id "m1" "the node itself"
+                  | Fuaran.UI.Types.BehindView.Placeholder _ -> failtest "a known kind is never a placeholder"
+              | Error m -> failtestf "decode: %s" m)
+
+          testCase
+              "an unknown kind with a fallback is Rendered as the LIFTED fallback, and its bytes are preserved verbatim"
+              (fun () ->
+                  let input = hologramWith (Some markdownFallback)
+                  let jv = parse input
+
+                  match Fuaran.UI.Ops.JsonDecode.BehindReader.decodeNodeTolerant jv with
+                  | Ok(Fuaran.Core.Versioning.Unknown u as d) ->
+                      Expect.equal u.Kind "hologram" "transport-only Unknown"
+
+                      match Fuaran.UI.Ops.JsonDecode.BehindReader.view d with
+                      | Fuaran.UI.Types.BehindView.Rendered n ->
+                          Expect.equal n.Id "h1-fallback" "the author-declared fallback, lifted"
+                      | Fuaran.UI.Types.BehindView.Placeholder _ ->
+                          failtest "an authored fallback replaces the placeholder"
+
+                      // must-ignore-but-preserve is untouched by the lift: the
+                      // re-encoded payload is the producer's bytes, fallback and all.
+                      let reenc = Fuaran.Core.Versioning.reencode (fun _ -> failwith "known") d
+                      Expect.equal (Fuaran.Core.Canon.render reenc) input "byte-for-byte, fallback included"
+                  | Ok(Fuaran.Core.Versioning.Known _) -> failtest "hologram is not a known kind"
+                  | Error m -> failtestf "decode: %s" m)
+
+          testCase "an unknown kind without a fallback is the labelled Placeholder (§15.3 unchanged)" (fun () ->
+              let jv = parse (hologramWith None)
+
+              match Fuaran.UI.Ops.JsonDecode.BehindReader.decodeNodeTolerant jv with
+              | Ok d ->
+                  match Fuaran.UI.Ops.JsonDecode.BehindReader.view d with
+                  | Fuaran.UI.Types.BehindView.Placeholder(kind, required) ->
+                      Expect.equal (kind, required) ("hologram", Some "core@1.4") "kind + the declared profile"
+                  | Fuaran.UI.Types.BehindView.Rendered _ -> failtest "nothing authored, nothing to render"
+              | Error m -> failtestf "decode: %s" m)
+
+          testCase
+              "the lifted fallback meets the SAME DecodePolicy a top-level node meets — no relaxed mediation"
+              (fun () ->
+                  // The escape-hatch inventory's question, answered by a test: a
+                  // policy that refuses Markdown at the root refuses it inside a
+                  // fallback, and the reader degrades to the placeholder rather
+                  // than rendering what the policy excluded.
+                  let jv = parse (hologramWith (Some markdownFallback))
+
+                  let noMarkdown =
+                      Fuaran.UI.KindPolicy.DecodePolicy.admitting "no-markdown" [ "Box"; "Callout" ]
+
+                  match Fuaran.UI.Ops.JsonDecode.BehindReader.decodeNodeTolerantWithPolicy noMarkdown jv with
+                  | Ok d ->
+                      match Fuaran.UI.Ops.JsonDecode.BehindReader.viewWithPolicy noMarkdown d with
+                      | Fuaran.UI.Types.BehindView.Placeholder(kind, required) ->
+                          Expect.equal
+                              (kind, required)
+                              ("hologram", Some "core@1.4")
+                              "the policy gates the fallback exactly as it gates a root node"
+                      | Fuaran.UI.Types.BehindView.Rendered _ ->
+                          failtest "the refused kind rendered through the fallback"
+
+                      Expect.equal
+                          (Fuaran.UI.Ops.JsonDecode.BehindReader.viewWithPolicy
+                              Fuaran.UI.KindPolicy.DecodePolicy.admitAll
+                              d
+                           |> function
+                               | Fuaran.UI.Types.BehindView.Rendered n -> n.Id
+                               | Fuaran.UI.Types.BehindView.Placeholder _ -> "")
+                          "h1-fallback"
+                          "and the admitting policy lifts it — the difference is the policy, not the seam"
+                  | Error m -> failtestf "decode: %s" m)
+
+          testCase "a current reader decodes, preserves and never renders `fallback` — the round-trip vector" (fun () ->
+              let bytes = CanonicalJson.encodeNode Fixtures.envelopeFallback
+
+              match Fuaran.UI.Ops.JsonDecode.decodeNodeObj bytes with
+              | Ok(n: Fuaran.UI.Types.Node<obj>) ->
+                  Expect.isSome n.Fallback "decoded"
+                  Expect.equal (CanonicalJson.encodeNode n) bytes "preserved byte-for-byte"
+                  Expect.equal (n.Fallback |> Option.map _.Id) (Some "envelope-fallback-alt") "the authored subtree"
+              | Error(e: Fuaran.UI.Ops.JsonDecode.DecodeError) -> failtestf "decode: %s at %s" e.Code e.Path) ]

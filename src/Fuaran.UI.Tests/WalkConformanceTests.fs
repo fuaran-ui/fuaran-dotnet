@@ -145,6 +145,21 @@ let private census: CensusRow list =
         ExpectRead = true
         ExpectSubscribe = true
         Asymmetry = "" }
+      // ── Phase 1812: the envelope `fallback` — read by analysis, NOT subscribed ──
+      { Slot = "Node.fallback subtree"
+        Key = "cw-fallback"
+        Tree =
+          { Fuaran.markdown "body" "b" with
+              Fallback = Some(metricOn "f" "cw-fallback") }
+        ExpectRead = true
+        ExpectSubscribe = false
+        Asymmetry =
+          "Phase 1812 — the author-declared fallback renders only on a reader BEHIND \
+           this node's kind (WIRE_FORMAT §3.1). Its readers are real to analysis, \
+           because a dangling reference inside it is the defect the behind reader \
+           meets first; a CURRENT reader never renders it, so subscribing its keys \
+           would re-render a surface for a node that is not on it. The behind reader \
+           that lifts it subscribes the lifted node like any other." }
       { Slot = "StateBehaviour.OnLoading subtree"
         Key = "cw-onloading"
         Tree =

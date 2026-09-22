@@ -332,6 +332,7 @@ let extraAttributeNameInjectionTests =
                         "h"
                         { Defaults.heading with
                             Text = TextSource.Literal "Title" } with
+                      Fallback = None
                       ExtraAttributes = Some(Map.ofList [ injectedKey, "v"; "data-cy", "title" ])
                       Tooltip = None
                       Visible = None }
@@ -353,6 +354,7 @@ let extraAttributeNameInjectionTests =
                         "h"
                         { Defaults.heading with
                             Text = TextSource.Literal "Title" } with
+                      Fallback = None
                       ExtraAttributes = Some(Map.ofList [ "data-test-id", "hero"; "aria-describedby", "hint-1" ])
                       Tooltip = None
                       Visible = None }
@@ -370,6 +372,7 @@ let extraAttributeNameInjectionTests =
                         "h"
                         { Defaults.heading with
                             Text = TextSource.Literal "Title" } with
+                      Fallback = None
                       ExtraAttributes = Some(Map.ofList [ "  data-cy  ", "padded" ])
                       Tooltip = None
                       Visible = None }
@@ -741,4 +744,62 @@ let ssrCsrEmissionParityTests =
 
               Expect.isTrue (contains "fuaran-filter fuaran-filter-range" html) "the chip's kind suffix"
               Expect.equal (Theme.filterKindClass spec.Kind) "range" "and the shared table is what produced it"
+          } ]
+
+// ─── Phase 1812 — the behind reader renders the fallback, or the placeholder ─
+
+[<Tests>]
+let behindReaderSsrTests =
+    testList
+        "SSR — BehindView (Phase 1812)"
+        [ test "a Rendered view renders exactly as the node itself does" {
+              let fb = Fuaran.markdown "h1-fallback" "A hologram would appear here."
+
+              Expect.equal
+                  (Render.renderBehind BindingResolver.empty (BehindView.Rendered fb))
+                  (Render.renderStatic fb)
+                  "the lifted fallback IS a node; nothing about it is degraded"
+          }
+
+          test "a Placeholder view is the labelled degrade — kind and the declared profile" {
+              let html =
+                  Render.renderBehind BindingResolver.empty (BehindView.Placeholder("hologram", Some "core@1.4"))
+
+              Expect.isTrue (contains "fuaran-unknown-placeholder" html) "the placeholder class"
+
+              Expect.isTrue
+                  (contains "data-fuaran-kind=\"hologram\"" html)
+                  "the kind, so a reader can name what it lacks"
+
+              Expect.isTrue (contains "data-fuaran-requires=\"core@1.4\"" html) "the declared profile"
+              Expect.isTrue (contains ">needs core@1.4<" html) "the §15.3 label"
+
+              let bare =
+                  Render.renderBehind BindingResolver.empty (BehindView.Placeholder("hologram", None))
+
+              Expect.isTrue (contains ">unknown kind hologram<" bare) "no profile declared — the kind by name"
+              Expect.isFalse (contains "data-fuaran-requires" bare) "and no requires attribute"
+          }
+
+          test "`accessibility.speak` changes no visual or ARIA output" {
+              let named =
+                  { Fuaran.markdown "m" "body" with
+                      Accessibility =
+                          Some
+                              { Defaults.Accessibility.empty with
+                                  Label = Some(Binding.Static(Some "Service status")) } }
+
+              let spoken =
+                  { named with
+                      Accessibility =
+                          named.Accessibility
+                          |> Option.map (fun a ->
+                              { a with
+                                  Speak = Some(TextSource.Literal "Service status: all systems operational.") }) }
+
+              Expect.equal (Render.renderStatic spoken) (Render.renderStatic named) "inert to the visual renderer"
+
+              Expect.isFalse
+                  (contains "all systems operational" (Render.renderStatic spoken))
+                  "and never leaks into the markup"
           } ]

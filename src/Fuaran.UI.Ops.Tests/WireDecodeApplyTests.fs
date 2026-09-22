@@ -48,6 +48,7 @@ let private revenueMetric: Node<obj> =
       Style = None
       Accessibility = None
       Motion = None
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }
@@ -367,3 +368,74 @@ let tests =
                           "Expected a bare object in a Binding slot to be refused, got %A"
                           (metricOf updated).Value
           } ]
+
+// ─── Phase 1812 — a `TreeOp` addresses a node inside a `fallback` like any other ─
+//
+//  WIRE_FORMAT §3.1's ruling: a path into a fallback subtree is LEGAL and
+//  targets the node like any child position. NodeIds are document-unique across
+//  the fallback (§8.1), so the target is unambiguous, and the fallback is reached
+//  through the same lens as the `State` arms (`onEmpty` / `onLoading`), which
+//  are alternative renderings too — a second rule for a third alternative arm
+//  would be a special case nobody could derive. A BEHIND reader, holding the
+//  carrier as verbatim `Unknown` bytes, cannot apply an op addressed inside it —
+//  exactly as it cannot apply one into any unknown payload, which §15.3 already
+//  rules. The fallback's ROOT behaves as a State arm's root does (a slot, not a
+//  list member), and the test pins the parity rather than a fixed verdict.
+
+[<Tests>]
+let fallbackAddressingTests =
+    let alt: Node<obj> =
+        Fuaran.dashboard
+            "revenue-alt"
+            { Defaults.dashboard<obj> with
+                Children = [ Fuaran.markdown "revenue-alt-text" "Revenue: see the summary." ] }
+
+    let tree: Node<obj> =
+        Fuaran.dashboard
+            "root"
+            { Defaults.dashboard<obj> with
+                Children =
+                    [ { revenueMetric with
+                          Fallback = Some alt } ] }
+
+    testList
+        "Apply (Phase 1812) — a fallback subtree is addressable like any child position"
+        [ testCase "RemoveNode of a node inside the fallback targets it like any child position" (fun () ->
+              match Apply.apply (TreeOp.RemoveNode(NodeId "revenue-alt-text")) tree with
+              | Ok updated ->
+                  let carrier = Fuaran.UI.StructuralQuery.children updated |> List.head
+
+                  match carrier.Fallback with
+                  | Some fb ->
+                      Expect.isEmpty (Fuaran.UI.StructuralQuery.children fb) "removed from inside the fallback"
+                  | None -> failtest "the fallback itself must survive"
+              | Error e -> failtestf "a node inside a fallback is addressable: %A" e)
+
+          testCase "the fallback's root behaves exactly as a State arm's root does" (fun () ->
+              let withOnEmpty: Node<obj> =
+                  Fuaran.dashboard
+                      "root"
+                      { Defaults.dashboard<obj> with
+                          Children =
+                              [ { revenueMetric with
+                                    State =
+                                        Some
+                                            { OnEmpty = Some alt
+                                              OnError = None
+                                              OnLoading = None } } ] }
+
+              let viaFallback =
+                  Apply.apply (TreeOp.RemoveNode(NodeId "revenue-alt")) tree |> Result.isOk
+
+              let viaOnEmpty =
+                  Apply.apply (TreeOp.RemoveNode(NodeId "revenue-alt")) withOnEmpty |> Result.isOk
+
+              Expect.equal viaFallback viaOnEmpty "one rule for every alternative arm")
+
+          testCase "the control: RemoveNode of the node that CARRIES the fallback succeeds, fallback and all" (fun () ->
+              match Apply.apply (TreeOp.RemoveNode(NodeId "revenue")) tree with
+              | Ok updated ->
+                  Expect.isEmpty
+                      (Fuaran.UI.StructuralQuery.children updated)
+                      "the carrier is gone, and its fallback with it"
+              | Error e -> failtestf "the carrier is addressable: %A" e) ]

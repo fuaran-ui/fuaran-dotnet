@@ -8401,6 +8401,30 @@ renderGuestHook <- Some render
 /// Convenience entry point that constructs the `RenderContext` for callers
 /// that only need the default `DiagnosticRuntime` + the no-op visualisation
 /// adapter. Identical signature to the session-3a `render` so existing
+/// Phase 1812 — the BEHIND reader's render (WIRE_FORMAT §15.3). A `Rendered`
+/// view — the node itself, or the author-declared `fallback` lifted out of a
+/// transport-only `Unknown` — renders through `render` exactly as any node
+/// does; a `Placeholder` is the labelled degrade the section has always
+/// specified, byte-identical to the server's (parity). The lift itself is
+/// `Fuaran.UI.Ops.JsonDecode.BehindReader.view`; this renderer never sees an
+/// `Unknown`, only what the reader decided to show.
+let renderBehind (ctx: RenderContext<'Msg>) (view: BehindView<'Msg>) : ReactElement =
+    match view with
+    | BehindView.Rendered node -> render ctx node
+    | BehindView.Placeholder(kind, required) ->
+        let label =
+            match required with
+            | Some p -> sprintf "needs %s" p
+            | None -> sprintf "unknown kind %s" kind
+
+        Html.div
+            [ prop.className "fuaran-unknown-placeholder"
+              prop.custom ("data-fuaran-kind", kind)
+              match required with
+              | Some p -> prop.custom ("data-fuaran-requires", p)
+              | None -> ()
+              prop.text label ]
+
 /// in-tree callers continue to compile — the runtime and the adapter are
 /// supplied implicitly.
 let renderWithSources

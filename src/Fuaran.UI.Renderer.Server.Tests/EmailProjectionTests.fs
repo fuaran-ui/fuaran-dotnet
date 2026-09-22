@@ -100,6 +100,7 @@ let private bare (id: string) (kind: NodeKind<obj>) : Node<obj> =
     { Id = id
       Kind = kind
       Accessibility = Option.None
+      Fallback = None
       ExtraAttributes = Option.None
       Tooltip = None
       Visible = None

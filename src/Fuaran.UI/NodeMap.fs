@@ -97,6 +97,7 @@ let rec mapMsg (f: 'a -> 'b) (node: Node<'a>) : Node<'b> =
       Style = node.Style
       Accessibility = node.Accessibility
       Motion = node.Motion
+      Fallback = node.Fallback |> Option.map (mapMsg f)
       ExtraAttributes = node.ExtraAttributes
       Tooltip = node.Tooltip
       Visible = node.Visible }

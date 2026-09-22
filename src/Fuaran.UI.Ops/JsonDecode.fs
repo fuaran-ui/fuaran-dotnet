@@ -2344,6 +2344,7 @@ let private placeholderClosureNode: Node<obj> =
       Style = None
       Accessibility = None
       Motion = None
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }
@@ -9563,22 +9564,33 @@ and private decodeAccessibility (path: string) (j: Json) : Result<Accessibility,
             | None -> Ok None
             | Some v -> decodeBindingBool (path + ".hidden") v |> Result.map Some
 
-        match nearMissR, labelR, labelledByR, describedByR, roleR, liveR, hiddenR with
-        | Ok(), Ok label, Ok labelledBy, Ok describedBy, Ok role, Ok liveRegion, Ok hidden ->
+        // Phase 1812 — `speak`: the node's spoken rendering for a voice
+        // surface, a `TextSource` exactly as `tooltip` is (authored, translated
+        // content). Decoded and preserved here; inert to every visual renderer
+        // and never a source for `aria-label`.
+        let speakR =
+            match tryField fields "speak" with
+            | None -> Ok None
+            | Some v -> decodeTextSource (path + ".speak") v |> Result.map Some
+
+        match nearMissR, labelR, labelledByR, describedByR, roleR, liveR, hiddenR, speakR with
+        | Ok(), Ok label, Ok labelledBy, Ok describedBy, Ok role, Ok liveRegion, Ok hidden, Ok speak ->
             Ok
                 { Label = label
                   LabelledBy = labelledBy
                   DescribedBy = describedBy
                   Role = role
+                  Speak = speak
                   LiveRegion = liveRegion
                   Hidden = hidden }
-        | Error e, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _
-        | _, _, Error e, _, _, _, _
-        | _, _, _, Error e, _, _, _
-        | _, _, _, _, Error e, _, _
-        | _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _
+        | _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, Error e -> Error e
 
 and private decodeStateBehaviour (w: Walk) (path: string) (j: Json) : Result<StateBehaviour<obj>, DecodeError> =
     match requireObject path j with
@@ -9787,8 +9799,20 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
             | None -> Ok None
             | Some v -> decodeBindingBool (path + ".visible") v |> Result.map Some
 
-        match idR, kindR, stateR, styleR, accessibilityR, tooltipR, visibleR with
-        | Ok id, Ok kind, Ok state, Ok style, Ok accessibility, Ok tooltip, Ok visible ->
+        // Fuaran-UI Phase 1812 — the author-declared `fallback`: a full node a
+        // reader BEHIND this node's kind renders in place of its placeholder
+        // (WIRE_FORMAT §3.1 / §15.3). A CURRENT reader — this decoder, which
+        // knows the kind — decodes it, preserves it and never renders it. It
+        // descends through `decodeNodeAst` like `state.onEmpty` does, so the
+        // depth and node-count bounds of §21 cover the subtree, and the
+        // validator's walk (FUARAN156 / FUARAN157, §8.1 uniqueness) sees it.
+        let fallbackR =
+            match tryField fields "fallback" with
+            | None -> Ok None
+            | Some v -> decodeNodeAst (descend w) (path + ".fallback") v |> Result.map Some
+
+        match idR, kindR, stateR, styleR, accessibilityR, tooltipR, visibleR, fallbackR with
+        | Ok id, Ok kind, Ok state, Ok style, Ok accessibility, Ok tooltip, Ok visible, Ok fallback ->
             // Motion / ExtraAttributes are not emitted by the encoder
             // (see Types.fs lines 213-218 — ExtraAttributes is "the §4d
             // JSON wire shape omits it on emit"; Motion follows the same
@@ -9800,16 +9824,18 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
                   Style = style
                   Accessibility = accessibility
                   Motion = None
+                  Fallback = fallback
                   ExtraAttributes = None
                   Tooltip = tooltip
                   Visible = visible }
-        | Error e, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _
-        | _, _, Error e, _, _, _, _
-        | _, _, _, Error e, _, _, _
-        | _, _, _, _, Error e, _, _
-        | _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _
+        | _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, Error e -> Error e
 
 // ─── TreeOp decoder ─────────────────────────────────────────────────────
 
@@ -10546,3 +10572,90 @@ let decodeOpWithPolicy (policy: DecodePolicy) (json: string) : Result<TreeOp<obj
     match tryParse json with
     | Error failure -> parseFailure failure
     | Ok j -> decodeTreeOpAst (walkRoot policy) "$" j
+
+// ─── Behind reader — tolerant decode + the lifted `fallback` (Phase 1812) ────
+
+/// The reference host's BEHIND-reader composition of `Fuaran.Core.Versioning`
+/// (the §15 substrate: negotiate, transport-only `Unknown`, must-ignore-but-
+/// preserve) with this host's own policy-gated node decoder — the seam every §15
+/// host performs, here in the library rather than only in the corpus emitter's
+/// test bridge, because Phase 1812 gives a behind reader something to RENDER.
+///
+/// Three facts hold by construction and are what the escape-hatch inventory
+/// asked to be shown:
+///
+///  1. `decodeTolerant` is Core's and is still the SOLE producer of `Unknown`;
+///     nothing here constructs one, and `reencode` of the preserved payload is
+///     byte-for-byte the producer's bytes (`fallback` included).
+///  2. `liftFallback` reads the `fallback` key off the preserved payload and hands
+///     its canonical bytes to the SAME policy-gated decoder a top-level node meets
+///     (`decodeNodeObjWithPolicy`). A `DecodePolicy` that refuses a kind refuses it
+///     inside a fallback exactly as it does at the root; the §21 bounds apply; the
+///     preserved payload is never edited.
+///  3. A fallback that fails to decode is a `Placeholder`, never a partial render
+///     and never a crash — the three honest responses of §15.3 are unchanged.
+module BehindReader =
+
+    /// Whether this host's decoder knows a node kind — probed against the
+    /// decoder itself so the answer is zero-drift with its kind set: an unknown
+    /// top-level kind fails with `WRONG_NODE_KIND`; a known kind (even one
+    /// missing required fields) fails with some other code, or succeeds.
+    let isKnownKind (tag: string) : bool =
+        let probe = "{\"id\":\"_probe_kind\",\"kind\":{\"$type\":\"" + tag + "\"}}"
+
+        match decodeNodeObj probe with
+        | Ok _ -> true
+        | Error e -> e.Code <> "WRONG_NODE_KIND"
+
+    /// A node payload's `kind.$type` discriminator, off the parsed Core value.
+    let private nodeTagOf (jv: JVal) : Result<string, string> =
+        Decode.getProp "kind" jv
+        |> Result.bind (Decode.getProp "$type")
+        |> Result.bind Decode.asString
+
+    let private decodeKnownWith (policy: DecodePolicy) (jv: JVal) : Result<Node<obj>, string> =
+        match decodeNodeObjWithPolicy policy (Canon.render jv) with
+        | Ok n -> Ok n
+        | Error e -> Error(e.Code + " at " + e.Path)
+
+    /// Tolerantly decode ONE node object under a policy: a known kind through the
+    /// ordinary decoder, an unknown one as Core's transport-only `Unknown` with
+    /// its payload preserved verbatim. A genuinely malformed object (no
+    /// discriminator) is a decode error, as §15.3 requires.
+    let decodeNodeTolerantWithPolicy (policy: DecodePolicy) (jv: JVal) : Result<Versioning.Decoded<Node<obj>>, string> =
+        Versioning.decodeTolerant nodeTagOf isKnownKind (decodeKnownWith policy) jv
+
+    /// `decodeNodeTolerantWithPolicy` under the default policy.
+    let decodeNodeTolerant (jv: JVal) : Result<Versioning.Decoded<Node<obj>>, string> =
+        decodeNodeTolerantWithPolicy DecodePolicy.admitAll jv
+
+    /// Lift the author-declared `fallback` out of an `Unknown`'s preserved payload
+    /// WITHOUT removing it from the bytes: `Ok None` when the producer authored
+    /// none, `Ok (Some node)` when it decodes under `policy`, `Error` when it was
+    /// authored and does not — which the view below turns into the placeholder.
+    let liftFallbackWithPolicy
+        (policy: DecodePolicy)
+        (u: Versioning.UnknownKind)
+        : Result<Node<obj> option, DecodeError> =
+        match Decode.getProp "fallback" u.Payload with
+        | Error _ -> Ok None
+        | Ok fb -> decodeNodeObjWithPolicy policy (Canon.render fb) |> Result.map Some
+
+    /// `liftFallbackWithPolicy` under the default policy.
+    let liftFallback (u: Versioning.UnknownKind) : Result<Node<obj> option, DecodeError> =
+        liftFallbackWithPolicy DecodePolicy.admitAll u
+
+    /// What this reader SHOWS for a tolerant decode: the node, the lifted
+    /// fallback, or the labelled placeholder (§15.3) — "needs `<profile>`" when
+    /// the artifact declared one, else the unknown kind by name.
+    let viewWithPolicy (policy: DecodePolicy) (d: Versioning.Decoded<Node<obj>>) : BehindView<obj> =
+        match d with
+        | Versioning.Known n -> BehindView.Rendered n
+        | Versioning.Unknown u ->
+            match liftFallbackWithPolicy policy u with
+            | Ok(Some fb) -> BehindView.Rendered fb
+            | Ok None
+            | Error _ -> BehindView.Placeholder(u.Kind, u.RequiredProfile |> Option.map Versioning.Profile.render)
+
+    /// `viewWithPolicy` under the default policy.
+    let view (d: Versioning.Decoded<Node<obj>>) : BehindView<obj> = viewWithPolicy DecodePolicy.admitAll d

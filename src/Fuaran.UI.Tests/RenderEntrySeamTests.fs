@@ -57,6 +57,7 @@ let private mkNode (id: string) (kind: NodeKind<obj>) : Node<obj> =
       Style = None
       Accessibility = None
       Motion = None
+      Fallback = None
       ExtraAttributes = None
       Tooltip = None
       Visible = None }

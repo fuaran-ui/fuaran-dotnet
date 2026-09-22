@@ -3422,6 +3422,15 @@
       }
     },
     {
+      "name": "fallback",
+      "optionality": {
+        "$type": "optional"
+      },
+      "type": {
+        "$type": "node"
+      }
+    },
+    {
       "name": "motion",
       "optionality": {
         "$type": "hostOnly"
@@ -3828,6 +3837,17 @@
               "fsharp": "Fuaran.UI.HostPrelude.AriaRole"
             },
             "wire": "json"
+          }
+        },
+        {
+          "name": "speak",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "union",
+            "args": [],
+            "name": "TextSource"
           }
         }
       ],

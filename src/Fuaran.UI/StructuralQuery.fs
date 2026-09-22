@@ -201,7 +201,10 @@ module Result =
 /// `OnLoading`, which render INSTEAD of the node) and a `Mount` guest's
 /// interior (a separate scope, addressable in the guest's own tree). A node
 /// held only in an alternative arm is therefore not reachable from the root by
-/// this walk.
+/// this walk. The Phase 1812 envelope `fallback` is a third alternative arm —
+/// it renders INSTEAD of the node, on a behind reader — and is excluded on the
+/// same terms. (A `TreeOp` still reaches into it, exactly as it reaches into a
+/// State arm — the apply lens is `Introspect.nonStructuralSlots`, not this walk.)
 ///
 /// FORWARD-COUPLING: the match is exhaustive on purpose. A new `NodeKind` case
 /// must declare its children here in the same change that adds the case, or the

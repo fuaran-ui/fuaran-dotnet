@@ -105,6 +105,7 @@ let private detailTab: Node<Msg> =
       Style = Option.None
       Accessibility = Option.None
       Motion = Defaults.Motion.none
+      Fallback = None
       ExtraAttributes = Option.None
       Tooltip = None
       Visible = None }
