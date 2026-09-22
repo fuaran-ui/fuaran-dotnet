@@ -522,6 +522,8 @@ let private defs: (string * J) list =
       "HashStrictness", enumDef [ "StrictReplay"; "AdvisoryWarning"; "Enforced" ]
       // Locale-aware formatting enums (Phase 102).
       "DateStyle", enumDef [ "Short"; "Medium"; "Long"; "Full" ]
+      // Phase 1810 — the time-of-day half of `Format.Date`'s style pair.
+      "TimeStyle", enumDef [ "Short"; "Medium"; "Long"; "Full" ]
       "RelativeTimeUnit", enumDef [ "Second"; "Minute"; "Hour"; "Day"; "Week"; "Month"; "Year" ]
       // The `Binding.Now` grain (Phase 1533) — a strict subset of
       // `RelativeTimeUnit`: a calendar instant has no truncation to a week, a
@@ -898,7 +900,10 @@ let private defs: (string * J) list =
           [ duCase "Number" [] [ "decimals", integer ]
             duCase "Currency" [ "isoCode" ] [ "isoCode", str ]
             duCase "Percent" [] [ "decimals", integer ]
-            duCase "Date" [ "dateStyle" ] [ "dateStyle", ref "DateStyle" ]
+            // Phase 1810 — neither style is required on the wire: `timeStyle`
+            // alone is a time of day, both a date-time. Neither present is
+            // FUARAN155's subject, a validator rule rather than a schema one.
+            duCase "Date" [] [ "dateStyle", ref "DateStyle"; "timeStyle", ref "TimeStyle" ]
             duCase "RelativeTime" [ "unit" ] [ "unit", ref "RelativeTimeUnit" ]
             // Phase 819 — locale-independent duration formatting.
             duCase "Duration" [ "style"; "unit" ] [ "style", ref "DurationStyle"; "unit", ref "DurationUnit" ]

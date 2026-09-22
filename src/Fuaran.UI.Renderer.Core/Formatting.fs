@@ -171,6 +171,15 @@ let private dateStyleStr (s: DateStyle) : string =
     | DateStyle.Long -> "long"
     | DateStyle.Full -> "full"
 
+/// Phase 1810 — the time-of-day half of the style pair, `Intl.DateTimeFormat`'s
+/// own `timeStyle` spellings.
+let private timeStyleStr (s: TimeStyle) : string =
+    match s with
+    | TimeStyle.Short -> "short"
+    | TimeStyle.Medium -> "medium"
+    | TimeStyle.Long -> "long"
+    | TimeStyle.Full -> "full"
+
 let private relativeUnitStr (u: RelativeTimeUnit) : string =
     match u with
     | RelativeTimeUnit.Second -> "second"
@@ -441,11 +450,23 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
     | Format.Number _
     | Format.Currency _
     | Format.Percent _ -> intlNumber (localeArg localeTag) (numberOptions fmt) value
-    | Format.Date dateStyle ->
+    | Format.Date(dateStyle, timeStyle) ->
         if not (isRepresentableInstant value) then
             unrepresentableInstant
         else
-            intlDate (localeArg localeTag) (createObj [ "dateStyle" ==> dateStyleStr dateStyle ]) value
+            // Phase 1810 — the platform's own `dateStyle` / `timeStyle` pair:
+            // each option rides only when declared, so `timeStyle` alone is a
+            // time of day and both together a date-time.
+            let options =
+                createObj
+                    [ match dateStyle with
+                      | Some d -> yield "dateStyle" ==> dateStyleStr d
+                      | None -> ()
+                      match timeStyle with
+                      | Some t -> yield "timeStyle" ==> timeStyleStr t
+                      | None -> () ]
+
+            intlDate (localeArg localeTag) options value
     | Format.RelativeTime unit -> intlRelative (localeArg localeTag) value (relativeUnitStr unit)
     // Phase 1533 — for `Since`, `value` is the signed delta in SECONDS that the
     // binding resolver has ALREADY taken against the host instant. This function
@@ -564,7 +585,7 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
             | None -> ""
 
         value.ToString("P" + suffix, c)
-    | Format.Date dateStyle ->
+    | Format.Date(dateStyle, timeStyle) ->
         if not (isRepresentableInstant value) then
             unrepresentableInstant
         else
@@ -573,14 +594,36 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
             // so the guard has to precede the conversion rather than wrap it.
             let dt = DateTimeOffset.FromUnixTimeSeconds(int64 value).UtcDateTime
 
-            let pattern =
+            // Phase 1810 — the .NET standard patterns stand in for the
+            // platform's `dateStyle` / `timeStyle` pair. Date-only keeps its
+            // pre-1810 renditions byte-for-byte; a time of day is the culture's
+            // short (`t`) or long (`T`) time pattern; a date-time is the two
+            // joined by a space, with the date half at its long form rather
+            // than `F` (which already carries a long time of its own).
+            let datePattern (withTime: bool) =
                 match dateStyle with
-                | DateStyle.Short -> "d"
-                | DateStyle.Medium
-                | DateStyle.Long -> "D"
-                | DateStyle.Full -> "F"
+                | Some DateStyle.Short -> Some "d"
+                | Some DateStyle.Medium
+                | Some DateStyle.Long -> Some "D"
+                | Some DateStyle.Full -> Some(if withTime then "D" else "F")
+                | None -> None
 
-            dt.ToString(pattern, c)
+            let timePattern =
+                match timeStyle with
+                | Some TimeStyle.Short -> Some "t"
+                | Some TimeStyle.Medium
+                | Some TimeStyle.Long
+                | Some TimeStyle.Full -> Some "T"
+                | None -> None
+
+            match datePattern timePattern.IsSome, timePattern with
+            | Some d, Some t -> dt.ToString(d, c) + " " + dt.ToString(t, c)
+            | Some d, None -> dt.ToString(d, c)
+            | None, Some t -> dt.ToString(t, c)
+            // Neither declared — FUARAN155 refuses this shape upstream; the
+            // fallback here is the culture's general pattern rather than a
+            // throw, on the same never-throw law the instant guard serves.
+            | None, None -> dt.ToString("g", c)
     | Format.RelativeTime unit ->
         // English-only fallback (no CLDR relative-time data on .NET) — the
         // shared helper above the #if (Phase 819 hoisted it so the

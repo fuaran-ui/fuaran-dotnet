@@ -467,6 +467,16 @@ internal static class EnumMap
             _ => FsGen.DateStyle.Medium,
         };
 
+    internal static FsGen.TimeStyle ToFs(this TimeStyle t) =>
+        t switch
+        {
+            TimeStyle.Short => FsGen.TimeStyle.Short,
+            TimeStyle.Medium => FsGen.TimeStyle.Medium,
+            TimeStyle.Long => FsGen.TimeStyle.Long,
+            TimeStyle.Full => FsGen.TimeStyle.Full,
+            _ => FsGen.TimeStyle.Short,
+        };
+
     internal static FsGen.RelativeTimeUnit ToFs(this RelativeTimeUnit u) =>
         u switch
         {

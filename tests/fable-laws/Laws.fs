@@ -793,7 +793,8 @@ type DateSentinelCase =
 /// is ever asked a question it answers with an exception.
 let private dateOutcome (value: float) : string =
     try
-        let rendered = Formatting.format "en-GB" (Format.Date DateStyle.Short) value
+        let rendered =
+            Formatting.format "en-GB" (Format.Date(Some DateStyle.Short, None)) value
 
         if rendered = Formatting.unrepresentableInstant then
             "refused"

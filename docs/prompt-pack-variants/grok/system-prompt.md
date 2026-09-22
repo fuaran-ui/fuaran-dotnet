@@ -532,7 +532,7 @@ Format =
 | Number { decimals?:int }
 | Currency { isoCode:str }
 | Percent { decimals?:int }
-| Date { dateStyle:"Short"|"Medium"|"Long"|"Full" }
+| Date { dateStyle?:"Short"|"Medium"|"Long"|"Full"; timeStyle?:"Short"|"Medium"|"Long"|"Full" }
 | RelativeTime { unit:RelativeTimeUnit }
 | Duration { style:DurationStyle; unit:DurationUnit }
 | Since { unit?:RelativeTimeUnit }
@@ -1165,6 +1165,11 @@ declaration displays as the raw number and fails the task's data checks. The sur
   "format": { "$type": "Date", "dateStyle": "Medium" }, "locale": { "$type":
   "Ambient" }, "source": { "$type": "Static", "value": 1755500000 } } }`. The `source`
   is **Unix-epoch seconds**; `dateStyle` spellings are in the catalogue's `Format` row.
+  **A time of day** ("14:30", "last sync at 09:05"): the same `Date` format with
+  `timeStyle` instead — `"format": { "$type": "Date", "timeStyle": "Short" }` shows the
+  time-of-day portion of the instant alone; declare both — `{ "$type": "Date",
+  "dateStyle": "Medium", "timeStyle": "Short" }` — for a date-time. A `Date` format
+  with neither style is refused (`FUARAN155`).
   For "3 days ago" / "in 2 hours", use `{ "$type": "RelativeTime", "unit": "Day" }`
   with the source as a **signed count** of that unit.
 - **A date column or date-formatted metric**: `"format": { "$type": "Date",

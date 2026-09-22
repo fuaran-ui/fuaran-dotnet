@@ -731,8 +731,13 @@
          fuaran-dotnet's <Version>". So the slot opens with the change that rides
          it, which is also what both precedents here did. See STABILITY.md
          "0.85.0 - the slot Phase 1734 opened, which Phase 1821's column-naming
-         rename raised to WIRE-BREAKING - released 2026-09-20 as v0.85.0". -->
-    <Version>0.85.0</Version>
+         rename raised to WIRE-BREAKING - released 2026-09-20 as v0.85.0".
+         Phase 1810 (2026-09-22) is the change that minted 0.86.0: class
+         BREAKING on Fuaran.UI (Format.Date's dateStyle became optional, so a
+         full literal of the case stops compiling), which under the draft-slot
+         rule is what moves a number the additive Phases 1801/1789/1800/1727
+         deliberately left unminted. See STABILITY.md "0.86.0". -->
+    <Version>0.86.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

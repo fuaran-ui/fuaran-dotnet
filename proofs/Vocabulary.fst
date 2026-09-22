@@ -40,7 +40,7 @@
        is what keeps every definition and every emitted lemma first-order.
 
    VOCABULARY. Discriminator "$type", nested-kind envelope, ordinal-sorted key order.
-   20 of 43 kinds are modelled; 14 declared types and 21 enums are reached.
+   20 of 43 kinds are modelled; 14 declared types and 22 enums are reached.
    The kinds NOT modelled — named here rather than silently missing, because a reader
    of the theorem needs to know what it does not cover. Two different reasons, and
    they are worth telling apart: a construct with no wire-level meaning in the model
@@ -136,6 +136,29 @@ let dec_e_date_style (#num #flt: eqtype) (el: jval num flt) : Tot (outcome e_dat
     if s = "Long" then Ok C__e_date_style__Long else
     if s = "Full" then Ok C__e_date_style__Full else
     Error ("unknown DateStyle: " ^ s)
+
+type e_time_style =
+  | C__e_time_style__Short
+  | C__e_time_style__Medium
+  | C__e_time_style__Long
+  | C__e_time_style__Full
+
+let enc_e_time_style (#num #flt: eqtype) (x: e_time_style) : Tot (jval num flt) =
+  match x with
+  | C__e_time_style__Short -> JStr "Short"
+  | C__e_time_style__Medium -> JStr "Medium"
+  | C__e_time_style__Long -> JStr "Long"
+  | C__e_time_style__Full -> JStr "Full"
+
+let dec_e_time_style (#num #flt: eqtype) (el: jval num flt) : Tot (outcome e_time_style) =
+  match as_string el with
+  | Error e -> Error e
+  | Ok s ->
+    if s = "Short" then Ok C__e_time_style__Short else
+    if s = "Medium" then Ok C__e_time_style__Medium else
+    if s = "Long" then Ok C__e_time_style__Long else
+    if s = "Full" then Ok C__e_time_style__Full else
+    Error ("unknown TimeStyle: " ^ s)
 
 type e_relative_time_unit =
   | C__e_relative_time_unit__Second
@@ -615,7 +638,7 @@ and u_format (num flt: eqtype) =
   | C__u_format__Number : decimals:(option (num)) -> u_format num flt
   | C__u_format__Currency : iso_code:(string) -> u_format num flt
   | C__u_format__Percent : decimals:(option (num)) -> u_format num flt
-  | C__u_format__Date : date_style:(e_date_style) -> u_format num flt
+  | C__u_format__Date : date_style:(option (e_date_style)) -> time_style:(option (e_time_style)) -> u_format num flt
   | C__u_format__RelativeTime : unit_:(e_relative_time_unit) -> u_format num flt
   | C__u_format__Duration : style:(e_duration_style) -> unit_:(e_duration_unit) -> u_format num flt
   | C__u_format__Since : unit_:(option (e_relative_time_unit)) -> u_format num flt
@@ -792,8 +815,8 @@ and enc_u_format (#num #flt: eqtype) (x: u_format num flt) : Tot (jval num flt) 
     JObj (("$type", JStr "Currency") :: ("isoCode", JStr f0) :: [])
   | C__u_format__Percent f0 ->
     JObj (("$type", JStr "Percent") :: (match f0 with | None -> [] | Some w -> ("decimals", JInt w) :: []))
-  | C__u_format__Date f0 ->
-    JObj (("$type", JStr "Date") :: ("dateStyle", enc_e_date_style f0) :: [])
+  | C__u_format__Date f0 f1 ->
+    JObj (("$type", JStr "Date") :: (match f0 with | None -> (match f1 with | None -> [] | Some w -> ("timeStyle", enc_e_time_style w) :: []) | Some w -> ("dateStyle", enc_e_date_style w) :: (match f1 with | None -> [] | Some w -> ("timeStyle", enc_e_time_style w) :: [])))
   | C__u_format__RelativeTime f0 ->
     JObj (("$type", JStr "RelativeTime") :: ("unit", enc_e_relative_time_unit f0) :: [])
   | C__u_format__Duration f0 f1 ->
@@ -1249,8 +1272,9 @@ and dec_u_format (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (u_format
       (match o0 with | Error e -> Error e | Ok f0 -> Ok (C__u_format__Percent f0))
     else
     if tag = "Date" then
-      let o0 : outcome (e_date_style) = (match get_prop "dateStyle" el with | Error e -> Error e | Ok v -> (match dec_e_date_style v with | Error e -> Error e | Ok w -> Ok w)) in
-      (match o0 with | Error e -> Error e | Ok f0 -> Ok (C__u_format__Date f0))
+      let o0 : outcome (option (e_date_style)) = (match get_prop "dateStyle" el with | Error _ -> Ok None | Ok v -> (match dec_e_date_style v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o1 : outcome (option (e_time_style)) = (match get_prop "timeStyle" el with | Error _ -> Ok None | Ok v -> (match dec_e_time_style v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> Ok (C__u_format__Date f0 f1)))
     else
     if tag = "RelativeTime" then
       let o0 : outcome (e_relative_time_unit) = (match get_prop "unit" el with | Error e -> Error e | Ok v -> (match dec_e_relative_time_unit v with | Error e -> Error e | Ok w -> Ok w)) in

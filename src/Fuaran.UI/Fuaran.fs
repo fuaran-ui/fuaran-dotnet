@@ -644,8 +644,21 @@ module localeFormat =
     /// fraction-digit count (`None` = locale default).
     let percent (decimals: int option) : Format = Format.Percent decimals
 
-    /// Absolute date/time (source read as whole Unix-epoch seconds).
-    let date (dateStyle: DateStyle) : Format = Format.Date dateStyle
+    /// Absolute date (source read as whole Unix-epoch seconds), at `dateStyle`
+    /// breadth and with no time of day. The pre-1810 signature, kept on
+    /// purpose: an author using it compiles unchanged — the source break of
+    /// Phase 1810 lands only on a full literal of the `Format.Date` case.
+    let date (dateStyle: DateStyle) : Format = Format.Date(Some dateStyle, None)
+
+    /// Phase 1810 — an absolute date AND its time of day, each at its own
+    /// breadth (`Intl.DateTimeFormat`'s `dateStyle` / `timeStyle` pair).
+    let dateTime (dateStyle: DateStyle) (timeStyle: TimeStyle) : Format =
+        Format.Date(Some dateStyle, Some timeStyle)
+
+    /// Phase 1810 — a time of day ALONE: the display half of a `Time` form
+    /// field's value. The source is still whole Unix-epoch seconds; only the
+    /// time-of-day portion of that instant is rendered.
+    let time (timeStyle: TimeStyle) : Format = Format.Date(None, Some timeStyle)
 
     /// Relative time (source read as a signed count of `unit` relative to now).
     let relativeTime (unit: RelativeTimeUnit) : Format = Format.RelativeTime unit

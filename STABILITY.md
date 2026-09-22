@@ -7815,7 +7815,17 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## The slot Phase 1801 rides — THE NUMBER IS UNMINTED, and that is a recorded escalation
+## 0.86.0 — the slot Phase 1801 opened unminted, which Phase 1810's `timeStyle` mints as BREAKING (DRAFT — untagged)
+
+_**The number moved on 2026-09-22, and Phase 1810 is why.** The heading below this line was opened
+by Phase 1801 with its number deliberately unminted, for the reason its own paragraphs record; every
+entry that followed (1789, 1800, 1727) was additive and rode it the same way. Phase 1810 is class
+BREAKING on `Fuaran.UI` — see its entry under "What rides this slot" — and under the draft-slot rule a
+change of a higher class than the draft carries ADVANCES the number, because the number is what tells
+a consumer what adopting it costs. `<Version>` is 0.86.0 from that commit. The freshness-check
+consequence 1801 measured still holds and is still not this repository's to fix; it is now the
+standing state between this draft and its release rather than a reason to leave a breaking change
+riding a number that says "additive". Nothing else in 1801's entry changes._
 
 _Phase 1801 moves a public predicate's answer and two shipped validator verdict classes. Under the
 rule stated in the 0.85.0 closure note below — "the next commit that moves a public contract advances
@@ -7841,6 +7851,52 @@ as carrying a change it does not carry, which is the one failure mode a version 
 prevent.
 
 ### What rides this slot
+
+**fuaran#1810 — BREAKING on `Fuaran.UI` at `Format.Date`'s shape; ADDITIVE on the wire (a profile
+minor); the change that minted this number.** A time of day can now be displayed. `Format.Date`
+carries the platform formatter's own pair — `dateStyle` / `timeStyle`, `Intl.DateTimeFormat`'s model
+— where it carried `dateStyle` alone, so a value collected by a `Time` or `DateTime` form field can be
+shown back with its time, which no formatter in the language could do before.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI` — `Format.Date` | `Date of dateStyle: DateStyle` becomes `Date of dateStyle: DateStyle option * timeStyle: TimeStyle option`. | **A full literal or pattern of the case** — `Format.Date DateStyle.Medium` and `\| Format.Date d ->` stop compiling. The smart constructor `localeFormat.date` keeps its signature and its bytes; `localeFormat.dateTime` and `localeFormat.time` land beside it, so an author using the constructors compiles unchanged. |
+| `Fuaran.UI` — `TimeStyle` | New closed enum, `Short` / `Medium` / `Long` / `Full`; `Types.TimeStyle` abbreviates it. | Nobody; additive. |
+| `Fuaran.UI` — `BindingWalk.BindingUse` | Gains `UnstyledDateFormat`. | An exhaustive match over `BindingUse` outside this repository. The two in-repo consumers (`StructuralQuery`, `WiringGraph`) classify it as "names no channel". |
+| `Fuaran.UI` — `PreEmitDefect` | Gains `UnstyledDateFormat of nodeId` — **FUARAN155 (Error)**: a `Format.Date` with NEITHER style. | An exhaustive match over `PreEmitDefect`. |
+| `Fuaran.UI.CSharp` — `LocaleFormat` | `Date(DateStyle)` unchanged; `DateTime(DateStyle, TimeStyle)` and `Time(TimeStyle)` added, with a `TimeStyle` enum. | Nobody; additive. |
+| Wire — `Format.Date` | `dateStyle` becomes OPTIONAL; `timeStyle` (optional, `TimeStyle` bare-enum) added. Alphabetical field order: `dateStyle`, `timeStyle`. Every pre-1810 document is byte-unchanged and still valid. | A consumer that relied on `dateStyle` being PRESENT now meets absence — which is what the IDL engine's own differ calls `BreakingWire` for an optionalised field, and is recorded here as the honest reading of "additive on the wire": no existing document moves, but a decoder written to the old `required` faces a shape it never had to handle. Every roster codec host in this change-set decodes all three shapes. |
+
+**The three shapes, and the fourth.** `dateStyle` alone is a date (the pre-1810 rendering,
+byte-for-byte on every host); `timeStyle` alone is a time of day; both together a date-time, each
+half at its own breadth. NEITHER is structurally legal on the wire and decodes — and is refused by
+the validator as FUARAN155, an Error rather than a Warning because there is no rendering it could
+mean and five hosts inventing five is the drift a closed vocabulary exists to prevent. It is a
+validator rule rather than a decode refusal deliberately: the rule is semantic, and a decode
+refusal would report a shape error on a document whose shape is fine.
+
+**`CellFormat.Date` is ruled, and does NOT change** — see `WIRE_FORMAT.md` beside the cell-format
+table: the cell keeps its pattern-string `format`, which already expresses a time of day, and gains
+no style pair.
+
+**Corpus.** `nodes/format-date-time.json` pins the date-time and time-only shapes beside
+`format-bindings`'s date-only one; `enum-tokens.json` and §3.5 gain `TimeStyle`; `Format.Date` stays
+in `render-text.json`'s `excluded` tier with its reason extended to say `timeStyle` does not change
+it. Every rendering host in the change-set — the F# client, SSR and email projection (one
+`Formatting.format`, both pipelines), and `fuaran-ts` (browser and server) — renders all three shapes
+through the platform's `dateStyle` / `timeStyle` pair; `fuaran-py` decodes and round-trips them and
+keeps resolving `Format.Date` to absence, its standing posture for locale-database text.
+
+**Vocabulary charter.** Tier engaged: §2.1, a spec-record FIELD addition below the variant line — no
+kind, no case; one enum and one optional field. §1.1 demand evidence is waived by operator mandate
+(2026-09-19, recorded on requirement `adaptive-card-borrowings`); §1.2 irreducibility holds (no
+composition of the existing formatters yields a time of day — `Date`'s four styles are all
+date-only renditions, and `Duration` / `RelativeTime` render counts, not instants); §1.3's cost is
+the full §11 sweep this entry lists. FUARAN155 was allocated by `scripts/fuaran-codes.ps1 -Next`.
+
+**Version — it ADVANCES to 0.86.0 rather than riding the unminted draft.** The draft-slot rule: an
+additive change rides a draft; a change of a higher class than the draft carries advances it. This
+is the first breaking change since `v0.85.0` was tagged, so it is the change that mints the number.
 
 **fuaran#1801 — BREAKING at a public predicate's answer and at two validator verdict classes, and
 NOTHING on the wire moves.** The subject is the same predicate Phase 1667 unified — `Fuaran.UI`'s

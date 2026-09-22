@@ -363,6 +363,13 @@ type TimeGrain =
     | Day
 
 [<RequireQualifiedAccess>]
+type TimeStyle =
+    | Short
+    | Medium
+    | Long
+    | Full
+
+[<RequireQualifiedAccess>]
 type ToneVariant =
     | Default
     | Subdued
@@ -643,7 +650,7 @@ and [<RequireQualifiedAccess>] Format =
     | Number of decimals: int option
     | Currency of isoCode: string
     | Percent of decimals: int option
-    | Date of dateStyle: DateStyle
+    | Date of dateStyle: DateStyle option * timeStyle: TimeStyle option
     | RelativeTime of unit: RelativeTimeUnit
     /// Phase 819 — locale-independent duration formatting: the numeric
     /// source counts `unit`s, rendered per `style`.
@@ -1920,6 +1927,13 @@ let private encTimeGrain (v: TimeGrain) : JVal =
     | TimeGrain.Hour -> JStr "Hour"
     | TimeGrain.Day -> JStr "Day"
 
+let private encTimeStyle (v: TimeStyle) : JVal =
+    match v with
+    | TimeStyle.Short -> JStr "Short"
+    | TimeStyle.Medium -> JStr "Medium"
+    | TimeStyle.Long -> JStr "Long"
+    | TimeStyle.Full -> JStr "Full"
+
 let private encToneVariant (v: ToneVariant) : JVal =
     match v with
     | ToneVariant.Default -> JStr "Default"
@@ -2136,7 +2150,7 @@ and private encFormat (v: Format) : JVal =
     | Format.Number decimals -> Canon.typed "Number" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
     | Format.Currency isoCode -> Canon.typed "Currency" [ "isoCode", JStr isoCode ]
     | Format.Percent decimals -> Canon.typed "Percent" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
-    | Format.Date dateStyle -> Canon.typed "Date" [ "dateStyle", encDateStyle dateStyle ]
+    | Format.Date (dateStyle, timeStyle) -> Canon.typed "Date" ([ (dateStyle |> Option.map (fun v -> "dateStyle", encDateStyle v)); (timeStyle |> Option.map (fun v -> "timeStyle", encTimeStyle v)) ] |> List.choose id)
     | Format.RelativeTime unit -> Canon.typed "RelativeTime" [ "unit", encRelativeTimeUnit unit ]
     | Format.Duration (unit, style) -> Canon.typed "Duration" [ "unit", encDurationUnit unit; "style", encDurationStyle style ]
     | Format.Since unit -> Canon.typed "Since" ([ (unit |> Option.map (fun v -> "unit", encRelativeTimeUnit v)) ] |> List.choose id)
@@ -2884,6 +2898,14 @@ let private decTimeGrain (j: JVal) : Result<TimeGrain, string> =
     | JStr "Day" -> Ok TimeGrain.Day
     | _ -> Error "not a TimeGrain"
 
+let private decTimeStyle (j: JVal) : Result<TimeStyle, string> =
+    match j with
+    | JStr "Short" -> Ok TimeStyle.Short
+    | JStr "Medium" -> Ok TimeStyle.Medium
+    | JStr "Long" -> Ok TimeStyle.Long
+    | JStr "Full" -> Ok TimeStyle.Full
+    | _ -> Error "not a TimeStyle"
+
 let private decToneVariant (j: JVal) : Result<ToneVariant, string> =
     match j with
     | JStr "Default" -> Ok ToneVariant.Default
@@ -3437,8 +3459,9 @@ and private decFormat (j: JVal) : Result<Format, string> =
             dOpt "decimals" __fs dInt |> Result.bind (fun decimals ->
             Ok(Format.Percent(decimals)))
         | "Date" ->
-            dReq "dateStyle" __fs decDateStyle |> Result.bind (fun dateStyle ->
-            Ok(Format.Date(dateStyle)))
+            dOpt "dateStyle" __fs decDateStyle |> Result.bind (fun dateStyle ->
+            dOpt "timeStyle" __fs decTimeStyle |> Result.bind (fun timeStyle ->
+            Ok(Format.Date(dateStyle, timeStyle))))
         | "RelativeTime" ->
             dReq "unit" __fs decRelativeTimeUnit |> Result.bind (fun unit ->
             Ok(Format.RelativeTime(unit)))

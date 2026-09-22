@@ -355,6 +355,19 @@ public enum DateStyle
     Full,
 }
 
+/// <summary>
+/// Time-of-day breadth for <see cref="LocaleFormat.DateTime"/> / <see cref="LocaleFormat.Time"/>
+/// — maps to the F# <c>TimeStyle</c> (Phase 1810): the other half of the platform formatter's
+/// <c>dateStyle</c> / <c>timeStyle</c> pair.
+/// </summary>
+public enum TimeStyle
+{
+    Short,
+    Medium,
+    Long,
+    Full,
+}
+
 /// <summary>Relative-time grain for <see cref="LocaleFormat.RelativeTime"/> — maps to the F# <c>RelativeTimeUnit</c>.</summary>
 public enum RelativeTimeUnit
 {
@@ -390,9 +403,29 @@ public readonly struct LocaleFormat
     public static LocaleFormat Percent(int? decimals = null) =>
         new(FsGen.Format.NewPercent(Fs.OfNullable(decimals)));
 
-    /// <summary>An absolute date/time (source read as whole Unix-epoch seconds).</summary>
+    /// <summary>An absolute date with no time of day (source read as whole Unix-epoch seconds).</summary>
     public static LocaleFormat Date(DateStyle style) =>
-        new(FsGen.Format.NewDate(style.ToFs()));
+        new(FsGen.Format.NewDate(
+            Microsoft.FSharp.Core.FSharpOption<FsGen.DateStyle>.Some(style.ToFs()),
+            Microsoft.FSharp.Core.FSharpOption<FsGen.TimeStyle>.None));
+
+    /// <summary>
+    /// An absolute date AND its time of day, each at its own breadth (Phase 1810 — the platform
+    /// formatter's <c>dateStyle</c> / <c>timeStyle</c> pair).
+    /// </summary>
+    public static LocaleFormat DateTime(DateStyle dateStyle, TimeStyle timeStyle) =>
+        new(FsGen.Format.NewDate(
+            Microsoft.FSharp.Core.FSharpOption<FsGen.DateStyle>.Some(dateStyle.ToFs()),
+            Microsoft.FSharp.Core.FSharpOption<FsGen.TimeStyle>.Some(timeStyle.ToFs())));
+
+    /// <summary>
+    /// A time of day alone (Phase 1810) — the display half of a <c>Time</c> form field's value.
+    /// The source is still whole Unix-epoch seconds; only the time-of-day portion is rendered.
+    /// </summary>
+    public static LocaleFormat Time(TimeStyle style) =>
+        new(FsGen.Format.NewDate(
+            Microsoft.FSharp.Core.FSharpOption<FsGen.DateStyle>.None,
+            Microsoft.FSharp.Core.FSharpOption<FsGen.TimeStyle>.Some(style.ToFs())));
 
     /// <summary>A relative time ("3 days ago"), source read as a signed count of <paramref name="unit"/>.</summary>
     public static LocaleFormat RelativeTime(RelativeTimeUnit unit) =>

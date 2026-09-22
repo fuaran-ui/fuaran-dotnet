@@ -247,5 +247,5 @@ let excluded: Excluded list =
         Fixture = "nodes/format-bindings.json"
         NodeId = "fmt-date"
         Reason =
-          "a date STYLE (`Short` / `Medium` / `Long` / `Full`) names a locale's own pattern, so the rendered text is the locale database's answer by construction" } ]
+          "a date STYLE (`Short` / `Medium` / `Long` / `Full`) names a locale's own pattern, so the rendered text is the locale database's answer by construction. Phase 1810's `timeStyle` does not change that reason: a time STYLE names the locale's own time-of-day pattern the same way, so the time-only and date-time shapes are the locale database's answer too" } ]
     |> List.sortWith (fun a b -> System.String.CompareOrdinal(a.Slot, b.Slot))

@@ -2919,6 +2919,17 @@ let private decodeDateStyle (path: string) (j: Json) : Result<DateStyle, DecodeE
     | JString s -> unknownEnumCase path s "Short | Medium | Long | Full"
     | _ -> wrongType path "JSON string (DateStyle)"
 
+/// Phase 1810 — the time-of-day half of the style pair. A separate closed set
+/// from `DateStyle` with the same four spellings.
+let private decodeTimeStyle (path: string) (j: Json) : Result<TimeStyle, DecodeError> =
+    match j with
+    | JString "Short" -> Ok TimeStyle.Short
+    | JString "Medium" -> Ok TimeStyle.Medium
+    | JString "Long" -> Ok TimeStyle.Long
+    | JString "Full" -> Ok TimeStyle.Full
+    | JString s -> unknownEnumCase path s "Short | Medium | Long | Full"
+    | _ -> wrongType path "JSON string (TimeStyle)"
+
 // (`decodeRelativeTimeUnit` lives beside `decodeCellFormat` above since
 // Phase 819 — both format vocabularies reference it.)
 
@@ -2943,9 +2954,26 @@ let private decodeFormat (path: string) (j: Json) : Result<Format, DecodeError> 
                 requireInt (path + ".decimals") j
                 |> Result.map (fun d -> Format.Percent(Some d))
         | Ok "Date" ->
-            match requireField path fields "dateStyle" "DateStyle string" with
-            | Error e -> Error e
-            | Ok j -> decodeDateStyle (path + ".dateStyle") j |> Result.map Format.Date
+            // Phase 1810 — BOTH style slots are optional: `timeStyle` alone is
+            // a time of day, both together a date-time, `dateStyle` alone the
+            // shape every pre-1810 document carries. Neither present decodes
+            // structurally and is refused by the validator (FUARAN155), not
+            // here — the rule is semantic, and a decode refusal would hide it
+            // behind a shape error.
+            let dateStyle =
+                match tryField fields "dateStyle" with
+                | None -> Ok None
+                | Some j -> decodeDateStyle (path + ".dateStyle") j |> Result.map Some
+
+            let timeStyle =
+                match tryField fields "timeStyle" with
+                | None -> Ok None
+                | Some j -> decodeTimeStyle (path + ".timeStyle") j |> Result.map Some
+
+            match dateStyle, timeStyle with
+            | Error e, _
+            | _, Error e -> Error e
+            | Ok d, Ok t -> Ok(Format.Date(d, t))
         | Ok "RelativeTime" ->
             match requireField path fields "unit" "RelativeTimeUnit string" with
             | Error e -> Error e

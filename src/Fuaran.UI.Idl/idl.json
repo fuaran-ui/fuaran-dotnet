@@ -398,6 +398,15 @@
     },
     {
       "cases": [
+        "Short",
+        "Medium",
+        "Long",
+        "Full"
+      ],
+      "name": "TimeStyle"
+    },
+    {
+      "cases": [
         "Default",
         "Subdued",
         "Brand",
@@ -7597,11 +7606,21 @@
             {
               "name": "dateStyle",
               "optionality": {
-                "$type": "required"
+                "$type": "optional"
               },
               "type": {
                 "$type": "enum",
                 "name": "DateStyle"
+              }
+            },
+            {
+              "name": "timeStyle",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "enum",
+                "name": "TimeStyle"
               }
             }
           ],

@@ -5779,3 +5779,75 @@ let severityToneCoherenceTests =
 
               Expect.isEmpty (toneDefects tree) "the default is out of scope by construction"
           } ]
+
+// ─── FUARAN155 — a `Format.Date` with neither style (Phase 1810) ─────────────
+//
+//  Both halves of the style pair are optional on the wire so that `timeStyle`
+//  alone can display a time of day; the shape with NEITHER is structurally
+//  legal and semantically empty, and this is the rule that refuses it. Both
+//  directions are asserted: the empty shape fires, and each of the three
+//  admitted shapes stays silent.
+
+let private formatted (id: string) (fmt: Format) : Node<Msg> =
+    Fuaran.markdownSpec
+        id
+        { Text = TextSource.Bound(Binding.Format(Binding.Static(Some 1700000000.0), fmt, LocaleSource.Ambient)) }
+
+let private dateFormatDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.UnstyledDateFormat _ -> true
+            | _ -> false)
+
+[<Tests>]
+let unstyledDateFormatTests =
+    testList
+        "PreEmitValidate — FUARAN155, a Date format with neither style (Phase 1810)"
+        [ test "FUARAN155: neither dateStyle nor timeStyle is reported as an Error" {
+              let tree = dashboard "root" [ formatted "when" (Format.Date(None, None)) ]
+
+              match PreEmitValidate.validate tree with
+              | Error ds ->
+                  let d =
+                      ds
+                      |> List.tryFind (function
+                          | PreEmitDefect.UnstyledDateFormat _ -> true
+                          | _ -> false)
+
+                  match d with
+                  | Some defect ->
+                      Expect.equal defect (PreEmitDefect.UnstyledDateFormat "when") "the reading node is named"
+                      let code, severity, _ = PreEmitValidate.describe defect
+                      Expect.equal code "FUARAN155" "stable code"
+                      Expect.equal severity DefectSeverity.Error "no host could render it, so it is an Error"
+                  | None -> failtest "Expected FUARAN155 among the defects"
+              | Ok() -> failtest "Expected FUARAN155, got Ok"
+          }
+
+          test "FUARAN155 is silent on the three admitted shapes" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ formatted "date-only" (localeFormat.date DateStyle.Medium)
+                        formatted "time-only" (localeFormat.time TimeStyle.Short)
+                        formatted "date-time" (localeFormat.dateTime DateStyle.Long TimeStyle.Short) ]
+
+              Expect.isEmpty (dateFormatDefects tree) "dateStyle alone, timeStyle alone and both are each a rendering"
+          }
+
+          test "FUARAN155 names EVERY unstyled reader, not the first" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ formatted "a" (Format.Date(None, None))
+                        formatted "b" (localeFormat.date DateStyle.Short)
+                        formatted "c" (Format.Date(None, None)) ]
+
+              let found = dateFormatDefects tree
+              Expect.contains found (PreEmitDefect.UnstyledDateFormat "a") "first reader"
+              Expect.contains found (PreEmitDefect.UnstyledDateFormat "c") "second reader"
+              Expect.equal (List.length found) 2 "the styled reader between them is silent"
+          } ]

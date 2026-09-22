@@ -343,12 +343,20 @@ let private genRelativeTimeUnit: Gen<RelativeTimeUnit> =
           RelativeTimeUnit.Month
           RelativeTimeUnit.Year ]
 
+// Phase 1810 — the time-of-day half of `Format.Date`'s style pair.
+let private genTimeStyle: Gen<TimeStyle> =
+    Gen.elements [ TimeStyle.Short; TimeStyle.Medium; TimeStyle.Long; TimeStyle.Full ]
+
 let private genFormat: Gen<Format> =
     Gen.oneof
         [ Gen.map Format.Number (genOption genInt)
           Gen.map Format.Currency genNonEmptyString
           Gen.map Format.Percent (genOption genInt)
-          Gen.map Format.Date genDateStyle
+          // Phase 1810 — the three admitted shapes; neither-present is
+          // FUARAN155's subject and is deliberately not generated.
+          Gen.map (fun d -> Format.Date(Some d, None)) genDateStyle
+          Gen.map (fun t -> Format.Date(None, Some t)) genTimeStyle
+          Gen.map2 (fun d t -> Format.Date(Some d, Some t)) genDateStyle genTimeStyle
           Gen.map Format.RelativeTime genRelativeTimeUnit
           // Phase 819 — the locale-independent duration arm.
           Gen.map2 (fun u s -> Format.Duration(u, s)) genDurationUnit genDurationStyle ]

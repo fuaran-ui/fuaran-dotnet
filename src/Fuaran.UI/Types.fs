@@ -183,6 +183,11 @@ type ColumnWidth = Generated.ColumnWidth
 /// Date-presentation breadth for `Format.Date` (generated — see `Fuaran.UI.Generated`).
 type DateStyle = Generated.DateStyle
 
+/// Time-of-day breadth for `Format.Date` (Phase 1810; generated). The other half
+/// of the platform formatter's `dateStyle` / `timeStyle` pair: `timeStyle` alone
+/// displays a time of day, both together a date-time.
+type TimeStyle = Generated.TimeStyle
+
 /// Relative-time grain for `Format.RelativeTime` (generated).
 type RelativeTimeUnit = Generated.RelativeTimeUnit
 

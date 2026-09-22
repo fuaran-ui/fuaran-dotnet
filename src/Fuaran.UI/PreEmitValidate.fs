@@ -387,6 +387,21 @@ type PreEmitDefect =
     ///
     /// Carries the grid node's id, the map key, and the tone it maps to.
     | PillToneContradictsValue of nodeId: string * value: string * tone: string
+    /// **FUARAN155 (Error)**. A `Binding.Format` whose `Format.Date` declares
+    /// NEITHER `dateStyle` nor `timeStyle` (Phase 1810). Both halves of the
+    /// platform formatter's style pair are optional on the wire so that a time
+    /// of day can be displayed alone (`timeStyle` only) beside the date-only
+    /// and date-time shapes — which leaves a fourth shape, neither present,
+    /// that is structurally legal and says nothing about what portion of the
+    /// instant the reader is shown. It is an Error rather than a Warning
+    /// because there is no rendering it could mean: every host would have to
+    /// invent one, and five hosts inventing five is the drift the closed
+    /// vocabulary exists to prevent. Refused here rather than at decode
+    /// because the rule is semantic, and a decode refusal would report it as
+    /// a shape error on a document whose shape is fine.
+    ///
+    /// Carries the reading node's id.
+    | UnstyledDateFormat of nodeId: string
     /// **FUARAN092 (Warning)**. A `Link` declares `protection: "email"` on an
     /// href that is statically known NOT to be a `mailto:` (Phase 812). The
     /// Email protection strategy only has meaning over a mailto address — on
@@ -2207,6 +2222,12 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             tone
             value
             value
+    | PreEmitDefect.UnstyledDateFormat nodeId ->
+        "FUARAN155",
+        DefectSeverity.Error,
+        sprintf
+            "'%s' formats an instant with a Date format that declares neither dateStyle nor timeStyle, so nothing says what the reader is shown. Declare dateStyle for a date, timeStyle for a time of day, or both for a date-time"
+            nodeId
     | PreEmitDefect.UnsafeUrlScheme(nodeId, slot, reason) ->
         "FUARAN142",
         DefectSeverity.Warning,
@@ -4554,6 +4575,10 @@ let private validateCore
             | Some isProducer ->
                 if not isProducer then
                     defects.Add(PreEmitDefect.SelectionOverNonProducer(u.Reader, target))
+        // FUARAN155 (Phase 1810) — a `Format.Date` with neither style. The
+        // walk records the fact where it reaches the slot; the verdict is
+        // decided here so the code sits with the rest of the vocabulary.
+        | BindingWalk.BindingUse.UnstyledDateFormat -> defects.Add(PreEmitDefect.UnstyledDateFormat u.Reader)
         | _ -> ()
 
     // FUARAN110 (Phase 727) — an accessibility reference naming a node the tree

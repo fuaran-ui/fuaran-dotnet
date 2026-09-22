@@ -320,6 +320,14 @@ let private compareOp =
 let private dateStyle =
     Declare.enumOf "DateStyle" [ "Short"; "Medium"; "Long"; "Full" ]
 
+/// Phase 1810 — the time-of-day half of the platform formatter's
+/// `dateStyle` / `timeStyle` pair (`Intl.DateTimeFormat`'s own model). The same
+/// four cases as `DateStyle`, deliberately a SEPARATE enum: the two name
+/// breadths of different things, and a host maps each to its own platform
+/// option.
+let private timeStyle =
+    Declare.enumOf "TimeStyle" [ "Short"; "Medium"; "Long"; "Full" ]
+
 let private relativeTimeUnit =
     Declare.enumOf "RelativeTimeUnit" [ "Second"; "Minute"; "Hour"; "Day"; "Week"; "Month"; "Year" ]
 
@@ -990,8 +998,13 @@ let private formatUnion =
           { Tag = "Percent"
             Fields = [ opt "decimals" TInt ]
             Annotations = Annotations.Empty }
+          // Phase 1810 — `dateStyle` / `timeStyle` are BOTH optional so that a
+          // time of day can be displayed alone (`timeStyle` only) and a
+          // date-time with both. Neither present is a defect the validator
+          // refuses (FUARAN155), not a decode refusal: the wire shape is
+          // structurally legal and the rule is a semantic one.
           { Tag = "Date"
-            Fields = [ req "dateStyle" (TEnum "DateStyle") ]
+            Fields = [ opt "dateStyle" (TEnum "DateStyle"); opt "timeStyle" (TEnum "TimeStyle") ]
             Annotations = Annotations.Empty }
           { Tag = "RelativeTime"
             Fields = [ req "unit" (TEnum "RelativeTimeUnit") ]
@@ -3365,6 +3378,7 @@ let uiIdl: Idl =
           textFormat
           compareOp
           dateStyle
+          timeStyle
           relativeTimeUnit
           timeGrain
           durationUnit

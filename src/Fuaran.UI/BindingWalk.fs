@@ -201,6 +201,19 @@ type BindingUse =
     /// read the same slot already contributes, and admitting it would record
     /// one reader against one channel twice.
     | TransformSite of site: TransformSiteFacts
+    /// Phase 1810 — a `Binding.Format` whose `Format.Date` declares NEITHER
+    /// `dateStyle` nor `timeStyle`. FUARAN155's subject. Both halves of the
+    /// style pair became optional so a time of day could be displayed alone;
+    /// the shape with neither is structurally legal on the wire (it decodes)
+    /// and semantically empty (nothing says what portion of the instant the
+    /// reader is shown), so it is refused at validation rather than at decode.
+    ///
+    /// Recorded on `Uses` because the walk already reaches every `Format`
+    /// slot on the way to its source, and every consumer of `Uses` matches
+    /// specific cases and drops the rest — the `TransformStateSource`
+    /// reasoning — so no shipped verdict moves. It carries no payload: the
+    /// reader's id, which `NodeBindingUse` supplies, is the whole finding.
+    | UnstyledDateFormat
 
 /// One observed usage tagged with the id of the node whose spec reads it.
 type NodeBindingUse = { Reader: string; Use: BindingUse }
@@ -663,6 +676,9 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     | Binding.Local(_, _, initialFrom, _, _, _, _) -> usesOfBinding initialFrom
     | Binding.I18n(_, Some args) -> args |> Map.toList |> List.collect (fun (_, ab) -> usesOfBinding<JVal> ab)
     | Binding.I18n(_, None) -> []
+    // Phase 1810 — a `Format.Date` with neither style declared is recorded
+    // beside the source's own uses (see `BindingUse.UnstyledDateFormat`).
+    | Binding.Format(source, Format.Date(None, None), _) -> BindingUse.UnstyledDateFormat :: usesOfBinding source
     | Binding.Format(source, _, _) -> usesOfBinding source
     | Binding.Transform(source, pipeline, parameters) ->
         // The pure `Transform.paramsOf` derivation (fuaran-core#77) names every

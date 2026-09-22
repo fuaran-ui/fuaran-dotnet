@@ -70,9 +70,36 @@ let tests =
           }
 
           test "Date reads whole Unix-epoch seconds" {
-              let s = Formatting.format "en-US" (Format.Date DateStyle.Short) 1700000000.0
+              let s =
+                  Formatting.format "en-US" (Format.Date(Some DateStyle.Short, None)) 1700000000.0
               // 1700000000s = 2023-11-14 (UTC). Short date includes the year.
               Expect.stringContains s "2023" "year present in short date"
+          }
+
+          // Phase 1810 — the time-of-day half. 1700000000 is 2023-11-14T22:13:20Z
+          // and the .NET arm renders in UTC, so the digits are fixed.
+          test "Format.Date with timeStyle alone renders a time of day and no date" {
+              let s =
+                  Formatting.format "en-GB" (Format.Date(None, Some TimeStyle.Short)) 1700000000.0
+
+              Expect.stringContains s "22:13" "the time-of-day portion"
+              Expect.isFalse (s.Contains "2023") "no date portion when dateStyle is absent"
+          }
+
+          test "Format.Date with both styles renders a date-time" {
+              let s =
+                  Formatting.format "en-GB" (Format.Date(Some DateStyle.Medium, Some TimeStyle.Short)) 1700000000.0
+
+              Expect.stringContains s "2023" "the date portion"
+              Expect.stringContains s "22:13" "the time portion"
+          }
+
+          test "Format.Date with dateStyle alone is byte-unchanged from the pre-1810 rendering" {
+              let s =
+                  Formatting.format "en-GB" (Format.Date(Some DateStyle.Short, None)) 1700000000.0
+
+              Expect.stringContains s "2023" "the date"
+              Expect.isFalse (s.Contains "22:13") "no time portion when timeStyle is absent"
           }
 
           test "RelativeTime past reads a negative count as 'ago' (English fallback)" {

@@ -5145,6 +5145,58 @@ let formatSince: Node<obj> =
         ))
         None
 
+// ─── Phase 1810 — `Format.Date` with a time of day: the `timeStyle` half ────
+//
+// `format-bindings` above pins the shape every pre-1810 document carries —
+// `dateStyle` alone, byte-unchanged. This fixture pins the two shapes Phase
+// 1810 admits beside it: BOTH styles (a date-time, each half at its own
+// breadth) and `timeStyle` ALONE (a time of day — the display half of a
+// `Time` form field's value, which no formatter could show back before this).
+// The source is the same whole-Unix-epoch-seconds instant in every case; what
+// differs is which portion of it the reader is shown. Neither style present is
+// not pinned as an accept vector because it is not one: it decodes
+// structurally and FUARAN155 refuses it.
+let formatDateTime: Node<obj> =
+    let md (id: string) (b: Binding<string>) : Node<obj> =
+        node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
+
+    node
+        "format-date-time"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+              Role = BoxRole.Group
+              Heading = None
+              Children =
+                [ md
+                      "fmt-date-time"
+                      (Binding.Format(
+                          Binding.Static(Some 1700000000.0),
+                          Format.Date(Some DateStyle.Medium, Some TimeStyle.Short),
+                          LocaleSource.Explicit "en-GB"
+                      ))
+                  md
+                      "fmt-time-only"
+                      (Binding.Format(
+                          Binding.Static(Some 1700000000.0),
+                          Format.Date(None, Some TimeStyle.Short),
+                          LocaleSource.Ambient
+                      ))
+                  md
+                      "fmt-time-full"
+                      (Binding.Format(
+                          Binding.Static(Some 1700000000.0),
+                          // `Medium` rather than `Full` at the time half, on
+                          // purpose: `Long` / `Full` time styles carry the ZONE
+                          // NAME, and a render snapshot of one differs between
+                          // a UTC runner and a GMT one.
+                          Format.Date(Some DateStyle.Full, Some TimeStyle.Medium),
+                          LocaleSource.Explicit "de-DE"
+                      )) ]
+              KeepTogether = false
+              BreakBefore = false }
+        ))
+        None
+
 // ─── Fuaran-UI Phase 1534 — `Binding.Expr`, scalar logic over bound values ──
 //
 // The intents the demand log records against the closure detour, each in the
@@ -6837,7 +6889,7 @@ let formatBindings: Node<obj> =
                       "fmt-date"
                       (Binding.Format(
                           Binding.Static(Some 1700000000.0),
-                          Format.Date DateStyle.Medium,
+                          Format.Date(Some DateStyle.Medium, None),
                           LocaleSource.Explicit "fr-FR"
                       ))
                   md
@@ -8075,6 +8127,8 @@ let allNodes: (string * Node<obj>) list =
       nowGrain
       "Binding.Format (Phase 1533 — Since: the instant-reading twin of RelativeTime, declared unit and auto)",
       formatSince
+      "Binding.Format (Phase 1810 — Date with a time of day: dateStyle + timeStyle, and timeStyle alone)",
+      formatDateTime
       "Binding/Expr (Phase 1534 — scalar logic with no params: concat, arithmetic, AND/NOT, a null test)", exprScalar
       "Binding/Expr (Phase 1534 — params from State / Selection / Query / Filter / Now, including an InParam membership test)",
       exprParamsStateSelection
