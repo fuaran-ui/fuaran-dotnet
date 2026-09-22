@@ -313,6 +313,19 @@ let ofFacts (treeFacts: BindingWalk.TreeFacts) : WiringGraph =
         // but it is a `Set<string>` with no writing node to put on the edge, so
         // it cannot serve a projection whose contract is ids on both ends. The
         // tagged list is what is claimed; the wider set is not silently implied.
+        //
+        // Fuaran-UI Phase 1801 — that choice is load-bearing and was measured.
+        // Phase 1801 was authored on the premise that a `Stepper.activeStep` or
+        // a `Toast.open` "projects as a CONTROL that drives whatever reads that
+        // key" here, which would make Phase 1780's `drives(control, consumer)`
+        // true on wiring no user can operate. It is FALSE: both reached
+        // `WriteKeys` alone and this projection has never read it, so neither
+        // was ever a control and the rendering's bytes did not move when they
+        // left the write-back set. Reaching for the untagged set to "widen
+        // coverage" would create that hazard rather than close it — the whole
+        // point of a control is that a user can operate it, and a key with no
+        // writing node cannot be shown to have one.
+        // `Fuaran.UI.Tests/FilterWriteWalkTests.fs` asserts it.
         @ (facts.StateKeys.Writes
            |> List.map (fun (writer, key) ->
                { WiringControl.NodeId = writer

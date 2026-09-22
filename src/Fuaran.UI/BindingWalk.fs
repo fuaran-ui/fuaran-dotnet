@@ -347,9 +347,15 @@ type StateKeyFacts =
         ///  2. `Action.Call`'s `into: State <key>` result target.
         ///  3. A control's WRITE-BACK slot bound to `Binding.State(k, _)` —
         ///     `Select.value` / `.values`, `Tabs.activeIndex` / `.activeTag`,
-        ///     `Stepper.activeStep`, `Disclosure.open`, `Modal.open`,
-        ///     `Toast.open`, and every `FormField` value slot. The renderer
-        ///     writes these back when no handler is supplied.
+        ///     `Disclosure.open`, `Modal.open`, and every `FormField` value
+        ///     slot. The renderer writes these back when no handler is
+        ///     supplied. The list is the state half of the ONE closed list of
+        ///     write-back positions; see `noteWriteBackOf`, which is where it
+        ///     is derived and where the evidence for each position is named.
+        ///     Fuaran-UI Phase 1801 removed `Stepper.activeStep` and
+        ///     `Toast.open` from it: the reference renderer writes neither, so
+        ///     their presence here was a claim that a key had a writer when
+        ///     nothing in the tree could be shown to write it.
         ///  4. A `FormField` whose value slot is `None` — the Phase 694
         ///     auto-bind writes back to `State(field.Id)`.
         ///  5. A `DataGrid`'s `sortStateKey` / `pageStateKey` / `editStateKey`
@@ -510,9 +516,10 @@ type TreeFacts =
         /// (writing node id, filter name), in walk order.
         ///
         /// The closed list of positions is derived in `collect` from the
-        /// reference host's own write-back path; see the note there for which
-        /// positions are on it, and — more usefully — which two the walk treats
-        /// as State write-backs and this list deliberately excludes.
+        /// reference host's own write-back path; see `noteWriteBackOf` there,
+        /// which states the list once, names the renderer call site that is the
+        /// evidence for each position, and says which two the vocabulary offers
+        /// that are on neither channel.
         ///
         /// A `Filters` chip's own value slot is NOT here: the renderer writes a
         /// chip's DECLARED `FilterSpec.Name`, not whatever its value slot binds,
@@ -1099,37 +1106,6 @@ let rec writeBackTargetOf<'T> (binding: Binding<'T>) : string option * bool =
         destination, opaque || onCommit.IsSome
     | _ -> None, false
 
-/// THE predicate for "the Phase 426 control write-back default has somewhere to
-/// write" — FUARAN069's inert-control condition, and the same question the client
-/// renderer and the SSR renderer each ask before choosing their markup.
-///
-/// **One definition, here, and that is the point of the function existing**
-/// (Phase 1667). It stood as three byte-identical private copies — in
-/// `PreEmitValidate.fs`, `Fuaran.UI.Renderer/Render.fs` and
-/// `Fuaran.UI.Renderer.Server/Render.fs` — each carrying a comment asserting they
-/// must stay one predicate, which is the weakest possible form of that guarantee:
-/// three copies agree until one of them is edited. It lives in this module
-/// because this is where `writeBackTargetOf` already answers the harder half of
-/// the same question, and because `Fuaran.UI` is upstream of both renderers and of
-/// the validator.
-///
-/// `Binding.State` and an unwritten `Binding.Filter` are direct store slots. A
-/// `Binding.Local` is DERIVED from `writeBackTargetOf` rather than admitted
-/// wholesale, which is what narrows its exemption to what 1538 said it meant: a
-/// buffer is live when it carries a commit closure, a declared `commitTo`, OR a
-/// writable re-sync source, and one carrying none of the three buffers a value
-/// and then has nowhere to put it. Deriving it also means the narrowing cannot
-/// drift from the destination the validator's two-writers check reads, since both
-/// now read the same function.
-let isWriteBackTarget<'T> (binding: Binding<'T>) : bool =
-    match binding with
-    | Binding.State _
-    | Binding.Filter(_, None) -> true
-    | Binding.Local _ ->
-        let destination, opaque = writeBackTargetOf binding
-        destination.IsSome || opaque
-    | _ -> false
-
 /// The FILTER name a write-back slot commits to — `writeBackTargetOf`'s twin on
 /// the other store (Phase 1785).
 ///
@@ -1151,12 +1127,58 @@ let isWriteBackTarget<'T> (binding: Binding<'T>) : bool =
 ///    store. There is no path by which a buffer commits to a filter.
 ///  * **The default is not consulted.** `writeBackTo` matches
 ///    `Binding.Filter(name, _)`, so a slot carrying a default writes exactly as
-///    one without does. Note this is WIDER than `isWriteBackTarget`, which admits
-///    `Binding.Filter(_, None)` only — see the note on that function.
+///    one without does.
+///
+/// Fuaran-UI Phase 1801 — that second asymmetry used to be an asymmetry with
+/// `isWriteBackTarget` as well, which admitted `Binding.Filter(_, None)` alone
+/// and so called a DEFAULTED filter slot inert: FUARAN069 reported as unwired a
+/// control the reference host writes on every change. The two answers can no
+/// longer be held apart, because the predicate below is DERIVED from this
+/// function rather than restating its arm.
 let filterWriteTargetOf<'T> (binding: Binding<'T>) : string option =
     match binding with
     | Binding.Filter(name, _) -> Some name
     | _ -> None
+
+/// THE predicate for "the Phase 426 control write-back default has somewhere to
+/// write" — FUARAN069's inert-control condition, and the same question the client
+/// renderer and the SSR renderer each ask before choosing their markup.
+///
+/// **One definition, here, and that is the point of the function existing**
+/// (Phase 1667). It stood as three byte-identical private copies — in
+/// `PreEmitValidate.fs`, `Fuaran.UI.Renderer/Render.fs` and
+/// `Fuaran.UI.Renderer.Server/Render.fs` — each carrying a comment asserting they
+/// must stay one predicate, which is the weakest possible form of that guarantee:
+/// three copies agree until one of them is edited. It lives in this module
+/// because this is where `writeBackTargetOf` already answers the harder half of
+/// the same question, and because `Fuaran.UI` is upstream of both renderers and of
+/// the validator.
+///
+/// **Fuaran-UI Phase 1801 — it is DERIVED rather than restated, and that is the
+/// whole of "the walk and the rule agree by construction".** The closed list of
+/// write-back DESTINATIONS is the two functions above — `writeBackTargetOf` on
+/// the state store, `filterWriteTargetOf` on the filter store — each mirrored
+/// arm-for-arm off the reference renderer's `writeBackTo`. This predicate is
+/// their union, so there is no third enumeration of the vocabulary left to drift
+/// from them. Phase 1667 made three copies into one definition; this makes that
+/// one definition a derivation, which is the difference between two answers that
+/// agree and two answers that cannot differ.
+///
+/// It moved exactly ONE answer on the way: `Binding.Filter(name, Some default)`,
+/// which the previous `Binding.Filter(_, None)` arm called inert while
+/// `writeBackTo`'s `Binding.Filter(name, _)` arm writes it on every change. That
+/// was a false FUARAN069, a rating control given the non-interactive ARIA role,
+/// and an SSR picture where an adjustable control belonged.
+///
+/// The `opaque` half is `writeBackTargetOf`'s, carried through unchanged: a
+/// `Binding.Local` is live when its commit pipeline has a destination — an
+/// `onCommit` closure, a declared `commitTo`, or a writable re-sync source — and
+/// one carrying none of the three buffers a value and then has nowhere to put it,
+/// which is what Phase 1538 corrected.
+let isWriteBackTarget<'T> (binding: Binding<'T>) : bool =
+    let stateDestination, opaque = writeBackTargetOf binding
+
+    stateDestination.IsSome || opaque || (filterWriteTargetOf binding).IsSome
 
 /// The write-side facts of one `FormFieldKind`'s value slot.
 type FormFieldWrite =
@@ -1320,22 +1342,42 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
     /// phase closes; asking them at one call site makes it impossible for the two
     /// enumerations to diverge as the vocabulary grows.
     ///
-    /// The closed list of positions this is called from is derived from the
-    /// reference host's own write-back path (`writeBackTo` in the client
-    /// renderer, reached directly or through `fieldChange`): `Disclosure.open`,
-    /// `Tabs.activeIndex`, `Tabs.activeTag`, `Modal.open`, `Select.value`,
-    /// `Select.values`, every `Form` field's value slot, and an editable
-    /// `DataGrid`'s `source` commit destination.
+    /// **THE CLOSED LIST OF WRITE-BACK POSITIONS, stated once, here.**
     ///
-    /// **`Stepper.activeStep` and `Toast.open` are NOT on it**, and the exclusion
-    /// is evidence rather than an oversight: both are treated as write-back
-    /// positions by the STATE projection below, and the reference renderer writes
-    /// neither — it resolves `ActiveStep` for display and never calls the
-    /// write-back path for it, and a `Toast`'s dismiss button carries no handler
-    /// at all. Both keep their existing state-side `noteWriteBack` call, so
-    /// nothing a shipped rule reads moves; what they do not get is a claim that
-    /// they drive a filter, which on this host they cannot. A position that
-    /// cannot be shown writing on the reference host is not on this list.
+    /// The membership rule is a measurement, not a taste: a position is on the
+    /// list iff the reference host's write-back path — `writeBackTo` in
+    /// `Fuaran.UI.Renderer`, reached directly or through `fieldChange` /
+    /// `pairFieldChange` — can be shown to write it in response to a USER ACT
+    /// when the slot's handler is omitted. The evidence per position is the
+    /// call site in that renderer, named here so a later reader checks the list
+    /// against the host rather than against this comment:
+    ///
+    ///  * `Disclosure.open` — the header toggle's `| None -> writeBackTo ctx
+    ///    spec.Open`.
+    ///  * `Modal.open` — the backdrop / close gesture's `dismiss ()`, whose
+    ///    handler-free arm is `writeBackTo ctx spec.Open (Some(box false))`.
+    ///  * `Tabs.activeIndex` — a tab click's `| None -> writeBackTo ctx
+    ///    spec.ActiveIndex`.
+    ///  * `Tabs.activeTag` — the same click's tag arm, `writeBackTo ctx
+    ///    tagBinding`.
+    ///  * `Select.value` and `Select.values` — the choice handlers' `| None ->
+    ///    writeBackTo ctx spec.Value` / `... values`.
+    ///  * every `Form` field's value slot — `fieldChange`, whose handler-free
+    ///    arm IS `writeBackTo`, reached by every `FormFieldKind`.
+    ///  * an editable `DataGrid`'s `source` commit destination — the row-edit
+    ///    and transfer paths' `WriteRows = fun destination rows -> writeBackTo
+    ///    ctx destination ...`.
+    ///
+    /// **`Stepper.activeStep` and `Toast.open` are NOT on it, on either
+    /// channel** (Phase 1785 for the filter half, Fuaran-UI Phase 1801 for the
+    /// state half). The renderer RESOLVES a stepper's `ActiveStep` to mark the
+    /// active step and its step-header click runs `OnSelect` or nothing; a
+    /// `Toast`'s dismiss button carries no handler at all, so its `Open` decides
+    /// the `hidden` attribute and is written by nothing. Neither reaches
+    /// `writeBackTo` on any path. A position that cannot be shown writing on the
+    /// reference host is not on this list — and 1785 applying that rule to one
+    /// channel while the other went on asserting the opposite is exactly the
+    /// two-ideas-of-one-thing this phase closes.
     let noteWriteBackOf (writer: string) (binding: Binding<'T>) =
         noteWriteBack (writeBackTargetOf binding)
 
@@ -1542,9 +1584,15 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
             | NodeKind.SplitPanel s -> [], s.Children
             | NodeKind.SummaryList s -> usesOfTextOpt s.Heading, s.Children
             | NodeKind.Stepper s ->
-                // Phase 1785 — state half only; see `noteWriteBackOf` for why
-                // this position is off the filter-write list.
-                noteWriteBack (writeBackTargetOf s.ActiveStep)
+                // Phase 1801 — NOT a write-back position, on EITHER channel.
+                // The reference renderer resolves `ActiveStep` to mark the
+                // active step, and a step-header click runs `OnSelect` or
+                // nothing at all; it never reaches `writeBackTo`. Phase 1785
+                // took the filter half off this list on exactly that evidence
+                // and left the state half, which went on asserting the same
+                // untrue thing on the other channel. A present `OnSelect` is
+                // still an opaque writer — that is a claim about the CLOSURE,
+                // which may write anything, not about this slot.
                 noteOpaqueIf s.OnSelect.IsSome
                 usesOfBinding s.ActiveStep, s.Children
             | NodeKind.Disclosure s ->
@@ -1638,8 +1686,11 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
 
                 labelUses t.Items, []
             | NodeKind.Toast t ->
-                // Phase 1785 — state half only; see `noteWriteBackOf`.
-                noteWriteBack (writeBackTargetOf t.Open)
+                // Phase 1801 — NOT a write-back position, on EITHER channel; see
+                // the `Stepper` arm above for the shape of the argument. A
+                // `Toast`'s dismiss button carries no handler in the reference
+                // renderer at all, so `Open` is READ to decide the `hidden`
+                // attribute and written by nothing.
                 usesOfText t.Message @ usesOfBinding t.Open, []
             | NodeKind.CodeBlock _ -> [], []
             | NodeKind.Math _ -> [], []

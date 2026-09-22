@@ -2928,6 +2928,15 @@ let private pillToneContradictions (map: Map<string, ToneVariant>) : (string * s
 /// `writeBackTargetOf` is what makes that true rather than asserted, and it is
 /// what applies 1538's narrowing of the `Local` exemption to this check, which
 /// was the one place the narrowing had been stated and not implemented.
+///
+/// Fuaran-UI Phase 1801 — the rule and the WALK now agree by construction, not
+/// merely by sharing a definition. That definition is itself derived from the
+/// two write-back DESTINATION functions (`writeBackTargetOf` on the state store,
+/// `filterWriteTargetOf` on the filter store), each mirrored arm-for-arm off the
+/// reference renderer's `writeBackTo`, so FUARAN069 cannot hold an idea of what
+/// a filter write is that the walk recording those writes does not hold. The
+/// answer it moved: `Binding.Filter(name, Some default)`, previously reported
+/// inert while the host wrote it on every change.
 let private isWriteBackTarget (binding: Binding<'T>) : bool = BindingWalk.isWriteBackTarget binding
 
 // ── FUARAN109/110/111 — the accessibility family (Phase 727) ─────────────────

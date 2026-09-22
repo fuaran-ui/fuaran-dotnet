@@ -380,3 +380,135 @@ let tests =
                        | _ -> false))
                   "a filter-writing control that nothing reads is an ordinary tree"
           } ]
+
+// ============================================================================
+//  Phase 1801 — the STATE half of the same closed list, and the premise the
+//  shard got wrong.
+//
+//  Phase 1785 applied one membership rule — a position is a write-back position
+//  iff the reference host's `writeBackTo` can be shown to write it on a user act
+//  — and applied it to the FILTER channel only. `Stepper.activeStep` and
+//  `Toast.open` failed that rule and were excluded there, while the STATE
+//  projection beside them went on recording both: one closed list, asserted two
+//  ways. These tests pin the state half, so removing a position from one channel
+//  and not the other is as red as removing it from neither.
+//
+//  The shard's own second premise — that each "projects as a CONTROL that drives
+//  whatever reads that key" in the wiring graph — is REFUTED and the refutation
+//  is asserted here rather than only narrated. `WiringGraph.ofFacts` builds its
+//  State controls from `StateKeys.Writes`, the reader-TAGGED `Action.SetState`
+//  list, and deliberately never reads the untagged `WriteKeys` set these
+//  positions reached (its own comment says why: a `Set<string>` has no writing
+//  node to put on an edge). So no stepper was ever a control, the
+//  `drives(control, consumer)` hazard Phase 1780 inherits never existed on this
+//  path, and `WiringGraph.render`'s bytes do not move for this change — they
+//  could not have.
+// ============================================================================
+
+/// The state keys a tree can be shown to write — `WriteKeys`, the untagged set
+/// the four "nothing writes this key" rules read.
+let private writeKeysOf (root: Node<Msg>) : string list =
+    (BindingWalk.collect root).StateKeys.WriteKeys |> Set.toList |> List.sort
+
+[<Tests>]
+let statefulPositions =
+    testList
+        "Phase 1801 — the state half of the closed list"
+        [ test "a state-bound write-back position contributes its key" {
+              // The positive control, and the falsifier for the two exclusions
+              // below: without it, a walk that recorded NOTHING on this channel
+              // would pass them both.
+              let disc =
+                  Fuaran.disclosure
+                      "disc"
+                      { Defaults.disclosure<Msg> with
+                          Open = Binding.State("expanded", None) }
+
+              Expect.equal (writeKeysOf disc) [ "expanded" ] "a Disclosure's open slot is written by the header toggle"
+
+              let modal =
+                  Fuaran.modal
+                      "modal"
+                      { Defaults.modal<Msg> with
+                          Open = Binding.State("shown", None) }
+
+              Expect.equal (writeKeysOf modal) [ "shown" ] "a Modal's open slot is written by its close gesture"
+          }
+
+          test "Stepper.activeStep is off the write-back set on BOTH channels" {
+              // The renderer resolves `ActiveStep` to mark the active step and
+              // its step-header click runs `OnSelect` or nothing; it reaches
+              // `writeBackTo` on no path. Recording a write here claimed a key
+              // had a writer when nothing in the tree could be shown to write
+              // it — which is what the four `WriteKeys` rules reason from.
+              let stepper =
+                  Fuaran.stepper
+                      "step"
+                      { Defaults.stepper<Msg> with
+                          ActiveStep = Binding.State("stage", None) }
+
+              Expect.isEmpty (writeKeysOf stepper) "a stepper writes no state key"
+              Expect.isEmpty (filterWritesOf (stepperActiveStep ())) "and no filter name"
+          }
+
+          test "Toast.open is off the write-back set on BOTH channels" {
+              // A `Toast`'s dismiss button carries no handler at all in the
+              // reference renderer, so `Open` decides the `hidden` attribute
+              // and is written by nothing.
+              let toast =
+                  Fuaran.toast
+                      "toast"
+                      { Defaults.toast with
+                          Open = Binding.State("visible", None) }
+                  : Node<Msg>
+
+              Expect.isEmpty (writeKeysOf toast) "a toast writes no state key"
+              Expect.isEmpty (filterWritesOf (toastOpen ())) "and no filter name"
+          }
+
+          test "a Stepper's OnSelect is still an opaque writer" {
+              // The exclusion is a claim about the SLOT, not about the closure.
+              // A present `OnSelect` may dispatch any action at all, so the
+              // write-side rules must still stand down for the whole tree — and
+              // a session that read the exclusion as "a stepper writes nothing"
+              // would have taken that with it.
+              let wired =
+                  Fuaran.stepper
+                      "step"
+                      { Defaults.stepper<Msg> with
+                          ActiveStep = Binding.State("stage", None)
+                          OnSelect = Some(fun _ -> Action.Chain []) }
+
+              Expect.isTrue (BindingWalk.collect wired).StateKeys.OpaqueWriter "a closure may write anything"
+          }
+
+          test "no renderer-driven key is a control in the wiring graph — and none ever was" {
+              // The shard's premise, checked against the tree rather than taken
+              // at face value. `WiringGraph` builds State controls from
+              // `StateKeys.Writes` — the reader-tagged `Action.SetState` list —
+              // and never from `WriteKeys`, which is where a stepper's key went.
+              // So this assertion passed before the change as well; it is here
+              // so that a future projection reaching for the untagged set goes
+              // red at the moment it does, rather than handing Phase 1780's
+              // `drives` predicate wiring no user can operate.
+              let tree =
+                  dashboard
+                      [ Fuaran.stepper
+                            "step"
+                            { Defaults.stepper<Msg> with
+                                ActiveStep = Binding.State("stage", None) }
+                        Fuaran.heading
+                            "h"
+                            { Defaults.heading with
+                                Text = TextSource.Bound(Binding.State("stage", None)) } ]
+
+              let graph = WiringGraph.project tree
+
+              Expect.isEmpty
+                  (graph.Controls |> List.filter (fun c -> c.Name = "stage"))
+                  "a stepper does not drive the key it displays"
+
+              Expect.isNonEmpty
+                  (graph.Consumers |> List.filter (fun c -> c.Name = "stage"))
+                  "though the heading that reads it is a consumer — so the filter above is not vacuous"
+          } ]

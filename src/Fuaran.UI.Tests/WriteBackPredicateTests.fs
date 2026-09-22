@@ -79,6 +79,14 @@ let private validatorCallsItInert (binding: Binding<string>) : bool =
 let private cases: (string * Binding<string> * bool) list =
     [ "State", Binding.State("k", None), true
       "Filter with no declared default", Binding.Filter("f", None), true
+      // Phase 1801 — the row that was missing, and the one the phase MOVED.
+      // `writeBackTo`'s arm is `Binding.Filter(name, _)`, so a carried default
+      // changes nothing about whether the write happens; the predicate admitted
+      // `Binding.Filter(_, None)` alone and so called this slot inert, which is
+      // a false FUARAN069 on a control the reference host writes on every
+      // change. It is `true` by DERIVATION now rather than by a restated arm —
+      // see the union assertion below.
+      "Filter carrying a declared default", Binding.Filter("f", Some "all"), true
       "Static", Binding.Static(Some "x"), false
       "Query", Binding.Query("q", (fun (_: obj) -> ""), None), false
       "Local with a declared commitTo", localOver (Binding.Static(Some "x")) None (Some "order.unitPrice"), true
@@ -113,6 +121,45 @@ let tests =
                           name
                           predicate
                           inert)
+          }
+
+          // ── Phase 1801: the predicate is DERIVED from the destinations ────
+          test "the predicate is the union of the two destination functions" {
+              // The structural half of "the walk and the rule agree by
+              // construction". The behavioural table above would still pass if
+              // someone re-wrote the predicate as its own match over the
+              // vocabulary and happened to get every listed row right — which is
+              // how the three copies Phase 1667 removed arrived. This asserts the
+              // shape instead: for every row, the answer IS
+              // `writeBackTargetOf` ∪ `filterWriteTargetOf` ∪ opacity, so a third
+              // enumeration of the vocabulary cannot be introduced without
+              // disagreeing with one of the two destination functions that mirror
+              // the renderer's own arms.
+              for name, binding, _ in cases do
+                  let stateDestination, opaque = BindingWalk.writeBackTargetOf binding
+                  let filterDestination = BindingWalk.filterWriteTargetOf binding
+
+                  Expect.equal
+                      (BindingWalk.isWriteBackTarget binding)
+                      (stateDestination.IsSome || opaque || filterDestination.IsSome)
+                      (sprintf "the predicate is not the union of the destinations for %s" name)
+          }
+
+          test "a defaulted filter slot is live on BOTH the predicate and the walk" {
+              // The one moved answer, stated on its own because a table row whose
+              // expectation was edited alongside the predicate would not say so.
+              // Both halves are asserted: the predicate the rule reads, and the
+              // walk's own filter-write destination, which already said `Some`
+              // here while the predicate said inert.
+              let defaulted: Binding<string> = Binding.Filter("region", Some "all")
+
+              Expect.equal
+                  (BindingWalk.filterWriteTargetOf defaulted)
+                  (Some "region")
+                  "the walk has always recorded the write — this is the half that was right"
+
+              Expect.isTrue (BindingWalk.isWriteBackTarget defaulted) "and the predicate now agrees with it"
+              Expect.isFalse (validatorCallsItInert defaulted) "so FUARAN069 no longer calls it inert"
           }
 
           test "the narrowing is LIVE — a Local with nowhere to commit is inert" {

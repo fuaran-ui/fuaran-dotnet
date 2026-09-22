@@ -7815,6 +7815,104 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## The slot Phase 1801 rides — THE NUMBER IS UNMINTED, and that is a recorded escalation
+
+_Phase 1801 moves a public predicate's answer and two shipped validator verdict classes. Under the
+rule stated in the 0.85.0 closure note below — "the next commit that moves a public contract advances
+`<Version>` to 0.86.0 and opens that heading above this one in the same change-set" — this is that
+commit. **It opens the heading and does NOT move the number**, deliberately and with the reason
+recorded here rather than left to be inferred._
+
+**Why the number did not move with the content.** The closure note below measured what advancing
+costs: `<Version>` is also what the downstream version-freshness pre-flight reads as this tier's
+LATEST, so advancing to an unpublished 0.86.0 grades the publishable evaluation cohort's
+freshly-correct pin STALE on a GATING check whose only offered remedy — raise the pin to `<Version>`
+— cannot be taken, because that consumer declares a public restore path and 0.86.0 is not on
+nuget.org. That consequence lands in a repository this phase does not build and cannot fix, so
+minting the number here would knowingly red someone else's gate. Advancing it is therefore a
+release-coordination act rather than a phase act: the session that mints 0.86.0 renames this heading,
+and nothing else in this entry changes.
+
+**What is NOT true, and is the reason this paragraph exists.** Phase 1801 was dispatched to "append
+an entry on the standing 0.85.0 draft — additive; do NOT move `<Version>`". There is no standing
+0.85.0 draft: Phase 1778 closed and released it on 2026-09-20, and the bold line below says in as
+many words that nothing may ride it. Appending under that heading would have recorded a released slot
+as carrying a change it does not carry, which is the one failure mode a version note exists to
+prevent.
+
+### What rides this slot
+
+**fuaran#1801 — BREAKING at a public predicate's answer and at two validator verdict classes, and
+NOTHING on the wire moves.** The subject is the same predicate Phase 1667 unified — `Fuaran.UI`'s
+`BindingWalk.isWriteBackTarget`, FUARAN069's inert-control condition and the question both renderers
+ask before choosing their markup — and the same failure mode one level up: 1667 made three copies
+into ONE DEFINITION, and this makes that one definition a DERIVATION.
+
+**One closed list of write-back positions, in one place, derived.** The list is the two destination
+functions that mirror the reference renderer's `writeBackTo` arm for arm — `writeBackTargetOf` on the
+state store, `filterWriteTargetOf` on the filter store — and the predicate is now their union plus
+`writeBackTargetOf`'s opacity flag, rather than a third match over the vocabulary standing beside
+them. `BindingWalk.noteWriteBackOf` states the list once and names, per position, the renderer call
+site that is the evidence for it. The membership rule is a measurement: a position is on the list iff
+the reference host can be shown to write it in response to a user act when the handler is omitted.
+
+**What BREAKS, first: a filter slot carrying a declared default is LIVE.** `writeBackTo`'s arm is
+`Binding.Filter(name, _)`, so a carried default changes nothing about whether the write happens, and
+the walk's `filterWriteTargetOf` has always said so. The predicate admitted `Binding.Filter(_, None)`
+alone, so a handler-free control over `Binding.Filter(name, Some default)` was reported **FUARAN069
+inert** while the reference host wrote it on every change, the client renderer gave the rating
+control the non-adjustable ARIA role, and the SSR renderer emitted a picture where an adjustable
+control belonged. All three now agree with the host. A consumer whose tree carries that shape loses a
+FUARAN069 it should never have had; no tree gains one.
+
+**What BREAKS, second: `Stepper.activeStep` and `Toast.open` leave the write-back set on BOTH
+channels.** Phase 1785 applied the membership rule to the filter channel and excluded both on the
+evidence that the renderer RESOLVES a stepper's `ActiveStep` to mark the active step while its
+step-header click runs `OnSelect` or nothing, and that a `Toast`'s dismiss button carries no handler
+at all — so neither reaches `writeBackTo` on any path. The STATE projection beside it went on
+recording both, which is one closed list asserted two ways, and is the disagreement this phase
+closes. `TreeBindingFacts.StateKeys.WriteKeys` therefore no longer contains a key whose only claimed
+writer was a stepper or a toast, so the four rules that reason from "nothing writes this key" —
+`SwitchKeyNoWriter` and its three siblings — can now report a tree they previously passed. That is a
+correction rather than a tightening: the key genuinely has no writer. A present `OnSelect` remains an
+OPAQUE writer and still stands the write-side rules down for the whole tree; the exclusion is a claim
+about the slot, never about the closure.
+
+**`TreeBindingFacts` and `TreeFacts` are unchanged in SHAPE.** No record field, union case, member or
+signature moves, no wire shape moves, and no decoder changes. `collect` still returns exactly what it
+returned. No kind is added, merged or retired, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged, and no field is added to a mapped record, so §11 step 6 is not
+engaged either. **No escape hatch is created or widened** — one half of the change NARROWS the write
+set and the other half widens no surface a host reaches, so `docs/security/ESCAPE-HATCHES.md` needs
+no amendment.
+
+**The corpus differential, and the coverage finding that is the more useful half of it.** Every
+`nodes/` fixture in the wire-format conformance corpus (232 documents) was run through
+`PreEmitValidate.validate`, `BindingWalk.collectFacts` and `WiringGraph.render` before and after:
+**zero moved verdicts, zero moved `WriteKeys` sets, and `WiringGraph.render`'s bytes identical on
+every document.** That result is honest but WEAK, and the reason is worth recording where the next
+session hits it: the corpus cannot exercise either half of this change. It carries one `Stepper` and
+one `Toast`, and both bind `Static` — never a write-back target on either channel — and of its six
+`Binding.Filter` slots not one carries a `defaultValue`. A differential whose subject is absent from
+the population measures the absence rather than the change. The probe was proved capable of reporting
+a move before that result was believed: deliberately falsifying the predicate moved fourteen lines of
+the same report. The change itself is measured instead by direct assertion over hand-built trees in
+`WriteBackPredicateTests.fs` and `FilterWriteWalkTests.fs`, each of which was confirmed to go RED
+against the pre-1801 behaviour.
+
+**The shard's second premise was REFUTED, and the refutation is asserted rather than narrated.** The
+phase was authored on the claim that a stepper and a toast each "projects as a CONTROL that drives
+whatever reads that key" in the wiring graph, making Phase 1780's `drives(control, consumer)`
+predicate true on wiring no user can operate. They do not, and never did. `WiringGraph.ofFacts`
+builds its State controls from `StateKeys.Writes` — the reader-TAGGED `Action.SetState` list — and
+deliberately never reads the untagged `WriteKeys` set these two positions reached, for the reason its
+own comment gives: a `Set<string>` carries no writing node to put on an edge. So the graph's bytes
+could not have moved for this change, the hazard Phase 1780 inherits never existed on this path, and
+the over-count was confined to the four "nothing writes this key" rules, where it suppressed findings
+rather than inventing edges. `FilterWriteWalkTests.fs` pins this as an assertion that passed before
+the change as well as after, so a future projection reaching for the untagged set goes red at the
+moment it does.
+
 ## 0.85.0 — the slot Phase 1734 opened, which Phase 1821's column-naming rename raised to WIRE-BREAKING — released 2026-09-20 as `v0.85.0`
 
 _**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride
