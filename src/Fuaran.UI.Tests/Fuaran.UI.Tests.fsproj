@@ -413,6 +413,9 @@
          state key IS on the wire, decided against the reference resolver rather
          than against a reading of the types. -->
     <Compile Include="ClearStateKeyProbeTests.fs" />
+    <!-- Phase 1789 - the source read that keeps `decodeCellValue` deleted: an uncalled
+         private decoder is invisible to both the compiler and the conformance run. -->
+    <Compile Include="HostTypeDecoderTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

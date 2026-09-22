@@ -7913,6 +7913,45 @@ rather than inventing edges. `FilterWriteWalkTests.fs` pins this as an assertion
 the change as well as after, so a future projection reaching for the untagged set goes red at the
 moment it does.
 
+**fuaran#1789 — NOT A CHANGE TO ANY CONTRACT: a specification correction, and the removal of a
+private decoder that nothing could reach.** `CellValue` is a HOST type. A grid column's value is the
+closure `Row -> CellValue`, so `"<closure>"` is the whole of what the wire carries for it: the IDL
+gives the type no wire position, `manifest.json` enumerates no such discriminator family, and no
+corpus vector carries one. `WIRE_FORMAT.md` nevertheless named it twice — once in §3.3's roll-call of
+the `$type`-dispatched objects that appear at every nested DU, once in §11's grid-column
+discriminator-family list — and `Fuaran.UI.Ops.JsonDecode` carried a private `decodeCellValue`
+parsing a `$type`-dispatched shape that no position accepts. Both are residue of an earlier design in
+which a column's value was data.
+
+**What moved.** The two list mentions are struck, and ONE sentence is added beside the `Column.Value`
+slot in §4 stating what the wire carries for a column's value and that the type a cell resolves to is
+a host concern. `decodeCellValue` is deleted. **No public surface moves**: the deleted binding was
+`private` and had no call site, so there is nothing a consumer can name that changes. This entry
+records the removal; it does not warn about one.
+
+**What does NOT move — measured, not asserted.** `manifest.json` and every `nodes/` and `reject/`
+vector are byte-identical across the corpus commit; no encoder, decoder or renderer behaviour changes
+on any document; the emitted `schema.json` is untouched. The two bundled host corpus snapshots
+(`fuaran-ts`, `fuaran-py`) carry no copy of the specification text, so re-syncing them moves only each
+snapshot's `authorityCommit` provenance sentinel.
+
+**The guard, and why a test rather than a comment.** An UNCALLED private decoder is invisible to the
+compiler AND to the conformance run, so neither would notice the same reasoning ("every DU in the
+vocabulary needs a decoder arm") producing it a second time. `src/Fuaran.UI.Tests/HostTypeDecoderTests.fs`
+reads `JsonDecode.fs` and requires that no decoder's declared RESULT TYPE is one of the host-prelude
+types the IDL gives no wire position — `BindingContext`, `CellValue`, `ErrorPayload`, `FileSelection`.
+It carries a positive control (`CellFormat` and `ColumnWidth` must be found among the matched
+declarations) so that an edit to the decoder's declaration style reports a BLIND PROBE rather than a
+clean sweep of nothing, and it was proved to go red against a restored decoder under a different name
+before its green was believed.
+
+**One residue of the same class is left standing, deliberately and named here rather than left to be
+found.** `src/Fuaran.UI.Ops/SchemaGen.fs` still emits a `"CellValue"` definition into the corpus's
+`schema.json`, and nothing `$ref`s it — the same dead shape in the machine-readable half of the
+specification. Removing it moves a generated corpus artefact that five hosts read directly, which this
+phase's acceptance ("every host's conformance leg is green without a code change") excludes by
+construction; it is a successor's work, not an oversight of this one.
+
 ## 0.85.0 — the slot Phase 1734 opened, which Phase 1821's column-naming rename raised to WIRE-BREAKING — released 2026-09-20 as `v0.85.0`
 
 _**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride

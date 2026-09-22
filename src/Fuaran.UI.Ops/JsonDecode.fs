@@ -2800,7 +2800,7 @@ let private accessibilityNearMiss (path: string) (fields: Map<string, Json>) : R
         | None -> None)
     |> Option.defaultValue (Ok())
 
-// ─── CellFormat / CellValue ──────────────────────────────────────────────
+// ─── CellFormat ──────────────────────────────────────────────────────────
 
 // Phase 819 — the Duration / RelativeTime format enums. Defined ahead of
 // `decodeCellFormat` (which references them); `decodeFormat` below shares
@@ -2907,33 +2907,6 @@ let private decodeCellFormat (path: string) (j: Json) : Result<CellFormat, Decod
                 path
                 s
                 "None | Number | Currency | Percent | SignificantDigits | Date | Duration | RelativeTime | Custom"
-
-let private decodeCellValue (path: string) (j: Json) : Result<CellValue, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        match requireDiscriminator path fields with
-        | Error e -> Error e
-        | Ok "Numeric" ->
-            match requireField path fields "value" "float value" with
-            | Error e -> Error e
-            | Ok j -> requireFloat (path + ".value") j |> Result.map CellValue.Numeric
-        | Ok "Text" ->
-            match requireField path fields "value" "string value" with
-            | Error e -> Error e
-            | Ok j -> requireString (path + ".value") j |> Result.map CellValue.Text
-        | Ok "Bool" ->
-            match requireField path fields "value" "bool value" with
-            | Error e -> Error e
-            | Ok j -> requireBool (path + ".value") j |> Result.map CellValue.Bool
-        | Ok "Date" ->
-            match requireField path fields "unixSeconds" "int64 unix seconds" with
-            | Error e -> Error e
-            | Ok j ->
-                requireFloat (path + ".unixSeconds") j
-                |> Result.map (fun s -> CellValue.Date(DateTimeOffset.FromUnixTimeSeconds(int64 s)))
-        | Ok "Empty" -> Ok CellValue.Empty
-        | Ok s -> unknownDuCase path s "Numeric | Text | Bool | Date | Empty"
 
 // ─── Format / LocaleSource (Phase 102) ───────────────────────────────────
 
