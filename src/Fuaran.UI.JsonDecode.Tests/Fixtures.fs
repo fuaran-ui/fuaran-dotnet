@@ -5723,6 +5723,68 @@ let filtersParamSourceUndeclared: Node<obj> =
         "filters-param-source-undeclared"
         [ filterEdgeChip "region" "Region" [ "emea", "EMEA"; "amer", "Americas" ] ]
 
+// ── Phase 1800 — the SECOND arm of the same rule ────────────────────────────
+//
+// FUARAN075 has two arms: a `Transform` param whose source is a
+// `Binding.Filter`, and a `Query`'s `dependsOn` list. Phase 1784 gave the first
+// arm the pair above; the second arm had no negative fixture in ANY host, so a
+// host could implement the param-source arm, pass every fixture the corpus
+// carries, and still treat an undeclared `dependsOn` name as an unset one.
+//
+// The asymmetry is worse for this arm than for the other, because a `Query`'s
+// predicate lives in the HOST closure: there is no pipeline to prune and no
+// resolver behaviour to inspect at all. The tree hands the host a name and the
+// host decides what to do with it; if no chip declares that name the host is
+// being asked to scope on a slot nothing can ever write. Nothing downstream of
+// the tree can notice — which is exactly why the guard has to be pre-emit.
+//
+// Deliberately the SAME shape as the 1784 pair (one `Filters` node, one
+// consumer, one varying chip) so the two arms differ in the consumer and in
+// nothing else.
+
+/// `declaredChips` is the ONLY thing that varies between this pair too. The
+/// consumer is a `Metric` whose value is a host `Query` declaring its filter
+/// dependency edge on both chip names.
+let private filterEdgeDependsOnDoc (id: string) (declaredChips: FilterSpec<obj> list) : Node<obj> =
+    node
+        id
+        (NodeKind.Box(
+            { Layout = BoxLayout.Auto
+              Role = BoxRole.Dashboard
+              Heading = Some(TextSource.Literal "Catalogue")
+              Children =
+                [ node "edge-chips" (NodeKind.Filters({ Items = declaredChips })) None
+                  node
+                      "scoped-metric"
+                      (NodeKind.Metric(
+                          { metricSpec with
+                              Value = Binding.Query("orders", (fun _ -> 0.0), Some [ "region"; "genre" ])
+                              Trend = None
+                              TrendFormat = None }
+                      ))
+                      None ]
+              KeepTogether = false
+              BreakBefore = false }
+        ))
+        None
+
+/// Phase 1800 — the CONTROL of the `dependsOn` pair. Both names the metric's
+/// `Query` depends on are declared by the `Filters` node, so the document is
+/// fully wired and the reference host's pre-emit validator raises nothing.
+let filtersDependsOnDeclared: Node<obj> =
+    filterEdgeDependsOnDoc
+        "filters-dependson-declared"
+        [ filterEdgeChip "region" "Region" [ "emea", "EMEA"; "amer", "Americas" ]
+          filterEdgeChip "genre" "Genre" [ "drama", "Drama"; "docs", "Documentary" ] ]
+
+/// Phase 1800 — the NEGATIVE. The control minus the `genre` chip: the `Filters`
+/// node is present and declares `region`, and the metric's `Query` declares a
+/// dependency on `genre` that no chip grounds. One document, one finding.
+let filtersDependsOnUndeclared: Node<obj> =
+    filterEdgeDependsOnDoc
+        "filters-dependson-undeclared"
+        [ filterEdgeChip "region" "Region" [ "emea", "EMEA"; "amer", "Americas" ] ]
+
 /// Phase 421 — a `Metric` whose `Source` is a host-computed `Query` that declares its filter
 /// dependency edge (`dependsOn`). Proves the `dependsOn` wire (omitted-when-empty elsewhere) — the
 /// tree owns the edge, the host closure owns the predicate.
@@ -7993,6 +8055,10 @@ let allNodes: (string * Node<obj>) list =
       filtersParamSourceDeclared
       "Layout/Box (Phase 1784 — a Transform param source naming a chip the PRESENT Filters node does not declare; the control is `filters-param-source-declared`)",
       filtersParamSourceUndeclared
+      "Layout/Box (Phase 1800 — the CONTROL of the dependsOn pair: a Filters node declaring both chips a Query's dependsOn names)",
+      filtersDependsOnDeclared
+      "Layout/Box (Phase 1800 — a Query dependsOn naming a chip the PRESENT Filters node does not declare; the control is `filters-dependson-declared`)",
+      filtersDependsOnUndeclared
       "Layout/Box (master-detail — grid + detail card State-bound with a pre-selected defaultValue)",
       masterDetailPreselected
       "Layout/Box (master-detail — Selection defaultValue naming a NON-FIRST row: prune-vs-seed is observable)",

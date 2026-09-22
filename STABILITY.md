@@ -8004,6 +8004,34 @@ vectors are ENUMERATED on §12.1's waiting list, beside `read.affordances`, and 
 implementation. `RelayCorpusTests`' required-type set records the same omission for the same reason,
 in the same place it already records `read.affordances`'.
 
+**fuaran#1800 — ADDITIVE: the `Query.dependsOn` arm of FUARAN075 gets its negative corpus pair, and
+nothing in this tier changes shape.** The rule itself is Phase 1568's and is unchanged: `Fuaran.UI`'s
+`PreEmitValidate` has reported `DanglingFilterReference` on both its arms — a `Transform` / `Expr`
+param sourced from an undeclared chip, and a `Query` whose `dependsOn` names one — since that phase
+shipped. What this phase adds on the .NET side is two round-trip fixtures,
+`nodes/filters-dependson-{declared,undeclared}.json`, and the assertions that bind them to the rule.
+
+**No managed surface moves.** No type, member, signature, default or defect case is added, removed or
+re-spelled; `PreEmitValidate.PreEmitDefect` carries exactly the cases it carried, and a consumer
+recompiles against this tier with no edit. The corpus grows by two files and its `manifest.json` by
+two entries — the node-round-trip family's size pins derive from that manifest, so a consumer
+certifying against the corpus sees two more documents and no changed byte in any existing one (proved
+in the phase's ship evidence by the corpus diff stat).
+
+**Where the change actually landed is the other two hosts**, and it is additive there for the same
+reason: `@fuaran-ui/ui`'s `preEmitValidate` gains a `DANGLING_FILTER_REFERENCE` case on its
+`PreEmitDefect` union, and `fuaran_ui.validator` gains a `FUARAN075` finding. Both are unions a
+consumer MATCHES rather than CONSTRUCTS, so a new case is a widening; each host's
+`validator-coverage.json` declares the code in the same change-set.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s
+admission gates are not engaged. **No escape hatch is created or widened**: a validator that reports
+one more defect class narrows what passes and introduces no seam, registry or fail-open default.
+
+*Version.* Rides this slot. The change is ADDITIVE and the slot's standing class is BREAKING, so
+under the draft-slot rule it rides rather than advances; `<Version>` is not moved, for the reason
+this heading records.
+
 ## 0.85.0 — the slot Phase 1734 opened, which Phase 1821's column-naming rename raised to WIRE-BREAKING — released 2026-09-20 as `v0.85.0`
 
 _**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride

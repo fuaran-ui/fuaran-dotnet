@@ -195,3 +195,114 @@ let tests =
                       scoped
                       "and it does so under a bound sibling chip too"
           } ]
+
+// ============================================================================
+//  Phase 1800 — the SECOND arm of the same rule.
+//
+//  FUARAN075 fires on two shapes: a `Transform` param whose source is a
+//  `Binding.Filter` (the pair above), and a `Query`'s `dependsOn` list. Until
+//  this pair the second arm had no negative fixture in ANY host — so a host
+//  could implement the param-source arm, pass every fixture the corpus carries,
+//  and still treat an undeclared `dependsOn` name as an unset one.
+//
+//  The silent no-op is SHARPER here, and the difference is why this pair is not
+//  merely the first one again. A `Transform` at least has a pipeline whose step
+//  a resolver prunes; a `Query`'s predicate lives entirely in the HOST closure,
+//  so the tree hands the host a list of filter names and nothing in the tree
+//  decides anything. What `dependsOn` actually buys is the INVALIDATION
+//  SUBSCRIPTION — `Render.collectFilterKeys` reads it, on the `FilterChannel`,
+//  to decide which filter-store writes re-resolve the query. An undeclared name
+//  therefore subscribes the query to a slot no chip can ever write: the
+//  subscription is dead, the query is never re-resolved on that edge, and the
+//  document renders a metric that silently ignores a filter its author asked
+//  for. Claim 3 below is that statement, measured in both directions.
+// ============================================================================
+
+let private DependsOnControl = "filters-dependson-declared.json"
+let private DependsOnNegative = "filters-dependson-undeclared.json"
+
+/// The metric both `dependsOn` documents carry; the id is fixed by the fixtures.
+let private MetricConsumerId = "scoped-metric"
+
+let private danglingNamesFor (readerId: string) (tree: Node<obj>) : string list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error defects ->
+        defects
+        |> List.choose (fun d ->
+            match d with
+            | PreEmitDefect.DanglingFilterReference(reader, name) when reader = readerId -> Some name
+            | _ -> None)
+        |> List.sort
+
+[<Tests>]
+let dependsOnTests =
+    testList
+        "Phase 1800 — the corpus's dependsOn wiring pair"
+        [ test "the control's dependsOn names are all declared by the document" {
+              match nodesDir () with
+              | None -> skiptest Fuaran.Tests.CorpusRoot.AbsentSkipReason
+              | Some d ->
+                  let tree = decode d DependsOnControl
+
+                  Expect.isEmpty
+                      (danglingNamesFor MetricConsumerId tree)
+                      "every name the query depends on is grounded in a chip"
+
+                  Expect.equal tree.Id "filters-dependson-declared" "the control is the document it claims to be"
+                  Expect.isEmpty (allDefects tree) "the control raises no pre-emit defect at all"
+          }
+
+          test "the negative raises FUARAN075 for the undeclared dependsOn name, and for nothing else" {
+              match nodesDir () with
+              | None -> skiptest Fuaran.Tests.CorpusRoot.AbsentSkipReason
+              | Some d ->
+                  let tree = decode d DependsOnNegative
+
+                  Expect.equal
+                      (danglingNamesFor MetricConsumerId tree)
+                      [ UndeclaredName ]
+                      "the dependsOn edge on the undeclared chip is the finding"
+
+                  Expect.equal
+                      (allDefects tree)
+                      [ PreEmitDefect.DanglingFilterReference(MetricConsumerId, UndeclaredName) ]
+                      "one document, one defect — this pair isolates a single variable too"
+
+                  let code, severity, _ =
+                      PreEmitValidate.describe (PreEmitDefect.DanglingFilterReference(MetricConsumerId, UndeclaredName))
+
+                  Expect.equal code "FUARAN075" "the same rule as the param-source arm, not a second code"
+                  Expect.equal severity DefectSeverity.Error "an unreachable edge is an error on either arm"
+          }
+
+          test "the SUBSCRIPTION cannot tell the two documents apart — the silent no-op" {
+              match nodesDir () with
+              | None -> skiptest Fuaran.Tests.CorpusRoot.AbsentSkipReason
+              | Some d ->
+                  let control = decode d DependsOnControl
+                  let negative = decode d DependsOnNegative
+
+                  // THE VACUITY CHECK, first, and in the direction that can
+                  // fail: `collectFilterKeys` must genuinely read `dependsOn`.
+                  // If it returned the empty set for both documents the
+                  // equality below would hold for a reason that says nothing.
+                  Expect.isTrue
+                      (Set.contains "region" (Render.collectFilterKeys control))
+                      "the filter-invalidation walk genuinely reads a query's dependsOn"
+
+                  // The finding. The two documents declare a DIFFERENT set of
+                  // chips and subscribe to the SAME set of filter slots —
+                  // because the subscription is derived from the query's
+                  // dependsOn alone and consults no declaration. So on the
+                  // negative the renderer waits on `genre`, a slot no chip can
+                  // ever write, and nothing downstream of the tree can notice.
+                  Expect.equal
+                      (Render.collectFilterKeys negative)
+                      (Render.collectFilterKeys control)
+                      "an undeclared dependsOn name subscribes exactly as a declared one does"
+
+                  Expect.isTrue
+                      (Set.contains UndeclaredName (Render.collectFilterKeys negative))
+                      "the dead subscription is on the undeclared name itself"
+          } ]
