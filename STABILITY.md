@@ -8032,6 +8032,40 @@ one more defect class narrows what passes and introduces no seam, registry or fa
 under the draft-slot rule it rides rather than advances; `<Version>` is not moved, for the reason
 this heading records.
 
+**fuaran#1727 — BEHAVIOURAL at one derivation site, and no managed surface moves: palette
+attribution has a ruled tie-break.** `Fuaran.UI.StyleObserver`'s `ManifestFlags.verifyUsageBudgets`
+attributes each rendered fill to the FIRST palette token whose value matches. Until this phase "first"
+meant first in the decoder's token list, which for this host is DOCUMENT order (`Decode.decode` walks
+the DTCG tree as parsed); the Go and Rust ports sort each group's keys, so a manifest declaring two
+same-valued colour tokens attributed a fill to different tokens on different hosts, and no fixture
+anywhere carried such a tie. The contract now states the order once — canonical token-path order,
+segment by segment, a shorter prefix first, each segment by Unicode code point; document order plays
+no part — in [`docs/THEME-BRIDGE-GUIDE.md`](docs/THEME-BRIDGE-GUIDE.md) under "Palette attribution
+order", and this host implements it at the attribution site: `paletteRgba` sorts by that order before
+the first-match walk.
+
+**What changes for a consumer.** A manifest whose colour tokens are pairwise distinct in value is
+unaffected — attribution is a total function of the fill and the palette either way. A manifest that
+DOES carry two same-valued colour tokens declared out of canonical order now attributes a matching fill
+to the path-first token where it previously attributed to the document-first one, so a `UsageBudget`
+on the document-first token measures a smaller share and one on the path-first token a larger one.
+That is a deliberate move onto the cross-host rule, not a regression, and the corpus pins it: the
+`style-observer/` family gains `budget-same-valued-tokens-attribute-path-first` and
+`budget-same-valued-tokens-order-is-segment-wise` (both `usage-budget` tier), emitted by this host and
+certified by Python, Go and Rust in the same change-set. `Decode.decode`'s token order is NOT changed:
+the `Tokens` list is still document order, so a projection or encoder consumer reading it sees no
+difference.
+
+**No type, member, signature, default or flag case moves.** `StyleFlag` carries exactly the cases it
+carried; `verifyUsageBudgets` and `perNodeFlags` keep their signatures; the per-node
+`OffPaletteColour` check is a membership test and is unaffected. **No kind is added, merged or
+retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission gates are not engaged.
+**No escape hatch is created or widened.**
+
+*Version.* Rides this slot. The change is BEHAVIOURAL at one derivation site and below the slot's
+standing class, so under the draft-slot rule it rides rather than advances; `<Version>` is not moved,
+for the reason this heading records.
+
 ## 0.85.0 — the slot Phase 1734 opened, which Phase 1821's column-naming rename raised to WIRE-BREAKING — released 2026-09-20 as `v0.85.0`
 
 _**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride

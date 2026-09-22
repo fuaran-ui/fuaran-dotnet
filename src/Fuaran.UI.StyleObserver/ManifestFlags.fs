@@ -1,5 +1,6 @@
 namespace Fuaran.UI.StyleObserver
 
+open System.Text
 open Fuaran.UI.ThemeManifest
 
 // ─── Manifest-aware flag derivation (Phase 146) ─────────────────
@@ -35,12 +36,35 @@ module ManifestFlags =
     let private rgbString (c: Rgba) : string =
         sprintf "rgb(%d, %d, %d)" (ri c.R) (ri c.G) (ri c.B)
 
+    /// Canonical token-path order — the order palette ATTRIBUTION iterates in
+    /// (Phase 1727; the rule is stated once, in `docs/THEME-BRIDGE-GUIDE.md`
+    /// under "Palette attribution order", and pinned by the corpus's
+    /// `style-observer/budget-same-valued-tokens-*` vectors). Paths compare
+    /// segment by segment, a shorter prefix first, each segment by Unicode
+    /// code point: the order a depth-first walk of the DTCG tree yields when it
+    /// visits every group's members in ascending key order, which is what the
+    /// Go and Rust decoders emit directly. This host's decoder preserves
+    /// DOCUMENT order — a projection consumer may rely on that — so the
+    /// ordering lives here, at the one site where order is a contract.
+    let private comparePaths (a: string) (b: string) : int =
+        let compareSegment (x: string) (y: string) =
+            Seq.compareWith
+                (fun (p: Rune) (q: Rune) -> compare p.Value q.Value)
+                (x.EnumerateRunes())
+                (y.EnumerateRunes())
+
+        Seq.compareWith compareSegment (a.Split '.') (b.Split '.')
+
     /// The manifest's colour palette, parsed to `Rgba` + paired with the
-    /// declaring token name. Non-colour tokens + malformed hex are dropped.
+    /// declaring token name, in canonical token-path order. Non-colour tokens
+    /// + malformed hex are dropped. The first entry whose colour matches a
+    /// rendered fill is the token the fill is ATTRIBUTED to, so two
+    /// same-valued tokens attribute to the path-first one on every host.
     let private paletteRgba (manifest: ThemeManifest) : (Rgba * string) list =
         manifest.Tokens
         |> List.filter (fun t -> t.Type = "color")
         |> List.choose (fun t -> Rgba.tryParseHex t.Value |> Option.map (fun c -> c, t.Name))
+        |> List.sortWith (fun (_, a) (_, b) -> comparePaths a b)
 
     /// Resolve an emitted slot (a tone name or a named role) to its
     /// declared token, if the manifest binds it.

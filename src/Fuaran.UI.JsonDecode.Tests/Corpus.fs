@@ -339,6 +339,15 @@ let private writeManifest
         + "nodeAreas entry's observation with its area, run the tree-level budget verification, assert "
         + "the encoded flags equal expectedBudgetFlags. A tier or flag kind outside a host's vocabulary "
         + "is REPORTED by name with the vector id, never skipped. "
+        + "Palette attribution (Phase 1727): wherever a manifest-aware derivation attributes a rendered "
+        + "fill to ONE token — the usage-budget arm's area share — it iterates the manifest's colour "
+        + "tokens in canonical token-path order and the first token whose value matches wins. Canonical "
+        + "token-path order compares paths segment by segment, a shorter prefix first, each segment by "
+        + "Unicode code point (the order a depth-first walk of the DTCG tree yields when it visits every "
+        + "group's members in ascending key order); DOCUMENT order plays no part, and two same-valued "
+        + "tokens are LEGAL, not a defect. A host may satisfy this by yielding tokens from its walk in "
+        + "that order or by ordering the palette at the attribution site — the attribution is the "
+        + "contract, the mechanism is not — and the budget-same-valued-tokens-* vectors pin it. "
         + "See WIRE_FORMAT.md at this corpus root."
     )
 

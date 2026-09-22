@@ -136,6 +136,22 @@ module private Cases =
     let budgetManifest =
         """{"meta":{"name":"corpus","version":"1"},"tokens":{"color":{"brand":{"$type":"color","$value":"#010203"}}},"roles":[],"invariants":[{"kind":"UsageBudget","token":"color.brand","targetPct":10,"tolerancePct":5}]}"""
 
+    /// Phase 1727 — two colour tokens carrying the SAME value, declared in the
+    /// document in the REVERSE of canonical token-path order, each under a
+    /// budget. Attribution iterates in path order, so `color.brand` takes the
+    /// whole area and `color.secondary` takes none; a host attributing in
+    /// document order breaches BOTH budgets instead of one, and the emitter's
+    /// kind proof refuses the case on such a host.
+    let sameValuedManifest =
+        """{"meta":{"name":"corpus","version":"1"},"tokens":{"color":{"secondary":{"$type":"color","$value":"#010203"},"brand":{"$type":"color","$value":"#010203"}}},"roles":[],"invariants":[{"kind":"UsageBudget","token":"color.brand","targetPct":10,"tolerancePct":5},{"kind":"UsageBudget","token":"color.secondary","targetPct":0,"tolerancePct":5}]}"""
+
+    /// Phase 1727 — the order is SEGMENT-WISE, not a sort of the dotted string:
+    /// `color.brand.base` precedes `color.brand-alt` because the key `brand`
+    /// precedes `brand-alt`, although `-` sorts before `.` as a character.
+    /// Declared in the reverse of that order, again.
+    let segmentOrderManifest =
+        """{"meta":{"name":"corpus","version":"1"},"tokens":{"color":{"brand-alt":{"$type":"color","$value":"#010203"},"brand":{"base":{"$type":"color","$value":"#010203"}}}},"roles":[],"invariants":[{"kind":"UsageBudget","token":"color.brand.base","targetPct":10,"tolerancePct":5},{"kind":"UsageBudget","token":"color.brand-alt","targetPct":0,"tolerancePct":5}]}"""
+
 /// The family, in emission order. Every case here is one that previously lived
 /// as a literal in this tier's own suite or in a sibling host's.
 let cases: Case list =
@@ -303,6 +319,31 @@ let cases: Case list =
           [ obs "a" (rgb 1.0 2.0 3.0) None 21.0, 15.0
             obs "b" (rgb 9.0 9.0 9.0) None 21.0, 85.0 ],
           []
+      )
+
+      // ─── Phase 1727 — the palette-attribution tie-break ─────────────────
+      // Two same-valued colour tokens, declared in the REVERSE of canonical
+      // token-path order. The 60px² fill is attributed to the path-first token
+      // alone: exactly ONE breach, on `color.brand`, and none on the
+      // document-first `color.secondary` whose 0% ± 5% budget it would breach
+      // if document order decided. The declared kind list is the go-red
+      // partner — a document-order host produces two flags, and the emitter
+      // refuses to publish that.
+      UsageBudget(
+          "budget-same-valued-tokens-attribute-path-first",
+          "Two same-valued colour tokens declared secondary-before-brand: the fill is attributed to `color.brand`, the first by canonical token-path order, so its 10% ± 5% budget breaches at 60% and `color.secondary`'s 0% ± 5% budget does not.",
+          sameValuedManifest,
+          [ obs "a" (rgb 1.0 2.0 3.0) None 21.0, 60.0
+            obs "b" (rgb 9.0 9.0 9.0) None 21.0, 40.0 ],
+          [ "UsageBudgetExceeded" ]
+      )
+      UsageBudget(
+          "budget-same-valued-tokens-order-is-segment-wise",
+          "Canonical token-path order is segment-wise: `color.brand.base` precedes `color.brand-alt` because the key `brand` precedes `brand-alt`, although `-` sorts before `.` as a character — so the fill is attributed to `color.brand.base` and only its budget breaches.",
+          segmentOrderManifest,
+          [ obs "a" (rgb 1.0 2.0 3.0) None 21.0, 60.0
+            obs "b" (rgb 9.0 9.0 9.0) None 21.0, 40.0 ],
+          [ "UsageBudgetExceeded" ]
       ) ]
 
 // ─── JSON writing (no dependency; the corpus is read by five languages) ─────
