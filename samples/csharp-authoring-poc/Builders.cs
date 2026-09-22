@@ -157,14 +157,17 @@ internal abstract class NodeBuilder
     protected abstract NodeKind<object> BuildKind();
 
     // Generated Node ctor is Generated.fs declaration order (Id, Kind,
-    // Accessibility, ExtraAttributes, Motion, State, Style, Tooltip); `Id` is a
-    // bare string since the swap.
+    // Accessibility, ExtraAttributes, Fallback, Motion, State, Style, Tooltip,
+    // Visible); `Id` is a bare string since the swap. `Fallback` (Phase 1812) is
+    // the author-declared behind-reader fallback — attached, if at all, by a
+    // decoration, never by a builder.
     public Node<object> Build() =>
         new(
             Id,
             BuildKind(),
             Fs.None<Accessibility>(),
             Fs.None<FSharpMap<string, string>>(),
+            Fs.None<Node<object>>(),
             Fs.None<Motion>(),
             Fs.None<StateBehaviour<object>>(),
             Fs.None<SemanticStyle>(),

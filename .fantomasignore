@@ -17,3 +17,12 @@ src/Fuaran.UI/Generated.fs
 # order in which a session happened to build and format.
 **/bin/**
 **/obj/**
+
+# The F* proof toolkit cache (Phase 1812). `proofs/check.ps1` downloads the F*
+# distribution into `proofs/.fstar/` — an untracked, regenerable, per-invocation
+# cache full of OCaml `.ml` / `.mli` sources that Fantomas cannot parse. It is
+# not source, and a gate run while the cache is present failed the Format stage
+# naming files nobody edited (the 1810 and 1812 workers both paid it). Excluded
+# here for the same reason `**/bin/**` is: the format check covers tracked
+# sources only.
+proofs/.fstar/
