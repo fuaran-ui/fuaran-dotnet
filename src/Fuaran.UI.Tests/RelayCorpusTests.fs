@@ -248,11 +248,52 @@ let private encodeFailingPeer (hub: ChangeHub.ChangeHub) : RelayPeer =
             OptedIn = true
             HostVersion = "0.6.0" }
 
+/// A peer whose runtime escape-hatch report is the one a `hatches` fixture
+/// describes (§7.8, `relay@1.5`): an ENFORCING content-hash floor, the
+/// introspection surface not live, and the registry as given — one guest
+/// renderer registered, or none offered at all.
+///
+/// The report is built through `RuntimeHatches.observeWith` rather than read
+/// from this process, because two of its inputs are process-global and other
+/// suites in this process move them (a raise-only floor install among them), so
+/// reading them here would make the answer depend on test order. Stubbing the
+/// producer's INPUTS, not its output, keeps the payload this host's own bytes:
+/// what the fixture is held to below is exactly what `Hatches.encodeSection`
+/// emits for that state.
+let private hatchesPeer
+    (registrations: Runtime.CustomRendererRegistration list option)
+    (hub: ChangeHub.ChangeHub)
+    : RelayPeer =
+    let options =
+        { DebugGlobal.DebugOptions.defaults with
+            Hub = hub
+            ApplyHandler = Some acceptingHandler }
+
+    let surface =
+        { Relay.surfaceOf hostTree hostSources (StubRuntime(true)) options with
+            Geometry = stubGeometry
+            Hatches = fun () -> RuntimeHatches.observeWith registrations HashStrictness.Enforced false }
+
+    Relay.createPeer
+        (fun () -> Some surface)
+        { RelayOptions.defaults with
+            OptedIn = true
+            HostVersion = "0.6.0" }
+
+/// The one registration the `hatches-open` fixture names.
+let private sparklineRegistration: Runtime.CustomRendererRegistration =
+    { Scope = None
+      ModuleId = "charts"
+      ComponentId = "sparkline"
+      HasContentHash = true }
+
 /// The peer each fixture is answered by. Everything not named here gets the
 /// fully-capable, opted-in peer.
 let private peerForFixture (fixtureId: string) (hub: ChangeHub.ChangeHub) : RelayPeer =
     match fixtureId with
     | "refusal-encode-failed" -> encodeFailingPeer hub
+    | "hatches-open" -> hatchesPeer (Some [ sparklineRegistration ]) hub
+    | "hatches-undecided" -> hatchesPeer None hub
     | _ ->
         let peer, _ =
             match fixtureId with
@@ -590,6 +631,17 @@ let private runExchange (fixture: Fixture) : unit =
             match requestType with
             | "hello" -> assertAdvertised fixture.Id expected actual
             | "read.nodeJson" -> assertNodeJson fixture.Id peer request actual
+            // §7.8 — this host's producer wrote the fixture's accounts, so its
+            // payload is held to the fixture's canonical text, every value and
+            // the prose included: the document is carried, not re-described
+            // (rule 1). A second host whose facts differ words its accounts itself and
+            // is held to everything but them (§12.1) — the equality here is what
+            // makes the fixture the first host's document rather than a paraphrase.
+            | "hatches" ->
+                Expect.equal
+                    (RelayValue.field "payload" actual |> Option.map Relay.toJson)
+                    (RelayValue.field "payload" expected |> Option.map Relay.toJson)
+                    (sprintf "%s — the hatchSection document is carried unchanged (§7.8 rule 1)" fixture.Id)
             | _ -> ()
 
 /// Drive one event fixture by making the peer EMIT it: subscribe, then commit a
@@ -741,15 +793,15 @@ let tests =
                             // family has not reached it and demanding a fixture
                             // here would turn the sibling host's gate red.
                             //
-                            // `hatches` (`relay@1.5`, §7.8) is deliberately
-                            // absent for the same reason and is on the same
-                            // waiting list: Phase 1820 shipped it in this host
-                            // alone, so its fixtures land with the second host
-                            // that serves it. That is the whole of §12.1 — the
-                            // manifest's `profile` advances with the FIXTURES,
-                            // not with the document, and this list is what would
-                            // otherwise quietly demand otherwise.
+                            // `hatches` (`relay@1.5`, §7.8) is REQUIRED since
+                            // Phase 1842: Phase 1820 shipped it in this host
+                            // alone and it waited on §12.1's list until a second
+                            // host served it, and its fixtures landed with that
+                            // host. That is the whole of §12.1 — the manifest's
+                            // `profile` advances with the FIXTURES, not with the
+                            // document, and this list moves with them.
                             "read.nodeJson"
+                            "hatches"
                             "apply"
                             "subscribe"
                             "unsubscribe" ]
