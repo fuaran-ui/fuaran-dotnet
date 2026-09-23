@@ -984,6 +984,18 @@ let private registerTargets (args: string array) =
     //
     // Node-only, no build step. Absent corpus ⇒ NOT CHECKED by name, the `CssCheck`
     // posture: "nothing to check here" must not read as "everything checked".
+    //
+    // Phase 1845 — where the GENERATOR lives, because a shard asked for one here. The
+    // file is emitted by `--emit-vocabulary` in `Fuaran.UI.JsonDecode.Tests`
+    // (`ValidatorCoverage.fs`), from the same defect-DU reflection that emits the
+    // corpus vocabulary, and that suite's byte-identity test fails on any difference
+    // from a fresh emission. It is deliberately NOT a second target in this file: a
+    // second route to one emission is a second thing to keep in step. Both drift
+    // checks were probed with a plant (FUARAN157 dropped from the file): the byte-
+    // identity test went red naming the file and the regen command, this target's
+    // script went red naming FUARAN157, and both went green again on restore. The
+    // go-red proof for this target's reference arm is committed on the corpus side
+    // (`validator/check-coverage-selftest.mjs`).
     Target.create "ValidatorCoverageCheck" (fun _ ->
         let script = Path.Combine(corpusRootPath, "validator", "check-coverage.mjs")
 
