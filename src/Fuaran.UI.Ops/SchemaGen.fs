@@ -866,7 +866,15 @@ let private defs: (string * J) list =
             // Phase 1537 — a node id, the `CommitLocal` shape one branch up.
             duCase "Focus" [ "nodeId" ] [ "nodeId", str ] ]
 
-      // ── CellFormat / CellValue / ColumnWidth (§3.3) ───────────────────────
+      // ── CellFormat / ColumnWidth (§3.3) ───────────────────────────────────
+      //
+      // Phase 1843 — there is deliberately no `CellValue` definition here.
+      // `CellValue` is a HOST type (Phase 1789): a column's value is the
+      // closure `Row -> CellValue`, so the wire carries only the `"<closure>"`
+      // sentinel and no position references a `CellValue` shape. Emitting one
+      // published a dead definition in the artefact a new host is most likely
+      // to generate code from. `Fuaran.UI.Tests.HostTypeDecoder` pins that
+      // every `$defs` entry is reachable from the schema root.
       "CellFormat",
       union
           [ duCase "None" [] []
@@ -879,14 +887,6 @@ let private defs: (string * J) list =
             duCase "Duration" [ "style"; "unit" ] [ "style", ref "DurationStyle"; "unit", ref "DurationUnit" ]
             duCase "RelativeTime" [ "unit" ] [ "unit", ref "RelativeTimeUnit" ]
             duCase "Custom" [ "fn" ] [ "fn", closure ] ]
-
-      "CellValue",
-      union
-          [ duCase "Numeric" [ "value" ] [ "value", number ]
-            duCase "Text" [ "value" ] [ "value", str ]
-            duCase "Bool" [ "value" ] [ "value", boolean ]
-            duCase "Date" [ "unixSeconds" ] [ "unixSeconds", integer ]
-            duCase "Empty" [] [] ]
 
       "ColumnWidth",
       union

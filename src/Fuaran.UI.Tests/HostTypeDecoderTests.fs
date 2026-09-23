@@ -125,3 +125,133 @@ let tests =
                        |> List.map (fun (name, result) -> sprintf "%s : Result<%s, _>" name result)
                        |> String.concat ", "))
           } ]
+
+// ============================================================================
+//  Phase 1843 — the published schema declares no definition nothing reaches.
+//
+//  1789 corrected the prose and deleted the dead decoder, and left a third
+//  mention standing on purpose: `SchemaGen.fs` emitted a `CellValue` `$defs`
+//  entry that no `$ref` named. The same dead shape, in `schema.json` — the
+//  artefact a new host implementer is most likely to generate code from. The
+//  emission is gone; this pins that it stays gone, and pins the general form
+//  rather than the one name, because an unreachable definition of ANY type
+//  tells a code generator the same untruth.
+//
+//  WHAT IT ASSERTS. Reachability, not mere reference: starting from every
+//  `$ref` outside `$defs` (the root `oneOf` over `Node` / `TreeOp`), follow
+//  `$ref`s through the definitions they name. A definition referenced only by
+//  another unreachable one is exactly as dead, and a plain "is it named
+//  somewhere" count would pass it.
+//
+//  It reads the GENERATOR (`SchemaGen.wireFormatSchema`), not the committed
+//  corpus file. The committed file is bound to the generator byte-for-byte by
+//  the stale-schema guard in `Fuaran.UI.JsonDecode.Tests`; the two together
+//  pin the artefact.
+//
+//  VACUITY. A walker that finds no root `$ref` reaches nothing and would then
+//  report every definition unreachable — loud, not silent. The silent failure
+//  is a walker that stops following `$ref`s one level down and still reaches
+//  a handful; so the reached set must clear a floor and must contain
+//  `CellFormat` and `ColumnWidth`, which no root `$ref` names — each is reached
+//  only through nested specs (`ColumnWidth` solely through the erased grid
+//  column), several hops from the root.
+//
+//  THE GO-RED. Restore the `"CellValue", union [...]` entry in SchemaGen's
+//  `defs` and this fails twice, naming `CellValue` in both arms.
+// ============================================================================
+
+open System.Text.Json
+
+let private defsPrefix = "#/$defs/"
+
+/// Every `#/$defs/<name>` target named anywhere under `element`.
+let rec private defRefs (element: JsonElement) : string list =
+    match element.ValueKind with
+    | JsonValueKind.Object ->
+        element.EnumerateObject()
+        |> Seq.collect (fun p ->
+            match p.Name, p.Value.ValueKind with
+            | "$ref", JsonValueKind.String ->
+                match p.Value.GetString() with
+                | null -> []
+                | target when target.StartsWith defsPrefix -> [ target.Substring defsPrefix.Length ]
+                | _ -> []
+            | _ -> defRefs p.Value)
+        |> Seq.toList
+    | JsonValueKind.Array -> element.EnumerateArray() |> Seq.collect defRefs |> Seq.toList
+    | _ -> []
+
+/// 148 definitions were reachable when this phase shipped. The floor is "the
+/// walker still follows `$ref`s through the tree", not "the schema is frozen".
+[<Literal>]
+let private ReachableFloor = 100
+
+[<Tests>]
+let schemaReachability =
+    testList
+        "Phase 1843 - schema.json declares no unreachable definition"
+        [ test "every $defs entry the generator emits is reachable from the schema root" {
+              use doc = JsonDocument.Parse Fuaran.UI.Ops.SchemaGen.wireFormatSchema
+              let root = doc.RootElement
+              let defs = root.GetProperty "$defs"
+
+              let defined = defs.EnumerateObject() |> Seq.map (fun p -> p.Name) |> Set.ofSeq
+
+              let rootRefs =
+                  root.EnumerateObject()
+                  |> Seq.filter (fun p -> p.Name <> "$defs")
+                  |> Seq.collect (fun p -> defRefs p.Value)
+                  |> Set.ofSeq
+
+              let rec walk (reached: Set<string>) (frontier: string list) =
+                  match frontier with
+                  | [] -> reached
+                  | name :: rest when reached.Contains name -> walk reached rest
+                  | name :: rest ->
+                      let next =
+                          match defs.TryGetProperty name with
+                          | true, def -> defRefs def
+                          | false, _ -> []
+
+                      walk (reached.Add name) (next @ rest)
+
+              let reached = walk Set.empty (Set.toList rootRefs)
+
+              // (1) the walker follows `$ref`s through the tree at all.
+              Expect.isGreaterThanOrEqual
+                  reached.Count
+                  ReachableFloor
+                  (sprintf
+                      "only %d definitions reached from the root %A - the walker no longer follows $refs, so its silence about unreachable definitions means nothing"
+                      reached.Count
+                      rootRefs)
+
+              for control in wireCarriedControls do
+                  Expect.isTrue
+                      (reached.Contains control)
+                      (sprintf
+                          "the positive control '%s' (reachable only through nested specs, several hops down) was not reached - the walk is shallow, so its verdict is not evidence"
+                          control)
+
+              // (2) the assertion itself.
+              let unreachable = Set.difference defined reached
+
+              Expect.isEmpty
+                  unreachable
+                  (sprintf
+                      "SchemaGen emits $defs no $ref reaches from the schema root: %s. A dead definition in schema.json reads to a host implementer (and to every schema-driven code generator) as a wire shape that does not exist (Phase 1843)."
+                      (String.concat ", " unreachable))
+          }
+
+          test "no host-only type is emitted as a schema definition" {
+              use doc = JsonDocument.Parse Fuaran.UI.Ops.SchemaGen.wireFormatSchema
+              let defs = doc.RootElement.GetProperty "$defs"
+
+              let offenders = hostOnlyTypes |> List.filter (fun t -> fst (defs.TryGetProperty t))
+
+              Expect.isEmpty
+                  offenders
+                  (sprintf
+                      "schema.json declares a definition for host-only type(s) %A. The IDL gives these no wire position (Phase 1789), so a definition for one is dead by construction (Phase 1843)."
+                      offenders)
+          } ]
