@@ -151,7 +151,7 @@ must disambiguate:
 **The rule: prefer the variant when the pattern is a specialisation of a kind the consumer would already
 have chosen.** Precedents already in the tree:
 
-- **`FormFieldKind`** absorbed date/time (`Date` + `DateVariant`), ranged number (`RangedNumber`),
+- **`FormFieldKind`** absorbed date/time (`DateTime` + `DateTimeVariant` — `Date` + `DateVariant` until Phase 1811), ranged number (`RangedNumber`),
   segmented choice (`SegmentedChoice`) – all as *variants*, never as new top-level kinds. A future
   rating, colour-picker, combobox, or autocomplete field is the same: a `FormFieldKind` variant.
   (`Combobox` is no longer future — it shipped at 0.51.0 under exactly this ruling, and `Rating`
@@ -394,8 +394,8 @@ terms, since an `Action` case is a wire member with the full §11 cost; added 20
 
 | Reserved name | Disposition | Ruling |
 |---|---|---|
-| `DatePicker` / `TimePicker` / `DateTime` | **Variant** (shipped) | Already `FormFieldKind.Date` + `DateVariant`. The exemplar: temporal input is a field variant, never a kind. |
-| `DateRange` | **Variant** (shipped) | Shipped as `FormFieldKind.DateRange` at 0.7.0 (Phase 725): `Range`'s pair mechanics with `Date`'s ISO/variant conventions, `Min`/`Max`/`Step` bounding both ends. Admitted on the operator mandate plus 9 full-pack emissions of an invented `$type:"DateRange"`; irreducible because the two-`Date`-field workaround splits one semantic value across two uncoordinated bindings (one filter param, not two). |
+| `DatePicker` / `TimePicker` / `DateTime` | **Variant** (shipped) | Already `FormFieldKind.DateTime` + `DateTimeVariant` (named `Date` + `DateVariant` until Phase 1811 renamed the family so the names say what the field accepts; the ruling stands, only the names moved). The exemplar: temporal input is a field variant, never a kind. |
+| `DateRange` | **Variant** (shipped) | Shipped as `FormFieldKind.DateRange` at 0.7.0 (Phase 725), `FormFieldKind.DateTimeRange` since Phase 1811 (the rename; the ruling stands): `Range`'s pair mechanics with `DateTime`'s ISO/variant conventions, `Min`/`Max`/`Step` bounding both ends. Admitted on the operator mandate plus 9 full-pack emissions of an invented `$type:"DateRange"`; irreducible because the two-`Date`-field workaround splits one semantic value across two uncoordinated bindings (one filter param, not two). |
 | `Slider` / `Range` | **Variant** (shipped surface) | `FormFieldKind.RangedNumber` with a slider render variant. |
 | `Calendar` (month-grid display) | **Kind** (reserved) or **Variant** | If it is *display* of a month grid, a possible `DataGrid` mode or a genuine kind; if it is *input*, a `FormFieldKind` variant. Disposition decided when demand names which. |
 

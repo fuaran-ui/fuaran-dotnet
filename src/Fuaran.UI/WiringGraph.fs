@@ -418,7 +418,7 @@ let ofFacts (treeFacts: BindingWalk.TreeFacts) : WiringGraph =
             // slot rather than reads of one, and are filtered out of `Uses`
             // upstream in any case.
             // `UnstyledDateFormat` (Phase 1810) is FUARAN155's fact about a
-            // `Format.Date` slot with neither style, and reads no store slot
+            // `Format.DateTime` slot with neither style, and reads no store slot
             // of its own — the source read beside it is the edge.
             | BindingWalk.BindingUse.Computed
             | BindingWalk.BindingUse.TransformParam _

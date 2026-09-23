@@ -1315,7 +1315,7 @@ let fieldChange
     | None -> writeBackTo ctx binding write
 
 /// Change dispatch for the dual-input pair form fields (`FormFieldKind.Range` /
-/// `FormFieldKind.DateRange`): either input's change emits the WHOLE pair. A
+/// `FormFieldKind.DateTimeRange`): either input's change emits the WHOLE pair. A
 /// present handler dispatches it (the closure wins); an omitted handler writes
 /// the rebuilt pair record back to the field's own value binding.
 ///
@@ -1324,7 +1324,7 @@ let fieldChange
 /// pass is the write-back CLEAR — it would erase the slot instead of storing
 /// the new pair. Encoding "always writes" in the signature makes that defect
 /// unrepresentable rather than merely fixed at today's call sites. Callers box
-/// the pair RECORD (`RangePair` / `DateRangePair`), which is what
+/// the pair RECORD (`RangePair` / `DateTimeRangePair`), which is what
 /// `BindingResolver.tryResolve` reads back out; the `'v` tuple is the shape the
 /// `onChange` closure takes. Module-level so the .NET tests can pin the
 /// dispatch (precedent: `applyDispatchGate`).
@@ -1366,18 +1366,18 @@ let rangeInputHandlers
 
 /// Phase 1141 — `rangeInputHandlers` for the date pair: `(fromInput, toInput)`.
 /// Phase 725's chip and the form's `DateRange` field are the same shape over
-/// `DateRangePair`, so they share one construction.
+/// `DateTimeRangePair`, so they share one construction.
 let dateRangeInputHandlers
     (ctx: RenderContext<'Msg>)
     (onChange: (string * string -> Action<'Msg>) option)
     (binding: Binding<'T>)
-    (current: DateRangePair)
+    (current: DateTimeRangePair)
     : (string -> unit) * (string -> unit) =
-    let write (pair: DateRangePair) =
+    let write (pair: DateTimeRangePair) =
         pairFieldChange ctx onChange binding (box pair) (pair.From, pair.To)
 
-    (fun v -> write ({ From = v; To = current.To }: DateRangePair)),
-    (fun v -> write ({ From = current.From; To = v }: DateRangePair))
+    (fun v -> write ({ From = v; To = current.To }: DateTimeRangePair)),
+    (fun v -> write ({ From = current.From; To = v }: DateTimeRangePair))
 
 /// Phase 663 — replace one field of a grid row for the editable-grid State
 /// write-back. fuaran#665 typed the rows slot (`Row = Map<string, obj>`), so
@@ -1845,8 +1845,8 @@ let private keysOfFormFieldKind<'Msg>
     // Phase 1113 — the combobox subscribes to BOTH: its option source (a Query
     // suggestion feed is the shape the control exists for) and its value.
     | FormFieldKind.Combobox(_, _, opts, value) -> keysOfBinding channel opts @ keysOfValue value
-    | FormFieldKind.Date(v, _, _, _, _, _) -> keysOfValue v
-    | FormFieldKind.DateRange(v, _, _, _, _, _) -> keysOfValue v
+    | FormFieldKind.DateTime(v, _, _, _, _, _) -> keysOfValue v
+    | FormFieldKind.DateTimeRange(v, _, _, _, _, _) -> keysOfValue v
     // Phase 1130 — one value slot each; a rating's scale is a literal int and a
     // colour has no second source, so nothing else to subscribe to.
     | FormFieldKind.Rating(_, _, _, v) -> keysOfValue v
@@ -5876,22 +5876,22 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                 value
                 (fun chosen -> fieldChange ctx onChange value (chosen |> Option.map box) chosen)
                 orientation
-        | FormFieldKind.Date(value, onChange, variant, min, max, step) ->
+        | FormFieldKind.DateTime(value, onChange, variant, min, max, step) ->
             // Phase 288 — native date / time / datetime control. The bound
             // value is an ISO-8601 string; min/max are ISO strings, step is
             // seconds (flat options since the swap). Parity-locked with the
             // SSR + TS + Python renderers.
             let value =
                 value
-                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.date))
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime))
 
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
             let inputType =
                 match variant with
-                | DateVariant.Date -> "date"
-                | DateVariant.Time -> "time"
-                | DateVariant.DateTime -> "datetime-local"
+                | DateTimeVariant.Date -> "date"
+                | DateTimeVariant.Time -> "time"
+                | DateTimeVariant.DateTime -> "datetime-local"
 
             let constraintAttrs =
                 [ match min with
@@ -5916,7 +5916,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) (Some v)) ]
                 @ constraintAttrs
             )
-        | FormFieldKind.DateRange(value, onChange, variant, min, max, step) ->
+        | FormFieldKind.DateTimeRange(value, onChange, variant, min, max, step) ->
             // Phase 725 — single-control date range: `Range`'s two-input shape
             // with `Date`'s native control per variant. Both ends share the
             // min/max/step attributes (flat options since the swap; they bound
@@ -5925,11 +5925,13 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
             // reused, not extended (the reference-CSS parity lock).
             let value =
                 value
-                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.dateRange))
+                |> Option.defaultValue (
+                    Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.dateTimeRange)
+                )
 
-            // The pair is the `DateRangePair` record since the swap (the
+            // The pair is the `DateTimeRangePair` record since the swap (the
             // `RangePair` precedent); the tuple `onChange` contract is unchanged.
-            let current: DateRangePair =
+            let current: DateTimeRangePair =
                 BindingResolver.tryResolve ctx.Sources value
                 |> Option.defaultValue { From = ""; To = "" }
 
@@ -5939,9 +5941,9 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
 
             let inputType =
                 match variant with
-                | DateVariant.Date -> "date"
-                | DateVariant.Time -> "time"
-                | DateVariant.DateTime -> "datetime-local"
+                | DateTimeVariant.Date -> "date"
+                | DateTimeVariant.Time -> "time"
+                | DateTimeVariant.DateTime -> "datetime-local"
 
             let constraintAttrs =
                 [ match min with
@@ -6104,7 +6106,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                   prop.rows rows
                   prop.value current
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
-        | FormFieldKind.Date(value, onChange, _, _, _, _) ->
+        | FormFieldKind.DateTime(value, onChange, _, _, _, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
@@ -6186,14 +6188,14 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                               prop.className "fuaran-filter-range-max"
                               prop.value maxV
                               prop.onChange onMaxInput ] ] ]
-        | FormFieldKind.DateRange(value, onChange, variant, min, max, step) ->
+        | FormFieldKind.DateTimeRange(value, onChange, variant, min, max, step) ->
             // Phase 725 — the date-range chip: two native date/time inputs
             // over ONE filter param carrying the whole (from, to) pair. Both
             // ends share the min/max/step attributes (flat options since the
-            // swap); the pair is the `DateRangePair` record (the `Range` shape).
+            // swap); the pair is the `DateTimeRangePair` record (the `Range` shape).
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
-            let current: DateRangePair =
+            let current: DateTimeRangePair =
                 BindingResolver.tryResolve ctx.Sources value
                 |> Option.defaultValue { From = ""; To = "" }
 
@@ -6204,9 +6206,9 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
 
             let inputType =
                 match variant with
-                | DateVariant.Date -> "date"
-                | DateVariant.Time -> "time"
-                | DateVariant.DateTime -> "datetime-local"
+                | DateTimeVariant.Date -> "date"
+                | DateTimeVariant.Time -> "time"
+                | DateTimeVariant.DateTime -> "datetime-local"
 
             let constraintAttrs =
                 [ match min with
@@ -8120,7 +8122,7 @@ and private formatNumber (format: CellFormat) (value: float) : string =
     | CellFormat.Percent(Some decimals) -> (value * 100.0).ToString("F" + string decimals) + "%"
     | CellFormat.Percent None -> sprintf "%.1f%%" (value * 100.0)
     | CellFormat.SignificantDigits digits -> value.ToString("G" + string digits)
-    | CellFormat.Date _ -> string value
+    | CellFormat.DateTime _ -> string value
     // Phase 819 — both delegate to the shared Renderer.Core helpers so CSR,
     // SSR and the grid adapter render byte-identically (locale-independent).
     | CellFormat.Duration(unit, style) -> Formatting.formatDuration unit style value
@@ -8137,7 +8139,7 @@ and private renderCellValue (format: CellFormat) (value: CellValue) : string =
         | CellValue.Bool b -> if b then "true" else "false"
         | CellValue.Date d ->
             match format with
-            | CellFormat.Date fmt -> d.ToString(fmt)
+            | CellFormat.DateTime fmt -> d.ToString(fmt)
             | _ -> d.ToString("yyyy-MM-dd")
         | CellValue.Empty -> ""
 

@@ -145,12 +145,12 @@ type ModalityKind = Generated.ModalityKind
 /// say — is an ADDITION to a closed set rather than the replacement of a flag
 /// that could only ever have meant one device.
 type CaptureSource = Generated.CaptureSource
-/// Temporal breadth for `FormFieldKind.Date` (Phase 288). Selects the native
+/// Temporal breadth for `FormFieldKind.DateTime` (Phase 288). Selects the native
 /// HTML control the renderer emits: `Date` → `<input type=date>`, `Time` →
 /// `<input type=time>`, `DateTime` → `<input type=datetime-local>`. The bound
 /// value is always an ISO-8601 string on the wire (`YYYY-MM-DD` /
 /// `HH:MM` / `YYYY-MM-DDTHH:MM`) regardless of variant.
-type DateVariant = Generated.DateVariant
+type DateTimeVariant = Generated.DateTimeVariant
 /// Presentation mode for `NodeKind.Math` (Phase 293). `Inline` flows the
 /// equation within surrounding text (a `<span>`); `Block` is a centred display
 /// equation on its own line (a `<div>`). The renderer's deterministic fallback
@@ -180,10 +180,10 @@ type ColumnWidth = Generated.ColumnWidth
 // `RelativeTime` as a signed count of its unit; no raw `Intl` option-bag
 // escape — FGP 1).
 
-/// Date-presentation breadth for `Format.Date` (generated — see `Fuaran.UI.Generated`).
+/// Date-presentation breadth for `Format.DateTime` (generated — see `Fuaran.UI.Generated`).
 type DateStyle = Generated.DateStyle
 
-/// Time-of-day breadth for `Format.Date` (Phase 1810; generated). The other half
+/// Time-of-day breadth for `Format.DateTime` (Phase 1810; generated). The other half
 /// of the platform formatter's `dateStyle` / `timeStyle` pair: `timeStyle` alone
 /// displays a time of day, both together a date-time.
 type TimeStyle = Generated.TimeStyle
@@ -2169,7 +2169,7 @@ and RangePair = Generated.RangePair
 /// The `{from, to}` payload of a `DateRange` control's value (Phase 725,
 /// generated; the old `string * string` ordered ISO-8601 pair — the record IS
 /// the wire object, exactly as `RangePair` is for `Range`).
-and DateRangePair = Generated.DateRangePair
+and DateTimeRangePair = Generated.DateTimeRangePair
 
 // ─── Actions — effect-typed ──────────────────────────────────────────
 //

@@ -1027,11 +1027,28 @@ let all: RejectFixture list =
       // whose two ends look interchangeable.
       { Id = "reject-daterange-unordered"
         Json =
-          """{"id":"f1","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateRange","value":{"from":"2026-03-08","to":"2026-03-01"},"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
+          """{"id":"f1","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateTimeRange","value":{"from":"2026-03-08","to":"2026-03-01"},"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
         ExpectedCode = DecodeErrorCode.WRONG_TYPE
         ExpectedPath = "$.kind.fields[0].kind.value"
         IsOp = false
-        Description = "DateRange literal pair with start after end — the ordered-pair rule (Phase 725)" }
+        Description = "DateTimeRange literal pair with start after end — the ordered-pair rule (Phase 725)" }
+
+      // ─── Phase 1811 — the `Time` alias fixes the variant ─────────────────
+      //
+      // `{"$type":"Time"}` is a §16 alias for `DateTime{variant:"Time"}`, and
+      // the alias SUPPLIES the variant when absent. A `variant` written beside
+      // it that says something else is refused as ambiguous — the two members
+      // disagree about which control this is, and no reading of the document
+      // says which the author meant. The 0.28.0 column-member posture (both
+      // spellings present is refused, never resolved), applied to a `$type`.
+      { Id = "reject-1811-time-alias-variant-disagrees"
+        Json =
+          """{"id":"f1","kind":{"$type":"Form","fields":[{"id":"alarm","kind":{"$type":"Time","value":{"$type":"Static","value":"08:30"},"variant":"Date"},"label":"Alarm","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Set"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.fields[0].kind.variant"
+        IsOp = false
+        Description =
+          "a `Time` form field (the Phase 1811 alias, which fixes `variant` to `Time`) carrying an explicit `variant` of `Date` — refused as ambiguous rather than resolved to either spelling" }
 
       // ─── Chart annotation, non-finite value (Phase 1490, §4l) ────────────
       //

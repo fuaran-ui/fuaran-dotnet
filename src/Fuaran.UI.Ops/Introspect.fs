@@ -857,18 +857,18 @@ let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
                 options,
                 collapse Fuaran.UI.Defaults.ControlValueDefaults.combobox value
             )
-        | FormFieldKind.Date(value, oc, variant, mn, mx, st) ->
-            FormFieldKind.Date(
-                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.date) value,
+        | FormFieldKind.DateTime(value, oc, variant, mn, mx, st) ->
+            FormFieldKind.DateTime(
+                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime) value,
                 oc,
                 variant,
                 mn,
                 mx,
                 st
             )
-        | FormFieldKind.DateRange(value, oc, variant, mn, mx, st) ->
-            FormFieldKind.DateRange(
-                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.dateRange) value,
+        | FormFieldKind.DateTimeRange(value, oc, variant, mn, mx, st) ->
+            FormFieldKind.DateTimeRange(
+                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.dateTimeRange) value,
                 oc,
                 variant,
                 mn,
@@ -923,10 +923,10 @@ and private canonicalFilterItem (item: FilterSpec<'Msg>) : FilterSpec<'Msg> =
             FormFieldKind.SegmentedChoice(options, collapse value, oc, orientation)
         | FormFieldKind.Combobox(allowFreeText, oc, options, value) ->
             FormFieldKind.Combobox(allowFreeText, oc, options, collapse value)
-        | FormFieldKind.Date(value, oc, variant, mn, mx, st) ->
-            FormFieldKind.Date(collapse value, oc, variant, mn, mx, st)
-        | FormFieldKind.DateRange(value, oc, variant, mn, mx, st) ->
-            FormFieldKind.DateRange(collapse value, oc, variant, mn, mx, st)
+        | FormFieldKind.DateTime(value, oc, variant, mn, mx, st) ->
+            FormFieldKind.DateTime(collapse value, oc, variant, mn, mx, st)
+        | FormFieldKind.DateTimeRange(value, oc, variant, mn, mx, st) ->
+            FormFieldKind.DateTimeRange(collapse value, oc, variant, mn, mx, st)
         | FormFieldKind.Rating(allowHalf, max, oc, value) -> FormFieldKind.Rating(allowHalf, max, oc, collapse value)
         | FormFieldKind.Color(oc, value) -> FormFieldKind.Color(oc, collapse value)
         | FormFieldKind.Tokens(allowFreeText, oc, suggestions, value) ->

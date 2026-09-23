@@ -79,7 +79,7 @@ let main _ =
     for line in Laws.selectionFieldLines selectionCases do
         printfn "%s" line
 
-    // ---- law 5: a Format.Date slot never throws, on either pipeline ----
+    // ---- law 5: a Format.DateTime slot never throws, on either pipeline ----
     let dateCases = Laws.dateSentinelCases ()
 
     for line in Laws.dateSentinelLines dateCases do

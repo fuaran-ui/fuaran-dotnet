@@ -485,11 +485,11 @@ let private decoderTolerantOfAbsence: Set<string * string> = Set.empty
 /// Records `idl.json` declares but no IDL field type references, so the walk
 /// cannot reach whatever the schema says about them. Both are reached in the
 /// generated layer only through a `hosted` codec pair (`Binding<RangePair>` /
-/// `Binding<DateRangePair>`), and the schema models both slots as `anyJson` —
+/// `Binding<DateTimeRangePair>`), and the schema models both slots as `anyJson` —
 /// the §5 abstention — so there is no `required` list to measure at either.
 /// Named for the same reason as the residue above: an unreachable record is a
 /// blind spot, and a blind spot that is not enumerated grows silently.
-let private unreachableRecords = set [ "DateRangePair"; "RangePair" ]
+let private unreachableRecords = set [ "DateTimeRangePair"; "RangePair" ]
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 

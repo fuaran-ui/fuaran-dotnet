@@ -387,7 +387,7 @@ type PreEmitDefect =
     ///
     /// Carries the grid node's id, the map key, and the tone it maps to.
     | PillToneContradictsValue of nodeId: string * value: string * tone: string
-    /// **FUARAN155 (Error)**. A `Binding.Format` whose `Format.Date` declares
+    /// **FUARAN155 (Error)**. A `Binding.Format` whose `Format.DateTime` declares
     /// NEITHER `dateStyle` nor `timeStyle` (Phase 1810). Both halves of the
     /// platform formatter's style pair are optional on the wire so that a time
     /// of day can be displayed alone (`timeStyle` only) beside the date-only
@@ -3951,8 +3951,8 @@ let private validateCore
                  | FormFieldKind.RangedNumber(value, oc, _, _, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.Range(value, oc, _, _, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.SegmentedChoice(_, value, oc, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.Date(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.DateRange(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
+                 | FormFieldKind.DateTime(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
+                 | FormFieldKind.DateTimeRange(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.Combobox(_, oc, _, value) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.Rating(_, _, oc, value) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.Color(oc, value) -> recordWriteBack value oc.IsNone
@@ -3982,8 +3982,8 @@ let private validateCore
                  | FormFieldKind.RangedNumber(value, _, _, _, _) -> recordOwnedKey value
                  | FormFieldKind.Range(value, _, _, _, _) -> recordOwnedKey value
                  | FormFieldKind.SegmentedChoice(_, value, _, _) -> recordOwnedKey value
-                 | FormFieldKind.Date(value, _, _, _, _, _) -> recordOwnedKey value
-                 | FormFieldKind.DateRange(value, _, _, _, _, _) -> recordOwnedKey value
+                 | FormFieldKind.DateTime(value, _, _, _, _, _) -> recordOwnedKey value
+                 | FormFieldKind.DateTimeRange(value, _, _, _, _, _) -> recordOwnedKey value
                  | FormFieldKind.Combobox(_, _, _, value) -> recordOwnedKey value
                  | FormFieldKind.Rating(_, _, _, value) -> recordOwnedKey value
                  | FormFieldKind.Color(_, value) -> recordOwnedKey value
@@ -4007,8 +4007,8 @@ let private validateCore
                         | FormFieldKind.RangedNumber _ -> "RangedNumber", false, false
                         | FormFieldKind.Range _ -> "Range", false, false
                         | FormFieldKind.SegmentedChoice _ -> "SegmentedChoice", false, false
-                        | FormFieldKind.Date _ -> "Date", false, false
-                        | FormFieldKind.DateRange _ -> "DateRange", false, false
+                        | FormFieldKind.DateTime _ -> "DateTime", false, false
+                        | FormFieldKind.DateTimeRange _ -> "DateTimeRange", false, false
                         // Phase 1113 — the combobox is a choice-shaped control,
                         // so it honours neither the text bounds nor `format`,
                         // exactly as `Choice` does. `allowFreeText` does NOT
@@ -4070,9 +4070,9 @@ let private validateCore
                                     (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
                                 | FormFieldKind.Range(_, _, mn, mx, _) ->
                                     (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
-                                | FormFieldKind.Date(_, _, _, mn, mx, _) ->
+                                | FormFieldKind.DateTime(_, _, _, mn, mx, _) ->
                                     (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
-                                | FormFieldKind.DateRange(_, _, _, mn, mx, _) ->
+                                | FormFieldKind.DateTimeRange(_, _, _, mn, mx, _) ->
                                     (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
                                 | _ -> None, None
 
@@ -4111,8 +4111,8 @@ let private validateCore
                     | FormFieldKind.RangedNumber(value, oc, _, _, _) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.Range(value, oc, _, _, _) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.SegmentedChoice(_, value, oc, _) -> oc.IsNone && not (valueLive value)
-                    | FormFieldKind.Date(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
-                    | FormFieldKind.DateRange(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
+                    | FormFieldKind.DateTime(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
+                    | FormFieldKind.DateTimeRange(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.Combobox(_, oc, _, value) -> oc.IsNone && not (valueLive value)
                     // Phase 1648 — RATING IS EXEMPT, and this is a decision
                     // rather than an omission.
@@ -4667,7 +4667,7 @@ let private validateCore
             | Some isProducer ->
                 if not isProducer then
                     defects.Add(PreEmitDefect.SelectionOverNonProducer(u.Reader, target))
-        // FUARAN155 (Phase 1810) — a `Format.Date` with neither style. The
+        // FUARAN155 (Phase 1810) — a `Format.DateTime` with neither style. The
         // walk records the fact where it reaches the slot; the verdict is
         // decided here so the code sits with the rest of the vocabulary.
         | BindingWalk.BindingUse.UnstyledDateFormat -> defects.Add(PreEmitDefect.UnstyledDateFormat u.Reader)

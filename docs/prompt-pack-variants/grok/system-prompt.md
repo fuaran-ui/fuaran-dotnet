@@ -157,7 +157,7 @@ filled, `rule` says what a filled value must look like. A field commonly carries
 **Do not restate a bound the control already holds.** A 1–99 quantity is
 `{"$type":"RangedNumber","min":1,"max":99}` on the field's `kind`, not a `compare`
 against 1 and 99 — two sources for one bound, free to disagree, and the validator warns
-(`FUARAN101`). Likewise a date is a `Date` kind, not a `pattern`. Reach for `rule` for
+(`FUARAN101`). Likewise a date is a `DateTime` kind, not a `pattern`. Reach for `rule` for
 the constraint the KIND cannot already express, and keep the rule slot off controls that
 cannot honour it — a `pattern` on a `Checkbox`, a `format` on a `TextArea` (`FUARAN100`).
 
@@ -176,7 +176,7 @@ no `rule` at all, and the end-date field's `compare` reads it at its own id:
 
 <!-- fuaran:example fixture=form-field-rules -->
 ```json
-{"id":"form-field-rules","kind":{"$type":"Form","fields":[{"id":"work-email","kind":{"$type":"Text"},"label":"Work email","required":true,"rule":{"format":"email"}},{"id":"postcode","kind":{"$type":"Text"},"label":"Postcode","required":true,"rule":{"message":"Enter a UK postcode, e.g. EH1 1YZ","pattern":"[A-Z]{1,2}[0-9][A-Z0-9]? ?[0-9][A-Z]{2}"}},{"id":"username","kind":{"$type":"Text"},"label":"Username","required":true,"rule":{"maxLength":24,"minLength":3}},{"id":"hire-start-date","kind":{"$type":"Date","variant":"Date"},"label":"Start date","required":true},{"id":"hire-end-date","kind":{"$type":"Date","variant":"Date"},"label":"End date","required":true,"rule":{"compare":{"against":{"$type":"State","key":"hire-start-date"},"op":"gte"},"message":"End date must be on or after the start date"}}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Save"}}
+{"id":"form-field-rules","kind":{"$type":"Form","fields":[{"id":"work-email","kind":{"$type":"Text"},"label":"Work email","required":true,"rule":{"format":"email"}},{"id":"postcode","kind":{"$type":"Text"},"label":"Postcode","required":true,"rule":{"message":"Enter a UK postcode, e.g. EH1 1YZ","pattern":"[A-Z]{1,2}[0-9][A-Z0-9]? ?[0-9][A-Z]{2}"}},{"id":"username","kind":{"$type":"Text"},"label":"Username","required":true,"rule":{"maxLength":24,"minLength":3}},{"id":"hire-start-date","kind":{"$type":"DateTime","variant":"Date"},"label":"Start date","required":true},{"id":"hire-end-date","kind":{"$type":"DateTime","variant":"Date"},"label":"End date","required":true,"rule":{"compare":{"against":{"$type":"State","key":"hire-start-date"},"op":"gte"},"message":"End date must be on or after the start date"}}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Save"}}
 ```
 <!-- /fuaran:example -->
 
@@ -489,7 +489,7 @@ CellFormat =
 | Currency { code:str }
 | Percent { decimals?:int }
 | SignificantDigits { digits:int }
-| Date { format:str }
+| DateTime { format:str }
 | Duration { style:DurationStyle; unit:DurationUnit }
 | RelativeTime { unit:RelativeTimeUnit }
 | Custom { fn:closure }
@@ -536,8 +536,8 @@ FormFieldKind =
 | RangedNumber { max?:num; min?:num; step?:num; value?:Binding_float }
 | SegmentedChoice { options:Binding_list_SelectOption; orientation:Orientation; value?:Binding_str_choice }
 | TextArea { rows:int; value?:Binding_str }
-| Date { variant:DateVariant; max?:str; min?:str; step?:num; value?:Binding_str }
-| DateRange { variant:DateVariant; max?:str; min?:str; step?:num; value?:any }
+| DateTime { variant:DateTimeVariant; max?:str; min?:str; step?:num; value?:Binding_str }
+| DateTimeRange { variant:DateTimeVariant; max?:str; min?:str; step?:num; value?:any }
 | Combobox { options:Binding_list_SelectOption; allowFreeText?:bool; value?:Binding_str_choice }
 | Rating { max:int; allowHalf?:bool; value?:Binding_float }
 | Color { value?:Binding_str }
@@ -546,7 +546,7 @@ Format =
 | Number { decimals?:int }
 | Currency { isoCode:str }
 | Percent { decimals?:int }
-| Date { dateStyle?:"Short"|"Medium"|"Long"|"Full"; timeStyle?:"Short"|"Medium"|"Long"|"Full" }
+| DateTime { dateStyle?:"Short"|"Medium"|"Long"|"Full"; timeStyle?:"Short"|"Medium"|"Long"|"Full" }
 | RelativeTime { unit:RelativeTimeUnit }
 | Duration { style:DurationStyle; unit:DurationUnit }
 | Since { unit?:RelativeTimeUnit }
@@ -636,7 +636,7 @@ TransformSortKey { column:str; dir?:"asc"|"desc" }
 TreeItem { id:str; label:TextSource; children?:TreeItem[]; icon?:str }
 ViewBox { height:num; minX:num; minY:num; width:num }
 AggFn = "sum"|"mean"|"min"|"max"|"count"|"median"|"stddev"|"first"|"last"|"countDistinct"
-DateVariant = "Date"|"Time"|"DateTime"
+DateTimeVariant = "Date"|"Time"|"DateTime"
 DurationStyle = "Compact"|"Clock"|"Long"
 DurationUnit = "Seconds"|"Minutes"|"Hours"
 Emphasis = "Quiet"|"Normal"|"Loud"
@@ -1176,21 +1176,23 @@ declaration displays as the raw number and fails the task's data checks. The sur
 
 - **A date/time in text** (a label, a Fact value, a timeline entry): a `Bound` text
   slot over a `Format` binding — `{ "$type": "Bound", "binding": { "$type": "Format",
-  "format": { "$type": "Date", "dateStyle": "Medium" }, "locale": { "$type":
+  "format": { "$type": "DateTime", "dateStyle": "Medium" }, "locale": { "$type":
   "Ambient" }, "source": { "$type": "Static", "value": 1755500000 } } }`. The `source`
   is **Unix-epoch seconds**; `dateStyle` spellings are in the catalogue's `Format` row.
-  **A time of day** ("14:30", "last sync at 09:05"): the same `Date` format with
-  `timeStyle` instead — `"format": { "$type": "Date", "timeStyle": "Short" }` shows the
-  time-of-day portion of the instant alone; declare both — `{ "$type": "Date",
-  "dateStyle": "Medium", "timeStyle": "Short" }` — for a date-time. A `Date` format
+  **A time of day** ("14:30", "last sync at 09:05"): the same `DateTime` format with
+  `timeStyle` instead — `"format": { "$type": "DateTime", "timeStyle": "Short" }` shows the
+  time-of-day portion of the instant alone; declare both — `{ "$type": "DateTime",
+  "dateStyle": "Medium", "timeStyle": "Short" }` — for a date-time. A `DateTime` format
   with neither style is refused (`FUARAN155`).
   For "3 days ago" / "in 2 hours", use `{ "$type": "RelativeTime", "unit": "Day" }`
   with the source as a **signed count** of that unit.
-- **A date column or date-formatted metric**: `"format": { "$type": "Date",
+- **A date column or date-formatted metric**: `"format": { "$type": "DateTime",
   "format": "<.NET date format string>" }` (the `CellFormat` vocabulary) on the
   column / Metric.
-- **Date input**: the `Date` form-field kind — its value is an **ISO-8601 string**
-  (`"2026-07-18"`), with `variant` `Date` · `Time` · `DateTime`.
+- **Date, time or date-time input**: the `DateTime` form-field kind — its value is an
+  **ISO-8601 string** (`"2026-07-18"`, `"14:30"`, `"2026-07-18T14:30"`), with `variant`
+  `Date` · `Time` · `DateTime` choosing the control. A start-and-end pair in ONE control is
+  `DateTimeRange` with the same `variant`.
 - **A duration** ("average handle time", "session length", "time on hold"): the value
   rides as a raw COUNT of a unit and the presentation is `{ "$type": "Duration",
   "style": "Compact", "unit": "Seconds" }` — in the `Format` binding for text slots

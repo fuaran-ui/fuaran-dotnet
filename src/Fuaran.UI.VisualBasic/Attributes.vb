@@ -13,7 +13,7 @@ Imports Csharp = Fuaran.UI.CSharp
 '     handler-free takes the write-back default and is live with no host code;
 '   * text slots read a string literal, a "$"-bound query, or a "$state." slot;
 '   * the format-* family (format-currency / format-number / format-percent /
-'     format-date) maps to the bounded CellFormat vocabulary;
+'     format-date-time) maps to the bounded CellFormat vocabulary;
 '   * enums parse by name (case-insensitive) to the C# facade enums.
 '
 ' All conversions route through the Wave 45 C# facade value types (Text / Binding /
@@ -163,7 +163,7 @@ Friend Module Attributes
         If HasAttr(el, "format-currency") Then Return Csharp.CellFormat.Currency(Attr(el, "format-currency"))
         If HasAttr(el, "format-number") Then Return Csharp.CellFormat.Number(OptInt(Attr(el, "format-number")))
         If HasAttr(el, "format-percent") Then Return Csharp.CellFormat.Percent(OptInt(Attr(el, "format-percent")))
-        If HasAttr(el, "format-date") Then Return Csharp.CellFormat.Date(Attr(el, "format-date"))
+        If HasAttr(el, "format-date-time") Then Return Csharp.CellFormat.DateTime(Attr(el, "format-date-time"))
         Return Csharp.CellFormat.None
     End Function
 

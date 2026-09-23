@@ -497,7 +497,7 @@ let private defs: (string * J) list =
       // of. A screen is deliberately not a case: the HTML `capture` attribute
       // cannot express one, and the charter rules display capture Host chrome.
       "CaptureSource", enumDef [ "Camera"; "Microphone" ]
-      "DateVariant", enumDef [ "Date"; "Time"; "DateTime" ]
+      "DateTimeVariant", enumDef [ "Date"; "Time"; "DateTime" ]
       // Phase 864 — both lower-case on the wire, the `LinkProtection` posture.
       "TextFormat", enumDef [ "email"; "url"; "tel" ]
       "CompareOp", enumDef [ "eq"; "neq"; "lt"; "lte"; "gt"; "gte" ]
@@ -522,7 +522,7 @@ let private defs: (string * J) list =
       "HashStrictness", enumDef [ "StrictReplay"; "AdvisoryWarning"; "Enforced" ]
       // Locale-aware formatting enums (Phase 102).
       "DateStyle", enumDef [ "Short"; "Medium"; "Long"; "Full" ]
-      // Phase 1810 — the time-of-day half of `Format.Date`'s style pair.
+      // Phase 1810 — the time-of-day half of `Format.DateTime`'s style pair.
       "TimeStyle", enumDef [ "Short"; "Medium"; "Long"; "Full" ]
       "RelativeTimeUnit", enumDef [ "Second"; "Minute"; "Hour"; "Day"; "Week"; "Month"; "Year" ]
       // The `Binding.Now` grain (Phase 1533) — a strict subset of
@@ -882,7 +882,7 @@ let private defs: (string * J) list =
             duCase "Currency" [ "code" ] [ "code", str ]
             duCase "Percent" [] [ "decimals", integer ]
             duCase "SignificantDigits" [ "digits" ] [ "digits", integer ]
-            duCase "Date" [ "format" ] [ "format", str ]
+            duCase "DateTime" [ "format" ] [ "format", str ]
             // Phase 819 — duration cells + cell-level relative time.
             duCase "Duration" [ "style"; "unit" ] [ "style", ref "DurationStyle"; "unit", ref "DurationUnit" ]
             duCase "RelativeTime" [ "unit" ] [ "unit", ref "RelativeTimeUnit" ]
@@ -903,7 +903,7 @@ let private defs: (string * J) list =
             // Phase 1810 — neither style is required on the wire: `timeStyle`
             // alone is a time of day, both a date-time. Neither present is
             // FUARAN155's subject, a validator rule rather than a schema one.
-            duCase "Date" [] [ "dateStyle", ref "DateStyle"; "timeStyle", ref "TimeStyle" ]
+            duCase "DateTime" [] [ "dateStyle", ref "DateStyle"; "timeStyle", ref "TimeStyle" ]
             duCase "RelativeTime" [ "unit" ] [ "unit", ref "RelativeTimeUnit" ]
             // Phase 819 — locale-independent duration formatting.
             duCase "Duration" [ "style"; "unit" ] [ "style", ref "DurationStyle"; "unit", ref "DurationUnit" ]
@@ -957,11 +957,11 @@ let private defs: (string * J) list =
                   "value", bindingChoiceValue ]
             duCase "TextArea" [ "rows" ] [ "onChange", closure; "rows", integer; "value", binding "str" ]
             duCase
-                "Date"
+                "DateTime"
                 [ "variant" ]
                 [ "onChange", closure
                   "value", binding "str"
-                  "variant", ref "DateVariant"
+                  "variant", ref "DateTimeVariant"
                   "min", str
                   "max", str
                   "step", number ]
@@ -970,11 +970,11 @@ let private defs: (string * J) list =
             // {from, to} object (like `Range`'s bare {min, max}), so the slot
             // is `anyJson` rather than a `Binding` ref.
             duCase
-                "DateRange"
+                "DateTimeRange"
                 [ "variant" ]
                 [ "onChange", closure
                   "value", anyJson
-                  "variant", ref "DateVariant"
+                  "variant", ref "DateTimeVariant"
                   "min", str
                   "max", str
                   "step", number ]

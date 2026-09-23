@@ -144,8 +144,8 @@ let all: Classification list =
       // Phase 1113 — the typeahead control. The option source and the
       // free-text admission survive; the onChange closure erases, as everywhere.
       pt "FormFieldKind.Combobox" writeBack
-      pt "FormFieldKind.Date" writeBack
-      pt "FormFieldKind.DateRange" writeBack // Phase 725 — the pair survives; the onChange closure erases
+      pt "FormFieldKind.DateTime" writeBack
+      pt "FormFieldKind.DateTimeRange" writeBack // Phase 725 — the pair survives; the onChange closure erases
       // Phase 1130 — the scale, the granularity and the value all survive; the
       // onChange closure erases, as everywhere.
       pt "FormFieldKind.Rating" writeBack
@@ -192,7 +192,7 @@ let all: Classification list =
       sv "CellFormat.Currency"
       sv "CellFormat.Percent"
       sv "CellFormat.SignificantDigits"
-      sv "CellFormat.Date"
+      sv "CellFormat.DateTime"
       sv "CellFormat.Duration" // Phase 819 — unit + style enums, fully declarative
       sv "CellFormat.RelativeTime" // Phase 819 — the cell-vocabulary parity case
       ho "CellFormat.Custom" (Some "one of the eight typed CellFormat cases — they are the declarative set")

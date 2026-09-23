@@ -154,9 +154,9 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                         handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
                     | FormFieldKind.SegmentedChoice(_, v, oc, _) ->
                         handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.Date(v, oc, _, _, _, _) ->
+                    | FormFieldKind.DateTime(v, oc, _, _, _, _) ->
                         handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.DateRange(v, oc, _, _, _, _) ->
+                    | FormFieldKind.DateTimeRange(v, oc, _, _, _, _) ->
                         handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
                     | FormFieldKind.Combobox(_, oc, _, v) ->
                         handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
@@ -197,8 +197,8 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                         | FormFieldKind.RangedNumber(_, oc, _, _, _) -> oc.IsSome
                         | FormFieldKind.Range(_, oc, _, _, _) -> oc.IsSome
                         | FormFieldKind.SegmentedChoice(_, _, oc, _) -> oc.IsSome
-                        | FormFieldKind.Date(_, oc, _, _, _, _) -> oc.IsSome
-                        | FormFieldKind.DateRange(_, oc, _, _, _, _) -> oc.IsSome
+                        | FormFieldKind.DateTime(_, oc, _, _, _, _) -> oc.IsSome
+                        | FormFieldKind.DateTimeRange(_, oc, _, _, _, _) -> oc.IsSome
                         | FormFieldKind.Combobox(_, oc, _, _) -> oc.IsSome
                         | FormFieldKind.Rating(_, _, oc, _) -> oc.IsSome
                         | FormFieldKind.Color(oc, _) -> oc.IsSome

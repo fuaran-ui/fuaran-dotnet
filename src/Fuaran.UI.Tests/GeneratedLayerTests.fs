@@ -289,7 +289,7 @@ let generatedLayerTests =
               //
               // History the number used to carry: 85 → 87 at the 692–694 landing,
               // when the two `DateRange` node fixtures became comparable as
-              // `FormFieldKind.DateRange` landed in the IDL (Fuaran-Core `5ddf06d`)
+              // `FormFieldKind.DateTimeRange` landed in the IDL (Fuaran-Core `5ddf06d`)
               // and the generated layer was re-synced. Phase 725's dip to 85 was
               // exactly the "a UI vocabulary addition lands here first, the
               // generated layer follows" lag it documented, and it closed the way it

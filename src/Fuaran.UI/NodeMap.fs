@@ -319,10 +319,10 @@ and mapFormFieldKind (f: 'a -> 'b) (kind: FormFieldKind<'a>) : FormFieldKind<'b>
         FormFieldKind.SegmentedChoice(options, value, mapHandler onChange, orientation)
     | FormFieldKind.Combobox(allowFreeText, onChange, options, value) ->
         FormFieldKind.Combobox(allowFreeText, mapHandler onChange, options, value)
-    | FormFieldKind.Date(value, onChange, variant, mn, mx, st) ->
-        FormFieldKind.Date(value, mapHandler onChange, variant, mn, mx, st)
-    | FormFieldKind.DateRange(value, onChange, variant, mn, mx, st) ->
-        FormFieldKind.DateRange(value, mapHandler onChange, variant, mn, mx, st)
+    | FormFieldKind.DateTime(value, onChange, variant, mn, mx, st) ->
+        FormFieldKind.DateTime(value, mapHandler onChange, variant, mn, mx, st)
+    | FormFieldKind.DateTimeRange(value, onChange, variant, mn, mx, st) ->
+        FormFieldKind.DateTimeRange(value, mapHandler onChange, variant, mn, mx, st)
     | FormFieldKind.Rating(allowHalf, max, onChange, value) ->
         FormFieldKind.Rating(allowHalf, max, mapHandler onChange, value)
     | FormFieldKind.Color(onChange, value) -> FormFieldKind.Color(mapHandler onChange, value)

@@ -435,7 +435,7 @@ let numberFieldConstraints: NumberFieldConstraints =
       Step = Option.None }
 
 /// `DateFieldConstraints` default — all bounds absent (Phase 288). The
-/// `FormFieldKind.date` smart-ctor layers them in when an author supplies
+/// `FormFieldKind.dateTime` smart-ctor layers them in when an author supplies
 /// min/max/step.
 let dateFieldConstraints: DateFieldConstraints =
     { Min = Option.None
@@ -1176,9 +1176,9 @@ module ControlValueDefaults =
     let tokens: string list = []
 
     let range: RangePair = { Max = 0.0; Min = 0.0 }
-    /// ISO-empty — the Date control's value is an ISO-8601 string.
-    let date: string = ""
-    /// ISO-empty both ends — the DateRange control's value is an ordered
+    /// ISO-empty — the DateTime control's value is an ISO-8601 string.
+    let dateTime: string = ""
+    /// ISO-empty both ends — the DateTimeRange control's value is an ordered
     /// `(from, to)` pair of ISO-8601 strings (Phase 725). Since the swap the
-    /// pair IS the generated `DateRangePair` record, as `range` is `RangePair`.
-    let dateRange: DateRangePair = { From = ""; To = "" }
+    /// pair IS the generated `DateTimeRangePair` record, as `range` is `RangePair`.
+    let dateTimeRange: DateTimeRangePair = { From = ""; To = "" }

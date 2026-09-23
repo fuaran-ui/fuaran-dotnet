@@ -655,10 +655,10 @@ let ssrCsrEmissionParityTests =
                   Render.renderStatic (
                       fieldForm
                           "when"
-                          (FormFieldKind.Date(
+                          (FormFieldKind.DateTime(
                               Some(Binding.State("when", Some "")),
                               None,
-                              DateVariant.Date,
+                              DateTimeVariant.Date,
                               None,
                               None,
                               None

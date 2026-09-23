@@ -201,7 +201,7 @@ type BindingUse =
     /// read the same slot already contributes, and admitting it would record
     /// one reader against one channel twice.
     | TransformSite of site: TransformSiteFacts
-    /// Phase 1810 — a `Binding.Format` whose `Format.Date` declares NEITHER
+    /// Phase 1810 — a `Binding.Format` whose `Format.DateTime` declares NEITHER
     /// `dateStyle` nor `timeStyle`. FUARAN155's subject. Both halves of the
     /// style pair became optional so a time of day could be displayed alone;
     /// the shape with neither is structurally legal on the wire (it decodes)
@@ -676,9 +676,9 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     | Binding.Local(_, _, initialFrom, _, _, _, _) -> usesOfBinding initialFrom
     | Binding.I18n(_, Some args) -> args |> Map.toList |> List.collect (fun (_, ab) -> usesOfBinding<JVal> ab)
     | Binding.I18n(_, None) -> []
-    // Phase 1810 — a `Format.Date` with neither style declared is recorded
+    // Phase 1810 — a `Format.DateTime` with neither style declared is recorded
     // beside the source's own uses (see `BindingUse.UnstyledDateFormat`).
-    | Binding.Format(source, Format.Date(None, None), _) -> BindingUse.UnstyledDateFormat :: usesOfBinding source
+    | Binding.Format(source, Format.DateTime(None, None), _) -> BindingUse.UnstyledDateFormat :: usesOfBinding source
     | Binding.Format(source, _, _) -> usesOfBinding source
     | Binding.Transform(source, pipeline, parameters) ->
         // The pure `Transform.paramsOf` derivation (fuaran-core#77) names every
@@ -929,8 +929,8 @@ let private usesOfFormFieldKind<'Msg> (implicitUse: BindingUse option) (kind: Fo
     // Query-bound suggestion source is a real read and is walked as one.
     | FormFieldKind.Combobox(_, _, opts, value) -> usesOfBinding opts @ usesOfValueSlot value
     | FormFieldKind.SegmentedChoice(opts, value, _, _) -> usesOfBinding opts @ usesOfValueSlot value
-    | FormFieldKind.Date(v, _, _, _, _, _) -> usesOfValueSlot v
-    | FormFieldKind.DateRange(v, _, _, _, _, _) -> usesOfValueSlot v
+    | FormFieldKind.DateTime(v, _, _, _, _, _) -> usesOfValueSlot v
+    | FormFieldKind.DateTimeRange(v, _, _, _, _, _) -> usesOfValueSlot v
     // Phase 1130 — both new controls hold a single value slot and no second
     // binding (a rating's scale is a literal int; a colour has no option
     // source), so the value slot IS the whole read.
@@ -1239,8 +1239,8 @@ let formFieldWriteFacts<'Msg> (kind: FormFieldKind<'Msg>) : FormFieldWrite =
     | FormFieldKind.Choice(_, v, h) -> slot v h.IsSome
     | FormFieldKind.Combobox(_, h, _, v) -> slot v h.IsSome
     | FormFieldKind.SegmentedChoice(_, v, h, _) -> slot v h.IsSome
-    | FormFieldKind.Date(v, h, _, _, _, _) -> slot v h.IsSome
-    | FormFieldKind.DateRange(v, h, _, _, _, _) -> slot v h.IsSome
+    | FormFieldKind.DateTime(v, h, _, _, _, _) -> slot v h.IsSome
+    | FormFieldKind.DateTimeRange(v, h, _, _, _, _) -> slot v h.IsSome
     | FormFieldKind.Rating(_, _, h, v) -> slot v h.IsSome
     | FormFieldKind.Color(h, v) -> slot v h.IsSome
     | FormFieldKind.Tokens(_, h, _, v) -> slot v h.IsSome
@@ -1275,8 +1275,8 @@ let formFieldFilterWrite<'Msg> (kind: FormFieldKind<'Msg>) : string option =
     | FormFieldKind.Choice(_, v, _) -> slot v
     | FormFieldKind.Combobox(_, _, _, v) -> slot v
     | FormFieldKind.SegmentedChoice(_, v, _, _) -> slot v
-    | FormFieldKind.Date(v, _, _, _, _, _) -> slot v
-    | FormFieldKind.DateRange(v, _, _, _, _, _) -> slot v
+    | FormFieldKind.DateTime(v, _, _, _, _, _) -> slot v
+    | FormFieldKind.DateTimeRange(v, _, _, _, _, _) -> slot v
     | FormFieldKind.Rating(_, _, _, v) -> slot v
     | FormFieldKind.Color(_, v) -> slot v
     | FormFieldKind.Tokens(_, _, _, v) -> slot v

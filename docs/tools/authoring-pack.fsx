@@ -2002,6 +2002,38 @@ let private leniencyFamilies: LeniencyFamily list =
           + "resurrect the name the rename exists to retire. Accepted on decode, never taught, and "
           + "never emitted. Note the Grid-LAYOUT cols/columns pair in the alias family above runs the "
           + "OPPOSITE way and is a different member entirely." }
+      { Name = "Pre-rename temporal $type spellings (Phase 1811)"
+        Class = NeverTaught
+        FixtureIds =
+          [ "lenient-1811-form-date-legacy"
+            "lenient-1811-form-daterange-legacy"
+            "lenient-1811-format-date-legacy"
+            "lenient-1811-cellformat-date-legacy" ]
+        Evidence =
+          "Date→DateTime and DateRange→DateTimeRange on a form field, and Date→DateTime on a "
+          + "Binding.Format and a CellFormat (Phase 1811): the spellings the temporal family carried "
+          + "before its rename, kept as decode aliases by the operator's D8 ruling on the versioning "
+          + "vehicle (a coordinated clean-break revision, not a profile major) and NOT admitted on "
+          + "§16's own ground — backward compatibility is not a ground there, exactly the 0.28.0 "
+          + "column-member posture above. Each normalisation is total and loss-free (a tag swap; "
+          + "`variant` stays required under the legacy form-field tags), and each is token-positive by "
+          + "four bytes, which is precisely why it must not be taught: teaching it would resurrect the "
+          + "name the rename exists to retire, and the pack's whole point is that the emitted spelling "
+          + "SAYS what the control accepts. Accepted on decode, never taught, never emitted." }
+      { Name = "Invented time-input $type spellings (Phase 1811)"
+        Class = SafeNotTaught
+        FixtureIds = [ "lenient-1811-form-time-invented"; "lenient-1811-form-timerange-invented" ]
+        Evidence =
+          "JUDGEMENT: total + loss-free — Time→DateTime{variant:Time} and TimeRange→DateTimeRange"
+          + "{variant:Time} are bijections when `variant` is absent (the alias SUPPLIES it), and a "
+          + "disagreeing `variant` beside the alias is REFUSED rather than resolved "
+          + "(reject-1811-time-alias-variant-disagrees), so no legal input decodes to two values. "
+          + "Admitted on §16's own ground: `Time` is the spelling a model reaches for when it wants a "
+          + "time-of-day input, and `Date{variant:\"Time\"}` was the spelling nobody found by looking. "
+          + "Token-positive (~18 bytes: the tag is shorter and `variant` is dropped), but it "
+          + "CONTRADICTS the taught catalogue spelling — the catalogue teaches one control, `DateTime`, "
+          + "with `variant` as the breadth axis, and a second spelling for one control is the "
+          + "confusion cost the charter's variant-vs-kind rule refuses to mint. Accepted, never taught." }
       { Name = "Opaque-sentinel recovery"
         Class = NeverTaught
         FixtureIds =

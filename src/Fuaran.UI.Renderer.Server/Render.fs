@@ -188,7 +188,7 @@ let internal formatNumber (format: CellFormat) (value: float) : string =
     | CellFormat.Percent(Some decimals) -> (value * 100.0).ToString("F" + string decimals) + "%"
     | CellFormat.Percent None -> sprintf "%.1f%%" (value * 100.0)
     | CellFormat.SignificantDigits digits -> value.ToString("G" + string digits)
-    | CellFormat.Date _ -> string value
+    | CellFormat.DateTime _ -> string value
     // Phase 819 — both delegate to the shared Renderer.Core helpers so SSR,
     // CSR and the grid adapter render byte-identically (locale-independent).
     | CellFormat.Duration(unit, style) -> Formatting.formatDuration unit style value
@@ -2588,27 +2588,27 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
             (BindingResolver.tryResolve ctx.Sources v
              |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
              |> TokensModel.toCommaSeparated)
-        | FormFieldKind.Date(v, _, variant, _, _, _) ->
+        | FormFieldKind.DateTime(v, _, variant, _, _, _) ->
             let v =
                 v
-                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.date))
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime))
 
             let t =
                 match variant with
-                | DateVariant.Date -> "date"
-                | DateVariant.Time -> "time"
-                | DateVariant.DateTime -> "datetime-local"
+                | DateTimeVariant.Date -> "date"
+                | DateTimeVariant.Time -> "time"
+                | DateTimeVariant.DateTime -> "datetime-local"
 
             t, (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
-        | FormFieldKind.DateRange(_, _, variant, _, _, _) ->
+        | FormFieldKind.DateTimeRange(_, _, variant, _, _, _) ->
             // Phase 725 — the variant types BOTH ends; the pair itself is
             // rendered by the dedicated dual-input branch below, so the
             // single-control tuple carries only the type.
             let t =
                 match variant with
-                | DateVariant.Date -> "date"
-                | DateVariant.Time -> "time"
-                | DateVariant.DateTime -> "datetime-local"
+                | DateTimeVariant.Date -> "date"
+                | DateTimeVariant.Time -> "time"
+                | DateTimeVariant.DateTime -> "datetime-local"
 
             t, ""
 
@@ -2783,7 +2783,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                                       [ for option in options ->
                                             Html.option [ prop.value option.Value; prop.text option.Label ] ] ]
                         | None -> () ] ]
-        | FormFieldKind.DateRange(v, _, _, mn, mx, st) ->
+        | FormFieldKind.DateTimeRange(v, _, _, mn, mx, st) ->
             // Phase 725 — SSR parity with the client's dual-input range: two
             // native date/time inputs (per variant) over the pair's ends,
             // sharing the min/max/step attributes. Inert like every other
@@ -2791,11 +2791,13 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
             // buffer marker (the pair's addressable slot).
             let v =
                 v
-                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.dateRange))
+                |> Option.defaultValue (
+                    Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.dateTimeRange)
+                )
 
-            // The pair is the `DateRangePair` record since the swap (was a
+            // The pair is the `DateTimeRangePair` record since the swap (was a
             // `(from, to)` tuple); same defaults, same emitted markup.
-            let current: DateRangePair =
+            let current: DateTimeRangePair =
                 BindingResolver.tryResolve ctx.Sources v
                 |> Option.defaultValue { From = ""; To = "" }
 
@@ -3106,7 +3108,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                   prop.custom ("data-filter-name", spec.Name)
                   if current then
                       prop.custom ("checked", "checked") ]
-        | FormFieldKind.Date(value, _, _, _, _, _) ->
+        | FormFieldKind.DateTime(value, _, _, _, _, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
@@ -3159,13 +3161,13 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                             [ prop.className "fuaran-filter-range-max"
                               prop.custom ("type", "number")
                               prop.value (string maxV) ] ] ]
-        | FormFieldKind.DateRange(value, _, variant, mn, mx, st) ->
+        | FormFieldKind.DateTimeRange(value, _, variant, mn, mx, st) ->
             // Phase 725 — the date-range chip, inert: two native date/time
             // inputs over ONE filter param carrying the whole pair. Mirrors
             // the client renderer's shape + class vocabulary.
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
-            let current: DateRangePair =
+            let current: DateTimeRangePair =
                 BindingResolver.tryResolve ctx.Sources value
                 |> Option.defaultValue { From = ""; To = "" }
 
@@ -3173,9 +3175,9 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
 
             let inputType =
                 match variant with
-                | DateVariant.Date -> "date"
-                | DateVariant.Time -> "time"
-                | DateVariant.DateTime -> "datetime-local"
+                | DateTimeVariant.Date -> "date"
+                | DateTimeVariant.Time -> "time"
+                | DateTimeVariant.DateTime -> "datetime-local"
 
             let constraintAttrs =
                 [ match mn with

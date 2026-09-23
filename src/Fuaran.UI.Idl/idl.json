@@ -113,7 +113,7 @@
         "Time",
         "DateTime"
       ],
-      "name": "DateVariant"
+      "name": "DateTimeVariant"
     },
     {
       "cases": [
@@ -4067,7 +4067,7 @@
           }
         }
       ],
-      "name": "DateRangePair"
+      "name": "DateTimeRangePair"
     },
     {
       "fields": [
@@ -6105,7 +6105,7 @@
               }
             }
           ],
-          "tag": "Date"
+          "tag": "DateTime"
         },
         {
           "fields": [
@@ -7239,7 +7239,7 @@
               },
               "type": {
                 "$type": "enum",
-                "name": "DateVariant"
+                "name": "DateTimeVariant"
               }
             },
             {
@@ -7270,7 +7270,7 @@
               }
             }
           ],
-          "tag": "Date"
+          "tag": "DateTime"
         },
         {
           "fields": [
@@ -7282,9 +7282,9 @@
               "type": {
                 "$type": "hosted",
                 "hostSurface": {
-                  "decode": "(fun (j: JVal) -> match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decDateRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateRangePair __other)",
-                  "encode": "(fun (v: Binding<DateRangePair>) -> match v with | Binding.Static(Some p) -> encDateRangePair p | __other -> encBinding encDateRangePair __other)",
-                  "fsharp": "Binding<DateRangePair>"
+                  "decode": "(fun (j: JVal) -> match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateTimeRangePair __other)",
+                  "encode": "(fun (v: Binding<DateTimeRangePair>) -> match v with | Binding.Static(Some p) -> encDateTimeRangePair p | __other -> encBinding encDateTimeRangePair __other)",
+                  "fsharp": "Binding<DateTimeRangePair>"
                 },
                 "wire": "json"
               }
@@ -7311,7 +7311,7 @@
               },
               "type": {
                 "$type": "enum",
-                "name": "DateVariant"
+                "name": "DateTimeVariant"
               }
             },
             {
@@ -7342,7 +7342,7 @@
               }
             }
           ],
-          "tag": "DateRange"
+          "tag": "DateTimeRange"
         },
         {
           "fields": [
@@ -7644,7 +7644,7 @@
               }
             }
           ],
-          "tag": "Date"
+          "tag": "DateTime"
         },
         {
           "fields": [

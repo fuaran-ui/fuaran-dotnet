@@ -90,7 +90,7 @@ internal static class Vocabulary
             : value.Substring(StateBindingPrefix.Length + 1);
 
     private static readonly ImmutableHashSet<string> Format =
-        ImmutableHashSet.Create(StringComparer.Ordinal, "format-currency", "format-number", "format-percent", "format-date");
+        ImmutableHashSet.Create(StringComparer.Ordinal, "format-currency", "format-number", "format-percent", "format-date-time");
 
     /// <summary>Attributes every element admits, because they spell a NODE-ENVELOPE
     /// trait rather than a field of any one kind. Unioned into every entry of the

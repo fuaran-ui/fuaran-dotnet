@@ -29,7 +29,7 @@ on the surface you touch.
 - A `"$state.name"` value is a **writable state slot** (`open="$state.panelOpen"`). See
   "The two binding prefixes" below — the difference is direction, and it decides
   whether a control is live.
-- `format-currency` / `format-number` / `format-percent` / `format-date` map to the
+- `format-currency` / `format-number` / `format-percent` / `format-date-time` map to the
   bounded cell-format vocabulary.
 - Nested elements become the parent's children.
 - `dispatch="…"` is author-side metadata — the wire carries no message type (§4g).

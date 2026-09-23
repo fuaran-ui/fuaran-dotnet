@@ -174,7 +174,7 @@ internal static class AuthoringSurfacePin
     /// keeping.</summary>
     private static readonly HashSet<string> EnvelopeOrShared = new(StringComparer.Ordinal)
     {
-        "id", "format-currency", "format-number", "format-percent", "format-date",
+        "id", "format-currency", "format-number", "format-percent", "format-date-time",
     };
 
     /// <summary>Whether a wire field of this IDL type could be authored as an XML

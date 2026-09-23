@@ -260,7 +260,7 @@ let private genCellFormat: Gen<CellFormat> =
           Gen.map CellFormat.Currency genNonEmptyString
           Gen.map CellFormat.Percent (genOption genInt)
           Gen.map CellFormat.SignificantDigits genInt
-          Gen.map CellFormat.Date genNonEmptyString
+          Gen.map CellFormat.DateTime genNonEmptyString
           Gen.map2 (fun u s -> CellFormat.Duration(u, s)) genDurationUnit genDurationStyle
           Gen.map CellFormat.RelativeTime genRelativeTimeUnitCell
           Gen.constant (CellFormat.Custom(fun _ -> "<custom>")) ]
@@ -273,7 +273,7 @@ let private allCellFormats: CellFormat list =
       CellFormat.Currency "GBP"
       CellFormat.Percent None
       CellFormat.SignificantDigits 3
-      CellFormat.Date "yyyy-MM-dd"
+      CellFormat.DateTime "yyyy-MM-dd"
       CellFormat.Duration(DurationUnit.Minutes, DurationStyle.Compact)
       CellFormat.RelativeTime RelativeTimeUnit.Minute
       CellFormat.Custom(fun _ -> "<custom>") ]
@@ -343,7 +343,7 @@ let private genRelativeTimeUnit: Gen<RelativeTimeUnit> =
           RelativeTimeUnit.Month
           RelativeTimeUnit.Year ]
 
-// Phase 1810 — the time-of-day half of `Format.Date`'s style pair.
+// Phase 1810 — the time-of-day half of `Format.DateTime`'s style pair.
 let private genTimeStyle: Gen<TimeStyle> =
     Gen.elements [ TimeStyle.Short; TimeStyle.Medium; TimeStyle.Long; TimeStyle.Full ]
 
@@ -354,9 +354,9 @@ let private genFormat: Gen<Format> =
           Gen.map Format.Percent (genOption genInt)
           // Phase 1810 — the three admitted shapes; neither-present is
           // FUARAN155's subject and is deliberately not generated.
-          Gen.map (fun d -> Format.Date(Some d, None)) genDateStyle
-          Gen.map (fun t -> Format.Date(None, Some t)) genTimeStyle
-          Gen.map2 (fun d t -> Format.Date(Some d, Some t)) genDateStyle genTimeStyle
+          Gen.map (fun d -> Format.DateTime(Some d, None)) genDateStyle
+          Gen.map (fun t -> Format.DateTime(None, Some t)) genTimeStyle
+          Gen.map2 (fun d t -> Format.DateTime(Some d, Some t)) genDateStyle genTimeStyle
           Gen.map Format.RelativeTime genRelativeTimeUnit
           // Phase 819 — the locale-independent duration arm.
           Gen.map2 (fun u s -> Format.Duration(u, s)) genDurationUnit genDurationStyle ]

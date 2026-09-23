@@ -1875,8 +1875,13 @@ let knownFormFieldKinds =
       "RangedNumber"
       "SegmentedChoice"
       "TextArea"
-      "Date"
-      "DateRange"
+      // Phase 1811 — `DateTime` / `DateTimeRange` (were `Date` / `DateRange`):
+      // the names now say the fields take a date, a time of day or both. The
+      // old spellings, and the invented `Time` / `TimeRange`, are §16 lenient
+      // aliases in `decodeFormFieldKind` and are deliberately NOT listed here —
+      // this list is the CANONICAL vocabulary the corpus attests.
+      "DateTime"
+      "DateTimeRange"
       // Phase 1113 — the typeahead control. Listed here so the UNKNOWN_DU_CASE
       // hint names it: an emitter reaching for a searchable select has to be
       // told the spelling exists, since the alternative it settles for
@@ -2486,13 +2491,13 @@ let private decodeScrollOrientation (path: string) (j: Json) : Result<ScrollOrie
     | JString s -> unknownEnumCase path s "Vertical | Horizontal | Both"
     | _ -> wrongType path "JSON string (ScrollOrientation)"
 
-let private decodeDateVariant (path: string) (j: Json) : Result<DateVariant, DecodeError> =
+let private decodeDateTimeVariant (path: string) (j: Json) : Result<DateTimeVariant, DecodeError> =
     match j with
-    | JString "Date" -> Ok DateVariant.Date
-    | JString "Time" -> Ok DateVariant.Time
-    | JString "DateTime" -> Ok DateVariant.DateTime
+    | JString "Date" -> Ok DateTimeVariant.Date
+    | JString "Time" -> Ok DateTimeVariant.Time
+    | JString "DateTime" -> Ok DateTimeVariant.DateTime
     | JString s -> unknownEnumCase path s "Date | Time | DateTime"
-    | _ -> wrongType path "JSON string (DateVariant)"
+    | _ -> wrongType path "JSON string (DateTimeVariant)"
 
 let private decodeMathDisplay (path: string) (j: Json) : Result<MathDisplay, DecodeError> =
     match j with
@@ -2876,10 +2881,14 @@ let private decodeCellFormat (path: string) (j: Json) : Result<CellFormat, Decod
             match requireField path fields "digits" "integer digit count" with
             | Error e -> Error e
             | Ok j -> requireInt (path + ".digits") j |> Result.map CellFormat.SignificantDigits
+        // Phase 1811 — `DateTime` is canonical; `Date` is its §16 lenient alias
+        // (the pre-rename spelling), decoded to the same value and re-encoded
+        // canonical. Never emitted.
+        | Ok "DateTime"
         | Ok "Date" ->
             match requireField path fields "format" "format string" with
             | Error e -> Error e
-            | Ok j -> requireString (path + ".format") j |> Result.map CellFormat.Date
+            | Ok j -> requireString (path + ".format") j |> Result.map CellFormat.DateTime
         | Ok "Duration" ->
             // Phase 819 — trendable duration cells: raw float counts `unit`s,
             // rendered per `style`.
@@ -2907,7 +2916,7 @@ let private decodeCellFormat (path: string) (j: Json) : Result<CellFormat, Decod
             unknownDuCase
                 path
                 s
-                "None | Number | Currency | Percent | SignificantDigits | Date | Duration | RelativeTime | Custom"
+                "None | Number | Currency | Percent | SignificantDigits | DateTime | Duration | RelativeTime | Custom"
 
 // ─── Format / LocaleSource (Phase 102) ───────────────────────────────────
 
@@ -2954,6 +2963,10 @@ let private decodeFormat (path: string) (j: Json) : Result<Format, DecodeError> 
             | Some j ->
                 requireInt (path + ".decimals") j
                 |> Result.map (fun d -> Format.Percent(Some d))
+        // Phase 1811 — `DateTime` is canonical (an honest name once 1810 made
+        // the formatter render a time of day); `Date` is its §16 lenient alias,
+        // decoded to the same value and re-encoded canonical. Never emitted.
+        | Ok "DateTime"
         | Ok "Date" ->
             // Phase 1810 — BOTH style slots are optional: `timeStyle` alone is
             // a time of day, both together a date-time, `dateStyle` alone the
@@ -2974,7 +2987,7 @@ let private decodeFormat (path: string) (j: Json) : Result<Format, DecodeError> 
             match dateStyle, timeStyle with
             | Error e, _
             | _, Error e -> Error e
-            | Ok d, Ok t -> Ok(Format.Date(d, t))
+            | Ok d, Ok t -> Ok(Format.DateTime(d, t))
         | Ok "RelativeTime" ->
             match requireField path fields "unit" "RelativeTimeUnit string" with
             | Error e -> Error e
@@ -3002,7 +3015,7 @@ let private decodeFormat (path: string) (j: Json) : Result<Format, DecodeError> 
             | Some j ->
                 decodeRelativeTimeUnit (path + ".unit") j
                 |> Result.map (fun u -> Format.Since(Some u))
-        | Ok s -> unknownDuCase path s "Number | Currency | Percent | Date | RelativeTime | Duration | Since"
+        | Ok s -> unknownDuCase path s "Number | Currency | Percent | DateTime | RelativeTime | Duration | Since"
 
 let private decodeLocaleSource (path: string) (j: Json) : Result<LocaleSource, DecodeError> =
     match requireObject path j with
@@ -4205,12 +4218,12 @@ let private decodeBindingRangePair (path: string) (j: Json) : Result<Binding<Ran
         parseStatic path j |> Result.map (Some >> Binding.Static)
     | _ -> bindingGeneric<RangePair> path parseStatic { Min = 0.0; Max = 0.0 } j
 
-let private decodeBindingStringPair (path: string) (j: Json) : Result<Binding<DateRangePair>, DecodeError> =
+let private decodeBindingStringPair (path: string) (j: Json) : Result<Binding<DateTimeRangePair>, DecodeError> =
     // Phase 725 — the DateRange control's (from, to) ISO-8601 pair. Mirrors
     // `decodeBindingFloatPair`: the bare `{from, to}` object is canonical, a
     // two-element `[from, to]` array is the lenient coercion, and the
     // `Static`-enveloped form stays accepted through the generic dispatch.
-    let ordered (p: string) (a: string, b: string) : Result<DateRangePair, DecodeError> =
+    let ordered (p: string) (a: string, b: string) : Result<DateTimeRangePair, DecodeError> =
         // Didactic domain rule: a LITERAL pair must be ordered. Same-variant
         // ISO-8601 strings sort lexicographically in chronological order, so an
         // ordinal compare is total here — no date parsing, no locale. Only a
@@ -4227,7 +4240,7 @@ let private decodeBindingStringPair (path: string) (j: Json) : Result<Binding<Da
         else
             Ok { From = a; To = b }
 
-    let parseStatic (p: string) (v: Json) : Result<DateRangePair, DecodeError> =
+    let parseStatic (p: string) (v: Json) : Result<DateTimeRangePair, DecodeError> =
         match v with
         | JObject pf ->
             match tryField pf "from", tryField pf "to" with
@@ -4254,7 +4267,7 @@ let private decodeBindingStringPair (path: string) (j: Json) : Result<Binding<Da
         && (tryField pf "to").IsSome
         ->
         parseStatic path j |> Result.map (Some >> Binding.Static)
-    | _ -> bindingGeneric<DateRangePair> path parseStatic { From = ""; To = "" } j
+    | _ -> bindingGeneric<DateTimeRangePair> path parseStatic { From = ""; To = "" } j
 
 // fuaran#665 — the typed rows decoder: a rows payload is an array of row
 // objects (each decoding to a `Row = Map<string, obj>` with `decodeObj` cell
@@ -6256,6 +6269,36 @@ type internal ControlAutoBind =
     | FilterChip of name: string
     | FormFieldId of id: string
 
+/// Phase 1811 — the `variant` of a `DateTime` / `DateTimeRange` field, read
+/// through the §16 `Time` / `TimeRange` alias rule. Under the canonical tag
+/// (or the pre-rename alias) `variant` is required as it always was. Under the
+/// time-alias tag the alias SUPPLIES `Time` when the member is absent, and an
+/// explicit member beside it must agree — a `$type` of `Time` carrying
+/// `variant: "Date"` is refused as ambiguous rather than resolved to either,
+/// the same posture the 0.28.0 column-member aliases take.
+let private decodeTemporalVariant
+    (tag: string)
+    (timeAlias: string)
+    (path: string)
+    (fields: Map<string, Json>)
+    : Result<DateTimeVariant, DecodeError> =
+    if tag = timeAlias then
+        match tryField fields "variant" with
+        | None -> Ok DateTimeVariant.Time
+        | Some vj ->
+            match decodeDateTimeVariant (path + ".variant") vj with
+            | Ok DateTimeVariant.Time -> Ok DateTimeVariant.Time
+            | Ok _ ->
+                wrongType
+                    (path + ".variant")
+                    ("the variant Time, or no variant at all — a $type of "
+                     + timeAlias
+                     + " already fixes the variant to Time, and a different one beside it is ambiguous")
+            | Error e -> Error e
+    else
+        requireField path fields "variant" "DateTimeVariant"
+        |> Result.bind (decodeDateTimeVariant (path + ".variant"))
+
 let private decodeFormFieldKind
     (autoBind: ControlAutoBind)
     (path: string)
@@ -6563,16 +6606,23 @@ let private decodeFormFieldKind
             | Error e, _, _
             | _, Error e, _
             | _, _, Error e -> Error e
-        | Ok "Date" ->
+        // Phase 1811 — `DateTime` is canonical. `Date` is the pre-rename
+        // spelling, kept as a §16 lenient alias by the D8 ruling; `Time` is the
+        // invented spelling the rename exists to make findable — it is a
+        // `DateTime{variant:"Time"}` an emitter reached for by intent, so the
+        // alias SUPPLIES the variant when absent and REFUSES a disagreeing one
+        // beside it (ambiguous, never resolved). All three re-encode canonical.
+        | Ok(("DateTime" | "Date" | "Time") as tag) ->
             // Phase 288 — date/time field. `value` is a Binding<string> ISO
             // value; `variant` selects the control; optional min/max (ISO
             // strings) + step (seconds) decode to None when absent.
             let valueR =
-                valueOr decodeBindingString (Some Fuaran.UI.Defaults.ControlValueDefaults.date) "Binding<string> value"
+                valueOr
+                    decodeBindingString
+                    (Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime)
+                    "Binding<string> value"
 
-            let variantR =
-                requireField path fields "variant" "DateVariant"
-                |> Result.bind (decodeDateVariant (path + ".variant"))
+            let variantR = decodeTemporalVariant tag "Time" path fields
 
             let minR =
                 match tryField fields "min" with
@@ -6591,13 +6641,16 @@ let private decodeFormFieldKind
 
             match valueR, variantR, minR, maxR, stepR with
             | Ok value, Ok variant, Ok min, Ok max, Ok step ->
-                Ok(FormFieldKind.Date(value, handlerOpt "onChange", variant, min, max, step))
+                Ok(FormFieldKind.DateTime(value, handlerOpt "onChange", variant, min, max, step))
             | Error e, _, _, _, _
             | _, Error e, _, _, _
             | _, _, Error e, _, _
             | _, _, _, Error e, _
             | _, _, _, _, Error e -> Error e
-        | Ok "DateRange" ->
+        // Phase 1811 — `DateTimeRange` is canonical; `DateRange` (pre-rename)
+        // and `TimeRange` (invented, fixes `variant` to `Time`) are its §16
+        // lenient aliases on exactly the `DateTime` rule above.
+        | Ok(("DateTimeRange" | "DateRange" | "TimeRange") as tag) ->
             // Phase 725 — single-control date range. `value` is a
             // `Binding<string * string>` carrying the ordered ISO-8601 pair
             // (canonically the bare `{from, to}` object); `variant` selects the
@@ -6609,12 +6662,10 @@ let private decodeFormFieldKind
             let valueR =
                 valueOr
                     decodeBindingStringPair
-                    (Some Fuaran.UI.Defaults.ControlValueDefaults.dateRange)
-                    "Binding<DateRangePair> value"
+                    (Some Fuaran.UI.Defaults.ControlValueDefaults.dateTimeRange)
+                    "Binding<DateTimeRangePair> value"
 
-            let variantR =
-                requireField path fields "variant" "DateVariant"
-                |> Result.bind (decodeDateVariant (path + ".variant"))
+            let variantR = decodeTemporalVariant tag "TimeRange" path fields
 
             let minR =
                 match tryField fields "min" with
@@ -6633,7 +6684,7 @@ let private decodeFormFieldKind
 
             match valueR, variantR, minR, maxR, stepR with
             | Ok value, Ok variant, Ok min, Ok max, Ok step ->
-                Ok(FormFieldKind.DateRange(value, handlerOpt "onChange", variant, min, max, step))
+                Ok(FormFieldKind.DateTimeRange(value, handlerOpt "onChange", variant, min, max, step))
             | Error e, _, _, _, _
             | _, Error e, _, _, _
             | _, _, Error e, _, _
@@ -6696,7 +6747,7 @@ let private decodeCompareRule (path: string) (j: Json) : Result<CompareRule, Dec
 ///    defect, not a no-op: it decodes, validates and renders while declaring
 ///    nothing, which is exactly the fake-affordance shape the near-miss rule
 ///    also forecloses — arriving through an empty object instead of a wrong key.
-///  - `minLength` above `maxLength`. This is the `DateRangePair` ordered-pair
+///  - `minLength` above `maxLength`. This is the `DateTimeRangePair` ordered-pair
 ///    rule applied to a length pair: an inverted bound admits no value at all,
 ///    so the field can never be submitted and the form is dead on arrival.
 ///

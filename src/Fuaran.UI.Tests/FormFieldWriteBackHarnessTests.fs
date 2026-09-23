@@ -69,11 +69,11 @@ let private nn (value: 'T) : obj = box value |> Unchecked.nonNull
 
 // Annotated constructors, not bare record literals: `{ Min = _; Max = _ }`
 // otherwise infers as `NumberFieldConstraints` (same labels, `float option`
-// fields), and `DateRangePair`'s labels need the annotation to resolve through
+// fields), and `DateTimeRangePair`'s labels need the annotation to resolve through
 // the `Generated` abbreviation — exactly the form Render.fs uses.
 let private rp (minV: float) (maxV: float) : RangePair = { Min = minV; Max = maxV }
 
-let private dp (fromV: string) (toV: string) : DateRangePair = { From = fromV; To = toV }
+let private dp (fromV: string) (toV: string) : DateTimeRangePair = { From = fromV; To = toV }
 
 let private makeCtx () : Render.RenderContext<Msg> =
     { Sources = BindingResolver.empty
@@ -145,8 +145,8 @@ let private rangeContractHolds
     afterMin = Some(rp 3.5 current.Max) && afterMax = Some(rp current.Min 9.25)
 
 let private dateRangeContractHolds
-    (readBack: unit -> DateRangePair option)
-    (current: DateRangePair)
+    (readBack: unit -> DateTimeRangePair option)
+    (current: DateTimeRangePair)
     (handlers: (string -> unit) * (string -> unit))
     : bool =
     let onFrom, onTo = handlers
@@ -262,7 +262,7 @@ let tests =
           // ── Site class 2: the form field's `DateRange` arm ────────────────
           test "form DateRange: each input writes its own end of the date pair" {
               let key = stateKey "form-dates"
-              let binding: Binding<DateRangePair> = Binding.State(key, Some(dp "" ""))
+              let binding: Binding<DateTimeRangePair> = Binding.State(key, Some(dp "" ""))
               let current = dp "2026-01-01" "2026-12-31"
 
               try
@@ -271,18 +271,18 @@ let tests =
                           (fun () -> resolveState binding)
                           current
                           (Render.dateRangeInputHandlers (makeCtx ()) None binding current))
-                      "the date pair's two closures are the numeric pair's shape over DateRangePair"
+                      "the date pair's two closures are the numeric pair's shape over DateTimeRangePair"
               finally
                   StateStore.remove key
           }
 
           test "form DateRange go-red: swapped ends fail the contract" {
               let key = stateKey "gr-dates"
-              let binding: Binding<DateRangePair> = Binding.State(key, Some(dp "" ""))
+              let binding: Binding<DateTimeRangePair> = Binding.State(key, Some(dp "" ""))
               let current = dp "2026-01-01" "2026-12-31"
               let ctx = makeCtx ()
 
-              let write (pair: DateRangePair) =
+              let write (pair: DateTimeRangePair) =
                   Render.pairFieldChange ctx None binding (nn pair) (pair.From, pair.To)
 
               let swapped: (string -> unit) * (string -> unit) =
@@ -342,7 +342,7 @@ let tests =
           // ── Site class 4: the filter chip's `DateRange` arm ───────────────
           test "filter DateRange: the chip's date pair lands in its filter slot" {
               let name = "ffwbh-filter-dates"
-              let binding: Binding<DateRangePair> = Binding.Filter(name, None)
+              let binding: Binding<DateTimeRangePair> = Binding.Filter(name, None)
               let current = dp "2026-03-01" "2026-03-31"
 
               try
@@ -388,7 +388,7 @@ let tests =
 
           test "a present date handler dispatches the whole date pair" {
               let key = stateKey "handled-dates"
-              let binding: Binding<DateRangePair> = Binding.State(key, Some(dp "" ""))
+              let binding: Binding<DateTimeRangePair> = Binding.State(key, Some(dp "" ""))
               let current = dp "2026-01-01" "2026-12-31"
               let mutable dispatched = None
 

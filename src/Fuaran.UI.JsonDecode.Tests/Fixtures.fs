@@ -2172,7 +2172,7 @@ let filtersSegmented: Node<obj> =
 
     node "filters-segmented" (NodeKind.Filters { Items = [ segmentedFilter ] }) None
 
-/// Round-trip cover for the additive `FormFieldKind.Date` case (Phase 288).
+/// Round-trip cover for the additive `FormFieldKind.DateTime` case (Phase 288).
 /// Exercises all three variants (Date / Time / DateTime) and every
 /// present/absent combination of the optional Min / Max / Step constraints so
 /// the encoder's omit-when-None discipline and the decoder's optional-field
@@ -2183,10 +2183,10 @@ let formDate: Node<obj> =
             Id = "checkIn"
             Label = TextSource.Literal "Check in"
             Kind =
-                FormFieldKind.Date(
+                FormFieldKind.DateTime(
                     Some(Binding.Static(Some "2026-01-15")),
                     Some(fun _ -> placeholderChain),
-                    DateVariant.Date,
+                    DateTimeVariant.Date,
                     Some "2026-01-01",
                     Some "2026-12-31",
                     None
@@ -2198,10 +2198,10 @@ let formDate: Node<obj> =
             Id = "alarm"
             Label = TextSource.Literal "Alarm"
             Kind =
-                FormFieldKind.Date(
+                FormFieldKind.DateTime(
                     Some(Binding.Static(Some "08:30")),
                     Some(fun _ -> placeholderChain),
-                    DateVariant.Time,
+                    DateTimeVariant.Time,
                     None,
                     None,
                     Some 60.0
@@ -2212,10 +2212,10 @@ let formDate: Node<obj> =
             Id = "meeting"
             Label = TextSource.Literal "Meeting"
             Kind =
-                FormFieldKind.Date(
+                FormFieldKind.DateTime(
                     Some(Binding.Static(Some "2026-03-01T14:00")),
                     Some(fun _ -> placeholderChain),
-                    DateVariant.DateTime,
+                    DateTimeVariant.DateTime,
                     None,
                     None,
                     None
@@ -2231,7 +2231,7 @@ let formDate: Node<obj> =
         ))
         None
 
-/// Round-trip cover for `FormFieldKind.DateRange` (Phase 725) — the
+/// Round-trip cover for `FormFieldKind.DateTimeRange` (Phase 725) — the
 /// single-control date range. Exercises all three variants and the
 /// present/absent constraint combinations, plus the Phase 426 handler-free
 /// shape, so the encoder's omit-when-None discipline and the decoder's
@@ -2243,7 +2243,7 @@ let formDateRange: Node<obj> =
             Id = "stay"
             Label = TextSource.Literal "Stay"
             Kind =
-                FormFieldKind.DateRange(
+                FormFieldKind.DateTimeRange(
                     Some(
                         Binding.Static(
                             Some
@@ -2252,7 +2252,7 @@ let formDateRange: Node<obj> =
                         )
                     ),
                     Some(fun _ -> placeholderChain),
-                    DateVariant.Date,
+                    DateTimeVariant.Date,
                     Some "2026-01-01",
                     Some "2026-12-31",
                     None
@@ -2266,10 +2266,10 @@ let formDateRange: Node<obj> =
             Id = "shift"
             Label = TextSource.Literal "Shift"
             Kind =
-                FormFieldKind.DateRange(
+                FormFieldKind.DateTimeRange(
                     Some(Binding.State("shift", Some { From = "08:00"; To = "17:00" })),
                     None,
-                    DateVariant.Time,
+                    DateTimeVariant.Time,
                     None,
                     None,
                     Some 900.0
@@ -2280,7 +2280,7 @@ let formDateRange: Node<obj> =
             Id = "window"
             Label = TextSource.Literal "Window"
             Kind =
-                FormFieldKind.DateRange(
+                FormFieldKind.DateTimeRange(
                     Some(
                         Binding.Static(
                             Some
@@ -2289,7 +2289,7 @@ let formDateRange: Node<obj> =
                         )
                     ),
                     Some(fun _ -> placeholderChain),
-                    DateVariant.DateTime,
+                    DateTimeVariant.DateTime,
                     None,
                     None,
                     None
@@ -2305,7 +2305,7 @@ let formDateRange: Node<obj> =
         ))
         None
 
-/// Filter-context cover for `FormFieldKind.DateRange` (Phase 725). The chip's
+/// Filter-context cover for `FormFieldKind.DateTimeRange` (Phase 725). The chip's
 /// `value` is the exact auto-binding (`Filter(name)`), so it is OMITTED on the
 /// wire per the FilterSpec auto-bind rule — and the pair binds ONE filter
 /// param, not two, which is the case's reason to exist.
@@ -2313,7 +2313,15 @@ let filtersDateRange: Node<obj> =
     let stayChip: FilterSpec<obj> =
         { Name = "stay"
           Label = TextSource.Literal "Stay"
-          Kind = FormFieldKind.DateRange(Some(Binding.Filter("stay", None)), None, DateVariant.Date, None, None, None) }
+          Kind =
+            FormFieldKind.DateTimeRange(
+                Some(Binding.Filter("stay", None)),
+                None,
+                DateTimeVariant.Date,
+                None,
+                None,
+                None
+            ) }
 
     node "filters-date-range" (NodeKind.Filters { Items = [ stayChip ] }) None
 
@@ -3066,10 +3074,10 @@ let formFieldRules: Node<obj> =
             Id = "hire-start-date"
             Label = TextSource.Literal "Start date"
             Kind =
-                FormFieldKind.Date(
-                    Some(Binding.State("hire-start-date", Some Fuaran.UI.Defaults.ControlValueDefaults.date)),
+                FormFieldKind.DateTime(
+                    Some(Binding.State("hire-start-date", Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime)),
                     Option.None,
-                    DateVariant.Date,
+                    DateTimeVariant.Date,
                     None,
                     None,
                     None
@@ -3084,10 +3092,10 @@ let formFieldRules: Node<obj> =
             Id = "hire-end-date"
             Label = TextSource.Literal "End date"
             Kind =
-                FormFieldKind.Date(
-                    Some(Binding.State("hire-end-date", Some Fuaran.UI.Defaults.ControlValueDefaults.date)),
+                FormFieldKind.DateTime(
+                    Some(Binding.State("hire-end-date", Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime)),
                     Option.None,
-                    DateVariant.Date,
+                    DateTimeVariant.Date,
                     None,
                     None,
                     None
@@ -3228,10 +3236,10 @@ let formDeclarativeMinimal: Node<obj> =
             Id = "visit-date"
             Label = TextSource.Literal "Date"
             Kind =
-                FormFieldKind.Date(
-                    Some(Binding.State("visit-date", Some Fuaran.UI.Defaults.ControlValueDefaults.date)),
+                FormFieldKind.DateTime(
+                    Some(Binding.State("visit-date", Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime)),
                     Option.None,
-                    DateVariant.Date,
+                    DateTimeVariant.Date,
                     None,
                     None,
                     None
@@ -5112,7 +5120,7 @@ let nowGrain: Node<obj> =
 // `format-bindings` above carries `Format.RelativeTime`, whose numeric source
 // is a signed COUNT of its unit — already computed by whoever produced it. This
 // fixture carries the case whose source is an INSTANT in whole Unix-epoch
-// seconds (`Format.Date`'s convention): the count is the delta the HOST takes
+// seconds (`Format.DateTime`'s convention): the count is the delta the HOST takes
 // against its own furnished instant, so a timestamp column can say "3 hours
 // ago" with no Transform and no arithmetic on the wire.
 //
@@ -5146,7 +5154,7 @@ let formatSince: Node<obj> =
         ))
         None
 
-// ─── Phase 1810 — `Format.Date` with a time of day: the `timeStyle` half ────
+// ─── Phase 1810 — `Format.DateTime` with a time of day: the `timeStyle` half ────
 //
 // `format-bindings` above pins the shape every pre-1810 document carries —
 // `dateStyle` alone, byte-unchanged. This fixture pins the two shapes Phase
@@ -5172,14 +5180,14 @@ let formatDateTime: Node<obj> =
                       "fmt-date-time"
                       (Binding.Format(
                           Binding.Static(Some 1700000000.0),
-                          Format.Date(Some DateStyle.Medium, Some TimeStyle.Short),
+                          Format.DateTime(Some DateStyle.Medium, Some TimeStyle.Short),
                           LocaleSource.Explicit "en-GB"
                       ))
                   md
                       "fmt-time-only"
                       (Binding.Format(
                           Binding.Static(Some 1700000000.0),
-                          Format.Date(None, Some TimeStyle.Short),
+                          Format.DateTime(None, Some TimeStyle.Short),
                           LocaleSource.Ambient
                       ))
                   md
@@ -5190,7 +5198,7 @@ let formatDateTime: Node<obj> =
                           // purpose: `Long` / `Full` time styles carry the ZONE
                           // NAME, and a render snapshot of one differs between
                           // a UTC runner and a GMT one.
-                          Format.Date(Some DateStyle.Full, Some TimeStyle.Medium),
+                          Format.DateTime(Some DateStyle.Full, Some TimeStyle.Medium),
                           LocaleSource.Explicit "de-DE"
                       )) ]
               KeepTogether = false
@@ -6890,7 +6898,7 @@ let formatBindings: Node<obj> =
                       "fmt-date"
                       (Binding.Format(
                           Binding.Static(Some 1700000000.0),
-                          Format.Date(Some DateStyle.Medium, None),
+                          Format.DateTime(Some DateStyle.Medium, None),
                           LocaleSource.Explicit "fr-FR"
                       ))
                   md

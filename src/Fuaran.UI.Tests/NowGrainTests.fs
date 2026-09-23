@@ -223,7 +223,7 @@ let tests =
 
           test "Format.Since resolves against the HOST instant, and reads its source as an instant" {
               // Source is three hours BEFORE the pinned instant, in whole
-              // Unix-epoch seconds (Format.Date's convention).
+              // Unix-epoch seconds (Format.DateTime's convention).
               let threeHoursAgo =
                   match Formatting.epochSecondsOfInstant pinned with
                   | Some e -> e - 10800.0

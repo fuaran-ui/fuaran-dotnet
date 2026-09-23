@@ -24,7 +24,7 @@ module Fuaran.UI.Renderer.Formatting
 //  `localeTag` is the resolved BCP-47 tag (e.g. "en-GB"). An empty string
 //  means "use the runtime default locale" — `Intl` with `undefined`, .NET with
 //  `CultureInfo.InvariantCulture` (the identity-default per the 12.I locale
-//  source). The numeric source is interpreted per the `Format` case: `Date`
+//  source). The numeric source is interpreted per the `Format` case: `DateTime`
 //  reads whole Unix-epoch seconds; `RelativeTime` reads a signed count of its
 //  unit; the rest read a plain number (`Percent` a ratio).
 // ============================================================================
@@ -118,12 +118,12 @@ let textDirection (localeTag: string) : string =
         | Some _ -> "ltr"
         | None -> if rtlLanguages.Contains language then "rtl" else "ltr"
 
-// ─── Instants a `Format.Date` cannot represent ─────────────────────────────
+// ─── Instants a `Format.DateTime` cannot represent ─────────────────────────────
 //
 // The wire admits every IEEE-754 double a JSON number can spell, including
 // `NaN`, `±Infinity` and values far outside any calendar (WIRE_FORMAT §7's
 // float sentinels; the decoder's own sentinel set at `JsonDecode`). A
-// `Format.Date` slot then receives one, and the two hosts failed differently:
+// `Format.DateTime` slot then receives one, and the two hosts failed differently:
 // `DateTimeOffset.FromUnixTimeSeconds` THROWS, out of an SSR render pass, so the
 // whole page 500s on one bad cell; `Intl.DateTimeFormat` raises a RangeError on
 // an invalid time value, so the browser loses the render for that node.
@@ -135,7 +135,7 @@ let textDirection (localeTag: string) : string =
 //
 // THE BOUNDS ARE .NET'S, deliberately, and they are the NARROWER pair.
 // `DateTimeOffset` spans year 1 to year 9999 (±~2.5×10¹¹ seconds); JavaScript's
-// `Date` spans ±~8.6×10¹². Taking the wider range would let a value render on
+// `DateTime` spans ±~8.6×10¹². Taking the wider range would let a value render on
 // one host and refuse on the other, which is the divergence being closed — so
 // the narrower range is the shared one, and a value between the two bounds is
 // refused on both even though one host could have drawn it.
@@ -148,7 +148,7 @@ let minInstantSeconds = -62135596800.0
 [<Literal>]
 let maxInstantSeconds = 253402300799.0
 
-/// What a `Format.Date` slot renders for a value that is not an instant.
+/// What a `Format.DateTime` slot renders for a value that is not an instant.
 ///
 /// The `(error: …)` shape is the renderer's own error rendition — the same one
 /// `BindingResolver.Errored` reaches the DOM as — so an unrepresentable instant
@@ -244,7 +244,7 @@ let private daysFromCivil (y: int) (m: int) (d: int) : int =
     era * 146097 + doe - 719468
 
 /// Parse a canonical instant (`YYYY-MM-DD`, optionally `THH:MM:SS…`) to whole
-/// Unix-epoch seconds — the representation `Format.Date` and `Format.Since`
+/// Unix-epoch seconds — the representation `Format.DateTime` and `Format.Since`
 /// read their numeric source in. `None` when the leading date is not readable,
 /// which the caller surfaces as unresolved rather than as an invented instant.
 ///
@@ -439,7 +439,7 @@ let private numberOptions (fmt: Format) : obj =
               "minimumFractionDigits" ==> d
               "maximumFractionDigits" ==> d ]
     | Format.Percent None -> createObj [ "style" ==> "percent" ]
-    | Format.Date _
+    | Format.DateTime _
     | Format.RelativeTime _
     | Format.Since _
     | Format.Duration _ -> createObj []
@@ -450,7 +450,7 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
     | Format.Number _
     | Format.Currency _
     | Format.Percent _ -> intlNumber (localeArg localeTag) (numberOptions fmt) value
-    | Format.Date(dateStyle, timeStyle) ->
+    | Format.DateTime(dateStyle, timeStyle) ->
         if not (isRepresentableInstant value) then
             unrepresentableInstant
         else
@@ -585,7 +585,7 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
             | None -> ""
 
         value.ToString("P" + suffix, c)
-    | Format.Date(dateStyle, timeStyle) ->
+    | Format.DateTime(dateStyle, timeStyle) ->
         if not (isRepresentableInstant value) then
             unrepresentableInstant
         else

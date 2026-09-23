@@ -689,24 +689,24 @@ let lk_u_binding__bool__Local__on_commit__absent (#num #flt: eqtype) (x: u_bindi
 let lk_u_binding__bool__Local__parse (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__Local? x)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "parse" (enc_u_binding__bool #num #flt x) == Ok (JStr "<closure>") | _ -> True)) = ()
 #pop-options
 
-(* lk_u_format__Date__date_style__present — dateStyle present *)
+(* lk_u_format__DateTime__date_style__present — dateStyle present *)
 #push-options "--fuel 8 --ifuel 4"
-let lk_u_format__Date__date_style__present (#num #flt: eqtype) (x: u_format num flt) : Lemma (requires (match x with | C__u_format__Date f0 f1 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_format__Date f0 f1 -> get_prop "dateStyle" (enc_u_format #num #flt x) == Ok (enc_e_date_style (Some?.v f0)) | _ -> True)) = ()
+let lk_u_format__DateTime__date_style__present (#num #flt: eqtype) (x: u_format num flt) : Lemma (requires (match x with | C__u_format__DateTime f0 f1 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_format__DateTime f0 f1 -> get_prop "dateStyle" (enc_u_format #num #flt x) == Ok (enc_e_date_style (Some?.v f0)) | _ -> True)) = ()
 #pop-options
 
-(* lk_u_format__Date__date_style__absent — dateStyle absent *)
+(* lk_u_format__DateTime__date_style__absent — dateStyle absent *)
 #push-options "--fuel 8 --ifuel 4"
-let lk_u_format__Date__date_style__absent (#num #flt: eqtype) (x: u_format num flt) : Lemma (requires (match x with | C__u_format__Date f0 f1 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "dateStyle" (enc_u_format #num #flt x)))) = ()
+let lk_u_format__DateTime__date_style__absent (#num #flt: eqtype) (x: u_format num flt) : Lemma (requires (match x with | C__u_format__DateTime f0 f1 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "dateStyle" (enc_u_format #num #flt x)))) = ()
 #pop-options
 
-(* lk_u_format__Date__time_style__present — timeStyle present *)
+(* lk_u_format__DateTime__time_style__present — timeStyle present *)
 #push-options "--fuel 8 --ifuel 4"
-let lk_u_format__Date__time_style__present (#num #flt: eqtype) (x: u_format num flt) : Lemma (requires (match x with | C__u_format__Date f0 f1 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_format__Date f0 f1 -> get_prop "timeStyle" (enc_u_format #num #flt x) == Ok (enc_e_time_style (Some?.v f1)) | _ -> True)) = ()
+let lk_u_format__DateTime__time_style__present (#num #flt: eqtype) (x: u_format num flt) : Lemma (requires (match x with | C__u_format__DateTime f0 f1 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_format__DateTime f0 f1 -> get_prop "timeStyle" (enc_u_format #num #flt x) == Ok (enc_e_time_style (Some?.v f1)) | _ -> True)) = ()
 #pop-options
 
-(* lk_u_format__Date__time_style__absent — timeStyle absent *)
+(* lk_u_format__DateTime__time_style__absent — timeStyle absent *)
 #push-options "--fuel 8 --ifuel 4"
-let lk_u_format__Date__time_style__absent (#num #flt: eqtype) (x: u_format num flt) : Lemma (requires (match x with | C__u_format__Date f0 f1 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "timeStyle" (enc_u_format #num #flt x)))) = ()
+let lk_u_format__DateTime__time_style__absent (#num #flt: eqtype) (x: u_format num flt) : Lemma (requires (match x with | C__u_format__DateTime f0 f1 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "timeStyle" (enc_u_format #num #flt x)))) = ()
 #pop-options
 
 (* lk_u_binding__flt__Selection__default_value__present — defaultValue present *)
@@ -1317,7 +1317,7 @@ and rt_u_format (#num #flt: eqtype) (x: u_format num flt) : Lemma (ensures dec_u
   | C__u_format__Number _ -> rt_u_format__Number #num #flt x
   | C__u_format__Currency _ -> rt_u_format__Currency #num #flt x
   | C__u_format__Percent _ -> rt_u_format__Percent #num #flt x
-  | C__u_format__Date _ _ -> rt_u_format__Date #num #flt x
+  | C__u_format__DateTime _ _ -> rt_u_format__DateTime #num #flt x
   | C__u_format__RelativeTime _ -> rt_u_format__RelativeTime #num #flt x
   | C__u_format__Duration _ _ -> rt_u_format__Duration #num #flt x
   | C__u_format__Since _ -> rt_u_format__Since #num #flt x
@@ -1334,11 +1334,11 @@ and rt_u_format__Percent (#num #flt: eqtype) (x: u_format num flt) : Lemma (requ
   match x with
   | C__u_format__Percent f0 -> ()
 
-and rt_u_format__Date (#num #flt: eqtype) (x: u_format num flt) : Lemma (requires (C__u_format__Date? x)) (ensures dec_u_format (enc_u_format #num #flt x) == Ok x) (decreases %[x; 1]) =
+and rt_u_format__DateTime (#num #flt: eqtype) (x: u_format num flt) : Lemma (requires (C__u_format__DateTime? x)) (ensures dec_u_format (enc_u_format #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
-  | C__u_format__Date f0 f1 ->
-    (match f0 with | None -> lk_u_format__Date__date_style__absent #num #flt x | Some _ -> lk_u_format__Date__date_style__present #num #flt x);
-    (match f1 with | None -> lk_u_format__Date__time_style__absent #num #flt x | Some _ -> lk_u_format__Date__time_style__present #num #flt x);
+  | C__u_format__DateTime f0 f1 ->
+    (match f0 with | None -> lk_u_format__DateTime__date_style__absent #num #flt x | Some _ -> lk_u_format__DateTime__date_style__present #num #flt x);
+    (match f1 with | None -> lk_u_format__DateTime__time_style__absent #num #flt x | Some _ -> lk_u_format__DateTime__time_style__present #num #flt x);
     (match f0 with | None -> () | Some w -> rt_e_date_style #num #flt w); (match f1 with | None -> () | Some w -> rt_e_time_style #num #flt w)
 
 and rt_u_format__RelativeTime (#num #flt: eqtype) (x: u_format num flt) : Lemma (requires (C__u_format__RelativeTime? x)) (ensures dec_u_format (enc_u_format #num #flt x) == Ok x) (decreases %[x; 1]) =

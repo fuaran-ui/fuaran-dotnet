@@ -295,8 +295,11 @@ let private navigateTarget = Declare.enumOf "NavigateTarget" [ "Self"; "Blank" ]
 let private captureSource =
     Declare.enumOf "CaptureSource" [ "Camera"; "Microphone" ]
 
-let private dateVariant =
-    Declare.enumOf "DateVariant" [ "Date"; "Time"; "DateTime" ]
+/// Phase 1811 — the temporal breadth of a `DateTime` / `DateTimeRange` form
+/// field. Renamed from `DateVariant` so the type says what the fields already
+/// accept (a date, a time of day, or both); the three cases did not move.
+let private dateTimeVariant =
+    Declare.enumOf "DateTimeVariant" [ "Date"; "Time"; "DateTime" ]
 
 /// Fuaran-UI Phase 864 — the named input format a `FieldRule` accepts. Lower-case
 /// on the wire (the `LinkProtection` posture), so the enum declares an explicit
@@ -745,7 +748,9 @@ let private cellFormat =
           { Tag = "SignificantDigits"
             Fields = [ req "digits" TInt ]
             Annotations = Annotations.Empty }
-          { Tag = "Date"
+          // Phase 1811 — `DateTime` (was `Date`): the .NET format string it
+          // carries renders a date, a time, or both, and the name now says so.
+          { Tag = "DateTime"
             Fields = [ req "format" TStr ]
             Annotations = Annotations.Empty }
           // Phase 819 — trendable duration cells: the raw float counts `unit`s,
@@ -1003,7 +1008,10 @@ let private formatUnion =
           // date-time with both. Neither present is a defect the validator
           // refuses (FUARAN155), not a decode refusal: the wire shape is
           // structurally legal and the rule is a semantic one.
-          { Tag = "Date"
+          // Phase 1811 — `DateTime` (was `Date`): an honest name once 1810 made
+          // the formatter render a time of day. `DateStyle` keeps its name — it
+          // still styles only the date part, beside `TimeStyle`.
+          { Tag = "DateTime"
             Fields = [ opt "dateStyle" (TEnum "DateStyle"); opt "timeStyle" (TEnum "TimeStyle") ]
             Annotations = Annotations.Empty }
           { Tag = "RelativeTime"
@@ -1182,32 +1190,35 @@ let private formFieldKind =
                 opt "onChange" (handlerOf "string option" "string | null")
                 req "orientation" (TEnum "Orientation") ]
             Annotations = Annotations.Empty }
-          { Tag = "Date"
+          // Phase 1811 — `DateTime` (was `Date`): the field already accepted a
+          // date, a time of day or a date-time via `variant`; the name now says
+          // so, and `Date{variant:"Time"}` is no longer a spelling nobody finds.
+          { Tag = "DateTime"
             Fields =
               [ opt "value" (TUnion("Binding", [ TStr ]))
                 opt "onChange" (handlerOf "string option" "string | null")
-                req "variant" (TEnum "DateVariant")
+                req "variant" (TEnum "DateTimeVariant")
                 opt "min" TStr
                 opt "max" TStr
                 opt "step" TFloat ]
             Annotations = Annotations.Empty }
-          // Single-control date range (Fuaran-UI Phase 725) — `Range`'s pair
-          // mechanics with `Date`'s value conventions. The value slot carries
+          // Single-control date range (Fuaran-UI Phase 725; `DateTimeRange` since
+          // Phase 1811) — `Range`'s pair mechanics with `DateTime`'s value conventions. The value slot carries
           // the same transparent-Static posture as `Range`: a `Static` pair
           // rides as the BARE `{from, to}` object (no `Static` envelope), any
           // other binding rides enveloped; both directions via the slot codec.
-          { Tag = "DateRange"
+          { Tag = "DateTimeRange"
             Fields =
               [ opt
                     "value"
                     (THosted
-                        { FSharp = "Binding<DateRangePair>"
+                        { FSharp = "Binding<DateTimeRangePair>"
                           Encode =
-                            "(fun (v: Binding<DateRangePair>) -> match v with | Binding.Static(Some p) -> encDateRangePair p | __other -> encBinding encDateRangePair __other)"
+                            "(fun (v: Binding<DateTimeRangePair>) -> match v with | Binding.Static(Some p) -> encDateTimeRangePair p | __other -> encBinding encDateTimeRangePair __other)"
                           Decode =
-                            "(fun (j: JVal) -> match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decDateRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateRangePair __other)" })
+                            "(fun (j: JVal) -> match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateTimeRangePair __other)" })
                 opt "onChange" (handlerOf "string * string" "[string, string]")
-                req "variant" (TEnum "DateVariant")
+                req "variant" (TEnum "DateTimeVariant")
                 opt "min" TStr
                 opt "max" TStr
                 opt "step" TFloat ]
@@ -1754,13 +1765,13 @@ let private compareRuleRecord =
 /// authored before the addition encodes byte-identically: absence is absence.
 ///
 /// **No numeric or temporal bound lives here.** `RangedNumber` already carries
-/// `min`/`max` and `Date` already carries `min`/`max`; the charter's reuse rule
+/// `min`/`max` and `DateTime` already carries `min`/`max`; the charter's reuse rule
 /// is that the rule slot never duplicates a bound the control carries. What is
 /// left is format, pattern, length, and the cross-field operand.
 ///
 /// A rule with EVERY slot absent is refused by the tier's policy decoder — a
 /// rule that constrains nothing is a defect, not a no-op — as is a `minLength`
-/// above its `maxLength` (the `DateRangePair` ordered-pair rule applied to a
+/// above its `maxLength` (the `DateTimeRangePair` ordered-pair rule applied to a
 /// length pair). Both are decoder POLICY, not structure, so they live in the
 /// tier's reject layer and not here, exactly as the `from <= to` rule does.
 let private fieldRuleRecord =
@@ -1807,13 +1818,14 @@ let private rangePairRecord =
     { Name = "RangePair"
       Fields = [ req "max" TFloat; req "min" TFloat ] }
 
-/// The `{from, to}` payload of a `DateRange` control's value (Fuaran-UI Phase
-/// 725) — the ordered ISO-8601 pair, `RangePair`'s record-IS-the-wire-object
-/// trade for the hand-written tier's `(from, to)` string pair. The ordering
-/// rule (`from` ≤ `to`, ordinal) is decoder POLICY, not structure — it lives in
-/// the tier's lenient/reject layer, not here.
-let private dateRangePairRecord =
-    { Name = "DateRangePair"
+/// The `{from, to}` payload of a `DateTimeRange` control's value (Fuaran-UI
+/// Phase 725; renamed from `DateRangePair` by Phase 1811) — the ordered
+/// ISO-8601 pair, `RangePair`'s record-IS-the-wire-object trade for the
+/// hand-written tier's `(from, to)` string pair. The ordering rule (`from` ≤
+/// `to`, ordinal) is decoder POLICY, not structure — it lives in the tier's
+/// lenient/reject layer, not here.
+let private dateTimeRangePairRecord =
+    { Name = "DateTimeRangePair"
       Fields = [ req "from" TStr; req "to" TStr ] }
 
 let private tabHeaderRecord =
@@ -3382,7 +3394,7 @@ let uiIdl: Idl =
           fileReadEncoding
           navigateTarget
           captureSource
-          dateVariant
+          dateTimeVariant
           textFormat
           compareOp
           dateStyle
@@ -3428,7 +3440,7 @@ let uiIdl: Idl =
           filterSpecRecord
           transformParamRecord
           rangePairRecord
-          dateRangePairRecord
+          dateTimeRangePairRecord
           tabHeaderRecord
           columnErasedRecord
           buttonGroupItemRecord

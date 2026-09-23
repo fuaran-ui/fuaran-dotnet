@@ -444,10 +444,10 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
                 | FormFieldKind.Range _
                 | FormFieldKind.Checkbox _
                 | FormFieldKind.Toggle _
-                | FormFieldKind.Date _
-                // Phase 725 — a DateRange handler takes the (from, to) pair,
+                | FormFieldKind.DateTime _
+                // Phase 725 — a DateTimeRange handler takes the (from, to) pair,
                 // not the single chosen string this resolution carries.
-                | FormFieldKind.DateRange _
+                | FormFieldKind.DateTimeRange _
                 // Phase 1130 — a rating chip's handler takes a `float` and a
                 // colour chip's a `string`, neither of which is the `string
                 // option` this name-addressed resolution carries. The driver

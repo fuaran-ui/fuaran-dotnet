@@ -287,7 +287,7 @@ let private encodeDateStyle (s: DateStyle) : Appender =
         | DateStyle.Long -> appendRawString sb "Long"
         | DateStyle.Full -> appendRawString sb "Full"
 
-/// Phase 1810 — the time-of-day half of `Format.Date`'s style pair.
+/// Phase 1810 — the time-of-day half of `Format.DateTime`'s style pair.
 let private encodeTimeStyle (s: TimeStyle) : Appender =
     fun sb ->
         match s with
@@ -357,7 +357,7 @@ let private encodeFormat (f: Format) : Appender =
                 | None -> []
 
             appendObject sb (case "Percent" fields)
-        | Format.Date(dateStyle, timeStyle) ->
+        | Format.DateTime(dateStyle, timeStyle) ->
             // Phase 1810 — each style rides only when present; alphabetical
             // field order (dateStyle before timeStyle), the canonical rule.
             let fields =
@@ -368,7 +368,7 @@ let private encodeFormat (f: Format) : Appender =
                   | Some t -> yield "timeStyle", encodeTimeStyle t
                   | None -> () ]
 
-            appendObject sb (case "Date" fields)
+            appendObject sb (case "DateTime" fields)
         | Format.RelativeTime unit -> appendObject sb (case "RelativeTime" [ "unit", encodeRelativeTimeUnit unit ])
         | Format.Duration(unit, style) ->
             // Phase 819 — alphabetical field order (style before unit), the

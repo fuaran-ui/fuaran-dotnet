@@ -89,8 +89,8 @@ let private harvestField (sources: BindingResolver.BindingSources) (field: FormF
     | FormFieldKind.TextArea(v, _, _) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.text) v
         |> Option.map (fun s -> field.Id, JStr s)
-    | FormFieldKind.Date(v, _, _, _, _, _) ->
-        resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.date) v
+    | FormFieldKind.DateTime(v, _, _, _, _, _) ->
+        resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime) v
         |> Option.map (fun s -> field.Id, JStr s)
     | FormFieldKind.Number(v, _) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.number) v
@@ -117,9 +117,9 @@ let private harvestField (sources: BindingResolver.BindingSources) (field: FormF
     | FormFieldKind.Range(v, _, _, _, _) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.range) v
         |> Option.map (fun (p: RangePair) -> field.Id, JFloat p.Min)
-    | FormFieldKind.DateRange(v, _, _, _, _, _) ->
-        resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.dateRange) v
-        |> Option.map (fun (p: DateRangePair) -> field.Id, JStr p.From)
+    | FormFieldKind.DateTimeRange(v, _, _, _, _, _) ->
+        resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.dateTimeRange) v
+        |> Option.map (fun (p: DateTimeRangePair) -> field.Id, JStr p.From)
     // Phase 1130 — a rating harvests as the number it is (`JFloat`, so a
     // half-step submits as 3.5 and not as a rounded 3 or a string "3.5"); a
     // colour as the `#rrggbb` string the native input holds. Neither needs the

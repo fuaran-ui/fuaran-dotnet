@@ -23,7 +23,7 @@ module Fuaran.UI.Tests.FormFieldWriteBack
 //  `Range` inputs and both `DateRange` inputs drive (the same
 //  .NET-pins-the-exact-code-path shape as `Render.applyDispatchGate`).
 //
-//  Note the payload is the pair RECORD (`RangePair` / `DateRangePair`), not a
+//  Note the payload is the pair RECORD (`RangePair` / `DateTimeRangePair`), not a
 //  tuple: that is what `BindingResolver.tryResolve` reads back out of the
 //  slot. The `onChange` closure still receives a tuple — the two shapes are
 //  deliberately different since the 692-694 swap, and writing a tuple into the
@@ -66,12 +66,12 @@ let private makeCtx () : Render.RenderContext<Msg> =
 
 // Annotated constructors, not bare record literals: `{ Min = _; Max = _ }`
 // otherwise infers as `NumberFieldConstraints` (same labels, `float option`
-// fields), and `DateRangePair`'s labels need the annotation to resolve through
+// fields), and `DateTimeRangePair`'s labels need the annotation to resolve through
 // the `Generated` abbreviation — exactly the form Render.fs uses at the call
 // sites.
 let private rp (minV: float) (maxV: float) : RangePair = { Min = minV; Max = maxV }
 
-let private dp (fromV: string) (toV: string) : DateRangePair = { From = fromV; To = toV }
+let private dp (fromV: string) (toV: string) : DateTimeRangePair = { From = fromV; To = toV }
 
 let private rangeBinding (key: string) : Binding<RangePair> = Binding.State(key, Some(rp 0.0 0.0))
 
@@ -137,7 +137,8 @@ let tests =
           }
 
           test "declarative DateRange change stores the date pair" {
-              let binding: Binding<DateRangePair> = Binding.State("ffwb-dates", Some(dp "" ""))
+              let binding: Binding<DateTimeRangePair> =
+                  Binding.State("ffwb-dates", Some(dp "" ""))
 
               try
                   Render.pairFieldChange

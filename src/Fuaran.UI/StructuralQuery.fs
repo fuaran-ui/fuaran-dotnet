@@ -504,7 +504,7 @@ let private useMatches (channel: Channel) (name: string) (usage: BindingWalk.Bin
     | BindingWalk.BindingUse.StateSeed _
     | BindingWalk.BindingUse.InlineTable _
     | BindingWalk.BindingUse.TransformParam _
-    // Phase 1810 — a `Format.Date` with neither style names no channel: it is
+    // Phase 1810 — a `Format.DateTime` with neither style names no channel: it is
     // FUARAN155's fact about the slot, and the source read beside it is what
     // answers a search.
     | BindingWalk.BindingUse.UnstyledDateFormat

@@ -144,7 +144,7 @@ let private formatNumber (format: CellFormat) (value: float) : string =
     | CellFormat.Percent(Some decimals) -> sprintf "%.*f%%" decimals (value * 100.0)
     | CellFormat.Percent None -> sprintf "%.1f%%" (value * 100.0)
     | CellFormat.SignificantDigits digits -> sprintf "%.*g" digits value
-    | CellFormat.Date _ -> string value
+    | CellFormat.DateTime _ -> string value
     // Phase 819 — shared Renderer.Core helpers, keeping the adapter in
     // lockstep with `Render.fs`'s formatNumber (see the note above).
     | CellFormat.Duration(unit, style) -> Formatting.formatDuration unit style value
@@ -161,7 +161,7 @@ let private renderCellValue (format: CellFormat) (value: CellValue) : string =
         | CellValue.Bool b -> if b then "true" else "false"
         | CellValue.Date d ->
             match format with
-            | CellFormat.Date fmt -> d.ToString(fmt)
+            | CellFormat.DateTime fmt -> d.ToString(fmt)
             | _ -> d.ToString("yyyy-MM-dd")
         | CellValue.Empty -> ""
 

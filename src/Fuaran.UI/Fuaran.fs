@@ -623,7 +623,9 @@ module format =
 
     let significantDigits (digits: int) : CellFormat = CellFormat.SignificantDigits digits
 
-    let date (fmt: string) : CellFormat = CellFormat.Date fmt
+    /// Phase 1811 — `dateTime` (was `date`): the .NET format string renders a
+    /// date, a time or both; the case and the ctor now say so.
+    let dateTime (fmt: string) : CellFormat = CellFormat.DateTime fmt
 
 // ─── Locale-aware Format / LocaleSource entry points (Phase 102) ───────────
 //
@@ -649,18 +651,18 @@ module localeFormat =
     /// Absolute date (source read as whole Unix-epoch seconds), at `dateStyle`
     /// breadth and with no time of day. The pre-1810 signature, kept on
     /// purpose: an author using it compiles unchanged — the source break of
-    /// Phase 1810 lands only on a full literal of the `Format.Date` case.
-    let date (dateStyle: DateStyle) : Format = Format.Date(Some dateStyle, None)
+    /// Phase 1810 lands only on a full literal of the `Format.DateTime` case.
+    let date (dateStyle: DateStyle) : Format = Format.DateTime(Some dateStyle, None)
 
     /// Phase 1810 — an absolute date AND its time of day, each at its own
     /// breadth (`Intl.DateTimeFormat`'s `dateStyle` / `timeStyle` pair).
     let dateTime (dateStyle: DateStyle) (timeStyle: TimeStyle) : Format =
-        Format.Date(Some dateStyle, Some timeStyle)
+        Format.DateTime(Some dateStyle, Some timeStyle)
 
     /// Phase 1810 — a time of day ALONE: the display half of a `Time` form
     /// field's value. The source is still whole Unix-epoch seconds; only the
     /// time-of-day portion of that instant is rendered.
-    let time (timeStyle: TimeStyle) : Format = Format.Date(None, Some timeStyle)
+    let time (timeStyle: TimeStyle) : Format = Format.DateTime(None, Some timeStyle)
 
     /// Relative time (source read as a signed count of `unit` relative to now).
     let relativeTime (unit: RelativeTimeUnit) : Format = Format.RelativeTime unit
@@ -817,21 +819,22 @@ module FormFieldKind =
         : FormFieldKind<'Msg> =
         FormFieldKind.Tokens(allowFreeText, Some onChange, suggestions, Some value)
 
-    /// `Date` / `Time` / `DateTime` field (Phase 288) with the optional
+    /// `DateTime` field (Phase 288; renamed from `date` by Phase 1811) — a
+    /// date, a time of day or a date-time per `variant`, with the optional
     /// ISO-8601 `min` / `max` + numeric `step` (seconds) constraints as named
     /// options. `variant` selects the native control (defaults are layered by
     /// the caller). The bound value is an ISO-8601 string. Author example:
     ///
-    ///   FormFieldKind.date
+    ///   FormFieldKind.dateTime
     ///       (value = binding.state "checkIn" "")
     ///       (onChange = SetCheckIn >> Action.dispatch)
-    ///       DateVariant.Date
+    ///       DateTimeVariant.Date
     ///       (min = Some "2026-01-01")
     ///       None None
-    let date
+    let dateTime
         (value: Binding<string>)
         (onChange: string -> Action<'Msg>)
-        (variant: DateVariant)
+        (variant: DateTimeVariant)
         (min: string option)
         (max: string option)
         (step: float option)
@@ -839,30 +842,30 @@ module FormFieldKind =
         // The generated Date handler receives `string option` (a clearable
         // control); the typed builder keeps its plain-string signature and
         // maps a cleared value to "".
-        FormFieldKind.Date(Some value, Some(fun v -> onChange (defaultArg v "")), variant, min, max, step)
+        FormFieldKind.DateTime(Some value, Some(fun v -> onChange (defaultArg v "")), variant, min, max, step)
 
-    /// Single-control date range (Phase 725) — the pair-valued sibling of
-    /// `date`. `value` is a `Binding<DateRangePair>` carrying the ordered
+    /// Single-control date-time range (Phase 725; renamed from `dateRange` by
+    /// Phase 1811) — the pair-valued sibling of `dateTime`. `value` is a `Binding<DateTimeRangePair>` carrying the ordered
     /// `{From; To}` ISO-8601 pair (the generated record IS the wire object,
     /// exactly as `RangePair` is for `Range`); `variant` selects the native
     /// control for both ends; `min` / `max` (ISO strings) + `step` (seconds)
     /// bound BOTH ends. Author example:
     ///
-    ///   FormFieldKind.dateRange
+    ///   FormFieldKind.dateTimeRange
     ///       (value = binding.state "stay" { From = ""; To = "" })
     ///       (onChange = SetStay >> Action.dispatch)
-    ///       DateVariant.Date
+    ///       DateTimeVariant.Date
     ///       (Some "2026-01-01")
     ///       None None
-    let dateRange
-        (value: Binding<DateRangePair>)
+    let dateTimeRange
+        (value: Binding<DateTimeRangePair>)
         (onChange: string * string -> Action<'Msg>)
-        (variant: DateVariant)
+        (variant: DateTimeVariant)
         (min: string option)
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.DateRange(Some value, Some onChange, variant, min, max, step)
+        FormFieldKind.DateTimeRange(Some value, Some onChange, variant, min, max, step)
 
     // ── Handler-free (declarative) ctors — Phase 426, the control write-back
     //    default. Each emits `onChange = None`, the shape an AI author uses: the
@@ -946,26 +949,26 @@ module FormFieldKind =
         : FormFieldKind<'Msg> =
         FormFieldKind.Tokens(allowFreeText, None, suggestions, Some value)
 
-    /// Handler-free `Date` — writes the ISO-8601 string back to the value slot.
-    let dateDeclarative
+    /// Handler-free `DateTime` — writes the ISO-8601 string back to the value slot.
+    let dateTimeDeclarative
         (value: Binding<string>)
-        (variant: DateVariant)
+        (variant: DateTimeVariant)
         (min: string option)
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Date(Some value, None, variant, min, max, step)
+        FormFieldKind.DateTime(Some value, None, variant, min, max, step)
 
-    /// Handler-free `DateRange` — writes the changed `(from, to)` ISO-8601
+    /// Handler-free `DateTimeRange` — writes the changed `(from, to)` ISO-8601
     /// pair back to the value slot.
-    let dateRangeDeclarative
-        (value: Binding<DateRangePair>)
-        (variant: DateVariant)
+    let dateTimeRangeDeclarative
+        (value: Binding<DateTimeRangePair>)
+        (variant: DateTimeVariant)
         (min: string option)
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.DateRange(Some value, None, variant, min, max, step)
+        FormFieldKind.DateTimeRange(Some value, None, variant, min, max, step)
 
 /// Smart-ctors for filter strips. Closure-bearing ctors (`Some onChange`) preserve the
 /// F#-authored dispatch behaviour byte-for-byte; the closure-free ctors (Phase 423) emit
@@ -1023,10 +1026,11 @@ module FilterField =
     let range (name: string) : FormFieldKind<'Msg> =
         FormFieldKind.Range(Some(Binding.Filter(name, None)), None, None, None, None)
 
-    /// Date-range chip bound to its own filter key (Phase 725). ONE filter
-    /// param carries the whole `(from, to)` pair — the reason the case exists.
-    let dateRange (name: string) (variant: DateVariant) : FormFieldKind<'Msg> =
-        FormFieldKind.DateRange(Some(Binding.Filter(name, None)), None, variant, None, None, None)
+    /// Date-time-range chip bound to its own filter key (Phase 725; renamed
+    /// from `dateRange` by Phase 1811). ONE filter param carries the whole
+    /// `(from, to)` pair — the reason the case exists.
+    let dateTimeRange (name: string) (variant: DateTimeVariant) : FormFieldKind<'Msg> =
+        FormFieldKind.DateTimeRange(Some(Binding.Filter(name, None)), None, variant, None, None, None)
 
 // ─── Column helpers (§4c lines 523–529) ───────────────────────────────────
 

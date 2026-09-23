@@ -463,8 +463,8 @@ A `Fuaran.form` carries an ordered list of fields; each field's `Kind` chooses t
 | `FormFieldKind.SegmentedChoice` (Phase 66) | Visible-options exclusive choice. `Horizontal` = segmented control pill row; `Vertical` = radio-button list. See "Segmented choice" below. |
 | `FormFieldKind.TextArea` | Multi-line text. |
 | `FormFieldKind.Range` | Dual-thumb numeric range. The value is a `(min, max)` pair; optional `Min` / `Max` / `Step` bound both ends. |
-| `FormFieldKind.Date` | Date / time / datetime input. The value is an ISO-8601 string; `DateVariant` picks the native control. |
-| `FormFieldKind.DateRange` | Start-and-end dates in **one** control — the value is an ordered `(from, to)` pair of ISO-8601 strings, with `DateVariant` and the optional ISO `Min` / `Max` + numeric `Step` bounding both ends. Reach for this rather than two `Date` fields whenever the two dates are one value: in a filter strip it binds **one** filter param, so everything downstream scopes off a single key. A literal pair must be ordered (`from <= to`) or the tree is refused at decode. |
+| `FormFieldKind.DateTime` | Date / time / date-time input (`Date` until Phase 1811 — the name now says what it accepts). The value is an ISO-8601 string; `DateTimeVariant` picks the native control. |
+| `FormFieldKind.DateTimeRange` | Start-and-end dates in **one** control (`DateRange` until Phase 1811) — the value is an ordered `(from, to)` pair of ISO-8601 strings, with `DateTimeVariant` and the optional ISO `Min` / `Max` + numeric `Step` bounding both ends. Reach for this rather than two `DateTime` fields whenever the two dates are one value: in a filter strip it binds **one** filter param, so everything downstream scopes off a single key. A literal pair must be ordered (`from <= to`) or the tree is refused at decode. |
 
 #### Field constraints are DECLARED — `rule`, not help text (Phase 864)
 
@@ -696,7 +696,7 @@ misread that made models emit `weight: "Bold"` / `emphasis: "Strong"`:
 | `tone` (`ToneVariant`) | `Default` · `Subdued` · `Brand` · `Success` · `Warning` · `Critical` · `Info` | `Default` | semantic **colour role** |
 | `emphasis` (`Emphasis`) | `Quiet` · `Normal` · `Loud` | `Normal` | visual **prominence** – `Loud` ≠ bold text |
 | `weight` (`StyleWeight`) | `Compact` · `Standard` · `Spacious` | `Standard` | layout **density** – spacing, *not* font-weight |
-| `format` (`CellFormat`) | `None` / `Number` / `Currency` / `Percent` / `Date` / `SignificantDigits` | `None` | number formatting on a metric/column |
+| `format` (`CellFormat`) | `None` / `Number` / `Currency` / `Percent` / `DateTime` / `SignificantDigits` | `None` | number formatting on a metric/column |
 
 **Omit when unsure.** Each has an identity default the decoder restores on absence – if you have no
 specific colour / prominence / density intent, **leave the field out**. That is the correct minimal
@@ -992,7 +992,7 @@ orchestrated run).
 | a value-changed handler (`onChange` / `onToggle` / `onSelect` closure) | **omit it** – the renderer's write-back default writes the change to the control's own writable `Binding.State` / `Binding.Filter` value slot |
 | an `onResult` continuation on `Action.Call` | `Action.Call … into: State/Query` – the declarative result target |
 | `RowKey` (a row→string closure) | `RowKeyField "propertyName"` |
-| `CellFormat.Custom (fun v -> …)` | one of the six typed `CellFormat` cases (`Number` / `Currency` / `Percent` / `SignificantDigits` / `Date` / `None`) |
+| `CellFormat.Custom (fun v -> …)` | one of the six typed `CellFormat` cases (`Number` / `Currency` / `Percent` / `SignificantDigits` / `DateTime` / `None`) |
 
 If a task genuinely needs host-only behaviour (an arbitrary compute, an interactive cell mutation), that
 is a **host wiring** job for the F# integrator, not something you emit – leave the control declarative and

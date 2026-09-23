@@ -767,11 +767,11 @@ let selectionFieldViolations (cases: SelectionCase list) : int =
 
 
 // ---------------------------------------------------------------------------
-//  Law 5 -- a `Format.Date` slot never throws, on either pipeline.
+//  Law 5 -- a `Format.DateTime` slot never throws, on either pipeline.
 // ---------------------------------------------------------------------------
 //
 //  The wire admits every double a JSON number can spell, `NaN` and the
-//  infinities included, and a `Format.Date` slot then receives one. The two
+//  infinities included, and a `Format.DateTime` slot then receives one. The two
 //  hosts failed differently and both failed badly: `FromUnixTimeSeconds` THREW
 //  out of an SSR render pass, so one bad cell took the whole page down with a
 //  500, and `Intl.DateTimeFormat` raised on an invalid time value in the
@@ -794,7 +794,7 @@ type DateSentinelCase =
 let private dateOutcome (value: float) : string =
     try
         let rendered =
-            Formatting.format "en-GB" (Format.Date(Some DateStyle.Short, None)) value
+            Formatting.format "en-GB" (Format.DateTime(Some DateStyle.Short, None)) value
 
         if rendered = Formatting.unrepresentableInstant then
             "refused"

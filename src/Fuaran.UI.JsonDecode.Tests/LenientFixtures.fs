@@ -665,19 +665,78 @@ let all: LenientFixture list =
       // posture). Both shorthands below normalise to exactly that.
       { Id = "lenient-daterange-bare-array"
         LenientJson =
-          """{"id":"len-dr-arr","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateRange","value":["2026-03-01","2026-03-08"],"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
+          """{"id":"len-dr-arr","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateTimeRange","value":["2026-03-01","2026-03-08"],"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
         VerboseJson =
-          """{"id":"len-dr-arr","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateRange","value":{"from":"2026-03-01","to":"2026-03-08"},"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
+          """{"id":"len-dr-arr","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateTimeRange","value":{"from":"2026-03-01","to":"2026-03-08"},"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
         Description =
           "Phase 725 — a DateRange Static pair may ride the [from, to] two-element array (the §3.6 bare-array coercion, mirroring `Range`); it normalises to the canonical bare {from, to} object" }
 
       { Id = "lenient-daterange-static-envelope"
         LenientJson =
-          """{"id":"len-dr-env","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateRange","value":{"$type":"Static","value":{"from":"2026-03-01","to":"2026-03-08"}},"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
+          """{"id":"len-dr-env","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateTimeRange","value":{"$type":"Static","value":{"from":"2026-03-01","to":"2026-03-08"}},"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
         VerboseJson =
-          """{"id":"len-dr-env","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateRange","value":{"from":"2026-03-01","to":"2026-03-08"},"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
+          """{"id":"len-dr-env","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateTimeRange","value":{"from":"2026-03-01","to":"2026-03-08"},"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
         Description =
           "Phase 725 — a DateRange Static pair wrapped in the explicit {\"$type\":\"Static\"} envelope stays decode-accepted (the `Range` read-compat posture); the bare {from, to} object is the canonical output" }
+
+      // ─── Phase 1811 — the temporal rename's §16 aliases ─────────────────
+      //
+      // `Date` / `DateRange` / `Format.Date` / `CellFormat.Date` are the
+      // PRE-RENAME spellings, kept as decode-only aliases by the D8 ruling (a
+      // coordinated clean-break revision, not a profile major) and NOT admitted
+      // on §16's own ground — backward compatibility is not a ground there, and
+      // the classification table says so. `Time` / `TimeRange` ARE admitted on
+      // §16's ground: they are the spellings a model reaches for when it wants
+      // a time input, and closing that discoverability gap is what the rename
+      // is for. Each normalises to the canonical name; the time aliases also
+      // SUPPLY `variant: "Time"` when it is absent.
+      { Id = "lenient-1811-form-date-legacy"
+        LenientJson =
+          """{"id":"len-1811-date","kind":{"$type":"Form","fields":[{"id":"checkIn","kind":{"$type":"Date","value":{"$type":"Static","value":"2026-01-15"},"variant":"Date"},"label":"Check in","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
+        VerboseJson =
+          """{"id":"len-1811-date","kind":{"$type":"Form","fields":[{"id":"checkIn","kind":{"$type":"DateTime","value":{"$type":"Static","value":"2026-01-15"},"variant":"Date"},"label":"Check in","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
+        Description =
+          "Phase 1811 — the pre-rename form-field `$type` `Date` decodes as `DateTime` and re-encodes canonical. A decode alias kept by the D8 ruling for documents written before the rename, never emitted; `variant` stays required under it exactly as under the canonical name" }
+
+      { Id = "lenient-1811-form-daterange-legacy"
+        LenientJson =
+          """{"id":"len-1811-dr","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateRange","value":{"from":"2026-03-01","to":"2026-03-08"},"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
+        VerboseJson =
+          """{"id":"len-1811-dr","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateTimeRange","value":{"from":"2026-03-01","to":"2026-03-08"},"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
+        Description =
+          "Phase 1811 — the pre-rename form-field `$type` `DateRange` decodes as `DateTimeRange` and re-encodes canonical; the value pair, `variant` and the ordered-pair rule are untouched by the alias" }
+
+      { Id = "lenient-1811-format-date-legacy"
+        LenientJson =
+          """{"id":"len-1811-fmt","kind":{"$type":"Markdown","text":{"$type":"Bound","binding":{"$type":"Format","format":{"$type":"Date","dateStyle":"Medium","timeStyle":"Short"},"locale":{"$type":"Explicit","tag":"en-GB"},"source":{"$type":"Static","value":1700000000}}}}}"""
+        VerboseJson =
+          """{"id":"len-1811-fmt","kind":{"$type":"Markdown","text":{"$type":"Bound","binding":{"$type":"Format","format":{"$type":"DateTime","dateStyle":"Medium","timeStyle":"Short"},"locale":{"$type":"Explicit","tag":"en-GB"},"source":{"$type":"Static","value":1700000000}}}}}"""
+        Description =
+          "Phase 1811 — a `Format` binding's pre-rename `$type` `Date` decodes as `DateTime` (the Phase 1810 dateStyle / timeStyle pair) and re-encodes canonical; both style slots ride the alias unchanged" }
+
+      { Id = "lenient-1811-cellformat-date-legacy"
+        LenientJson =
+          """{"id":"len-1811-cell","kind":{"$type":"Metric","format":{"$type":"Date","format":"yyyy-MM-dd"},"label":"Since","value":{"$type":"Static","value":1700000000}}}"""
+        VerboseJson =
+          """{"id":"len-1811-cell","kind":{"$type":"Metric","format":{"$type":"DateTime","format":"yyyy-MM-dd"},"label":"Since","value":{"$type":"Static","value":1700000000}}}"""
+        Description =
+          "Phase 1811 — a `CellFormat`'s pre-rename `$type` `Date` decodes as `DateTime` and re-encodes canonical; the .NET format string it carries is untouched. Note the `CellKind` `Date` (a data-cell kind, a different family) does NOT move and takes no alias" }
+
+      { Id = "lenient-1811-form-time-invented"
+        LenientJson =
+          """{"id":"len-1811-time","kind":{"$type":"Form","fields":[{"id":"alarm","kind":{"$type":"Time","value":{"$type":"Static","value":"08:30"}},"label":"Alarm","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Set"}}"""
+        VerboseJson =
+          """{"id":"len-1811-time","kind":{"$type":"Form","fields":[{"id":"alarm","kind":{"$type":"DateTime","value":{"$type":"Static","value":"08:30"},"variant":"Time"},"label":"Alarm","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Set"}}"""
+        Description =
+          "Phase 1811 — the invented form-field `$type` `Time` (the spelling a model reaches for when it wants a time-of-day input) decodes as `DateTime` with `variant` SUPPLIED as `Time` when absent, and re-encodes canonical. An explicit `variant` beside it must agree — `Time` is refused by `reject-1811-time-alias-variant-disagrees`" }
+
+      { Id = "lenient-1811-form-timerange-invented"
+        LenientJson =
+          """{"id":"len-1811-tr","kind":{"$type":"Form","fields":[{"id":"shift","kind":{"$type":"TimeRange","value":{"from":"08:00","to":"17:00"}},"label":"Shift","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Set"}}"""
+        VerboseJson =
+          """{"id":"len-1811-tr","kind":{"$type":"Form","fields":[{"id":"shift","kind":{"$type":"DateTimeRange","value":{"from":"08:00","to":"17:00"},"variant":"Time"},"label":"Shift","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Set"}}"""
+        Description =
+          "Phase 1811 — the invented form-field `$type` `TimeRange` decodes as `DateTimeRange` with `variant` SUPPLIED as `Time` when absent, on exactly the `Time` alias rule; an explicit disagreeing `variant` beside it is refused, never resolved" }
 
       // ─── Phase 750 — the declarative pill's three accepted shorthands ────
       //

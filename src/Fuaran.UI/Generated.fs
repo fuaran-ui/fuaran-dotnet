@@ -140,7 +140,7 @@ type DateStyle =
     | Full
 
 [<RequireQualifiedAccess>]
-type DateVariant =
+type DateTimeVariant =
     | Date
     | Time
     | DateTime
@@ -581,7 +581,7 @@ and [<RequireQualifiedAccess>] CellFormat =
     | Currency of code: string
     | Percent of decimals: int option
     | SignificantDigits of digits: int
-    | Date of format: string
+    | DateTime of format: string
     /// Phase 819 — trendable duration cells: the raw float counts `unit`s,
     /// rendered per `style`.
     | Duration of unit: DurationUnit * style: DurationStyle
@@ -639,8 +639,8 @@ and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
     | RangedNumber of value: Binding<float> option * onChange: (float -> Action<'Msg>) option * min: float option * max: float option * step: float option
     | Range of value: Binding<RangePair> option * onChange: (float * float -> Action<'Msg>) option * min: float option * max: float option * step: float option
     | SegmentedChoice of options: Binding<SelectOption list> * value: Binding<string> option * onChange: (string option -> Action<'Msg>) option * orientation: Orientation
-    | Date of value: Binding<string> option * onChange: (string option -> Action<'Msg>) option * variant: DateVariant * min: string option * max: string option * step: float option
-    | DateRange of value: Binding<DateRangePair> option * onChange: (string * string -> Action<'Msg>) option * variant: DateVariant * min: string option * max: string option * step: float option
+    | DateTime of value: Binding<string> option * onChange: (string option -> Action<'Msg>) option * variant: DateTimeVariant * min: string option * max: string option * step: float option
+    | DateTimeRange of value: Binding<DateTimeRangePair> option * onChange: (string * string -> Action<'Msg>) option * variant: DateTimeVariant * min: string option * max: string option * step: float option
     | Combobox of allowFreeText: bool * onChange: (string option -> Action<'Msg>) option * options: Binding<SelectOption list> * value: Binding<string> option
     | Rating of allowHalf: bool * max: int * onChange: (float -> Action<'Msg>) option * value: Binding<float> option
     | Color of onChange: (string -> Action<'Msg>) option * value: Binding<string> option
@@ -650,7 +650,7 @@ and [<RequireQualifiedAccess>] Format =
     | Number of decimals: int option
     | Currency of isoCode: string
     | Percent of decimals: int option
-    | Date of dateStyle: DateStyle option * timeStyle: TimeStyle option
+    | DateTime of dateStyle: DateStyle option * timeStyle: TimeStyle option
     | RelativeTime of unit: RelativeTimeUnit
     /// Phase 819 — locale-independent duration formatting: the numeric
     /// source counts `unit`s, rendered per `style`.
@@ -767,7 +767,7 @@ and ContentHash =
       Strictness: HashStrictness
     }
 
-and DateRangePair =
+and DateTimeRangePair =
     {
       From: string
       To: string
@@ -1724,11 +1724,11 @@ let private encDateStyle (v: DateStyle) : JVal =
     | DateStyle.Long -> JStr "Long"
     | DateStyle.Full -> JStr "Full"
 
-let private encDateVariant (v: DateVariant) : JVal =
+let private encDateTimeVariant (v: DateTimeVariant) : JVal =
     match v with
-    | DateVariant.Date -> JStr "Date"
-    | DateVariant.Time -> JStr "Time"
-    | DateVariant.DateTime -> JStr "DateTime"
+    | DateTimeVariant.Date -> JStr "Date"
+    | DateTimeVariant.Time -> JStr "Time"
+    | DateTimeVariant.DateTime -> JStr "DateTime"
 
 let private encDeterminismSource (v: DeterminismSource) : JVal =
     match v with
@@ -2079,7 +2079,7 @@ and private encCellFormat (v: CellFormat) : JVal =
     | CellFormat.Currency code -> Canon.typed "Currency" [ "code", JStr code ]
     | CellFormat.Percent decimals -> Canon.typed "Percent" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
     | CellFormat.SignificantDigits digits -> Canon.typed "SignificantDigits" [ "digits", JInt digits ]
-    | CellFormat.Date format -> Canon.typed "Date" [ "format", JStr format ]
+    | CellFormat.DateTime format -> Canon.typed "DateTime" [ "format", JStr format ]
     | CellFormat.Duration (unit, style) -> Canon.typed "Duration" [ "unit", encDurationUnit unit; "style", encDurationStyle style ]
     | CellFormat.RelativeTime unit -> Canon.typed "RelativeTime" [ "unit", encRelativeTimeUnit unit ]
     | CellFormat.Custom fn -> Canon.typed "Custom" [ "fn", JStr "<closure>" ]
@@ -2140,8 +2140,8 @@ and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     | FormFieldKind.RangedNumber (value, onChange, min, max, step) -> Canon.typed "RangedNumber" ([ (value |> Option.map (fun v -> "value", (encBinding encFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
     | FormFieldKind.Range (value, onChange, min, max, step) -> Canon.typed "Range" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<RangePair>) -> match v with | Binding.Static(Some p) -> encRangePair p | __other -> encBinding encRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
     | FormFieldKind.SegmentedChoice (options, value, onChange, orientation) -> Canon.typed "SegmentedChoice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("orientation", encOrientation orientation) ] |> List.choose id)
-    | FormFieldKind.Date (value, onChange, variant, min, max, step) -> Canon.typed "Date" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
-    | FormFieldKind.DateRange (value, onChange, variant, min, max, step) -> Canon.typed "DateRange" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<DateRangePair>) -> match v with | Binding.Static(Some p) -> encDateRangePair p | __other -> encBinding encDateRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+    | FormFieldKind.DateTime (value, onChange, variant, min, max, step) -> Canon.typed "DateTime" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateTimeVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+    | FormFieldKind.DateTimeRange (value, onChange, variant, min, max, step) -> Canon.typed "DateTimeRange" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<DateTimeRangePair>) -> match v with | Binding.Static(Some p) -> encDateTimeRangePair p | __other -> encBinding encDateTimeRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateTimeVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
     | FormFieldKind.Combobox (allowFreeText, onChange, options, value) -> Canon.typed "Combobox" ([ (if allowFreeText = false then None else Some("allowFreeText", JBool allowFreeText)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
     | FormFieldKind.Rating (allowHalf, max, onChange, value) -> Canon.typed "Rating" ([ (if allowHalf = false then None else Some("allowHalf", JBool allowHalf)); Some("max", JInt max); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding encFloat) v)) ] |> List.choose id)
     | FormFieldKind.Color (onChange, value) -> Canon.typed "Color" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
@@ -2152,7 +2152,7 @@ and private encFormat (v: Format) : JVal =
     | Format.Number decimals -> Canon.typed "Number" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
     | Format.Currency isoCode -> Canon.typed "Currency" [ "isoCode", JStr isoCode ]
     | Format.Percent decimals -> Canon.typed "Percent" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
-    | Format.Date (dateStyle, timeStyle) -> Canon.typed "Date" ([ (dateStyle |> Option.map (fun v -> "dateStyle", encDateStyle v)); (timeStyle |> Option.map (fun v -> "timeStyle", encTimeStyle v)) ] |> List.choose id)
+    | Format.DateTime (dateStyle, timeStyle) -> Canon.typed "DateTime" ([ (dateStyle |> Option.map (fun v -> "dateStyle", encDateStyle v)); (timeStyle |> Option.map (fun v -> "timeStyle", encTimeStyle v)) ] |> List.choose id)
     | Format.RelativeTime unit -> Canon.typed "RelativeTime" [ "unit", encRelativeTimeUnit unit ]
     | Format.Duration (unit, style) -> Canon.typed "Duration" [ "unit", encDurationUnit unit; "style", encDurationStyle style ]
     | Format.Since unit -> Canon.typed "Since" ([ (unit |> Option.map (fun v -> "unit", encRelativeTimeUnit v)) ] |> List.choose id)
@@ -2236,7 +2236,7 @@ and private encCompareRule (s: CompareRule) : JVal =
 and private encContentHash (s: ContentHash) : JVal =
     JObj([ Some("algorithm", JStr s.Algorithm); Some("hash", JStr s.Hash); Some("strictness", encHashStrictness s.Strictness) ] |> List.choose id)
 
-and private encDateRangePair (s: DateRangePair) : JVal =
+and private encDateTimeRangePair (s: DateTimeRangePair) : JVal =
     JObj([ Some("from", JStr s.From); Some("to", JStr s.To) ] |> List.choose id)
 
 and private encDefaultSort (s: DefaultSort) : JVal =
@@ -2663,12 +2663,12 @@ let private decDateStyle (j: JVal) : Result<DateStyle, string> =
     | JStr "Full" -> Ok DateStyle.Full
     | _ -> Error "not a DateStyle"
 
-let private decDateVariant (j: JVal) : Result<DateVariant, string> =
+let private decDateTimeVariant (j: JVal) : Result<DateTimeVariant, string> =
     match j with
-    | JStr "Date" -> Ok DateVariant.Date
-    | JStr "Time" -> Ok DateVariant.Time
-    | JStr "DateTime" -> Ok DateVariant.DateTime
-    | _ -> Error "not a DateVariant"
+    | JStr "Date" -> Ok DateTimeVariant.Date
+    | JStr "Time" -> Ok DateTimeVariant.Time
+    | JStr "DateTime" -> Ok DateTimeVariant.DateTime
+    | _ -> Error "not a DateTimeVariant"
 
 let private decDeterminismSource (j: JVal) : Result<DeterminismSource, string> =
     match j with
@@ -3196,9 +3196,9 @@ and private decCellFormat (j: JVal) : Result<CellFormat, string> =
         | "SignificantDigits" ->
             dReq "digits" __fs dInt |> Result.bind (fun digits ->
             Ok(CellFormat.SignificantDigits(digits)))
-        | "Date" ->
+        | "DateTime" ->
             dReq "format" __fs dStr |> Result.bind (fun format ->
-            Ok(CellFormat.Date(format)))
+            Ok(CellFormat.DateTime(format)))
         | "Duration" ->
             dReq "unit" __fs decDurationUnit |> Result.bind (fun unit ->
             dReq "style" __fs decDurationStyle |> Result.bind (fun style ->
@@ -3397,22 +3397,22 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, string> =
             (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "orientation" __fs decOrientation |> Result.bind (fun orientation ->
             Ok(FormFieldKind.SegmentedChoice(options, value, onChange, orientation))))))
-        | "Date" ->
+        | "DateTime" ->
             dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
-            dReq "variant" __fs decDateVariant |> Result.bind (fun variant ->
+            dReq "variant" __fs decDateTimeVariant |> Result.bind (fun variant ->
             dOpt "min" __fs dStr |> Result.bind (fun min ->
             dOpt "max" __fs dStr |> Result.bind (fun max ->
             dOpt "step" __fs dFloat |> Result.bind (fun step ->
-            Ok(FormFieldKind.Date(value, onChange, variant, min, max, step))))))))
-        | "DateRange" ->
-            dOpt "value" __fs (fun (j: JVal) -> match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = "$type")) -> decDateRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateRangePair __other) |> Result.bind (fun value ->
+            Ok(FormFieldKind.DateTime(value, onChange, variant, min, max, step))))))))
+        | "DateTimeRange" ->
+            dOpt "value" __fs (fun (j: JVal) -> match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = "$type")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateTimeRangePair __other) |> Result.bind (fun value ->
             (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string * string) -> Action.Chain [])))) |> Result.bind (fun onChange ->
-            dReq "variant" __fs decDateVariant |> Result.bind (fun variant ->
+            dReq "variant" __fs decDateTimeVariant |> Result.bind (fun variant ->
             dOpt "min" __fs dStr |> Result.bind (fun min ->
             dOpt "max" __fs dStr |> Result.bind (fun max ->
             dOpt "step" __fs dFloat |> Result.bind (fun step ->
-            Ok(FormFieldKind.DateRange(value, onChange, variant, min, max, step))))))))
+            Ok(FormFieldKind.DateTimeRange(value, onChange, variant, min, max, step))))))))
         | "Combobox" ->
             dDef "allowFreeText" __fs dBool (false) |> Result.bind (fun allowFreeText ->
             (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
@@ -3461,10 +3461,10 @@ and private decFormat (j: JVal) : Result<Format, string> =
         | "Percent" ->
             dOpt "decimals" __fs dInt |> Result.bind (fun decimals ->
             Ok(Format.Percent(decimals)))
-        | "Date" ->
+        | "DateTime" ->
             dOpt "dateStyle" __fs decDateStyle |> Result.bind (fun dateStyle ->
             dOpt "timeStyle" __fs decTimeStyle |> Result.bind (fun timeStyle ->
-            Ok(Format.Date(dateStyle, timeStyle))))
+            Ok(Format.DateTime(dateStyle, timeStyle))))
         | "RelativeTime" ->
             dReq "unit" __fs decRelativeTimeUnit |> Result.bind (fun unit ->
             Ok(Format.RelativeTime(unit)))
@@ -3724,7 +3724,7 @@ and private decContentHash (j: JVal) : Result<ContentHash, string> =
     dReq "strictness" __fs decHashStrictness |> Result.bind (fun strictness ->
     Ok { Algorithm = algorithm; Hash = hash; Strictness = strictness }))))
 
-and private decDateRangePair (j: JVal) : Result<DateRangePair, string> =
+and private decDateTimeRangePair (j: JVal) : Result<DateTimeRangePair, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "from" __fs dStr |> Result.bind (fun from ->
     dReq "to" __fs dStr |> Result.bind (fun ``to`` ->

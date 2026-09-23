@@ -5793,7 +5793,7 @@ let severityToneCoherenceTests =
               Expect.isEmpty (toneDefects tree) "the default is out of scope by construction"
           } ]
 
-// ─── FUARAN155 — a `Format.Date` with neither style (Phase 1810) ─────────────
+// ─── FUARAN155 — a `Format.DateTime` with neither style (Phase 1810) ─────────────
 //
 //  Both halves of the style pair are optional on the wire so that `timeStyle`
 //  alone can display a time of day; the shape with NEITHER is structurally
@@ -5820,7 +5820,7 @@ let unstyledDateFormatTests =
     testList
         "PreEmitValidate — FUARAN155, a Date format with neither style (Phase 1810)"
         [ test "FUARAN155: neither dateStyle nor timeStyle is reported as an Error" {
-              let tree = dashboard "root" [ formatted "when" (Format.Date(None, None)) ]
+              let tree = dashboard "root" [ formatted "when" (Format.DateTime(None, None)) ]
 
               match PreEmitValidate.validate tree with
               | Error ds ->
@@ -5855,9 +5855,9 @@ let unstyledDateFormatTests =
               let tree =
                   dashboard
                       "root"
-                      [ formatted "a" (Format.Date(None, None))
+                      [ formatted "a" (Format.DateTime(None, None))
                         formatted "b" (localeFormat.date DateStyle.Short)
-                        formatted "c" (Format.Date(None, None)) ]
+                        formatted "c" (Format.DateTime(None, None)) ]
 
               let found = dateFormatDefects tree
               Expect.contains found (PreEmitDefect.UnstyledDateFormat "a") "first reader"

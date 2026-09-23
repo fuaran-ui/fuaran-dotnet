@@ -638,7 +638,7 @@ and u_format (num flt: eqtype) =
   | C__u_format__Number : decimals:(option (num)) -> u_format num flt
   | C__u_format__Currency : iso_code:(string) -> u_format num flt
   | C__u_format__Percent : decimals:(option (num)) -> u_format num flt
-  | C__u_format__Date : date_style:(option (e_date_style)) -> time_style:(option (e_time_style)) -> u_format num flt
+  | C__u_format__DateTime : date_style:(option (e_date_style)) -> time_style:(option (e_time_style)) -> u_format num flt
   | C__u_format__RelativeTime : unit_:(e_relative_time_unit) -> u_format num flt
   | C__u_format__Duration : style:(e_duration_style) -> unit_:(e_duration_unit) -> u_format num flt
   | C__u_format__Since : unit_:(option (e_relative_time_unit)) -> u_format num flt
@@ -815,8 +815,8 @@ and enc_u_format (#num #flt: eqtype) (x: u_format num flt) : Tot (jval num flt) 
     JObj (("$type", JStr "Currency") :: ("isoCode", JStr f0) :: [])
   | C__u_format__Percent f0 ->
     JObj (("$type", JStr "Percent") :: (match f0 with | None -> [] | Some w -> ("decimals", JInt w) :: []))
-  | C__u_format__Date f0 f1 ->
-    JObj (("$type", JStr "Date") :: (match f0 with | None -> (match f1 with | None -> [] | Some w -> ("timeStyle", enc_e_time_style w) :: []) | Some w -> ("dateStyle", enc_e_date_style w) :: (match f1 with | None -> [] | Some w -> ("timeStyle", enc_e_time_style w) :: [])))
+  | C__u_format__DateTime f0 f1 ->
+    JObj (("$type", JStr "DateTime") :: (match f0 with | None -> (match f1 with | None -> [] | Some w -> ("timeStyle", enc_e_time_style w) :: []) | Some w -> ("dateStyle", enc_e_date_style w) :: (match f1 with | None -> [] | Some w -> ("timeStyle", enc_e_time_style w) :: [])))
   | C__u_format__RelativeTime f0 ->
     JObj (("$type", JStr "RelativeTime") :: ("unit", enc_e_relative_time_unit f0) :: [])
   | C__u_format__Duration f0 f1 ->
@@ -1273,10 +1273,10 @@ and dec_u_format (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (u_format
       let o0 : outcome (option (num)) = (match get_prop "decimals" el with | Error _ -> Ok None | Ok v -> (match as_int v with | Error e -> Error e | Ok w -> Ok (Some w))) in
       (match o0 with | Error e -> Error e | Ok f0 -> Ok (C__u_format__Percent f0))
     else
-    if tag = "Date" then
+    if tag = "DateTime" then
       let o0 : outcome (option (e_date_style)) = (match get_prop "dateStyle" el with | Error _ -> Ok None | Ok v -> (match dec_e_date_style v with | Error e -> Error e | Ok w -> Ok (Some w))) in
       let o1 : outcome (option (e_time_style)) = (match get_prop "timeStyle" el with | Error _ -> Ok None | Ok v -> (match dec_e_time_style v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> Ok (C__u_format__Date f0 f1)))
+      (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> Ok (C__u_format__DateTime f0 f1)))
     else
     if tag = "RelativeTime" then
       let o0 : outcome (e_relative_time_unit) = (match get_prop "unit" el with | Error e -> Error e | Ok v -> (match dec_e_relative_time_unit v with | Error e -> Error e | Ok w -> Ok w)) in

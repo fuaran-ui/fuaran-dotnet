@@ -243,7 +243,7 @@ let excluded: Excluded list =
         NodeId = "fmt-percent"
         Reason =
           "same locale database as `Format.Number`, plus the locale-specific position of the percent sign and the space before it" }
-      { Slot = "Format.Date"
+      { Slot = "Format.DateTime"
         Fixture = "nodes/format-bindings.json"
         NodeId = "fmt-date"
         Reason =

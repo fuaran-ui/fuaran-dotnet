@@ -548,10 +548,10 @@ let filterKindClass (kind: FormFieldKind<'Msg>) : string =
     | FormFieldKind.Number _
     | FormFieldKind.RangedNumber _ -> "number"
     | FormFieldKind.Checkbox _ -> "checkbox"
-    | FormFieldKind.Date _ -> "date"
+    | FormFieldKind.DateTime _ -> "date"
     // Phase 725 — a date range is a range chip whose ends are dates; it reuses
     // the existing `range` chip class rather than minting one.
-    | FormFieldKind.DateRange _ -> "range"
+    | FormFieldKind.DateTimeRange _ -> "range"
     // Phase 1130 — each takes its own chip class: a star row and a colour
     // swatch size nothing like the text chip they would otherwise inherit.
     | FormFieldKind.Rating _ -> "rating"

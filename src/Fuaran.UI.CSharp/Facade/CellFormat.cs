@@ -34,8 +34,8 @@ public readonly struct CellFormat
         new(FsGen.CellFormat.NewSignificantDigits(digits));
 
     /// <summary>A date formatted with the given .NET/Intl-style format string.</summary>
-    public static CellFormat Date(string format) =>
-        new(FsGen.CellFormat.NewDate(format));
+    public static CellFormat DateTime(string format) =>
+        new(FsGen.CellFormat.NewDateTime(format));
 
     /// <summary>
     /// A trendable DURATION cell (Phase 819) — the raw value counts

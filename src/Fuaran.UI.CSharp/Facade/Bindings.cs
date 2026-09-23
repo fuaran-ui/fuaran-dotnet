@@ -405,7 +405,7 @@ public readonly struct LocaleFormat
 
     /// <summary>An absolute date with no time of day (source read as whole Unix-epoch seconds).</summary>
     public static LocaleFormat Date(DateStyle style) =>
-        new(FsGen.Format.NewDate(
+        new(FsGen.Format.NewDateTime(
             Microsoft.FSharp.Core.FSharpOption<FsGen.DateStyle>.Some(style.ToFs()),
             Microsoft.FSharp.Core.FSharpOption<FsGen.TimeStyle>.None));
 
@@ -414,7 +414,7 @@ public readonly struct LocaleFormat
     /// formatter's <c>dateStyle</c> / <c>timeStyle</c> pair).
     /// </summary>
     public static LocaleFormat DateTime(DateStyle dateStyle, TimeStyle timeStyle) =>
-        new(FsGen.Format.NewDate(
+        new(FsGen.Format.NewDateTime(
             Microsoft.FSharp.Core.FSharpOption<FsGen.DateStyle>.Some(dateStyle.ToFs()),
             Microsoft.FSharp.Core.FSharpOption<FsGen.TimeStyle>.Some(timeStyle.ToFs())));
 
@@ -423,7 +423,7 @@ public readonly struct LocaleFormat
     /// The source is still whole Unix-epoch seconds; only the time-of-day portion is rendered.
     /// </summary>
     public static LocaleFormat Time(TimeStyle style) =>
-        new(FsGen.Format.NewDate(
+        new(FsGen.Format.NewDateTime(
             Microsoft.FSharp.Core.FSharpOption<FsGen.DateStyle>.None,
             Microsoft.FSharp.Core.FSharpOption<FsGen.TimeStyle>.Some(style.ToFs())));
 
