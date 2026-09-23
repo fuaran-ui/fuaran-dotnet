@@ -521,9 +521,9 @@ let census: (string * Adoption) list =
       "Conformance.propagationEvalLaws",
       NotUsed
           "Fuaran.Core.Propagation's evaluator — the tier's reactivity runs on its own store and subscription channels (StateStore / FilterStore / SelectionStore / QueryStore) and never evaluates a Core propagation graph"
-      "Conformance.leaseLaws",
-      NotUsed
-          "Fuaran.Core.Lease — leases are a coordination-plane mechanism for concurrent writers; the UI tier takes none"
+      "Conformance.keyedChildrenLaws",
+      CarriedBy
+          "unfiled — the family is OPT-IN and needs a `KeyedWitness` (HasKeyedChildren / PlaceKeyedChild) that this tier supplies nowhere, so it cannot run here today. Deliberately not `NotUsed`: that would assert the tier declares no keyed position, which is a claim about this tier's shape that nobody has checked — and the family's own adequacy guard treats an unmeasurable claim as not-evidence rather than as a pass. Arrived with the 0.30.0 pin raise (fuaran-core#188's release slot); classify it properly when someone answers whether Node's children are keyed."
       "Conformance.aiSurfaceLaws",
       NotUsed
           "Fuaran.Core.AiSurface — the tier ships its own runtime introspection surface (Fuaran.UI.AiTools) and consumes no Core AI surface"
