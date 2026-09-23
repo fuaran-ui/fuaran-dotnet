@@ -7852,6 +7852,32 @@ prevent.
 
 ### What rides this slot
 
+**fuaran#1811 — BREAKING on `Fuaran.UI` (four union cases and two type names renamed) AND on the
+wire (four `$type` discriminators move); RIDES this slot.** The temporal family is renamed so the
+names say what the controls already do. The versioning vehicle was an operator ruling recorded
+before any renamed byte (`docs/DECISIONS.md` D8, 2026-09-23; WIRE_FORMAT §15.4): a coordinated
+clean-break revision on the 0.2.0 precedent, NOT a profile major — this slot is an untagged draft,
+pinned by no public-path consumer and already minted BREAKING by 1810, so under the draft-slot rule
+1811 rides it and moves no number.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI` — `FormFieldKind` | `Date` → **`DateTime`**, `DateRange` → **`DateTimeRange`** (associated values unchanged). | Every construction and every exhaustive `match` on the two cases. |
+| `Fuaran.UI` — types | `DateVariant` → **`DateTimeVariant`** (cases `Date` / `Time` / `DateTime` unchanged); `DateRangePair` → **`DateTimeRangePair`** (`From` / `To` unchanged). `DateStyle` does NOT move. | Every type annotation and qualified case (`DateVariant.Time` → `DateTimeVariant.Time`). |
+| `Fuaran.UI` — `Format` / `CellFormat` | `Format.Date` → **`Format.DateTime`**; `CellFormat.Date` → **`CellFormat.DateTime`**. | Full literals and exhaustive matches. `Format.date` / `Format.dateTime` / `Format.time` keep their names. |
+| `Fuaran.UI` — smart constructors | `FormFieldKind.date` / `dateRange` / `dateDeclarative` / `dateRangeDeclarative` → `dateTime` / `dateTimeRange` / `dateTimeDeclarative` / `dateTimeRangeDeclarative`; the filter chip `dateRange` → `dateTimeRange`; `CellFormat.date` → `CellFormat.dateTime`; `ControlValueDefaults.date` / `dateRange` → `dateTime` / `dateTimeRange`. | Call sites; a one-token rename each. |
+| `Fuaran.UI.CSharp` | `CellFormat.Date(format)` → **`CellFormat.DateTime(format)`**. `LocaleFormat.Date` / `DateTime` / `Time` keep their names (they name the presentation, not the case). | C# call sites of the cell-format factory. |
+| `Fuaran.UI.VisualBasic` + analyzer | The XML attribute `format-date` → **`format-date-time`**. | VB XML documents carrying the attribute. |
+| Wire — canonical | `$type` `Date` → `DateTime`, `DateRange` → `DateTimeRange` (form fields); `Format` / `CellFormat` `$type` `Date` → `DateTime`. `CellKind` `Date` and `ChartAnnotationX` `Date` do NOT move. | Every emitter; every stored document, at its next re-encode. |
+| Wire — lenient ingest (§16) | The four pre-rename spellings decode to the new names and re-encode canonical (never emitted, never taught); the invented `Time` / `TimeRange` decode to `DateTime` / `DateTimeRange` with `variant` supplied as `Time`, and a disagreeing `variant` beside them is refused. | Nobody — additive on the accept set. `lenient/lenient-1811-*` and `reject/reject-1811-*` pin it on every host. |
+| Behind readers (§15.3) | A reader that predates this slot meets the new `$type`s as a preserved `Unknown` and renders the placeholder or the author-declared `fallback`. | The cost the chosen vehicle carries instead of a `Foreign` refusal. |
+
+The migration is one page: [`docs/migrations/1811-temporal-vocabulary-rename.md`](docs/migrations/1811-temporal-vocabulary-rename.md).
+Every host in the §11.0 roster moved in the same change-set; the TypeScript and Python bundled
+snapshots were re-synced and re-declared; the Swift corpus pin moved. The estate's consumers that
+carry the old names as DATA (evaluation seeds, cookbook emission trees) are re-emitted by their
+owners, not search-replaced — filed as typed deferrals on the phase.
+
 **fuaran#1812 — BREAKING on `Fuaran.UI` at two record shapes; ADDITIVE on the wire (two optional
 envelope fields, NO profile step); RIDES this slot.** Two additions to the node envelope, taken
 together because each costs the full §11 forward-coupling sweep and paying it twice buys nothing:
