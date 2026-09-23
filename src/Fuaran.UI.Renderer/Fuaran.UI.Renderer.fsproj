@@ -75,6 +75,10 @@
          projects it onto the console) and Relay (which projects it onto the
          wire). -->
     <Compile Include="Affordances.fs" />
+    <!-- Phase 1844 — the wiring section of the introspection surface: the
+         WiringGraph projected as a DTO (canonical JSON + the REPL's text). A
+         projection only, on both pipelines; before DebugGlobal, which serves it. -->
+    <Compile Include="Introspection.fs" />
     <!-- Phase 90 — in-page introspection REPL (window.__fuaran). Pure
          wire-shape helpers (kindName / extractBindingSlots / resolveSlot /
          childNodes) compile on both pipelines; geometry + POJO + window

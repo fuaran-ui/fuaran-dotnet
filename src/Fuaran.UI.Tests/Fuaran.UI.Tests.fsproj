@@ -233,6 +233,11 @@
     <!-- Phase 1785 — the filter-channel write direction the walk now records:
          the closed list of write-back positions, and the projection it grounds. -->
     <Compile Include="FilterWriteWalkTests.fs" />
+    <!-- Phase 1844 — the wiring section of the introspection surface: the DTO
+         agrees with the graph on every nodes/ fixture (no second walk), the
+         dependsOn edges surface, and the cross-host byte vectors under
+         wiring-introspection/ are this host's emission. -->
+    <Compile Include="WiringIntrospectionTests.fs" />
     <!-- DeadOnDecodeTests pins Phase 430's slot capability table + lint. -->
     <Compile Include="DeadOnDecodeTests.fs" />
     <!-- Phase 924 — the decode-side inertness report, and (the load-bearing
