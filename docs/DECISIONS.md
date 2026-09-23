@@ -10,6 +10,63 @@ consequence.
 
 ---
 
+## 2026-09-23 — D8: the temporal vocabulary is renamed on the 0.2.0 clean-break precedent, riding the untagged 0.86.0 draft — not a profile major
+
+**Operator ruling, driver session, 2026-09-23 — recorded before any renamed byte (Phase 1811, task
+1).** Phase 1811 renames the temporal family so the names say what the controls already do: the
+form-field kinds `Date` → `DateTime` and `DateRange` → `DateTimeRange`, the enum `DateVariant` →
+`DateTimeVariant` (its cases `Date` / `Time` / `DateTime` unchanged), the pair record `DateRangePair`
+→ `DateTimeRangePair`, and the formatters `Format.Date` → `Format.DateTime` and `CellFormat.Date` →
+`CellFormat.DateTime`. `DateStyle` does not move — it still styles only the date part, beside
+`TimeStyle`. Four `$type` discriminators move on the wire; two type names move in the IDL, the schema,
+`enum-tokens.json` and every host's types. The vocabulary-growth charter (§4.2) classes a rename as a
+major-version act, and the phase's first task was to rule on the **versioning vehicle** between
+
+- **(a) a profile major** — `core@1.x` → `core@2.0`, a new `/vN/` + `$id`, `Foreign` hard-refusal
+  for every old consumer and a generated migration shim per host (WIRE_FORMAT §15.4's
+  removal/rename row), and
+- **(b) a coordinated clean-break revision on the 0.2.0 precedent** (WIRE_FORMAT §1.1) — one
+  change-set across every host in the §11.0 roster, the corpus regenerated on the new bytes in the
+  same change-set, sanctioned by §15.4's pre-1.0 posture.
+
+**Ruled: (b).** The operator's words, against the driver's recommendation of (b) with the ground
+below: *"on 1811, do as recommended."*
+
+**The ground.** The fuaran-dotnet `0.86.0` slot is a **draft**: untagged, and pinned by no
+public-path consumer. Phase 1810 minted it as BREAKING (its `timeStyle` entry in `STABILITY.md`), and
+Phase 1812 rode it. Under the draft-slot rule a change of the same class as the draft already carries
+RIDES the slot, so 1811 **rides 0.86.0** — it appends to that `STABILITY.md` entry and moves no
+number. A profile major would have been the vehicle for a rename that reaches a *released* consumer;
+none does, and spending the profile's major counter on a pre-1.0 rename that no shipped reader has
+to negotiate would make the counter say something no consumer can act on — the same reasoning §15.4
+records for the optional-field exemption (Phase 1670), applied one row down.
+
+**What the ruling obliges, and where the old names survive.** Every host moves in ONE change-set:
+the F# reference, the TypeScript, Python, Go and Rust codecs, and the Swift and Kotlin render
+projections, with both bundled corpus snapshots re-synced and re-declared in the same landing window.
+The old `$type`s survive **only as §16 lenient-ingest aliases** — `Date`, `DateRange`, `Format`'s and
+`CellFormat`'s `Date` each decode to the new name and re-encode canonical — and the canonical encoder
+never emits them. That is a departure from the pure 0.2.0 form, where retired names were a hard
+decode error, and it is recorded rather than smoothed over: §16 admits a shorthand on evidence that
+models emit it and rules out backward compatibility as a ground, so these four aliases are listed in
+the §16 table on the same footing as the 0.28.0 column-member aliases (Phase 1821) — kept by this
+ruling, never taught, pinned by the corpus. The invented spellings the rename exists to close —
+`Time` and `TimeRange` — ARE admitted on §16's own ground, normalising to `DateTime` /
+`DateTimeRange` with `variant: "Time"`.
+
+**Rejected.** (a), for the reason above. Also rejected: leaving `Format.Date` / `CellFormat.Date`
+behind while the form fields move — `Format.DateTime` is an honest name only once the formatter
+renders a time, which Phase 1810 made true, and a family that says `DateTime` on the input side and
+`Date` on the presentation side would re-open exactly the discoverability gap the rename closes.
+
+**Consequence a behind reader carries (§15.3).** A reader that predates this change-set meets
+`DateTime` / `DateTimeRange` as an unknown discriminator, materialises a transport-only `Unknown`,
+preserves the bytes verbatim, and renders the placeholder (or the author-declared `fallback`, Phase
+1812). That is the cost the chosen vehicle carries instead of a `Foreign` refusal, and it is the
+correct one: the old reader cannot destroy what the new producer authored.
+
+---
+
 ## 2026-09-10 — D7: three claims about the language tier that turned out to be false, and the boundaries they mark
 
 **Why they are here rather than in a work log.** Each was written down as a defect, survived long
