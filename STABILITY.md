@@ -8209,6 +8209,29 @@ retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission ga
 standing class, so under the draft-slot rule it rides rather than advances; `<Version>` is not moved,
 for the reason this heading records.
 
+**fuaran#1844 — ADDITIVE, on the debug-only console surface: the wiring graph becomes visible.**
+`Fuaran.UI.Renderer` gains one module, `Introspection` — the `WiringGraph` projected as a DTO
+(`WiringControlEntry` / `WiringConsumerEntry` / `WiringEdgeEntry` / `WiringUnresolvedEntry` /
+`WiringIntrospection`, `ofGraph`, `ofTree`, `toJson`, `describe`, `FormatVersion =
+"fuaran-wiring-introspection/1"`) — and `window.__fuaran` gains `getWiring()` and `describeWiring()`
+(`DebugGlobal.Version` 0.4.0 → 0.5.0). No existing type, member, signature or wire byte moves, and
+no document's encoding changes.
+
+**Its stability contract is the FORMAT TOKEN and the cross-host vectors, not this package's
+semver**, the same posture `DebugGlobal` takes above: the module exists to serve the console, and
+what another host holds it to is the JSON and text bytes pinned under
+`src/Fuaran.UI.Tests/wiring-introspection/`, which the TypeScript host decodes, re-encodes and
+describes to the same bytes. A change to either rendering bumps `FormatVersion` and regenerates
+the vectors in both hosts in one change-set.
+
+**A projection, asserted rather than claimed.** `ofGraph` reads a `WiringGraph` and nothing else; a
+test holds the DTO to agreement with the graph on every corpus `nodes/` fixture. Phase 1736's
+acceptance ("no render path references the wiring graph") now admits exactly one renderer file,
+`Introspection.fs`, by name, and a second test pins `DebugGlobal.fs` as its only caller, so the
+exemption cannot widen into a render path unseen.
+
+*Version.* Rides this slot: additive, below the slot's standing class.
+
 ## 0.85.0 — the slot Phase 1734 opened, which Phase 1821's column-naming rename raised to WIRE-BREAKING — released 2026-09-20 as `v0.85.0`
 
 _**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride

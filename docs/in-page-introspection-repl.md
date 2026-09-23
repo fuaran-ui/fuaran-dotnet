@@ -52,6 +52,8 @@ Every method returns a plain JS object (never throws, never a silent no-op); err
 | `__fuaran.canApply` | Whether this host wired a real apply path (Phase 739). |
 | `__fuaran.treeRevision()` | An opaque token identifying the current tree state — compare for equality, never parse (Phase 739). |
 | `__fuaran.subscribe(cb)` | Subscribe to committed tree changes; returns an unsubscribe function. Push, never poll (Phase 739). |
+| `__fuaran.getWiring()` | The wiring graph of the live tree as the `fuaran-wiring-introspection/1` DTO: `{ controls, consumers, edges, unresolved, untaggedStateReads, opaqueReader, opaqueWriter, format }` (Phase 1844; see [The wiring graph](#the-wiring-graph--getwiring--describewiring)). |
+| `__fuaran.describeWiring()` | The same graph as printable text, edges first – `console.log(__fuaran.describeWiring())`. |
 | `__fuaran.help()` | A one-screen reference string – `console.log(__fuaran.help())`. |
 
 ### Payload shapes
@@ -65,6 +67,30 @@ Every method returns a plain JS object (never throws, never a silent no-op); err
   - `{ status: "i18nUnresolved", key, expression, source }` – an `I18n` binding with no translation for the key.
   - `{ status: "noOverride", expression: "$none", source: "Static" }` – an optional slot that is declared on the kind but currently absent.
   - `{ error }` – the slot name is not a binding slot on this node's kind. Use `getNodeState(id).bindings` to list the slots.
+
+## The wiring graph — `getWiring()` / `describeWiring()`
+
+A slot's `dependsOn` (in `getNodeState(id).bindings`) says what that slot READS. When a chip, a multi-select or a `SetState` button "does nothing", the question is the other direction — what DRIVES that read — and the answer is the **wiring graph** (`Fuaran.UI.WiringGraph`), the relation the validator's wiring rules decide on:
+
+- **controls** — a `Filters` chip's declaration (`declared-filter`), a control whose write-back slot commits to a filter (`filter-write-back` — a write-back position), a `SetState` (`state-write`), a `Call into:` (`fetch-into-state` / `fetch-into-query`), a selection-producing node (`selection-producer`);
+- **consumers** — every read, `declared-edge` where the tree asserts the edge (a `Query.dependsOn` name, a `Transform` / `Expr` param sourced from a filter) and `value-read` otherwise;
+- **edges** — each control → consumer pair on one channel and name, with the driving end's `controlKinds`;
+- **unresolved** — every express control that drives nothing (`undriven`) and every read of something no control produces (`ungrounded`; on the filter channel with `declared-edge`, that is FUARAN075's subject).
+
+```text
+wiring (fuaran-wiring-introspection/1): 1 edges, 2 controls, 2 consumers, 0 unresolved
+edges:
+  filter depts: dept-chip -> dept-grid [declared-edge] via filter-write-back
+controls:
+  filter depts @ dept-chip (filter-write-back)
+  selection dept-grid @ dept-grid (selection-producer)
+unresolved:
+  (none)
+untagged state reads: (none)
+opaque reader: no; opaque writer: no
+```
+
+The DTO (`Fuaran.UI.Renderer.Introspection`) is a **projection** of `WiringGraph` and performs no walk of its own; a test holds the two to agreement over every corpus `nodes/` fixture. It is computed per call and never on a render. Every section is deduplicated and sorted, so the bytes depend on the wiring and not on how the tree is spelled. The TypeScript host reads the same DTO rather than deriving one — a host passes it to `<FuaranRenderer debug wiring={dto}>` — and for the same DTO both hosts' JSON and text are byte-identical, pinned by the vectors under `src/Fuaran.UI.Tests/wiring-introspection/` (regenerate with `FUARAN_WIRING_INTROSPECTION_REGEN=1`, and copy them to the TypeScript host's `test/fixtures/wiring-introspection/` in the same change). When `opaqueReader` / `opaqueWriter` is true, an `undriven` / `ungrounded` state entry proves nothing: some reader or writer in the tree cannot be seen.
 
 ## `apply(op)` – policy-gated mutation
 

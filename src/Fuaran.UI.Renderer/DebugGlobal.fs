@@ -113,8 +113,15 @@ open Fuaran.UI.Telemetry.Abstractions
 /// Additive; the TS mirror does not carry it, which is the 0.2.0 situation
 /// again and is handled the same way — the two version lines are independent,
 /// and a member both carry stays parity-locked.
+///
+/// **0.5.0** adds `getWiring()` and `describeWiring()` — the wiring graph the
+/// validator's wiring rules decide on (controls, consumers, the filter /
+/// transform / state / query / selection edges, every end that met nothing),
+/// as the `Introspection` DTO and as printable text (Phase 1844). Additive. The
+/// TS mirror carries both at its own `0.4.0`, parity-locked on name, payload
+/// and bytes.
 [<Literal>]
-let Version = "0.4.0"
+let Version = "0.5.0"
 
 /// The compilation symbol that opts a build in to the console global. Named
 /// here so the gate, its documentation and the tests that pin it all quote one
@@ -821,7 +828,9 @@ let helpText =
     + "  .getNodeJson(id)          one node's own canonical wire JSON, whole subtree\n"
     + "  .getAffordances(mod?)     declared natural-language commands, values + aliases\n"
     + "  .hatches()                runtime escape-hatch report: open / closed / undecided\n"
-    + "  .apply(op)                policy-gated TreeOp mutation (JSON string or object; default-deny)\n"
+    + "  .getWiring()              wiring graph: controls, consumers, edges (filter/transform/state/...), unresolved\n"
+    + "  .describeWiring()         the same graph as printable text, edges first\n"
+    + "  .apply(op)              policy-gated TreeOp mutation (JSON string or object; default-deny)\n"
     + "  .treeRevision()           opaque token identifying the current tree state\n"
     + "  .subscribe(cb)            committed-tree-change signal; returns an unsubscribe fn\n"
     + "  .canApply                 whether this host wired a real apply path\n"
@@ -1261,6 +1270,13 @@ let buildGlobalWith
               System.Func<obj>(fun () ->
                   hatchSectionToObj (RuntimeHatches.observe options.Registry (debugGlobalEnabled ())))
           )
+          // Phase 1844 — the wiring graph over THIS tree, computed per call
+          // (never on a render) and returned as the canonical DTO read back
+          // into a live object, for `getNodeJson`'s reason: the bytes a second
+          // host compares against are the canonical text, so the object is
+          // that text parsed rather than a second hand-built projection.
+          "getWiring", box (System.Func<obj>(fun () -> jsonParse (Introspection.toJson (Introspection.ofTree tree))))
+          "describeWiring", box (System.Func<obj>(fun () -> box (Introspection.describe (Introspection.ofTree tree))))
           "help", box (System.Func<obj>(fun () -> box helpText)) ]
 
 /// `buildGlobalWith` in the historical positional shape.

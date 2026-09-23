@@ -378,11 +378,19 @@ let tests =
 
                   Expect.isNonEmpty rendererDirs "the renderer projects are present to be swept"
 
+                  // Phase 1844 — ONE file is exempt, by name: the renderer's
+                  // `Introspection.fs`, which projects the graph for the
+                  // on-demand console surface (`__fuaran.getWiring()`) and is
+                  // reached from no render. `WiringIntrospectionTests` pins the
+                  // other half — that the console surface is its only caller —
+                  // so the exemption cannot widen into a render path unseen.
                   let offenders =
                       rendererDirs
                       |> List.collect (fun d ->
                           Directory.GetFiles(d, "*.fs", SearchOption.AllDirectories) |> Array.toList)
-                      |> List.filter (fun f -> (File.ReadAllText f).Contains "WiringGraph")
+                      |> List.filter (fun f ->
+                          Path.GetFileName f <> "Introspection.fs"
+                          && (File.ReadAllText f).Contains "WiringGraph")
 
                   Expect.isEmpty offenders (sprintf "the wiring graph is on a render path in: %A" offenders)
           }
