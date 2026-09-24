@@ -1,0 +1,17 @@
+[
+  {
+    "package": "Fuaran.Core.Idl.Codegen",
+    "reason": "Build-time and .NET-only: it EMITS source, so its contract is the shape of what it emits rather than a surface a browser calls. It does not ship the fable/ source distribution, so no Fable consumer can compile it. Mirrors the entry in Fuaran.Core's own fable-exclusions.json.",
+    "phase": "97"
+  },
+  {
+    "package": "Fuaran.Core.Idl.Cli",
+    "reason": "A dotnet TOOL over the .NET-only generation half above; it ships no fable/ sources. Mirrors the entry in Fuaran.Core's own fable-exclusions.json.",
+    "phase": "127"
+  },
+  {
+    "package": "Fuaran.Core.CSharp",
+    "reason": "A C# assembly is not Fable-compiled, so there is no compile for this gate to run. Mirrors the entry in Fuaran.Core's own fable-exclusions.json.",
+    "phase": "128"
+  }
+]

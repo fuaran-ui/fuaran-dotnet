@@ -646,6 +646,54 @@ let private stripLineComments (text: string) =
         | i -> line.Substring(0, i))
     |> String.concat "\n"
 
+/// A project's DECLARED opt-out from the census (Phase 217): `<CoreConformanceCensusExemption>` in
+/// its OWN `.fsproj`, whose value is the reason — the `FablePortabilityExemption` convention. The
+/// case it exists for is `tests/core-fable`, the Fuaran.Core Fable gate this repository runs on
+/// Core's behalf: it calls Core's law families to COMPILE them under Fable, which is not this tier
+/// adopting them, and enrolling those calls would misstate the tier's coverage. A declaration, not
+/// a name match, so the next such project says why in its own file and no list here grows.
+///
+/// `Ok None` — no declaration, the project is scanned. `Ok (Some reason)` — exempted.
+/// `Error` — declared with an EMPTY reason, which must fail rather than exempt: an exemption that
+/// carries no reason is exactly the unrecorded excusal the census exists to refuse.
+let internal censusExemption (projectXml: string) : Result<string option, string> =
+    let m =
+        Regex.Match(
+            projectXml,
+            @"<CoreConformanceCensusExemption\s*>([^<]*)</CoreConformanceCensusExemption\s*>|<CoreConformanceCensusExemption\s*/>"
+        )
+
+    if not m.Success then
+        Ok None
+    else
+        let reason = m.Groups[1].Value.Trim()
+
+        if reason = "" then
+            Error "declares <CoreConformanceCensusExemption> with no reason — state why, or remove the element"
+        else
+            Ok(Some reason)
+
+/// Splits the conformance-referencing projects `(name, dir, projectXml)` into those the census
+/// scans and those it exempts `(name, reason)`. An empty-reason declaration FAILS the whole census
+/// here, naming the project, rather than exempting it.
+let internal partitionByExemption (projects: (string * string * string) list) =
+    let decided =
+        projects
+        |> List.map (fun (name, dir, xml) ->
+            match censusExemption xml with
+            | Ok None -> Choice1Of2 dir
+            | Ok(Some reason) -> Choice2Of2(name, reason)
+            | Error why -> failwithf "CoreConformanceCensus: %s %s" name why)
+
+    (decided
+     |> List.choose (function
+         | Choice1Of2 d -> Some d
+         | _ -> None)),
+    (decided
+     |> List.choose (function
+         | Choice2Of2 e -> Some e
+         | _ -> None))
+
 /// Every test project that references the conformance kit, as `(projectDir, [ file, source ])`.
 /// Discovered from the `.fsproj` files rather than named here, so a project that adopts a law
 /// family in a later phase enters this scan with no edit.
@@ -670,12 +718,29 @@ let private conformanceTestProjects () =
         else
             [||]
 
-    Array.append
-        (dirsUnder "src" (fun name -> name.EndsWith(".Tests", StringComparison.Ordinal)))
-        (dirsUnder "tests" (fun _ -> true))
-    |> Array.filter (fun dir ->
-        Directory.GetFiles(dir, "*.fsproj")
-        |> Array.exists (fun p -> File.ReadAllText(p).Contains "Fuaran.Core.Conformance"))
+    let referencing =
+        Array.append
+            (dirsUnder "src" (fun name -> name.EndsWith(".Tests", StringComparison.Ordinal)))
+            (dirsUnder "tests" (fun _ -> true))
+        |> Array.choose (fun dir ->
+            let projects =
+                Directory.GetFiles(dir, "*.fsproj") |> Array.map (fun p -> File.ReadAllText p)
+
+            if projects |> Array.exists (fun text -> text.Contains "Fuaran.Core.Conformance") then
+                Some(leaf dir, dir, String.concat "\n" projects)
+            else
+                None)
+        |> Array.toList
+
+    let scanned, exempted = partitionByExemption referencing
+
+    // Printed on EVERY run, so an exemption stays visible rather than becoming a line nobody
+    // re-reads — the posture the Fable stage takes for `FablePortabilityExemption`.
+    for name, reason in exempted do
+        printfn "[core-conformance census] EXEMPT %s — %s" name reason
+
+    scanned
+    |> List.toArray
     |> Array.map (fun dir ->
         let sources =
             Directory.GetFiles(dir, "*.fs")
@@ -810,6 +875,43 @@ let tests =
     testList
         "Core conformance census (Fuaran.UI)"
         [
+
+          // Phase 217 — the declared opt-out, proven in both directions over synthetic project
+          // text, so the live scan's "nothing unexpected is exempted" is not the only evidence.
+          testCase "an undeclared project is scanned; a declared one is exempted with its reason"
+          <| fun _ ->
+              let plain =
+                  """<Project><ItemGroup><PackageReference Include="Fuaran.Core.Conformance" /></ItemGroup></Project>"""
+
+              let declared =
+                  """<Project><PropertyGroup><CoreConformanceCensusExemption>runs on Core's behalf</CoreConformanceCensusExemption></PropertyGroup></Project>"""
+
+              let scanned, exempted =
+                  partitionByExemption [ "a", "dir-a", plain; "b", "dir-b", declared ]
+
+              Expect.equal scanned [ "dir-a" ] "the undeclared project is still scanned"
+              Expect.equal exempted [ "b", "runs on Core's behalf" ] "the declared project is exempted, reason kept"
+
+          testCase "an exemption with an empty or whitespace reason is refused, not honoured"
+          <| fun _ ->
+              for xml in
+                  [ "<Project><PropertyGroup><CoreConformanceCensusExemption></CoreConformanceCensusExemption></PropertyGroup></Project>"
+                    "<Project><PropertyGroup><CoreConformanceCensusExemption>   </CoreConformanceCensusExemption></PropertyGroup></Project>"
+                    "<Project><PropertyGroup><CoreConformanceCensusExemption /></PropertyGroup></Project>" ] do
+                  Expect.isError (censusExemption xml) "a reasonless exemption is an error"
+
+                  Expect.throws
+                      (fun () -> partitionByExemption [ "c", "dir-c", xml ] |> ignore)
+                      "the census fails on it rather than exempting the project"
+
+          testCase "the Core Fable gate declares its exemption and states why"
+          <| fun _ ->
+              let dir = Path.Combine(repoRoot.Value, "tests", "core-fable")
+              let xml = File.ReadAllText(Path.Combine(dir, "CoreFable.fsproj"))
+
+              match censusExemption xml with
+              | Ok(Some reason) -> Expect.stringContains reason "Phase 217" "the reason names its deciding phase"
+              | other -> failtestf "tests/core-fable should declare a census exemption with a reason, got %A" other
 
           testCase "every law family the pinned kit ships has exactly one census row"
           <| fun _ ->

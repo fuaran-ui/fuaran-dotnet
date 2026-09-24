@@ -41,6 +41,14 @@
      `-SkipFable` — no LANE drops this stage) now skips the .NET laws too. That is what the switch
      already meant for the Node leg, and the laws are one subject with two legs.
 
+  AND A THIRD SUBJECT, SINCE PHASE 217: THE FUARAN.CORE GATE. `tests/core-fable/core-fable.ps1`
+  compiles every public Fuaran.Core package under Fable and byte-compares Core's own parity table
+  (`Fuaran.Core.ParityVectors`) between .NET and Node. Fuaran.Core runs no Fable compiler, so this
+  repository runs that gate on its behalf; it is run here as its own child process (section 2b) and
+  is skipped only by `-SkipCoreFable` or by a matching address in a narrow lane. Its header says why
+  a Core pin that predates the parity table is STATED rather than skipped, and how every Core
+  version cut runs the same script against its candidate packages.
+
   THE DERIVATION (Phase 1606). Fuaran.UI 0.78.0 shipped a Renderer whose `#if FABLE_COMPILER` arm
   did not compile — four bare `JVal` / `JStr` uses with no `open Fuaran.Core` — invisible to the
   .NET build, which compiles only the `#else` arm, and to this gate, whose hand-kept list did not
@@ -400,6 +408,10 @@ param(
     [switch] $SkipPortability,
     # Skip the law harness (the half that needs Node).
     [switch] $SkipLaws,
+    # Skip the Fuaran.Core Fable gate (`tests/core-fable/`, Phase 217) — a switch, never a lane,
+    # for the reason `-SkipFable` is not one: a lane decides whether a skip is ARMED, not which
+    # part of the stage runs.
+    [switch] $SkipCoreFable,
     # Keep the emitted JavaScript and the two captured outputs for inspection.
     [switch] $KeepOutput,
     # Print the derived portability set — entries, why each is one, what they cover, and every
@@ -1538,6 +1550,82 @@ if (-not $SkipLaws) {
         }
         else {
             Clear-RecordedGreen 'FableLaws'
+        }
+    }
+}
+
+# ── 2b. The Fuaran.Core Fable gate (Phase 217) ──────────────────────────────
+#
+# Fuaran.Core runs no Fable compiler of its own: the compiler belongs where a Fable toolchain
+# already lives, and its compile leg and cross-pipeline VALUE leg moved here. The gate is its own
+# script — `tests/core-fable/core-fable.ps1`, whose header says what each leg proves, how it reads
+# whether the pinned Core ships the parity table, and why a pin that predates the table is stated
+# rather than skipped. This stage runs it, reads its exit status, and records it like any other
+# subject: a narrow lane may skip it by content address, the full lane always runs it.
+#
+# The address is the project's own (its sources and governing MSBuild files) PLUS what that does not
+# cover: the gate script, the repository's Core pins (the nearest `Directory.Packages.props` to the
+# project is its own, which only imports the pins), the exclusions, and the node that runs one side
+# of the comparison. Any of them moving misses the record.
+#
+# Not run under a redirected `-SrcRoot`: that is the derivation's self-test, and this subject is not
+# derived from the tree it redirects. Read off `$PSBoundParameters`, never off `$SrcRoot` itself:
+# PowerShell variables are case-insensitive, so the `$srcRoot = ...` default above has already
+# filled it, and testing the variable skipped this subject SILENTLY on every ordinary run — found
+# by reading a green stage's timings for a row that was not there. A skip here is always named.
+
+if ($SkipCoreFable) {
+    Write-Host ''
+    Write-Host '  the Fuaran.Core Fable gate: SKIPPED by -SkipCoreFable' -ForegroundColor Yellow
+}
+elseif ($PSBoundParameters.ContainsKey('SrcRoot')) {
+    Write-Host ''
+    Write-Host '  the Fuaran.Core Fable gate: not run under a redirected -SrcRoot' -ForegroundColor DarkGray
+}
+else {
+    $coreFableDir = Join-Path $repoRoot 'tests' 'core-fable'
+    $coreFableScript = Join-Path $coreFableDir 'core-fable.ps1'
+    $coreFableProject = Join-Path $coreFableDir 'CoreFable.fsproj'
+
+    Write-Stage "the Fuaran.Core Fable gate — $(ConvertTo-RepoRelative $coreFableScript)"
+
+    if (-not (Test-Path -LiteralPath $coreFableScript -PathType Leaf)) {
+        $failures.Add("the Fuaran.Core Fable gate script is missing: $coreFableScript")
+    }
+    else {
+        $coreFableSemantics = @(
+            "pwsh core-fable.ps1 $(Get-CachedFileSha256 $coreFableScript)"
+            "pins $(Get-CachedFileSha256 (Join-Path $repoRoot 'Directory.Packages.props'))"
+            "exclusions $(Get-CachedFileSha256 (Join-Path $coreFableDir 'exclusions.json'))"
+            "node $(Get-NodeVersionTag)"
+        ) -join ' + '
+        $coreFableAddress = Get-CompileAddress $coreFableProject $coreFableSemantics
+        $coreFableRecorded = if ($laneMaySkip) { Test-RecordedGreen 'CoreFable' $coreFableAddress $coreFableSemantics } else { $null }
+        $coreFableLabel = ConvertTo-RepoRelative $coreFableProject
+
+        if ($coreFableRecorded) {
+            Add-Timing $coreFableLabel 'skipped' 0
+            Write-Host "  SKIPPED BY ADDRESS $coreFableLabel" -ForegroundColor Yellow
+            Write-Host "    address $coreFableAddress" -ForegroundColor DarkGray
+            Write-Host "    recorded green in lane '$($coreFableRecorded.lane)' at $($coreFableRecorded.recordedUtc)" -ForegroundColor DarkGray
+        }
+        else {
+            # A child process, never piped: its exit status is the verdict, and the script restores
+            # the environment it sets rather than leaking it into the rest of this stage.
+            $coreFableClock = [Diagnostics.Stopwatch]::StartNew()
+            & pwsh -NoProfile -File $coreFableScript
+            $coreFableExit = $LASTEXITCODE
+            $coreFableClock.Stop()
+
+            if ($coreFableExit -eq 0) {
+                Add-Timing $coreFableLabel 'compiled' $coreFableClock.Elapsed.TotalSeconds
+                Write-RecordedGreen 'CoreFable' $coreFableAddress $coreFableSemantics
+            }
+            else {
+                Add-Timing $coreFableLabel 'FAILED' $coreFableClock.Elapsed.TotalSeconds
+                Clear-RecordedGreen 'CoreFable'
+                $failures.Add("the Fuaran.Core Fable gate FAILED (exit $coreFableExit) — see tests/core-fable/core-fable.ps1's output above")
+            }
         }
     }
 }

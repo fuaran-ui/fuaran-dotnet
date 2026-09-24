@@ -1,0 +1,29 @@
+<Project>
+  <!--
+    The Core gate's package versions: this repository's own pins, imported unchanged, plus ONE
+    override — a cut-time run of `core-fable.ps1` sets `FuaranCoreVersion`, and every Fuaran.Core
+    package then resolves at the candidate version instead (from the candidate folder alone; the
+    script writes that restore's nuget.config). Unset, this file changes nothing.
+  -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Packages.props', '$(MSBuildThisFileDirectory)..'))" />
+  <ItemGroup Condition="'$(FuaranCoreVersion)' != ''">
+    <PackageVersion Update="Fuaran.Core.Tree" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Ops" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.OpStream" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.OpStream.Dag" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Wire" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Validator" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Function" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Column" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.DataFrame" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Query" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Conformance" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Projection" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.AiSurface" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Propagation" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Idl" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Idl.Codegen" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Column.Ops" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Observer" Version="$(FuaranCoreVersion)" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The Fuaran.Core Fable gate's project (Phase 217). Compiled by `dotnet fable` in `core-fable.ps1`
+    beside it, which is run by the Fable stage (`tests/fable-laws/fable-check.ps1`). It references
+    every public Fuaran.Core package — membership is CHECKED by the script against this
+    repository's `Fuaran.Core.*` pins, or against the candidate's packages in a cut-time run, with
+    `exclusions.json` holding the deliberate exceptions — and `Program.fs` touches each one's public
+    encode/decode surface. With `CoreParity=true` (set by the script only when the restored
+    Fuaran.Core.Conformance ships `ParityVectors`) the same program is also the cross-pipeline VALUE
+    leg.
+    Not in the solution and not packed: the script restores, compiles and runs it on its own.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <!--
+      NULLNESS OFF, for the reason `tests/fable-laws/FableLaws.fsproj` states: under Fable the ENTRY
+      project's properties govern the whole transpiled graph, and with nullness ON the canonical wire
+      encoder emits a `StringBuilder__ToString` that the bundled fable-library-js does not export, so
+      the transpiled program dies at import. This project is RUN under node, so it compiles the way
+      a running consumer must. The nullness-ON compile of the packages this repository ships is the
+      portability stage's job.
+    -->
+    <Nullable>disable</Nullable>
+    <!-- Read by `src/Fuaran.UI.Tests/CoreConformanceCensus.fs`, which scans tests/* for law-family
+         calls as evidence of this tier ADOPTING a family. The touches in Program.fs call Core's
+         families only to compile them under Fable, so they are not adoption. -->
+    <CoreConformanceCensusExemption>The Fuaran.Core Fable gate, run on Core's behalf (Phase 217): it compiles Core's law families under Fable, it does not adopt them for this tier.</CoreConformanceCensusExemption>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(CoreParity)' == 'true'">
+    <DefineConstants>$(DefineConstants);CORE_PARITY</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fuaran.Core.Tree" />
+    <PackageReference Include="Fuaran.Core.Ops" />
+    <PackageReference Include="Fuaran.Core.OpStream" />
+    <PackageReference Include="Fuaran.Core.OpStream.Dag" />
+    <PackageReference Include="Fuaran.Core.Wire" />
+    <PackageReference Include="Fuaran.Core.Validator" />
+    <PackageReference Include="Fuaran.Core.Function" />
+    <PackageReference Include="Fuaran.Core.Column" />
+    <PackageReference Include="Fuaran.Core.DataFrame" />
+    <PackageReference Include="Fuaran.Core.Query" />
+    <PackageReference Include="Fuaran.Core.Conformance" />
+    <PackageReference Include="Fuaran.Core.Projection" />
+    <PackageReference Include="Fuaran.Core.AiSurface" />
+    <PackageReference Include="Fuaran.Core.Propagation" />
+    <PackageReference Include="Fuaran.Core.Idl" />
+    <PackageReference Include="Fuaran.Core.Column.Ops" />
+    <PackageReference Include="Fuaran.Core.Observer" />
+  </ItemGroup>
+</Project>

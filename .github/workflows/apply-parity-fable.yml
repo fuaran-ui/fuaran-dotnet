@@ -165,6 +165,9 @@ jobs:
 
       # `-SkipLaws` because the law harness is the `run.ps1` gate's business; this
       # job is the portability half, which is what the guard's own header is about.
+      # It also runs the Fuaran.Core gate (`tests/core-fable/`, Phase 217): the
+      # stage runs it as its own subject, and Node is set up above for its value
+      # leg, which fails rather than skips without Node.
       - name: Fable-compile every gated package under its own settings
         shell: pwsh
         run: pwsh -NoProfile -File tests/fable-laws/fable-check.ps1 -SkipLaws
@@ -184,6 +187,9 @@ jobs:
   # disk against the ones the solution names.
   #
   # apply-demo is deliberately absent — the parity job above already builds it.
+  # tests/core-fable is deliberately absent — the Fable stage the
+  # `fable-portability` job runs compiles it (and builds it for .NET whenever
+  # its value leg runs).
   # templates/fsharp-starter is deliberately absent — it is an unrooted template
   # whose nuget.config resolves the local feed relative to the instantiated app,
   # so it cannot restore in place.

@@ -141,7 +141,7 @@ never arm the skip — is pinned as a source read in
 
 `Check` and `run.ps1` both run [`tests/fable-laws/fable-check.ps1`](tests/fable-laws/fable-check.ps1)
 — declared once, called by both, the same posture `test-suites.json` takes for the test roster. It
-does two things, and they answer different questions:
+does three things, and they answer different questions:
 
 1. **Portability.** The client-tier projects that ship their `.fs` sources in the package are
    Fable-compiled **under their own MSBuild properties**, with `--noCache`. Under Fable it is the
@@ -200,6 +200,29 @@ does two things, and they answer different questions:
 
 Add a law by adding it to `tests/fable-laws/Laws.fs`; nothing there may use a construct Fable cannot
 lower (no Expecto, no `System.IO`, no reflection).
+
+3. **The Fuaran.Core gate** (Phase 217). Fuaran.Core runs no Fable compiler of its own, so this
+   repository runs its Fable gate: [`tests/core-fable/core-fable.ps1`](tests/core-fable/core-fable.ps1),
+   called from the Fable stage as its own subject (skipped only by `-SkipCoreFable`, or by address
+   in a narrow lane). Its **compile leg** Fable-compiles every public `Fuaran.Core.*` package from a
+   smoke program that touches each one's encode/decode surface, and checks that every reference was
+   transpiled. Its **value leg** prints `Fuaran.Core.ParityVectors.lines ()` on .NET and under Node
+   and byte-compares them, failing rather than skipping without Node. Membership is checked against
+   this repository's `Fuaran.Core.*` pins plus `tests/core-fable/exclusions.json`. Two things to know:
+
+   - **At a Core pin below `0.31.0` the value leg cannot run**, because the restored Conformance
+     package has no `ParityVectors`. The script says so on every run, and it FAILS if a pin at or
+     above `0.31.0` restores a package without the table. That is the tripwire; do not "fix" it by
+     moving the version constant.
+   - **Every Fuaran.Core version cut runs this script against the candidate packages**:
+     `pwsh ./tests/core-fable/core-fable.ps1 -CoreVersion <v> -CoreFeed <folder of .nupkg>`. That
+     mode restores Core from the folder alone, into an isolated package cache, derives membership
+     from the candidate's packages, and requires the value leg. A Core pin raise here is also a
+     moment to raise the six `Fuaran.Core.*` pins this gate alone uses, with the others.
+   - **Its law-family calls are not adoption.** `CoreFable.fsproj` declares
+     `<CoreConformanceCensusExemption>reason</...>`, so the Core-conformance census
+     (`src/Fuaran.UI.Tests/CoreConformanceCensus.fs`) skips it and prints the exemption on every
+     run. An exemption with an empty reason fails the census rather than exempting.
 
 ### Fable method traps
 

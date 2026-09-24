@@ -121,5 +121,15 @@
          consumer of the language tier needs the emission and never the emitter. -->
     <PackageVersion Include="Fuaran.Core.Idl" Version="0.30.0" />
     <PackageVersion Include="Fuaran.Core.Idl.Codegen" Version="0.30.0" />
+    <!-- The rest of the Fuaran.Core public surface, pinned for tests/core-fable (Phase 217) — the
+         Core Fable gate this repository runs on Core's behalf, which references every package on
+         that surface. Test-only: no shipped Fuaran.UI.* package references these. Raised WITH the
+         pins above, never apart from them — they are one version of one substrate. -->
+    <PackageVersion Include="Fuaran.Core.OpStream.Dag" Version="0.30.0" />
+    <PackageVersion Include="Fuaran.Core.Query" Version="0.30.0" />
+    <PackageVersion Include="Fuaran.Core.Projection" Version="0.30.0" />
+    <PackageVersion Include="Fuaran.Core.AiSurface" Version="0.30.0" />
+    <PackageVersion Include="Fuaran.Core.Propagation" Version="0.30.0" />
+    <PackageVersion Include="Fuaran.Core.Column.Ops" Version="0.30.0" />
   </ItemGroup>
 </Project>
