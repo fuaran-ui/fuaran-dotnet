@@ -31,6 +31,22 @@
       "regen": "THE ENGINE, copied verbatim. Copy it FROM the consumer path above to Fuaran/Fuaran-UI/fuaran-dotnet/proofs/kit/check-proof-leg.ps1. This repository edits `proofs/check.ps1`, its own caller, and never this file."
     },
     {
+      "source": "proofs/kit/extraction-post-pass.ps1",
+      "consumers": [
+        "Fuaran/Fuaran-Core/proofs/kit/extraction-post-pass.ps1"
+      ],
+      "check": "fingerprint",
+      "regen": "THE EXTRACTION POST-PASS (Phase 169), copied verbatim. NOT optional: the engine dot-sources it from its own directory, so a copy of check-proof-leg.ps1 without this file beside it fails at the EXTRACT stage. Copy it FROM the consumer path above."
+    },
+    {
+      "source": "proofs/kit/check-proof-leg.tests.ps1",
+      "consumers": [
+        "Fuaran/Fuaran-Core/proofs/kit/check-proof-leg.tests.ps1"
+      ],
+      "check": "fingerprint",
+      "regen": "THE ENGINE'S REFUSALS held to their exit codes (Phase 221), copied verbatim beside the engine. Copy it FROM the consumer path above. It needs only the pin and the prover, never this repository's models."
+    },
+    {
       "source": "proofs/kit/templates/check.ps1",
       "consumers": [
         "Fuaran/Fuaran-Core/proofs/kit/templates/check.ps1"

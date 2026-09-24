@@ -72,4 +72,11 @@ if ($CacheDir) { $legArgs.CacheDir = $CacheDir }
 # here would print the kit's red line and then return 0 — a green leg over a failed proof. Measured
 # both ways before this template was written; do not "simplify" it to a dot-source.
 & (Join-Path $PSScriptRoot 'kit/check-proof-leg.ps1') @legArgs
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# Then the engine's own refusals, run the same way (Phase 221): a scratch leg over a failed host
+# build, a host filter that cannot run and a refuted model must each exit non-zero, beside a green
+# control. A few seconds, and after the leg so the prover is already installed. Needs nothing from
+# this file's declarations — keep it as it is.
+& (Join-Path $PSScriptRoot 'kit/check-proof-leg.tests.ps1') -ProofsDir $PSScriptRoot
 exit $LASTEXITCODE
