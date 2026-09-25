@@ -8232,6 +8232,18 @@ exemption cannot widen into a render path unseen.
 
 *Version.* Rides this slot: additive, below the slot's standing class.
 
+**fuaran-core#235 — NO CHANGE to any package: this repository stops emitting a law set.** The
+`--emit-laws` flag in `Fuaran.UI.FastPath.Tests` is removed, and `LawVectorExport.fs` no longer
+renders or writes `laws/capability-laws.json`. Core emits that file now, from its own `--emit-laws`,
+beside `transform-laws.json`, and the corpus carries a declared copy of Core's file. This
+repository READS the copy, as every other host does. Each vector is decoded through the public
+codecs and recomputed by calling the pinned kit. The `laws/manifest.json` row is checked against
+the file it indexes, not against this repository's pin. A copy stamped for a Core this repository
+does not pin yet is reported as not certified, by name, rather than read as a pass: that is the
+cut-to-raise window, and it closes at the raise. The copy's bytes do not change here. It keeps the
+`0.30.0` capture keys this repository's pin computes until the Core pin raise re-syncs it with the
+TS and Go ports (fuaran#1860).
+
 ## 0.85.0 — the slot Phase 1734 opened, which Phase 1821's column-naming rename raised to WIRE-BREAKING — released 2026-09-20 as `v0.85.0`
 
 _**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride

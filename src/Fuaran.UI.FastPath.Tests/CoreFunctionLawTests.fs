@@ -71,9 +71,6 @@ module CoreFunctionLawTests =
         Fuaran.Tests.CorpusRoot.tryFind ()
         |> Option.defaultValue (Path.Combine(__SOURCE_DIRECTORY__, "..", "..", "..", "wire-format-fixtures"))
 
-    let private regenCommand =
-        "dotnet run --project src/Fuaran.UI.FastPath.Tests -- --emit-laws ..\\wire-format-fixtures"
-
     // -----------------------------------------------------------------------
     //  the tests
     // -----------------------------------------------------------------------
@@ -333,19 +330,16 @@ module CoreFunctionLawTests =
                       [ "test.slot-bearing" ]
                       "the pattern is found on exactly the holes the builder can receive"
 
-              // ---- the vector export for the other hosts (fuaran#1482) -----
+              // ---- Core's capabilityLaws vectors, read by this tier (fuaran#1482; fuaran-core Phase 235) -----
 
-              testCase "the exported capabilityLaws vectors are the verdicts the law demands"
+              testCase "the capabilityLaws draw at the declared seed gets the verdicts the law demands"
               <| fun _ ->
-                  // The export reproduces `capabilityLaws`' own draw and
-                  // computes each expectation by CALLING the kit. This asserts
-                  // every computed expectation is the one the law demands, so a
-                  // vector that disagreed with the law could never be published.
-                  // The law over the same seed is run too: the exported sample
-                  // is a sample of a passing run, not merely of a reproducible
-                  // one.
+                  // The law over the seed Core's file declares, run over the
+                  // PINNED kit: the sample is a sample of a passing run. Each
+                  // draw's verdict is then asserted directly against the law's
+                  // demand — pin evidence, independent of any file.
                   CoreConf.capabilityLaws LawVectorExport.seed LawVectorExport.iterations
-                  |> assertAllPassed "capabilityLaws over the exported seed"
+                  |> assertAllPassed "capabilityLaws over the declared seed"
 
                   for d in LawVectorExport.draws () do
                       Expect.equal
@@ -380,58 +374,125 @@ module CoreFunctionLawTests =
                               (sprintf "iteration %d: enumeration is id-sorted" d.Iteration)
                       | Error e -> failtestf "iteration %d: registration failed (%A)" d.Iteration e
 
-                  let rendered = LawVectorExport.renderCapabilityVectors ()
+              testCase "Core's laws/capability-laws.json in the corpus certifies the pinned kit"
+              <| fun _ ->
+                  // Core emits this file (fuaran-core Phase 235); this tier emits
+                  // no law set. So the file is READ, the way every other host
+                  // reads it: each vector is recomputed by calling the pinned
+                  // kit, never trusted.
+                  if not (Directory.Exists corpusDir) then
+                      skiptest
+                          "wire-format-fixtures/ absent (single-repo or worktree checkout) — set FUARAN_WIRE_FIXTURES to check it"
+                  else
+                      let path = LawVectorExport.capabilityPath corpusDir
 
-                  Expect.isFalse
-                      (rendered.Contains "\"unexpected\"")
-                      "a vector carried a refusal outside the two the law distinguishes"
+                      if not (File.Exists path) then
+                          failtestf
+                              "laws/capability-laws.json is missing from the corpus — it is Core's; re-emit %s"
+                              LawVectorExport.emitCommand
 
-              testCase "the committed laws/ corpus matches the exported vectors"
+                      let doc =
+                          match Json.parse (File.ReadAllText path) with
+                          | Ok d -> d
+                          | Error m -> failtestf "laws/capability-laws.json did not parse: %s" m
+
+                      let stamp =
+                          match LawVectorExport.field "kitVersion" doc with
+                          | Some(JStr s) -> s
+                          | _ -> failtest "laws/capability-laws.json carries no kitVersion"
+
+                      Expect.equal
+                          (LawVectorExport.field "seed" doc, LawVectorExport.field "iterations" doc)
+                          (Some(JInt LawVectorExport.seed), Some(JInt LawVectorExport.iterations))
+                          "the file declares the seed and sample size this tier reproduces the draw from"
+
+                      if stamp <> LawVectorExport.kitVersion () then
+                          // The cut-to-raise window: the copy describes a Core this
+                          // repository does not pin yet. A host is correct to certify
+                          // against what it pins, so the gap is reported, loudly and
+                          // by name, never read as a pass — and it closes at the raise.
+                          skiptest (
+                              sprintf
+                                  "CAPABILITY VECTORS NOT CERTIFIED: the corpus copy is stamped for Core %s and this repository pins %s — raise the Core pin to certify against it"
+                                  stamp
+                                  (LawVectorExport.kitVersion ())
+                          )
+                      else
+                          let vectors =
+                              match LawVectorExport.field "vectors" doc with
+                              | Some(JArr items) -> items
+                              | _ -> failtest "laws/capability-laws.json carries no `vectors` array"
+
+                          Expect.equal
+                              (List.length vectors)
+                              (6 * LawVectorExport.iterations)
+                              "six vectors per declared iteration"
+
+                          let failures = vectors |> List.choose LawVectorExport.checkVector
+
+                          Expect.isEmpty
+                              failures
+                              (sprintf "Core's capability vectors disagree with the pinned kit: %A" failures)
+
+                          let captured =
+                              vectors
+                              |> List.choose (fun v ->
+                                  match LawVectorExport.field "case" v, LawVectorExport.field "expected" v with
+                                  | Some(JStr "invocationKey"), Some e ->
+                                      match LawVectorExport.field "capturedValue" e with
+                                      | Some(JInt n) -> Some n
+                                      | _ -> None
+                                  | _ -> None)
+
+                          Expect.equal
+                              captured
+                              (LawVectorExport.draws () |> List.map (fun d -> d.Realized))
+                              "each invocation-key vector carries its iteration's drawn capture value"
+
+              testCase "the capability vector checker names a perturbed vector — the certification can go red"
+              <| fun _ ->
+                  let d = List.head (LawVectorExport.draws ())
+                  let declaration = CapabilityCodec.encode d.Cap
+
+                  let vector (verdict: string) =
+                      JObj
+                          [ "id", JStr "capability-0-accept"
+                            "case", JStr "validateArgs"
+                            "input",
+                            JObj
+                                [ "capability", JStr declaration
+                                  "args", JArr [ JObj [ "addr", JStr "h0"; "value", JStr(string d.Lo) ] ] ]
+                            "expected", JObj [ "verdict", JStr verdict ] ]
+
+                  Expect.isNone (LawVectorExport.checkVector (vector "accept")) "the true vector passes"
+
+                  match LawVectorExport.checkVector (vector "reject") with
+                  | Some m -> Expect.stringContains m "capability-0-accept" "the perturbed vector is named by its id"
+                  | None -> failtest "a perturbed verdict was not seen"
+
+              testCase "laws/manifest.json's capabilityLaws row describes Core's file"
               <| fun _ ->
                   if not (Directory.Exists corpusDir) then
                       skiptest
                           "wire-format-fixtures/ absent (single-repo or worktree checkout) — set FUARAN_WIRE_FIXTURES to check it"
                   else
-                      let check (path: string) (expected: string) (what: string) =
-                          if not (File.Exists path) then
-                              failtestf "%s is missing from the corpus — regenerate with `%s`" what regenCommand
-                          else
-                              Expect.equal
-                                  (File.ReadAllText(path).Replace("\r\n", "\n"))
-                                  expected
-                                  (sprintf
-                                      "%s is stale relative to LawVectorExport — regenerate with `%s`"
-                                      what
-                                      regenCommand)
-
-                      check
-                          (LawVectorExport.capabilityPath corpusDir)
-                          (LawVectorExport.renderCapabilityVectors ())
-                          "laws/capability-laws.json"
-
-                      // The index beside it is HAND-CURATED: it spans every
-                      // family in `laws/`, and those come from more than one
-                      // exporter in more than one repository. So it is read
-                      // structurally, not byte-compared — every other family's
-                      // row is none of this exporter's business, and asserting
-                      // the whole file would make this suite revert whatever
-                      // another exporter had just added. What is asserted is
-                      // only what this exporter is entitled to: that the index
-                      // still describes the file it writes.
+                      // The index is HAND-CURATED: it spans every family in
+                      // `laws/`, so it is read structurally, and only this
+                      // family's row is asserted — against the file it indexes,
+                      // not against this repository's pin.
                       let manifestPath = LawVectorExport.manifestPath corpusDir
 
                       if not (File.Exists manifestPath) then
                           failtest "laws/manifest.json is missing from the corpus — it is curated by hand, not emitted"
 
-                      let field (name: string) (v: JVal) : JVal option =
-                          match v with
-                          | JObj members -> members |> List.tryPick (fun (k, x) -> if k = name then Some x else None)
-                          | _ -> None
-
-                      let manifest =
-                          match Json.parse (File.ReadAllText manifestPath) with
+                      let parse (path: string) =
+                          match Json.parse (File.ReadAllText path) with
                           | Ok doc -> doc
-                          | Error m -> failtestf "laws/manifest.json did not parse: %s" m
+                          | Error m -> failtestf "%s did not parse: %s" path m
+
+                      let manifest = parse manifestPath
+                      let file = parse (LawVectorExport.capabilityPath corpusDir)
+                      let field = LawVectorExport.field
 
                       let entry =
                           match field "families" manifest with
@@ -441,16 +502,21 @@ module CoreFunctionLawTests =
                               | None -> failtest "laws/manifest.json lists no `families` entry with id `capabilityLaws`"
                           | _ -> failtest "laws/manifest.json carries no `families` array"
 
-                      let indexed (name: string) (expected: JVal) =
+                      let indexed (name: string) (expected: JVal option) =
                           Expect.equal
                               (field name entry)
-                              (Some expected)
+                              expected
                               (sprintf
-                                  "laws/manifest.json's capabilityLaws `%s` disagrees with the exported vectors — the manifest is curated by hand, so correct it there"
+                                  "laws/manifest.json's capabilityLaws `%s` disagrees with laws/capability-laws.json — the manifest is curated by hand, so correct it there"
                                   name)
 
-                      indexed "file" (JStr LawVectorExport.capabilityFileName)
-                      indexed "kitVersion" (JStr(LawVectorExport.kitVersion ()))
-                      indexed "seed" (JInt LawVectorExport.seed)
-                      indexed "iterations" (JInt LawVectorExport.iterations)
-                      indexed "vectors" (JInt(List.length (LawVectorExport.allVectors ()))) ]
+                      indexed "file" (Some(JStr LawVectorExport.capabilityFileName))
+                      indexed "kitVersion" (field "kitVersion" file)
+                      indexed "seed" (field "seed" file)
+                      indexed "iterations" (field "iterations" file)
+
+                      indexed
+                          "vectors"
+                          (match field "vectors" file with
+                           | Some(JArr items) -> Some(JInt(List.length items))
+                           | _ -> None) ]

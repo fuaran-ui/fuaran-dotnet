@@ -15,7 +15,8 @@
     <!-- Phase 1478: the Core conformance kit's function-registry, capability,
          composition, verification and memo families over this tier's own
          artifact witness, egress gate and memo-key encoder — plus the
-         host-neutral vector export the other wire hosts run. -->
+         certification of the pinned kit against the capabilityLaws vectors
+         Core emits into the shared corpus (Core-side since fuaran-core 235). -->
     <Compile Include="CoreLawSupport.fs" />
     <Compile Include="LawVectorExport.fs" />
     <Compile Include="CoreFunctionLawTests.fs" />
