@@ -321,7 +321,11 @@ $diagnosticPattern = [regex]::new(
     '|\berrors?\s+(were|was)\s+reported\b' +
     '|Failed to prove' +
     '|Unexpected' +
-    '|Quake[^\n]*(fail|Fail|FAIL)')
+    # A quake line is a failure unless it reads `proved N/N goals` with equal counts. Matching
+    # `fail` anywhere refused TreeOps.fst over a query NAMED `..._fails_...` (2026-09-26). The
+    # whitespace sits INSIDE the lookahead: outside it, `\s+` backtracks to a shorter match and
+    # the lookahead then sees `\tproved`, never `proved`.
+    '|^\s*Quake:\s*query\s*\([^)]*\)(?!\s*proved\s+(\d+)/\2\s+goals\b)')
 
 function Test-ProverDiagnostic([System.Collections.Generic.List[string]] $lines) {
     foreach ($line in $lines) {
