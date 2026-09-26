@@ -128,6 +128,7 @@
          refuses its termination (Vocabulary.fst enc_dflt_l_e_embed_permission, Error 19), so the
          proof leg goes red. 0.30.0's emission is the committed, verified one. Raise this pin when a
          Core release fixes that emission. -->
+    <!-- cohort-lag(0.31.0): fuaran#1860 (2026-09-26): Core 0.31.0's F* generator emits a Vocabulary.fst model that fails termination checking on the defaulted list field Embed.permissions (F* Error 19); the 0.30.0 generator reproduces the verified models. Raise once Core's generator handles defaulted list/map fields -->
     <PackageVersion Include="Fuaran.Core.Idl.Codegen" Version="0.30.0" />
     <!-- The rest of the Fuaran.Core public surface, pinned for tests/core-fable (Phase 217) — the
          Core Fable gate this repository runs on Core's behalf, which references every package on
