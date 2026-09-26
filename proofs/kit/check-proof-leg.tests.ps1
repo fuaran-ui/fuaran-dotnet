@@ -165,6 +165,10 @@ Assert-That 'C. HOST RUN — and does not print proofs: green' (-not $c.Green) (
 $d = Invoke-Leg ($base + @{ Modules = @('LegBad'); ProofOnly = @('LegBad') })
 Assert-That 'D. CHECK — a model with a type error exits NON-ZERO' ($d.Exit -ne 0) "exit $($d.Exit): $(Show-Tail $d)"
 Assert-That 'D. CHECK — and does not print proofs: green' (-not $d.Green) (Show-Tail $d)
+# Recorded 2026-09-25: a sibling copy of this kit printed `<module>.fst verified` over a refused
+# model and went red only later. The per-module line is held too, not only the closing verdict.
+Assert-That 'D. CHECK — and prints NO LegBad.fst verified line' (-not [bool](@($d.Lines -match 'LegBad\.fst verified').Count)) (Show-Tail $d)
+Assert-That 'D. CHECK — and fails at the CHECK step, naming the module' ([bool](@($d.Lines -match '==== proofs: LegBad\.fst did NOT verify').Count)) (Show-Tail $d)
 
 Remove-Item $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
 
