@@ -31,5 +31,7 @@
     <PackageReference Include="FSharp.Core" />
     <!-- Phase 1478: the Core conformance kit (test-only — CoreFunctionLawTests.fs). -->
     <PackageReference Include="Fuaran.Core.Conformance" />
+    <!-- Phase 1874: paramLaws left the kit for this package at Core 0.32.0 (fuaran-core#257). -->
+    <PackageReference Include="Fuaran.Core.DataFrame.Conformance" />
   </ItemGroup>
 </Project>

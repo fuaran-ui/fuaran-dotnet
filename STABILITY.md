@@ -8276,7 +8276,53 @@ red. Measured, both ways: at 0.31.0 the freshness family demands that regenerati
 refuses it; at 0.30.0 the committed, verified models are what the emitter produces. The pin moves
 when a Core release fixes the emission.
 
+*Closed by fuaran#1874 at 0.32.0* (see the entry below): fuaran-core#256 fixed the emission, and the
+pin rejoined the cohort.
+
 *Version.* Rides this slot: additive, below the slot's standing class.
+
+**fuaran#1874 — the `Fuaran.Core.*` pins move 0.31.0 → 0.32.0, all of them together, and
+`Fuaran.Core.Idl.Codegen` rejoins the cohort from 0.30.0; NO CHANGE to any `Fuaran.UI.*` public
+surface; RIDES this slot.** Every `Fuaran.Core.*` pin now names one Core version, and the
+`cohort-lag(0.31.0)` marker beside `Idl.Codegen` is gone. 0.32.0 is a breaking Core minor, and a
+consumer meets its breaking moves at its own Core raise, not through this tier:
+
+- **The held pin, closed.** fuaran-core#256 changed the F* target's omit-at-default wrapper for a
+  list, map, record or union member: the wrapper now receives the member's encoding from its call
+  site instead of re-encoding the value it decreases on. `proofs/Vocabulary.fst` and
+  `proofs/VocabularyProofs.fst` are regenerated with the 0.32.0 emitter — the freshness family
+  demands it — and the proof leg verifies every module under `--report_assumes error`, including
+  the `Embed.permissions` wrapper the 0.31.0 emitter's model failed on (Error 19). The regeneration
+  diff is larger than Core's "three lines" because the committed models were the 0.30.0 emitter's,
+  so it also carries 0.31.0's presence-split encoding.
+- **`SkeletonOp` gains `UpdateNode`** (fuaran-core#250). This tier constructs skeleton ops and hands
+  them to `Fuaran.Core.Ops`; its only exhaustive match on the union is a test projection
+  (`CoreLawSupport.skeletonToTreeOp`, `Fuaran.UI.OpStream.Dag.Tests`), which gains the arm. The tier
+  has no in-place op that keeps a node's children — `TreeOp.EditNode` swaps the whole `Kind`,
+  children included — so the arm refuses by name, as `ReplaceRoot` does, rather than certify a
+  borrowed footprint; Core's op generator draws no `UpdateNode` at this pin. The apply corpus's new
+  `updateNode` vectors belong to a family this repository does not run: `apply/manifest.json` records
+  it adopted by the reference that emits it and `proposed` for every other host.
+- **The dataframe law families moved to `Fuaran.Core.DataFrame.Conformance`** (fuaran-core#257).
+  It is pinned, and referenced beside the kit by the three test projects that run a moved family
+  (`Fuaran.UI.Tests`, `Fuaran.UI.FastPath.Tests`, `Fuaran.UI.ServerDriven.Tests`); the forwarding
+  `Conformance` module keeps every call site compiling unchanged. `tests/core-fable` references it
+  unconditionally now, and its cut-time props update the pin rather than include it. The C# half,
+  `Fuaran.Core.DataFrame.CSharp`, is not pinned: nothing here authors pipelines through the facade.
+- **The census follows the kit across both assemblies.** `CoreConformanceCensus.fs` reflects over
+  `Fuaran.Core.Conformance` and `Fuaran.Core.DataFrame.Conformance`, refuses a roster key two
+  modules declare, and compares against both packages' shares of Core's own adequacy census. It
+  gains seven rows (71 families): `aggregateNullSkipLaws` Adopted beside `aggregateParityLaws`,
+  whose null-skip half it is; `capabilityLawsWith` Carried by phase, because
+  `Fuaran.UI.AiTools.Capabilities` is a host dispatch path this family certifies and its adoption is
+  a witness in a test project that references no kit today; `queryLawsWith`,
+  `capabilityPipelineLawsWith`, `aiSurfaceLawsUnderKitPolicy`, `propagationEvaluatorLawsWith` and
+  `incrementalLawsWith` Not used, each naming the mechanism the tier does not have.
+  `columnarOpLawsWith` was retyped to take a `StreamGen` and no longer sits behind `columnarOpLaws`,
+  so it is now run by its own name at Core's reference generator, and its row says so.
+  `aiSurfaceLaws`' verdict change reaches nothing here: no project references `Fuaran.Core.AiSurface`.
+
+*Version.* Rides this slot: no `Fuaran.UI.*` member moves, so it is below the slot's standing class.
 
 ## 0.85.0 — the slot Phase 1734 opened, which Phase 1821's column-naming rename raised to WIRE-BREAKING — released 2026-09-20 as `v0.85.0`
 

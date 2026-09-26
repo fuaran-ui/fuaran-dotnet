@@ -715,35 +715,567 @@ and r_semantic_style (num flt: eqtype) =
       Recursion is on the MODEL value, where F*'s subterm order spans the whole family.
    ====================================================================================== *)
 
+(* The member-list SUFFIXES — one per conditional member of a constructor carrying two or
+   more, bound once by the encoder below rather than written into both arms of a test.
+   Opaque to the solver: only the per-suffix lemmas of the proof script look inside. *)
+
+[@@"opaque_to_smt"]
+let sfx_node__Node__accessibility (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("accessibility", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_node__Node__fallback (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("fallback", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_node__Node__state (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("state", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_node__Node__style (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("style", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_node__Node__tooltip (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("tooltip", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_node__Node__visible (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("visible", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Callout__dismissable (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("dismissable", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Callout__heading (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("heading", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Callout__icon (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("icon", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Callout__tone (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("tone", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Embed__aspect_ratio (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("aspectRatio", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Embed__permissions (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("permissions", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Fact__emphasis (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("emphasis", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Fact__help (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("help", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Fact__icon (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("icon", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Fact__tone (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("tone", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__FileUpload__accept_paste (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("acceptPaste", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__FileUpload__capture (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("capture", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__FileUpload__destination (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("destination", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__FileUpload__disabled (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("disabled", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__FileUpload__drop_target (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("dropTarget", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__FileUpload__max_bytes (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("maxBytes", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__FileUpload__max_files (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("maxFiles", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__FileUpload__on_select (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("onSelect", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Icon__label (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("label", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Icon__size (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("size", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Icon__tone (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("tone", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Link__protection (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("protection", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Link__rel (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("rel", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Link__target (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("target", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Progress__caveat (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("caveat", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Progress__indeterminate (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("indeterminate", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Progress__label (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("label", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Progress__tone (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("tone", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__ScrollArea__max_height (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("maxHeight", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__ScrollArea__max_width (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("maxWidth", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Toast__dismissable (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("dismissable", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Toast__tone (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("tone", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_accessibility__Mk__described_by (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("describedBy", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_accessibility__Mk__hidden (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("hidden", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_accessibility__Mk__label (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("label", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_accessibility__Mk__labelled_by (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("labelledBy", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_accessibility__Mk__live_region (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("liveRegion", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_accessibility__Mk__role (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("role", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_accessibility__Mk__speak (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("speak", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__bool__Selection__default_value (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("defaultValue", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__bool__Selection__field (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("field", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__bool__Local__codec (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("codec", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__bool__Local__commit_to (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("commitTo", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__bool__Local__on_commit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("onCommit", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_format__DateTime__date_style (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("dateStyle", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_format__DateTime__time_style (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("timeStyle", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__flt__Selection__default_value (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("defaultValue", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__flt__Selection__field (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("field", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__flt__Local__codec (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("codec", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__flt__Local__commit_to (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("commitTo", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__flt__Local__on_commit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("onCommit", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__json__Selection__default_value (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("defaultValue", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__json__Selection__field (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("field", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__json__Local__codec (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("codec", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__json__Local__commit_to (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("commitTo", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__json__Local__on_commit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("onCommit", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__str__Selection__default_value (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("defaultValue", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__str__Selection__field (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("field", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__str__Local__codec (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("codec", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__str__Local__commit_to (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("commitTo", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_u_binding__str__Local__on_commit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("onCommit", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_state_behaviour__Mk__on_empty (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("onEmpty", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_state_behaviour__Mk__on_error (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("onError", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_state_behaviour__Mk__on_loading (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("onLoading", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_semantic_style__Mk__direction (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("direction", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_semantic_style__Mk__emphasis (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("emphasis", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_semantic_style__Mk__role (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("role", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_semantic_style__Mk__tone (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("tone", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_semantic_style__Mk__voice (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("voice", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_r_semantic_style__Mk__weight (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("weight", v) :: rest
+
+(* The member READERS — one per conditional member of a suffixed constructor whose read calls
+   nothing in the decoder family, applied by the decoder below rather than inlined into it.
+   Opaque to the solver: only the per-reader value lemmas of the proof script look inside. *)
+
+[@@"opaque_to_smt"]
+let rd_vkind__Callout__dismissable (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (bool)) =
+  (match get_prop "dismissable" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Callout__icon (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "icon" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Callout__tone (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_tone_variant)) =
+  (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Embed__aspect_ratio (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_image_aspect)) =
+  (match get_prop "aspectRatio" el with | Error _ -> Ok C__e_image_aspect__Natural | Ok v -> (match dec_e_image_aspect v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Fact__emphasis (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (bool)) =
+  (match get_prop "emphasis" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Fact__icon (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "icon" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Fact__tone (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_tone_variant)) =
+  (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__FileUpload__accept_paste (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (bool)) =
+  (match get_prop "acceptPaste" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__FileUpload__capture (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (e_capture_source))) =
+  (match get_prop "capture" el with | Error _ -> Ok None | Ok v -> (match dec_e_capture_source v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_vkind__FileUpload__destination (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "destination" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_vkind__FileUpload__drop_target (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (bool)) =
+  (match get_prop "dropTarget" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__FileUpload__max_bytes (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (num))) =
+  (match get_prop "maxBytes" el with | Error _ -> Ok None | Ok v -> (match as_int v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_vkind__FileUpload__max_files (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (num))) =
+  (match get_prop "maxFiles" el with | Error _ -> Ok None | Ok v -> (match as_int v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_vkind__FileUpload__on_select (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (unit))) =
+  (match get_prop "onSelect" el with | Error _ -> Ok None | Ok v -> (let _ = v in let w = () in Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Icon__label (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "label" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Icon__size (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_icon_size)) =
+  (match get_prop "size" el with | Error _ -> Ok C__e_icon_size__Medium | Ok v -> (match dec_e_icon_size v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Icon__tone (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_tone_variant)) =
+  (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Link__protection (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (e_link_protection))) =
+  (match get_prop "protection" el with | Error _ -> Ok None | Ok v -> (match dec_e_link_protection v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Link__rel (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "rel" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Link__target (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "target" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Progress__indeterminate (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (bool)) =
+  (match get_prop "indeterminate" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Progress__tone (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_tone_variant)) =
+  (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__ScrollArea__max_height (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (num))) =
+  (match get_prop "maxHeight" el with | Error _ -> Ok None | Ok v -> (match as_int v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_vkind__ScrollArea__max_width (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (num))) =
+  (match get_prop "maxWidth" el with | Error _ -> Ok None | Ok v -> (match as_int v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Toast__dismissable (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (bool)) =
+  (match get_prop "dismissable" el with | Error _ -> Ok true | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Toast__tone (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_tone_variant)) =
+  (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_r_accessibility__Mk__described_by (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "describedBy" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_r_accessibility__Mk__labelled_by (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "labelledBy" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_r_accessibility__Mk__live_region (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (e_live_region_kind))) =
+  (match get_prop "liveRegion" el with | Error _ -> Ok None | Ok v -> (match dec_e_live_region_kind v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_r_accessibility__Mk__role (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (jval num flt))) =
+  (match get_prop "role" el with | Error _ -> Ok None | Ok v -> (let w = v in Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__bool__Selection__default_value (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (bool))) =
+  (match get_prop "defaultValue" el with | Error _ -> Ok None | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__bool__Selection__field (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "field" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__bool__Local__commit_to (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "commitTo" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__bool__Local__on_commit (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (unit))) =
+  (match get_prop "onCommit" el with | Error _ -> Ok None | Ok v -> (let _ = v in let w = () in Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_format__DateTime__date_style (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (e_date_style))) =
+  (match get_prop "dateStyle" el with | Error _ -> Ok None | Ok v -> (match dec_e_date_style v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_format__DateTime__time_style (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (e_time_style))) =
+  (match get_prop "timeStyle" el with | Error _ -> Ok None | Ok v -> (match dec_e_time_style v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__flt__Selection__default_value (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (flt))) =
+  (match get_prop "defaultValue" el with | Error _ -> Ok None | Ok v -> (match v with | JFloat w -> Ok (Some w) | other -> Error ("expected float, got " ^ kind_name other)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__flt__Selection__field (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "field" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__flt__Local__commit_to (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "commitTo" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__flt__Local__on_commit (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (unit))) =
+  (match get_prop "onCommit" el with | Error _ -> Ok None | Ok v -> (let _ = v in let w = () in Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__json__Selection__default_value (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (jval num flt))) =
+  (match get_prop "defaultValue" el with | Error _ -> Ok None | Ok v -> (let w = v in Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__json__Selection__field (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "field" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__json__Local__commit_to (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "commitTo" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__json__Local__on_commit (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (unit))) =
+  (match get_prop "onCommit" el with | Error _ -> Ok None | Ok v -> (let _ = v in let w = () in Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__str__Selection__default_value (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "defaultValue" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__str__Selection__field (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "field" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__str__Local__commit_to (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (string))) =
+  (match get_prop "commitTo" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_u_binding__str__Local__on_commit (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (unit))) =
+  (match get_prop "onCommit" el with | Error _ -> Ok None | Ok v -> (let _ = v in let w = () in Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_r_state_behaviour__Mk__on_error (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (unit))) =
+  (match get_prop "onError" el with | Error _ -> Ok None | Ok v -> (let _ = v in let w = () in Ok (Some w)))
+
+[@@"opaque_to_smt"]
+let rd_r_semantic_style__Mk__direction (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_text_direction)) =
+  (match get_prop "direction" el with | Error _ -> Ok C__e_text_direction__Auto | Ok v -> (match dec_e_text_direction v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_r_semantic_style__Mk__emphasis (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_emphasis)) =
+  (match get_prop "emphasis" el with | Error _ -> Ok C__e_emphasis__Normal | Ok v -> (match dec_e_emphasis v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_r_semantic_style__Mk__role (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_style_role)) =
+  (match get_prop "role" el with | Error _ -> Ok C__e_style_role__None | Ok v -> (match dec_e_style_role v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_r_semantic_style__Mk__tone (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_tone_variant)) =
+  (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_r_semantic_style__Mk__voice (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_font_voice)) =
+  (match get_prop "voice" el with | Error _ -> Ok C__e_font_voice__Default | Ok v -> (match dec_e_font_voice v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_r_semantic_style__Mk__weight (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_style_weight)) =
+  (match get_prop "weight" el with | Error _ -> Ok C__e_style_weight__Standard | Ok v -> (match dec_e_style_weight v with | Error e -> Error e | Ok w -> Ok w))
+
 let rec enc_node (#num #flt: eqtype) (x: node num flt) : Tot (jval num flt) (decreases x) =
   match x with
   | C__node__Node i k e0 e1 e2 e3 e4 e5 ->
-    JObj (("id", JStr i) :: ("kind", enc_vkind k) :: (match e0 with | None -> (match e1 with | None -> (match e2 with | None -> (match e3 with | None -> (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: [])) | Some w -> ("style", enc_r_semantic_style w) :: (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []))) | Some w -> ("state", enc_r_state_behaviour w) :: (match e3 with | None -> (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: [])) | Some w -> ("style", enc_r_semantic_style w) :: (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: [])))) | Some w -> ("fallback", enc_node w) :: (match e2 with | None -> (match e3 with | None -> (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: [])) | Some w -> ("style", enc_r_semantic_style w) :: (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []))) | Some w -> ("state", enc_r_state_behaviour w) :: (match e3 with | None -> (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: [])) | Some w -> ("style", enc_r_semantic_style w) :: (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []))))) | Some w -> ("accessibility", enc_r_accessibility w) :: (match e1 with | None -> (match e2 with | None -> (match e3 with | None -> (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: [])) | Some w -> ("style", enc_r_semantic_style w) :: (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []))) | Some w -> ("state", enc_r_state_behaviour w) :: (match e3 with | None -> (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: [])) | Some w -> ("style", enc_r_semantic_style w) :: (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: [])))) | Some w -> ("fallback", enc_node w) :: (match e2 with | None -> (match e3 with | None -> (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: [])) | Some w -> ("style", enc_r_semantic_style w) :: (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []))) | Some w -> ("state", enc_r_state_behaviour w) :: (match e3 with | None -> (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: [])) | Some w -> ("style", enc_r_semantic_style w) :: (match e4 with | None -> (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: []) | Some w -> ("tooltip", enc_u_text_source w) :: (match e5 with | None -> [] | Some w -> ("visible", enc_u_binding__bool w) :: [])))))))
+    JObj (("id", JStr i) :: ("kind", enc_vkind k) :: (let s5 = sfx_node__Node__visible #num #flt (enc_opt_u_binding__bool #num #flt e5) ([]) in let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt e4) (s5) in let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt e3) (s4) in let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt e2) (s3) in let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt e1) (s2) in let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt e0) (s1) in s0))
 
 and enc_vkind (#num #flt: eqtype) (x: vkind num flt) : Tot (jval num flt) (decreases x) =
   match x with
   | C__vkind__Badge f0 f1 ->
     JObj (("$type", JStr "Badge") :: ("label", enc_u_text_source f0) :: ("variant", enc_e_badge_variant f1) :: [])
   | C__vkind__Callout f0 f1 f2 f3 f4 ->
-    JObj (("$type", JStr "Callout") :: ("body", enc_u_text_source f0) :: (if f1 = false then (match f2 with | None -> (match f3 with | None -> (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: []) | Some w -> ("icon", JStr w) :: (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: [])) | Some w -> ("heading", enc_u_text_source w) :: (match f3 with | None -> (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: []) | Some w -> ("icon", JStr w) :: (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: []))) else ("dismissable", JBool f1) :: (match f2 with | None -> (match f3 with | None -> (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: []) | Some w -> ("icon", JStr w) :: (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: [])) | Some w -> ("heading", enc_u_text_source w) :: (match f3 with | None -> (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: []) | Some w -> ("icon", JStr w) :: (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: [])))))
+    JObj (("$type", JStr "Callout") :: (let s3 = sfx_vkind__Callout__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f4) ([]) in let s2 = sfx_vkind__Callout__icon #num #flt (enc_opt_str #num #flt f3) (s3) in let s1 = sfx_vkind__Callout__heading #num #flt (enc_opt_u_text_source #num #flt f2) (s2) in let s0 = sfx_vkind__Callout__dismissable #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in ("body", enc_u_text_source f0) :: s0))
   | C__vkind__CodeBlock f0 f1 f2 f3 f4 ->
     JObj (("$type", JStr "CodeBlock") :: ("code", JStr f0) :: ("copyable", JBool f1) :: ("highlightLines", JArr (enc_items_l_int f2)) :: ("language", JStr f3) :: ("lineNumbers", JBool f4) :: [])
   | C__vkind__Disclosure f0 f1 f2 f3 f4 ->
     JObj (("$type", JStr "Disclosure") :: ("children", JArr (enc_items_l_node f0)) :: ("defaultOpen", JBool f1) :: ("heading", enc_u_text_source f2) :: (match f3 with | None -> ("open", enc_u_binding__bool f4) :: [] | Some w -> ("onToggle", JStr "<closure>") :: ("open", enc_u_binding__bool f4) :: []))
   | C__vkind__Embed f0 f1 f2 f3 ->
-    JObj (("$type", JStr "Embed") :: (if f0 = C__e_image_aspect__Natural then (if f1 = [] then ("src", enc_u_binding__str f2) :: ("title", enc_u_text_source f3) :: [] else ("permissions", JArr (enc_items_l_e_embed_permission f1)) :: ("src", enc_u_binding__str f2) :: ("title", enc_u_text_source f3) :: []) else ("aspectRatio", enc_e_image_aspect f0) :: (if f1 = [] then ("src", enc_u_binding__str f2) :: ("title", enc_u_text_source f3) :: [] else ("permissions", JArr (enc_items_l_e_embed_permission f1)) :: ("src", enc_u_binding__str f2) :: ("title", enc_u_text_source f3) :: [])))
+    JObj (("$type", JStr "Embed") :: (let s1 = sfx_vkind__Embed__permissions #num #flt (enc_dflt_l_e_embed_permission #num #flt ([]) f1 (JArr (enc_items_l_e_embed_permission f1))) (("src", enc_u_binding__str f2) :: ("title", enc_u_text_source f3) :: []) in let s0 = sfx_vkind__Embed__aspect_ratio #num #flt (enc_dflt_e_image_aspect #num #flt (C__e_image_aspect__Natural) f0) (s1) in s0))
   | C__vkind__ErrorBoundary f0 f1 ->
     JObj (("$type", JStr "ErrorBoundary") :: ("child", enc_node f0) :: ("fallback", enc_node f1) :: [])
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
-    JObj (("$type", JStr "Fact") :: (if f0 = false then (match f1 with | None -> (match f2 with | None -> ("label", enc_u_text_source f3) :: (if f4 = C__e_tone_variant__Default then ("value", enc_u_text_source f5) :: [] else ("tone", enc_e_tone_variant f4) :: ("value", enc_u_text_source f5) :: []) | Some w -> ("icon", JStr w) :: ("label", enc_u_text_source f3) :: (if f4 = C__e_tone_variant__Default then ("value", enc_u_text_source f5) :: [] else ("tone", enc_e_tone_variant f4) :: ("value", enc_u_text_source f5) :: [])) | Some w -> ("help", enc_u_text_source w) :: (match f2 with | None -> ("label", enc_u_text_source f3) :: (if f4 = C__e_tone_variant__Default then ("value", enc_u_text_source f5) :: [] else ("tone", enc_e_tone_variant f4) :: ("value", enc_u_text_source f5) :: []) | Some w -> ("icon", JStr w) :: ("label", enc_u_text_source f3) :: (if f4 = C__e_tone_variant__Default then ("value", enc_u_text_source f5) :: [] else ("tone", enc_e_tone_variant f4) :: ("value", enc_u_text_source f5) :: []))) else ("emphasis", JBool f0) :: (match f1 with | None -> (match f2 with | None -> ("label", enc_u_text_source f3) :: (if f4 = C__e_tone_variant__Default then ("value", enc_u_text_source f5) :: [] else ("tone", enc_e_tone_variant f4) :: ("value", enc_u_text_source f5) :: []) | Some w -> ("icon", JStr w) :: ("label", enc_u_text_source f3) :: (if f4 = C__e_tone_variant__Default then ("value", enc_u_text_source f5) :: [] else ("tone", enc_e_tone_variant f4) :: ("value", enc_u_text_source f5) :: [])) | Some w -> ("help", enc_u_text_source w) :: (match f2 with | None -> ("label", enc_u_text_source f3) :: (if f4 = C__e_tone_variant__Default then ("value", enc_u_text_source f5) :: [] else ("tone", enc_e_tone_variant f4) :: ("value", enc_u_text_source f5) :: []) | Some w -> ("icon", JStr w) :: ("label", enc_u_text_source f3) :: (if f4 = C__e_tone_variant__Default then ("value", enc_u_text_source f5) :: [] else ("tone", enc_e_tone_variant f4) :: ("value", enc_u_text_source f5) :: [])))))
+    JObj (("$type", JStr "Fact") :: (let s3 = sfx_vkind__Fact__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f4) (("value", enc_u_text_source f5) :: []) in let s2 = sfx_vkind__Fact__icon #num #flt (enc_opt_str #num #flt f2) (("label", enc_u_text_source f3) :: s3) in let s1 = sfx_vkind__Fact__help #num #flt (enc_opt_u_text_source #num #flt f1) (s2) in let s0 = sfx_vkind__Fact__emphasis #num #flt (enc_dflt_bool #num #flt (false) f0) (s1) in s0))
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    JObj (("$type", JStr "FileUpload") :: ("accept", JArr (enc_items_l_str f0)) :: (if f1 = false then (match f2 with | None -> (match f3 with | None -> (match f4 with | None -> (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])))) | Some w -> ("disabled", enc_u_binding__bool w) :: (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))))) | Some w -> ("destination", JStr w) :: (match f4 with | None -> (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])))) | Some w -> ("disabled", enc_u_binding__bool w) :: (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])))))) | Some w -> ("capture", enc_e_capture_source w) :: (match f3 with | None -> (match f4 with | None -> (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])))) | Some w -> ("disabled", enc_u_binding__bool w) :: (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))))) | Some w -> ("destination", JStr w) :: (match f4 with | None -> (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])))) | Some w -> ("disabled", enc_u_binding__bool w) :: (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))))))) else ("acceptPaste", JBool f1) :: (match f2 with | None -> (match f3 with | None -> (match f4 with | None -> (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])))) | Some w -> ("disabled", enc_u_binding__bool w) :: (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))))) | Some w -> ("destination", JStr w) :: (match f4 with | None -> (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])))) | Some w -> ("disabled", enc_u_binding__bool w) :: (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])))))) | Some w -> ("capture", enc_e_capture_source w) :: (match f3 with | None -> (match f4 with | None -> (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])))) | Some w -> ("disabled", enc_u_binding__bool w) :: (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))))) | Some w -> ("destination", JStr w) :: (match f4 with | None -> (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])))) | Some w -> ("disabled", enc_u_binding__bool w) :: (if f5 = false then ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []))) else ("dropTarget", JBool f5) :: ("label", enc_u_text_source f6) :: (match f7 with | None -> (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])) | Some w -> ("maxBytes", JInt w) :: (match f8 with | None -> ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: []) | Some w -> ("maxFiles", JInt w) :: ("multiple", JBool f9) :: (match f10 with | None -> [] | Some w -> ("onSelect", JStr "<closure>") :: [])))))))))
+    JObj (("$type", JStr "FileUpload") :: (let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in let s2 = sfx_vkind__FileUpload__destination #num #flt (enc_opt_str #num #flt f3) (s3) in let s1 = sfx_vkind__FileUpload__capture #num #flt (enc_opt_e_capture_source #num #flt f2) (s2) in let s0 = sfx_vkind__FileUpload__accept_paste #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in ("accept", JArr (enc_items_l_str f0)) :: s0))
   | C__vkind__Heading f0 f1 f2 ->
     JObj (("$type", JStr "Heading") :: ("level", JInt f0) :: ("text", enc_u_text_source f1) :: ("variant", enc_e_heading_variant f2) :: [])
   | C__vkind__Icon f0 f1 f2 f3 ->
-    JObj (("$type", JStr "Icon") :: ("icon", JStr f0) :: (match f1 with | None -> (if f2 = C__e_icon_size__Medium then (if f3 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f3) :: []) else ("size", enc_e_icon_size f2) :: (if f3 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f3) :: [])) | Some w -> ("label", JStr w) :: (if f2 = C__e_icon_size__Medium then (if f3 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f3) :: []) else ("size", enc_e_icon_size f2) :: (if f3 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f3) :: []))))
+    JObj (("$type", JStr "Icon") :: (let s2 = sfx_vkind__Icon__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f3) ([]) in let s1 = sfx_vkind__Icon__size #num #flt (enc_dflt_e_icon_size #num #flt (C__e_icon_size__Medium) f2) (s2) in let s0 = sfx_vkind__Icon__label #num #flt (enc_opt_str #num #flt f1) (s1) in ("icon", JStr f0) :: s0))
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
-    JObj (("$type", JStr "Link") :: ("download", JBool f0) :: ("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: (match f3 with | None -> (match f4 with | None -> (match f5 with | None -> [] | Some w -> ("target", JStr w) :: []) | Some w -> ("rel", JStr w) :: (match f5 with | None -> [] | Some w -> ("target", JStr w) :: [])) | Some w -> ("protection", enc_e_link_protection w) :: (match f4 with | None -> (match f5 with | None -> [] | Some w -> ("target", JStr w) :: []) | Some w -> ("rel", JStr w) :: (match f5 with | None -> [] | Some w -> ("target", JStr w) :: []))))
+    JObj (("$type", JStr "Link") :: (let s2 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in let s1 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s2) in let s0 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s1) in ("download", JBool f0) :: ("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s0))
   | C__vkind__List f0 f1 ->
     JObj (("$type", JStr "List") :: ("items", JArr (enc_items_l_u_text_source f0)) :: ("ordered", JBool f1) :: [])
   | C__vkind__Markdown f0 ->
@@ -751,9 +1283,9 @@ and enc_vkind (#num #flt: eqtype) (x: vkind num flt) : Tot (jval num flt) (decre
   | C__vkind__Math f0 f1 ->
     JObj (("$type", JStr "Math") :: ("display", enc_e_math_display f0) :: ("source", JStr f1) :: [])
   | C__vkind__Progress f0 f1 f2 f3 f4 ->
-    JObj (("$type", JStr "Progress") :: (match f0 with | None -> ("fraction", enc_u_binding__flt f1) :: (if f2 = false then (match f3 with | None -> (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: []) | Some w -> ("label", enc_u_text_source w) :: (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: [])) else ("indeterminate", JBool f2) :: (match f3 with | None -> (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: []) | Some w -> ("label", enc_u_text_source w) :: (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: []))) | Some w -> ("caveat", enc_u_text_source w) :: ("fraction", enc_u_binding__flt f1) :: (if f2 = false then (match f3 with | None -> (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: []) | Some w -> ("label", enc_u_text_source w) :: (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: [])) else ("indeterminate", JBool f2) :: (match f3 with | None -> (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: []) | Some w -> ("label", enc_u_text_source w) :: (if f4 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f4) :: [])))))
+    JObj (("$type", JStr "Progress") :: (let s3 = sfx_vkind__Progress__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f4) ([]) in let s2 = sfx_vkind__Progress__label #num #flt (enc_opt_u_text_source #num #flt f3) (s3) in let s1 = sfx_vkind__Progress__indeterminate #num #flt (enc_dflt_bool #num #flt (false) f2) (s2) in let s0 = sfx_vkind__Progress__caveat #num #flt (enc_opt_u_text_source #num #flt f0) (("fraction", enc_u_binding__flt f1) :: s1) in s0))
   | C__vkind__ScrollArea f0 f1 f2 f3 ->
-    JObj (("$type", JStr "ScrollArea") :: ("children", JArr (enc_items_l_node f0)) :: (match f1 with | None -> (match f2 with | None -> ("orientation", enc_e_scroll_orientation f3) :: [] | Some w -> ("maxWidth", JInt w) :: ("orientation", enc_e_scroll_orientation f3) :: []) | Some w -> ("maxHeight", JInt w) :: (match f2 with | None -> ("orientation", enc_e_scroll_orientation f3) :: [] | Some w -> ("maxWidth", JInt w) :: ("orientation", enc_e_scroll_orientation f3) :: [])))
+    JObj (("$type", JStr "ScrollArea") :: (let s1 = sfx_vkind__ScrollArea__max_width #num #flt (enc_opt_int #num #flt f2) (("orientation", enc_e_scroll_orientation f3) :: []) in let s0 = sfx_vkind__ScrollArea__max_height #num #flt (enc_opt_int #num #flt f1) (s1) in ("children", JArr (enc_items_l_node f0)) :: s0))
   | C__vkind__Skeleton f0 ->
     JObj (("$type", JStr "Skeleton") :: ("rows", JInt f0) :: [])
   | C__vkind__SplitPanel f0 f1 ->
@@ -761,11 +1293,11 @@ and enc_vkind (#num #flt: eqtype) (x: vkind num flt) : Tot (jval num flt) (decre
   | C__vkind__SummaryList f0 f1 ->
     JObj (("$type", JStr "SummaryList") :: ("children", JArr (enc_items_l_node f0)) :: (match f1 with | None -> [] | Some w -> ("heading", enc_u_text_source w) :: []))
   | C__vkind__Toast f0 f1 f2 f3 ->
-    JObj (("$type", JStr "Toast") :: (if f0 = true then ("message", enc_u_text_source f1) :: ("open", enc_u_binding__bool f2) :: (if f3 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f3) :: []) else ("dismissable", JBool f0) :: ("message", enc_u_text_source f1) :: ("open", enc_u_binding__bool f2) :: (if f3 = C__e_tone_variant__Default then [] else ("tone", enc_e_tone_variant f3) :: [])))
+    JObj (("$type", JStr "Toast") :: (let s1 = sfx_vkind__Toast__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f3) ([]) in let s0 = sfx_vkind__Toast__dismissable #num #flt (enc_dflt_bool #num #flt (true) f0) (("message", enc_u_text_source f1) :: ("open", enc_u_binding__bool f2) :: s1) in s0))
 
 and enc_r_accessibility (#num #flt: eqtype) (x: r_accessibility num flt) : Tot (jval num flt) (decreases x) =
   match x with
-  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> JObj ((match f0 with | None -> (match f1 with | None -> (match f2 with | None -> (match f3 with | None -> (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []))) | Some w -> ("labelledBy", JStr w) :: (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])))) | Some w -> ("label", enc_u_binding__str w) :: (match f3 with | None -> (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []))) | Some w -> ("labelledBy", JStr w) :: (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []))))) | Some w -> ("hidden", enc_u_binding__bool w) :: (match f2 with | None -> (match f3 with | None -> (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []))) | Some w -> ("labelledBy", JStr w) :: (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])))) | Some w -> ("label", enc_u_binding__str w) :: (match f3 with | None -> (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []))) | Some w -> ("labelledBy", JStr w) :: (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])))))) | Some w -> ("describedBy", JStr w) :: (match f1 with | None -> (match f2 with | None -> (match f3 with | None -> (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []))) | Some w -> ("labelledBy", JStr w) :: (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])))) | Some w -> ("label", enc_u_binding__str w) :: (match f3 with | None -> (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []))) | Some w -> ("labelledBy", JStr w) :: (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []))))) | Some w -> ("hidden", enc_u_binding__bool w) :: (match f2 with | None -> (match f3 with | None -> (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []))) | Some w -> ("labelledBy", JStr w) :: (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])))) | Some w -> ("label", enc_u_binding__str w) :: (match f3 with | None -> (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []))) | Some w -> ("labelledBy", JStr w) :: (match f4 with | None -> (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: [])) | Some w -> ("liveRegion", enc_e_live_region_kind w) :: (match f5 with | None -> (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []) | Some w -> ("role", w) :: (match f6 with | None -> [] | Some w -> ("speak", enc_u_text_source w) :: []))))))))
+  | C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6 -> JObj ((let s6 = sfx_r_accessibility__Mk__speak #num #flt (enc_opt_u_text_source #num #flt f6) ([]) in let s5 = sfx_r_accessibility__Mk__role #num #flt (enc_opt_json #num #flt f5) (s6) in let s4 = sfx_r_accessibility__Mk__live_region #num #flt (enc_opt_e_live_region_kind #num #flt f4) (s5) in let s3 = sfx_r_accessibility__Mk__labelled_by #num #flt (enc_opt_str #num #flt f3) (s4) in let s2 = sfx_r_accessibility__Mk__label #num #flt (enc_opt_u_binding__str #num #flt f2) (s3) in let s1 = sfx_r_accessibility__Mk__hidden #num #flt (enc_opt_u_binding__bool #num #flt f1) (s2) in let s0 = sfx_r_accessibility__Mk__described_by #num #flt (enc_opt_str #num #flt f0) (s1) in s0))
 
 and enc_u_binding__bool (#num #flt: eqtype) (x: u_binding__bool num flt) : Tot (jval num flt) (decreases x) =
   match x with
@@ -776,7 +1308,7 @@ and enc_u_binding__bool (#num #flt: eqtype) (x: u_binding__bool num flt) : Tot (
   | C__u_binding__bool__Filter f0 f1 ->
     JObj (("$type", JStr "Filter") :: (match f0 with | None -> ("name", JStr f1) :: [] | Some w -> ("defaultValue", JBool w) :: ("name", JStr f1) :: []))
   | C__u_binding__bool__Selection f0 f1 f2 ->
-    JObj (("$type", JStr "Selection") :: (match f0 with | None -> (match f1 with | None -> ("nodeId", JStr f2) :: [] | Some w -> ("field", JStr w) :: ("nodeId", JStr f2) :: []) | Some w -> ("defaultValue", JBool w) :: (match f1 with | None -> ("nodeId", JStr f2) :: [] | Some w -> ("field", JStr w) :: ("nodeId", JStr f2) :: [])))
+    JObj (("$type", JStr "Selection") :: (let s1 = sfx_u_binding__bool__Selection__field #num #flt (enc_opt_str #num #flt f1) (("nodeId", JStr f2) :: []) in let s0 = sfx_u_binding__bool__Selection__default_value #num #flt (enc_opt_bool #num #flt f0) (s1) in s0))
   | C__u_binding__bool__State f0 f1 ->
     JObj (("$type", JStr "State") :: (match f0 with | None -> ("key", JStr f1) :: [] | Some w -> ("defaultValue", JBool w) :: ("key", JStr f1) :: []))
   | C__u_binding__bool__Now f0 ->
@@ -784,7 +1316,7 @@ and enc_u_binding__bool (#num #flt: eqtype) (x: u_binding__bool num flt) : Tot (
   | C__u_binding__bool__Computed f0 ->
     JObj (("$type", JStr "Computed") :: ("fn", JStr "<closure>") :: [])
   | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 ->
-    JObj (("$type", JStr "Local") :: (match f0 with | None -> (match f1 with | None -> ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__bool f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: []) | Some w -> ("commitTo", JStr w) :: ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__bool f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: [])) | Some w -> ("codec", enc_u_format w) :: (match f1 with | None -> ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__bool f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: []) | Some w -> ("commitTo", JStr w) :: ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__bool f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: []))))
+    JObj (("$type", JStr "Local") :: (let s2 = sfx_u_binding__bool__Local__on_commit #num #flt (enc_opt_closure #num #flt f5) (("parse", JStr "<closure>") :: []) in let s1 = sfx_u_binding__bool__Local__commit_to #num #flt (enc_opt_str #num #flt f1) (("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__bool f4) :: s2) in let s0 = sfx_u_binding__bool__Local__codec #num #flt (enc_opt_u_format #num #flt f0) (s1) in s0))
   | C__u_binding__bool__Format f0 f1 f2 ->
     JObj (("$type", JStr "Format") :: ("format", enc_u_format f0) :: ("locale", enc_u_locale_source f1) :: ("source", enc_u_binding__flt f2) :: [])
   | C__u_binding__bool__I18n f0 f1 ->
@@ -816,7 +1348,7 @@ and enc_u_format (#num #flt: eqtype) (x: u_format num flt) : Tot (jval num flt) 
   | C__u_format__Percent f0 ->
     JObj (("$type", JStr "Percent") :: (match f0 with | None -> [] | Some w -> ("decimals", JInt w) :: []))
   | C__u_format__DateTime f0 f1 ->
-    JObj (("$type", JStr "DateTime") :: (match f0 with | None -> (match f1 with | None -> [] | Some w -> ("timeStyle", enc_e_time_style w) :: []) | Some w -> ("dateStyle", enc_e_date_style w) :: (match f1 with | None -> [] | Some w -> ("timeStyle", enc_e_time_style w) :: [])))
+    JObj (("$type", JStr "DateTime") :: (let s1 = sfx_u_format__DateTime__time_style #num #flt (enc_opt_e_time_style #num #flt f1) ([]) in let s0 = sfx_u_format__DateTime__date_style #num #flt (enc_opt_e_date_style #num #flt f0) (s1) in s0))
   | C__u_format__RelativeTime f0 ->
     JObj (("$type", JStr "RelativeTime") :: ("unit", enc_e_relative_time_unit f0) :: [])
   | C__u_format__Duration f0 f1 ->
@@ -833,7 +1365,7 @@ and enc_u_binding__flt (#num #flt: eqtype) (x: u_binding__flt num flt) : Tot (jv
   | C__u_binding__flt__Filter f0 f1 ->
     JObj (("$type", JStr "Filter") :: (match f0 with | None -> ("name", JStr f1) :: [] | Some w -> ("defaultValue", JFloat w) :: ("name", JStr f1) :: []))
   | C__u_binding__flt__Selection f0 f1 f2 ->
-    JObj (("$type", JStr "Selection") :: (match f0 with | None -> (match f1 with | None -> ("nodeId", JStr f2) :: [] | Some w -> ("field", JStr w) :: ("nodeId", JStr f2) :: []) | Some w -> ("defaultValue", JFloat w) :: (match f1 with | None -> ("nodeId", JStr f2) :: [] | Some w -> ("field", JStr w) :: ("nodeId", JStr f2) :: [])))
+    JObj (("$type", JStr "Selection") :: (let s1 = sfx_u_binding__flt__Selection__field #num #flt (enc_opt_str #num #flt f1) (("nodeId", JStr f2) :: []) in let s0 = sfx_u_binding__flt__Selection__default_value #num #flt (enc_opt_flt #num #flt f0) (s1) in s0))
   | C__u_binding__flt__State f0 f1 ->
     JObj (("$type", JStr "State") :: (match f0 with | None -> ("key", JStr f1) :: [] | Some w -> ("defaultValue", JFloat w) :: ("key", JStr f1) :: []))
   | C__u_binding__flt__Now f0 ->
@@ -841,7 +1373,7 @@ and enc_u_binding__flt (#num #flt: eqtype) (x: u_binding__flt num flt) : Tot (jv
   | C__u_binding__flt__Computed f0 ->
     JObj (("$type", JStr "Computed") :: ("fn", JStr "<closure>") :: [])
   | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 ->
-    JObj (("$type", JStr "Local") :: (match f0 with | None -> (match f1 with | None -> ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__flt f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: []) | Some w -> ("commitTo", JStr w) :: ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__flt f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: [])) | Some w -> ("codec", enc_u_format w) :: (match f1 with | None -> ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__flt f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: []) | Some w -> ("commitTo", JStr w) :: ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__flt f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: []))))
+    JObj (("$type", JStr "Local") :: (let s2 = sfx_u_binding__flt__Local__on_commit #num #flt (enc_opt_closure #num #flt f5) (("parse", JStr "<closure>") :: []) in let s1 = sfx_u_binding__flt__Local__commit_to #num #flt (enc_opt_str #num #flt f1) (("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__flt f4) :: s2) in let s0 = sfx_u_binding__flt__Local__codec #num #flt (enc_opt_u_format #num #flt f0) (s1) in s0))
   | C__u_binding__flt__Format f0 f1 f2 ->
     JObj (("$type", JStr "Format") :: ("format", enc_u_format f0) :: ("locale", enc_u_locale_source f1) :: ("source", enc_u_binding__flt f2) :: [])
   | C__u_binding__flt__I18n f0 f1 ->
@@ -869,7 +1401,7 @@ and enc_u_binding__json (#num #flt: eqtype) (x: u_binding__json num flt) : Tot (
   | C__u_binding__json__Filter f0 f1 ->
     JObj (("$type", JStr "Filter") :: (match f0 with | None -> ("name", JStr f1) :: [] | Some w -> ("defaultValue", w) :: ("name", JStr f1) :: []))
   | C__u_binding__json__Selection f0 f1 f2 ->
-    JObj (("$type", JStr "Selection") :: (match f0 with | None -> (match f1 with | None -> ("nodeId", JStr f2) :: [] | Some w -> ("field", JStr w) :: ("nodeId", JStr f2) :: []) | Some w -> ("defaultValue", w) :: (match f1 with | None -> ("nodeId", JStr f2) :: [] | Some w -> ("field", JStr w) :: ("nodeId", JStr f2) :: [])))
+    JObj (("$type", JStr "Selection") :: (let s1 = sfx_u_binding__json__Selection__field #num #flt (enc_opt_str #num #flt f1) (("nodeId", JStr f2) :: []) in let s0 = sfx_u_binding__json__Selection__default_value #num #flt (enc_opt_json #num #flt f0) (s1) in s0))
   | C__u_binding__json__State f0 f1 ->
     JObj (("$type", JStr "State") :: (match f0 with | None -> ("key", JStr f1) :: [] | Some w -> ("defaultValue", w) :: ("key", JStr f1) :: []))
   | C__u_binding__json__Now f0 ->
@@ -877,7 +1409,7 @@ and enc_u_binding__json (#num #flt: eqtype) (x: u_binding__json num flt) : Tot (
   | C__u_binding__json__Computed f0 ->
     JObj (("$type", JStr "Computed") :: ("fn", JStr "<closure>") :: [])
   | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 ->
-    JObj (("$type", JStr "Local") :: (match f0 with | None -> (match f1 with | None -> ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__json f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: []) | Some w -> ("commitTo", JStr w) :: ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__json f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: [])) | Some w -> ("codec", enc_u_format w) :: (match f1 with | None -> ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__json f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: []) | Some w -> ("commitTo", JStr w) :: ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__json f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: []))))
+    JObj (("$type", JStr "Local") :: (let s2 = sfx_u_binding__json__Local__on_commit #num #flt (enc_opt_closure #num #flt f5) (("parse", JStr "<closure>") :: []) in let s1 = sfx_u_binding__json__Local__commit_to #num #flt (enc_opt_str #num #flt f1) (("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__json f4) :: s2) in let s0 = sfx_u_binding__json__Local__codec #num #flt (enc_opt_u_format #num #flt f0) (s1) in s0))
   | C__u_binding__json__Format f0 f1 f2 ->
     JObj (("$type", JStr "Format") :: ("format", enc_u_format f0) :: ("locale", enc_u_locale_source f1) :: ("source", enc_u_binding__flt f2) :: [])
   | C__u_binding__json__I18n f0 f1 ->
@@ -906,7 +1438,7 @@ and enc_u_binding__str (#num #flt: eqtype) (x: u_binding__str num flt) : Tot (jv
   | C__u_binding__str__Filter f0 f1 ->
     JObj (("$type", JStr "Filter") :: (match f0 with | None -> ("name", JStr f1) :: [] | Some w -> ("defaultValue", JStr w) :: ("name", JStr f1) :: []))
   | C__u_binding__str__Selection f0 f1 f2 ->
-    JObj (("$type", JStr "Selection") :: (match f0 with | None -> (match f1 with | None -> ("nodeId", JStr f2) :: [] | Some w -> ("field", JStr w) :: ("nodeId", JStr f2) :: []) | Some w -> ("defaultValue", JStr w) :: (match f1 with | None -> ("nodeId", JStr f2) :: [] | Some w -> ("field", JStr w) :: ("nodeId", JStr f2) :: [])))
+    JObj (("$type", JStr "Selection") :: (let s1 = sfx_u_binding__str__Selection__field #num #flt (enc_opt_str #num #flt f1) (("nodeId", JStr f2) :: []) in let s0 = sfx_u_binding__str__Selection__default_value #num #flt (enc_opt_str #num #flt f0) (s1) in s0))
   | C__u_binding__str__State f0 f1 ->
     JObj (("$type", JStr "State") :: (match f0 with | None -> ("key", JStr f1) :: [] | Some w -> ("defaultValue", JStr w) :: ("key", JStr f1) :: []))
   | C__u_binding__str__Now f0 ->
@@ -914,7 +1446,7 @@ and enc_u_binding__str (#num #flt: eqtype) (x: u_binding__str num flt) : Tot (jv
   | C__u_binding__str__Computed f0 ->
     JObj (("$type", JStr "Computed") :: ("fn", JStr "<closure>") :: [])
   | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 ->
-    JObj (("$type", JStr "Local") :: (match f0 with | None -> (match f1 with | None -> ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__str f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: []) | Some w -> ("commitTo", JStr w) :: ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__str f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: [])) | Some w -> ("codec", enc_u_format w) :: (match f1 with | None -> ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__str f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: []) | Some w -> ("commitTo", JStr w) :: ("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__str f4) :: (match f5 with | None -> ("parse", JStr "<closure>") :: [] | Some w -> ("onCommit", JStr "<closure>") :: ("parse", JStr "<closure>") :: []))))
+    JObj (("$type", JStr "Local") :: (let s2 = sfx_u_binding__str__Local__on_commit #num #flt (enc_opt_closure #num #flt f5) (("parse", JStr "<closure>") :: []) in let s1 = sfx_u_binding__str__Local__commit_to #num #flt (enc_opt_str #num #flt f1) (("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__str f4) :: s2) in let s0 = sfx_u_binding__str__Local__codec #num #flt (enc_opt_u_format #num #flt f0) (s1) in s0))
   | C__u_binding__str__Format f0 f1 f2 ->
     JObj (("$type", JStr "Format") :: ("format", enc_u_format f0) :: ("locale", enc_u_locale_source f1) :: ("source", enc_u_binding__flt f2) :: [])
   | C__u_binding__str__I18n f0 f1 ->
@@ -936,11 +1468,11 @@ and enc_u_text_source (#num #flt: eqtype) (x: u_text_source num flt) : Tot (jval
 
 and enc_r_state_behaviour (#num #flt: eqtype) (x: r_state_behaviour num flt) : Tot (jval num flt) (decreases x) =
   match x with
-  | C__r_state_behaviour__Mk f0 f1 f2 -> JObj ((match f0 with | None -> (match f1 with | None -> (match f2 with | None -> [] | Some w -> ("onLoading", enc_node w) :: []) | Some w -> ("onError", JStr "<closure>") :: (match f2 with | None -> [] | Some w -> ("onLoading", enc_node w) :: [])) | Some w -> ("onEmpty", enc_node w) :: (match f1 with | None -> (match f2 with | None -> [] | Some w -> ("onLoading", enc_node w) :: []) | Some w -> ("onError", JStr "<closure>") :: (match f2 with | None -> [] | Some w -> ("onLoading", enc_node w) :: []))))
+  | C__r_state_behaviour__Mk f0 f1 f2 -> JObj ((let s2 = sfx_r_state_behaviour__Mk__on_loading #num #flt (enc_opt_node #num #flt f2) ([]) in let s1 = sfx_r_state_behaviour__Mk__on_error #num #flt (enc_opt_closure #num #flt f1) (s2) in let s0 = sfx_r_state_behaviour__Mk__on_empty #num #flt (enc_opt_node #num #flt f0) (s1) in s0))
 
 and enc_r_semantic_style (#num #flt: eqtype) (x: r_semantic_style num flt) : Tot (jval num flt) (decreases x) =
   match x with
-  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> JObj ((if f0 = C__e_text_direction__Auto then (if f1 = C__e_emphasis__Normal then (if f2 = C__e_style_role__None then (if f3 = C__e_tone_variant__Default then (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: [])) else ("tone", enc_e_tone_variant f3) :: (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []))) else ("role", enc_e_style_role f2) :: (if f3 = C__e_tone_variant__Default then (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: [])) else ("tone", enc_e_tone_variant f3) :: (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: [])))) else ("emphasis", enc_e_emphasis f1) :: (if f2 = C__e_style_role__None then (if f3 = C__e_tone_variant__Default then (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: [])) else ("tone", enc_e_tone_variant f3) :: (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []))) else ("role", enc_e_style_role f2) :: (if f3 = C__e_tone_variant__Default then (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: [])) else ("tone", enc_e_tone_variant f3) :: (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []))))) else ("direction", enc_e_text_direction f0) :: (if f1 = C__e_emphasis__Normal then (if f2 = C__e_style_role__None then (if f3 = C__e_tone_variant__Default then (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: [])) else ("tone", enc_e_tone_variant f3) :: (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []))) else ("role", enc_e_style_role f2) :: (if f3 = C__e_tone_variant__Default then (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: [])) else ("tone", enc_e_tone_variant f3) :: (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: [])))) else ("emphasis", enc_e_emphasis f1) :: (if f2 = C__e_style_role__None then (if f3 = C__e_tone_variant__Default then (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: [])) else ("tone", enc_e_tone_variant f3) :: (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []))) else ("role", enc_e_style_role f2) :: (if f3 = C__e_tone_variant__Default then (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: [])) else ("tone", enc_e_tone_variant f3) :: (if f4 = C__e_font_voice__Default then (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: []) else ("voice", enc_e_font_voice f4) :: (if f5 = C__e_style_weight__Standard then [] else ("weight", enc_e_style_weight f5) :: [])))))))
+  | C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5 -> JObj ((let s5 = sfx_r_semantic_style__Mk__weight #num #flt (enc_dflt_e_style_weight #num #flt (C__e_style_weight__Standard) f5) ([]) in let s4 = sfx_r_semantic_style__Mk__voice #num #flt (enc_dflt_e_font_voice #num #flt (C__e_font_voice__Default) f4) (s5) in let s3 = sfx_r_semantic_style__Mk__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f3) (s4) in let s2 = sfx_r_semantic_style__Mk__role #num #flt (enc_dflt_e_style_role #num #flt (C__e_style_role__None) f2) (s3) in let s1 = sfx_r_semantic_style__Mk__emphasis #num #flt (enc_dflt_e_emphasis #num #flt (C__e_emphasis__Normal) f1) (s2) in let s0 = sfx_r_semantic_style__Mk__direction #num #flt (enc_dflt_e_text_direction #num #flt (C__e_text_direction__Auto) f0) (s1) in s0))
 
 and enc_items_l_str (#num #flt: eqtype) (xs: list (string)) : Tot (list (jval num flt)) (decreases xs) =
   match xs with
@@ -992,6 +1524,93 @@ and enc_items_l_u_text_source (#num #flt: eqtype) (xs: list (u_text_source num f
   | [] -> []
   | y :: t -> enc_u_text_source y :: enc_items_l_u_text_source t
 
+and enc_opt_r_accessibility (#num #flt: eqtype) (o: option (r_accessibility num flt)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (enc_r_accessibility w)
+
+and enc_opt_node (#num #flt: eqtype) (o: option (node num flt)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (enc_node w)
+
+and enc_opt_r_state_behaviour (#num #flt: eqtype) (o: option (r_state_behaviour num flt)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (enc_r_state_behaviour w)
+
+and enc_opt_r_semantic_style (#num #flt: eqtype) (o: option (r_semantic_style num flt)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (enc_r_semantic_style w)
+
+and enc_opt_u_text_source (#num #flt: eqtype) (o: option (u_text_source num flt)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (enc_u_text_source w)
+
+and enc_opt_u_binding__bool (#num #flt: eqtype) (o: option (u_binding__bool num flt)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (enc_u_binding__bool w)
+
+and enc_dflt_bool (#num #flt: eqtype) (d: bool) (v: bool) : Tot (option (jval num flt)) (decreases v) =
+  if v = d then None else Some (JBool v)
+
+and enc_opt_str (#num #flt: eqtype) (o: option (string)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (JStr w)
+
+and enc_dflt_e_tone_variant (#num #flt: eqtype) (d: e_tone_variant) (v: e_tone_variant) : Tot (option (jval num flt)) (decreases v) =
+  if v = d then None else Some (enc_e_tone_variant v)
+
+and enc_dflt_e_image_aspect (#num #flt: eqtype) (d: e_image_aspect) (v: e_image_aspect) : Tot (option (jval num flt)) (decreases v) =
+  if v = d then None else Some (enc_e_image_aspect v)
+
+and enc_dflt_l_e_embed_permission (#num #flt: eqtype) (d: list (e_embed_permission)) (v: list (e_embed_permission)) (e: jval num flt) : Tot (option (jval num flt)) (decreases v) =
+  if v = d then None else Some e
+
+and enc_opt_e_capture_source (#num #flt: eqtype) (o: option (e_capture_source)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (enc_e_capture_source w)
+
+and enc_opt_int (#num #flt: eqtype) (o: option (num)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (JInt w)
+
+and enc_opt_closure (#num #flt: eqtype) (o: option (unit)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (JStr "<closure>")
+
+and enc_dflt_e_icon_size (#num #flt: eqtype) (d: e_icon_size) (v: e_icon_size) : Tot (option (jval num flt)) (decreases v) =
+  if v = d then None else Some (enc_e_icon_size v)
+
+and enc_opt_e_link_protection (#num #flt: eqtype) (o: option (e_link_protection)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (enc_e_link_protection w)
+
+and enc_opt_u_binding__str (#num #flt: eqtype) (o: option (u_binding__str num flt)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (enc_u_binding__str w)
+
+and enc_opt_e_live_region_kind (#num #flt: eqtype) (o: option (e_live_region_kind)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (enc_e_live_region_kind w)
+
+and enc_opt_json (#num #flt: eqtype) (o: option (jval num flt)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (w)
+
+and enc_opt_bool (#num #flt: eqtype) (o: option (bool)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (JBool w)
+
+and enc_opt_u_format (#num #flt: eqtype) (o: option (u_format num flt)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (enc_u_format w)
+
+and enc_opt_e_date_style (#num #flt: eqtype) (o: option (e_date_style)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (enc_e_date_style w)
+
+and enc_opt_e_time_style (#num #flt: eqtype) (o: option (e_time_style)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (enc_e_time_style w)
+
+and enc_opt_flt (#num #flt: eqtype) (o: option (flt)) : Tot (option (jval num flt)) (decreases o) =
+  match o with | None -> None | Some w -> Some (JFloat w)
+
+and enc_dflt_e_text_direction (#num #flt: eqtype) (d: e_text_direction) (v: e_text_direction) : Tot (option (jval num flt)) (decreases v) =
+  if v = d then None else Some (enc_e_text_direction v)
+
+and enc_dflt_e_emphasis (#num #flt: eqtype) (d: e_emphasis) (v: e_emphasis) : Tot (option (jval num flt)) (decreases v) =
+  if v = d then None else Some (enc_e_emphasis v)
+
+and enc_dflt_e_style_role (#num #flt: eqtype) (d: e_style_role) (v: e_style_role) : Tot (option (jval num flt)) (decreases v) =
+  if v = d then None else Some (enc_e_style_role v)
+
+and enc_dflt_e_font_voice (#num #flt: eqtype) (d: e_font_voice) (v: e_font_voice) : Tot (option (jval num flt)) (decreases v) =
+  if v = d then None else Some (enc_e_font_voice v)
+
+and enc_dflt_e_style_weight (#num #flt: eqtype) (d: e_style_weight) (v: e_style_weight) : Tot (option (jval num flt)) (decreases v) =
+  if v = d then None else Some (enc_e_style_weight v)
+
 (* ======================================================================================
    4. The tag-dispatch decoder. Every cross-type call goes through `get_prop`, whose
       RETURN-TYPE refinement (`jsize (Ok?.v r) < jsize el`) is the termination argument:
@@ -1021,10 +1640,10 @@ and dec_vkind (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (vkind num f
     else
     if tag = "Callout" then
       let o0 : outcome (u_text_source num flt) = (match get_prop "body" el with | Error e -> Error e | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o1 : outcome (bool) = (match get_prop "dismissable" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o1 : outcome (bool) = rd_vkind__Callout__dismissable #num #flt el in
       let o2 : outcome (option (u_text_source num flt)) = (match get_prop "heading" el with | Error _ -> Ok None | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o3 : outcome (option (string)) = (match get_prop "icon" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o4 : outcome (e_tone_variant) = (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o3 : outcome (option (string)) = rd_vkind__Callout__icon #num #flt el in
+      let o4 : outcome (e_tone_variant) = rd_vkind__Callout__tone #num #flt el in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> Ok (C__vkind__Callout f0 f1 f2 f3 f4))))))
     else
     if tag = "CodeBlock" then
@@ -1044,7 +1663,7 @@ and dec_vkind (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (vkind num f
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> Ok (C__vkind__Disclosure f0 f1 f2 f3 f4))))))
     else
     if tag = "Embed" then
-      let o0 : outcome (e_image_aspect) = (match get_prop "aspectRatio" el with | Error _ -> Ok C__e_image_aspect__Natural | Ok v -> (match dec_e_image_aspect v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o0 : outcome (e_image_aspect) = rd_vkind__Embed__aspect_ratio #num #flt el in
       let o1 : outcome (list (e_embed_permission)) = (match get_prop "permissions" el with | Error _ -> Ok [] | Ok v -> (match v with | JArr ys -> (match dec_items_l_e_embed_permission [] ys with | Error e -> Error e | Ok w -> Ok w) | other -> Error ("expected array, got " ^ kind_name other))) in
       let o2 : outcome (u_binding__str num flt) = (match get_prop "src" el with | Error e -> Error e | Ok v -> (match dec_u_binding__str v with | Error e -> Error e | Ok w -> Ok w)) in
       let o3 : outcome (u_text_source num flt) = (match get_prop "title" el with | Error e -> Error e | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok w)) in
@@ -1056,26 +1675,26 @@ and dec_vkind (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (vkind num f
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> Ok (C__vkind__ErrorBoundary f0 f1)))
     else
     if tag = "Fact" then
-      let o0 : outcome (bool) = (match get_prop "emphasis" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o0 : outcome (bool) = rd_vkind__Fact__emphasis #num #flt el in
       let o1 : outcome (option (u_text_source num flt)) = (match get_prop "help" el with | Error _ -> Ok None | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o2 : outcome (option (string)) = (match get_prop "icon" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o2 : outcome (option (string)) = rd_vkind__Fact__icon #num #flt el in
       let o3 : outcome (u_text_source num flt) = (match get_prop "label" el with | Error e -> Error e | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o4 : outcome (e_tone_variant) = (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o4 : outcome (e_tone_variant) = rd_vkind__Fact__tone #num #flt el in
       let o5 : outcome (u_text_source num flt) = (match get_prop "value" el with | Error e -> Error e | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok w)) in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> (match o5 with | Error e -> Error e | Ok f5 -> Ok (C__vkind__Fact f0 f1 f2 f3 f4 f5)))))))
     else
     if tag = "FileUpload" then
       let o0 : outcome (list (string)) = (match get_prop "accept" el with | Error e -> Error e | Ok v -> (match v with | JArr ys -> (match dec_items_l_str [] ys with | Error e -> Error e | Ok w -> Ok w) | other -> Error ("expected array, got " ^ kind_name other))) in
-      let o1 : outcome (bool) = (match get_prop "acceptPaste" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o2 : outcome (option (e_capture_source)) = (match get_prop "capture" el with | Error _ -> Ok None | Ok v -> (match dec_e_capture_source v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o3 : outcome (option (string)) = (match get_prop "destination" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o1 : outcome (bool) = rd_vkind__FileUpload__accept_paste #num #flt el in
+      let o2 : outcome (option (e_capture_source)) = rd_vkind__FileUpload__capture #num #flt el in
+      let o3 : outcome (option (string)) = rd_vkind__FileUpload__destination #num #flt el in
       let o4 : outcome (option (u_binding__bool num flt)) = (match get_prop "disabled" el with | Error _ -> Ok None | Ok v -> (match dec_u_binding__bool v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o5 : outcome (bool) = (match get_prop "dropTarget" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o5 : outcome (bool) = rd_vkind__FileUpload__drop_target #num #flt el in
       let o6 : outcome (u_text_source num flt) = (match get_prop "label" el with | Error e -> Error e | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o7 : outcome (option (num)) = (match get_prop "maxBytes" el with | Error _ -> Ok None | Ok v -> (match as_int v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o8 : outcome (option (num)) = (match get_prop "maxFiles" el with | Error _ -> Ok None | Ok v -> (match as_int v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o7 : outcome (option (num)) = rd_vkind__FileUpload__max_bytes #num #flt el in
+      let o8 : outcome (option (num)) = rd_vkind__FileUpload__max_files #num #flt el in
       let o9 : outcome (bool) = (match get_prop "multiple" el with | Error e -> Error e | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o10 : outcome (option (unit)) = (match get_prop "onSelect" el with | Error _ -> Ok None | Ok v -> (let _ = v in let w = () in Ok (Some w))) in
+      let o10 : outcome (option (unit)) = rd_vkind__FileUpload__on_select #num #flt el in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> (match o5 with | Error e -> Error e | Ok f5 -> (match o6 with | Error e -> Error e | Ok f6 -> (match o7 with | Error e -> Error e | Ok f7 -> (match o8 with | Error e -> Error e | Ok f8 -> (match o9 with | Error e -> Error e | Ok f9 -> (match o10 with | Error e -> Error e | Ok f10 -> Ok (C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10))))))))))))
     else
     if tag = "Heading" then
@@ -1086,18 +1705,18 @@ and dec_vkind (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (vkind num f
     else
     if tag = "Icon" then
       let o0 : outcome (string) = (match get_prop "icon" el with | Error e -> Error e | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o1 : outcome (option (string)) = (match get_prop "label" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o2 : outcome (e_icon_size) = (match get_prop "size" el with | Error _ -> Ok C__e_icon_size__Medium | Ok v -> (match dec_e_icon_size v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o3 : outcome (e_tone_variant) = (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o1 : outcome (option (string)) = rd_vkind__Icon__label #num #flt el in
+      let o2 : outcome (e_icon_size) = rd_vkind__Icon__size #num #flt el in
+      let o3 : outcome (e_tone_variant) = rd_vkind__Icon__tone #num #flt el in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> Ok (C__vkind__Icon f0 f1 f2 f3)))))
     else
     if tag = "Link" then
       let o0 : outcome (bool) = (match get_prop "download" el with | Error e -> Error e | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
       let o1 : outcome (u_binding__str num flt) = (match get_prop "href" el with | Error e -> Error e | Ok v -> (match dec_u_binding__str v with | Error e -> Error e | Ok w -> Ok w)) in
       let o2 : outcome (u_text_source num flt) = (match get_prop "label" el with | Error e -> Error e | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o3 : outcome (option (e_link_protection)) = (match get_prop "protection" el with | Error _ -> Ok None | Ok v -> (match dec_e_link_protection v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o4 : outcome (option (string)) = (match get_prop "rel" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o5 : outcome (option (string)) = (match get_prop "target" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o3 : outcome (option (e_link_protection)) = rd_vkind__Link__protection #num #flt el in
+      let o4 : outcome (option (string)) = rd_vkind__Link__rel #num #flt el in
+      let o5 : outcome (option (string)) = rd_vkind__Link__target #num #flt el in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> (match o5 with | Error e -> Error e | Ok f5 -> Ok (C__vkind__Link f0 f1 f2 f3 f4 f5)))))))
     else
     if tag = "List" then
@@ -1117,15 +1736,15 @@ and dec_vkind (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (vkind num f
     if tag = "Progress" then
       let o0 : outcome (option (u_text_source num flt)) = (match get_prop "caveat" el with | Error _ -> Ok None | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok (Some w))) in
       let o1 : outcome (u_binding__flt num flt) = (match get_prop "fraction" el with | Error e -> Error e | Ok v -> (match dec_u_binding__flt v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o2 : outcome (bool) = (match get_prop "indeterminate" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o2 : outcome (bool) = rd_vkind__Progress__indeterminate #num #flt el in
       let o3 : outcome (option (u_text_source num flt)) = (match get_prop "label" el with | Error _ -> Ok None | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o4 : outcome (e_tone_variant) = (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o4 : outcome (e_tone_variant) = rd_vkind__Progress__tone #num #flt el in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> Ok (C__vkind__Progress f0 f1 f2 f3 f4))))))
     else
     if tag = "ScrollArea" then
       let o0 : outcome (list (node num flt)) = (match get_prop "children" el with | Error e -> Error e | Ok v -> (match v with | JArr ys -> (match dec_items_l_node [] ys with | Error e -> Error e | Ok w -> Ok w) | other -> Error ("expected array, got " ^ kind_name other))) in
-      let o1 : outcome (option (num)) = (match get_prop "maxHeight" el with | Error _ -> Ok None | Ok v -> (match as_int v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o2 : outcome (option (num)) = (match get_prop "maxWidth" el with | Error _ -> Ok None | Ok v -> (match as_int v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o1 : outcome (option (num)) = rd_vkind__ScrollArea__max_height #num #flt el in
+      let o2 : outcome (option (num)) = rd_vkind__ScrollArea__max_width #num #flt el in
       let o3 : outcome (e_scroll_orientation) = (match get_prop "orientation" el with | Error e -> Error e | Ok v -> (match dec_e_scroll_orientation v with | Error e -> Error e | Ok w -> Ok w)) in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> Ok (C__vkind__ScrollArea f0 f1 f2 f3)))))
     else
@@ -1144,21 +1763,21 @@ and dec_vkind (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (vkind num f
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> Ok (C__vkind__SummaryList f0 f1)))
     else
     if tag = "Toast" then
-      let o0 : outcome (bool) = (match get_prop "dismissable" el with | Error _ -> Ok true | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o0 : outcome (bool) = rd_vkind__Toast__dismissable #num #flt el in
       let o1 : outcome (u_text_source num flt) = (match get_prop "message" el with | Error e -> Error e | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok w)) in
       let o2 : outcome (u_binding__bool num flt) = (match get_prop "open" el with | Error e -> Error e | Ok v -> (match dec_u_binding__bool v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o3 : outcome (e_tone_variant) = (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o3 : outcome (e_tone_variant) = rd_vkind__Toast__tone #num #flt el in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> Ok (C__vkind__Toast f0 f1 f2 f3)))))
     else
     Error ("unknown kind: " ^ tag)
 
 and dec_r_accessibility (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (r_accessibility num flt)) (decreases %[(jsize el <: nat); 0]) =
-  let o0 : outcome (option (string)) = (match get_prop "describedBy" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+  let o0 : outcome (option (string)) = rd_r_accessibility__Mk__described_by #num #flt el in
   let o1 : outcome (option (u_binding__bool num flt)) = (match get_prop "hidden" el with | Error _ -> Ok None | Ok v -> (match dec_u_binding__bool v with | Error e -> Error e | Ok w -> Ok (Some w))) in
   let o2 : outcome (option (u_binding__str num flt)) = (match get_prop "label" el with | Error _ -> Ok None | Ok v -> (match dec_u_binding__str v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-  let o3 : outcome (option (string)) = (match get_prop "labelledBy" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-  let o4 : outcome (option (e_live_region_kind)) = (match get_prop "liveRegion" el with | Error _ -> Ok None | Ok v -> (match dec_e_live_region_kind v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-  let o5 : outcome (option (jval num flt)) = (match get_prop "role" el with | Error _ -> Ok None | Ok v -> (let w = v in Ok (Some w))) in
+  let o3 : outcome (option (string)) = rd_r_accessibility__Mk__labelled_by #num #flt el in
+  let o4 : outcome (option (e_live_region_kind)) = rd_r_accessibility__Mk__live_region #num #flt el in
+  let o5 : outcome (option (jval num flt)) = rd_r_accessibility__Mk__role #num #flt el in
   let o6 : outcome (option (u_text_source num flt)) = (match get_prop "speak" el with | Error _ -> Ok None | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok (Some w))) in
   (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> (match o5 with | Error e -> Error e | Ok f5 -> (match o6 with | Error e -> Error e | Ok f6 -> Ok (C__r_accessibility__Mk f0 f1 f2 f3 f4 f5 f6))))))))
 
@@ -1181,8 +1800,8 @@ and dec_u_binding__bool (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (u
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> Ok (C__u_binding__bool__Filter f0 f1)))
     else
     if tag = "Selection" then
-      let o0 : outcome (option (bool)) = (match get_prop "defaultValue" el with | Error _ -> Ok None | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o1 : outcome (option (string)) = (match get_prop "field" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o0 : outcome (option (bool)) = rd_u_binding__bool__Selection__default_value #num #flt el in
+      let o1 : outcome (option (string)) = rd_u_binding__bool__Selection__field #num #flt el in
       let o2 : outcome (string) = (match get_prop "nodeId" el with | Error e -> Error e | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok w)) in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> Ok (C__u_binding__bool__Selection f0 f1 f2))))
     else
@@ -1201,11 +1820,11 @@ and dec_u_binding__bool (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (u
     else
     if tag = "Local" then
       let o0 : outcome (option (u_format num flt)) = (match get_prop "codec" el with | Error _ -> Ok None | Ok v -> (match dec_u_format v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o1 : outcome (option (string)) = (match get_prop "commitTo" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o1 : outcome (option (string)) = rd_u_binding__bool__Local__commit_to #num #flt el in
       let o2 : outcome (u_local_flush_trigger num flt) = (match get_prop "flushOn" el with | Error e -> Error e | Ok v -> (match dec_u_local_flush_trigger v with | Error e -> Error e | Ok w -> Ok w)) in
       let o3 : outcome (unit) = (match get_prop "format" el with | Error e -> Error e | Ok v -> (let _ = v in let w = () in Ok w)) in
       let o4 : outcome (u_binding__bool num flt) = (match get_prop "initialFrom" el with | Error e -> Error e | Ok v -> (match dec_u_binding__bool v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o5 : outcome (option (unit)) = (match get_prop "onCommit" el with | Error _ -> Ok None | Ok v -> (let _ = v in let w = () in Ok (Some w))) in
+      let o5 : outcome (option (unit)) = rd_u_binding__bool__Local__on_commit #num #flt el in
       let o6 : outcome (unit) = (match get_prop "parse" el with | Error e -> Error e | Ok v -> (let _ = v in let w = () in Ok w)) in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> (match o5 with | Error e -> Error e | Ok f5 -> (match o6 with | Error e -> Error e | Ok f6 -> Ok (C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6))))))))
     else
@@ -1274,8 +1893,8 @@ and dec_u_format (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (u_format
       (match o0 with | Error e -> Error e | Ok f0 -> Ok (C__u_format__Percent f0))
     else
     if tag = "DateTime" then
-      let o0 : outcome (option (e_date_style)) = (match get_prop "dateStyle" el with | Error _ -> Ok None | Ok v -> (match dec_e_date_style v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o1 : outcome (option (e_time_style)) = (match get_prop "timeStyle" el with | Error _ -> Ok None | Ok v -> (match dec_e_time_style v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o0 : outcome (option (e_date_style)) = rd_u_format__DateTime__date_style #num #flt el in
+      let o1 : outcome (option (e_time_style)) = rd_u_format__DateTime__time_style #num #flt el in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> Ok (C__u_format__DateTime f0 f1)))
     else
     if tag = "RelativeTime" then
@@ -1312,8 +1931,8 @@ and dec_u_binding__flt (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (u_
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> Ok (C__u_binding__flt__Filter f0 f1)))
     else
     if tag = "Selection" then
-      let o0 : outcome (option (flt)) = (match get_prop "defaultValue" el with | Error _ -> Ok None | Ok v -> (match v with | JFloat w -> Ok (Some w) | other -> Error ("expected float, got " ^ kind_name other))) in
-      let o1 : outcome (option (string)) = (match get_prop "field" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o0 : outcome (option (flt)) = rd_u_binding__flt__Selection__default_value #num #flt el in
+      let o1 : outcome (option (string)) = rd_u_binding__flt__Selection__field #num #flt el in
       let o2 : outcome (string) = (match get_prop "nodeId" el with | Error e -> Error e | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok w)) in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> Ok (C__u_binding__flt__Selection f0 f1 f2))))
     else
@@ -1332,11 +1951,11 @@ and dec_u_binding__flt (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (u_
     else
     if tag = "Local" then
       let o0 : outcome (option (u_format num flt)) = (match get_prop "codec" el with | Error _ -> Ok None | Ok v -> (match dec_u_format v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o1 : outcome (option (string)) = (match get_prop "commitTo" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o1 : outcome (option (string)) = rd_u_binding__flt__Local__commit_to #num #flt el in
       let o2 : outcome (u_local_flush_trigger num flt) = (match get_prop "flushOn" el with | Error e -> Error e | Ok v -> (match dec_u_local_flush_trigger v with | Error e -> Error e | Ok w -> Ok w)) in
       let o3 : outcome (unit) = (match get_prop "format" el with | Error e -> Error e | Ok v -> (let _ = v in let w = () in Ok w)) in
       let o4 : outcome (u_binding__flt num flt) = (match get_prop "initialFrom" el with | Error e -> Error e | Ok v -> (match dec_u_binding__flt v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o5 : outcome (option (unit)) = (match get_prop "onCommit" el with | Error _ -> Ok None | Ok v -> (let _ = v in let w = () in Ok (Some w))) in
+      let o5 : outcome (option (unit)) = rd_u_binding__flt__Local__on_commit #num #flt el in
       let o6 : outcome (unit) = (match get_prop "parse" el with | Error e -> Error e | Ok v -> (let _ = v in let w = () in Ok w)) in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> (match o5 with | Error e -> Error e | Ok f5 -> (match o6 with | Error e -> Error e | Ok f6 -> Ok (C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6))))))))
     else
@@ -1401,8 +2020,8 @@ and dec_u_binding__json (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (u
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> Ok (C__u_binding__json__Filter f0 f1)))
     else
     if tag = "Selection" then
-      let o0 : outcome (option (jval num flt)) = (match get_prop "defaultValue" el with | Error _ -> Ok None | Ok v -> (let w = v in Ok (Some w))) in
-      let o1 : outcome (option (string)) = (match get_prop "field" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o0 : outcome (option (jval num flt)) = rd_u_binding__json__Selection__default_value #num #flt el in
+      let o1 : outcome (option (string)) = rd_u_binding__json__Selection__field #num #flt el in
       let o2 : outcome (string) = (match get_prop "nodeId" el with | Error e -> Error e | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok w)) in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> Ok (C__u_binding__json__Selection f0 f1 f2))))
     else
@@ -1421,11 +2040,11 @@ and dec_u_binding__json (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (u
     else
     if tag = "Local" then
       let o0 : outcome (option (u_format num flt)) = (match get_prop "codec" el with | Error _ -> Ok None | Ok v -> (match dec_u_format v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o1 : outcome (option (string)) = (match get_prop "commitTo" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o1 : outcome (option (string)) = rd_u_binding__json__Local__commit_to #num #flt el in
       let o2 : outcome (u_local_flush_trigger num flt) = (match get_prop "flushOn" el with | Error e -> Error e | Ok v -> (match dec_u_local_flush_trigger v with | Error e -> Error e | Ok w -> Ok w)) in
       let o3 : outcome (unit) = (match get_prop "format" el with | Error e -> Error e | Ok v -> (let _ = v in let w = () in Ok w)) in
       let o4 : outcome (u_binding__json num flt) = (match get_prop "initialFrom" el with | Error e -> Error e | Ok v -> (match dec_u_binding__json v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o5 : outcome (option (unit)) = (match get_prop "onCommit" el with | Error _ -> Ok None | Ok v -> (let _ = v in let w = () in Ok (Some w))) in
+      let o5 : outcome (option (unit)) = rd_u_binding__json__Local__on_commit #num #flt el in
       let o6 : outcome (unit) = (match get_prop "parse" el with | Error e -> Error e | Ok v -> (let _ = v in let w = () in Ok w)) in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> (match o5 with | Error e -> Error e | Ok f5 -> (match o6 with | Error e -> Error e | Ok f6 -> Ok (C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6))))))))
     else
@@ -1487,8 +2106,8 @@ and dec_u_binding__str (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (u_
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> Ok (C__u_binding__str__Filter f0 f1)))
     else
     if tag = "Selection" then
-      let o0 : outcome (option (string)) = (match get_prop "defaultValue" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o1 : outcome (option (string)) = (match get_prop "field" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o0 : outcome (option (string)) = rd_u_binding__str__Selection__default_value #num #flt el in
+      let o1 : outcome (option (string)) = rd_u_binding__str__Selection__field #num #flt el in
       let o2 : outcome (string) = (match get_prop "nodeId" el with | Error e -> Error e | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok w)) in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> Ok (C__u_binding__str__Selection f0 f1 f2))))
     else
@@ -1507,11 +2126,11 @@ and dec_u_binding__str (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (u_
     else
     if tag = "Local" then
       let o0 : outcome (option (u_format num flt)) = (match get_prop "codec" el with | Error _ -> Ok None | Ok v -> (match dec_u_format v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-      let o1 : outcome (option (string)) = (match get_prop "commitTo" el with | Error _ -> Ok None | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok (Some w))) in
+      let o1 : outcome (option (string)) = rd_u_binding__str__Local__commit_to #num #flt el in
       let o2 : outcome (u_local_flush_trigger num flt) = (match get_prop "flushOn" el with | Error e -> Error e | Ok v -> (match dec_u_local_flush_trigger v with | Error e -> Error e | Ok w -> Ok w)) in
       let o3 : outcome (unit) = (match get_prop "format" el with | Error e -> Error e | Ok v -> (let _ = v in let w = () in Ok w)) in
       let o4 : outcome (u_binding__str num flt) = (match get_prop "initialFrom" el with | Error e -> Error e | Ok v -> (match dec_u_binding__str v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o5 : outcome (option (unit)) = (match get_prop "onCommit" el with | Error _ -> Ok None | Ok v -> (let _ = v in let w = () in Ok (Some w))) in
+      let o5 : outcome (option (unit)) = rd_u_binding__str__Local__on_commit #num #flt el in
       let o6 : outcome (unit) = (match get_prop "parse" el with | Error e -> Error e | Ok v -> (let _ = v in let w = () in Ok w)) in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> (match o5 with | Error e -> Error e | Ok f5 -> (match o6 with | Error e -> Error e | Ok f6 -> Ok (C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6))))))))
     else
@@ -1561,17 +2180,17 @@ and dec_u_text_source (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (u_t
 
 and dec_r_state_behaviour (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (r_state_behaviour num flt)) (decreases %[(jsize el <: nat); 0]) =
   let o0 : outcome (option (node num flt)) = (match get_prop "onEmpty" el with | Error _ -> Ok None | Ok v -> (match dec_node v with | Error e -> Error e | Ok w -> Ok (Some w))) in
-  let o1 : outcome (option (unit)) = (match get_prop "onError" el with | Error _ -> Ok None | Ok v -> (let _ = v in let w = () in Ok (Some w))) in
+  let o1 : outcome (option (unit)) = rd_r_state_behaviour__Mk__on_error #num #flt el in
   let o2 : outcome (option (node num flt)) = (match get_prop "onLoading" el with | Error _ -> Ok None | Ok v -> (match dec_node v with | Error e -> Error e | Ok w -> Ok (Some w))) in
   (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> Ok (C__r_state_behaviour__Mk f0 f1 f2))))
 
 and dec_r_semantic_style (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (r_semantic_style num flt)) (decreases %[(jsize el <: nat); 0]) =
-  let o0 : outcome (e_text_direction) = (match get_prop "direction" el with | Error _ -> Ok C__e_text_direction__Auto | Ok v -> (match dec_e_text_direction v with | Error e -> Error e | Ok w -> Ok w)) in
-  let o1 : outcome (e_emphasis) = (match get_prop "emphasis" el with | Error _ -> Ok C__e_emphasis__Normal | Ok v -> (match dec_e_emphasis v with | Error e -> Error e | Ok w -> Ok w)) in
-  let o2 : outcome (e_style_role) = (match get_prop "role" el with | Error _ -> Ok C__e_style_role__None | Ok v -> (match dec_e_style_role v with | Error e -> Error e | Ok w -> Ok w)) in
-  let o3 : outcome (e_tone_variant) = (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w)) in
-  let o4 : outcome (e_font_voice) = (match get_prop "voice" el with | Error _ -> Ok C__e_font_voice__Default | Ok v -> (match dec_e_font_voice v with | Error e -> Error e | Ok w -> Ok w)) in
-  let o5 : outcome (e_style_weight) = (match get_prop "weight" el with | Error _ -> Ok C__e_style_weight__Standard | Ok v -> (match dec_e_style_weight v with | Error e -> Error e | Ok w -> Ok w)) in
+  let o0 : outcome (e_text_direction) = rd_r_semantic_style__Mk__direction #num #flt el in
+  let o1 : outcome (e_emphasis) = rd_r_semantic_style__Mk__emphasis #num #flt el in
+  let o2 : outcome (e_style_role) = rd_r_semantic_style__Mk__role #num #flt el in
+  let o3 : outcome (e_tone_variant) = rd_r_semantic_style__Mk__tone #num #flt el in
+  let o4 : outcome (e_font_voice) = rd_r_semantic_style__Mk__voice #num #flt el in
+  let o5 : outcome (e_style_weight) = rd_r_semantic_style__Mk__weight #num #flt el in
   (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> (match o5 with | Error e -> Error e | Ok f5 -> Ok (C__r_semantic_style__Mk f0 f1 f2 f3 f4 f5)))))))
 
 and dec_items_l_str (#num #flt: eqtype) (acc: list (string)) (ys: list (jval num flt)) : Tot (outcome (list (string))) (decreases %[(jsizes ys <: nat); 1]) =

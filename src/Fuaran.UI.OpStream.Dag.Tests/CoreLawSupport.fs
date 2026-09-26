@@ -279,6 +279,15 @@ let rec private skeletonToTreeOp (op: Fuaran.Core.SkeletonOp<EqNode, NodeId>) : 
     | Fuaran.Core.SkeletonOp.MoveNode(target, newParent) -> TreeOp.MoveNode(target, newParent)
     | Fuaran.Core.SkeletonOp.ReorderChildren(parent, order) -> TreeOp.ReorderChildren(parent, order)
     | Fuaran.Core.SkeletonOp.Batch inner -> TreeOp.Batch(inner |> List.map skeletonToTreeOp)
+    // Core 0.32.0's in-place op (Phase 1874 raise). It has no image in the tier's algebra: the
+    // nearest case, `EditNode`, swaps the node's whole `Kind` — children included — where
+    // `UpdateNode` keeps the children the tree holds. Mapping it there would put a different
+    // op's footprint under the law, so, like `ReplaceRoot` above, it is outside this
+    // projection's vocabulary; Core's generator draws no `UpdateNode` at this pin, and one that
+    // starts to will fail here by name rather than certify a borrowed footprint.
+    | Fuaran.Core.SkeletonOp.UpdateNode _ ->
+        failwith
+            "skeletonToTreeOp: Core's UpdateNode keeps the target's children and the tier's TreeOp has no in-place op that does, so it is outside this projection's vocabulary"
 
 let uiFootprintOfSkeleton (ops: Fuaran.Core.SkeletonOp<EqNode, NodeId> list) : Fuaran.Core.Footprint =
     ops

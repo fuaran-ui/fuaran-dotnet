@@ -47,8 +47,8 @@
     <PackageReference Include="Fuaran.Core.DataFrame" />
     <PackageReference Include="Fuaran.Core.Query" />
     <PackageReference Include="Fuaran.Core.Conformance" />
-    <!-- First ships at 0.32.0 (fuaran-core Phase 257): referenced in cut-time runs only until this repository's pin carries it. -->
-    <PackageReference Include="Fuaran.Core.DataFrame.Conformance" Condition="'$(FuaranCoreVersion)' != ''" />
+    <!-- First shipped at 0.32.0 (fuaran-core Phase 257); unconditional since Phase 1874 raised this repository's pin to carry it. -->
+    <PackageReference Include="Fuaran.Core.DataFrame.Conformance" />
     <PackageReference Include="Fuaran.Core.Projection" />
     <PackageReference Include="Fuaran.Core.AiSurface" />
     <PackageReference Include="Fuaran.Core.Propagation" />

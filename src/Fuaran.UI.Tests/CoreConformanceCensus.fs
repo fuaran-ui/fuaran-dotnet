@@ -232,6 +232,15 @@ let private aggregateParityTest =
 let private schemaWalkTest =
     "static output-schema derivation certifies under Core's schemaWalkLaws"
 
+/// Two more in the same `Columnar` module, from the 0.32.0 pin raise (Phase 1874): the null-skip
+/// half `aggregateParityLaws` shed (fuaran-core#257), and the retyped `columnarOpLawsWith`, which
+/// `columnarOpLaws` no longer delegates to and which is therefore run by its own name.
+let private aggregateNullSkipTest =
+    "aggregate null-skipping certifies under Core's aggregateNullSkipLaws"
+
+let private columnarOpWithTest =
+    "the columnar op algebra certifies under Core's columnarOpLawsWith at the kit's reference generator"
+
 /// One row per public law family of the pinned kit. Order here is authoring order (grouped by
 /// classification); the report sorts by family key, so this list may be reordered freely.
 let census: (string * Adoption) list =
@@ -474,6 +483,10 @@ let census: (string * Adoption) list =
       "Conformance.columnarOpLaws", Adopted(columnarOpTest, "Conformance.columnarOpLaws")
       "Conformance.columnarValidatorLaws", Adopted(columnarValidatorTest, "Conformance.columnarValidatorLaws")
       "Conformance.aggregateParityLaws", Adopted(aggregateParityTest, "Conformance.aggregateParityLaws")
+      // Core 0.32.0 (fuaran-core#257) split `aggregateParityLaws`: its GroupBy parity half moved to
+      // Fuaran.Core.DataFrame.Conformance under the old name, and the `Column.aggregate` null-skip
+      // half stayed in the kit as this family. Adopted beside it so the tier still runs both laws.
+      "Conformance.aggregateNullSkipLaws", Adopted(aggregateNullSkipTest, "Conformance.aggregateNullSkipLaws")
       "Conformance.schemaWalkLaws", Adopted(schemaWalkTest, "Conformance.schemaWalkLaws")
 
       // ---- the roster's own widening (Core 0.25.0 -> 0.26.0) ----
@@ -486,10 +499,18 @@ let census: (string * Adoption) list =
       // new entry point.
       "Conformance.opAlgebra", Adopted(certifyTest, "Conformance.certify")
       "Conformance.reducer", Adopted(certifyStreamTest, "Conformance.certifyStream")
-      // Reached through the family beside it rather than by its own name: `columnarOpLaws` is the
-      // no-argument spelling that delegates here, so the enrolled test runs this family's laws
-      // without naming it — the same shape as the `certify`-ported rows above.
-      "Conformance.columnarOpLawsWith", Adopted(columnarOpTest, "Conformance.columnarOpLaws")
+      // Re-classed at the 0.32.0 pin (Phase 1874). Until then it was reached through
+      // `columnarOpLaws`, the no-argument spelling that delegated here. 0.32.0 RETYPED it to take the
+      // domain's `StreamGen<ColumnOp, Table>` and the two now share a runner instead, so a row
+      // claiming the one reaches the other would be enrolment by a delegation that no longer exists.
+      // It is run by its own name, at Core's shipped `ColumnOps.invert` and the kit's reference
+      // generator: the tier edits no table through a table-edit op, so it has no generator of its
+      // own to hand it, and the port says so rather than reading as tier evidence.
+      "Conformance.columnarOpLawsWith",
+      Adopted(
+          columnarOpWithTest,
+          "Conformance.columnarOpLawsWith — at ColumnOps.invert and Conformance.columnarOpStreamGen, the kit's reference generator; the tier has no table-edit op to draw its own"
+      )
       // Not adopted, and the mechanism is precise: the pilot needs TWO structurally-distinct
       // `ArtifactWitness`es plus an `embed` between them, and certifies `applyMemo` ACROSS that
       // boundary. This tier ships one artifact witness (FastPath patterns) — `compositionLaws`
@@ -527,12 +548,31 @@ let census: (string * Adoption) list =
       "Conformance.propagationEvaluatorLaws",
       NotUsed
           "Fuaran.Core.Propagation's incremental evaluator seam (Propagation.eval / evalFrom) — no project in this tier references Fuaran.Core.Propagation or hands it an evaluator; the tier's reactivity runs on its own stores (see propagationEvalLaws)"
+      // Arrived with the 0.32.0 pin raise (Phase 1874): the prior-aware evaluator form
+      // (`Propagation.evalWith` / `evalFromWith`). No subject here, for the reason the row above gives.
+      "Conformance.propagationEvaluatorLawsWith",
+      NotUsed
+          "Fuaran.Core.Propagation's prior-aware evaluator seam (Propagation.evalWith / evalFromWith) — no project in this tier references Fuaran.Core.Propagation or hands it an evaluator (see propagationEvaluatorLaws)"
+      // Arrived with the 0.32.0 pin raise (Phase 1874), in Fuaran.Core.DataFrame.Conformance. Its
+      // subject is `DataFrame.evalFrom` driven by `ColumnOps.changeOf` over a domain's table-edit
+      // stream. The tier's incremental path is a different seam — `Incremental.primeOn` /
+      // `refreshOn` over a row `TableDelta` (`ServerDriven/LiveTransform.fs`), certified by the
+      // `IncrementalDelta` rows above — and no project here edits a table through a `ColumnOp`.
+      "Conformance.incrementalLawsWith",
+      NotUsed
+          "DataFrame.evalFrom over ColumnOps.changeOf at a domain's StreamGen<ColumnOp, Table> — the tier's incremental path is Incremental.primeOn / refreshOn over a row TableDelta (ServerDriven/LiveTransform.fs, see IncrementalDelta.laws / lawsWith), and no project here edits a table through a ColumnOp"
       "Conformance.keyedChildrenLaws",
       CarriedBy
           "unfiled — this tier DOES hold nodes in named slots the conformance walk does not reach, so the family has a subject here. `Introspect.getChildren` (Fuaran.UI.Ops) is what `NodeWitness.Children` is built on, and it answers `None` for ErrorBoundary and for the State envelope; those three subtrees — `fallback`, `state.onEmpty`, `state.onLoading` — are reached only by the separate `nonStructuralSlots` lens. So an id sitting in one of them is invisible to the surface uniqueness walk, which is the defect class this family certifies. Not `NotUsed`: that would assert there is nothing keyed here, and there demonstrably is. Adopting it needs a `KeyedWitness` over those slots — the work is small and named, and it arrived with the 0.30.0 pin raise (fuaran-core#188's release slot)."
       "Conformance.aiSurfaceLaws",
       NotUsed
           "Fuaran.Core.AiSurface — the tier ships its own runtime introspection surface (Fuaran.UI.AiTools) and consumes no Core AI surface"
+      // Arrived with the 0.32.0 pin raise (Phase 1874): the 0.31.0 form of `aiSurfaceLaws`, the kit
+      // rolling the policy. 0.32.0 changed `aiSurfaceLaws`' VERDICT (it now runs the domain's own
+      // `Decide`); neither form has a subject here, for the reason the row above gives.
+      "Conformance.aiSurfaceLawsUnderKitPolicy",
+      NotUsed
+          "Fuaran.Core.AiSurface's proposal plumbing — no project in this tier references Fuaran.Core.AiSurface or submits an op through its Decide (see aiSurfaceLaws)"
       "Conformance.projectionLaws",
       NotUsed "Fuaran.Core.Projection — the tier renders a tree; it maintains no Core projection over an op stream"
       "Conformance.queryLaws",
@@ -540,6 +580,24 @@ let census: (string * Adoption) list =
           "Fuaran.Core.Query's registry seam — QuerySource.fs is a deliberately thinner UI-facing sibling built on the Column / DataFrame types and explicitly NOT on the Core query registry, which no project here references"
       "Conformance.capabilityPipelineLaws",
       NotUsed "Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline"
+      // ---- the witness-taking forms Core 0.32.0 added (fuaran-core#246), arriving with Phase 1874 ----
+      "Conformance.queryLawsWith",
+      NotUsed
+          "Fuaran.Core.Query's registry seam at a domain's QuerySeamWitness — no project here references the Core query registry or dispatches through QueryRegistry.dispatch (see queryLaws)"
+      "Conformance.capabilityPipelineLawsWith",
+      NotUsed
+          "Fuaran.Core.Function's CapabilityPipeline at a domain's CapabilityPipelineWitness — the tier composes no capability pipeline"
+      // Not `NotUsed`: this family's subject EXISTS here. `Fuaran.UI.AiTools.Capabilities` is a host
+      // dispatch path over a Core `CapabilityRegistry` — `validate` resolves and arg-checks the call,
+      // then `makeInvoker` runs the host body — which is exactly the shape the family certifies (a
+      // refusal precedes the body; the host refuses what the registry refuses, with the registry's
+      // error). The self-contained `capabilityLaws` row above certifies the kit's registry, never
+      // this path. Adopting it needs a `CapabilitySeamWitness` whose `Dispatch` is that path, built in
+      // the AiTools test project, which references no conformance kit today — a separate adoption,
+      // not a consequence of the pin, so it is enrolled by name here rather than silently absent.
+      "Conformance.capabilityLawsWith",
+      CarriedBy
+          "unfiled — Fuaran.UI.AiTools.Capabilities (validate, then makeInvoker's host body) is a host dispatch path over a Core CapabilityRegistry, the subject this family certifies; adoption is one CapabilitySeamWitness whose Dispatch is that path, in Fuaran.UI.AiTools.Tests"
       "Conformance.capabilityPipelineIncrementalLaws",
       NotUsed "Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline"
       "Conformance.normalizeLaws",
@@ -562,6 +620,18 @@ let census: (string * Adoption) list =
 // ---------------------------------------------------------------------------
 
 let private conformanceAssembly = typeof<Fuaran.Core.LawResult>.Assembly
+
+/// The kit ships its law families from TWO assemblies since Core 0.32.0 (fuaran-core#257): the
+/// families that read the dataframe layer moved to `Fuaran.Core.DataFrame.Conformance`, which
+/// carries a same-named forwarding `Conformance` module (so every `Conformance.<family>` key is
+/// unchanged) and `IncrementalDelta`. A census that reflected over the kit's assembly alone would
+/// see those families vanish and read the move as a removal. The second assembly is loaded by
+/// name, as Core's own suite does (`KitRoster.assemblies`): an F# module has no `typeof`. Its
+/// `DataFrameConformance` module is the forwards' HOME, not a roster key, and `lawModules` below
+/// does not name it — Core re-keys to it only when the forwards go (its Phase 258).
+let private conformanceAssemblies: Assembly list =
+    [ conformanceAssembly
+      Assembly.Load(AssemblyName "Fuaran.Core.DataFrame.Conformance") ]
 
 /// The modules the kit publishes law entry points from. Mirrors Core's own census exactly, so the
 /// two agree about what a "family" is; a module the kit stops shipping fails rather than silently
@@ -588,15 +658,34 @@ let private lawResultList =
 let private isLawEntry (m: MethodInfo) = m.ReturnType = lawResultList
 
 let private shippedFamilies () : string list =
-    [ for moduleName in lawModules do
-          match conformanceAssembly.GetType("Fuaran.Core." + moduleName) with
-          | Null -> failtestf "the pinned kit no longer ships a module named %s" moduleName
-          | NonNull t ->
-              for m in t.GetMethods(BindingFlags.Public ||| BindingFlags.Static ||| BindingFlags.DeclaredOnly) do
-                  if isLawEntry m then
-                      yield moduleName + "." + m.Name ]
-    |> List.distinct
-    |> List.sort
+    let found =
+        [ for moduleName in lawModules do
+              let hosts =
+                  conformanceAssemblies
+                  |> List.choose (fun asm ->
+                      match asm.GetType("Fuaran.Core." + moduleName) with
+                      | Null -> None
+                      | NonNull t -> Some t)
+
+              if List.isEmpty hosts then
+                  failtestf "the pinned kit no longer ships a module named %s" moduleName
+
+              for t in hosts do
+                  for m in t.GetMethods(BindingFlags.Public ||| BindingFlags.Static ||| BindingFlags.DeclaredOnly) do
+                      if isLawEntry m then
+                          yield moduleName + "." + m.Name ]
+
+    // Two assemblies may each declare a module of one name — the forwards do exactly that — so a
+    // key found twice is REFUSED rather than collapsed: two families under one key is the ambiguity
+    // a caller's `Conformance.<family>` would resolve by reference order. Core's own roster check
+    // refuses the same thing.
+    let twice =
+        found |> List.countBy id |> List.filter (fun (_, n) -> n > 1) |> List.map fst
+
+    if not (List.isEmpty twice) then
+        failtestf "these roster keys are declared by more than one module of the pinned kit: %A" twice
+
+    List.sort found
 
 /// The pinned kit's version, read from the assembly rather than hard-coded: the version decides
 /// which families exist, so a report that named it from a literal could describe a kit that is not
@@ -732,7 +821,12 @@ let private conformanceTestProjects () =
             let projects =
                 Directory.GetFiles(dir, "*.fsproj") |> Array.map (fun p -> File.ReadAllText p)
 
-            if projects |> Array.exists (fun text -> text.Contains "Fuaran.Core.Conformance") then
+            if
+                projects
+                |> Array.exists (fun text ->
+                    text.Contains "Fuaran.Core.Conformance"
+                    || text.Contains "Fuaran.Core.DataFrame.Conformance")
+            then
                 Some(leaf dir, dir, String.concat "\n" projects)
             else
                 None)
@@ -840,7 +934,7 @@ let render (rows: (string * Adoption) list) : string =
 
     line (
         sprintf
-            "Every public law family the pinned `Fuaran.Core.Conformance` **%s** ships, and how this repo answers for it."
+            "Every public law family the pinned `Fuaran.Core.Conformance` and `Fuaran.Core.DataFrame.Conformance` **%s** ship, and how this repo answers for it."
             (kitVersion ())
     )
 
@@ -978,7 +1072,13 @@ let tests =
               // not the pinned one — a finding, never something to paper over.
               let reflected = shippedFamilies () |> Set.ofList
 
-              let kitDeclared = Fuaran.Core.SampleAdequacy.census |> List.map fst |> Set.ofList
+              // Since 0.32.0 each of the kit's two packages declares its own share of the census
+              // (fuaran-core#257), and the whole is their composition — Core's suite reads it the
+              // same way (`KitRoster.census`).
+              let kitDeclared =
+                  Fuaran.Core.SampleAdequacy.census @ Fuaran.Core.DataFrameFamilies.census
+                  |> List.map fst
+                  |> Set.ofList
 
               Expect.isEmpty
                   (Set.difference reflected kitDeclared |> Set.toList)
