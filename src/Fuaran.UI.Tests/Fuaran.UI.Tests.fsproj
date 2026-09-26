@@ -459,6 +459,9 @@
     <PackageReference Include="Fuaran.Core.Ops" />
     <PackageReference Include="Fuaran.Core.OpStream" />
     <PackageReference Include="Fuaran.Core.Conformance" />
+    <!-- Phase 1874: the dataframe law families (aggregateParityLaws, columnarOpLaws*, schemaWalkLaws)
+         left the kit for this package at Core 0.32.0 (fuaran-core#257). -->
+    <PackageReference Include="Fuaran.Core.DataFrame.Conformance" />
     <!-- Phase 1668 — the packaged IDL engine the three certifications run over: the
          model + codec (Idl) and the generator the schema / TypeScript legs emit through
          (Idl.Codegen). Both are already centrally pinned for src/Fuaran.UI.Idl. -->

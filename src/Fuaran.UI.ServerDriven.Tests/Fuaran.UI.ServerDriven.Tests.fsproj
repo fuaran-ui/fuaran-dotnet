@@ -62,5 +62,8 @@
          scan (which discovers conformance-referencing test projects from their
          .fsproj rather than from a list). -->
     <PackageReference Include="Fuaran.Core.Conformance" />
+    <!-- Phase 1874: incrementalLaws, IncrementalDelta, nowLaws and slotParamLaws left the kit for this
+         package at Core 0.32.0 (fuaran-core#257). -->
+    <PackageReference Include="Fuaran.Core.DataFrame.Conformance" />
   </ItemGroup>
 </Project>

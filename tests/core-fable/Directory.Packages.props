@@ -18,6 +18,9 @@
     <PackageVersion Update="Fuaran.Core.DataFrame" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Query" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Conformance" Version="$(FuaranCoreVersion)" />
+    <!-- Fuaran.Core.DataFrame.Conformance first shipped at 0.32.0 (fuaran-core Phase 257); since Phase 1874
+         it is an ordinary root pin, updated here like every other. -->
+    <PackageVersion Update="Fuaran.Core.DataFrame.Conformance" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Projection" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.AiSurface" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Propagation" Version="$(FuaranCoreVersion)" />

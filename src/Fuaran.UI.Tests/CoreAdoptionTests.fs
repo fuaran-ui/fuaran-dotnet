@@ -715,6 +715,20 @@ module Columnar =
                   CoreConf.columnarOpLaws lawSeed 100
                   |> assertAllPassed "columnarOpLaws over the pinned columnar op algebra"
 
+              testCase
+                  "the columnar op algebra certifies under Core's columnarOpLawsWith at the kit's reference generator"
+              <| fun _ ->
+                  // Core 0.32.0 retyped the `With` form to take the domain's
+                  // `StreamGen<ColumnOp, Table>`, and `columnarOpLaws` no longer
+                  // delegates to it (the two share a runner), so the family is run
+                  // by its own name here. The tier has no table-edit op to draw a
+                  // generator of its own from, so this passes Core's shipped
+                  // `invert` and the kit's reference generator — Core's own
+                  // migration line — and is evidence about the PIN, as the census
+                  // row's port says.
+                  CoreConf.columnarOpLawsWith ColumnOps.invert CoreConf.columnarOpStreamGen lawSeed 100
+                  |> assertAllPassed "columnarOpLawsWith over the kit's reference columnar generator"
+
               testCase "the columnar validator certifies under Core's columnarValidatorLaws"
               <| fun _ ->
                   // Likewise: nothing here registers a Core columnar validator.
@@ -726,6 +740,16 @@ module Columnar =
               <| fun _ ->
                   CoreConf.aggregateParityLaws lawSeed 100
                   |> assertAllPassed "aggregateParityLaws over the pinned aggregate surface"
+
+              testCase "aggregate null-skipping certifies under Core's aggregateNullSkipLaws"
+              <| fun _ ->
+                  // Core 0.32.0 split `aggregateParityLaws` in two: the GroupBy
+                  // parity half moved with the dataframe families, and the
+                  // `Column.aggregate` null-skip half stayed in the kit under this
+                  // name. Adopted beside the parity half so the pair still runs
+                  // both laws the one family ran at 0.31.0.
+                  CoreConf.aggregateNullSkipLaws lawSeed 100
+                  |> assertAllPassed "aggregateNullSkipLaws over the pinned aggregate surface"
 
               testCase "static output-schema derivation certifies under Core's schemaWalkLaws"
               <| fun _ ->

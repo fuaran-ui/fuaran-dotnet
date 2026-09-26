@@ -13,5 +13,10 @@
     "package": "Fuaran.Core.CSharp",
     "reason": "A C# assembly is not Fable-compiled, so there is no compile for this gate to run. Mirrors the entry in Fuaran.Core's own fable-exclusions.json.",
     "phase": "128"
+  },
+  {
+    "package": "Fuaran.Core.DataFrame.CSharp",
+    "reason": "A C# assembly is not Fable-compiled, so there is no compile for this gate to run: the dataframe half of the C# facade, split from Fuaran.Core.CSharp by fuaran-core Phase 257. Mirrors the entry in Fuaran.Core's own fable-exclusions.json.",
+    "phase": "257"
   }
 ]
