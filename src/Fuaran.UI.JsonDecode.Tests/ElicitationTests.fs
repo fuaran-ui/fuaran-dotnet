@@ -176,4 +176,35 @@ let typedDecodeSurface =
                   | Error e ->
                       Expect.equal e.Code ElicitationErrorCode.ANSWER_OUT_OF_SPACE "enum violation surfaces typed"
                       Expect.equal e.Path "$.answer.grade" "at the offending field"
-                  | Ok() -> failtest "a nonconforming answer must be refused") ]
+                  | Ok() -> failtest "a nonconforming answer must be refused")
+
+          // Fuaran.Core 0.31.0 adds the tree space `SlotTree` to the reused space vocabulary. It is
+          // not one of the five §18.1 spaces, so a contract holding one is refused by name before
+          // emission, and no answer conforms to it (Phase 1860).
+          testCase "a tree space is no elicitation space — refused at encode, and no answer conforms" (fun () ->
+              let wire = Corpus.readPayload corpusRoot "elicitation/elc-full.json"
+
+              match Elicitation.decodeEnvelope wire with
+              | Error e -> failtestf "decode failed: %s at %s" e.Code e.Path
+              | Ok env ->
+                  let treeField =
+                      { List.head env.Contract.Fields with
+                          Space = SlotTree(Some "Chart") }
+
+                  let tree =
+                      { env with
+                          Contract = { Fields = treeField :: List.tail env.Contract.Fields } }
+
+                  match Elicitation.encodeEnvelope tree with
+                  | Error e ->
+                      Expect.equal e.Code "UNKNOWN_DU_CASE" "the §18.1 closed-set refusal"
+                      Expect.equal e.Path "$.contract.fields[0].space.$type" "at the offending space"
+                  | Ok _ -> failtest "an envelope holding a tree space must not encode"
+
+                  let answer = Map.ofList [ treeField.Name, AnswerValue.Str "{\"kind\":\"Chart\"}" ]
+
+                  match Elicitation.validateAnswer { Fields = [ treeField ] } answer with
+                  | Error e ->
+                      Expect.equal e.Code ElicitationErrorCode.ANSWER_TYPE_MISMATCH "no value conforms"
+                      Expect.equal e.Path ("$.answer." + treeField.Name) "at the offending field"
+                  | Ok() -> failtest "an answer to a tree space must be refused") ]

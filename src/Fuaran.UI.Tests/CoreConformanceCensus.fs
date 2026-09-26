@@ -521,6 +521,12 @@ let census: (string * Adoption) list =
       "Conformance.propagationEvalLaws",
       NotUsed
           "Fuaran.Core.Propagation's evaluator — the tier's reactivity runs on its own store and subscription channels (StateStore / FilterStore / SelectionStore / QueryStore) and never evaluates a Core propagation graph"
+      // Arrived with the 0.31.0 pin raise (Phase 1860). Its subject is an ADOPTER's evaluator — the
+      // `EvaluatorWitness` a domain hands `Propagation.eval` / `evalFrom` — and no project here
+      // references Fuaran.Core.Propagation, so there is no such evaluator to certify.
+      "Conformance.propagationEvaluatorLaws",
+      NotUsed
+          "Fuaran.Core.Propagation's incremental evaluator seam (Propagation.eval / evalFrom) — no project in this tier references Fuaran.Core.Propagation or hands it an evaluator; the tier's reactivity runs on its own stores (see propagationEvalLaws)"
       "Conformance.keyedChildrenLaws",
       CarriedBy
           "unfiled — this tier DOES hold nodes in named slots the conformance walk does not reach, so the family has a subject here. `Introspect.getChildren` (Fuaran.UI.Ops) is what `NodeWitness.Children` is built on, and it answers `None` for ErrorBoundary and for the State envelope; those three subtrees — `fallback`, `state.onEmpty`, `state.onLoading` — are reached only by the separate `nonStructuralSlots` lens. So an id sitting in one of them is invisible to the surface uniqueness walk, which is the defect class this family certifies. Not `NotUsed`: that would assert there is nothing keyed here, and there demonstrably is. Adopting it needs a `KeyedWitness` over those slots — the work is small and named, and it arrived with the 0.30.0 pin raise (fuaran-core#188's release slot)."

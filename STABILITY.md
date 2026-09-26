@@ -8244,6 +8244,40 @@ cut-to-raise window, and it closes at the raise. The copy's bytes do not change 
 `0.30.0` capture keys this repository's pin computes until the Core pin raise re-syncs it with the
 TS and Go ports (fuaran#1860).
 
+**fuaran#1860 — the `Fuaran.Core.*` pins move 0.30.0 → 0.31.0; ADDITIVE here (one named refusal in
+`Fuaran.UI.OpStream.Abstractions`); RIDES this slot.** 0.31.0 carries two Core changes a consumer
+sees through this tier:
+
+- **The capability invocation key takes an injective pre-image** (fuaran-core#225). The key used to
+  hash the addr-sorted `addr=value` pairs joined with no separator, so `[a="1b=2"]` and
+  `[a="1"; b="2"]` shared one key. The pre-image is now each (addr, value) field escaped and
+  terminated. Every key VALUE moves; nothing in this tier journals one, so nothing persisted is
+  orphaned. The corpus's `laws/capability-laws.json` is re-synced from Core's 0.31.0 emission in the
+  same change-set, and the TS and Go ports compute the same keys. The suite pins the formerly
+  colliding pair and six more vectors as literals every host shares.
+- **`ValueSpace` gains the tree space `SlotTree`** (fuaran-core#229), which makes a slotted
+  capability invocable. That is a new case on a CORE union, so a consumer matching `ValueSpace`
+  exhaustively meets it at the Core raise, not here. The one place this tier matched it is the
+  elicitation codec. §18.1 closes the elicitation space set at five tags and §18.2 answers are
+  scalars, so a tree space is no elicitation space. `Elicitation.encodeEnvelope` refuses a contract
+  holding one (`UNKNOWN_DU_CASE` at `$.contract.fields[i].space.$type`, the refusal its own decoder
+  would give those bytes). `validateAnswer` answers `ANSWER_TYPE_MISMATCH` for any value against
+  it. The wire and every existing contract are unchanged.
+
+The census gains one row: `Conformance.propagationEvaluatorLaws` is `NotUsed`, because no project
+here references `Fuaran.Core.Propagation` or hands it an evaluator.
+
+**One pin stays behind: `Fuaran.Core.Idl.Codegen` holds at 0.30.0.** It is build-time only and
+reaches no shipped package. The 0.31.0 F* target (fuaran-core#204/#222/#224) regenerates
+`proofs/Vocabulary.fst` so that the default-omitting encoder of this vocabulary's one list-typed
+defaulted slot (`Embed.permissions`) calls the list encoder on its own argument inside the recursive
+group. F* refuses the termination (`enc_dflt_l_e_embed_permission`, Error 19), and the proof leg goes
+red. Measured, both ways: at 0.31.0 the freshness family demands that regeneration and the leg
+refuses it; at 0.30.0 the committed, verified models are what the emitter produces. The pin moves
+when a Core release fixes the emission.
+
+*Version.* Rides this slot: additive, below the slot's standing class.
+
 ## 0.85.0 — the slot Phase 1734 opened, which Phase 1821's column-naming rename raised to WIRE-BREAKING — released 2026-09-20 as `v0.85.0`
 
 _**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride

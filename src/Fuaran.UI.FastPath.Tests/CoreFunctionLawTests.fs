@@ -71,6 +71,27 @@ module CoreFunctionLawTests =
         Fuaran.Tests.CorpusRoot.tryFind ()
         |> Option.defaultValue (Path.Combine(__SOURCE_DIRECTORY__, "..", "..", "..", "wire-format-fixtures"))
 
+    /// A capability to key against — the key reads only its id.
+    let private capabilityWithId (id: string) : Capability =
+        let declaration =
+            "{\"$type\":\"capability\",\"determinism\":\"random\",\"id\":\""
+            + id
+            + "\",\"placement\":{\"$type\":\"server\"},\"signature\":{\"effect\":{\"determinism\":\"random\",\"host\":\"readsHost\"},\"holes\":[],\"name\":\"cap\"}}"
+
+        match CapabilityCodec.decode declaration with
+        | Ok c -> c
+        | Error e -> failwithf "the key fixture did not decode: %s" e
+
+    /// A declaration carrying an explicit `"slotTree"` space (fuaran-core#229): a slot whose space
+    /// disagrees with its constraint, and a value hole ranging over trees of one kind. The TS and Go
+    /// ports pin these exact bytes.
+    let private slotTreeDecl =
+        "{\"$type\":\"capability\",\"determinism\":\"random\",\"id\":\"cap-tree\",\"placement\":{\"$type\":\"server\"},"
+        + "\"signature\":{\"effect\":{\"determinism\":\"random\",\"host\":\"readsHost\"},\"holes\":["
+        + "{\"addr\":\"body\",\"kind\":\"slot\",\"name\":\"body\",\"required\":true,\"slotKind\":\"Layout\",\"space\":{\"$type\":\"slotTree\"}},"
+        + "{\"addr\":\"chart\",\"kind\":\"value\",\"name\":\"chart\",\"required\":false,\"space\":{\"$type\":\"slotTree\",\"slotKind\":\"Chart\"}}"
+        + "],\"name\":\"tree\"}}"
+
     // -----------------------------------------------------------------------
     //  the tests
     // -----------------------------------------------------------------------
@@ -469,6 +490,73 @@ module CoreFunctionLawTests =
                   match LawVectorExport.checkVector (vector "reject") with
                   | Some m -> Expect.stringContains m "capability-0-accept" "the perturbed vector is named by its id"
                   | None -> failtest "a perturbed verdict was not seen"
+
+              // ---- Phase 1860: the invocation key's canonical form, pinned for every host --------
+              //
+              // The key used to hash the addr-sorted `addr=value` pairs joined with no separator,
+              // so [a="1b=2"] and [a="1"; b="2"] shared one pre-image and one key. The pinned kit
+              // (fuaran-core#225) builds the pre-image through `Hash.canonicalFields` instead. The
+              // literals below are this kit's own values, and the TS and Go ports pin the same ones.
+
+              testCase "the capability invocation key keys the formerly colliding pair apart"
+              <| fun _ ->
+                  let cap = capabilityWithId "cap"
+                  let one = Capability.invocationKey cap [ "a", "1b=2" ]
+                  let two = Capability.invocationKey cap [ "a", "1"; "b", "2" ]
+                  Expect.notEqual one two "[a=\"1b=2\"] and [a=\"1\"; b=\"2\"] share a key"
+                  Expect.equal one "cap#4ad0d41a" "the key every host pins for [a=\"1b=2\"]"
+                  Expect.equal two "cap#53c281a5" "the key every host pins for [a=\"1\"; b=\"2\"]"
+
+                  // The pre-225 pre-image, pinned: both argument sets joined to "a=1b=2", so both
+                  // keyed to cap#73fad033 — the value the TS and Go ports produced before this phase.
+                  let oldKey (args: (string * string) list) =
+                      "cap#"
+                      + Fuaran.Core.Hash.fnv1a (
+                          args
+                          |> List.sortBy fst
+                          |> List.map (fun (a, v) -> a + "=" + v)
+                          |> String.concat ""
+                      )
+
+                  Expect.equal (oldKey [ "a", "1b=2" ]) "cap#73fad033" "the old form's key"
+                  Expect.equal (oldKey [ "a", "1"; "b", "2" ]) "cap#73fad033" "the old form collided"
+
+              testCase "the capability invocation key matches the literals every host pins"
+              <| fun _ ->
+                  [ "cap-0", [ "h0", "13" ], "cap-0#70fcefc7" // the published vector capability-0
+                    "cap", [], "cap#811c9dc5" // the empty pre-image: the FNV-1a offset basis
+                    "cap", [ "a", "x\u0001y"; "b", "\u0010" ], "cap#3d801624" // escaped value fields
+                    "cap", [ "a", "x"; "\u0001y", "\u0010" ], "cap#46a6fdda" // escaped address field
+                    "cap", [ "", "1"; "\U0001F600", "2" ], "cap#e3651ae3" // UTF-16 ordinal sort
+                    "cap", [ "a", "2"; "a", "1" ], "cap#1d4e4ee6" // a stable sort
+                    "cap", [ "a", "1"; "a", "2" ], "cap#c79fd87e" ]
+                  |> List.iter (fun (id, args, want) ->
+                      Expect.equal (Capability.invocationKey (capabilityWithId id) args) want (sprintf "%s %A" id args))
+
+              testCase "an explicit slotTree space round-trips and validates — the declaration every host pins"
+              <| fun _ ->
+                  match CapabilityCodec.decode slotTreeDecl with
+                  | Error e -> failtestf "the kit refused the pinned slotTree declaration: %s" e
+                  | Ok cap ->
+                      Expect.equal
+                          (CapabilityCodec.encode cap)
+                          slotTreeDecl
+                          "the pinned declaration is the kit's own canonical encoding"
+
+                      let verdict args =
+                          match Capability.validateArgs cap args with
+                          | Ok() -> "accept"
+                          | Error(UninvocableArg _) -> "UninvocableArg"
+                          | Error(ArgOutOfSpace _) -> "ArgOutOfSpace"
+                          | Error e -> sprintf "%A" e
+
+                      [ [ "body", "{\"kind\":\"Text\"}" ], "accept"
+                        [ "body", "13" ], "UninvocableArg"
+                        [ "body", "{\"kind\":\"Text\"}"; "chart", "{\"kind\":\"Chart\"}" ], "accept"
+                        [ "body", "{\"kind\":\"Text\"}"; "chart", "{\"kind\":\"Text\"}" ], "ArgOutOfSpace"
+                        [ "body", "{\"kind\":" ], "UninvocableArg"
+                        [ "body", "{\"kind\":1}" ], "UninvocableArg" ]
+                      |> List.iter (fun (args, want) -> Expect.equal (verdict args) want (sprintf "%A" args))
 
               testCase "laws/manifest.json's capabilityLaws row describes Core's file"
               <| fun _ ->

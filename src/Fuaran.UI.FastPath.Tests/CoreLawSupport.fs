@@ -323,6 +323,8 @@ module CoreLawSupport =
         | StringLen(lo, hi) -> sprintf "len[%d,%d]" lo hi
         | Enum xs -> "enum[" + String.concat "|" xs + "]"
         | AnyString -> "any"
+        | SlotTree(Some k) -> "tree[" + k + "]"
+        | SlotTree None -> "tree"
 
     let renderEffect (e: EffectClass) : string =
         let host =
@@ -421,6 +423,8 @@ module CoreLawSupport =
         | AnyString ->
             let k, r = CoreRng.intBelow 1000 rng
             Some("s" + string k), r
+        // A tree space (Fuaran.Core 0.31.0): a wire document of the constrained kind, or of any.
+        | SlotTree c -> Some("{\"kind\":\"" + defaultArg c "Text" + "\"}"), rng
         | FloatRange(lo, hi) ->
             let k, r = CoreRng.intBelow 1001 rng
             Some(sprintf "%f" (lo + (hi - lo) * (float k / 1000.0))), r

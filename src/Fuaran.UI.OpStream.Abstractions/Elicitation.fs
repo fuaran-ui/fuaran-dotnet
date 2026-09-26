@@ -193,6 +193,18 @@ module Elicitation =
 
     // ── Value spaces (the Fuaran.Core.Function vocabulary, capability wire form) ──
 
+    /// Is this one of the five §18.1 elicitation spaces? The reused Fuaran.Core vocabulary also
+    /// carries the tree space `SlotTree` (a capability space since Fuaran.Core 0.31.0), which is
+    /// not an elicitation space: §18.2 answers are scalars, and §18.1 closes the `$type` set.
+    let private isElicitationSpace (s: ValueSpace) : bool =
+        match s with
+        | SlotTree _ -> false
+        | IntRange _
+        | FloatRange _
+        | StringLen _
+        | Enum _
+        | AnyString -> true
+
     let private encodeSpace (s: ValueSpace) : JVal =
         match s with
         | IntRange(lo, hi) -> Canon.typed "intRange" [ "max", JInt hi; "min", JInt lo ]
@@ -200,6 +212,15 @@ module Elicitation =
         | StringLen(lo, hi) -> Canon.typed "stringLen" [ "max", JInt hi; "min", JInt lo ]
         | Enum xs -> Canon.typed "enum" [ "values", JArr(xs |> List.map JStr) ]
         | AnyString -> Canon.typed "anyString" []
+        // Not an elicitation space (see `isElicitationSpace`): written in the shared capability
+        // form so the bytes say what the contract holds, and refused by name by `decodeSpace`
+        // (UNKNOWN_DU_CASE) and before emission by `encodeEnvelope`.
+        | SlotTree c ->
+            Canon.typed
+                "slotTree"
+                (match c with
+                 | Some k -> [ "slotKind", JStr k ]
+                 | None -> [])
 
     let private decodeSpace (path: string) (jv: JVal) : Result<ValueSpace, JsonDecode.DecodeError> =
         match jv with
@@ -427,6 +448,8 @@ module Elicitation =
                         else
                             outOfSpace "the string violates its declared space"
                     | (StringLen _ | Enum _ | AnyString), _ -> mismatch "a string"
+                    // A tree space is no elicitation space, so no answer value conforms to it.
+                    | SlotTree _, _ -> mismatch "a value of an elicitation space (a tree space is not one)"
 
             contract.Fields
             |> List.fold (fun acc f -> acc |> Result.bind (fun () -> checkField f)) (Ok())
@@ -581,11 +604,23 @@ module Elicitation =
 
     /// Encode an elicitation envelope to canonical wire bytes. Fails only when
     /// the tree is not wire-representable (the same boundary the canonical
-    /// parser enforces).
+    /// parser enforces), or when a contract field declares a space outside the
+    /// §18.1 vocabulary — the refusal `decodeEnvelope` would give those bytes.
     let encodeEnvelope (env: ElicitationEnvelope) : Result<string, JsonDecode.DecodeError> =
-        match Json.parse (CanonicalJson.encodeNode env.Tree) with
-        | Error m -> Error(err "WRONG_TYPE" "$.tree" ("tree is not wire-representable: " + m))
-        | Ok treeJv ->
+        let nonElicitationSpace =
+            env.Contract.Fields
+            |> List.tryFindIndex (fun f -> not (isElicitationSpace f.Space))
+
+        match nonElicitationSpace, Json.parse (CanonicalJson.encodeNode env.Tree) with
+        | Some i, _ ->
+            Error(
+                err
+                    "UNKNOWN_DU_CASE"
+                    (sprintf "$.contract.fields[%d].space.$type" i)
+                    "a tree space is not an elicitation value space"
+            )
+        | None, Error m -> Error(err "WRONG_TYPE" "$.tree" ("tree is not wire-representable: " + m))
+        | None, Ok treeJv ->
             let fields =
                 [ yield FormatKey, JStr FormatVersion
                   yield "contract", encodeContract env.Contract
