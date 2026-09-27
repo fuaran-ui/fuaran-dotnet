@@ -270,6 +270,11 @@
          of the styling contract with no executable guarantee. -->
     <Compile Include="CssCoverageTests.fs" />
     <Compile Include="PrintCascadeTests.fs" />
+    <!-- Phase 1878 — the registry the census's `Cases` column reads: what each ADOPTED law family
+         actually ran in this process, forced from a module-level `let` (never inside a testCase),
+         so registration is complete before the census test forces anything. Must precede
+         CoreAdoptionTests.fs, which registers into it. -->
+    <Compile Include="LawCases.fs" />
     <!-- CoreAdoptionTests validates the Fuaran.UI tree witness + op-stream against
          the Fuaran.Core conformance kit and re-expresses the op-stream over
          Fuaran.Core.OpStream (with a canonical-encoding equality wrapper, since

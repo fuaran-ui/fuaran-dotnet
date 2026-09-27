@@ -36,6 +36,10 @@ open System.Text
 open System.Text.RegularExpressions
 open Expecto
 
+// Phase 1878 — the registry backing the `Cases` column; `CoreAdoptionTests.fs` registers the runs
+// this module reads.
+module LawCases = Fuaran.UI.Tests.LawCases
+
 // ---------------------------------------------------------------------------
 //  the closed classification
 // ---------------------------------------------------------------------------
@@ -928,6 +932,60 @@ let private detailOf =
     | SiblingHost host -> host
     | CarriedBy phase -> phase
 
+// ---------------------------------------------------------------------------
+//  Phase 1878 — the `Cases` column
+// ---------------------------------------------------------------------------
+
+/// The `Adopted` family keys whose adopting test runs IN THIS PROCESS
+/// (`Fuaran.UI.Tests`, `CoreAdoptionTests.fs`) — the subset `LawCases` can measure, because
+/// registration happens at THAT project's module initialisation. Every other `Adopted` /
+/// `AdoptedAcross` row's test lives in a DIFFERENT test project's own process
+/// (`Fuaran.UI.OpStream.Tests`, `Fuaran.UI.OpStream.Dag.Tests`, `Fuaran.UI.ServerDriven.Tests`,
+/// `Fuaran.UI.FastPath.Tests`) — this run never executes it, so counting its cases here would be
+/// invention, not measurement. Those rows read `—`, the same mark `NotUsed` / `SiblingHost` /
+/// `CarriedBy` already use for "not measured by this run". Extending `LawCases` registration into
+/// the four other projects is out of this phase's declared key files (`CoreConformanceCensus.fs` +
+/// `CoreAdoptionTests.fs` alone) and is left as a named follow-on rather than attempted here.
+///
+/// A literal set, not a derived one: deriving "which project hosts this row's test" from the
+/// existing reflection scan would let a family silently drop out of measurement the moment its
+/// hosting file changes, with nothing red to say so. The guard test below keeps this list honest
+/// against the census instead.
+let private measuredHere: Set<string> =
+    set
+        [ "Conformance.witnessLaws"
+          "Conformance.diffLaws"
+          "Conformance.streamLaws"
+          "Conformance.opAlgebra"
+          "Conformance.containerLaws"
+          "Conformance.chainBreakReasonLaws"
+          "Conformance.dagBreakReasonLaws"
+          "Conformance.hashFnLaws"
+          "Conformance.hashFnAdversarialLaws"
+          "Conformance.reducer"
+          "Conformance.columnarOpLaws"
+          "Conformance.columnarOpLawsWith"
+          "Conformance.columnarValidatorLaws"
+          "Conformance.aggregateParityLaws"
+          "Conformance.aggregateNullSkipLaws"
+          "Conformance.schemaWalkLaws" ]
+
+/// The `Cases` cell for one row (roadmap-engine#619's contract): the count `LawCases` registered
+/// for a family this process measures, `—` for a row nothing in `Fuaran.UI.Tests` runs (whether
+/// because the tier does not adopt it, or because its adopting test lives in a different test
+/// project's own process — see `measuredHere` above).
+let private casesOf (family: string) =
+    function
+    | Adopted _
+    | AdoptedAcross _ ->
+        if Set.contains family measuredHere then
+            LawCases.cell family
+        else
+            "—"
+    | NotUsed _
+    | SiblingHost _
+    | CarriedBy _ -> "—"
+
 /// The committed table. Deterministic by construction: rows sorted by family key, LF endings, and
 /// no timestamp — a report that changed on every run could never be a drift guard.
 let render (rows: (string * Adoption) list) : string =
@@ -952,11 +1010,25 @@ let render (rows: (string * Adoption) list) : string =
     line "each other. `Carried by phase` is an enrolment a named roadmap phase will flip to"
     line "`Adopted` when it ships."
     line ""
-    line "| Family | Status | Detail |"
-    line "|---|---|---|"
+    // Phase 1878 — the `Cases` column (the roadmap-engine#619 contract).
+    line "`Cases` is what the run that regenerated this file measured: the subject laws an adopting"
+    line "test's run reported, times the iterations it was driven over. `vacuous (<dimension>)` names"
+    line "a side of the family the sample never reached (the adequacy guard went red for it) rather"
+    line "than a defect — `Conformance.containerLaws` reads this way by design, per the test that"
+    line "adopts it. `—` marks a row nothing in THIS test project's process ran: `NotUsed` /"
+    line "`SiblingHost` / `CarriedBy` rows, and — today — every `Adopted` row whose test lives in one"
+    line "of this repo's OTHER test projects (`Fuaran.UI.OpStream.Tests`, `.OpStream.Dag.Tests`,"
+    line "`.ServerDriven.Tests`, `.FastPath.Tests`), which this run never executes and so cannot"
+    line "count without inventing a figure. Measuring those is a named follow-on, not a silent gap:"
+    line "see the `measuredHere` set in `CoreConformanceCensus.fs`."
+    line ""
+    line "| Family | Status | Cases | Detail |"
+    line "|---|---|---|---|"
 
     for family, adoption in rows |> List.sortBy fst do
-        line (sprintf "| `%s` | %s | %s |" family (statusOf adoption) (detailOf adoption))
+        line (
+            sprintf "| `%s` | %s | %s | %s |" family (statusOf adoption) (casesOf family adoption) (detailOf adoption)
+        )
 
     line ""
     line "## Summary"
@@ -1213,4 +1285,95 @@ let tests =
                   Expect.equal
                       prior
                       (normaliseEol rendered)
-                      "docs/core-conformance.md had drifted from the census; it has been regenerated in place — review and commit it" ]
+                      "docs/core-conformance.md had drifted from the census; it has been regenerated in place — review and commit it"
+
+          // -----------------------------------------------------------------
+          //  Phase 1878 — the `Cases` column: every row this process CAN measure IS measured
+          // -----------------------------------------------------------------
+
+          testCase "every `measuredHere` family names a real Adopted or AdoptedAcross row"
+          <| fun _ ->
+              // Keeps the literal set honest against the census it describes: a family renamed or
+              // dropped from `census` would otherwise leave a stale key in `measuredHere` with
+              // nothing to check it.
+              let adopted =
+                  census
+                  |> List.choose (fun (family, adoption) ->
+                      match adoption with
+                      | Adopted _
+                      | AdoptedAcross _ -> Some family
+                      | _ -> None)
+                  |> Set.ofList
+
+              let stale = measuredHere |> Set.filter (fun f -> not (Set.contains f adopted))
+
+              Expect.isEmpty
+                  stale
+                  (sprintf "measuredHere names families with no Adopted/AdoptedAcross census row: %A" (Set.toList stale))
+
+          testCase "every `measuredHere` family is measured by a registered LawCases run"
+          <| fun _ ->
+              Expect.isNonEmpty measuredHere "measuredHere is empty, so this check would prove nothing"
+
+              let unmeasured =
+                  measuredHere |> Set.filter (fun f -> List.isEmpty (LawCases.runsOf f))
+
+              Expect.isEmpty
+                  unmeasured
+                  (sprintf
+                      "these measuredHere families have no run registered through LawCases.adopt in CoreAdoptionTests.fs, so their Cases cell reads `unmeasured`: %A"
+                      (Set.toList unmeasured))
+
+          testCase "no LawCases run is registered for a family outside `measuredHere`"
+          <| fun _ ->
+              // The symmetric direction: a stray or mistyped family key in a LawCases.adopt call
+              // registers a run the census will never read, silently — this catches it.
+              let stray =
+                  LawCases.families () |> List.filter (fun f -> not (Set.contains f measuredHere))
+
+              Expect.isEmpty stray (sprintf "LawCases has runs registered for families outside measuredHere: %A" stray)
+
+          testCase "an unregistered family reads `unmeasured`, never a count"
+          <| fun _ -> Expect.equal (LawCases.cell "Conformance.noSuchFamily") "unmeasured" "ungraded, never a pass"
+
+          testCase "every `measuredHere` row's rendered Cases cell is a count or `vacuous`, never `unmeasured`"
+          <| fun _ ->
+              // `unmeasured` is the one state that must never survive to a committed row for a
+              // family this process CAN measure — that is exactly what 1878.C's guard is for.
+              // `vacuous` is a legitimate, understood answer (containerLaws' own adopting test
+              // asserts its adequacy guard IS red, by design), so it is accepted here, not failed.
+              for family in measuredHere do
+                  let cell = LawCases.cell family
+
+                  let graded =
+                      cell.StartsWith("vacuous", StringComparison.Ordinal)
+                      || (cell |> Seq.forall Char.IsDigit && cell <> "")
+
+                  Expect.isTrue graded (sprintf "%s renders `%s`, which grades nothing" family cell)
+
+          testCase "the rendered table carries a `Cases` column, and every row has exactly four cells"
+          <| fun _ ->
+              let rendered = render census
+              let lines = rendered.Split('\n')
+
+              Expect.exists
+                  lines
+                  (fun l -> l.TrimStart().StartsWith("| Family | Status | Cases | Detail |"))
+                  "the header row does not name a Cases column"
+
+              let cellCount (line: string) =
+                  line.Trim().Trim('|').Split('|') |> Array.length
+
+              for family, adoption in census do
+                  let row = sprintf "| `%s` |" family
+
+                  match lines |> Array.tryFind (fun l -> l.StartsWith(row, StringComparison.Ordinal)) with
+                  | None -> failtestf "no rendered row found for %s" family
+                  | Some line ->
+                      Expect.equal
+                          (cellCount line)
+                          4
+                          (sprintf
+                              "%s's rendered row does not have exactly four cells (Family/Status/Cases/Detail): %s"
+                              family
+                              line) ]

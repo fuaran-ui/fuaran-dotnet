@@ -46,6 +46,8 @@ open Fuaran.UI.OpStream.Abstractions
 module CoreStream = Fuaran.Core.OpStream
 module CoreConf = Fuaran.Core.Conformance
 module CoreRng = Fuaran.Core.ConfRng
+// Phase 1878 — the Cases-column registry; the runs below register into it at module init.
+module LawCases = Fuaran.UI.Tests.LawCases
 
 // ---- canonical-encoding equality wrapper (Fuaran.UI side) ----
 // `Node<'Msg>` carries handler closures, so it is not an F# equality type; the conformance kit
@@ -227,6 +229,91 @@ let private uiOps: (string * TreeOp<obj>) list =
     [ "human:ajw", TreeOp.InsertChild(NodeId "root", unwrap (mkSpacer "s2"))
       "agent:claude", TreeOp.RemoveNode(NodeId "s0") ]
 
+// ---------------------------------------------------------------------------
+//  Phase 1878 — every adopting run below, registered through LawCases at module
+//  initialisation (a top-level `let`, never inside a testCase closure — see LawCases.fs's
+//  header for why order matters). The testCase bodies below assert on these SAME values
+//  rather than recomputing them, so the census counts the very run each test asserted on.
+// ---------------------------------------------------------------------------
+
+let private certifyReport =
+    CoreConf.certify nodew idw opGen coreSw streamGen CoreStream.defaultHash 20260619 200
+
+let private certifyResults =
+    LawCases.adopt
+        [ "Conformance.witnessLaws"
+          "Conformance.diffLaws"
+          "Conformance.streamLaws"
+          "Conformance.opAlgebra" ]
+        200
+        (fun _ -> certifyReport.Results)
+
+let private containerResults = CoreConf.containerLaws nodew idw opGen 20260619 200
+
+let private containerRun =
+    LawCases.adopt [ "Conformance.containerLaws" ] 200 (fun _ -> containerResults)
+
+let private chainBreakReasonResults = CoreConf.chainBreakReasonLaws 20260619 200
+
+let private chainBreakReasonRun =
+    LawCases.adopt [ "Conformance.chainBreakReasonLaws" ] 200 (fun _ -> chainBreakReasonResults)
+
+let private dagBreakReasonResults = CoreConf.dagBreakReasonLaws 20260619 200
+
+let private dagBreakReasonRun =
+    LawCases.adopt [ "Conformance.dagBreakReasonLaws" ] 200 (fun _ -> dagBreakReasonResults)
+
+/// The portable SHA-256, hoisted so both hashFn* runs below and the testCase asserting on them
+/// share one function value.
+let private sha256HashFn: Fuaran.Core.HashFn =
+    fun prev payload -> Fuaran.UI.OpStream.Abstractions.HashChain.sha256Hex (prev + "|" + payload)
+
+let private hashLawGen: Fuaran.Core.StreamGen<TreeOp<obj>, EqNode> =
+    { State0 = baseTree
+      Op =
+        fun rng ->
+            let v, r' = CoreRng.next rng
+            TreeOp.InsertChild(NodeId "root", unwrap (mkSpacer (sprintf "h%d" v))), r' }
+
+let private hashFnResults =
+    CoreConf.hashFnLaws coreSw hashLawGen sha256HashFn 20260705 100
+
+let private hashFnRun =
+    LawCases.adopt [ "Conformance.hashFnLaws" ] 100 (fun _ -> hashFnResults)
+
+let private hashFnAdversarialResults =
+    CoreConf.hashFnAdversarialLaws sha256HashFn 500_000 4242
+
+let private hashFnAdversarialRun =
+    // The adversarial law's second argument is a search budget, not a case count in the
+    // `SampleAdequacy` sense above — recorded at 1, so its cell reads a real, non-zero run rather
+    // than a budget the `caseState` grammar was never built to describe.
+    LawCases.adopt [ "Conformance.hashFnAdversarialLaws" ] 1 (fun _ -> hashFnAdversarialResults)
+
+let private entryOf (op: TreeOp<obj>) : StreamEntry<obj> =
+    { Op = op
+      Timestamp = System.DateTimeOffset.FromUnixTimeSeconds 1_700_000_000L
+      PromptId = None
+      ResultEnvelope = OpResultEnvelope.Success }
+
+let private entrySw: Fuaran.Core.StreamWitness<StreamEntry<obj>, EqNode, ApplyError> =
+    { Apply = fun entry e -> UiApply.apply entry.Op e.Node |> Result.map wrap
+      Encode = StreamEntry.encode
+      Decode = fun _ -> Error "StreamEntry decode is not exercised by certifyStream" }
+
+let private entryStreamGen: Fuaran.Core.StreamGen<StreamEntry<obj>, EqNode> =
+    { State0 = baseTree
+      Op =
+        fun rng ->
+            let op, r' = genStreamOp rng
+            entryOf op, r' }
+
+let private certifyStreamReport =
+    CoreConf.certifyStream entrySw entryStreamGen StreamEntry.hashFn 20260705 200
+
+let private certifyStreamResults =
+    LawCases.adopt [ "Conformance.reducer" ] 200 (fun _ -> certifyStreamReport.Results)
+
 [<Tests>]
 let tests =
     testList
@@ -236,12 +323,9 @@ let tests =
               // Homogeneous-at-the-protocol-level, so the full bundle applies: witnessLaws +
               // opAlgebra (via CanHold) + streamLaws, through one entry point. Equality is supplied
               // by the canonical-encoding wrapper.
-              let report =
-                  CoreConf.certify nodew idw opGen coreSw streamGen CoreStream.defaultHash 20260619 200
-
-              if not report.AllPassed then
+              if not certifyReport.AllPassed then
                   let msg =
-                      report.Results
+                      certifyReport.Results
                       |> List.filter (fun r -> not r.Passed)
                       |> List.map (fun r -> sprintf "  %s — %A" r.Law r.Counterexample)
                       |> String.concat "\n"
@@ -262,7 +346,7 @@ let tests =
               // the arm is unreachable — by the witness's own shape, which is the stronger
               // guarantee. The two substantive laws are asserted by name; the adequacy law is
               // asserted red FOR THAT ARM and no other.
-              let results = CoreConf.containerLaws nodew idw opGen 20260619 200
+              let results = containerResults
 
               let byPrefix (prefix: string) =
                   match
@@ -298,7 +382,7 @@ let tests =
               // `VerificationError`, and its `Unrecognised` arm is only honest if the walkers this
               // tier runs (`firstChainBreakWith` / `firstCaptureBreak`) mint the three named cases
               // for every break they can produce — which is exactly what the family certifies.
-              CoreConf.chainBreakReasonLaws 20260619 200
+              chainBreakReasonResults
               |> List.filter (fun r -> not r.Passed)
               |> List.map (fun r -> sprintf "  %s — %A" r.Law r.Counterexample)
               |> function
@@ -309,7 +393,7 @@ let tests =
           <| fun _ ->
               // The DAG twin, for the same reason: `Fuaran.UI.OpStream.Dag.*` verifies through
               // `Dag.firstBreak` and reports its `DagBreakReason`.
-              CoreConf.dagBreakReasonLaws 20260619 200
+              dagBreakReasonResults
               |> List.filter (fun r -> not r.Passed)
               |> List.map (fun r -> sprintf "  %s — %A" r.Law r.Counterexample)
               |> function
@@ -424,21 +508,6 @@ let tests =
               // host-side per Core GP3 (fuaran-core#65). Run Core's certified HashFn law kit
               // over it — determinism, pre-image parity, tamper-detection — plus the
               // adversarial branch (a collision-resistant fn yields no in-budget forgery).
-              let sha256HashFn: Fuaran.Core.HashFn =
-                  fun prev payload -> Fuaran.UI.OpStream.Abstractions.HashChain.sha256Hex (prev + "|" + payload)
-
-              // A high-acceptance generator: the hash laws exercise the CHAIN (determinism,
-              // pre-image parity, tamper-detection), so every op should append — the
-              // rejection-mixing `streamGen` above is the right input for the reducer laws,
-              // not these (a rejection-heavy stream legitimately builds 2-record chains,
-              // which starves the interior-drop tamper branch).
-              let hashLawGen: Fuaran.Core.StreamGen<TreeOp<obj>, EqNode> =
-                  { State0 = baseTree
-                    Op =
-                      fun rng ->
-                          let v, r' = CoreRng.next rng
-                          TreeOp.InsertChild(NodeId "root", unwrap (mkSpacer (sprintf "h%d" v))), r' }
-
               let assertAllPassed (context: string) (results: Fuaran.Core.LawResult list) =
                   let failures = results |> List.filter (fun r -> not r.Passed)
 
@@ -448,8 +517,7 @@ let tests =
                       |> String.concat "\n"
                       |> failtestf "%s failed:\n%s" context
 
-              CoreConf.hashFnLaws coreSw hashLawGen sha256HashFn 20260705 100
-              |> assertAllPassed "hashFnLaws over the portable SHA-256"
+              hashFnResults |> assertAllPassed "hashFnLaws over the portable SHA-256"
 
               // budget + seed match Core's own invocation (500_000, 4242): the "FNV-1a admits a
               // forgery" branch needs the 32-bit birthday bound to realise a collision, AND the
@@ -457,7 +525,7 @@ let tests =
               // (e.g. seed 20260705) happen to be FNV-collision-free in-budget, while 4242 spans
               // 4→6-digit lengths where collisions realise. The FNV branch is crypto-fn-independent,
               // so reusing Core's proven seed keeps this a test of OUR SHA-256's resist branch.
-              CoreConf.hashFnAdversarialLaws sha256HashFn 500_000 4242
+              hashFnAdversarialResults
               |> assertAllPassed "hashFnAdversarialLaws over the portable SHA-256"
 
           testCase "the Phase-406 StreamEntry witness certifies via Conformance.certifyStream (consumption)"
@@ -469,29 +537,8 @@ let tests =
               // `certifyStream` (reducer laws + op-stream laws: append/verify/replay over the hashFn)
               // proves UI's op-stream runs on the certified Core spine, upgrading the stream layer
               // from pilot re-expression to certified consumption.
-              let entryOf (op: TreeOp<obj>) : StreamEntry<obj> =
-                  { Op = op
-                    Timestamp = System.DateTimeOffset.FromUnixTimeSeconds 1_700_000_000L
-                    PromptId = None
-                    ResultEnvelope = OpResultEnvelope.Success }
-
-              let entrySw: Fuaran.Core.StreamWitness<StreamEntry<obj>, EqNode, ApplyError> =
-                  { Apply = fun entry e -> UiApply.apply entry.Op e.Node |> Result.map wrap
-                    Encode = StreamEntry.encode
-                    Decode = fun _ -> Error "StreamEntry decode is not exercised by certifyStream" }
-
-              let entryStreamGen: Fuaran.Core.StreamGen<StreamEntry<obj>, EqNode> =
-                  { State0 = baseTree
-                    Op =
-                      fun rng ->
-                          let op, r' = genStreamOp rng
-                          entryOf op, r' }
-
-              let report =
-                  CoreConf.certifyStream entrySw entryStreamGen StreamEntry.hashFn 20260705 200
-
-              if not report.AllPassed then
-                  report.Results
+              if not certifyStreamReport.AllPassed then
+                  certifyStreamReport.Results
                   |> List.filter (fun r -> not r.Passed)
                   |> List.map (fun r -> sprintf "  %s — %A" r.Law r.Counterexample)
                   |> String.concat "\n"
@@ -696,6 +743,42 @@ module Columnar =
             Project [ "dept", "dept"; "total", "total" ] ] ]
 
     // -----------------------------------------------------------------------
+    //  Phase 1878 — the six self-contained runs below, registered through LawCases at module
+    //  initialisation for the same reason the outer module's block is (LawCases.fs's header).
+    // -----------------------------------------------------------------------
+
+    let private columnarOpResults = CoreConf.columnarOpLaws lawSeed 100
+
+    let private columnarOpRun =
+        LawCases.adopt [ "Conformance.columnarOpLaws" ] 100 (fun _ -> columnarOpResults)
+
+    let private columnarOpWithResults =
+        CoreConf.columnarOpLawsWith ColumnOps.invert CoreConf.columnarOpStreamGen lawSeed 100
+
+    let private columnarOpWithRun =
+        LawCases.adopt [ "Conformance.columnarOpLawsWith" ] 100 (fun _ -> columnarOpWithResults)
+
+    let private columnarValidatorResults = CoreConf.columnarValidatorLaws lawSeed 100
+
+    let private columnarValidatorRun =
+        LawCases.adopt [ "Conformance.columnarValidatorLaws" ] 100 (fun _ -> columnarValidatorResults)
+
+    let private aggregateParityResults = CoreConf.aggregateParityLaws lawSeed 100
+
+    let private aggregateParityRun =
+        LawCases.adopt [ "Conformance.aggregateParityLaws" ] 100 (fun _ -> aggregateParityResults)
+
+    let private aggregateNullSkipResults = CoreConf.aggregateNullSkipLaws lawSeed 100
+
+    let private aggregateNullSkipRun =
+        LawCases.adopt [ "Conformance.aggregateNullSkipLaws" ] 100 (fun _ -> aggregateNullSkipResults)
+
+    let private schemaWalkResults = CoreConf.schemaWalkLaws lawSeed 100
+
+    let private schemaWalkRun =
+        LawCases.adopt [ "Conformance.schemaWalkLaws" ] 100 (fun _ -> schemaWalkResults)
+
+    // -----------------------------------------------------------------------
     //  the tests
     // -----------------------------------------------------------------------
 
@@ -712,7 +795,7 @@ module Columnar =
                   // The tier edits no table through a table-edit op — that
                   // algebra has no call site in this repo — so this is evidence
                   // about the PIN, recorded as such in the census row's port.
-                  CoreConf.columnarOpLaws lawSeed 100
+                  columnarOpResults
                   |> assertAllPassed "columnarOpLaws over the pinned columnar op algebra"
 
               testCase
@@ -726,19 +809,19 @@ module Columnar =
                   // `invert` and the kit's reference generator — Core's own
                   // migration line — and is evidence about the PIN, as the census
                   // row's port says.
-                  CoreConf.columnarOpLawsWith ColumnOps.invert CoreConf.columnarOpStreamGen lawSeed 100
+                  columnarOpWithResults
                   |> assertAllPassed "columnarOpLawsWith over the kit's reference columnar generator"
 
               testCase "the columnar validator certifies under Core's columnarValidatorLaws"
               <| fun _ ->
                   // Likewise: nothing here registers a Core columnar validator.
                   // The tier's own columnar-grounding rule is asserted below.
-                  CoreConf.columnarValidatorLaws lawSeed 100
+                  columnarValidatorResults
                   |> assertAllPassed "columnarValidatorLaws over the pinned columnar validator"
 
               testCase "aggregate parity certifies under Core's aggregateParityLaws"
               <| fun _ ->
-                  CoreConf.aggregateParityLaws lawSeed 100
+                  aggregateParityResults
                   |> assertAllPassed "aggregateParityLaws over the pinned aggregate surface"
 
               testCase "aggregate null-skipping certifies under Core's aggregateNullSkipLaws"
@@ -748,12 +831,12 @@ module Columnar =
                   // `Column.aggregate` null-skip half stayed in the kit under this
                   // name. Adopted beside the parity half so the pair still runs
                   // both laws the one family ran at 0.31.0.
-                  CoreConf.aggregateNullSkipLaws lawSeed 100
+                  aggregateNullSkipResults
                   |> assertAllPassed "aggregateNullSkipLaws over the pinned aggregate surface"
 
               testCase "static output-schema derivation certifies under Core's schemaWalkLaws"
               <| fun _ ->
-                  CoreConf.schemaWalkLaws lawSeed 100
+                  schemaWalkResults
                   |> assertAllPassed "schemaWalkLaws over the pinned schema walk"
 
               // ---- tier-shaped: the same properties, over the tier ---------
