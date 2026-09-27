@@ -7862,6 +7862,22 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             | None -> Ok None
             | Some fJ -> requireString (path + ".transferOutKey") fJ |> Result.map Some
 
+        // Phase 1892 — the row window and the declared total. `windowStateKey`
+        // names the State key carrying `{"offset": N, "count": M}`; the
+        // descriptor itself is State, validated by the reader and never by the
+        // codec (a malformed one is "no window", §3.6 grid behaviour). `rowTotal`
+        // is a `Binding<int>` — whether it is READ depends on the source shape,
+        // a relation between siblings a per-object codec does not judge.
+        let windowStateKeyR =
+            match tryField fields "windowStateKey" with
+            | None -> Ok None
+            | Some fJ -> requireString (path + ".windowStateKey") fJ |> Result.map Some
+
+        let rowTotalR =
+            match tryField fields "rowTotal" with
+            | None -> Ok None
+            | Some tJ -> decodeBindingInt (path + ".rowTotal") tJ |> Result.map Some
+
         // Phase 393 — the static read-only mode. `staticRows` (optional, omitted for a
         // data-bound grid so existing fixtures stay byte-identical) carries the retired
         // `Table`'s `TextSource` header/row matrix; when present the renderer emits static
@@ -7913,25 +7929,31 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
                             repeatHeaderR
                             |> Result.bind (fun repeatHeader ->
                                 exportableR
-                                |> Result.map (fun exportable ->
-                                    { Source = source
-                                      RowKey = rowKey
-                                      RowKeyField = rowKeyField
-                                      SortStateKey = sortStateKey
-                                      PageSize = pageSize
-                                      PageStateKey = pageStateKey
-                                      DefaultSort = defaultSort
-                                      EditStateKey = editStateKey
-                                      Columns = columns
-                                      OnRowClick = onRowClick
-                                      Editable = editable
-                                      Reorderable = reorderable
-                                      TransferInKey = transferInKey
-                                      TransferOutKey = transferOutKey
-                                      KeepRowsTogether = keepRowsTogether
-                                      RepeatHeader = repeatHeader
-                                      Exportable = exportable
-                                      StaticRows = staticRows }))))))
+                                |> Result.bind (fun exportable ->
+                                    windowStateKeyR
+                                    |> Result.bind (fun windowStateKey ->
+                                        rowTotalR
+                                        |> Result.map (fun rowTotal ->
+                                            { Source = source
+                                              RowKey = rowKey
+                                              RowKeyField = rowKeyField
+                                              SortStateKey = sortStateKey
+                                              PageSize = pageSize
+                                              PageStateKey = pageStateKey
+                                              DefaultSort = defaultSort
+                                              EditStateKey = editStateKey
+                                              Columns = columns
+                                              OnRowClick = onRowClick
+                                              Editable = editable
+                                              Reorderable = reorderable
+                                              TransferInKey = transferInKey
+                                              TransferOutKey = transferOutKey
+                                              KeepRowsTogether = keepRowsTogether
+                                              RepeatHeader = repeatHeader
+                                              Exportable = exportable
+                                              WindowStateKey = windowStateKey
+                                              RowTotal = rowTotal
+                                              StaticRows = staticRows }))))))))
         | Error e, _, _, _, _, _, _, _, _, _, _, _
         | _, Error e, _, _, _, _, _, _, _, _, _, _
         | _, _, Error e, _, _, _, _, _, _, _, _, _

@@ -3418,6 +3418,8 @@ let gridVis: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -3459,6 +3461,8 @@ let gridKeepRowsTogether: Node<obj> =
               StaticRows = None
               KeepRowsTogether = true
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -3501,6 +3505,8 @@ let gridRepeatHeader: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = true
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -3558,6 +3564,8 @@ let gridExportable: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = true }
         ))
         None
@@ -3654,6 +3662,8 @@ let gridTonedPill: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -4103,6 +4113,8 @@ let gridEditableState: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -4171,6 +4183,8 @@ let gridTransform: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -4221,6 +4235,8 @@ let gridTransformParam: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -4285,6 +4301,8 @@ let transformUndeclaredParam: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -4370,6 +4388,8 @@ let multiselectChipListParam: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None ]
@@ -4419,6 +4439,8 @@ let gridFieldNamed: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -4483,6 +4505,8 @@ let masterDetailPreselected: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None
@@ -4567,6 +4591,8 @@ let masterDetailPreselected: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None ]
@@ -4669,6 +4695,8 @@ let masterDetailMultiField: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None
@@ -4825,6 +4853,8 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None
@@ -4880,6 +4910,8 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None
@@ -5010,6 +5042,8 @@ let nowEnvironmentBinding: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None ]
@@ -5107,6 +5141,8 @@ let nowGrain: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None ]
@@ -5447,6 +5483,8 @@ let scalarTransformComposition: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None
@@ -5628,6 +5666,8 @@ let filterableStaticDashboard: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None ]
@@ -5757,6 +5797,8 @@ let private filterEdgeDoc (id: string) (declaredChips: FilterSpec<obj> list) : N
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None ]
@@ -5893,6 +5935,8 @@ let table: Node<obj> =
                       Sortable = None }
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false })
         None
 
@@ -5932,6 +5976,8 @@ let tableSortable: Node<obj> =
                       Sortable = Some true }
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false })
         None
 
@@ -6125,6 +6171,8 @@ let switchOnSelection: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None
@@ -7020,6 +7068,8 @@ let sharedSourceSeededPair: Node<obj> =
                   StaticRows = None
                   KeepRowsTogether = false
                   RepeatHeader = false
+                  WindowStateKey = None
+                  RowTotal = None
                   Exportable = false }
             ))
             None
@@ -7100,6 +7150,8 @@ let gridBoundSort: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -7148,6 +7200,8 @@ let gridSortAscending: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -7191,6 +7245,8 @@ let gridDeclaredEdit: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -7239,6 +7295,8 @@ let gridReorderable: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -7295,6 +7353,8 @@ let gridTransferBoard: Node<obj> =
                   StaticRows = None
                   KeepRowsTogether = false
                   RepeatHeader = false
+                  WindowStateKey = None
+                  RowTotal = None
                   Exportable = false }
             ))
             None
@@ -7352,6 +7412,8 @@ let gridPaged: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -7393,7 +7455,97 @@ let gridPagedSorted: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
+        ))
+        None
+
+/// Phase 1892 — the row window, host-sliced: a `Query` whose `dependsOn` names
+/// the `windowStateKey` returns the window itself, so the grid slices nothing,
+/// and the total the host alone knows is DECLARED through `rowTotal` — here a
+/// `Query` the host populates beside the rows. The canonical corner.
+let gridWindowed: Node<obj> =
+    let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = kind
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-windowed"
+        (NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort = None
+              Source = Binding.Query("orders", unbox, Some [ "orders-window" ])
+              RowKey = None
+              RowKeyField = Some "reference"
+              Columns =
+                [ col "Reference" "reference" CellKindErased.Text
+                  col "Amount" "amount" CellKindErased.Numeric ]
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false
+              Exportable = false
+              WindowStateKey = Some "orders-window"
+              RowTotal = Some(Binding.Query("orders.total", unbox, None)) }
+        ))
+        None
+
+/// Phase 1892 — the row window, client-sliced under a sort: the grid holds its
+/// whole set, sorts it, and presents the window of the SORTED rows the renderer
+/// wrote to `ledger-window`. No `rowTotal` — a grid holding its set counts it.
+let gridWindowedSorted: Node<obj> =
+    let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = kind
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-windowed-sorted"
+        (NodeKind.DataGrid(
+            { SortStateKey = Some "ledger-sort"
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort =
+                Some
+                    { Column = 1
+                      Direction = SortDirection.Desc }
+              Source = Binding.State("ledger", Some(Seq.ofList planRows))
+              RowKey = None
+              RowKeyField = Some "month"
+              Columns =
+                [ col "Month" "month" CellKindErased.Text
+                  col "Revenue" "revenue" CellKindErased.Numeric ]
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false
+              Exportable = false
+              WindowStateKey = Some "ledger-window"
+              RowTotal = None }
         ))
         None
 
@@ -7476,6 +7628,8 @@ let gridSortStateKey: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -8015,6 +8169,8 @@ let stateAbsentDefault: Node<obj> =
                   StaticRows = None
                   KeepRowsTogether = false
                   RepeatHeader = false
+                  WindowStateKey = None
+                  RowTotal = None
                   Exportable = false }
             ))
             None
@@ -8256,6 +8412,10 @@ let allNodes: (string * Node<obj>) list =
       gridPaged
       "Visualisation/Grid (Phase 862 — paging and sorting composed: two behaviours, two state keys, one rule)",
       gridPagedSorted
+      "Visualisation/Grid (Phase 1892 — windowStateKey + rowTotal: a host-windowed Query and the total it declares)",
+      gridWindowed
+      "Visualisation/Grid (Phase 1892 — the client-sliced window under a sort: the window indexes the sorted rows)",
+      gridWindowedSorted
       "Display/Badge (Phase 818 — LIVE State-sourced Transform: the Tier-D count badge, preserved source + initial snapshot)",
       badgeTransformLive
       "Visualisation/Grid + Display/Badge (Phase 1075 — the seeded shared source: one declared table, two readers)",

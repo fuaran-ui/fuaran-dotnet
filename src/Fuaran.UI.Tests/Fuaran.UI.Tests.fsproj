@@ -247,6 +247,7 @@
     <!-- GridDisplayTests pins Phase 425's row-field projection contract. -->
     <Compile Include="GridDisplayTests.fs" />
     <Compile Include="GridReorderTests.fs" />
+    <Compile Include="GridWindowTests.fs" />
     <!-- StateStoreScopingTests pins Phase 128's reset () test-isolation seam
          (clears the single-process store + subscriber list between cases). -->
     <Compile Include="StateStoreScopingTests.fs" />

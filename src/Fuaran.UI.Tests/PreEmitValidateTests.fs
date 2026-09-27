@@ -209,6 +209,8 @@ let private seedingGrid (id: string) (key: string) : Node<Msg> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         )
       State = None
@@ -369,6 +371,8 @@ let private sortGrid
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         )
       State = None
@@ -418,6 +422,8 @@ let private editGrid
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         )
       State = None
@@ -458,6 +464,8 @@ let private pagedGrid
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         )
       State = None
@@ -1664,6 +1672,8 @@ let tests =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       )
                     State = None
@@ -4686,6 +4696,8 @@ let private transferGrid
               TransferOutKey = outKey
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false
               StaticRows = None }
         )
@@ -5648,6 +5660,8 @@ let private pillGridWith (id: string) (map: Map<string, ToneVariant>) (dflt: Ton
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         )
       State = None

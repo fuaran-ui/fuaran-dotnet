@@ -1161,6 +1161,30 @@
           }
         },
         {
+          "name": "windowStateKey",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "str"
+          }
+        },
+        {
+          "name": "rowTotal",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "union",
+            "args": [
+              {
+                "$type": "int"
+              }
+            ],
+            "name": "Binding"
+          }
+        },
+        {
           "name": "source",
           "optionality": {
             "$type": "required"

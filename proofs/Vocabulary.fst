@@ -51,7 +51,7 @@
      - Button: expressible, but outside the proof vocabulary — it adds u_action, u_call_result_target to the mutual family (see `FStarTarget.proofKinds`)
      - Chart: expressible, but outside the proof vocabulary — it adds u_chart_annotation, u_chart_annotation_range, u_chart_annotation_x to the mutual family (see `FStarTarget.proofKinds`)
      - Custom: expressible, but outside the proof vocabulary — it adds r_content_hash to the mutual family (see `FStarTarget.proofKinds`)
-     - DataGrid: expressible, but outside the proof vocabulary — it adds r_button_group_item, r_column_erased, r_default_sort, r_static_rows, u_cell_format, u_cell_kind_erased, u_column_width to the mutual family (see `FStarTarget.proofKinds`)
+     - DataGrid: expressible, but outside the proof vocabulary — it adds r_button_group_item, r_column_erased, r_default_sort, r_static_rows, u_binding__int, u_cell_format, u_cell_kind_erased, u_column_width to the mutual family (see `FStarTarget.proofKinds`)
      - Drawing: expressible, but outside the proof vocabulary — it adds r_draw_point, r_draw_style, r_view_box, u_curve_command, u_shape to the mutual family (see `FStarTarget.proofKinds`)
      - Filters: expressible, but outside the proof vocabulary — it adds r_filter_spec, r_select_option, u_binding__l_r_select_option, u_binding__l_str, u_form_field_kind to the mutual family (see `FStarTarget.proofKinds`)
      - Form: expressible, but outside the proof vocabulary — it adds r_compare_rule, r_field_rule, r_form_field, r_select_option, u_action, u_binding__l_r_select_option, u_binding__l_str, u_call_result_target, u_form_field_kind to the mutual family (see `FStarTarget.proofKinds`)

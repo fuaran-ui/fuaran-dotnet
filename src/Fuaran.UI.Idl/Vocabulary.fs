@@ -2813,6 +2813,18 @@ let visKinds: IdlKind list =
             //
             // Omitted on the wire at `false`.
             omit "exportable" TBool (VBool false)
+            // Fuaran-UI Phase 1892 — the row window. `windowStateKey` names the
+            // State key carrying `{"offset": <int ≥ 0>, "count": <int ≥ 1>}`,
+            // which the renderer writes as the viewport moves and the grid reads
+            // back — the fourth instance of the Phase-860 state-key rule, after
+            // sort, page and edit. `rowTotal` is the DECLARED size of the whole
+            // result set, read only where the host slices (a `Query` whose
+            // `dependsOn` names the window or page key): a host that returns a
+            // window or a page knows how many rows matched, and a grid holding
+            // its whole set counts them itself. Both options, emitted only when
+            // present, so a grid declaring neither is byte-identical to before.
+            opt "windowStateKey" TStr
+            opt "rowTotal" (bindingOf TInt)
             // The row feed is HOSTED `Fuaran.Core.Row seq` (fuaran#665 — typed rows):
             // a Static/State rows payload IS wire-representable (a JSON array of row
             // objects, scalar cells, rendered by Core's `RowCodec` under the `Canon`

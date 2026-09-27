@@ -561,6 +561,10 @@ let grid<'row, 'Msg> : GridSpecOf<'row, 'Msg> =
       // Phase 1125 — no export affordance by default: a grid is a rendering
       // until the document says its rows are the reader's to take.
       Exportable = false
+      // Phase 1892 — no row window and no declared total by default: the grid
+      // presents every row it resolves, the pre-1892 behaviour byte-for-byte.
+      WindowStateKey = Option.None
+      RowTotal = Option.None
       // Phase 934 (surfaced here by Phase 1646) — no row reorder by default,
       // matching `Editable` beside it: the pre-934 wire, byte-for-byte.
       Reorderable = false

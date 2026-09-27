@@ -3257,6 +3257,12 @@ let private validateCore
     // same key is not a per-node fact, and a per-object decoder can never see
     // it either.
     let transferDeclarations = ResizeArray<string * string option * string option>()
+    // Phase 1892 (FUARAN075) — (gridNodeId, key) for every grid's own page and
+    // window State key. The page rule (Phase 862) and the window rule (Phase
+    // 1892) both have a host-slicing `Query` name that key in `dependsOn`, so an
+    // entry naming the reading grid's own key is that re-run edge and not a
+    // filter reference; judged post-walk beside the filter declarations.
+    let gridOwnStateKeys = System.Collections.Generic.HashSet<string * string>()
 
     let recordNodeId (raw: string) =
         if raw = "" then
@@ -3788,6 +3794,12 @@ let private validateCore
                     defects.Add(
                         PreEmitDefect.UneditableColumnDeclared(nodeIdStr, col.Label, EditDefect.NoReachableDestination)
                     )
+
+            spec.PageStateKey
+            |> Option.iter (fun k -> gridOwnStateKeys.Add((nodeIdStr, k)) |> ignore)
+
+            spec.WindowStateKey
+            |> Option.iter (fun k -> gridOwnStateKeys.Add((nodeIdStr, k)) |> ignore)
 
             match spec.PageSize, spec.PageStateKey with
             | Some _, None -> defects.Add(PreEmitDefect.PageSizeWithoutPageKey nodeIdStr)
@@ -4771,7 +4783,10 @@ let private validateCore
             defects.Add(PreEmitDefect.DanglingFilterReference(u.Reader, n))
         | BindingWalk.BindingUse.Query(_, dependsOn) ->
             for n in dependsOn do
-                if not (Set.contains n declaredFilterNames) then
+                if
+                    not (Set.contains n declaredFilterNames)
+                    && not (gridOwnStateKeys.Contains((u.Reader, n)))
+                then
                     defects.Add(PreEmitDefect.DanglingFilterReference(u.Reader, n))
         | BindingWalk.BindingUse.TransformParam(n, false) ->
             defects.Add(PreEmitDefect.UnreferencedTransformParam(u.Reader, n))

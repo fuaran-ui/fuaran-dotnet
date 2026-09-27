@@ -1814,6 +1814,10 @@ module Fuaran =
               RepeatHeader = false
               // Phase 1125 — nor an export affordance, on the same reasoning.
               Exportable = false
+              // Phase 1892 — a static table holds every row in the tree, so it
+              // has neither a host-sliced window nor a total to declare.
+              WindowStateKey = None
+              RowTotal = None
               Columns = []
               OnRowClick = None
               Editable = false
@@ -1941,6 +1945,9 @@ module Fuaran =
               RepeatHeader = spec.RepeatHeader
               // Phase 1125 — so does the export declaration.
               Exportable = spec.Exportable
+              // Phase 1892 — and the row window with its declared total.
+              WindowStateKey = spec.WindowStateKey
+              RowTotal = spec.RowTotal
               Columns = spec.Columns |> List.map Column.erase
               OnRowClick = spec.OnRowClick
               Editable = spec.Editable

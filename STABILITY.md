@@ -7852,6 +7852,30 @@ prevent.
 
 ### What rides this slot
 
+**fuaran#1892 — BREAKING on `Fuaran.UI` at two record shapes and on the C# facade's positional
+grid constructor; ADDITIVE on the wire (two optional `DataGrid` fields, NO profile step);
+BEHAVIOURAL at FUARAN075; RIDES this slot.** The virtualised `DataGrid`: a row window
+(`windowStateKey`) and a declared row total (`rowTotal`), specified in `WIRE_FORMAT.md` "Row window
+and declared total".
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI` — `DataGridSpec<'Msg>` (generated) | Gains `WindowStateKey: string option` and `RowTotal: Binding<int> option`. | **A full literal of the record** (FS0764) stops compiling until it names both; `Fuaran.grid`, the generated `mk` constructor and every `{ … with … }` form are unchanged. The in-repo literals were updated in this change-set. |
+| `Fuaran.UI` — `GridSpecOf<'row, 'Msg>` (typed facade) | The same two slots, APPENDED after `RowKeyField` per the positional-constructor rule. | A full literal of the facade; `Defaults.grid` and `{ Defaults.grid with … }` compile unchanged. The C# `GridSpecOf` constructor gains two trailing parameters — `DataGridOptions<TRow>.WindowStateKey` / `.RowTotal` carry them, so `Fuaran.DataGrid(options)` callers are unaffected. |
+| `Fuaran.UI.Renderer.Core` — `BindingResolver` | New: `RowWindow`, `PresentedWindow<'row>`, `windowOfJVal`, `readWindowDescriptor`, `sourceHostWindowsOn`, `resolveRowTotal`, `presentWindow`, `declaredPageCount`, `gridHostWindows`, `gridPage`, `gridWindow`, `windowRowCount`, `windowRowIndex`. | Nobody; additive. |
+| Client renderer — `DataGrid` arm | Sorts, pages (client-paged only, never when the host windows), then windows; `aria-rowcount` / `aria-rowindex` only where a window is in effect; the window offset joins the page offset for edit write-back; a host-paged grid with a declared total states "Page X of N" and clamps. The grid subscribes its window key and its total's binding keys. | Nobody for a grid declaring neither field — its DOM is unchanged. A host-paged grid that declares `rowTotal` gains a page count. |
+| `PreEmitValidate` — FUARAN075 | A `dependsOn` entry naming the reading grid's OWN `pageStateKey` or `windowStateKey` is the host-slicing re-run edge and no longer reports as a dangling filter reference; every other undeclared name still does. | A host-paged grid that was refused FUARAN075 on its own page key now validates. |
+| Wire — `DataGrid` | `windowStateKey` (optional string) and `rowTotal` (optional int `Binding`), omitted when absent. Every pre-1892 document is byte-unchanged and still valid. | Every roster codec host, in this change-set: `nodes/grid-windowed.json` / `nodes/grid-windowed-sorted.json`, and the new self-enumerated `grid-window/` behaviour family. |
+| Authoring veneers | C# `DataGridOptions<TRow>.WindowStateKey` / `.RowTotal`; the VB `<DataGrid>` element's `window-state-key` / `row-total` attributes and the analyzer vocabulary rows. | Nobody; additive. |
+
+**Pinned.** `GridWindowTests` runs the corpus's `grid-window/` vectors — whose expected answers the
+corpus computes from the specification rules, not from this host — through this host's own
+descriptor read, sort, page slice and window function, and pins the declared-total resolution over
+each binding shape, the who-slices test, the ARIA annotations, the declared-total pager and the
+FUARAN075 exemption (the last made to fail once by removing the exemption). Not claimed here: the
+client renderer does not yet write the descriptor as the viewport moves (the TypeScript renderer
+does), and the server renderer emits a grid as a hydration placeholder with no rows to window.
+
 **fuaran#1854 — ADDITIVE on `Fuaran.UI.Renderer.Core` (one new module); BEHAVIOURAL at the
 CodeBlock render arm of both renderers for the `fstar` / `fst` / `fsharp` / `fs` / `f#` language
 tags; ADDITIVE on the corpus artefact `render-fidelity.json` (row prose only); no wire payload moves.
