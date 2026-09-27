@@ -451,6 +451,35 @@ let private emailSafeMarkdown (policy: Sanitize.EgressPolicy) (markdownText: str
         .Replace("<input class=\"fuaran-task-checkbox\" checked=\"\" disabled=\"\" type=\"checkbox\" /> ", "&#9745; ")
         .Replace("<input class=\"fuaran-task-checkbox\" disabled=\"\" type=\"checkbox\" /> ", "&#9744; ")
 
+/// The `Switch` branch the SSR document renders, resolved through the same
+/// sources. `internal` and shared: the email digest and the speech projection
+/// (Phase 1813) both read it, so neither can show or say a different case from
+/// the page it summarises.
+let internal selectedSwitchBranch (ctx: Render.ServerRenderContext) (spec: SwitchSpec<obj>) : Node<obj> =
+    let currentValue: obj option =
+        match spec.On with
+        | Binding.State(key, dv) ->
+            match Map.tryFind key ctx.Sources.State with
+            | Some v -> Some v
+            | None -> dv |> Option.map box
+        | Binding.Selection(nodeId, _, dv, fld) ->
+            let projector: obj -> obj =
+                match fld with
+                | Some f -> Binding.projectSelectionField<obj> f
+                | None -> id
+
+            BindingResolver.tryResolve ctx.Sources (Binding.Selection(nodeId, projector, dv |> Option.map box, fld))
+        // Phase 1535 — the scalar resolver, matching both renderers.
+        | on -> BindingResolver.tryResolveScalarText ctx.Sources on |> Option.map box
+
+    // Phase 1535 — the one shared case-selection definition, so a projection
+    // cannot drift from what the page renders.
+    let selector =
+        currentValue |> Option.map (fun v -> if isNull v then "" else string v)
+
+    BindingResolver.selectSwitchCase ctx.Sources selector spec.Cases
+    |> Option.defaultValue spec.Default
+
 let rec private renderNode
     (opts: EmailOptions)
     (depth: int)
@@ -482,8 +511,7 @@ and private renderKind
     (ctx: Render.ServerRenderContext)
     (node: Node<obj>)
     : ReactElement =
-    // NOT `id` — that would shadow the `id` function, which the Switch arm's
-    // selection projector below needs.
+    // NOT `id` — that would shadow the `id` function inside these arms.
     let selfId = node.Id
     let text = Render.renderText ctx
 
@@ -635,31 +663,7 @@ and private renderKind
     | NodeKind.Switch spec ->
         // The same branch SSR picks, resolved through the same sources, so the
         // digest and the page it links to show the same case.
-        let currentValue: obj option =
-            match spec.On with
-            | Binding.State(key, dv) ->
-                match Map.tryFind key ctx.Sources.State with
-                | Some v -> Some v
-                | None -> dv |> Option.map box
-            | Binding.Selection(nodeId, _, dv, fld) ->
-                let projector: obj -> obj =
-                    match fld with
-                    | Some f -> Binding.projectSelectionField<obj> f
-                    | None -> id
-
-                BindingResolver.tryResolve ctx.Sources (Binding.Selection(nodeId, projector, dv |> Option.map box, fld))
-            // Phase 1535 — the scalar resolver, matching both renderers.
-            | on -> BindingResolver.tryResolveScalarText ctx.Sources on |> Option.map box
-
-        // Phase 1535 — the one shared case-selection definition, so the email
-        // projection cannot drift from what the page renders.
-        let matched =
-            let selector =
-                currentValue |> Option.map (fun v -> if isNull v then "" else string v)
-
-            BindingResolver.selectSwitchCase ctx.Sources selector spec.Cases
-
-        renderNode opts (depth + 1) ctx (matched |> Option.defaultValue spec.Default)
+        renderNode opts (depth + 1) ctx (selectedSwitchBranch ctx spec)
 
     | NodeKind.FragmentRef spec ->
         match Map.tryFind spec.Name ctx.Fragments with

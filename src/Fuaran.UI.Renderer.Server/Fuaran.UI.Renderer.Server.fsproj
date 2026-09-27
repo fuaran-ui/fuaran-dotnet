@@ -22,6 +22,10 @@
          Render.fs (it reuses that module's assembly-internal text + number
          projection, so a digest cannot disagree with the page it links to). -->
     <Compile Include="Email.fs" />
+    <!-- Speech.fs — the Phase 1813 speech projection. After Email.fs (it shares
+         that module's Switch-branch selection, so a script and a digest cannot
+         disagree about which case a tree shows). -->
+    <Compile Include="Speech.fs" />
     <Compile Include="Hydration.fs" />
     <Compile Include="Resume.fs" />
   </ItemGroup>

@@ -1462,3 +1462,158 @@ let badge (r: FidelityRow) : BadgeSegment list =
               "behaviour only, no DOM change: " + enhancement + " (" + seam + ")"
           | RichTier.ClientOnly(technique, seam) ->
               "client-only, outside every parity comparison: " + technique + " (" + seam + ")" } ]
+
+// ─── The speech column (Phase 1813) ──────────────────────────────────────────
+//
+// A render target the tiers above do not reach: a surface with no pixels. The
+// speech projection (`Fuaran.UI.Renderer.Server.Speech`) walks a tree and
+// produces a spoken script; this column declares, per canonical wire kind, what
+// that projection does with the kind when the node carries no
+// `accessibility.speak` of its own. `speak` (Phase 1812) wins over every ruling
+// below, on every kind: it is the author's own words for what the node says
+// aloud, and the projection reads it exactly.
+//
+// The column is a SEPARATE TABLE rather than a field on `FidelityRow` for two
+// reasons. It rules on a different target (the tiers answer "how far is this
+// render held to the parity contract?", this answers "what is said?"), and
+// widening the published row record would break every full-literal
+// construction of it for a column most readers of the row never consult.
+// Completeness is held the way the rows are: a test measures this table against
+// `all`, so a kind that gains a row cannot ship without a speech ruling, and the
+// emitter refuses to write a kind it has no ruling for.
+
+/// What the speech projection does with a kind's own content. Four classes, the
+/// closed set `render-fidelity.json` enumerates as `speechClasses`; the note is
+/// the per-kind derivation, stated for a reader who has to reproduce it.
+[<RequireQualifiedAccess>]
+type SpeechRuling =
+    /// The kind carries authored prose, and that prose is read aloud as written.
+    | Spoken of note: string
+    /// The utterance is COMPOSED from what the node already carries - typed
+    /// fields, a heading, its accessible label, its children in authored order.
+    | Derived of note: string
+    /// The kind is announced as what it is and its content is never pretended
+    /// at: an interactive or client-drawn surface a listener cannot operate.
+    | AnnouncedOnly of note: string
+    /// Nothing is said. Every such node is REPORTED as omitted, never dropped.
+    | Omitted of note: string
+
+/// The class token a ruling carries in `render-fidelity.json`.
+let speechClassId (ruling: SpeechRuling) : string =
+    match ruling with
+    | SpeechRuling.Spoken _ -> "spoken"
+    | SpeechRuling.Derived _ -> "derived"
+    | SpeechRuling.AnnouncedOnly _ -> "announced-only"
+    | SpeechRuling.Omitted _ -> "omitted"
+
+/// The per-kind derivation note a ruling carries.
+let speechNote (ruling: SpeechRuling) : string =
+    match ruling with
+    | SpeechRuling.Spoken note
+    | SpeechRuling.Derived note
+    | SpeechRuling.AnnouncedOnly note
+    | SpeechRuling.Omitted note -> note
+
+/// The closed class vocabulary, in the order `render-fidelity.json` emits it:
+/// each class id and what it means for a listener.
+let speechClasses: (string * string) list =
+    [ "spoken", "the kind's authored prose is read aloud as written"
+      "derived",
+      "the utterance is composed from what the node already carries - typed fields, a heading, its accessible label, its children in authored order"
+      "announced-only",
+      "the node is announced as what it is and its content is never pretended at - an interactive or client-drawn surface a listener cannot operate"
+      "omitted", "nothing is said, and the node is reported in the projection's omission list rather than dropped" ]
+
+/// The speech ruling for every canonical wire kind, ordered by wire name
+/// (Ordinal), so a new kind lands as one clean insert.
+///
+/// Four rules hold across the table and are stated once here rather than on
+/// every row: a node whose `accessibility.speak` resolves says exactly that; a
+/// node whose `accessibility.hidden` resolves true, or whose `visible` resolves
+/// false, is excluded with its whole subtree; `accessibility.liveRegion` does
+/// not move a node out of authored order (a script is read once, top to bottom,
+/// so there is no later update for politeness to schedule); and a spoken or
+/// derived LEAF kind whose own content resolves to nothing falls back to its
+/// accessible label before it is reported as having nothing sayable (a
+/// container is reported only when neither it nor any descendant said anything).
+///
+/// An announcement reads `<noun>[: <name>][, <detail>]`. The name is the node's
+/// accessible label where one resolves, else the kind's own naming field (a
+/// button's label, a chart's title); a bracketed part is left out, cleanly, when
+/// it resolves to nothing.
+let speechRulings: (string * SpeechRuling) list =
+    [ "Badge", SpeechRuling.Derived "the resolved label, as one short utterance"
+      "Box",
+      SpeechRuling.Derived
+          "no utterance of its own beyond a Card's heading (emphasised); its children speak in authored order"
+      "Button", SpeechRuling.AnnouncedOnly "'Button: <label>' - the declared action is never described as done"
+      "Callout", SpeechRuling.Spoken "the heading (emphasised) then the body, as authored"
+      "Chart",
+      SpeechRuling.AnnouncedOnly
+          "'Chart: <title>' - the series are not read out; `speak` is how an author supplies the spoken summary"
+      "CodeBlock",
+      SpeechRuling.AnnouncedOnly
+          "'Code block (<language>)[: <name>], <n> lines' - source text read aloud is noise rather than content"
+      "Custom", SpeechRuling.AnnouncedOnly "'Component: <accessible label, else the component id>'"
+      "DataGrid",
+      SpeechRuling.AnnouncedOnly
+          "'Table[: <name>], <n> rows, <m> columns' for the static-rows form, else 'Table[: <name>]'; the cells are not read out"
+      "Disclosure",
+      SpeechRuling.Derived
+          "the heading (emphasised) then its children, always - a spoken summary that skips a closed section is a lie about what it contains"
+      "Drawing", SpeechRuling.AnnouncedOnly "'Diagram: <title>', then the description where one is declared"
+      "Embed", SpeechRuling.AnnouncedOnly "'Embedded view: <title>'"
+      "ErrorBoundary",
+      SpeechRuling.Derived
+          "the protected child speaks; the fallback is a client-runtime path and is reported as not taken"
+      "Fact", SpeechRuling.Derived "'<label>: <value>', then the help text"
+      "FileUpload", SpeechRuling.AnnouncedOnly "'File upload: <label>'"
+      "Filters", SpeechRuling.AnnouncedOnly "'Filters[: <name>], <n> fields'"
+      "Form", SpeechRuling.AnnouncedOnly "'Form[: <name>], <n> fields' - a form is never filled in by voice here"
+      "FragmentDecl", SpeechRuling.Omitted "a template declaration says nothing, here as everywhere"
+      "FragmentRef",
+      SpeechRuling.Derived
+          "expanded against the tree's fragment registry, the body speaks; an unresolved reference is reported"
+      "Heading", SpeechRuling.Spoken "the text, emphasised, with a long pause after - a heading announces a section"
+      "Icon",
+      SpeechRuling.Derived
+          "the icon's declared label, else its accessible label; an icon with neither is decorative and is reported as omitted"
+      "Image",
+      SpeechRuling.Derived "'Image: <alt>'; an EMPTY alt declares the image decorative, and it is reported as omitted"
+      "LabelValueRow", SpeechRuling.Derived "'<label>: <value>', the value formatted through the declared format"
+      "Link", SpeechRuling.Derived "'Link: <label>'"
+      "List", SpeechRuling.Spoken "one utterance per item, numbered for an ordered list"
+      "Map", SpeechRuling.AnnouncedOnly "'Map[: <name>]' - the markers are not read out"
+      "Markdown",
+      SpeechRuling.Spoken
+          "the one deterministic GFM render, read as its text: markup removed, entities decoded, one utterance per block"
+      "Math",
+      SpeechRuling.AnnouncedOnly "'Formula[: <name>]' - LaTeX read aloud is not mathematics; `speak` supplies a reading"
+      "Media", SpeechRuling.AnnouncedOnly "'Video: <label>' or 'Audio: <label>'"
+      "Metric",
+      SpeechRuling.Derived
+          "'<label>: <value>' with the value through its format, then 'trend <trend>' through the trend format, then the subtext"
+      "Modal", SpeechRuling.AnnouncedOnly "'Dialog: <heading>' - an overlay's content is not read into the page"
+      "Mount", SpeechRuling.AnnouncedOnly "'Embedded view[: <name>]' - the guest tree attaches client-side"
+      "Progress", SpeechRuling.Derived "'<label>: <n> percent', or 'In progress' when indeterminate"
+      "ScrollArea", SpeechRuling.Derived "no utterance of its own; its children speak in full"
+      "Select", SpeechRuling.AnnouncedOnly "'Selection: <label>'"
+      "Skeleton", SpeechRuling.Omitted "a loading placeholder describes a state a script is never read in"
+      "Sparkline", SpeechRuling.AnnouncedOnly "'Trend line[: <name>]' - the points are not read out"
+      "SplitPanel", SpeechRuling.Derived "no utterance of its own; the panes speak in authored order"
+      "Stepper", SpeechRuling.AnnouncedOnly "'Step-by-step section[: <name>], <n> steps'"
+      "SummaryList", SpeechRuling.Derived "the heading (emphasised) then its children"
+      "Switch",
+      SpeechRuling.Derived
+          "the case matching the resolved selector, else the default; every other case is reported as not taken"
+      "Tabs",
+      SpeechRuling.AnnouncedOnly
+          "'Tabbed section[: <name>], <n> tabs' - reading only the active panel would be a lie about how much the section contains"
+      "Toast", SpeechRuling.Spoken "an OPEN toast reads its message; a closed one is reported as omitted, never read"
+      "Tree", SpeechRuling.AnnouncedOnly "'Hierarchy[: <name>]' - a listener can expand nothing" ]
+
+/// The speech ruling of a wire kind, or `None` for a kind with no ruling (which
+/// the completeness test makes impossible for a kind that has a fidelity row).
+let speechOf (wireKind: string) : SpeechRuling option =
+    speechRulings
+    |> List.tryPick (fun (k, r) -> if k = wireKind then Some r else None)

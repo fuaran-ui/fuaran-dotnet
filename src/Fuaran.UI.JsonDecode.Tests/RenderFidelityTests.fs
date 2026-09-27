@@ -791,3 +791,92 @@ let intrinsicAria =
                   Expect.isTrue
                       (fst (i.TryGetProperty "tierNote"))
                       "a client-only entry reaches the artefact without the reason the server floor emits none") ]
+
+// ─── The speech column (Phase 1813) ──────────────────────────────────────────
+//
+// The speech ruling is a separate table from the rows (see the note beside
+// `RenderFidelity.speechRulings`), so its completeness is held here, against
+// the row table - which the completeness block above holds against the
+// GENERATED manifest. The chain is manifest -> rows -> rulings, and a kind added
+// under the forward-coupling rule fails at the first link it has not reached.
+
+/// The rule as a function, so the negative probe exercises the same code.
+let private kindsWithoutSpeech (kinds: string list) (rulings: (string * SpeechRuling) list) : string list =
+    let declared = rulings |> List.map fst |> Set.ofList
+    kinds |> List.filter (fun k -> not (Set.contains k declared))
+
+[<Tests>]
+let speechColumn =
+    testList
+        "Fuaran.UI.RenderFidelity — speech column (Phase 1813)"
+        [ testCase "every fidelity row carries a speech ruling" (fun () ->
+              Expect.isEmpty
+                  (kindsWithoutSpeech (all |> List.map _.Kind) speechRulings)
+                  "a kind with a fidelity row and no speech ruling: add one to RenderFidelity.speechRulings declaring spoken / derived / announced-only / omitted")
+
+          testCase "a kind with no ruling FAILS the rule (negative probe)" (fun () ->
+              let probe = "ProbeKindWithNoSpeechRuling"
+
+              Expect.equal
+                  (kindsWithoutSpeech (probe :: (all |> List.map _.Kind)) speechRulings)
+                  [ probe ]
+                  "the speech rule must name an undeclared kind - if this is empty the rule cannot fail and guards nothing")
+
+          testCase "no ruling names a kind the table has no row for, and none is declared twice" (fun () ->
+              let rows = all |> List.map _.Kind |> Set.ofList
+
+              let stale =
+                  speechRulings
+                  |> List.map fst
+                  |> List.filter (fun k -> not (Set.contains k rows))
+
+              Expect.isEmpty stale "a speech ruling for a kind with no fidelity row - a stale ruling"
+
+              let dupes =
+                  speechRulings
+                  |> List.countBy fst
+                  |> List.filter (fun (_, n) -> n > 1)
+                  |> List.map fst
+
+              Expect.isEmpty dupes "a kind carries two speech rulings; a reader would take whichever came first")
+
+          testCase "the rulings are in Ordinal wire-name order" (fun () ->
+              let names = speechRulings |> List.map fst
+              let sorted = names |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
+              Expect.equal names sorted "the speech table is ordered by wire name so an addition lands as one insert")
+
+          testCase "every ruling draws its class from the closed speechClasses vocabulary" (fun () ->
+              let vocabulary = speechClasses |> List.map fst
+
+              Expect.equal
+                  vocabulary
+                  [ "spoken"; "derived"; "announced-only"; "omitted" ]
+                  "the speech-class vocabulary is closed at the four classes the column declares"
+
+              for (kind, ruling) in speechRulings do
+                  Expect.contains vocabulary (speechClassId ruling) (kind + " carries a class outside the vocabulary")
+
+                  Expect.isNotEmpty
+                      (speechNote ruling)
+                      (kind + " carries no derivation note - the class alone does not say what is said"))
+
+          testCase "the artefact carries the speech column for every kind, and the class vocabulary" (fun () ->
+              use doc = JsonDocument.Parse(RenderFidelityArtifact.toJson ())
+              let root = doc.RootElement
+
+              let str (e: JsonElement) =
+                  e.GetString() |> Option.ofObj |> Option.defaultValue ""
+
+              let classes =
+                  [ for c in root.GetProperty("speechClasses").EnumerateArray() -> str (c.GetProperty("class")) ]
+
+              Expect.equal classes (speechClasses |> List.map fst) "speechClasses is emitted in declaration order"
+
+              for k in root.GetProperty("kinds").EnumerateArray() do
+                  let kind = str (k.GetProperty("kind"))
+                  let speech = k.GetProperty("speech")
+
+                  Expect.equal
+                      (str (speech.GetProperty("class")))
+                      (speechOf kind |> Option.map speechClassId |> Option.defaultValue "<none>")
+                      (kind + " emits a speech class that disagrees with the declaration")) ]

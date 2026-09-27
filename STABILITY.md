@@ -7852,6 +7852,44 @@ prevent.
 
 ### What rides this slot
 
+**fuaran#1813 — ADDITIVE on `Fuaran.UI` and `Fuaran.UI.Renderer.Server`; ADDITIVE on the corpus
+artefact `render-fidelity.json`; no wire payload moves. RIDES this slot.** The speech projection: a
+tree read aloud, the consumer Phase 1812's `accessibility.speak` was added for.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI.Renderer.Server.Speech` (new module) | `project : ServerRenderContext -> Node<obj> -> SpeechScript * SpeechOmission list`, `projectWith`, `projectStatic`; the script types `Utterance` / `Pause` / `UtteranceSource` / `SpeechScript`; the omission types `SpeechOmission` / `OmissionReason`; two lowerings, `toPlainText` (one utterance per line) and `toSsml`; the projection's own escaper `escapeSsml`; and `expectedSource`, the ruling-to-source map the conformance leg reads. | Nobody - a new module. |
+| `Fuaran.UI.RenderFidelity` | `SpeechRuling` (`Spoken` / `Derived` / `AnnouncedOnly` / `Omitted`, each carrying the per-kind derivation note), `speechRulings` (one ruling per canonical wire kind, Ordinal by wire name), `speechOf`, `speechClassId`, `speechNote`, `speechClasses`. `FidelityRow` does NOT change shape: the column is a separate table, so no full-literal construction of a row breaks. | Nobody. |
+| `render-fidelity.json` | A top-level `speechClasses` array (the closed vocabulary: `spoken`, `derived`, `announced-only`, `omitted`) and a per-kind `speech` object (`class`, `note`). The other hosts' manifest readers take named members and tolerate the addition; the bundled Python snapshot is re-synced in the same change-set. | Nobody. |
+
+**What the projection does.** `speak` is said exactly, on any kind, and replaces what the node says
+of itself without silencing a container's children. Otherwise the kind's ruling applies: spoken
+kinds read their prose (a `Heading` emphasised with a long pause, `Markdown` through the one GFM
+render with its markup removed, one utterance per block); derived kinds compose from typed fields
+(a `Metric` is label, value through its format, trend through its trend format, subtext); the
+interactive and client-drawn kinds are ANNOUNCED as what they are (`Form, 4 fields`), never read,
+and their structural content is reported as inside the announcement. `accessibility.hidden` and a
+false `visible` exclude the whole subtree; `liveRegion` does not change order. Every node absent
+from the script is in the omission list by id, with its reason and the id of the node that decided
+it. The `Switch` branch is the one the SSR document and the email digest render - the selection was
+lifted out of `Email.fs` into one assembly-internal helper both projections call, so no public
+surface of `Email` moves.
+
+**Injection.** SSML text passes `escapeSsml`, which escapes the five XML metacharacters and drops
+every character XML 1.0 cannot carry, so a bound string can neither open an element nor make the
+document ill-formed. Pinned in bytes, and by parsing the output.
+
+**Pinned on three legs.** `RenderFidelityTests` holds the column's completeness against the row
+table (with a negative probe that must name an undeclared kind), its closed vocabulary, its order
+and the emitted artefact; `SpeechProjectionTests` pins the four shard properties plus a corpus leg
+that projects every node fixture and holds each root's own utterances to its kind's ruling — made
+to go red once by flipping one ruling before it was believed — with a coverage assertion that
+every ruled kind is exercised. `Fuaran.UI.Tests` ran in full over the emitted corpus.
+
+**Vocabulary charter.** Not engaged: no kind, case or spec field is added. **Escape-hatch
+inventory — CONFIRMED no new hatch:** the projection emits text only, reaches no host seam, and
+its one markup surface (SSML) is closed by the escaper above.
+
 **fuaran#1811 — BREAKING on `Fuaran.UI` (four union cases and two type names renamed) AND on the
 wire (four `$type` discriminators move); RIDES this slot.** The temporal family is renamed so the
 names say what the controls already do. The versioning vehicle was an operator ruling recorded

@@ -41,6 +41,10 @@
          email-hostile-construct lint (including a planted-construct test, so a
          clean lint run is evidence rather than silence). -->
     <Compile Include="EmailProjectionTests.fs" />
+    <!-- SpeechProjectionTests pins Phase 1813's speech projection: speak wins,
+         omissions by node id, SSML injection refused, fixed-clock determinism,
+         and every corpus node fixture held to its render-fidelity speech ruling. -->
+    <Compile Include="SpeechProjectionTests.fs" />
     <!-- GalleryExpressionTests is the Phase 1082 GATE: it asks, in emitted
          bytes, what the shipped layout + image vocabulary can and cannot say
          about an artwork-gallery page. Its masonry probes are negative

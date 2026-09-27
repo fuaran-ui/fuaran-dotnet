@@ -89,6 +89,32 @@ let private writeVocabulary (w: Utf8JsonWriter) : unit =
 
     w.WriteEndArray()
 
+/// The speech column (Phase 1813) — what the speech projection does with the
+/// kind when a node carries no `accessibility.speak`. A kind with no ruling is a
+/// refusal, not an omission: the artefact must not publish a kind whose spoken
+/// posture nobody declared, and the completeness test names it first.
+let private writeSpeech (w: Utf8JsonWriter) (kind: string) : unit =
+    match speechOf kind with
+    | Some ruling ->
+        w.WriteStartObject("speech")
+        w.WriteString("class", speechClassId ruling)
+        w.WriteString("note", speechNote ruling)
+        w.WriteEndObject()
+    | None -> failwithf "render-fidelity: kind '%s' has no speech ruling in RenderFidelity.speechRulings" kind
+
+/// The closed speech-class vocabulary (Phase 1813), emitted once at the top
+/// level so a reader can enumerate every class independently of the rows.
+let private writeSpeechClasses (w: Utf8JsonWriter) : unit =
+    w.WriteStartArray("speechClasses")
+
+    for (cls, meaning) in speechClasses do
+        w.WriteStartObject()
+        w.WriteString("class", cls)
+        w.WriteString("meaning", meaning)
+        w.WriteEndObject()
+
+    w.WriteEndArray()
+
 /// The kind-intrinsic ARIA emissions (Phase 1591) — the roles and live regions
 /// the renderer pins for a kind WHATEVER the node's `Accessibility` trait says.
 ///
@@ -238,6 +264,9 @@ let toJson () : string =
         + "it governs, names the kinds it applies to, and draws its claim ids from the same closed "
         + "obligationVocabulary, so a host reports an unchecked trait claim exactly as it reports an "
         + "unchecked kind claim. "
+        + "Each kind also declares its SPEECH ruling: what a speech projection says for the kind when a "
+        + "node carries no accessibility.speak of its own, drawn from the closed speechClasses "
+        + "(spoken, derived, announced-only, omitted) with the per-kind derivation as a note. "
         + "See WIRE_FORMAT.md 13."
     )
 
@@ -255,6 +284,8 @@ let toJson () : string =
         w.WriteEndObject()
 
     w.WriteEndArray()
+
+    writeSpeechClasses w
 
     writeVocabulary w
 
@@ -277,6 +308,7 @@ let toJson () : string =
 
         writeObligations w r.Obligations
         writeIntrinsic w r.Intrinsic
+        writeSpeech w r.Kind
 
         w.WriteString("contract", r.Contract)
         w.WriteEndObject()
