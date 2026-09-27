@@ -73,4 +73,42 @@ let tests =
               // an ill-typed invocation short-circuits to Deferred.Error before the body runs
               match invoker "forecast" [ "x", "99" ] with
               | Deferred.Error _ -> ()
-              | other -> failtestf "expected Error, got %A" other ]
+              | other -> failtestf "expected Error, got %A" other
+
+          // Phase 1817 — the host emission budget as a capability report: a model ASKS before it emits.
+          testCase "emissionLimits reports each declared limit with the code its breach is refused with"
+          <| fun _ ->
+              let limits =
+                  { Fuaran.UI.HostLimits.named "kiosk" with
+                      MaxNodes = Some 400
+                      MaxSerializedBytes = Some 65536 }
+
+              let expected =
+                  Fuaran.Core.JObj
+                      [ "identity", Fuaran.Core.JStr "kiosk"
+                        "limits",
+                        Fuaran.Core.JArr
+                            [ Fuaran.Core.JObj
+                                  [ "limit", Fuaran.Core.JStr "maxNodes"
+                                    "value", Fuaran.Core.JInt 400
+                                    "code", Fuaran.Core.JStr "FUARAN158" ]
+                              Fuaran.Core.JObj
+                                  [ "limit", Fuaran.Core.JStr "maxSerializedBytes"
+                                    "value", Fuaran.Core.JInt 65536
+                                    "code", Fuaran.Core.JStr "FUARAN162" ] ] ]
+
+              Expect.equal (Capabilities.emissionLimits limits) expected "declared limits only, in record order"
+
+          testCase "emissionLimits over the unbounded default reports no limits, not zero limits"
+          <| fun _ ->
+              Expect.equal
+                  (Capabilities.emissionLimits Fuaran.UI.HostLimits.unbounded)
+                  (Fuaran.Core.JObj [ "identity", Fuaran.Core.JStr "unbounded"; "limits", Fuaran.Core.JArr [] ])
+                  "an empty list means no stated limit"
+
+          testCase "emissionLimits over a preset states every limit it declares"
+          <| fun _ ->
+              match Capabilities.emissionLimits Fuaran.UI.HostLimits.email with
+              | Fuaran.Core.JObj [ "identity", Fuaran.Core.JStr "email"; "limits", Fuaran.Core.JArr entries ] ->
+                  Expect.equal entries.Length 5 "the email preset declares all five limits"
+              | other -> failtestf "unexpected report shape %A" other ]

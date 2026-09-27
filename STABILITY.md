@@ -7852,6 +7852,22 @@ prevent.
 
 ### What rides this slot
 
+**fuaran#1817 — BREAKING on `Fuaran.UI` at one closed union (`PreEmitDefect` gains five cases);
+ADDITIVE everywhere else; NO wire change; RIDES this slot.** Host emission limits: a host declares
+how much tree it takes (`HostLimits`), and the pre-emit validator refuses the rest before emit with
+FUARAN158–FUARAN162.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI` — `HostLimits` (new file) | New: `HostLimits` (record, every limit optional), `HostLimitKind`, `HostLimitBreach`, `HostLimitMeasurement`, `HostLimitMeter`, and the `HostLimits` module (`unbounded`, `named`, the `email` / `mobile` / `card` presets as data, `declared`, `childCount`, `gridRowCount`, `serializedBytes`, `utf8Length`). | Nobody; additive. |
+| `Fuaran.UI` — `PreEmitDefect` | Gains `HostNodeCountExceeded` — **FUARAN158** — `HostDepthExceeded` — **FUARAN159** — `HostChildrenExceeded` — **FUARAN160** — `HostGridRowsExceeded` — **FUARAN161** — and `HostPayloadBytesExceeded` — **FUARAN162**, all Error, each `nodeId * limit * measured * limits`. | An exhaustive match over `PreEmitDefect`. |
+| `Fuaran.UI` — `PreEmitValidate` | New: `validateWithLimits`, `validateWithMeter`, `hostLimitDefect`, `hostLimitCode`. The four structural limits are metered on the validator's existing walk (one visit per node); the size limit encodes once, only when declared. | Nobody. Every existing entry point runs exactly as before — `HostLimits.unbounded` validates byte-for-byte as `validate`, pinned by `HostLimitsTests`. |
+| `Fuaran.UI.AiTools` — `Capabilities` | New: `emissionLimits : HostLimits -> JVal`, the active limits with the code each breach is refused with. | Nobody; additive. |
+| Corpus — `validator/defect-vocabulary.json`; this repo's `validator-coverage.json` | Both regenerated with the five codes, in this change-set. | A subset host's coverage declaration is covered by its `abstentionDefault`; no wire fixture moves. |
+
+**Not decided here:** whether limits travel in capability negotiation (§15.2) — they are host
+configuration with `DecodePolicy`'s standing, and nothing about them is on the wire.
+
 **fuaran#1892 — BREAKING on `Fuaran.UI` at two record shapes and on the C# facade's positional
 grid constructor; ADDITIVE on the wire (two optional `DataGrid` fields, NO profile step);
 BEHAVIOURAL at FUARAN075; RIDES this slot.** The virtualised `DataGrid`: a row window

@@ -428,6 +428,44 @@ type PreEmitDefect =
     /// Carries the declaring node's id and the id of the nested node that
     /// carries the inner fallback.
     | NestedFallback of nodeId: string * innerId: string
+    /// **FUARAN158 (Error)**. The tree carries more nodes than the host's
+    /// declared `HostLimits.MaxNodes` (Phase 1817). Raised only under
+    /// `validateWithLimits` / `validateWithMeter`; a host that declares no
+    /// limits never sees it.
+    ///
+    /// Carries the first node past the budget (depth-first pre-order), the
+    /// limit, the tree's walked node count, and the declaration's identity.
+    | HostNodeCountExceeded of nodeId: string * limit: int * measured: int * limits: string
+    /// **FUARAN159 (Error)**. The tree nests deeper than the host's declared
+    /// `HostLimits.MaxDepth` (Phase 1817; the root is level 1). Distinct from
+    /// FUARAN091, which is the WIRE limit every host shares; this is one host's
+    /// narrower budget, and a tree past it is still a valid document.
+    ///
+    /// Carries the first node below the limit, the limit, the deepest level
+    /// walked, and the declaration's identity.
+    | HostDepthExceeded of nodeId: string * limit: int * measured: int * limits: string
+    /// **FUARAN160 (Error)**. A container holds more direct children than the
+    /// host's declared `HostLimits.MaxChildren` (Phase 1817). One finding per
+    /// offending container.
+    ///
+    /// Carries the container's id, the limit, its child count, and the
+    /// declaration's identity.
+    | HostChildrenExceeded of nodeId: string * limit: int * measured: int * limits: string
+    /// **FUARAN161 (Error)**. A `DataGrid` carries more INLINE rows (its
+    /// `staticRows`, or a `Binding.Static` source) than the host's declared
+    /// `HostLimits.MaxGridRows` (Phase 1817). A bound source is the host's to
+    /// page and is not judged. One finding per offending grid.
+    ///
+    /// Carries the grid's id, the limit, its inline row count, and the
+    /// declaration's identity.
+    | HostGridRowsExceeded of nodeId: string * limit: int * measured: int * limits: string
+    /// **FUARAN162 (Error)**. The tree's canonical JSON encoding is larger than
+    /// the host's declared `HostLimits.MaxSerializedBytes` (Phase 1817). The
+    /// payload is the whole tree, so the node named is the root.
+    ///
+    /// Carries the root's id, the limit, the encoded size in UTF-8 bytes, and
+    /// the declaration's identity.
+    | HostPayloadBytesExceeded of nodeId: string * limit: int * measured: int * limits: string
     /// **FUARAN092 (Warning)**. A `Link` declares `protection: "email"` on an
     /// href that is statically known NOT to be a `mailto:` (Phase 812). The
     /// Email protection strategy only has meaning over a mailto address — on
@@ -2269,6 +2307,51 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "'%s' declares a fallback in which '%s' declares a fallback of its own. A behind reader lifts one fallback — the one on the node it cannot read — and never consults a fallback's fallback, so the inner one has no reader. Remove it, or make the inner node plain"
             nodeId
             innerId
+    | PreEmitDefect.HostNodeCountExceeded(nodeId, limit, measured, limits) ->
+        "FUARAN158",
+        DefectSeverity.Error,
+        sprintf
+            "the tree carries %d nodes, over the %d this host allows (maxNodes, host limits '%s'); '%s' is the first node past the budget. Emit less: summarise, page a list, or split the content across views"
+            measured
+            limit
+            limits
+            nodeId
+    | PreEmitDefect.HostDepthExceeded(nodeId, limit, measured, limits) ->
+        "FUARAN159",
+        DefectSeverity.Error,
+        sprintf
+            "'%s' is the first node below nesting level %d, the deepest this host allows (maxDepth, host limits '%s'); the tree reaches level %d. Flatten the nesting — remove a wrapper box, or lift the subtree a level"
+            nodeId
+            limit
+            limits
+            measured
+    | PreEmitDefect.HostChildrenExceeded(nodeId, limit, measured, limits) ->
+        "FUARAN160",
+        DefectSeverity.Error,
+        sprintf
+            "container '%s' holds %d direct children; this host allows %d (maxChildren, host limits '%s'). Group the children into sub-containers, or move the repeated items into a list or grid"
+            nodeId
+            measured
+            limit
+            limits
+    | PreEmitDefect.HostGridRowsExceeded(nodeId, limit, measured, limits) ->
+        "FUARAN161",
+        DefectSeverity.Error,
+        sprintf
+            "grid '%s' carries %d inline rows; this host allows %d (maxGridRows, host limits '%s'). Trim the rows to the ones the reader needs, or bind the grid to a source the host pages"
+            nodeId
+            measured
+            limit
+            limits
+    | PreEmitDefect.HostPayloadBytesExceeded(nodeId, limit, measured, limits) ->
+        "FUARAN162",
+        DefectSeverity.Error,
+        sprintf
+            "the tree rooted at '%s' encodes to %d bytes; this host allows %d (maxSerializedBytes, host limits '%s'). Emit less content, or move large inline data (static rows, long text) behind a bound source"
+            nodeId
+            measured
+            limit
+            limits
     | PreEmitDefect.UnsafeUrlScheme(nodeId, slot, reason) ->
         "FUARAN142",
         DefectSeverity.Warning,
@@ -3216,6 +3299,34 @@ let private accessibilityRefs (n: Node<'Msg>) : (string * string) list =
         [ namedRef "labelledBy" a.LabelledBy; namedRef "describedBy" a.DescribedBy ]
         |> List.choose id
 
+/// The defect a `HostLimitBreach` is reported as (Phase 1817, FUARAN158-162),
+/// under the declaration named `limits` — one case per limit, so each limit
+/// owns a stable code.
+let hostLimitDefect (limits: string) (breach: HostLimitBreach) : PreEmitDefect =
+    match breach.Kind with
+    | HostLimitKind.Nodes -> PreEmitDefect.HostNodeCountExceeded(breach.NodeId, breach.Limit, breach.Measured, limits)
+    | HostLimitKind.Depth -> PreEmitDefect.HostDepthExceeded(breach.NodeId, breach.Limit, breach.Measured, limits)
+    | HostLimitKind.Children -> PreEmitDefect.HostChildrenExceeded(breach.NodeId, breach.Limit, breach.Measured, limits)
+    | HostLimitKind.GridRows -> PreEmitDefect.HostGridRowsExceeded(breach.NodeId, breach.Limit, breach.Measured, limits)
+    | HostLimitKind.SerializedBytes ->
+        PreEmitDefect.HostPayloadBytesExceeded(breach.NodeId, breach.Limit, breach.Measured, limits)
+
+/// The `FUARAN*` code a breach of `kind` is refused with — PROJECTED through
+/// `describe` rather than restated, so a capability report that names the code
+/// cannot disagree with the refusal that raises it.
+let hostLimitCode (kind: HostLimitKind) : string =
+    let code, _, _ =
+        describe (
+            hostLimitDefect
+                ""
+                { Kind = kind
+                  NodeId = ""
+                  Limit = 0
+                  Measured = 0 }
+        )
+
+    code
+
 let private validateCore
     (policy: DecodePolicy)
     // Phase 577 (FUARAN112) — whether this tree is declared bound for the wire.
@@ -3226,6 +3337,10 @@ let private validateCore
     // intent by choosing `validateForTransport`, exactly as it declares a
     // deployment by choosing `validateWithPolicy`.
     (forTransport: bool)
+    // Phase 1817 (FUARAN158-162) — the host's emission budget, as a meter this
+    // walk feeds. `None` for every caller that declares no limits, so the
+    // shipped paths do exactly the work they did before.
+    (meter: HostLimitMeter option)
     (customCheck: string -> string -> string -> Map<string, JVal> -> PreEmitDefect option)
     (node: Node<'Msg>)
     : Result<unit, PreEmitDefect list> =
@@ -3409,6 +3524,12 @@ let private validateCore
 
     and walkBody (n: Node<'Msg>) =
         recordNodeId n.Id
+
+        // FUARAN158-161 (Phase 1817) — the host emission budget, metered on
+        // THIS walk: one visit per node, however many limits are declared.
+        match meter with
+        | Some m -> m.Visit(n, depth)
+        | None -> ()
 
         // FUARAN104 (Phase 1020) — the decode-time admission policy, mirrored
         // at the authoring end. Guarded on `narrows` so the shipped default
@@ -4657,6 +4778,12 @@ let private validateCore
 
     walk node
 
+    // FUARAN162 (Phase 1817) — the serialized size, measured once, after the
+    // walk, and only over a tree the walk completed (see `HostLimitMeter.Finish`).
+    match meter with
+    | Some m -> m.Finish(node, not depthReported)
+    | None -> ()
+
     // Collect every id observed ≥ 2 times.
     for KeyValue(id, count) in nodeIdCounts do
         if count >= 2 then
@@ -5088,6 +5215,14 @@ let private validateCore
             if reportedClosure.Add(c.Reader + " " + c.Slot) then
                 defects.Add(PreEmitDefect.WireLossyActionClosure(c.Reader, c.Slot))
 
+    // FUARAN158-162 (Phase 1817) — appended last, so every finding a tree
+    // produced before the host declared a budget keeps its position.
+    match meter with
+    | Some m ->
+        for breach in m.Breaches do
+            defects.Add(hostLimitDefect m.Limits.Identity breach)
+    | None -> ()
+
     if defects.Count = 0 then
         Ok()
     else
@@ -5098,7 +5233,7 @@ let private validateCore
 /// found (NOT short-circuited on the first one) so the AI can repair the
 /// tree in a single turn rather than discovering defects one at a time.
 let validate (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
-    validateCore DecodePolicy.admitAll false (fun _ _ _ _ -> None) node
+    validateCore DecodePolicy.admitAll false None (fun _ _ _ _ -> None) node
 
 /// `validate` + custom-prop schema enforcement (**FUARAN068**): every
 /// `NodeKind.Custom` whose `(moduleId, componentId)` is registered has its
@@ -5112,6 +5247,7 @@ let validateWithRegistry (registry: CustomRegistry) (node: Node<'Msg>) : Result<
     validateCore
         DecodePolicy.admitAll
         false
+        None
         (fun nodeId moduleId componentId props ->
             match registry.ValidateProps(moduleId, componentId, props) with
             | [] -> None
@@ -5129,7 +5265,7 @@ let validateWithRegistry (registry: CustomRegistry) (node: Node<'Msg>) : Result<
 /// `JsonDecode.decodeNodeWithPolicy`, on the receiving side, over bytes rather
 /// than over a tree the same process built.
 let validateWithPolicy (policy: DecodePolicy) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
-    validateCore policy false (fun _ _ _ _ -> None) node
+    validateCore policy false None (fun _ _ _ _ -> None) node
 
 /// `validateWithRegistry` + the kind-admission lint — the both-declared form.
 /// A profile that excludes only part of the guest boundary (`Mount` but not
@@ -5144,6 +5280,7 @@ let validateWithRegistryAndPolicy
     validateCore
         policy
         false
+        None
         (fun nodeId moduleId componentId props ->
             match registry.ValidateProps(moduleId, componentId, props) with
             | [] -> None
@@ -5167,4 +5304,26 @@ let validateWithRegistryAndPolicy
 /// tree that passes this has not been proved wire-faithful — it has merely not
 /// been refused by a walk the author chose to run.
 let validateForTransport (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
-    validateCore DecodePolicy.admitAll true (fun _ _ _ _ -> None) node
+    validateCore DecodePolicy.admitAll true None (fun _ _ _ _ -> None) node
+
+/// `validate` + the host emission budget (**FUARAN158-162**, Phase 1817): every
+/// limit `meter` declares is measured on the SAME walk that finds every other
+/// defect, and each one exceeded is reported naming the limit, the measured
+/// value and the first offending node — so an emitter repairs from the message
+/// alone.
+///
+/// The meter is the caller's so the caller can read what was USED as well as
+/// what was exceeded (`meter.Measurement`) — "312 of 400 nodes" is how an
+/// emitter learns how close it came. One meter measures one tree; create a
+/// fresh one per call.
+///
+/// Emission limits protect a reader from an HONEST tree that is more than this
+/// host renders well; they neither replace nor loosen the decode-side
+/// `WireLimits`, which protect it from a hostile one (see `HostLimits.fs`).
+let validateWithMeter (meter: HostLimitMeter) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
+    validateCore DecodePolicy.admitAll false (Some meter) (fun _ _ _ _ -> None) node
+
+/// `validateWithMeter` over a fresh meter for `limits`. Under
+/// `HostLimits.unbounded` the result is byte-for-byte `validate`'s.
+let validateWithLimits (limits: HostLimits) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
+    validateWithMeter (HostLimitMeter limits) node

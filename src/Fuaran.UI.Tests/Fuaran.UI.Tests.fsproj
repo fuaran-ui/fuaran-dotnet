@@ -433,6 +433,8 @@
     <Compile Include="HostTypeDecoderTests.fs" />
     <!-- Phase 1816 - JSON Schema -> Form: the mapping table, validity, refusal paths, determinism. -->
     <Compile Include="SchemaFormTests.fs" />
+    <!-- Phase 1817 - host emission limits: each limit at N and N+1, the one-walk meter, the unbounded default. -->
+    <Compile Include="HostLimitsTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
