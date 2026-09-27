@@ -53,6 +53,17 @@ module Fuaran.UI.Renderer.BindingGraph
 //  time, a site left stale costs a wrong screen. `Exact` is a MINIMALITY claim
 //  and is made only when no opaque read took part.
 //
+//  ACYCLIC BY CONSTRUCTION (Phase 1767). The map is LAYERED: a site reads
+//  inputs, queries and the opaque pseudo-inputs, never another site; a query
+//  reads only the filters its `dependsOn` names; an input is never a key. So
+//  the one edge `Propagation.sort` keeps is site -> query, and no reference
+//  cycle can exist over any tree. Writes (actions, a `Local`'s commit, a
+//  Switch's auto-advance) are not edges here: each fires on a gesture or a
+//  clock, never from a read's re-evaluation. The audit behind that, edge kind
+//  by edge kind, and the assertion that goes red if a new edge kind breaks the
+//  layering, are `Fuaran.UI.Tests/BindingCycleTests.fs` — reopen it there
+//  before adding an edge that makes a site or a query readable by a query.
+//
 //  Fable-clean: pattern matching over the walk's records and Core's
 //  FSharp.Core-only `Propagation` — no reflection, no server-only API.
 // ============================================================================
