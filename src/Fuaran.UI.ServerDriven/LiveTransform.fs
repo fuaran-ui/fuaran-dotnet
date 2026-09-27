@@ -87,7 +87,10 @@ type LiveTransformEvaluation =
 ///
 /// Phase 1586 — it is also the estate's implementation of
 /// `Fuaran.UI.ILiveTransformStore`, the seam the RENDERER's own
-/// `TransformSource.Live` arm consults. That interface takes no identity
+/// `TransformSource.Live` arm consults — and, since Phase 1761, its
+/// `TransformSource.Data` arm too, keyed by the pipeline closed over its bound
+/// params, so a static chart whose chips did not move is handed back its prior
+/// table (`ReusedPrior`) rather than re-evaluated. That interface takes no identity
 /// column, because nothing in a rendered tree declares one and the renderer
 /// would have to guess; `identityColumn` is therefore the declaration whoever
 /// CONSTRUCTS the store makes on its behalf, once, for every site it serves.
@@ -161,6 +164,29 @@ type LiveTransformStore(capacity: int, identityColumn: string) =
               Primed = primed }
 
         match states.TryGet site with
+        // Phase 1761 — the SAME source object under the same pipeline: the
+        // prior result is the answer, and it is handed back without a refresh.
+        // The seam would reach the same verdict (`ReusedPrior`) — the result is
+        // a function of the pipeline and the source, and neither moved — but
+        // only after comparing the two tables STRUCTURALLY, which is linear in
+        // the table and measured at a third of a full evaluation for a
+        // 2,000-row source. A static `Data` site hands the store the table it
+        // decoded, the same object every render, so this is its steady state.
+        // Nothing is re-set: the state the store holds is still the one that
+        // produced this result.
+        | Some prior when
+            obj.ReferenceEquals(Incremental.source prior, source)
+            && Incremental.pipelineOf prior = pipeline
+            ->
+            let held = Incremental.result prior
+
+            Ok
+                { Result = held
+                  Footprint =
+                    { SourceRows = Table.rowCount source
+                      ResultRows = Table.rowCount held
+                      Recompute = ReusedPrior }
+                  Primed = false }
         | None ->
             Incremental.primeOn idw pipeline source
             |> Result.map (toEvaluation true)
@@ -172,10 +198,29 @@ type LiveTransformStore(capacity: int, identityColumn: string) =
             // full and re-priming its caches — so the next edit can restrict
             // again — and records the reason in the footprint rather than
             // silently reusing a cache nothing vouches for.
+            //
+            // Phase 1761 — except where there IS no change to describe. A source
+            // equal to the one the state holds is truthfully described by the
+            // quiet delta under ANY identity scheme, the undeclared one
+            // included, and the seam answers that with `ReusedPrior`, evaluating
+            // nothing. Without this arm a store with no identity column declared
+            // — the default — diffed an unchanged table, failed to key it, and
+            // re-evaluated in full: exactly the `Data`-source site the renderer
+            // now keys here, whose rows never change at all. Reference equality
+            // first, because the common case is the same decoded table handed
+            // back; structural equality otherwise, which is also the comparison
+            // the seam itself makes before it reuses anything.
+            let unchanged =
+                let held = Incremental.source prior
+                obj.ReferenceEquals(held, source) || held = source
+
             let delta =
-                match Delta.diff idw (Incremental.source prior) source with
-                | Ok d -> d
-                | Error _ -> FullRefresh
+                if unchanged then
+                    Delta.empty idw.Scheme
+                else
+                    match Delta.diff idw (Incremental.source prior) source with
+                    | Ok d -> d
+                    | Error _ -> FullRefresh
 
             Incremental.refreshOn idw pipeline prior delta source
             |> Result.map (toEvaluation false)
