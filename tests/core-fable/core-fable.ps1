@@ -40,7 +40,8 @@
 
           pwsh ./tests/core-fable/core-fable.ps1 -CoreVersion <candidate> -CoreFeed <folder of .nupkg>
 
-      That run restores every Fuaran.Core package from the candidate folder ONLY (an isolated
+      That run restores every package Fuaran.Core produces (all but the compute layer — see TWO
+      PRODUCERS below) from the candidate folder ONLY (an isolated
       package cache, so a same-version repack can never be served stale), derives the surface from
       the packages the candidate actually contains, and requires the parity leg to run. It is what
       keeps a divergence from being discovered only when this repository next raises its pin.
@@ -52,6 +53,22 @@
       at or above 0.31.0 whose restored package lacks the table FAILS (the tripwire), so the leg
       cannot quietly stay off once the pin reaches it. The decision table is proven on every run
       (`Test-ParityDecision`), before anything is compiled.
+
+  TWO PRODUCERS, ONE GATE. From 0.33.0 the compute layer — `Fuaran.Core.DataFrame`,
+  `Fuaran.Core.Column.Ops`, `Fuaran.Core.DataFrame.Conformance` (and the C#-only
+  `Fuaran.Core.DataFrame.CSharp`, excluded below) — ships from its own repository under its
+  original package ids, and every other `Fuaran.Core.*` package still ships from Fuaran.Core. This
+  repository pins the two on separate versions (`FuaranCoreComputeVersion` in
+  `Directory.Packages.props`), and this gate takes a candidate for each independently:
+
+          pwsh ./tests/core-fable/core-fable.ps1 -ComputeVersion <candidate> -ComputeFeed <folder of .nupkg>
+
+  restores the three compute packages from that folder only, at that version, with every
+  Fuaran.Core package at this repository's pin; `-CoreVersion`/`-CoreFeed` does the same for the
+  Fuaran.Core packages with the compute packages at their pin (from nuget.org — a pin is public);
+  both pairs together certify two candidates against each other. Which producer owns a package is
+  the `$ComputeOwned` list below, kept in step with `Directory.Packages.props` beside this script.
+  Neither pair passed: every package follows `Directory.Packages.props`, exactly as before.
 
   MEMBERSHIP IS CHECKED, NOT REMEMBERED. The Core packages this gate is responsible for are derived
   — from this repository's own `Fuaran.Core.*` pins by default, and from the candidate's packages
@@ -68,6 +85,11 @@ param(
     [string] $CoreVersion,
     # A cut-time run: a folder holding the candidate's .nupkg files.
     [string] $CoreFeed,
+    # A cut-time run of the SECOND producer: the candidate compute-layer version, restored from
+    # -ComputeFeed only. Independent of -CoreVersion; either pair may be passed alone.
+    [string] $ComputeVersion,
+    # A cut-time run of the second producer: a folder holding the compute candidate's .nupkg files.
+    [string] $ComputeFeed,
     # Keep the emitted JavaScript and both captured outputs in the scratch root for inspection.
     [switch] $KeepOutput
 )
@@ -84,7 +106,14 @@ $VectorsSince = [version] '0.31.0'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
 $project = Join-Path $PSScriptRoot 'CoreFable.fsproj'
-$override = [bool] ($CoreVersion -or $CoreFeed)
+$coreOverride = [bool] ($CoreVersion -or $CoreFeed)
+$computeOverride = [bool] ($ComputeVersion -or $ComputeFeed)
+$override = $coreOverride -or $computeOverride
+
+# The packages the SECOND producer ships (its repository's derived roster: the three this gate
+# references, plus the C#-only half `exclusions.json` names). Every other Fuaran.Core.* package is
+# Fuaran.Core's. Keep in step with the compute ItemGroup in this directory's Directory.Packages.props.
+$ComputeOwned = @('Fuaran.Core.DataFrame', 'Fuaran.Core.Column.Ops', 'Fuaran.Core.DataFrame.Conformance', 'Fuaran.Core.DataFrame.CSharp')
 
 function Fail([string] $message) {
     Write-Host "==== core-fable: FAILED — $message" -ForegroundColor Red
@@ -109,6 +138,8 @@ function Get-ParityDecision {
       tripwire     it does not, and the version is at or above that — FAIL: the leg must be running.
       candidate    a cut-time run whose candidate lacks the table — FAIL: the cut cannot cite it.
     #>
+    # $IsOverride is a Fuaran.Core cut-time run: the table ships in a Fuaran.Core package, so a
+    # compute-only candidate run reads the pinned Core like the default mode does.
     param([version] $Resolved, [bool] $HasTable, [bool] $IsOverride)
     if ($HasTable) { return 'run' }
     if ($IsOverride) { return 'candidate' }
@@ -152,45 +183,120 @@ $outDir = Join-Path $scratch 'out'
 
 # Every property below is read by MSBuild from the environment, which is what lets `dotnet restore`,
 # `dotnet fable` and `dotnet build` all see the same values. Cleared at the end either way.
-$touchedEnv = @('FuaranCoreVersion', 'CoreParity', 'NUGET_PACKAGES')
+$touchedEnv = @('FuaranCoreVersion', 'CoreFableComputeVersion', 'CoreParity', 'NUGET_PACKAGES')
 $savedEnv = @{}
 foreach ($name in $touchedEnv) { $savedEnv[$name] = [Environment]::GetEnvironmentVariable($name) }
 [Environment]::SetEnvironmentVariable('CoreParity', $null)
 [Environment]::SetEnvironmentVariable('FuaranCoreVersion', $null)
+[Environment]::SetEnvironmentVariable('CoreFableComputeVersion', $null)
 
 $pinsFile = Join-Path $repoRoot 'Directory.Packages.props'
+$pinsText = Get-Content -Raw $pinsFile
+# A pin may name a version property (`Version="$(FuaranCoreComputeVersion)"`, the second producer's
+# pin), so the file's own property values are read first and substituted. A pin naming a property
+# the file does not define fails rather than being read as a version.
+$pinProps = @{}
+foreach ($m in [regex]::Matches($pinsText, '<(\w+Version)>\s*([^<\s]+)\s*</\1>')) { $pinProps[$m.Groups[1].Value] = $m.Groups[2].Value }
 $pins = @{}
-foreach ($m in [regex]::Matches((Get-Content -Raw $pinsFile), '<PackageVersion\s+Include="(Fuaran\.Core\.[^"]+)"\s+Version="([^"]+)"')) {
-    $pins[$m.Groups[1].Value] = $m.Groups[2].Value
+foreach ($m in [regex]::Matches($pinsText, '<PackageVersion\s+Include="(Fuaran\.Core\.[^"]+)"\s+Version="([^"]+)"')) {
+    $id = $m.Groups[1].Value
+    $version = $m.Groups[2].Value
+    $ref = [regex]::Match($version, '^\$\((\w+)\)$')
+    if ($ref.Success) {
+        $propName = $ref.Groups[1].Value
+        if (-not $pinProps.ContainsKey($propName)) { Fail "the pin for $id names the property $propName, which Directory.Packages.props does not define" }
+        $version = $pinProps[$propName]
+    }
+    $pins[$id] = $version
+}
+
+function Get-CandidateIds([string] $folder, [string] $version) {
+    $escaped = [regex]::Escape($version)
+    @(Get-ChildItem -LiteralPath $folder -Filter "Fuaran.Core.*.$version.nupkg" |
+        ForEach-Object { if ($_.Name -match "^(Fuaran\.Core\..+)\.$escaped\.nupkg$") { $Matches[1] } } |
+        Sort-Object -Unique)
+}
+
+# The version a restored package must resolve at: its producer's candidate in a cut-time run of that
+# producer, otherwise this repository's pin (which may be absent for a transitive package).
+function Get-ExpectedVersion([string] $id) {
+    if ($id -in $ComputeOwned) { if ($computeOverride) { return $ComputeVersion } }
+    elseif ($coreOverride) { return $CoreVersion }
+    return $pins[$id]
 }
 
 $restoreArgs = @('restore', $project, '--nologo')
+$modeParts = New-Object System.Collections.Generic.List[string]
 
-if ($override) {
+if ($coreOverride) {
     if (-not ($CoreVersion -and $CoreFeed)) { Fail 'a cut-time run needs BOTH -CoreVersion and -CoreFeed' }
     if (-not (Test-Path -LiteralPath $CoreFeed -PathType Container)) { Fail "-CoreFeed '$CoreFeed' is not a folder" }
-    $feed = (Resolve-Path -LiteralPath $CoreFeed).Path
+    $coreFeedPath = (Resolve-Path -LiteralPath $CoreFeed).Path
 
-    $escaped = [regex]::Escape($CoreVersion)
-    $surfaceIds = @(Get-ChildItem -LiteralPath $feed -Filter "Fuaran.Core.*.$CoreVersion.nupkg" |
-        ForEach-Object { if ($_.Name -match "^(Fuaran\.Core\..+)\.$escaped\.nupkg$") { $Matches[1] } } |
-        Sort-Object -Unique)
-    if ($surfaceIds.Count -eq 0) { Fail "no Fuaran.Core.*.$CoreVersion.nupkg in $feed" }
+    # The candidate's own packages, less the compute layer: a candidate cut before the split still
+    # carries it, and from the split on those packages come from their own producer.
+    $coreIds = @(Get-CandidateIds $coreFeedPath $CoreVersion | Where-Object { $_ -notin $ComputeOwned })
+    if ($coreIds.Count -eq 0) { Fail "no Fuaran.Core.*.$CoreVersion.nupkg in $coreFeedPath" }
+    [Environment]::SetEnvironmentVariable('FuaranCoreVersion', $CoreVersion)
+    $modeParts.Add("Fuaran.Core $CoreVersion from $coreFeedPath ($($coreIds.Count) packages)")
+}
+else {
+    $coreIds = @($pins.Keys | Where-Object { $_ -notin $ComputeOwned })
+}
 
-    # Fuaran.Core.* from the candidate folder and NOWHERE else; everything else from nuget.org.
-    # Package source mapping resolves by longest matching prefix, so `Fuaran.Core.*` wins over `*`.
+if ($computeOverride) {
+    if (-not ($ComputeVersion -and $ComputeFeed)) { Fail 'a compute cut-time run needs BOTH -ComputeVersion and -ComputeFeed' }
+    if (-not (Test-Path -LiteralPath $ComputeFeed -PathType Container)) { Fail "-ComputeFeed '$ComputeFeed' is not a folder" }
+    $computeFeedPath = (Resolve-Path -LiteralPath $ComputeFeed).Path
+
+    $computeIds = @(Get-CandidateIds $computeFeedPath $ComputeVersion | Where-Object { $_ -in $ComputeOwned })
+    if ($computeIds.Count -eq 0) { Fail "no compute package ($($ComputeOwned -join ', ')) at $ComputeVersion in $computeFeedPath" }
+    [Environment]::SetEnvironmentVariable('CoreFableComputeVersion', $ComputeVersion)
+    $modeParts.Add("compute $ComputeVersion from $computeFeedPath ($($computeIds.Count) packages)")
+}
+else {
+    $computeIds = @($pins.Keys | Where-Object { $_ -in $ComputeOwned })
+}
+
+$surfaceIds = @(@($coreIds) + @($computeIds) | Sort-Object -Unique)
+
+if ($override) {
+    # Each overridden producer's packages from its candidate folder and NOWHERE else; everything else
+    # from nuget.org. Package source mapping picks the MOST SPECIFIC pattern — an exact id beats a
+    # prefix, and `Fuaran.Core.*` beats `*` — so the compute ids are named exactly, routed to their
+    # candidate folder when that producer is overridden and to nuget.org (where a pin must be
+    # restorable) when it is not, so a Fuaran.Core candidate folder can never serve them.
+    # Both candidates in ONE folder is one source: NuGet drops a second source with the same path, and
+    # the patterns mapped to the dropped key would then resolve nowhere.
+    $computePatterns = @($ComputeOwned | ForEach-Object { "<package pattern=`"$_`" />" })
+    $sources = [ordered]@{ 'nuget.org' = @{ Path = 'https://api.nuget.org/v3/index.json'; Patterns = @('<package pattern="*" />') } }
+    if ($coreOverride) {
+        $sources['core-candidate'] = @{ Path = $coreFeedPath; Patterns = @('<package pattern="Fuaran.Core.*" />') }
+    }
+    if ($computeOverride) {
+        if ($coreOverride -and [string]::Equals($coreFeedPath, $computeFeedPath, [StringComparison]::OrdinalIgnoreCase)) {
+            $sources['core-candidate'].Patterns += $computePatterns
+        }
+        else {
+            $sources['compute-candidate'] = @{ Path = $computeFeedPath; Patterns = $computePatterns }
+        }
+    }
+    elseif ($coreOverride) {
+        $sources['nuget.org'].Patterns += $computePatterns
+    }
+    $sourceLines = @($sources.Keys | ForEach-Object { "<add key=`"$_`" value=`"$($sources[$_].Path)`" />" })
+    $mapLines = @($sources.Keys | ForEach-Object { "<packageSource key=`"$_`">$($sources[$_].Patterns -join '')</packageSource>" })
+
     $config = Join-Path $scratch 'nuget.config'
     @"
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
   <packageSources>
     <clear />
-    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
-    <add key="core-candidate" value="$feed" />
+    $($sourceLines -join "`n    ")
   </packageSources>
   <packageSourceMapping>
-    <packageSource key="nuget.org"><package pattern="*" /></packageSource>
-    <packageSource key="core-candidate"><package pattern="Fuaran.Core.*" /></packageSource>
+    $($mapLines -join "`n    ")
   </packageSourceMapping>
 </configuration>
 "@ | Set-Content -LiteralPath $config -Encoding utf8NoBOM
@@ -198,13 +304,13 @@ if ($override) {
     # An isolated package cache: a candidate is a draft that may be repacked at the SAME version, and
     # the shared cache would serve the first pack of it forever.
     [Environment]::SetEnvironmentVariable('NUGET_PACKAGES', (Join-Path $scratch 'packages'))
-    [Environment]::SetEnvironmentVariable('FuaranCoreVersion', $CoreVersion)
     $restoreArgs += @('--configfile', $config)
-    $modeLine = "cut-time run — Fuaran.Core $CoreVersion from $feed ($($surfaceIds.Count) packages)"
+    if (-not $coreOverride) { $modeParts.Insert(0, "Fuaran.Core at the pin ($($pins['Fuaran.Core.Conformance']))") }
+    if (-not $computeOverride) { $modeParts.Add("compute at the pin ($($pins['Fuaran.Core.DataFrame']))") }
+    $modeLine = "cut-time run — " + ($modeParts -join '; ')
 }
 else {
-    $surfaceIds = @($pins.Keys | Sort-Object)
-    $modeLine = "pinned — Fuaran.Core as this repository pins it ($($pins['Fuaran.Core.Conformance']))"
+    $modeLine = "pinned — Fuaran.Core as this repository pins it ($($pins['Fuaran.Core.Conformance'])), the compute packages at $($pins['Fuaran.Core.DataFrame'])"
 }
 
 Write-Host "==== core-fable: $modeLine" -ForegroundColor Cyan
@@ -229,15 +335,18 @@ try {
     foreach ($id in $referenced) {
         if ($id -in $excluded) { $problems.Add("$id is referenced AND excluded — drop one") }
         if ($id -notin $surfaceIds) {
-            $problems.Add($(if ($override) { "$id is referenced but the candidate ships no such package" }
+            $problems.Add($(if ($id -in $ComputeOwned -and $computeOverride) { "$id is referenced but the compute candidate ships no such package" }
+                    elseif ($id -notin $ComputeOwned -and $coreOverride) { "$id is referenced but the candidate ships no such package" }
                     else { "$id is referenced but not pinned in Directory.Packages.props" }))
         }
     }
-    if ($override) {
-        # Only a cut-time run can see every package Core ships, so only it can call an exclusion
-        # stale: pinned, this repository simply does not consume the excluded tool packages.
-        foreach ($id in $excluded) {
-            if ($id -notin $surfaceIds) { $problems.Add("exclusions.json names $id, which the candidate does not ship — drop the entry") }
+    # Only a cut-time run can see every package a producer ships, so only it can call an exclusion
+    # stale — and only an exclusion of THAT producer's: pinned, this repository simply does not
+    # consume the excluded tool packages.
+    foreach ($id in $excluded) {
+        $isCompute = $id -in $ComputeOwned
+        if ((($isCompute -and $computeOverride) -or (-not $isCompute -and $coreOverride)) -and $id -notin $surfaceIds) {
+            $problems.Add("exclusions.json names $id, which the $(if ($isCompute) { 'compute ' })candidate does not ship — drop the entry")
         }
     }
     if ($referenced.Count -lt 10) { $problems.Add("only $($referenced.Count) Core references were read from CoreFable.fsproj — the reading is broken") }
@@ -256,13 +365,22 @@ try {
     $resolvedText = $conformanceKey.Split('/')[1]
     $hasTable = @($assets['libraries'][$conformanceKey]['files']) -contains 'fable/ParityVectors.fs'
 
+    $computeKey = @($assets['libraries'].Keys | Where-Object { $_ -like 'Fuaran.Core.DataFrame/*' }) | Select-Object -First 1
+    $computeResolvedText = if ($computeKey) { $computeKey.Split('/')[1] } else { 'unresolved' }
+
     if ($override) {
         foreach ($key in @($assets['libraries'].Keys | Where-Object { $_ -like 'Fuaran.Core.*/*' })) {
-            if ($key.Split('/')[1] -ne $CoreVersion) { Fail "the cut-time restore resolved $key, not the candidate $CoreVersion" }
+            $id, $resolvedVersion = $key.Split('/')
+            $expected = Get-ExpectedVersion $id
+            if ($expected -and $resolvedVersion -ne $expected) {
+                $what = if ($id -in $ComputeOwned) { if ($computeOverride) { 'the compute candidate' } else { 'the compute pin' } }
+                elseif ($coreOverride) { 'the candidate' } else { 'the pin' }
+                Fail "the cut-time restore resolved $key, not $what $expected"
+            }
         }
     }
 
-    $decision = Get-ParityDecision (ConvertTo-Version $resolvedText) $hasTable $override
+    $decision = Get-ParityDecision (ConvertTo-Version $resolvedText) $hasTable $coreOverride
 
     switch ($decision) {
         'tripwire' {
@@ -307,7 +425,7 @@ try {
         })
     if ($notEmitted.Count -gt 0) { Fail ("referenced but not transpiled: " + ($notEmitted -join ', ')) }
 
-    Write-Host "  compile: green — $($referenced.Count) Fuaran.Core packages transpiled at $resolvedText" -ForegroundColor Green
+    Write-Host "  compile: green — $($referenced.Count) Fuaran.Core packages transpiled at $resolvedText (compute packages at $computeResolvedText)" -ForegroundColor Green
 
     # ── The parity leg ──────────────────────────────────────────────────────
 

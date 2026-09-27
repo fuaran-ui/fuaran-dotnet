@@ -1,9 +1,16 @@
 <Project>
   <!--
-    The Core gate's package versions: this repository's own pins, imported unchanged, plus ONE
-    override — a cut-time run of `core-fable.ps1` sets `FuaranCoreVersion`, and every Fuaran.Core
-    package then resolves at the candidate version instead (from the candidate folder alone; the
-    script writes that restore's nuget.config). Unset, this file changes nothing.
+    The Core gate's package versions: this repository's own pins, imported unchanged, plus one
+    override PER PRODUCER — a cut-time run of `core-fable.ps1` sets `FuaranCoreVersion` and every
+    package the Fuaran.Core repository produces then resolves at its candidate version; it sets
+    `CoreFableComputeVersion` and the three compute packages (produced by the compute repository
+    from 0.33.0) resolve at theirs. Each from its candidate folder alone; the script writes that
+    restore's nuget.config. The two are independent: an unset one leaves its packages at the pins
+    above. Unset, this file changes nothing.
+
+    The compute override is NOT named `FuaranCoreComputeVersion`: the root file defines a property
+    of that name unconditionally, and a property a project file defines wins over the environment
+    variable the script would set, so the override would silently do nothing.
   -->
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Packages.props', '$(MSBuildThisFileDirectory)..'))" />
   <ItemGroup Condition="'$(FuaranCoreVersion)' != ''">
@@ -15,18 +22,20 @@
     <PackageVersion Update="Fuaran.Core.Validator" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Function" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Column" Version="$(FuaranCoreVersion)" />
-    <PackageVersion Update="Fuaran.Core.DataFrame" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Query" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Conformance" Version="$(FuaranCoreVersion)" />
-    <!-- Fuaran.Core.DataFrame.Conformance first shipped at 0.32.0 (fuaran-core Phase 257); since Phase 1874
-         it is an ordinary root pin, updated here like every other. -->
-    <PackageVersion Update="Fuaran.Core.DataFrame.Conformance" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Projection" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.AiSurface" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Propagation" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Idl" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Idl.Codegen" Version="$(FuaranCoreVersion)" />
-    <PackageVersion Update="Fuaran.Core.Column.Ops" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Observer" Version="$(FuaranCoreVersion)" />
+  </ItemGroup>
+  <!-- The second producer (the compute repository, from 0.33.0). The script's `$ComputeOwned` list
+       names the same three ids; keep the two in step. -->
+  <ItemGroup Condition="'$(CoreFableComputeVersion)' != ''">
+    <PackageVersion Update="Fuaran.Core.DataFrame" Version="$(CoreFableComputeVersion)" />
+    <PackageVersion Update="Fuaran.Core.Column.Ops" Version="$(CoreFableComputeVersion)" />
+    <PackageVersion Update="Fuaran.Core.DataFrame.Conformance" Version="$(CoreFableComputeVersion)" />
   </ItemGroup>
 </Project>

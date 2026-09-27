@@ -219,6 +219,13 @@ lower (no Expecto, no `System.IO`, no reflection).
      mode restores Core from the folder alone, into an isolated package cache, derives membership
      from the candidate's packages, and requires the value leg. A Core pin raise here is also a
      moment to raise the six `Fuaran.Core.*` pins this gate alone uses, with the others.
+   - **The compute layer has its own producer and its own flags.** From 0.33.0
+     `Fuaran.Core.DataFrame`, `Fuaran.Core.Column.Ops` and `Fuaran.Core.DataFrame.Conformance` ship
+     from a separate repository and are pinned on `FuaranCoreComputeVersion` in
+     `Directory.Packages.props`. A compute cut runs
+     `pwsh ./tests/core-fable/core-fable.ps1 -ComputeVersion <v> -ComputeFeed <folder of .nupkg>`,
+     independent of the Core pair (either pair alone, or both together); with neither pair, every
+     package follows `Directory.Packages.props`.
    - **Its law-family calls are not adoption.** `CoreFable.fsproj` declares
      `<CoreConformanceCensusExemption>reason</...>`, so the Core-conformance census
      (`src/Fuaran.UI.Tests/CoreConformanceCensus.fs`) skips it and prints the exemption on every
