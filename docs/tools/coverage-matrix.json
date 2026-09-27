@@ -151,6 +151,8 @@
     "grid-transform": [307,797,805,809,810,813,816,818,821,823,824,827],
     "grid-transform-param": [307,797,799,805,813,816,819,820,823],
     "grid-transform-undeclared-param": [307,797,805,813,816,819,820,823],
+    "grid-windowed": [307],
+    "grid-windowed-sorted": [307],
     "heading-1": [190,390],
     "icon-1": [191,391,708],
     "image-1": [142,192,404],
