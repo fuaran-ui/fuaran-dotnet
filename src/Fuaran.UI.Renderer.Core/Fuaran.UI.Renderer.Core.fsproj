@@ -49,6 +49,10 @@
          on Fuaran.UI's Types + FragmentMemo primitives only, and nothing inside
          this project depends on it, so it compiles last. -->
     <Compile Include="FragmentExpansion.fs" />
+    <!-- Phase 1760 — the binding dependency graph: which sites a write makes
+         stale, as Fuaran.Core.Propagation's dirty closure over the facts
+         BindingWalk gathers. Depends on Fuaran.UI's walk only. -->
+    <Compile Include="BindingGraph.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
@@ -63,5 +67,9 @@
          Fuaran.UI.LayoutObserver (FSharp.Core + Fable.Core, Fable-portable,
          no rendering-framework dep). -->
     <PackageReference Include="Fable.Core" />
+    <!-- Phase 1760 — BindingGraph.fs computes its dirty set with Core's
+         Propagation (dependency map + reverse-reachability closure). FSharp.Core
+         only and Fable-clean; it ships its sources under fable/. -->
+    <PackageReference Include="Fuaran.Core.Propagation" />
   </ItemGroup>
 </Project>

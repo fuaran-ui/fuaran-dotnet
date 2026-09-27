@@ -131,6 +131,10 @@
          plumbing (Phase 671): the generated `runValidator` scaffold projects Core
          `Defect`s. Pinned alongside the rest of the Core substrate. -->
     <PackageVersion Include="Fuaran.Core.Validator" Version="0.32.0" />
+    <!-- Fuaran.Core.Propagation - the dependency map + reverse-reachability dirty closure, consumed
+         by Fuaran.UI.Renderer.Core's BindingGraph (Phase 1760: which binding sites a write makes
+         stale). It was pinned below for the Core Fable gate alone until then; it now ships. -->
+    <PackageVersion Include="Fuaran.Core.Propagation" Version="0.32.0" />
     <!-- Fuaran.Core.Idl + .Idl.Codegen - the IDL engine, consumed BUILD-TIME ONLY by
          src/Fuaran.UI.Idl (this repo's own wire vocabulary) and the suite that regenerates
          src/Fuaran.UI/Generated.fs from it (Phase 1181). Neither reaches a shipped
@@ -147,7 +151,6 @@
     <PackageVersion Include="Fuaran.Core.Query" Version="0.32.0" />
     <PackageVersion Include="Fuaran.Core.Projection" Version="0.32.0" />
     <PackageVersion Include="Fuaran.Core.AiSurface" Version="0.32.0" />
-    <PackageVersion Include="Fuaran.Core.Propagation" Version="0.32.0" />
     <PackageVersion Include="Fuaran.Core.Column.Ops" Version="$(FuaranCoreComputeVersion)" />
   </ItemGroup>
 </Project>

@@ -8324,6 +8324,39 @@ consumer meets its breaking moves at its own Core raise, not through this tier:
 
 *Version.* Rides this slot: no `Fuaran.UI.*` member moves, so it is below the slot's standing class.
 
+**fuaran#1760 — ADDITIVE on `Fuaran.UI.Renderer.Core`: a new public module, `BindingGraph`, and a
+new package dependency on `Fuaran.Core.Propagation`; RIDES this slot.** The UI tier now computes, in
+production code, which binding sites a write makes stale. Until this phase the cone existed only as
+a test oracle over `BindingWalk.collect` (fuaran#1479).
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI.Renderer.BindingGraph` (new) | `Input` (`State` / `Filter` / `Selection` / `Query`), `Site` (`Reader nodeId` / `Transform(reader, slot, siteKey, ordinal)`), `OpaqueRead` (`Computed` / `LiveSourceUnnamed` / `Unlocated`), `Dirty` (`Exact sites` / `Conservative(sites, because)`), the `Graph` record, and `inputId`, `ofFacts`, `ofTree`, `dirty`, `sitesOf`, `readersOf`. | Nobody: a new module. |
+| `Fuaran.UI.Renderer.Core` package | Gains a `PackageReference` on `Fuaran.Core.Propagation` (0.32.0, the pin already carried for the Core Fable gate, moved beside the shipped Core pins). `Propagation` brings `Fuaran.Core.Ops` in transitively; `Fuaran.Core.Tree` was already there through `Fuaran.UI`. | A consumer restoring from a feed must be able to resolve `Fuaran.Core.Propagation` 0.32.0; it is published beside the other 0.32.0 Core packages. |
+
+- **What the graph is.** The facts the walk gathers become `Propagation`'s dependency map: inputs
+  (a state key, a filter, a selection target, a query — a query reading the filters its `dependsOn`
+  names) and sites (a reader, or one `Binding.Transform` site on it, carrying the walk's slot and its
+  live-store key where it has one). `dirty` is `Propagation.dirtyFromChangedIds` over that map,
+  projected to sites.
+- **The opaque-read rule is in the type.** `Binding.Computed` (its closure sees the whole state bag),
+  a live Transform source over a channel the facts do not name, and an opaque reader the facts do not
+  locate (`StateKeys.OpaqueReader`, which a `NodeKind.Custom` node also sets) each produce a
+  `Conservative` verdict that names the read, never a silent full-dirty. `Exact` is the minimality
+  claim and is made only when no opaque read took part.
+- **The law moved onto the module.** `BindingGraphTests.fs` states the dirty cone as sound and
+  minimal on generated binding sets across all three State-channel surfaces (a `Binding.State` read,
+  a `Transform`'s live source, a `Transform` param bound to state), goes red when an edge is dropped
+  or added, and equals the fuaran#1479 walk oracle for every state key of every corpus node fixture
+  (94 fixture-key pairs, all `Exact`, at the corpus this change was gated against). The census row for
+  `Conformance.dirtyPropagationLaws` re-points its tier-shaped half at that law, and the three
+  `propagationEval*` rows keep `Not used` with their reason corrected: the tier references
+  `Propagation` now, for the dirty set only, and hands it no evaluator.
+- **Fable.** `Renderer.Core` is a derived entry of the client-tier portability stage, so the module
+  and `Propagation`'s packed sources compile there under the project's own settings.
+
+*Version.* Rides this slot: an additive module below the slot's standing class.
+
 ## 0.85.0 — the slot Phase 1734 opened, which Phase 1821's column-naming rename raised to WIRE-BREAKING — released 2026-09-20 as `v0.85.0`
 
 _**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride

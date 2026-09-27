@@ -284,6 +284,10 @@
          regenerated into docs/core-conformance.md with a drift guard, so
          adoption is greppable without running anything. -->
     <Compile Include="CoreConformanceCensus.fs" />
+    <!-- Phase 1760 - the binding dependency graph (Renderer.Core's BindingGraph) as a law:
+         sound and minimal on generated binding sets, go-red on a dropped or added
+         edge, and equal to the Phase 1479 walk oracle on every corpus node fixture. -->
+    <Compile Include="BindingGraphTests.fs" />
     <Compile Include="MathEnhanceTests.fs" />
     <Compile Include="MathMlTests.fs" />
     <!-- QueryBindingTests pins Phase 323's runtime query-result-schema →

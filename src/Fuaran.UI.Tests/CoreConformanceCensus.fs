@@ -424,10 +424,14 @@ let census: (string * Adoption) list =
           incrementalDeltaWithTest,
           "IncrementalDelta.lawsWith — beside the tier-shaped 'the refresh evaluates no more rows than a full evaluation, on one scale'"
       )
+      // Phase 1760 re-pointed the tier-shaped half. The cone used to be an ORACLE over the walk, a
+      // property of test code; since `BindingGraph` computes it in production through the same
+      // `Propagation.dirtyFromChangedIds` this family certifies, the tier-shaped law is stated over
+      // that module (`BindingGraphTests.fs`, this project), with a go-red proof that drops an edge.
       "Conformance.dirtyPropagationLaws",
       Adopted(
           dirtyPropagationTest,
-          "Conformance.dirtyPropagationLaws — beside the tier-shaped 'the dirty cone over the binding walk is sound and minimal on generated binding sets'"
+          "Conformance.dirtyPropagationLaws — beside the tier-shaped 'BindingGraph.dirty is sound and minimal on generated binding sets' over the production BindingGraph (Fuaran.UI.Renderer.Core)"
       )
       // Not named by 1479's task list. The tier does incremental dataframe evaluation through
       // `Incremental.primeOn` / `refreshOn` (`ServerDriven/LiveTransform.fs`), which is the seam
@@ -539,20 +543,24 @@ let census: (string * Adoption) list =
           "unfiled — fuaran-core#126 handed the first adoption to this tier's F# smart constructors (the codec and the Corpus.Case list already exist, so the adoption is one ConstructWitness); the row flips to Adopted when that witness is supplied"
 
       // ---- mechanisms this tier does not use ----
+      // Phase 1760 made Renderer.Core reference Fuaran.Core.Propagation, for its DIRTY SET only
+      // (`BindingGraph.dirty` over `dirtyFromChangedIds`). The three evaluator families stay
+      // unused on that reading: the tier asks Core what is stale and re-renders it through its own
+      // stores; it hands Core no evaluator.
       "Conformance.propagationEvalLaws",
       NotUsed
-          "Fuaran.Core.Propagation's evaluator — the tier's reactivity runs on its own store and subscription channels (StateStore / FilterStore / SelectionStore / QueryStore) and never evaluates a Core propagation graph"
+          "Fuaran.Core.Propagation's evaluator — the tier's reactivity runs on its own store and subscription channels (StateStore / FilterStore / SelectionStore / QueryStore) and never evaluates a Core propagation graph; BindingGraph asks Propagation only for the dirty set (dirtyFromChangedIds)"
       // Arrived with the 0.31.0 pin raise (Phase 1860). Its subject is an ADOPTER's evaluator — the
-      // `EvaluatorWitness` a domain hands `Propagation.eval` / `evalFrom` — and no project here
-      // references Fuaran.Core.Propagation, so there is no such evaluator to certify.
+      // `EvaluatorWitness` a domain hands `Propagation.eval` / `evalFrom` — and nothing here hands
+      // one, so there is no such evaluator to certify.
       "Conformance.propagationEvaluatorLaws",
       NotUsed
-          "Fuaran.Core.Propagation's incremental evaluator seam (Propagation.eval / evalFrom) — no project in this tier references Fuaran.Core.Propagation or hands it an evaluator; the tier's reactivity runs on its own stores (see propagationEvalLaws)"
+          "Fuaran.Core.Propagation's incremental evaluator seam (Propagation.eval / evalFrom) — Renderer.Core's BindingGraph references Fuaran.Core.Propagation for the dirty set only and hands it no evaluator; the tier's reactivity runs on its own stores (see propagationEvalLaws)"
       // Arrived with the 0.32.0 pin raise (Phase 1874): the prior-aware evaluator form
       // (`Propagation.evalWith` / `evalFromWith`). No subject here, for the reason the row above gives.
       "Conformance.propagationEvaluatorLawsWith",
       NotUsed
-          "Fuaran.Core.Propagation's prior-aware evaluator seam (Propagation.evalWith / evalFromWith) — no project in this tier references Fuaran.Core.Propagation or hands it an evaluator (see propagationEvaluatorLaws)"
+          "Fuaran.Core.Propagation's prior-aware evaluator seam (Propagation.evalWith / evalFromWith) — nothing in this tier hands Propagation an evaluator (see propagationEvaluatorLaws)"
       // Arrived with the 0.32.0 pin raise (Phase 1874), in Fuaran.Core.DataFrame.Conformance. Its
       // subject is `DataFrame.evalFrom` driven by `ColumnOps.changeOf` over a domain's table-edit
       // stream. The tier's incremental path is a different seam — `Incremental.primeOn` /
