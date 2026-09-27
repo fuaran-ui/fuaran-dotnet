@@ -7868,6 +7868,17 @@ FUARAN158–FUARAN162.
 **Not decided here:** whether limits travel in capability negotiation (§15.2) — they are host
 configuration with `DecodePolicy`'s standing, and nothing about them is on the wire.
 
+**fuaran#1889 — ADDITIVE on `Fuaran.UI` and `Fuaran.UI.AiTools`; NO new defect case, NO wire change;
+RIDES this slot.** Charts and grids checked against their data: the report of which readers the
+schema-grounding rules (FUARAN086 / 087 / 097 / 114) judged, which they stood down over and why, and
+where each finding sits in the wire document.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI` — `PreEmitValidate` | New: `bindingChecks : Node<'Msg> -> BindingCheck list`, and the types `BindingCheck`, `BindingDiagnostic`, `ProducedColumn`, `BindingGrade` (`Checked` / `Unchecked`), `UncheckedReason` (`OpenSchema` / `LiveSource` / `NoStaticSchema` / `StaticRows`). Every diagnostic is one of `validate`'s own findings, located by a JSONPath into the canonical encoding and paired with the typed produced schema. | Nobody; additive. `validate` and every other entry point are unchanged — no verdict moves, and the encode runs only inside `bindingChecks`. |
+| `Fuaran.UI.AiTools` — `Tools` | New: `recordBindingChecks ctx root turnId`, which records each finding into the runtime-error sink `getRuntimeErrors` drains (code, reader node id, message + JSONPath + produced schema). | Nobody; additive. |
+| Corpus — `nodes/binding-check-*.json` | Six node round-trip fixtures: a control, one negative per grounding code, and an unchecked document. Certified here by `BindingCheckCorpusTests` and by the TypeScript host over its bundled snapshot. | Every roster codec host round-trips six more documents; no wire shape is new. |
+
 **fuaran#1892 — BREAKING on `Fuaran.UI` at two record shapes and on the C# facade's positional
 grid constructor; ADDITIVE on the wire (two optional `DataGrid` fields, NO profile step);
 BEHAVIOURAL at FUARAN075; RIDES this slot.** The virtualised `DataGrid`: a row window

@@ -5327,3 +5327,292 @@ let validateWithMeter (meter: HostLimitMeter) (node: Node<'Msg>) : Result<unit, 
 /// `HostLimits.unbounded` the result is byte-for-byte `validate`'s.
 let validateWithLimits (limits: HostLimits) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
     validateWithMeter (HostLimitMeter limits) node
+
+// ── Phase 1889 — the binding-check report: every chart and grid, graded ──
+//
+// FUARAN086 / FUARAN087 / FUARAN097 / FUARAN114 already refuse a chart or grid
+// whose column references its own source provably cannot satisfy (Phases 640,
+// 882, 1149, widened to the whole pipeline by 1486). What `validate` cannot say
+// is the other half of the same fact: WHICH readers it judged, and which it
+// stood down over. A reader over a `Query`, a `State`, a `Ref` with no declared
+// schema or a `pivot` passes `validate` exactly as a proven-correct one does, so
+// "no finding" read two ways. This report separates them.
+//
+// It is a REPORT beside `validate`, not a new rule inside it: it mints no code
+// and changes no verdict. Every diagnostic it carries IS one of `validate`'s
+// own findings, located — a JSONPath into the canonical wire document naming
+// the slot the author wrote (`$.kind.children[1].kind.yFields[0]`) — and
+// accompanied by the schema the source does produce, typed. A model repairing a
+// binding by name needs both; the finding alone names the node, not the slot.
+//
+// Paths are computed over the canonical encoding (`Generated.encodeNodeJson`),
+// so they address the document a host actually receives, whatever container
+// kinds sit above the reader. The encode happens only here, never in
+// `validate`.
+
+/// Why a reader's column references could not be judged. Each case is a
+/// statement about the SOURCE, never about the reader — the reader is not
+/// refused, and nothing here is a defect.
+[<RequireQualifiedAccess>]
+type UncheckedReason =
+    /// The source is a Transform whose produced column set is OPEN: a
+    /// `DataSource.Ref` this validator has no host to resolve, or a `pivot`
+    /// whose value columns are named by the data. `why` is the walk's own
+    /// account (`Fuaran.Core.SchemaWalk.reason`).
+    | OpenSchema of why: string
+    /// The source is a LIVE Transform: its embedded table is a decode-time
+    /// snapshot, not a statement about the rows a later write will carry.
+    | LiveSource
+    /// The source is not a Transform at all — a `Query`, `State`, `Static`,
+    /// `Selection`, … — so there is no static schema to derive. `sourceKind` is
+    /// the source binding's wire `$type`.
+    | NoStaticSchema of sourceKind: string
+    /// A `DataGrid` carrying `staticRows`: its rows are in the tree, and no
+    /// source is read.
+    | StaticRows
+
+/// How far a reader's column references were judged.
+[<RequireQualifiedAccess>]
+type BindingGrade =
+    /// The produced column set is CLOSED: every reference was judged, and an
+    /// absence is a fact.
+    | Checked
+    /// Nothing negative can be said about this reader; it is never refused.
+    | Unchecked of UncheckedReason
+
+/// One column of the schema a source produces. `Type` is the column-type tag
+/// (`int`, `float`, `bool`, `string`, `date`, `timestamp`), or `None` where the
+/// type is data-dependent (a `derive`d column).
+type ProducedColumn = { Name: string; Type: string option }
+
+/// One of `validate`'s findings about a reader, located in the wire document.
+type BindingDiagnostic =
+    {
+        Code: string
+        Severity: DefectSeverity
+        Message: string
+        /// JSONPath of the slot the finding is about — the `xField`, the
+        /// `yFields` entry, the column's `field`, or the `rowKeyField`.
+        Path: string
+        Defect: PreEmitDefect
+    }
+
+/// One chart or grid, its grade, and what `validate` found about it.
+type BindingCheck =
+    {
+        NodeId: string
+        /// The reader's kind: `Chart` or `DataGrid`.
+        Reader: string
+        /// JSONPath of the reader's `source` slot (for a `staticRows` grid, of
+        /// the `staticRows` slot).
+        Path: string
+        Grade: BindingGrade
+        /// The columns the source produces, in schema order: the whole set when
+        /// `Checked`, the visible part of an open set otherwise (empty when there
+        /// is no schema at all).
+        Produced: ProducedColumn list
+        Diagnostics: BindingDiagnostic list
+    }
+
+let private isIdentStart (c: char) =
+    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_'
+
+let private isIdentChar (c: char) =
+    isIdentStart c || (c >= '0' && c <= '9')
+
+/// The JSONPath member segment for a wire key: dotted where the key is a plain
+/// ASCII identifier (every node-spec key is), bracket-quoted otherwise.
+let private jsonPathMember (key: string) : string =
+    if key.Length > 0 && isIdentStart key.[0] && Seq.forall isIdentChar key then
+        "." + key
+    else
+        "['" + key.Replace("\\", "\\\\").Replace("'", "\\'") + "']"
+
+let private jField (key: string) (v: JVal) : JVal option =
+    match v with
+    | JObj members -> members |> List.tryFind (fun (k, _) -> k = key) |> Option.map snd
+    | _ -> None
+
+let private jString (v: JVal option) : string option =
+    match v with
+    | Some(JStr s) -> Some s
+    | _ -> None
+
+/// Every Chart / DataGrid node object in the canonical document, in document
+/// order, with its JSONPath. A node object is one carrying a string `id` and an
+/// object `kind` with a `$type`; a chart spec's own `kind` is a string, so the
+/// spec is never mistaken for a node.
+let private readerObjects (doc: JVal) : (string * string * string * JVal) list =
+    let found = ResizeArray<string * string * string * JVal>()
+
+    let rec go (path: string) (v: JVal) =
+        match v with
+        | JObj members ->
+            (match jString (jField "id" v), jField "kind" v with
+             | Some id, Some(JObj _ as kind) ->
+                 match jString (jField "$type" kind) with
+                 | Some "Chart" -> found.Add(id, "Chart", path, kind)
+                 | Some "DataGrid" -> found.Add(id, "DataGrid", path, kind)
+                 | _ -> ()
+             | _ -> ())
+
+            for (k, child) in members do
+                go (path + jsonPathMember k) child
+        | JArr items -> items |> List.iteri (fun i child -> go (path + "[" + string i + "]") child)
+        | _ -> ()
+
+    go "$" doc
+    List.ofSeq found
+
+/// The slots a finding of rule `case` can be about, in the order that rule
+/// reads them, as (field name, JSONPath). Per rule, because the rules read
+/// different slots: FUARAN097 reads only the x-axis, and FUARAN087 reads it only
+/// on a non-temporal `Scatter` — so a chart whose `xField` and a `yFields` entry
+/// name the same column locates a value-series mismatch at the series.
+let private referenceSlots (case: string) (reader: string) (kindPath: string) (kind: JVal) : (string * string) list =
+    match reader with
+    | "Chart" ->
+        let x =
+            jString (jField "xField" kind)
+            |> Option.map (fun f -> f, kindPath + ".xField")
+            |> Option.toList
+
+        let ys =
+            match jField "yFields" kind with
+            | Some(JArr items) ->
+                items
+                |> List.mapi (fun i y ->
+                    jString (Some y)
+                    |> Option.map (fun f -> f, kindPath + ".yFields[" + string i + "]"))
+                |> List.choose id
+            | _ -> []
+
+        let scatter = jString (jField "kind" kind) = Some "Scatter"
+        let temporal = jString (jField "xScale" kind) = Some "Temporal"
+
+        match case with
+        | "097" -> x
+        | "087" -> (if scatter && not temporal then x else []) @ ys
+        | _ -> x @ ys
+    | _ ->
+        let cols =
+            match jField "columns" kind with
+            | Some(JArr items) ->
+                items
+                |> List.mapi (fun i col ->
+                    jString (jField "field" col)
+                    |> Option.map (fun f -> f, kindPath + ".columns[" + string i + "].field"))
+                |> List.choose id
+            | _ -> []
+
+        let key =
+            jString (jField "rowKeyField" kind)
+            |> Option.map (fun f -> f, kindPath + ".rowKeyField")
+            |> Option.toList
+
+        cols @ key
+
+/// Every chart and grid in `node`, graded, with `validate`'s findings about each
+/// located by JSONPath and paired with the schema its source produces.
+///
+/// A reader is `Checked` exactly when the FUARAN086 / FUARAN114 rules could
+/// judge it — the same window, reached through the same site enumeration — so
+/// the report and the rules cannot disagree about which readers were judged. A
+/// repeated node id is reported once, at its first occurrence, which is the
+/// occurrence the rules read.
+let bindingChecks (node: Node<'Msg>) : BindingCheck list =
+    let doc = Generated.encodeNodeJson node
+
+    let sites =
+        (BindingWalk.collect node).TransformSites
+        |> List.filter (fun (d: BindingWalk.TransformSiteDecl) -> d.Site.Slot = Some "source")
+        |> List.fold
+            (fun acc d ->
+                if Map.containsKey d.Reader acc then
+                    acc
+                else
+                    Map.add d.Reader d.Site acc)
+            Map.empty
+
+    let findings =
+        match validate node with
+        | Ok() -> []
+        | Error defects -> defects
+
+    let produced (knowledge: SchemaKnowledge) : ProducedColumn list =
+        SchemaWalk.columns knowledge
+        |> List.map (fun c ->
+            { Name = c.Name
+              Type = c.Type |> Option.map ColumnType.tag })
+
+    let seen = System.Collections.Generic.HashSet<string>()
+
+    readerObjects doc
+    |> List.filter (fun (id, _, _, _) -> seen.Add id)
+    |> List.map (fun (id, reader, path, kind) ->
+        let kindPath = path + ".kind"
+        let staticRows = reader = "DataGrid" && (jField "staticRows" kind).IsSome
+
+        let grade, columns =
+            if staticRows then
+                BindingGrade.Unchecked UncheckedReason.StaticRows, []
+            else
+                match Map.tryFind id sites with
+                | Some site when site.IsLive -> BindingGrade.Unchecked UncheckedReason.LiveSource, []
+                | Some site ->
+                    let knowledge = producedSchema site.Source site.Pipeline
+
+                    match SchemaWalk.reason knowledge with
+                    | None -> BindingGrade.Checked, produced knowledge
+                    | Some why -> BindingGrade.Unchecked(UncheckedReason.OpenSchema why), produced knowledge
+                | None ->
+                    let sourceKind =
+                        jField "source" kind
+                        |> Option.bind (jField "$type")
+                        |> jString
+                        |> Option.defaultValue "absent"
+
+                    BindingGrade.Unchecked(UncheckedReason.NoStaticSchema sourceKind), []
+
+        // A finding consumes the first unconsumed slot naming its field, per
+        // defect case, so a field named twice locates each finding at its own
+        // slot. The rules report in slot order, so the pairing is exact.
+        let consumed = System.Collections.Generic.HashSet<string>()
+
+        let locate (case: string) (field: string) : string =
+            match
+                referenceSlots case reader kindPath kind
+                |> List.tryFind (fun (f, p) -> f = field && not (consumed.Contains(case + p)))
+            with
+            | Some(_, p) ->
+                consumed.Add(case + p) |> ignore
+                p
+            | None -> kindPath
+
+        let located (d: PreEmitDefect) : (string * string) option =
+            match d with
+            | PreEmitDefect.ChartFieldUngrounded(n, f, _) when n = id && reader = "Chart" -> Some("086", f)
+            | PreEmitDefect.ChartFieldTypeMismatch(n, f, _) when n = id && reader = "Chart" -> Some("087", f)
+            | PreEmitDefect.ChartTemporalXNotDate(n, f, _) when n = id && reader = "Chart" -> Some("097", f)
+            | PreEmitDefect.GridFieldUngrounded(n, f, _) when n = id && reader = "DataGrid" -> Some("114", f)
+            | _ -> None
+
+        let diagnostics =
+            findings
+            |> List.choose (fun d ->
+                located d
+                |> Option.map (fun (case, field) ->
+                    let code, severity, message = describe d
+
+                    { Code = code
+                      Severity = severity
+                      Message = message
+                      Path = locate case field
+                      Defect = d }))
+
+        { NodeId = id
+          Reader = reader
+          Path = kindPath + (if staticRows then ".staticRows" else ".source")
+          Grade = grade
+          Produced = columns
+          Diagnostics = diagnostics })
