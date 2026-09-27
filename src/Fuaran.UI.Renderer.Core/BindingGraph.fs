@@ -27,21 +27,27 @@ module Fuaran.UI.Renderer.BindingGraph
 //      site (`Site.Transform`) — the identity a host refreshing an
 //      `ILiveTransformStore` needs.
 //
-//  WHAT THE GRAPH DECLINES, AND SAYS SO. Three reads cannot be attributed from
+//  WHAT THE GRAPH DECLINES, AND SAYS SO. Some reads cannot be attributed from
 //  the facts, and each is a named `OpaqueRead` on a `Conservative` verdict,
 //  never a silent full-dirty:
 //
 //    * `Binding.Computed` — its closure is handed the whole state bag, so its
 //      reader is dirty on EVERY state write.
-//    * a live Transform source over a channel other than `Binding.State` — the
-//      walk records no key for it (`TransformSiteFacts.StateKey` is `None`), so
-//      its reader is dirty on EVERY write.
-//    * an opaque reader the facts do not LOCATE — `StateKeys.OpaqueReader` is
-//      also set by a `NodeKind.Custom` node, whose id the facts do not carry,
-//      and the flag cannot tell "a Computed we located" apart from "a Computed
-//      and a Custom node". So whenever the flag is set the graph cannot prove
-//      it has located every opaque reader, and a state write dirties every
-//      site and every node of the tree.
+//    * a `NodeKind.Custom` node (Phase 1761) — its registered host renderer may
+//      read any key, so the node is dirty on EVERY state write. Located: the
+//      walk records the node's id (`StateKeys.OpaqueReaders`), so the verdict
+//      names it and dirties it, and nothing else on its account.
+//    * a live Transform source over a channel no use names — a `Local`'s
+//      buffer, a nested Transform, a closure (`TransformSiteFacts.SourceUses`
+//      is empty) — so its reader is dirty on EVERY write. A live source over a
+//      `Query`, `Filter` or `Selection` is NOT this case since Phase 1761: the
+//      walk records the channel it reads, and the site reads that input.
+//    * an opaque reader the facts do not LOCATE — `StateKeys.OpaqueReader` set
+//      with `StateKeys.OpaqueReaders` empty, which facts this walk built never
+//      carry (it records the reader beside every assignment of the flag) and
+//      facts assembled elsewhere may. Then the graph cannot prove it has
+//      located every opaque reader, and a state write dirties every site and
+//      every node of the tree.
 //
 //  The over-approximation is always safe: a site re-evaluated needlessly costs
 //  time, a site left stale costs a wrong screen. `Exact` is a MINIMALITY claim
@@ -89,14 +95,18 @@ type OpaqueRead =
     /// A `Binding.Computed` on this reader: its closure is handed the whole
     /// state bag, so every state write dirties it.
     | Computed of reader: string
-    /// A live `Binding.Transform` on this reader whose source is not a
-    /// `Binding.State`; the facts name no channel for it, so every write
-    /// dirties it.
+    /// A live `Binding.Transform` on this reader whose source reads through a
+    /// channel no use names (`TransformSiteFacts.SourceUses` is empty), so
+    /// every write dirties it.
     | LiveSourceUnnamed of reader: string
-    /// `StateKeys.OpaqueReader` is set and the facts cannot locate every opaque
-    /// reader it stands for (a `NodeKind.Custom` renderer's id is not carried),
-    /// so a state write dirties every site and every node.
+    /// `StateKeys.OpaqueReader` is set and the facts do not locate the opaque
+    /// readers it stands for (`StateKeys.OpaqueReaders` is empty — never so on
+    /// facts `BindingWalk.collect` built), so a state write dirties every site
+    /// and every node.
     | Unlocated
+    /// Fuaran-UI Phase 1761 — a `NodeKind.Custom` node: its registered host
+    /// renderer may read any state key, so every state write dirties it.
+    | Custom of nodeId: string
 
 /// The answer to "which sites does this write touch".
 [<RequireQualifiedAccess>]
@@ -123,6 +133,11 @@ type Graph =
         UnnamedLiveReaders: string list
         /// `StateKeys.OpaqueReader` — see `OpaqueRead.Unlocated`.
         OpaqueReader: bool
+        /// Fuaran-UI Phase 1761 — `StateKeys.OpaqueReaders`: where each opaque
+        /// read sits. Non-empty whenever the walk set `OpaqueReader`, which is
+        /// what lets `dirty` locate the opaque readers instead of dirtying every
+        /// node.
+        OpaqueReaders: OpaqueReaderAt list
         /// Every node id of the tree (`TreeBindingFacts.Nodes`), for the
         /// `Unlocated` fallback.
         Nodes: Set<string>
@@ -168,8 +183,36 @@ let private readsOfUse (u: BindingUse) : string list =
 /// Build the dependency graph from the facts `BindingWalk.collect` gathers.
 /// Pure, total, deterministic (sites are numbered in walk order).
 let ofFacts (facts: TreeBindingFacts) : Graph =
-    // Each reader's read set, in first-seen reader order.
-    let readerOrder = facts.Uses |> List.map (fun u -> u.Reader) |> List.distinct
+    // Phase 1761 — the located opaque readers. A `Computed` is recorded by the
+    // walk's state fold wherever it sits, which can be a reader `Uses` never
+    // names (a `StateBehaviour` branch), so the two sources are unioned; a
+    // `Custom` node is known only from here.
+    let computedReaders =
+        (facts.Uses
+         |> List.choose (fun u ->
+             match u.Use with
+             | BindingUse.Computed -> Some u.Reader
+             | _ -> None))
+        @ (facts.StateKeys.OpaqueReaders
+           |> List.choose (function
+               | OpaqueReaderAt.Computed r -> Some r
+               | OpaqueReaderAt.Custom _ -> None))
+        |> List.distinct
+
+    let customReaders =
+        facts.StateKeys.OpaqueReaders
+        |> List.choose (function
+            | OpaqueReaderAt.Custom id -> Some id
+            | OpaqueReaderAt.Computed _ -> None)
+        |> List.distinct
+
+    let opaqueIds = Set.ofList (computedReaders @ customReaders)
+
+    // Each reader's read set, in first-seen reader order — a located opaque
+    // reader `Uses` does not name joins at the end, so it is a site too.
+    let readerOrder =
+        (facts.Uses |> List.map (fun u -> u.Reader)) @ computedReaders @ customReaders
+        |> List.distinct
 
     let readerReads: Map<string, Set<string>> =
         facts.Uses
@@ -180,12 +223,15 @@ let ofFacts (facts: TreeBindingFacts) : Graph =
             Map.empty
 
     // A query reads the filters its `dependsOn` names, unioned over every
-    // reader that declared it.
+    // reader that declared it — and, since Phase 1761, over every live
+    // Transform source that reads it, whose uses ride the site rather than
+    // `Uses`.
     let queryReads: Map<string, Set<string>> =
-        facts.Uses
+        (facts.Uses |> List.map _.Use)
+        @ (facts.TransformSites |> List.collect _.Site.SourceUses)
         |> List.fold
             (fun acc u ->
-                match u.Use with
+                match u with
                 | BindingUse.Query(name, dependsOn) ->
                     let key = inputId (Input.Query name)
                     let prior = Map.tryFind key acc |> Option.defaultValue Set.empty
@@ -196,14 +242,35 @@ let ofFacts (facts: TreeBindingFacts) : Graph =
                 | _ -> acc)
             Map.empty
 
+    // Phase 1761 — the inputs a live source's channel reads, when the walk
+    // could name it: a state key (`StateKey`), or the channel its source uses
+    // name. `None` is the unnamed case, and so is a source whose uses name no
+    // input at all — an empty read set there would claim "never stale".
+    let namedSourceReads (s: TransformSiteFacts) : Set<string> option =
+        match s.StateKey with
+        | Some key -> Some(Set.singleton (inputId (Input.State key)))
+        | None ->
+            let reads = s.SourceUses |> List.collect readsOfUse |> Set.ofList
+
+            if Set.isEmpty reads || Set.contains anyStateId reads then
+                None
+            else
+                Some reads
+
     let unnamedLive =
         facts.TransformSites
-        |> List.filter (fun d -> d.Site.IsLive && d.Site.StateKey.IsNone)
+        |> List.filter (fun d -> d.Site.IsLive && (namedSourceReads d.Site).IsNone)
         |> List.map (fun d -> d.Reader)
         |> List.distinct
 
     let readsOfReader (reader: string) =
         let own = Map.tryFind reader readerReads |> Option.defaultValue Set.empty
+
+        let own =
+            if Set.contains reader opaqueIds then
+                Set.add anyStateId own
+            else
+                own
 
         if List.contains reader unnamedLive then
             Set.add anyWriteId own
@@ -227,10 +294,10 @@ let ofFacts (facts: TreeBindingFacts) : Graph =
                 let s = d.Site
 
                 let sourceReads =
-                    match s.IsLive, s.StateKey with
-                    | true, Some key -> Set.singleton (inputId (Input.State key))
-                    | true, None -> Set.singleton anyWriteId
-                    | false, _ -> Set.empty
+                    if s.IsLive then
+                        namedSourceReads s |> Option.defaultValue (Set.singleton anyWriteId)
+                    else
+                        Set.empty
 
                 let paramReads =
                     if List.isEmpty (Fuaran.Core.Transform.paramsOf s.Pipeline) then
@@ -253,15 +320,10 @@ let ofFacts (facts: TreeBindingFacts) : Graph =
 
     { Dependencies = dependencies
       Sites = numbered |> List.map (fun (id, (site, _)) -> id, site) |> Map.ofList
-      ComputedReaders =
-        facts.Uses
-        |> List.choose (fun u ->
-            match u.Use with
-            | BindingUse.Computed -> Some u.Reader
-            | _ -> None)
-        |> List.distinct
+      ComputedReaders = computedReaders
       UnnamedLiveReaders = unnamedLive
       OpaqueReader = facts.StateKeys.OpaqueReader
+      OpaqueReaders = facts.StateKeys.OpaqueReaders
       Nodes = facts.Nodes |> Map.toSeq |> Seq.map fst |> Set.ofSeq }
 
 /// Build the graph of a tree — `ofFacts` over `BindingWalk.collect`.
@@ -294,11 +356,21 @@ let dirty (graph: Graph) (changed: Input seq) : Dirty =
         |> Seq.choose (fun id -> Map.tryFind id graph.Sites)
         |> Set.ofSeq
 
-    let unlocated = anyState && graph.OpaqueReader
+    // Phase 1761 — only a flag the facts do not locate falls back to every
+    // node; a located opaque reader is a site that reads every state key.
+    let unlocated = anyState && graph.OpaqueReader && List.isEmpty graph.OpaqueReaders
+
+    let customReaders =
+        graph.OpaqueReaders
+        |> List.choose (function
+            | OpaqueReaderAt.Custom id -> Some id
+            | OpaqueReaderAt.Computed _ -> None)
+        |> List.distinct
 
     let because =
         [ if anyState then
               yield! graph.ComputedReaders |> List.map OpaqueRead.Computed
+              yield! customReaders |> List.map OpaqueRead.Custom
           if anyWrite then
               yield! graph.UnnamedLiveReaders |> List.map OpaqueRead.LiveSourceUnnamed
           if unlocated then

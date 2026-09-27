@@ -26,6 +26,18 @@ module Fuaran.UI.Tests.BindingGraphTests
 //  The opaque-read rule is asserted by name: a `Binding.Computed`, an unnamed
 //  live source and an unlocated opaque reader each produce a `Conservative`
 //  verdict that SAYS which, never a silent full-dirty.
+//
+//  Phase 1761 sharpened two of those verdicts, and the generator draws both
+//  shapes so the law states the sharpening rather than a unit test beside it:
+//
+//    * a `Binding.Computed` reader is LOCATED — the walk records its node — so
+//      a tree whose only opaque reader is a Computed answers `Conservative`
+//      naming exactly the Computed readers, with only them added to the cone.
+//      Before 1760's coarse fallback was narrowed, the same tree answered
+//      `Unlocated` with every node dirty, and the law goes red on that.
+//    * a live Transform over a `Filter` source records the channel it reads, so
+//      it is CLEAN for a state write. Before, it answered `LiveSourceUnnamed`
+//      on every write, and the law goes red on that too.
 // ============================================================================
 
 open System.IO
@@ -103,17 +115,51 @@ let private transformParamReader (id: string) (key: string) : Node<obj> =
 let private inertReader (id: string) : Node<obj> =
     badgeOf id (TextSource.Literal "static")
 
+/// Phase 1761 — a `Binding.Computed` reader: opaque, and located.
+let private computedReader (id: string) : Node<obj> =
+    badgeOf id (TextSource.Bound(Binding.Computed(fun _ -> "x")))
+
+/// The filter a filter-source reader reads — never written by a case's edit.
+let private readFilter = "region"
+
+/// Phase 1761 — a `Transform` over a LIVE `Binding.Filter` source: its channel is
+/// named, so a state write leaves it clean.
+let private transformFilterSourceReader (id: string) : Node<obj> =
+    badgeOf
+        id
+        (TextSource.Bound(
+            Binding.Transform(
+                TransformSource.Live(Binding.Filter(readFilter, None), HostPrelude.TransformLive.emptySource),
+                countPipeline,
+                None
+            )
+        ))
+
 let private dashboardOf (children: Node<obj> list) : Node<obj> =
     Fuaran.dashboard
         "root"
         { Defaults.dashboard<obj> with
             Children = children }
 
+/// How a generated reader stands towards a write to `editedKey`.
+type private Role =
+    /// It reads the key: it must be in the cone.
+    | Reads
+    /// It does not: it must stay out of the cone.
+    | Clean
+    /// A located opaque reader (Phase 1761): in the cone, and named by the verdict.
+    | Opaque
+
 /// One generated binding set, with the generator's OWN record of which readers read `editedKey`.
 type private Case =
-    { Tree: Node<obj>
-      Dirty: Set<string>
-      Clean: Set<string> }
+    {
+        Tree: Node<obj>
+        Dirty: Set<string>
+        Clean: Set<string>
+        /// Phase 1761 — the `Binding.Computed` readers drawn: dirty on every state write, and the
+        /// only readers a `Conservative` verdict may name.
+        Opaque: Set<string>
+    }
 
 let private caseOf (seed: int) (iteration: int) : Case =
     let r = rngOf (seed + iteration * 7919)
@@ -123,46 +169,62 @@ let private caseOf (seed: int) (iteration: int) : Case =
         [ for i in 0 .. n - 1 do
               let id = sprintf "n%d" i
 
-              match intBelow 6 r with
-              | 0 -> id, true, stateReader id editedKey
-              | 1 -> id, true, transformSourceReader id editedKey
-              | 2 -> id, true, transformParamReader id editedKey
-              | 3 -> id, false, stateReader id otherKey
-              | 4 -> id, false, transformSourceReader id otherKey
-              | _ -> id, false, inertReader id ]
+              match intBelow 8 r with
+              | 0 -> id, Reads, stateReader id editedKey
+              | 1 -> id, Reads, transformSourceReader id editedKey
+              | 2 -> id, Reads, transformParamReader id editedKey
+              | 3 -> id, Role.Clean, stateReader id otherKey
+              | 4 -> id, Role.Clean, transformSourceReader id otherKey
+              // Phase 1761 — the two shapes whose verdicts it sharpened.
+              | 5 -> id, Opaque, computedReader id
+              | 6 -> id, Role.Clean, transformFilterSourceReader id
+              | _ -> id, Role.Clean, inertReader id ]
 
-    { Tree = dashboardOf (drawn |> List.map (fun (_, _, node) -> node))
-      Dirty =
+    let idsOf (role: Role) =
         drawn
-        |> List.filter (fun (_, d, _) -> d)
+        |> List.filter (fun (_, r, _) -> r = role)
         |> List.map (fun (id, _, _) -> id)
         |> Set.ofList
-      Clean =
-        drawn
-        |> List.filter (fun (_, d, _) -> not d)
-        |> List.map (fun (id, _, _) -> id)
-        |> Set.ofList }
+
+    { Tree = dashboardOf (drawn |> List.map (fun (_, _, node) -> node))
+      Dirty = idsOf Reads
+      Clean = idsOf Role.Clean
+      Opaque = idsOf Opaque }
 
 let private seed = 20260927
 
 let private iterations = 50
 
 /// THE LAW, as a function of the graph so it can be run over a perturbed one: an edit to
-/// `editedKey` yields an `Exact` verdict whose readers are exactly the case's dirty readers.
+/// `editedKey` yields a verdict whose readers are exactly the case's dirty readers plus its located
+/// opaque readers — `Exact` when it drew none, and otherwise `Conservative` naming exactly those
+/// Computed readers and nothing else (Phase 1761: not `Unlocated`, not a live source it can name).
 let private law (graph: Graph) (c: Case) : Result<unit, string> =
-    match dirty graph [ Input.State editedKey ] with
-    | Dirty.Conservative(_, because) -> Error(sprintf "the verdict declined exactness: %A" because)
-    | Dirty.Exact sites ->
+    let expected = Set.union c.Dirty c.Opaque
+
+    let check (sites: Set<Site>) =
         let readers = readersOf sites
 
-        if not (Set.isSubset c.Dirty readers) then
-            Error(sprintf "unsound: %A read '%s' and are not dirty" (Set.difference c.Dirty readers) editedKey)
+        if not (Set.isSubset expected readers) then
+            Error(sprintf "unsound: %A read '%s' and are not dirty" (Set.difference expected readers) editedKey)
         elif not (Set.isEmpty (Set.intersect readers c.Clean)) then
             Error(sprintf "not minimal: %A are dirty and do not read '%s'" (Set.intersect readers c.Clean) editedKey)
-        elif readers <> c.Dirty then
-            Error(sprintf "the cone %A is not the generated set %A" readers c.Dirty)
+        elif readers <> expected then
+            Error(sprintf "the cone %A is not the generated set %A" readers expected)
         else
             Ok()
+
+    match dirty graph [ Input.State editedKey ], Set.isEmpty c.Opaque with
+    | Dirty.Exact sites, true -> check sites
+    | Dirty.Exact _, false -> Error(sprintf "the verdict claimed exactness over the opaque readers %A" c.Opaque)
+    | Dirty.Conservative(_, because), true -> Error(sprintf "the verdict declined exactness: %A" because)
+    | Dirty.Conservative(sites, because), false ->
+        let named = c.Opaque |> Set.map OpaqueRead.Computed
+
+        if Set.ofList because <> named || List.length because <> Set.count named then
+            Error(sprintf "the verdict named %A, not exactly the located Computed readers %A" because named)
+        else
+            check sites
 
 let private editedId = inputId (Input.State editedKey)
 
@@ -294,6 +356,21 @@ let tests =
                     Expect.isTrue
                         drewLiveSource
                         "no generated set held a live Transform SOURCE reader of the edited key"
+
+                    // Phase 1761 — both sharpened shapes, drawn and drawn beside ordinary readers, so
+                    // the law's `Conservative` arm and the filter source's clean verdict are exercised.
+                    Expect.isNonEmpty
+                        (xs
+                         |> List.filter (fun c -> not (Set.isEmpty c.Opaque) && not (Set.isEmpty c.Dirty)))
+                        "no generated set held a located Computed reader beside a reader of the edited key"
+
+                    let drewFilterSource =
+                        xs
+                        |> List.exists (fun c ->
+                            (BindingWalk.collect c.Tree).TransformSites
+                            |> List.exists (fun d -> d.Site.IsLive && d.Site.StateKey.IsNone))
+
+                    Expect.isTrue drewFilterSource "no generated set held a live Transform over a Filter source"
 
                 testCase "dropping an edge turns the law red (soundness is load-bearing)"
                 <| fun _ ->
@@ -437,15 +514,14 @@ let tests =
 
                 testCase "a live Transform over an unnamed channel is dirty on every write, and named"
                 <| fun _ ->
+                    // A `Static` source: no use names a channel for it (Phase 1761 names a `Query`,
+                    // `Filter` or `Selection` source, so those are no longer this case).
                     let unnamed =
                         badgeOf
                             "u"
                             (TextSource.Bound(
                                 Binding.Transform(
-                                    TransformSource.Live(
-                                        Binding.Query("feed", (fun o -> unbox o), None),
-                                        HostPrelude.TransformLive.emptySource
-                                    ),
+                                    TransformSource.Live(Binding.Static None, HostPrelude.TransformLive.emptySource),
                                     countPipeline,
                                     None
                                 )
@@ -459,10 +535,72 @@ let tests =
                         Expect.equal (readersOf sites) (Set.singleton "u") "and it is dirty"
                     | Dirty.Exact _ -> failtest "an unnamed live source was answered as if its channel were known"
 
+                testCase "a live Transform over a query names its channel: exact, through the query's dependsOn (1761)"
+                <| fun _ ->
+                    let overQuery =
+                        badgeOf
+                            "q"
+                            (TextSource.Bound(
+                                Binding.Transform(
+                                    TransformSource.Live(
+                                        Binding.Query("feed", (fun o -> unbox o), Some [ "region" ]),
+                                        HostPrelude.TransformLive.emptySource
+                                    ),
+                                    countPipeline,
+                                    None
+                                )
+                            ))
+
+                    let g = ofTree (dashboardOf [ overQuery; stateReader "s" editedKey ])
+
+                    Expect.equal
+                        (dirty g [ Input.Query "feed" ] |> exactSites |> readersOf)
+                        (Set.singleton "q")
+                        "the query's refresh reaches its live Transform"
+
+                    Expect.equal
+                        (dirty g [ Input.Filter "region" ] |> exactSites |> readersOf)
+                        (Set.singleton "q")
+                        "a filter the query depends on reaches it through the query"
+
+                    Expect.equal
+                        (dirty g [ Input.State editedKey ] |> exactSites |> readersOf)
+                        (Set.singleton "s")
+                        "a state write it does not read leaves it clean — no longer LiveSourceUnnamed"
+
+                testCase "a Custom node is located: named, dirty on a state write, and nothing else on its account"
+                <| fun _ ->
+                    let custom: Node<obj> = Fuaran.custom "k" "mod" "widget" Map.empty None []
+
+                    let g =
+                        ofTree (dashboardOf [ custom; stateReader "s" editedKey; stateReader "o" otherKey ])
+
+                    match dirty g [ Input.State editedKey ] with
+                    | Dirty.Conservative(sites, because) ->
+                        Expect.equal because [ OpaqueRead.Custom "k" ] "the Custom node is named, and located"
+                        Expect.equal (readersOf sites) (Set.ofList [ "k"; "s" ]) "the cone plus the Custom node only"
+                    | Dirty.Exact _ -> failtest "a Custom node was answered as if its reads were known"
+
+                    Expect.equal (dirty g [ Input.Filter "region" ]) (Dirty.Exact Set.empty) "a filter write is exact"
+
+                testCase "a tree whose only opaque reader is a Computed gets a located answer (1761)"
+                <| fun _ ->
+                    let g =
+                        ofTree (dashboardOf [ computedReader "c"; stateReader "s" editedKey; stateReader "o" otherKey ])
+
+                    Expect.isTrue g.OpaqueReader "the walk still raises the flag"
+
+                    match dirty g [ Input.State editedKey ] with
+                    | Dirty.Conservative(sites, because) ->
+                        Expect.equal because [ OpaqueRead.Computed "c" ] "only the Computed reader — not Unlocated"
+                        Expect.equal (readersOf sites) (Set.ofList [ "c"; "s" ]) "not every node"
+                    | Dirty.Exact _ -> failtest "a Computed reader was answered as if its reads were known"
+
                 testCase "an opaque reader the facts cannot locate dirties every node, and says so"
                 <| fun _ ->
-                    // `StateKeys.OpaqueReader` is what a `NodeKind.Custom` node sets, and the facts do not
-                    // carry its id — set on an otherwise-analysable tree here, to isolate the rule.
+                    // `StateKeys.OpaqueReader` set with no located reader behind it — facts the walk
+                    // never builds (it records the reader beside the flag) and hand-assembled facts
+                    // may. Set on an otherwise-analysable tree here, to isolate the rule.
                     let c = caseOf seed 1
                     let facts = BindingWalk.collect c.Tree
 
@@ -471,7 +609,8 @@ let tests =
                             { facts with
                                 StateKeys =
                                     { facts.StateKeys with
-                                        OpaqueReader = true } }
+                                        OpaqueReader = true
+                                        OpaqueReaders = [] } }
 
                     match dirty g [ Input.State editedKey ] with
                     | Dirty.Conservative(sites, because) ->

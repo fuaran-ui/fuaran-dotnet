@@ -34,6 +34,10 @@
          and the same properties stated over THIS tier's live path. After the
          corpus tests, whose recorded vectors it reads as fixed cases. -->
     <Compile Include="CoreIncrementalLawsTests.fs" />
+    <!-- Phase 1761: state for parameterised Transform sites - the reuse law and the cost
+         reading, which reads one corpus fixture through the ONE corpus-root resolver. -->
+    <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />
+    <Compile Include="ParameterisedSiteTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

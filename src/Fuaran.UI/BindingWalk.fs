@@ -58,7 +58,9 @@ type TransformSiteFacts =
         /// distinction is deliberate rather than an omission:
         ///
         ///  - a `TransformSource.Data` source is not a live site at all —
-        ///    nothing re-evaluates it on a state write, so nothing keys it;
+        ///    nothing re-evaluates it on a state write, so nothing keys it
+        ///    HERE (the renderer keys its evaluation itself, by `dataSiteKey`
+        ///    over the pipeline closed over its params — Phase 1761);
         ///  - a Transform declaring `params` evaluates an EFFECTIVE pipeline
         ///    (list params substituted, unbound filters pruned) that is a
         ///    render-time fact, so a key derived from the pipeline as carried
@@ -99,10 +101,24 @@ type TransformSiteFacts =
         /// declares none; the store's own default is "none declared", which is
         /// correct on every site and restricting on none.
         IdentityColumn: string option
+        /// Fuaran-UI Phase 1761 — the CHANNEL a live source reads, as the uses
+        /// `usesOfBinding` reports for it, where a use can name it: `[State k]`
+        /// for a `Binding.State` source, `[Query(name, dependsOn)]` for a
+        /// query, `[Filter name]`, `[Selection id]`, and the same through a
+        /// wrapping `Format`. EMPTY for a `Data` source and for a live source
+        /// that reads through something no use names — a `Local`'s buffer, a
+        /// nested `Transform`, a `Computed` closure, `Now`, an `Invoke`, a
+        /// `Static` — which a consumer must therefore treat as unnamed.
+        ///
+        /// Carried HERE and not added to `Uses`: widening `Uses` would move the
+        /// consumption-union rules' verdicts (the Phase 865 reasoning), while a
+        /// consumer asking "which channel does this reader re-evaluate on" —
+        /// the binding graph — needs the answer for every channel, not only the
+        /// state one `StateKey` names.
+        SourceUses: BindingUse list
     }
 
-[<RequireQualifiedAccess>]
-type BindingUse =
+and [<RequireQualifiedAccess>] BindingUse =
     | State of key: string
     | Filter of name: string
     | Selection of targetNodeId: string
@@ -284,6 +300,16 @@ type CallUse =
 /// one vocabulary names these slots across the estate.
 type ClosureUse = { Reader: string; Slot: string }
 
+/// Fuaran-UI Phase 1761 — one reader whose state access cannot be seen, and
+/// why. See `StateKeyFacts.OpaqueReaders`.
+[<RequireQualifiedAccess>]
+type OpaqueReaderAt =
+    /// A `Binding.Computed` held by this reader's spec: its closure is handed
+    /// the whole state bag.
+    | Computed of reader: string
+    /// A `NodeKind.Custom` node: its registered host renderer may read any key.
+    | Custom of nodeId: string
+
 /// The State-channel projection **FUARAN098** runs on (Phase 932) — which keys
 /// the tree WRITES with `Action.SetState`, and which it can be shown to READ.
 ///
@@ -350,6 +376,19 @@ type StateKeyFacts =
         /// anything). Under either, the absence of a read PROVES nothing, so
         /// FUARAN098 stands down for the whole tree rather than guessing.
         OpaqueReader: bool
+        /// Fuaran-UI Phase 1761 — WHERE each opaque read behind `OpaqueReader`
+        /// sits, in walk order, one entry per (kind, node). The flag says the
+        /// absence of a read proves nothing; this says which readers make it so,
+        /// which is what a consumer needs to answer "what does this write make
+        /// stale" with the opaque readers located instead of every node dirty.
+        ///
+        /// Complete by construction: every assignment of the flag records its
+        /// reader here in the same fold, so on facts this walk built the flag is
+        /// set exactly when the list is non-empty. A `Binding.Computed` is
+        /// recorded wherever the state fold sees it — including a
+        /// `StateBehaviour` branch or `SlotArg` tree kept out of `Uses` — so the
+        /// list can name a reader `Uses` does not.
+        OpaqueReaders: OpaqueReaderAt list
         /// Every state key the tree can be shown to WRITE, from EVERY write
         /// surface — not only `Action.SetState`. Held BESIDE `Writes` rather
         /// than replacing it: `Writes` is the (writer, key) list FUARAN098
@@ -650,12 +689,57 @@ let rec private siteChannelOf<'T> (binding: Binding<'T>) : string =
 /// landed on one key get right answers and pay full price; they do not get each
 /// other's data.
 ///
-/// The pipeline is rendered through its own structural string. That form is
-/// stable within a process, which is the whole requirement: the key addresses
-/// an in-memory store held for the life of a session, and it is never written
-/// down, compared across hosts, or carried on any wire.
+/// The pipeline enters the key through its STRUCTURAL HASH and its length. That
+/// form is stable within a process, which is the whole requirement: the key
+/// addresses an in-memory store held for the life of a session, and it is never
+/// written down, compared across hosts, or carried on any wire.
+///
+/// Fuaran-UI Phase 1761 — it was the pipeline's structural STRING, and that had
+/// two costs. The list's own `ToString` prints its first three elements and then
+/// `...`, so every pipeline sharing a three-step prefix shared a key: two charts
+/// filtering the same table by the same chips and grouping it differently
+/// collided, and each re-primed on every render because the other had just
+/// replaced it. And the string is built by reflection-driven formatting, which
+/// measured 2.75 ms for a two-step pipeline against 1.72 ms to EVALUATE that
+/// pipeline over 2,000 rows — a key dearer than the work it saves. The
+/// structural hash reads every step and costs about a microsecond. It can still
+/// collide, rarely; that remains a shared key, which remains a recomputation.
+let private pipelineKey (pipeline: Fuaran.Core.Transform list) : string =
+    string (List.length pipeline) + "#" + string (hash pipeline)
+
 let liveSiteKey (source: Binding<JVal>) (pipeline: Fuaran.Core.Transform list) : string =
-    Hashing.sha256Hex (siteChannelOf source + "\n--\n" + string pipeline)
+    Hashing.sha256Hex (siteChannelOf source + "\n--\n" + pipelineKey pipeline)
+
+/// Fuaran-UI Phase 1761 — the SITE key of one `TransformSource.Data` reader:
+/// the store identity the renderer's `Data` arm keeps an evaluation under.
+///
+/// The pipeline it is handed is the EFFECTIVE one closed over its environment
+/// — list params substituted, unbound filters pruned, and every bound scalar
+/// param substituted as a literal — so the key names the evaluation the store
+/// actually sees, parameter values included. A write to a param the pipeline
+/// does not read leaves that pipeline, and therefore this key, unchanged; a
+/// write to one it reads moves the key. That is the whole reuse rule, and it is
+/// why the walk's own `TransformSiteFacts.SiteKey` still declines for a
+/// parameterised site: the walk does not hold the environment, the renderer
+/// does.
+///
+/// The table half is its SHAPE — the schema and the row count — rather than its
+/// content: hashing every cell on every render would spend on the key what the
+/// store saves on the evaluation. Two sites whose embedded tables share a shape
+/// and whose effective pipelines are equal therefore share a key, and the store
+/// then compares the source it holds with the one it is handed and evaluates in
+/// full where they differ — a recomputation, never another site's rows. The
+/// `data:` prefix is one no live channel's rendering begins with, so a data site
+/// never shares a live site's key.
+let dataSiteKey (source: Fuaran.Core.Table) (pipeline: Fuaran.Core.Transform list) : string =
+    Hashing.sha256Hex (
+        "data:"
+        + string (hash source.Schema)
+        + "/"
+        + string (Fuaran.Core.Table.rowCount source)
+        + "\n--\n"
+        + pipelineKey pipeline
+    )
 
 let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     match binding with
@@ -745,10 +829,12 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
                         | Some [] -> Some(liveSiteKey b pipeline)
                         | Some _ -> None
 
-                    siteKey, stateKey, initial, true
-                | TransformSource.Data ds -> None, None, ds, false
+                    // Phase 1761 — the channel the source reads, where a use
+                    // can name it (see `sourceChannelUses`).
+                    siteKey, stateKey, initial, true, sourceChannelUses b
+                | TransformSource.Data ds -> None, None, ds, false, []
 
-            let siteKey, stateKey, dataSource, isLive = liveHalves
+            let siteKey, stateKey, dataSource, isLive, sourceUses = liveHalves
 
             BindingUse.TransformSite
                 { SiteKey = siteKey
@@ -757,7 +843,8 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
                   Source = dataSource
                   Pipeline = pipeline
                   Slot = None
-                  IdentityColumn = None }
+                  IdentityColumn = None
+                  SourceUses = sourceUses }
 
         (site :: sourceUse)
         @ (defaultArg parameters []
@@ -797,6 +884,22 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     | Binding.Computed _ -> [ BindingUse.Computed ]
     | Binding.Invoke _
     | Binding.Static _ -> []
+
+/// Fuaran-UI Phase 1761 — the uses that NAME the channel a live Transform
+/// source reads (`TransformSiteFacts.SourceUses`). A direct channel read — a
+/// `State`, `Query`, `Filter` or `Selection` — is named by its own uses, and a
+/// `Format` over one by its source's. A source that reads through something no
+/// use names — a `Local`'s buffer, a nested `Transform`, a `Computed` closure,
+/// `Now`, an `Invoke`, a `Static` — answers empty and stays unnamed, rather
+/// than half-named by whatever inputs it also happens to read.
+and private sourceChannelUses<'T> (binding: Binding<'T>) : BindingUse list =
+    match binding with
+    | Binding.State _
+    | Binding.Query _
+    | Binding.Filter _
+    | Binding.Selection _ -> usesOfBinding binding
+    | Binding.Format(inner, _, _) -> sourceChannelUses inner
+    | _ -> []
 
 /// Binding usages read by a `TextSource`. `Literal` carries none; `Bound`
 /// defers to its binding; `TextSource.I18n` defers to its ARGUMENTS.
@@ -1308,6 +1411,17 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
     let stateReads = System.Collections.Generic.HashSet<string>()
     let stateWrites = ResizeArray<string * string>()
     let mutable opaqueReader = false
+    // Phase 1761 — where each opaque read sits (see `StateKeyFacts.OpaqueReaders`).
+    // Recorded beside every assignment of the flag, so the two cannot disagree.
+    let opaqueReaders = ResizeArray<OpaqueReaderAt>()
+    let mutable opaqueReadersSeen: Set<OpaqueReaderAt> = Set.empty
+
+    let noteOpaqueReader (at: OpaqueReaderAt) =
+        opaqueReader <- true
+
+        if not (Set.contains at opaqueReadersSeen) then
+            opaqueReadersSeen <- Set.add at opaqueReadersSeen
+            opaqueReaders.Add at
 
     // ── The Phase 1785 filter-channel write direction (see `TreeFacts`) ──
     let filterWrites = ResizeArray<string * string>()
@@ -1430,7 +1544,7 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
         for u in found do
             match u with
             | BindingUse.State k -> stateReads.Add k |> ignore
-            | BindingUse.Computed -> opaqueReader <- true
+            | BindingUse.Computed -> noteOpaqueReader (OpaqueReaderAt.Computed readerId)
             // A Transform's live `State` source IS a read of that key, and the
             // fold belongs here rather than in `Uses` — see
             // `BindingUse.TransformStateSource`.
@@ -1946,7 +2060,7 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
                 // any state key, so the tree can no longer be shown to read nothing.
                 // It may equally WRITE any key, which is the same argument on the
                 // other channel.
-                opaqueReader <- true
+                noteOpaqueReader (OpaqueReaderAt.Custom readerId)
                 opaqueWriter <- true
                 [], []
             | NodeKind.FragmentRef spec ->
@@ -1997,6 +2111,7 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
             { Writes = List.ofSeq stateWrites
               Reads = Set.ofSeq stateReads
               OpaqueReader = opaqueReader
+              OpaqueReaders = List.ofSeq opaqueReaders
               WriteKeys = Set.ofSeq stateWriteKeys
               OpaqueWriter = opaqueWriter
               SwitchSelectors = List.ofSeq switchSelectors

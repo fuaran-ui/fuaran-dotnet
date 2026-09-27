@@ -35,7 +35,10 @@ open Fuaran.UI.Types
 
 /// A session-held store of PRIMED live-`Transform` evaluations — the seam the
 /// renderer's `TransformSource.Live` arm consults before evaluating a pipeline
-/// in full (Phase 1586).
+/// in full (Phase 1586), and since Phase 1761 its `TransformSource.Data` arm
+/// too. Either arm hands it the pipeline CLOSED over its bound params (every
+/// bound scalar substituted as a literal), so the empty-environment promise
+/// below covers a parameterised site as well.
 ///
 /// WHY THE INTERFACE IS HERE AND THE IMPLEMENTATION IS NOT. The store needs
 /// somewhere to keep primed state BETWEEN renders, and the render path has
@@ -153,9 +156,12 @@ type BindingSources =
         /// surface. That is deliberately LOUD: a host that forgets to supply the
         /// instant must not silently render a plausible wrong date.
         Now: string
-        /// The session-held store of primed live-`Transform` evaluations
-        /// (Phase 1586) the renderer consults before evaluating a
-        /// `TransformSource.Live` pipeline in full.
+        /// The session-held store of primed `Transform` evaluations (Phase
+        /// 1586) the renderer consults before evaluating a
+        /// `TransformSource.Live` pipeline in full — and, since Phase 1761, a
+        /// `TransformSource.Data` one, which is what lets a filter-chip
+        /// dashboard re-render a static chart whose chips did not move without
+        /// re-evaluating it.
         ///
         /// `None` — the default, and what every host furnishes until it opts in
         /// — is today's path exactly: every render evaluates the pipeline in
@@ -163,9 +169,14 @@ type BindingSources =
         /// the slot additive in behaviour as well as in shape.
         ///
         /// The renderer consults it ONLY where the two evaluations are the same
-        /// question — a pipeline with no bound scalar params, since the seam
-        /// evaluates in the empty environment. A live source under a bound param
-        /// evaluates in full whether a store is furnished or not.
+        /// question. The seam evaluates in the empty environment, so the
+        /// renderer hands it the effective pipeline CLOSED over its bound params
+        /// (Core's certified substitution law), keyed by that closed pipeline —
+        /// a write to a param the pipeline does not read therefore leaves the
+        /// key, and the stored answer, where they were. A pipeline with a param
+        /// still standing after that (unbound in a `derive`, or a slot param
+        /// bound to a cell of the wrong shape) evaluates in full, so its error
+        /// is the one it always was. A one-row `Binding.Expr` never consults it.
         LiveTransforms: ILiveTransformStore option
     }
 

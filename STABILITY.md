@@ -8357,6 +8357,56 @@ a test oracle over `BindingWalk.collect` (fuaran#1479).
 
 *Version.* Rides this slot: an additive module below the slot's standing class.
 
+**fuaran#1761 — ADDITIVE in behaviour, with two shape additions of the kind a full-literal
+construction or an exhaustive match meets (`Fuaran.UI`, `Fuaran.UI.Renderer.Core`); RIDES this
+slot.** A Transform over static data whose pipeline reads filter parameters keeps its result between
+renders: the renderer's `Data` arm now consults the session store the `Live` arm already did, keyed
+by the effective pipeline CLOSED over its bound params, so a chip the pipeline does not read changes
+nothing and a chip it reads is evaluated in full. And the two coarse verdicts `BindingGraph` inherited
+from the walk's facts at fuaran#1760 are narrowed.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `BindingResolver` (behaviour) | With `BindingSources.LiveTransforms` furnished, a `TransformSource.Data` site is evaluated through the store, keyed by `BindingWalk.dataSiteKey` over the pipeline with every bound scalar param substituted (`Transform.substitute` — Core's certified `evalPipelineInEnv env p ≡ evalPipeline (substitute env p)`); a `Live` site under bound params is now served the same way instead of in full. A pipeline with a param still standing after substitution takes the full path, so its error text is unchanged. A `Binding.Expr`'s one-row frame never consults the store. With no store furnished nothing changes. | Nobody: every result is the full evaluation's (asserted as a law). |
+| `BindingResolver` (behaviour) | A Transform's result rows are read column-wise, once per column, instead of through `Column.cell i` per cell — O(rows × columns) where it was O(rows² × columns). Same cell at every (row, column). | Nobody. |
+| `BindingWalk.liveSiteKey` (value) | The pipeline enters the key through its structural hash and length rather than its `ToString`, which printed three steps and `...` (so pipelines sharing a three-step prefix shared a key) and cost more to build than the evaluation it keyed. Same signature; the key is process-local and never persisted. | Nobody: a store keyed across a restart does not exist. |
+| `BindingWalk.dataSiteKey` (new) | The `Data` arm's site key: `data:` + the source's schema hash and row count + the closed pipeline. | Nobody: new. |
+| `TransformSiteFacts.SourceUses` (new field) | The uses naming the channel a LIVE source reads — `State`, `Query`, `Filter`, `Selection`, or a `Format` over one; empty for a `Data` source and for a source read through something no use names (`Local`, nested `Transform`, `Computed`, `Now`, `Invoke`, `Static`). Not added to `Uses`. | A consumer constructing the record by full literal (nothing in this repository does; the walk is its only constructor). |
+| `StateKeyFacts.OpaqueReaders` (new field) + `OpaqueReaderAt` (new union) | Where each opaque read behind `OpaqueReader` sits: `Computed reader` wherever the state fold sees one (including a `StateBehaviour` branch `Uses` never names) and `Custom nodeId`. Recorded beside every assignment of the flag, so on walk-built facts the flag is set exactly when the list is non-empty. | As above: a full-literal construction of `StateKeyFacts`. |
+| `BindingGraph.OpaqueRead.Custom` (new case), `Graph.OpaqueReaders` (new field) | A `NodeKind.Custom` node is now LOCATED: named `Custom id`, dirty on every state write, and nothing else on its account. `Unlocated` (every node dirty) now fires only for a flag with no located reader — facts assembled elsewhere. A live Transform over a `Query` / `Filter` / `Selection` source reads that input (a query's `dependsOn` included) instead of answering `LiveSourceUnnamed` on every write. | An exhaustive `match` over `OpaqueRead` gains a case; a full-literal `Graph`. `BindingGraph` shipped hours earlier in this same draft slot, so no released consumer holds either. |
+| `LiveTransformStore.Evaluate` (behaviour) | A source equal to the one the site's state holds is answered with the quiet delta — `ReusedPrior`, nothing evaluated — rather than diffed: under no declared row identity (the default) the diff could not key it and the seam evaluated in full. The same source OBJECT under the same pipeline is handed back without a refresh, because the seam's own reuse check compares the tables structurally (a third of a full evaluation at 2,000 rows). | Nobody: the result is the one the seam's `ReusedPrior` would have given. |
+
+- **The law.** `ParameterisedSiteTests.fs` (new): for generated (tree, chip-edit stream) pairs, every
+  stored result equals the render with no store, and every site whose pipeline does not read the
+  edited chip (or whose chip did not move) is answered `ReusedPrior` — asserted on the store's
+  footprint, with exactly one store call per site render. A bound numeric chip returning to a value
+  the store still holds is served from the store; a moved one never is.
+- **The cost reading**, fuaran#1787's instrument shape (that phase has not shipped; the shard cited
+  it as fuaran#1759): the stream with no store against the same stream through one store, Core's
+  deterministic `rowsEvaluated` (the full side counted as each site's prime) and median wall-clock,
+  rows asserted equal first.
+  - Corpus `filterable-static-dashboard` (2 sites, 2-row table, 6 renders — none selected, a region,
+    a genre, an unread chip, genre cleared, a repeat): **10 → 4 rows evaluated**; clock
+    indistinguishable. Both sites read both chips, so only the unread-chip and repeat renders can reuse, and at two
+    rows there is nothing on the clock to save (0.17–0.23 ms across runs, either side ahead).
+  - Generated 24-site tree (2,000 rows, one chip per site, a grouped / top-N / filter-only tail,
+    21 renders): **362,000 → 62,000 rows evaluated**; median clock **~163 ms → 88–107 ms** over two runs. Before this
+    phase the same stream took **~885 ms**, most of it the quadratic row read above; what remains after
+    the store is chiefly handing large filter-only results to the renderer as rows, which no
+    evaluation store removes.
+- **The graph law.** `BindingGraphTests.fs`: the generator draws a located `Computed` reader and a
+  live Transform over a `Filter` source; the sound-and-minimal law now expects `Conservative` naming
+  exactly the drawn Computed readers (never `Unlocated`) and the filter reader clean. Run against the
+  pre-1761 rules, it goes red on both (checked by reverting each rule in turn). The corpus leg is
+  unchanged at 94 exact pairs.
+- **`docs/security/ESCAPE-HATCHES.md` reviewed; it gains nothing.** Asked, as the shard required: the
+  store is keyed on decoded tree content and holds evaluations in session memory, which is not a new
+  place behaviour enters — it evaluates nothing the tree did not already declare, holds no durable
+  state (Hatch 13) and decides no policy (Hatch 10).
+
+*Version.* Rides this slot: the untagged 0.86.0 draft is already BREAKING and publicly unpinned, and
+both shape additions are below that class.
+
 ## 0.85.0 — the slot Phase 1734 opened, which Phase 1821's column-naming rename raised to WIRE-BREAKING — released 2026-09-20 as `v0.85.0`
 
 _**`v0.84.0` is TAGGED** (on origin at `30b91ebf`), so the slot below it is closed: nothing may ride

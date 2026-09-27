@@ -773,15 +773,27 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
             let names = Fuaran.Core.Table.columnNames result
             let rowCount = Fuaran.Core.Table.rowCount result
 
+            // Phase 1761 — each column's cells read ONCE, as an array, rather than
+            // one index at a time through `Column.cell i`, which walks the cell
+            // list from its head on every call: the rows cost O(rows² × columns),
+            // and a store that now hands back a 2,000-row table without evaluating
+            // it left this conversion as nearly all of the render's time. The
+            // answer is the same cell for every (row, column): the lookup is the
+            // same `tryColumn` by name, and a short or absent column reads `Null`
+            // past its end exactly as the total `Column.cell` does.
+            let columns =
+                names
+                |> List.map (fun n ->
+                    n,
+                    Fuaran.Core.Table.tryColumn n result
+                    |> Option.map (fun c -> List.toArray c.Cells)
+                    |> Option.defaultValue [||])
+
             let rows: Row list =
                 [ for i in 0 .. rowCount - 1 ->
-                      names
-                      |> List.map (fun n ->
-                          let cell =
-                              Fuaran.Core.Table.tryColumn n result
-                              |> Option.map (Fuaran.Core.Column.cell i)
-                              |> Option.defaultValue Fuaran.Core.Null
-
+                      columns
+                      |> List.map (fun (n, cells) ->
+                          let cell = if i < cells.Length then cells[i] else Fuaran.Core.Null
                           n, cellToObj cell)
                       |> Map.ofList ]
 
@@ -958,6 +970,52 @@ and private evalTransformFrameWithin
                 | Error e -> Error("Transform evaluation failed: " + Fuaran.Core.DataFrame.errorString e)
                 | Ok result -> Ok result
 
+        // Phase 1761 — the effective pipeline CLOSED over its environment: every
+        // bound scalar param substituted as a literal. It is the same question
+        // `evalTable` asks — `evalPipelineInEnv env p ≡ evalPipeline
+        // (Transform.substitute env p)` is Core's certified substitution law,
+        // for expression params and slot params alike — asked in the EMPTY
+        // environment the store's seam evaluates in. So a site under bound
+        // params is a site the store can serve, keyed by the pipeline it will
+        // actually run, parameter values included.
+        //
+        // Only a param the pipeline READS is substituted (the env may bind
+        // more, and `substitute` touches nothing it does not name), which is
+        // the whole reuse rule: a write to a param this pipeline never reads
+        // leaves the closed pipeline — and so its site key — unchanged, and the
+        // store hands back the evaluation it holds; a write to one it reads
+        // moves the key and the store evaluates in full. A parameter change is
+        // never approximated, because nothing is compared but the pipeline
+        // itself.
+        //
+        // `closed` is the guard, and it is exact rather than cautious: a param
+        // still standing after substitution (unbound in a `derive`, or a slot
+        // param bound to a cell of the wrong shape, which `substitute` leaves
+        // for the evaluator to refuse by name) takes `evalTable`, so its error
+        // is the one it always was.
+        let closedPipeline =
+            if Map.isEmpty env then
+                pipeline
+            else
+                Fuaran.Core.Transform.substitute env pipeline
+
+        let closed = List.isEmpty (Fuaran.Core.Transform.paramsOf closedPipeline)
+
+        // The store path, shared by both source arms (Phase 1586 for `Live`,
+        // Phase 1761 for `Data`). The budget is checked BEFORE the store for
+        // the Phase-1532 reason: this is the only point where the pruned
+        // pipeline and the resolved input are both known, and the store path
+        // must not be a way to spend past a refusal.
+        let evalSite (siteKey: string) (inputTable: Fuaran.Core.Table) : Result<Fuaran.Core.Table, string> =
+            match sources.LiveTransforms with
+            | Some store when closed ->
+                match TransformBudget.check budget (Fuaran.Core.Table.rowCount inputTable) (List.length pipeline) with
+                | Error refusal -> Error refusal
+                | Ok() ->
+                    store.Evaluate(siteKey, closedPipeline, inputTable)
+                    |> Result.mapError (fun e -> "Transform evaluation failed: " + e)
+            | _ -> evalTable inputTable
+
         match source with
         | TransformSource.Data(Fuaran.Core.Ref name) ->
             Error(
@@ -965,7 +1023,12 @@ and private evalTransformFrameWithin
                     "Transform 'Ref' source '%s' is not host-resolved yet (Phase 282 evaluates Embedded sources)"
                     name
             )
-        | TransformSource.Data(Fuaran.Core.Embedded inputTable) -> evalTable inputTable
+        // Phase 1761 — a STATIC source consults the store too. Its rows never
+        // change, so what moves between renders is the environment, and the
+        // closed pipeline above is what carries it: an unchanged key over an
+        // unchanged table is the store's `ReusedPrior`, evaluating nothing.
+        | TransformSource.Data(Fuaran.Core.Embedded inputTable) ->
+            evalSite (Fuaran.UI.BindingWalk.dataSiteKey inputTable closedPipeline) inputTable
         // Phase 818 — the LIVE source: resolve the preserved binding against
         // the reactive stores (through the store-reading erasure, so raw store
         // values stay raw) and evaluate over the CURRENT data; an unwritten
@@ -1021,36 +1084,26 @@ and private evalTransformFrameWithin
             // today's path unchanged, which is what makes the slot additive in
             // behaviour and not only in shape.
             //
-            // And `env` must be EMPTY. The seam evaluates in the empty
+            // And the pipeline must be CLOSED. The seam evaluates in the empty
             // environment (`Incremental.primeOn` / `refreshOn` are `prime` /
-            // `refresh` at `Map.empty`), so under a bound scalar param the
-            // store would be answering a different question from the one
-            // `evalTable` asks — a wrong table, not a slower one. A live source
-            // with bound params therefore evaluates in full whether a store is
-            // furnished or not. LIST params need no such guard: they resolve by
-            // substitution INTO the pipeline above, so the effective pipeline
-            // already carries them and the environment stays empty.
+            // `refresh` at `Map.empty`), so handed the pipeline with its scalar
+            // params still standing it would answer a different question from
+            // the one `evalTable` asks. Until Phase 1761 a live source under a
+            // bound param therefore evaluated in full whether a store was
+            // furnished or not; since 1761 the store is handed the CLOSED
+            // pipeline (`closedPipeline` above — every bound scalar substituted
+            // under Core's certified substitution law), which is the same
+            // question asked in the seam's own environment. LIST params resolve
+            // by substitution INTO the pipeline before either, as they always
+            // did.
             //
-            // The budget is checked on both paths and BEFORE either evaluates,
-            // for the Phase-1532 reason: it is the only point where the pruned
-            // pipeline and the resolved input are both known, and the store
-            // path must not be a way to spend past a refusal.
-            let evalLive (inputTable: Fuaran.Core.Table) : Result<Fuaran.Core.Table, string> =
-                match sources.LiveTransforms with
-                | Some store when Map.isEmpty env ->
-                    match
-                        TransformBudget.check budget (Fuaran.Core.Table.rowCount inputTable) (List.length pipeline)
-                    with
-                    | Error refusal -> Error refusal
-                    | Ok() ->
-                        // The site key is the renderer's ONE rule (Phase 1586);
-                        // the store's own key rule is the `site` string it is
-                        // handed, exactly as the server-driven tier hands it.
-                        store.Evaluate(Fuaran.UI.BindingWalk.liveSiteKey binding pipeline, pipeline, inputTable)
-                        |> Result.mapError (fun e -> "Transform evaluation failed: " + e)
-                | _ -> evalTable inputTable
-
-            tableR |> Result.bind evalLive
+            // The site key is the renderer's ONE rule (Phase 1586) over that
+            // closed pipeline; the store's own key rule is the `site` string it
+            // is handed, exactly as the server-driven tier hands it. With no
+            // params bound the closed pipeline IS the effective one, so every
+            // unparameterised site keeps the key it had.
+            tableR
+            |> Result.bind (evalSite (Fuaran.UI.BindingWalk.liveSiteKey binding closedPipeline))
 
 /// Fuaran-UI Phase 1534 — evaluate a `Binding.Expr` to ONE cell.
 ///
@@ -1080,6 +1133,12 @@ and private evalExprCell
     let pipeline =
         [ Fuaran.Core.Derive("__value", expr)
           Fuaran.Core.Project [ "__value", "__value" ] ]
+
+    // Phase 1761 — the one-row frame is not a SITE, and is kept out of the
+    // store the `Data` arm now consults: a 1x1 evaluation costs less than the
+    // key that would name it, and a session's bounded store is for the tables
+    // that are worth keeping.
+    let sources = { sources with LiveTransforms = None }
 
     match evalTransformFrame sources (TransformSource.Data(Fuaran.Core.Embedded unitFrame)) pipeline parameters with
     | Error m ->

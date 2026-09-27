@@ -492,12 +492,15 @@ let tests =
 //  pass it, which is why the consultation legs below measure the work as well.
 //
 //  ── AND THE ONE THAT IS NEITHER ───────────────────────────────────────────
-//  The `env` guard's leg is the load-bearing one. The seam evaluates in the
-//  EMPTY environment, so consulting it under a bound scalar param would answer
-//  a different question — and it would not answer it quietly: Core's strict
-//  `UnboundParam` would surface as a resolver error. That leg therefore goes red
-//  by construction if the guard is ever dropped, rather than needing an
-//  assertion about which branch ran.
+//  The bound-param leg is the load-bearing one. The seam evaluates in the
+//  EMPTY environment, so handing it a pipeline whose scalar param still stands
+//  would answer a different question — and it would not answer it quietly:
+//  Core's strict `UnboundParam` would surface as a resolver error. Until Phase
+//  1761 the renderer avoided that by not consulting the store at all under a
+//  bound param; since 1761 it hands the store the pipeline CLOSED over its
+//  params. Either way the leg goes red by construction if the store is ever
+//  handed the unclosed pipeline, rather than needing an assertion about which
+//  branch ran.
 // ============================================================================
 
 open Fuaran.UI.Types
@@ -662,13 +665,17 @@ let rendererLiveStoreTests =
                   "and answers what a full evaluation answers"
           }
 
-          test "a live source under a BOUND scalar param evaluates in full, store or no store" {
-              // The env guard, and the go-red proof for it. `Incremental.primeOn`
-              // / `refreshOn` evaluate at `Map.empty`, so a store consulted here
-              // would meet Core's strict `UnboundParam` and the resolver would
-              // return `Errored` — `renderRows` fails by name on exactly that.
-              // The leg therefore breaks if the guard is dropped, with no
-              // assertion about which branch ran.
+          test "a live source under a BOUND scalar param answers through the store what it answers without one" {
+              // The closure guard, and the go-red proof for it. `Incremental.primeOn`
+              // / `refreshOn` evaluate at `Map.empty`, so a store handed the
+              // pipeline with its param still standing would meet Core's strict
+              // `UnboundParam` and the resolver would return `Errored` —
+              // `renderRows` fails by name on exactly that. Since Phase 1761 the
+              // store is handed the pipeline CLOSED over its bound params
+              // (`Transform.substitute`, Core's certified substitution law), so
+              // the leg now exercises the store path; it still breaks if the
+              // store is ever handed the unclosed pipeline, with no assertion
+              // about which branch ran.
               let v = vectors () |> List.find (fun x -> x.Name = "point-edit-row-local")
 
               let parameters: TransformParam list option =
@@ -682,7 +689,7 @@ let rendererLiveStoreTests =
               let stored = renderRows (Some store) parameters pipeline v.Source
               let plain = renderRows None parameters pipeline v.Source
 
-              Expect.equal stored plain "a bound param takes the same path with a store furnished as without one"
+              Expect.equal stored plain "a bound param answers the same rows with a store furnished as without one"
 
               // And the param is not vacuous: it excludes every row the
               // paramless pipeline keeps, so a leg that quietly dropped the
