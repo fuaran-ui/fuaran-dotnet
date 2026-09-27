@@ -675,13 +675,13 @@ let all: FidelityRow list =
           "CodeBlock"
           true
           "the code text, a `language` tag, optional `lineNumbers` / `highlightLines`, and `copyable` - deterministic data on the wire"
-          "a deterministic HTML-escaped `<pre><code class=\"language-{x}\">` with `data-language`, the optional `data-highlight-lines`, and a structurally-present copy button; no markdown library on either side"
+          "a deterministic `<pre><code class=\"language-{x}\">` with `data-language`, the optional `data-highlight-lines`, and a structurally-present copy button; no markdown library on either side. For a `language` with a grammar (F*: `fstar` / `fst`; F#: `fsharp` / `fs` / `f#`) the reference renderers emit the deterministic highlighting tier: the code as class-only `tok-kw` / `tok-com` / `tok-str` / `tok-num` / `tok-op` / `tok-ty` spans around HTML-escaped text, no span crossing a line break, on a `<code>` marked `data-highlighted=\"deterministic\"`, byte-exact per the fixture table in docs/CODE-HIGHLIGHT.md; any other language is the escaped text alone. The tier is OPTIONAL for any other conformant host: a host that emits it must match the fixture table byte for byte, and a host that does not keeps the plain escaped `<code>` for every language and is conformant"
           (RichTier.ClientOnly(
               "syntax highlighting",
-              "a post-hydration pass targeting `.language-{x}`; a host integration seam, never emitted by a renderer"
+              "a post-hydration pass targeting `.language-{x}`, which may skip or replace a `<code data-highlighted=\"deterministic\">`; a host integration seam, never emitted by a renderer"
           ))
           [ "code-1" ]
-          "Phase 290; WIRE_FORMAT.md 3.2; docs/SSR.md (deterministic-render + client-only-enhancement contract)"
+          "Phases 290, 1854; WIRE_FORMAT.md 3.2; docs/SSR.md (deterministic-render + client-only-enhancement contract); docs/CODE-HIGHLIGHT.md"
 
       // Phase 1108 — the fallback prose now names the CARDED degradation,
       // because "the same labelled placeholder on both sides" stopped being the

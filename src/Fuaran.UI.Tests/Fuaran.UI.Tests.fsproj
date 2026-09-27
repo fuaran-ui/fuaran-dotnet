@@ -290,6 +290,7 @@
     <Compile Include="BindingGraphTests.fs" />
     <Compile Include="MathEnhanceTests.fs" />
     <Compile Include="MathMlTests.fs" />
+    <Compile Include="CodeHighlightTests.fs" />
     <!-- QueryBindingTests pins Phase 323's runtime query-result-schema →
          Binding<'T> typed-thread check (Fuaran.UI.QueryBinding): the pure
          default-deny compatibility relation + the schema↔binding walk that

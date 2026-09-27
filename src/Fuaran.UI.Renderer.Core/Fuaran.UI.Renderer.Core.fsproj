@@ -39,6 +39,8 @@
     <Compile Include="SubmitPayload.fs" />
     <Compile Include="DrawingSvg.fs" />
     <Compile Include="MathMl.fs" />
+    <!-- Phase 1854 — the deterministic CodeBlock highlighting tier (F* / F#). -->
+    <Compile Include="CodeHighlight.fs" />
     <Compile Include="Accessibility.fs" />
     <Compile Include="Ids.fs" />
     <!-- Phase 1545 — the strict-CSP render mode. After Sanitize.fs (it reuses
