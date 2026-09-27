@@ -552,6 +552,34 @@ let private fixtures: Fixture list =
             "<code"
             "fuaran-codeblock-copy" ] }
 
+      // Phase 1854 — the deterministic highlighting tier: a language with a
+      // grammar emits the shared tokeniser's class-only spans (byte-identical
+      // to the client renderer via `CodeHighlight.highlight`), marked
+      // `data-highlighted="deterministic"`; a language without one keeps the
+      // escaped text exactly, with no marker. The exact inner bytes are pinned.
+      { Name = "Display/CodeBlock highlighted (Phase 1854, F#)"
+        Node = Fuaran.codeBlock "cbh" "fsharp" "let x = 1"
+        Expected =
+          [ "<code class=\"fuaran-codeblock-code language-fsharp\" data-highlighted=\"deterministic\"><span class=\"tok-kw\">let</span> x <span class=\"tok-op\">=</span> <span class=\"tok-num\">1</span></code>" ] }
+
+      { Name = "Display/CodeBlock highlighted (Phase 1854, F* multi-line comment)"
+        Node =
+          Fuaran.codeBlock
+              "cbf"
+              "fstar"
+              "(* a
+ b *)
+val f : nat"
+        Expected =
+          [ "data-language=\"fstar\""
+            "<code class=\"fuaran-codeblock-code language-fstar\" data-highlighted=\"deterministic\"><span class=\"tok-com\">(* a</span>
+<span class=\"tok-com\"> b *)</span>
+<span class=\"tok-kw\">val</span> f <span class=\"tok-op\">:</span> <span class=\"tok-ty\">nat</span></code>" ] }
+
+      { Name = "Display/CodeBlock unhighlighted (Phase 1854, no grammar)"
+        Node = Fuaran.codeBlock "cbp" "python" "if a < b: pass"
+        Expected = [ "<code class=\"fuaran-codeblock-code language-python\">if a &lt; b: pass</code>" ] }
+
       // Phase 658 — the deterministic Math output is now native MathML for the
       // closed subset (real superscripts, no JS), and the raw-source span only
       // for out-of-subset input. Both variants carry `data-fuaran-math-src` (the

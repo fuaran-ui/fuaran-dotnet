@@ -106,7 +106,7 @@ when present.
 | **Layout.Modal** (Phase 289) | Overlay contract (below): `fuaran-modal-overlay` → `role="dialog"` + `aria-modal="true"` dialog, `[hidden]` when closed, dismiss/heading inert server-side. |
 | **Layout.Modal — `modality: Popover`** (Phase 1119) | The NON-BLOCKING modality. `fuaran-popover` → `fuaran-popover-surface` carrying `role="dialog"` and **no `aria-modal`**, `[hidden]` when closed, dismiss/heading inert server-side — and **no scrim element and no positioning at all**. The static floor is the surface **in flow at the node's own document position**: a no-script host cannot measure an anchor, so it cannot place a surface against one, and emitting something that merely looked placed would be worse than the honest fallback. A declared `anchor` rides as `data-fuaran-popover-anchor`, recording that the id was read — explicitly NOT coverage; nothing in this tier acts on it. An emitter that wants the static render to read correctly puts the popover node immediately after its anchor (`WIRE_FORMAT.md` §3.6.11). |
 | **Layout.ScrollArea** (Phase 289) | `fuaran-scrollarea-{axis}` overflow container + `tabindex="0"`; pixel bounds as an inline `max-height`/`max-width` style. |
-| **Display.CodeBlock** (Phase 290) | A **deterministic `<pre><code>`** (HTML-escaped, no markdown library) – byte-identical to the client; `data-language` + `language-{x}` class + optional `data-highlight-lines` + an inert copy button. Syntax highlighting is a **client-only** post-hydration enhancement (targets `language-{x}`), outside the parity output. |
+| **Display.CodeBlock** (Phase 290) | A **deterministic `<pre><code>`** (HTML-escaped, no markdown library) – byte-identical to the client; `data-language` + `language-{x}` class + optional `data-highlight-lines` + an inert copy button. For an F* / F# `language`, the **deterministic highlighting tier** (Phase 1854 — class-only `tok-*` spans, `data-highlighted="deterministic"`, byte-identical to the client via the shared `CodeHighlight`; see [`CODE-HIGHLIGHT.md`](CODE-HIGHLIGHT.md)). Richer highlighting is a **client-only** post-hydration enhancement (targets `language-{x}`), outside the parity output. |
 | **Display.Math** (Phase 293 / 658) | **Deterministic native MathML** for the closed LaTeX subset (real superscripts/subscripts/fractions with **no JavaScript**), or the **escaped-source fallback** (`fuaran-math-source`) for out-of-subset input – both in a `fuaran-math-block`/`-inline` container carrying `data-math-display` + `data-fuaran-math-src`. Byte-identical across the four renderers, locked by the fixture table in [`MATH-DEGRADATION.md`](MATH-DEGRADATION.md). **KaTeX** upgrades either shape **client-only** post-hydration (targets the `.fuaran-math` container), outside the parity output. |
 | **Input.Select (multi)** (Phase 291) | `<select multiple>` (the `multiple` attribute; no scalar `value`), inert server-side; single-select renders unchanged. |
 | **Display.Markdown** | **Real HTML via the deterministic GFM renderer** (`.Core` `Markdown.toHtml`, Phase 292) — the *same* module the client renderer runs, so SSR↔CSR parity here is by construction rather than by two engines agreeing. Phase 292 retired the old split (npm `marked` client-side, Markdig server-side); raw HTML is escaped by the renderer and the output still routes through the `.Core` `Sanitize.sanitizeMarkdownHtml` seam as defence-in-depth. See [`MARKDOWN.md`](MARKDOWN.md) for the in/out/deferred buckets. |
@@ -402,7 +402,10 @@ cross-host + SSR↔CSR parity. The contract splits the render in two:
 
 1. **The deterministic floor (parity-checked).** Both renderers emit the same
    bare, escaped structure: `CodeBlock` → `<pre><code class="language-{x}">`
-   (HTML-escaped, **no markdown library**); `Math` → **native MathML** for the
+   (HTML-escaped, **no markdown library**) — for an F* / F# `language`, with
+   the deterministic highlighting tier's class-only `tok-*` spans inside it
+   (Phase 1854 – see [`CODE-HIGHLIGHT.md`](CODE-HIGHLIGHT.md), the normative
+   grammars + byte-exact fixture table); `Math` → **native MathML** for the
    closed LaTeX subset, or the raw escaped `source` span for out-of-subset input,
    in a `fuaran-math-{block,inline}` container (Phase 658 – see
    [`MATH-DEGRADATION.md`](MATH-DEGRADATION.md), the normative subset + byte-exact
@@ -432,7 +435,8 @@ Fable apps that don't carry the `@fuaran-ui/*` npm packages – it mirrors the T
 logic (its pure `parseSegments` is .NET-unit-tested against the same cases; the
 DOM/KaTeX half is `#if FABLE_COMPILER`-only, verified by transpilation). The
 syntax-highlighting pass remains a host integration seam (target `.language-{x}`
-with any highlighter).
+with any highlighter; skip or replace a `<code data-highlighted="deterministic">`,
+which already carries the Phase 1854 deterministic tier).
 
 This is the same shape as the overlay contract (deterministic structure pinned,
 behaviour layered on after) – see `SsrParityTests.fs` (the `CodeBlock` / `Math`

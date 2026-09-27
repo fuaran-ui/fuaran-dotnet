@@ -1805,9 +1805,13 @@ and private renderKind
         )
     | NodeKind.CodeBlock spec ->
         // Phase 290 — DETERMINISTIC `<pre><code>` (HTML-escaped via `prop.text`,
-        // no markdown library), byte-identical to the client renderer. Syntax
-        // highlighting is a client-only post-hydration enhancement (targets
-        // `language-{x}`) — not emitted here, so it is outside the parity output.
+        // no markdown library), byte-identical to the client renderer. Phase
+        // 1854 — a language with a grammar (F*, F#) gets the deterministic
+        // highlighting tier from the shared `CodeHighlight.highlight`
+        // (class-only `tok-*` spans, `data-highlighted="deterministic"`);
+        // any other language keeps the escaped text exactly. A richer
+        // client-only highlighter (targets `language-{x}`) stays outside the
+        // parity output. See docs/CODE-HIGHLIGHT.md.
         let containerClass =
             if spec.LineNumbers then
                 "fuaran-codeblock fuaran-codeblock-numbered"
@@ -1829,15 +1833,21 @@ and private renderKind
             else
                 []
 
+        let codeEl =
+            match CodeHighlight.highlight spec.Language spec.Code with
+            | Some markup ->
+                Html.code
+                    [ prop.className (Css.codeBlockCode spec.Language)
+                      prop.custom ("data-highlighted", CodeHighlight.TierMarker)
+                      prop.dangerouslySetInnerHTML markup ]
+            | None -> Html.code [ prop.className (Css.codeBlockCode spec.Language); prop.text spec.Code ]
+
         Html.div (
             [ prop.className containerClass; prop.custom ("data-language", spec.Language) ]
             @ highlightAttr
             @ [ prop.children (
                     copyEls
-                    @ [ Html.pre
-                            [ prop.className "fuaran-codeblock-pre"
-                              prop.children
-                                  [ Html.code [ prop.className (Css.codeBlockCode spec.Language); prop.text spec.Code ] ] ] ]
+                    @ [ Html.pre [ prop.className "fuaran-codeblock-pre"; prop.children [ codeEl ] ] ]
                 ) ]
         )
     | NodeKind.Math spec ->

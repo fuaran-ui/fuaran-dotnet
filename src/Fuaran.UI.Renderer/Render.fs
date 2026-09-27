@@ -4335,11 +4335,15 @@ let rec private renderKind
               ) ]
     | NodeKind.CodeBlock spec ->
         // Phase 290 — DETERMINISTIC `<pre><code>` (HTML-escaped via `prop.text`,
-        // NO markdown library), byte-identical across all hosts + SSR. Syntax
-        // highlighting is a client-only post-hydration enhancement that targets
-        // the `language-{x}` class — explicitly NOT emitted here (outside the
-        // parity output). Line numbers + highlight ranges are deterministic
-        // class / data hooks the enhancement reads.
+        // NO markdown library), byte-identical across all hosts + SSR. Line
+        // numbers + highlight ranges are deterministic class / data hooks.
+        // Phase 1854 — a language with a grammar (F*, F#) gets the
+        // deterministic highlighting tier: class-only `tok-*` spans from the
+        // shared `CodeHighlight.highlight` (byte-identical to the server
+        // renderer), marked `data-highlighted="deterministic"` so a richer
+        // client-only highlighter targeting `language-{x}` can skip or replace
+        // it. Any other language keeps the escaped text exactly. See
+        // docs/CODE-HIGHLIGHT.md.
         let containerClass =
             if spec.LineNumbers then
                 "fuaran-codeblock fuaran-codeblock-numbered"
@@ -4361,15 +4365,21 @@ let rec private renderKind
             else
                 []
 
+        let codeEl =
+            match CodeHighlight.highlight spec.Language spec.Code with
+            | Some markup ->
+                Html.code
+                    [ prop.className (Css.codeBlockCode spec.Language)
+                      prop.custom ("data-highlighted", CodeHighlight.TierMarker)
+                      prop.dangerouslySetInnerHTML (TrustedTypes.html markup) ]
+            | None -> Html.code [ prop.className (Css.codeBlockCode spec.Language); prop.text spec.Code ]
+
         Html.div (
             [ prop.className containerClass; prop.custom ("data-language", spec.Language) ]
             @ highlightAttr
             @ [ prop.children (
                     copyEls
-                    @ [ Html.pre
-                            [ prop.className "fuaran-codeblock-pre"
-                              prop.children
-                                  [ Html.code [ prop.className (Css.codeBlockCode spec.Language); prop.text spec.Code ] ] ] ]
+                    @ [ Html.pre [ prop.className "fuaran-codeblock-pre"; prop.children [ codeEl ] ] ]
                 ) ]
         )
     | NodeKind.Math spec ->
