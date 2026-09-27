@@ -77,7 +77,7 @@ The build-time validator's findings carry `FUARAN###` codes (e.g. `FUARAN050` `S
 **Two families share this band, and only one of them is the build-time walker.** The paragraph
 above describes the walker, which reads F# *source* — but the larger family by far is the
 **pre-emit validator**, which reads a *tree* just before it goes on the wire and raises the whole
-`FUARAN047`–`FUARAN149` range. A code you have in hand belongs to whichever family reported it, and
+`FUARAN047`–`FUARAN162` range. A code you have in hand belongs to whichever family reported it, and
 the two are enumerated in different places: the pre-emit family's codes, severities and message
 shapes are published as data in the conformance corpus's `validator/defect-vocabulary.json`
 (generated from the reference host, never hand-maintained), and each host declares which of them it
