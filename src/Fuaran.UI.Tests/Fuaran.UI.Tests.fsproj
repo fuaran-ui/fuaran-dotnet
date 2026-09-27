@@ -293,8 +293,13 @@
          sound and minimal on generated binding sets, go-red on a dropped or added
          edge, and equal to the Phase 1479 walk oracle on every corpus node fixture. -->
     <Compile Include="BindingGraphTests.fs" />
+    <!-- Phase 1767 - the reference-cycle audit: the binding graph is layered (sites read
+         inputs and queries, queries read filters), so Propagation.sort finds no cycle over
+         any tree; pinned over every corpus node fixture, with go-red probes. -->
+    <Compile Include="BindingCycleTests.fs" />
     <Compile Include="MathEnhanceTests.fs" />
     <Compile Include="MathMlTests.fs" />
+    <Compile Include="CodeHighlightTests.fs" />
     <!-- QueryBindingTests pins Phase 323's runtime query-result-schema →
          Binding<'T> typed-thread check (Fuaran.UI.QueryBinding): the pure
          default-deny compatibility relation + the schema↔binding walk that
