@@ -857,3 +857,107 @@ let recordError
           RecordedAt = ctx.Clock.Now() }
 
     ctx.Errors.Record entry
+
+// ─── formFromSchema (Phase 1816) ───────────────────────────────────────────
+//
+// The one tool in this module that AUTHORS rather than observes: a model
+// holding a JSON Schema (a tool's input schema, a request body) asks for the
+// form instead of transcribing it. It is `SchemaForm.deriveWire` and nothing
+// else, so it returns exactly the bytes `fuaran scaffold form --schema <file>`
+// prints for the same schema under the same options — the tier's derivation is
+// the single source, and neither front end re-implements a row of the table.
+
+/// The tool's name, as a model calls it.
+[<Literal>]
+let FormFromSchemaToolName = "fuaran.formFromSchema"
+
+/// The tool's one-sentence description, for a tool listing.
+let formFromSchemaDescription =
+    "Derive a Fuaran Form node from a JSON Schema object (string, number, integer, boolean, "
+    + "enum, array-of-enum and one nested object level). Returns the canonical wire JSON of the "
+    + "Form, or a refusal list naming each unsupported construct by its schema path."
+
+/// The tool's input schema: `schema` (required, the JSON Schema object), and
+/// the optional `formId` / `submitLabel` the derived node carries.
+let formFromSchemaInputSchema: Fuaran.Core.JVal =
+    Fuaran.Core.JObj
+        [ "type", Fuaran.Core.JStr "object"
+          "required", Fuaran.Core.JArr [ Fuaran.Core.JStr "schema" ]
+          "properties",
+          Fuaran.Core.JObj
+              [ "schema",
+                Fuaran.Core.JObj
+                    [ "type", Fuaran.Core.JStr "object"
+                      "description", Fuaran.Core.JStr "The JSON Schema to derive the form from." ]
+                "formId",
+                Fuaran.Core.JObj
+                    [ "type", Fuaran.Core.JStr "string"
+                      "description", Fuaran.Core.JStr "The Form node's id (default \"schema-form\")." ]
+                "submitLabel",
+                Fuaran.Core.JObj
+                    [ "type", Fuaran.Core.JStr "string"
+                      "description", Fuaran.Core.JStr "The submit button's label (default \"Submit\")." ] ]
+          "additionalProperties", Fuaran.Core.JBool false ]
+
+let private argumentsRefusal (path: string) (message: string) : string =
+    Fuaran.Core.Canon.render (
+        Fuaran.Core.JObj
+            [ "refusals",
+              Fuaran.Core.JArr
+                  [ Fuaran.Core.JObj
+                        [ "code", Fuaran.Core.JStr "invalid-arguments"
+                          "message", Fuaran.Core.JStr message
+                          "path", Fuaran.Core.JStr path ] ] ]
+    )
+
+/// `fuaran.formFromSchema(schema, formId?, submitLabel?)`. `Ok` is the Form's
+/// canonical wire JSON; `Error` is the refusal envelope
+/// (`{"refusals":[{"code","message","path"}]}`) — the derivation's refusals,
+/// or one `invalid-arguments` entry when the call's own arguments are wrong.
+/// Pure and deterministic, like every tool here.
+let formFromSchema (args: Fuaran.Core.JVal) : Result<string, string> =
+    let members =
+        match args with
+        | Fuaran.Core.JObj ms -> Some ms
+        | _ -> None
+
+    let find name =
+        members |> Option.bind (List.tryFind (fun (k, _) -> k = name)) |> Option.map snd
+
+    let unknown =
+        members
+        |> Option.defaultValue []
+        |> List.map fst
+        |> List.filter (fun k -> k <> "schema" && k <> "formId" && k <> "submitLabel")
+
+    match members, find "schema", find "formId", find "submitLabel" with
+    | None, _, _, _ -> Error(argumentsRefusal "" "the arguments are not an object")
+    | _ when not unknown.IsEmpty -> Error(argumentsRefusal ("/" + unknown.Head) "unknown argument")
+    | _, None, _, _ -> Error(argumentsRefusal "/schema" "the schema argument is required")
+    | _, _, Some formId, _ when
+        (match formId with
+         | Fuaran.Core.JStr s -> s = ""
+         | _ -> true)
+        ->
+        Error(argumentsRefusal "/formId" "formId must be a non-empty string")
+    | _, _, _, Some label when
+        (match label with
+         | Fuaran.Core.JStr s -> s = ""
+         | _ -> true)
+        ->
+        Error(argumentsRefusal "/submitLabel" "submitLabel must be a non-empty string")
+    | _, Some schema, formId, label ->
+        let defaults = Fuaran.UI.SchemaForm.SchemaFormOptions.defaults<obj>
+
+        let options =
+            { defaults with
+                FormId =
+                    match formId with
+                    | Some(Fuaran.Core.JStr s) -> s
+                    | _ -> defaults.FormId
+                SubmitLabel =
+                    match label with
+                    | Some(Fuaran.Core.JStr s) -> TextSource.Literal s
+                    | _ -> defaults.SubmitLabel }
+
+        Fuaran.UI.SchemaForm.deriveWire options schema

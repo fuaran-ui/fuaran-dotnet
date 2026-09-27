@@ -113,3 +113,51 @@ let scaffoldTemplateTests =
                     "Render.renderWithSources" ] do
                   Expect.stringContains Scaffold.fsharpFablePanel required "canonical decode/render wiring"
           } ]
+
+/// Phase 1816 — `fuaran scaffold form --schema <file>`. It prints
+/// `SchemaForm.deriveWireFromText` for the file's text and nothing else; the
+/// AI-tool side of the same byte pin lives in the AiTools tests.
+[<Tests>]
+let scaffoldFormTests =
+    let schema =
+        """{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"size":{"enum":["s","m"]}}}"""
+
+    testList
+        "scaffold form (Phase 1816)"
+        [ test "prints the derivation's canonical bytes, exit 0" {
+              let path = writeTemp $"fuaran-schema-{System.Guid.NewGuid():N}.json" schema
+              let code, out = Commands.scaffoldForm [ "--schema"; path ]
+              File.Delete path
+              Expect.equal code 0 "exit"
+
+              match
+                  Fuaran.UI.SchemaForm.deriveWireFromText Fuaran.UI.SchemaForm.SchemaFormOptions.defaults<obj> schema
+              with
+              | Ok json -> Expect.equal out (json + "\n") "same bytes as the derivation (and so as the AI tool)"
+              | Error e -> failtestf "%s" e
+          }
+          test "a refused schema prints the refusal envelope, exit 1" {
+              let path =
+                  writeTemp
+                      $"fuaran-schema-{System.Guid.NewGuid():N}.json"
+                      """{"type":"object","properties":{"a":{"anyOf":[]}}}"""
+
+              let code, out = Commands.scaffoldForm [ "--schema"; path ]
+              File.Delete path
+              Expect.equal code 1 "exit"
+              Expect.stringContains out "\"path\":\"/properties/a/anyOf\"" "names the path"
+          }
+          test "--schema is required, and a missing file is named" {
+              Expect.equal (fst (Commands.scaffoldForm [])) 2 "no --schema"
+              Expect.equal (fst (Commands.scaffoldForm [ "--schema"; "no-such-file.json" ])) 2 "missing file"
+          }
+          test "dispatch routes scaffold form" {
+              let path = writeTemp $"fuaran-schema-{System.Guid.NewGuid():N}.json" schema
+
+              let code, out =
+                  Commands.dispatch [ "scaffold"; "form"; "--schema"; path; "--form-id"; "f1" ]
+
+              File.Delete path
+              Expect.equal code 0 "exit"
+              Expect.stringContains out "\"id\":\"f1\"" "form id flag"
+          } ]

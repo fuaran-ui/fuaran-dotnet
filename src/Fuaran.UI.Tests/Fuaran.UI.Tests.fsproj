@@ -425,6 +425,8 @@
     <!-- Phase 1789 - the source read that keeps `decodeCellValue` deleted: an uncalled
          private decoder is invisible to both the compiler and the conformance run. -->
     <Compile Include="HostTypeDecoderTests.fs" />
+    <!-- Phase 1816 - JSON Schema -> Form: the mapping table, validity, refusal paths, determinism. -->
+    <Compile Include="SchemaFormTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

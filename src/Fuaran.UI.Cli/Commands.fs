@@ -19,6 +19,8 @@ Usage:
   fuaran generate <prompt> [--tree <file>] [--mock [url]]   Prompt -> a canonical tree
   fuaran validate <file>                                    Wire JSON -> pass/fail + diagnostics
   fuaran scaffold --target ts|fsharp                        Integration boilerplate
+  fuaran scaffold form --schema <file> [--form-id <id>] [--submit-label <text>]
+                                                            JSON Schema -> a canonical Form tree
   fuaran recipe <query>                                     (served by @fuaran-ui/cli / the MCP)
   fuaran refusal-report --corpus <dir>                      Conformance corpus -> this host's refusal report (JSON)
 
@@ -120,6 +122,15 @@ let scaffold (args: string list) : int * string =
         "The ts-react scaffold is served by the npm CLI (single-sourced with the MCP):\n  npx @fuaran-ui/cli scaffold --target ts\n"
     | _ -> 2, "scaffold: --target ts|fsharp is required.\n"
 
+/// Phase 1816 — `fuaran scaffold form --schema <file>`: JSON Schema -> Form
+/// (see `Scaffold.form`). `args` are what follows `scaffold form`.
+let scaffoldForm (args: string list) : int * string =
+    match flagValue "--schema" args with
+    | Some file when File.Exists file ->
+        Scaffold.form (flagValue "--form-id" args) (flagValue "--submit-label" args) (File.ReadAllText file)
+    | Some file -> 2, $"scaffold form: schema file not found: {file}\n"
+    | None -> 2, "scaffold form: --schema <file> is required.\n"
+
 /// The generic refusal-report entry point the cross-host comparison drives. See
 /// `RefusalReport.fs` for what it answers and what it deliberately does not.
 let refusalReport (args: string list) : int * string =
@@ -136,6 +147,7 @@ let dispatch (argv: string list) : int * string =
     match argv with
     | "generate" :: rest -> generate rest
     | "validate" :: rest -> validate rest
+    | "scaffold" :: "form" :: rest -> scaffoldForm rest
     | "scaffold" :: rest -> scaffold rest
     | "recipe" :: rest -> recipe rest
     | "refusal-report" :: rest -> refusalReport rest

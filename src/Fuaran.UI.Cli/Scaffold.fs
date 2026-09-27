@@ -139,3 +139,25 @@ let proxyNote: string =
     + "FUARAN_ENDPOINT / FUARAN_ACCESS_TOKEN / FUARAN_PROVIDER_KEY from server-side env, so no "
     + "secret reaches the client bundle. A worked .NET proxy (using Fuaran.UI.Client on the "
     + "server) ships at samples/sdk-integration/; the ts-react scaffold emits a Node equivalent."
+
+/// Phase 1816 — `fuaran scaffold form --schema <file>`: the JSON Schema -> Form
+/// derivation over the schema's TEXT. Exit 0 prints the Form's canonical wire
+/// JSON; exit 1 prints the refusal envelope (`{"refusals":[...]}`), each entry
+/// naming an unsupported construct by its schema path. It is
+/// `SchemaForm.deriveWireFromText` and nothing else, so for one schema and one
+/// set of options it prints exactly the bytes the `fuaran.formFromSchema` AI
+/// tool returns.
+let form (formId: string option) (submitLabel: string option) (schemaText: string) : int * string =
+    let defaults = Fuaran.UI.SchemaForm.SchemaFormOptions.defaults<obj>
+
+    let options =
+        { defaults with
+            FormId = defaultArg formId defaults.FormId
+            SubmitLabel =
+                match submitLabel with
+                | Some label -> Fuaran.UI.Types.TextSource.Literal label
+                | None -> defaults.SubmitLabel }
+
+    match Fuaran.UI.SchemaForm.deriveWireFromText options schemaText with
+    | Ok json -> 0, json + "\n"
+    | Error refusals -> 1, refusals + "\n"

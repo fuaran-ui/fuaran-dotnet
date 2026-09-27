@@ -7852,6 +7852,21 @@ prevent.
 
 ### What rides this slot
 
+**fuaran#1816 — ADDITIVE on `Fuaran.UI` (one new module), on `Fuaran.UI.AiTools` (one new tool)
+and on the `fuaran` CLI (one new verb); NO wire change; RIDES this slot.** `Fuaran.UI.SchemaForm`
+derives a `Form` node from a JSON Schema: `derive : SchemaFormOptions<'Msg> -> JVal ->
+Result<Node<'Msg>, SchemaFormRefusal list>`, plus `deriveWire` / `deriveWireFromText` (the canonical
+bytes, or the refusal envelope `{"refusals":[{"code","message","path"}]}`). New public types:
+`SchemaFormOptions<'Msg>` (+ `SchemaFormOptions.defaults`), `BooleanControl`, `SchemaFormRefusalCode`,
+`SchemaFormRefusal` (+ `SchemaFormRefusal.codeName` / `message` / `toJson`). The mapping table lives in
+the module header. It emits only vocabulary that already exists, so no node kind, case, field or
+`$type` moves and no validator code is added. `Fuaran.UI.AiTools.Tools` gains
+`formFromSchema` / `FormFromSchemaToolName` (`"fuaran.formFromSchema"`) /
+`formFromSchemaDescription` / `formFromSchemaInputSchema`; the CLI gains `fuaran scaffold form
+--schema <file>` (`Commands.scaffoldForm`, `Scaffold.form`). Both are `deriveWire`, so they return
+the same bytes for the same schema. A new module and new functions break no construction and no
+exhaustive match, so under the draft-slot rule this rides 0.86.0 and moves no number.
+
 **fuaran#1811 — BREAKING on `Fuaran.UI` (four union cases and two type names renamed) AND on the
 wire (four `$type` discriminators move); RIDES this slot.** The temporal family is renamed so the
 names say what the controls already do. The versioning vehicle was an operator ruling recorded
