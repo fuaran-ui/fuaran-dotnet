@@ -576,6 +576,29 @@ let private fixtures: Fixture list =
             "data-math-display=\"block\""
             "data-fuaran-math-src=" ] }
 
+      // Phase 1853 — the widened subset (logic, relations, named terms) renders as
+      // native MathML through the same shared builder; the whole body is pinned
+      // byte-for-byte (design-doc fixture rows 21 and 27/29/30).
+      { Name = "Display/Math in-subset (Phase 1853 quantified statement)"
+        Node = Fuaran.math "mth3" "\\forall x.\\ x \\in S \\Rightarrow f(x) \\le c"
+        Expected =
+          [ "fuaran-math"
+            "fuaran-math-block"
+            "data-math-display=\"block\""
+            "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mo>∀</mo><mi>x</mi><mo>.</mo><mspace width=\"0.3333em\"></mspace><mi>x</mi><mo>∈</mo><mi>S</mi><mo>⇒</mo><mi>f</mi><mrow><mo>(</mo><mi>x</mi><mo>)</mo></mrow><mo>≤</mo><mi>c</mi></math>" ] }
+
+      { Name = "Display/Math in-subset (Phase 1853 pre-escaped \\lt and named terms)"
+        Node =
+          Fuaran.mathSpec
+              "mth4"
+              { Source = "\\mathit{unregistered\\_refused}(k) \\lt \\mathrm{Dom} \\subset \\text{Keys}"
+                Display = MathDisplay.Inline }
+        Expected =
+          [ "fuaran-math"
+            "fuaran-math-inline"
+            "data-math-display=\"inline\""
+            "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"inline\"><mi mathvariant=\"italic\">unregistered_refused</mi><mrow><mo>(</mo><mi>k</mi><mo>)</mo></mrow><mo>&lt;</mo><mi mathvariant=\"normal\">Dom</mi><mo>⊂</mo><mtext>Keys</mtext></math>" ] }
+
       // Phase 525 — the Drawing primitive renders first-party inline SVG,
       // static-geometry so SSR emits the full drawing (not a placeholder), with
       // `role="img"` + `<title>` (R3 a11y) and the parity-locked `fuaran-drawing*`
