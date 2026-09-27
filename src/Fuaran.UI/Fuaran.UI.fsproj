@@ -120,6 +120,10 @@
          because it reads BindingWalk (the Computed arm), DeadOnDecode (the
          twin-bearing arm) and StructuralQuery (the containment relation). -->
     <Compile Include="AffordanceInertness.fs" />
+    <!-- Phase 1816: JSON Schema -> Form as a pure derivation over the existing
+         form vocabulary (no new node kind, no wire change). Reads Types.fs,
+         Fuaran.fs (the form constructor) and StateKeyPolicy.fs. -->
+    <Compile Include="SchemaForm.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

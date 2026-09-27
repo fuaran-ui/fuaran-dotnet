@@ -21,6 +21,8 @@
          PROJECTION of Fuaran.UI.RenderFidelity rather than against a literal
          beside it. -->
     <Compile Include="FidelityTests.fs" />
+    <!-- Phase 1816 - the fuaran.formFromSchema tool: same bytes as the CLI verb. -->
+    <Compile Include="FormFromSchemaTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
