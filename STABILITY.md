@@ -7815,6 +7815,35 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.87.0 — the slot the client and the command-line tool open by joining the published set (DRAFT — untagged)
+
+_Class so far: **ADDITIVE**. `v0.86.0` is tagged, so this change could not ride that slot and opens
+this one. Under the draft-slot rule an additive change that follows RIDES this slot and moves no
+number; a change of a higher class advances it._
+
+### What rides this slot
+
+**`Fuaran.UI.Client` and `Fuaran.UI.Cli` are published — ADDITIVE; two new package ids; NO existing
+type, member or wire byte moves.** Both projects have been in this repository, marked packable, since
+Phase 220 and Phase 224. Neither was named in the build's pack list, so no release emitted them, and
+neither test project was in the gate's roster, so no gate ran them. The tool's README told a reader
+to `dotnet tool install -g Fuaran.UI.Cli` throughout; from this slot's release that command resolves.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI.Client` (new package id) | The typed client over the generation endpoint: `FuaranClient`, `FuaranSession`, the `TurnResult` three-way result, `Render.decodeTreeJson`, the `IFuaranTransport` seam. Plain .NET; not source-packed for Fable. Depends on `Fuaran.UI.Ops`. | Nobody; additive. |
+| `Fuaran.UI.Cli` (new package id) | The `fuaran` dotnet tool: `generate`, `validate`, `scaffold` (and `scaffold form`), `refusal-report`; `recipe` is named and answered by the npm CLI. The package carries its dependencies, so it declares none. | Nobody; additive. |
+| The pack list and the test roster | Both projects are packed, and both test projects run in the `fast` and `full` lanes. | Nobody outside this repository. |
+
+**What this does not claim.** The sources are unchanged by this entry, so the surface published at
+this slot's release is the surface these projects already had — this records a publication, not a
+review. `Fuaran.UI.Client`'s own README states the request/response shape it speaks
+(`SurfaceContract.Version`), and that statement is the one a consumer should read.
+
+*Version.* Opens 0.87.0, because `v0.86.0` is tagged and this change cannot ride a released slot.
+
+---
+
 ## 0.86.0 — the slot Phase 1801 opened unminted, which Phase 1810's `timeStyle` minted as BREAKING — released 2026-09-28 as `v0.86.0`
 
 _**Released 2026-09-28: tagged `v0.86.0` at `9846645`, and nuget.org serves 0.86.0 for every
