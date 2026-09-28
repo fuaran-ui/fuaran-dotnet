@@ -7815,7 +7815,21 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.86.0 — the slot Phase 1801 opened unminted, which Phase 1810's `timeStyle` mints as BREAKING (DRAFT — untagged)
+## 0.86.0 — the slot Phase 1801 opened unminted, which Phase 1810's `timeStyle` minted as BREAKING — released 2026-09-28 as `v0.86.0`
+
+_**Released 2026-09-28: tagged `v0.86.0` at `9846645`, and nuget.org serves 0.86.0 for every
+`Fuaran.UI.*` id the release packs. This slot is a public contract now and NOTHING MAY RIDE IT.** The
+next commit that moves a public contract advances `<Version>` to 0.87.0 and opens that heading above
+this one in the same change-set; an empty 0.87.0 is not opened ahead of it, for the reason the 0.85.0
+closure note below measured._
+
+_The class carried into the release is **BREAKING** on `Fuaran.UI`, the class Phase 1810 minted the
+number at; every entry that rode the slot afterwards records itself at or below it, so the release
+carries the class it was minted with. The substrate pinned at the release is `Fuaran.Core.*` 0.32.0, with the three
+compute packages — `Fuaran.Core.DataFrame`, `Fuaran.Core.Column.Ops` and
+`Fuaran.Core.DataFrame.Conformance` — at 0.34.0 from their own producer, so a consumer adopting
+0.86.0 restores two release lines where 0.85.0 restored one. The paragraphs below are the slot's
+history as each phase wrote it, left as written._
 
 _**The number moved on 2026-09-22, and Phase 1810 is why.** The heading below this line was opened
 by Phase 1801 with its number deliberately unminted, for the reason its own paragraphs record; every
