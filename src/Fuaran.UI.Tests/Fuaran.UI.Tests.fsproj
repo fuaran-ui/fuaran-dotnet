@@ -435,6 +435,8 @@
     <Compile Include="SchemaFormTests.fs" />
     <!-- Phase 1817 - host emission limits: each limit at N and N+1, the one-walk meter, the unbounded default. -->
     <Compile Include="HostLimitsTests.fs" />
+    <!-- Phase 1889 - charts and grids checked against their data: the six binding-check corpus fixtures, graded and located. -->
+    <Compile Include="BindingCheckCorpusTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

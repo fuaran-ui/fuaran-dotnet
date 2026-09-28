@@ -858,6 +858,45 @@ let recordError
 
     ctx.Errors.Record entry
 
+// ─── Binding checks into the runtime-error sink (Phase 1889) ──────────────
+//
+// A chart or grid whose column reference its own source provably cannot
+// satisfy renders blank; the pre-emit rules (FUARAN086 / 087 / 097 / 114) refuse
+// it. This puts the same findings where the closed loop already looks —
+// `getRuntimeErrors` — located by JSONPath and carrying the schema the source
+// DOES produce, so a model repairs the binding by name rather than guessing
+// which slot, or which column, was meant. It records only findings: a reader
+// graded unchecked is not an error and is not recorded.
+
+/// The produced schema as one line — `region:string, total:float, n:?` — with
+/// `?` for a column whose type is data-dependent.
+let private producedLine (columns: Fuaran.UI.PreEmitValidate.ProducedColumn list) : string =
+    match columns with
+    | [] -> "(no columns)"
+    | cols ->
+        cols
+        |> List.map (fun c -> c.Name + ":" + (c.Type |> Option.defaultValue "?"))
+        |> String.concat ", "
+
+/// Record every binding-check finding for `root` into the context's error
+/// sink, and return how many were recorded. Each entry's `Code` is the finding's
+/// FUARAN code, its `NodeId` the reader, and its `Message` the finding's own
+/// message followed by the JSONPath of the offending slot and the produced
+/// schema.
+let recordBindingChecks (ctx: IntrospectionContext) (root: Node<'Msg>) (turnId: int option) : int =
+    let checks = Fuaran.UI.PreEmitValidate.bindingChecks root
+
+    for check in checks do
+        for d in check.Diagnostics do
+            recordError
+                ctx
+                d.Code
+                (sprintf "%s — at %s; the source produces: %s" d.Message d.Path (producedLine check.Produced))
+                (Some(NodeId check.NodeId))
+                turnId
+
+    checks |> List.sumBy (fun c -> List.length c.Diagnostics)
+
 // ─── formFromSchema (Phase 1816) ───────────────────────────────────────────
 //
 // The one tool in this module that AUTHORS rather than observes: a model
