@@ -143,6 +143,8 @@ let private dynamicGrid id : Node<obj> =
               StaticRows = Option.None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false })
 
 let private metricTile id label value =

@@ -82,6 +82,7 @@
          against it — and Ops depends on this package, never the reverse.
          Depends only on Types.fs. -->
     <Compile Include="KindPolicy.fs" />
+    <Compile Include="HostLimits.fs" />
     <Compile Include="PreEmitValidate.fs" />
     <!-- Phase 430: the slot capability table + the dead-on-decode lint (the
          declarative-floor un-regression pair). Depend only on Types.fs. -->

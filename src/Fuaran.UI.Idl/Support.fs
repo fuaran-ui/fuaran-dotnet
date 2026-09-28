@@ -504,6 +504,14 @@ let support: Gen.GenSupport =
                     "// the grid's, and nothing outside it can name that row group."
                     "//"
                     "// Omitted on the wire at `false`." ]
+                  "field:DataGridSpec.RowTotal",
+                  [ "// Phase 1892 — the DECLARED size of the whole result set, for a grid"
+                    "// whose host slices it (a `Query` whose `dependsOn` names the window or"
+                    "// the page key). It closes the host-paged grid's missing total: the"
+                    "// pager can state a page count and the window a scroll extent. A grid"
+                    "// holding its whole set counts its own rows and does not read it. A"
+                    "// value that is not an integer >= 0 is no declared total. Omitted on the"
+                    "// wire when absent." ]
                   "field:DataGridSpec.SortStateKey",
                   [ "// Phase 818 — the grid-sort header affordance for a DATA-BOUND grid:"
                     "// names the State key carrying the sort descriptor"
@@ -532,6 +540,16 @@ let support: Gen.GenSupport =
                     "// key because the one-way ends are ordinary — an archive column that"
                     "// accepts and never releases, a Done column that releases nothing back."
                     "// Omitted on the wire when absent." ]
+                  "field:DataGridSpec.WindowStateKey",
+                  [ "// Phase 1892 — the row window: the State key carrying"
+                    "// `{\"offset\": <int >= 0>, \"count\": <int >= 1>}`, which the renderer"
+                    "// writes as the viewport moves and the grid reads back. A client-sliced"
+                    "// grid presents that slice of its sorted (and paged) rows, clamping a"
+                    "// window past the end to the last full window; where the source is a"
+                    "// `Query` whose `dependsOn` names this key, the HOST returns the window"
+                    "// and the grid slices nothing. A descriptor that is absent or malformed"
+                    "// is no window: the grid presents every row, as before 1892. Omitted on"
+                    "// the wire when absent." ]
                   "type:ChartDataLabels",
                   [ "/// Whether a chart writes its values directly onto the picture, and where"
                     "/// (Phase 881)."

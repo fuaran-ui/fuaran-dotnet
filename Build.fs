@@ -194,7 +194,18 @@ let private packableProjects =
       // project here: it is a self-contained substrate a host adopts on its
       // own account, published so the wire layer has ONE public home rather
       // than a copy per consumer.
-      "Fuaran.UI.AiWire" ]
+      "Fuaran.UI.AiWire"
+      // The typed F#/.NET client over the generation endpoint (Phase 220) and the
+      // `fuaran` dotnet tool built on it (Phase 224). Both were marked
+      // `IsPackable=true` from the day they landed and named by no entry here, so
+      // no release emitted either — while the tool's README told a reader to
+      // `dotnet tool install` a package no registry served. Published from 0.87.0.
+      // Neither is source-packed for Fable: the client is plain .NET
+      // (System.Net.Http), and the browser path is the TypeScript client's.
+      // The client precedes the tool because the tool project-references it, so
+      // the tool's nupkg is read against a client that has already packed.
+      "Fuaran.UI.Client"
+      "Fuaran.UI.Cli" ]
     |> List.map (fun name -> Path.Combine(repoRoot, "src", name, $"{name}.fsproj"))
     // Phase 304 — the C# authoring veneer packs alongside the F# tier. It is a
     // .csproj (appended after the .fsproj map). Phase 314 appends the Roslyn

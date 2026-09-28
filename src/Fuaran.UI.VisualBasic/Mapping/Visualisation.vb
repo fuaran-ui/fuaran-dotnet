@@ -71,6 +71,10 @@ Friend Module VisualisationMapping
         ' pair above USABLE from here — FUARAN130 asks a transferring grid to name
         ' the field a moved row is identified by, and the pair shipped with no way
         ' to say it.
+        '
+        ' Phase 1892 — `window-state-key` (the row window's State key, a key NAME,
+        ' so OptStr) and `row-total` (the declared total, an int binding: a literal,
+        ' a "$name" query or a "$state.name" slot, so OptIntBinding).
         d("DataGrid") = Function(el) Csharp.Fuaran.DataGrid(Of Object)(
             New Csharp.DataGridOptions(Of Object) With {
                 .Id = Attr(el, "id"),
@@ -89,7 +93,9 @@ Friend Module VisualisationMapping
                 .TransferInKey = OptStr(el, "transfer-in-key"),
                 .Exportable = AttrBool(el, "exportable"),
                 .Reorderable = AttrBool(el, "reorderable"),
-                .RowKeyField = OptStr(el, "row-key-field")})
+                .RowKeyField = OptStr(el, "row-key-field"),
+                .WindowStateKey = OptStr(el, "window-state-key"),
+                .RowTotal = OptIntBinding(el, "row-total")})
     End Sub
 
     ''' fuaran#665 — the required ToRow projection for XML-authored grids, whose row

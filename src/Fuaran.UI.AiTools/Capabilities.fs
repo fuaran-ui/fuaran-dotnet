@@ -55,3 +55,28 @@ let makeInvoker
         match validate registry capabilityId args with
         | Error e -> Deferred.Error(sprintf "capability invocation rejected: %A" e)
         | Ok cap -> body cap args
+
+/// The host's active EMISSION budget as a capability report (Phase 1817), so a model can ASK how much
+/// tree this host takes before it emits, rather than learn it by refusal.
+///
+/// Shape: `{"identity": <declaration name>, "limits": [{"limit": "maxNodes", "value": 400,
+/// "code": "FUARAN158"}, …]}` — one entry per DECLARED limit, in `HostLimits` record order; a host
+/// that declares none reports an empty list, which means "no stated limit", not "zero". Each entry
+/// names the code a breach of it is refused with, projected through `PreEmitValidate.describe` so
+/// the report and the refusal cannot disagree.
+///
+/// Wire-neutral: this is the HOST describing itself to an emitter through the tools surface, the
+/// same standing as the capability registry above. Nothing here travels in the document, and the
+/// decode-side `WireLimits` are unaffected by whatever a host declares.
+let emissionLimits (limits: Fuaran.UI.HostLimits) : Fuaran.Core.JVal =
+    let entries =
+        Fuaran.UI.HostLimits.declared limits
+        |> List.map (fun (kind, value) ->
+            Fuaran.Core.JObj
+                [ "limit", Fuaran.Core.JStr(Fuaran.UI.HostLimits.name kind)
+                  "value", Fuaran.Core.JInt value
+                  "code", Fuaran.Core.JStr(Fuaran.UI.PreEmitValidate.hostLimitCode kind) ])
+
+    Fuaran.Core.JObj
+        [ "identity", Fuaran.Core.JStr limits.Identity
+          "limits", Fuaran.Core.JArr entries ]

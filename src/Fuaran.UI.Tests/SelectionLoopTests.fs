@@ -458,6 +458,8 @@ let private gridSpecWith (onRowClick: (Row -> Action<obj>) option) : GridSpec<ob
       StaticRows = None
       KeepRowsTogether = false
       RepeatHeader = false
+      WindowStateKey = None
+      RowTotal = None
       Exportable = false }
 
 [<Tests>]

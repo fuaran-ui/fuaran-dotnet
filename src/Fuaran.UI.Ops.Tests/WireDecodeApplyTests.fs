@@ -206,6 +206,8 @@ let tests =
                                 StaticRows = None
                                 KeepRowsTogether = false
                                 RepeatHeader = false
+                                WindowStateKey = None
+                                RowTotal = None
                                 Exportable = false }
                           ) }
 
@@ -257,6 +259,8 @@ let tests =
                                 StaticRows = None
                                 KeepRowsTogether = false
                                 RepeatHeader = false
+                                WindowStateKey = None
+                                RowTotal = None
                                 Exportable = false }
                           ) }
 

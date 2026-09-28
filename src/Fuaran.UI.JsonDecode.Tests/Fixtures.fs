@@ -3418,6 +3418,8 @@ let gridVis: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -3459,6 +3461,8 @@ let gridKeepRowsTogether: Node<obj> =
               StaticRows = None
               KeepRowsTogether = true
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -3501,6 +3505,8 @@ let gridRepeatHeader: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = true
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -3558,6 +3564,8 @@ let gridExportable: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = true }
         ))
         None
@@ -3654,6 +3662,8 @@ let gridTonedPill: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -4103,6 +4113,8 @@ let gridEditableState: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -4171,6 +4183,8 @@ let gridTransform: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -4221,6 +4235,8 @@ let gridTransformParam: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -4285,6 +4301,8 @@ let transformUndeclaredParam: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -4370,6 +4388,8 @@ let multiselectChipListParam: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None ]
@@ -4419,6 +4439,8 @@ let gridFieldNamed: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -4483,6 +4505,8 @@ let masterDetailPreselected: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None
@@ -4567,6 +4591,8 @@ let masterDetailPreselected: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None ]
@@ -4669,6 +4695,8 @@ let masterDetailMultiField: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None
@@ -4825,6 +4853,8 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None
@@ -4880,6 +4910,8 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None
@@ -5010,6 +5042,8 @@ let nowEnvironmentBinding: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None ]
@@ -5107,6 +5141,8 @@ let nowGrain: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None ]
@@ -5447,6 +5483,8 @@ let scalarTransformComposition: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None
@@ -5628,6 +5666,8 @@ let filterableStaticDashboard: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None ]
@@ -5757,6 +5797,8 @@ let private filterEdgeDoc (id: string) (declaredChips: FilterSpec<obj> list) : N
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None ]
@@ -5893,6 +5935,8 @@ let table: Node<obj> =
                       Sortable = None }
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false })
         None
 
@@ -5932,6 +5976,8 @@ let tableSortable: Node<obj> =
                       Sortable = Some true }
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false })
         None
 
@@ -6125,6 +6171,8 @@ let switchOnSelection: Node<obj> =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       ))
                       None
@@ -7020,6 +7068,8 @@ let sharedSourceSeededPair: Node<obj> =
                   StaticRows = None
                   KeepRowsTogether = false
                   RepeatHeader = false
+                  WindowStateKey = None
+                  RowTotal = None
                   Exportable = false }
             ))
             None
@@ -7100,6 +7150,8 @@ let gridBoundSort: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -7148,6 +7200,8 @@ let gridSortAscending: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -7191,6 +7245,8 @@ let gridDeclaredEdit: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -7239,6 +7295,8 @@ let gridReorderable: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -7295,6 +7353,8 @@ let gridTransferBoard: Node<obj> =
                   StaticRows = None
                   KeepRowsTogether = false
                   RepeatHeader = false
+                  WindowStateKey = None
+                  RowTotal = None
                   Exportable = false }
             ))
             None
@@ -7352,6 +7412,8 @@ let gridPaged: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -7393,7 +7455,97 @@ let gridPagedSorted: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
+        ))
+        None
+
+/// Phase 1892 — the row window, host-sliced: a `Query` whose `dependsOn` names
+/// the `windowStateKey` returns the window itself, so the grid slices nothing,
+/// and the total the host alone knows is DECLARED through `rowTotal` — here a
+/// `Query` the host populates beside the rows. The canonical corner.
+let gridWindowed: Node<obj> =
+    let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = kind
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-windowed"
+        (NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort = None
+              Source = Binding.Query("orders", unbox, Some [ "orders-window" ])
+              RowKey = None
+              RowKeyField = Some "reference"
+              Columns =
+                [ col "Reference" "reference" CellKindErased.Text
+                  col "Amount" "amount" CellKindErased.Numeric ]
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false
+              Exportable = false
+              WindowStateKey = Some "orders-window"
+              RowTotal = Some(Binding.Query("orders.total", unbox, None)) }
+        ))
+        None
+
+/// Phase 1892 — the row window, client-sliced under a sort: the grid holds its
+/// whole set, sorts it, and presents the window of the SORTED rows the renderer
+/// wrote to `ledger-window`. No `rowTotal` — a grid holding its set counts it.
+let gridWindowedSorted: Node<obj> =
+    let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = kind
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-windowed-sorted"
+        (NodeKind.DataGrid(
+            { SortStateKey = Some "ledger-sort"
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort =
+                Some
+                    { Column = 1
+                      Direction = SortDirection.Desc }
+              Source = Binding.State("ledger", Some(Seq.ofList planRows))
+              RowKey = None
+              RowKeyField = Some "month"
+              Columns =
+                [ col "Month" "month" CellKindErased.Text
+                  col "Revenue" "revenue" CellKindErased.Numeric ]
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false
+              Exportable = false
+              WindowStateKey = Some "ledger-window"
+              RowTotal = None }
         ))
         None
 
@@ -7476,6 +7628,8 @@ let gridSortStateKey: Node<obj> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
         None
@@ -8015,6 +8169,8 @@ let stateAbsentDefault: Node<obj> =
                   StaticRows = None
                   KeepRowsTogether = false
                   RepeatHeader = false
+                  WindowStateKey = None
+                  RowTotal = None
                   Exportable = false }
             ))
             None
@@ -8030,6 +8186,166 @@ let stateAbsentDefault: Node<obj> =
               BreakBefore = false }
         ))
         None
+
+// ── Phase 1889 — charts and grids checked against their data ────────────────
+//
+// One fixture per schema-grounding diagnostic (FUARAN086 / 087 / 097 / 114), a
+// CONTROL that raises none, and an UNCHECKED document whose readers no rule can
+// judge. Every one reads the same embedded table through the same pipeline — a
+// `groupBy` that renames `amount` to `total` — so each negative differs from the
+// control in the one reference it breaks. All are legal wire and round-trip
+// byte-identically; what they pin is what a host's pre-emit validator DOES with
+// them, and each host asserts that in its own suite.
+
+let private bindingCheckSourceOf (last: int) : Fuaran.Core.DataSource =
+    Fuaran.Core.Embedded
+        { Schema = [ "dept", Fuaran.Core.StringType; "amount", Fuaran.Core.IntType ]
+          Columns =
+            [ Fuaran.Core.Column.create
+                  "dept"
+                  Fuaran.Core.StringType
+                  [ Fuaran.Core.Str "eng"; Fuaran.Core.Str "eng"; Fuaran.Core.Str "sales" ]
+              Fuaran.Core.Column.create
+                  "amount"
+                  Fuaran.Core.IntType
+                  [ Fuaran.Core.Int 100; Fuaran.Core.Int 120; Fuaran.Core.Int last ] ] }
+
+/// `groupBy dept, sum(amount) as total` — produces exactly `dept:string, total:int`.
+let private bindingCheckPipeline: Fuaran.Core.Transform list =
+    [ Fuaran.Core.GroupBy(
+          [ "dept" ],
+          [ ({ Name = "total"
+               Fn = Fuaran.Core.Sum
+               Of = "amount" }
+            : Fuaran.Core.Agg) ]
+      ) ]
+
+let private bindingCheckFeedOf (last: int) : Binding<Row seq> =
+    Binding.Transform(TransformSource.Data(bindingCheckSourceOf last), bindingCheckPipeline, None)
+
+let private bindingCheckFeed: Binding<Row seq> = bindingCheckFeedOf 90
+
+let private bindingCheckChart (id: string) (source: Binding<Row seq>) (x: string) (ys: string list) (temporal: bool) =
+    node
+        id
+        (NodeKind.Chart(
+            { Defaults.chart with
+                Kind = ChartKind.Bar
+                Source = source
+                XField = x
+                YFields = ys
+                Title = Some(TextSource.Literal "Spend by department")
+                XScale = (if temporal then Some ChartXScale.Temporal else None) }
+        ))
+        None
+
+let private bindingCheckGrid (id: string) (source: Binding<Row seq>) (fields: string list) (rowKey: string option) =
+    let col (field: string) : ColumnErased<obj> =
+        { Label = field
+          Value = None
+          Field = Some field
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    node
+        id
+        (NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort = None
+              Source = source
+              RowKey = None
+              RowKeyField = rowKey
+              Columns = fields |> List.map col
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false
+              Exportable = false
+              WindowStateKey = None
+              RowTotal = None }
+        ))
+        None
+
+let private bindingCheckBox (id: string) (children: Node<obj> list) : Node<obj> =
+    node
+        id
+        (NodeKind.Box(
+            { Layout = BoxLayout.Auto
+              Role = BoxRole.Dashboard
+              Heading = None
+              Children = children
+              KeepTogether = false
+              BreakBefore = false }
+        ))
+        None
+
+/// Phase 1889 — the CONTROL: a chart and a grid reading only what the pipeline
+/// produces. Both readers grade CHECKED and nothing is found.
+let bindingCheckControl: Node<obj> =
+    bindingCheckBox
+        "binding-check-control"
+        [ bindingCheckChart "spend-chart" bindingCheckFeed "dept" [ "total" ] false
+          // A different table under the same pipeline: one inline table read twice
+          // is FUARAN107's subject, not this fixture's.
+          bindingCheckGrid "spend-grid" (bindingCheckFeedOf 95) [ "dept"; "total" ] (Some "dept") ]
+
+/// Phase 1889 — FUARAN086: the chart plots `amount`, which the `groupBy` renamed
+/// to `total`. The one finding is at `$.kind.yFields[0]`.
+let bindingCheckChartUngrounded: Node<obj> =
+    bindingCheckChart "binding-check-chart-ungrounded" bindingCheckFeed "dept" [ "amount" ] false
+
+/// Phase 1889 — FUARAN087: the chart plots `dept`, a string column, as a value
+/// series. The one finding is at `$.kind.yFields[0]`.
+let bindingCheckChartNotNumeric: Node<obj> =
+    bindingCheckChart "binding-check-chart-not-numeric" bindingCheckFeed "dept" [ "dept" ] false
+
+/// Phase 1889 — FUARAN097: a temporal x-axis over `dept`, which is not a date.
+/// The one finding is at `$.kind.xField`.
+let bindingCheckChartTemporalNotDate: Node<obj> =
+    bindingCheckChart "binding-check-chart-temporal-not-date" bindingCheckFeed "dept" [ "total" ] true
+
+/// Phase 1889 — FUARAN114, both arms: a column `field` and the `rowKeyField`
+/// naming `amount`, which the pipeline no longer produces. Nested one level so
+/// the JSONPath passes through a container: the findings are at
+/// `$.kind.children[0].kind.columns[1].field` and `…kind.rowKeyField`.
+let bindingCheckGridUngrounded: Node<obj> =
+    bindingCheckBox
+        "binding-check-grid-ungrounded"
+        [ bindingCheckGrid "spend-grid" bindingCheckFeed [ "dept"; "amount" ] (Some "amount") ]
+
+/// Phase 1889 — the UNCHECKED document: every reference here is to a column no
+/// source is known to produce, and nothing is refused. The chart reads a
+/// Transform over a `Ref` (an open schema: this validator has no host to resolve
+/// it); the grid reads a `Query` (no static schema at all). Both grade
+/// UNCHECKED, and the grade says why.
+let bindingCheckUnchecked: Node<obj> =
+    let refFeed: Binding<Row seq> =
+        Binding.Transform(
+            TransformSource.Data(Fuaran.Core.Ref "spend"),
+            [ Fuaran.Core.Filter(
+                  Fuaran.Core.Binary(
+                      Fuaran.Core.Gt,
+                      Fuaran.Core.Col "amount",
+                      Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int 0)
+                  )
+              ) ],
+            None
+        )
+
+    bindingCheckBox
+        "binding-check-unchecked"
+        [ bindingCheckChart "spend-chart" refFeed "region" [ "revenue" ] false
+          bindingCheckGrid "spend-grid" (Binding.Query("spend", unbox, None)) [ "region"; "revenue" ] (Some "region") ]
 
 
 let allNodes: (string * Node<obj>) list =
@@ -8203,6 +8519,18 @@ let allNodes: (string * Node<obj>) list =
       filtersDependsOnDeclared
       "Layout/Box (Phase 1800 — a Query dependsOn naming a chip the PRESENT Filters node does not declare; the control is `filters-dependson-declared`)",
       filtersDependsOnUndeclared
+      "Visualisation/Chart+Grid (Phase 1889 - the CONTROL: a chart and a grid reading only what their groupBy pipeline produces; both grade checked)",
+      bindingCheckControl
+      "Visualisation/Chart (Phase 1889 - FUARAN086: a yFields entry naming a column the groupBy renamed away)",
+      bindingCheckChartUngrounded
+      "Visualisation/Chart (Phase 1889 - FUARAN087: a yFields entry naming a string column)",
+      bindingCheckChartNotNumeric
+      "Visualisation/Chart (Phase 1889 - FUARAN097: a temporal x-axis over a column that is not a date)",
+      bindingCheckChartTemporalNotDate
+      "Layout/Box (Phase 1889 - FUARAN114: a grid column field and rowKeyField naming a column the pipeline does not produce)",
+      bindingCheckGridUngrounded
+      "Layout/Box (Phase 1889 - UNCHECKED: a chart over a Transform of an undeclared Ref and a grid over a Query; nothing refused)",
+      bindingCheckUnchecked
       "Layout/Box (master-detail — grid + detail card State-bound with a pre-selected defaultValue)",
       masterDetailPreselected
       "Layout/Box (master-detail — Selection defaultValue naming a NON-FIRST row: prune-vs-seed is observable)",
@@ -8256,6 +8584,10 @@ let allNodes: (string * Node<obj>) list =
       gridPaged
       "Visualisation/Grid (Phase 862 — paging and sorting composed: two behaviours, two state keys, one rule)",
       gridPagedSorted
+      "Visualisation/Grid (Phase 1892 — windowStateKey + rowTotal: a host-windowed Query and the total it declares)",
+      gridWindowed
+      "Visualisation/Grid (Phase 1892 — the client-sliced window under a sort: the window indexes the sorted rows)",
+      gridWindowedSorted
       "Display/Badge (Phase 818 — LIVE State-sourced Transform: the Tier-D count badge, preserved source + initial snapshot)",
       badgeTransformLive
       "Visualisation/Grid + Display/Badge (Phase 1075 — the seeded shared source: one declared table, two readers)",

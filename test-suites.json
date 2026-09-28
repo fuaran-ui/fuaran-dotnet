@@ -148,6 +148,14 @@
       "project": "src/Fuaran.UI.VisualBasic.Conformance.Tests/Fuaran.UI.VisualBasic.Conformance.Tests.vbproj",
       "requiresCorpus": true,
       "note": "Phase 312 — the VB XML-literal veneer's corpus-conformance suite (a VB console runner, since XML literals are a VB language feature)."
+    },
+    {
+      "project": "src/Fuaran.UI.Client.Tests/Fuaran.UI.Client.Tests.fsproj",
+      "note": "Phase 220 — the generation-endpoint client, driven against a scripted transport: the three-way turn result, the session turn loop, the endpoint-scheme rule and the repair loop. No network, no corpus. Rostered when the package joined the published set at 0.87.0; it had run in no gate before that."
+    },
+    {
+      "project": "src/Fuaran.UI.Cli.Tests/Fuaran.UI.Cli.Tests.fsproj",
+      "note": "Phase 224 — the `fuaran` dotnet tool's commands (generate / validate / scaffold). Corpus-independent; writes its inputs to the system temp directory, so it is not a `pure` suite. Rostered when the package joined the published set at 0.87.0; it had run in no gate before that."
     }
   ]
 }

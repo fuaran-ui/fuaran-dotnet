@@ -77,7 +77,7 @@ The build-time validator's findings carry `FUARAN###` codes (e.g. `FUARAN050` `S
 **Two families share this band, and only one of them is the build-time walker.** The paragraph
 above describes the walker, which reads F# *source* — but the larger family by far is the
 **pre-emit validator**, which reads a *tree* just before it goes on the wire and raises the whole
-`FUARAN047`–`FUARAN149` range. A code you have in hand belongs to whichever family reported it, and
+`FUARAN047`–`FUARAN162` range. A code you have in hand belongs to whichever family reported it, and
 the two are enumerated in different places: the pre-emit family's codes, severities and message
 shapes are published as data in the conformance corpus's `validator/defect-vocabulary.json`
 (generated from the reference host, never hand-maintained), and each host declares which of them it
@@ -98,6 +98,38 @@ lists the columns that pipeline actually yields. It stands down wherever that se
 those are the host's to fill and the tree cannot know their columns. Its siblings: `FUARAN087` (the
 field is produced but the wrong type), `FUARAN097` (a temporal x-axis over a non-date column), and
 `FUARAN114`, the same rule on the read side of a grid.
+
+**`FUARAN158`–`FUARAN162` (Error) — the tree is more than this host takes (Phase 1817).** A host
+declares an emission budget as a `HostLimits` value and validates with
+`PreEmitValidate.validateWithLimits`; each limit it declares that the tree exceeds is refused under
+its own code, and the message names the limit, the measured value and the first offending node, so
+the repair needs nothing but the message. A host that declares no limits (`HostLimits.unbounded`,
+the default) never raises any of them.
+
+| Code | Limit (`HostLimits` field) | Node named | Measured | Repair |
+|---|---|---|---|---|
+| **`FUARAN158`** | `MaxNodes` — nodes the pre-emit walk visits | the first node past the budget, depth-first pre-order | the tree's node count | emit less — summarise, page a list, split across views |
+| **`FUARAN159`** | `MaxDepth` — nesting level, root = 1 | the first node below the limit | the deepest level walked | flatten — drop a wrapper, lift the subtree |
+| **`FUARAN160`** | `MaxChildren` — direct children of one container | each over-wide container | that container's child count | group into sub-containers, or use a list / grid |
+| **`FUARAN161`** | `MaxGridRows` — a `DataGrid`'s inline rows (`staticRows` or a `$static` source; a bound source is never judged) | each over-long grid | that grid's inline row count | trim, or bind the grid to a source the host pages |
+| **`FUARAN162`** | `MaxSerializedBytes` — UTF-8 size of the canonical JSON | the root | the encoded size | emit less, or move large inline data behind a bound source |
+
+**Ask before you emit.** The active limits are in the AI-tools capability report
+(`Fuaran.UI.AiTools.Capabilities.emissionLimits`): the declaration's name and, per declared limit,
+its value and the code a breach of it is refused with. An empty `limits` list means the host states
+no limit — not a limit of zero. The named presets `HostLimits.email`, `HostLimits.mobile` and
+`HostLimits.card` are **starting points, not authority**: each figure's source (a vendor's documented
+ceiling, or a stated judgement) is written beside it in `src/Fuaran.UI/HostLimits.fs`, and a host
+that knows its own budget declares that instead.
+
+**Decode guards and emission limits are different protections, and neither substitutes for the
+other.** The decode guards (`WireLimits`, `WIRE_FORMAT.md` §21; the decode-time kind policy) protect
+the reader from a **hostile** document: they are the same for every conformant host, and a payload
+past them is refused whatever its author meant — FUARAN091 is the pre-emit mirror of the depth one.
+Emission limits protect the reader from an **honest** document that is simply more than this
+particular host renders well; a tree refused under them is still a valid wire document. Declaring
+generous emission limits does not loosen any decode guard, and declaring none leaves a host exactly
+as protected against hostile input as it was.
 
 **Suppressing a validator finding.** Source that deliberately holds a rejected shape — canonically a negative test asserting the runtime reports the defect — opts out with a comment pragma: `// fuaran-validator: disable FUARAN047, FUARAN048 — reason` (file-scoped) or `// fuaran-validator: disable-next-line FUARAN044` (the following line only). Suppressed findings are counted in the run summary rather than hidden, and only the reporting layer is filtered — every check still runs. This is a **host-side** mechanism on the .NET validator, not part of the cross-implementation spec surface. See the [validator README](../src/Fuaran.UI.Validator/README.md#suppressing-a-finding).
 

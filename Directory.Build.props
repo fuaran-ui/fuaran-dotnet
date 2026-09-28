@@ -736,8 +736,25 @@
          BREAKING on Fuaran.UI (Format.Date's dateStyle became optional, so a
          full literal of the case stops compiling), which under the draft-slot
          rule is what moves a number the additive Phases 1801/1789/1800/1727
-         deliberately left unminted. See STABILITY.md "0.86.0". -->
-    <Version>0.86.0</Version>
+         deliberately left unminted. See STABILITY.md "0.86.0".
+
+         0.86.0 IS NOW RELEASED - tagged v0.86.0 at 9846645 and served by
+         nuget.org for every public Fuaran.UI.* id the release packs - so this
+         standing number is a public contract and NOTHING MAY RIDE IT. The NEXT
+         commit that moves a public contract advances it to 0.87.0 and opens
+         that slot's STABILITY.md heading in the same change-set; an empty
+         0.87.0 is not opened ahead of that change, for the reason measured in
+         the 0.85.0 paragraph above. Released on Fuaran.Core.* 0.32.0 with the
+         compute packages at 0.34.0 from their own producer. See STABILITY.md
+         "0.86.0 - ... released 2026-09-28 as v0.86.0".
+
+         0.87.0 (2026-09-28) is opened by the change that rides it:
+         Fuaran.UI.Client and Fuaran.UI.Cli join the published package set.
+         Class ADDITIVE - two new package ids, no existing type, member or
+         wire byte moves. It ADVANCES rather than riding 0.86.0 because
+         v0.86.0 is TAGGED. An UNTAGGED DRAFT: additive changes ride it, a
+         higher class advances it. See STABILITY.md "0.87.0". -->
+    <Version>0.87.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

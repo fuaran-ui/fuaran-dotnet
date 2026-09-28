@@ -140,7 +140,12 @@ public static partial class Fuaran
                 // positional, so a slot inserted anywhere but the end silently
                 // moves an existing argument.
                 options.Reorderable,
-                Fs.OptStr(options.RowKeyField))));
+                Fs.OptStr(options.RowKeyField),
+                // Phase 1892 — the row window and its declared total, appended
+                // for the same reason. `null` is the F# `None` for both: no
+                // window key and no total, the pre-1892 grid byte for byte.
+                Fs.OptStr(options.WindowStateKey),
+                options.RowTotal is { } rt ? Fs.Some(rt.Inner) : Fs.None<FsGen.Binding<int>>())));
 }
 
 /// <summary>A data-grid column. Accessors read the PROJECTED row (fuaran#665 —
@@ -488,4 +493,20 @@ public sealed record DataGridOptions<TRow>
     /// (FUARAN130).</para>
     /// </summary>
     public string? RowKeyField { get; init; }
+
+    /// <summary>
+    /// The row window (Phase 1892): the State key carrying <c>{"offset": N, "count": M}</c>,
+    /// which the renderer writes as the viewport moves and the grid reads back, presenting that
+    /// slice of its sorted rows. Where <see cref="Source"/> is a query whose <c>dependsOn</c>
+    /// names this key the HOST returns the window and the grid slices nothing.
+    /// Leave it <c>null</c> (the default) and the grid presents every row.
+    /// </summary>
+    public string? WindowStateKey { get; init; }
+
+    /// <summary>
+    /// The declared size of the whole result set (Phase 1892), read only where the host slices —
+    /// a query whose <c>dependsOn</c> names the window or the page key. It lets the pager state a
+    /// page count and the window a scroll extent; a grid holding its whole set counts its own rows.
+    /// </summary>
+    public Binding<int>? RowTotal { get; init; }
 }

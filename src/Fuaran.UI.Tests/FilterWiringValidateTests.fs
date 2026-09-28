@@ -78,6 +78,8 @@ let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         )
       State = None
@@ -129,6 +131,8 @@ let private gridNamingFields
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         )
       State = None
@@ -290,6 +294,8 @@ let tests =
                             StaticRows = None
                             KeepRowsTogether = false
                             RepeatHeader = false
+                            WindowStateKey = None
+                            RowTotal = None
                             Exportable = false }
                       )
                     State = None

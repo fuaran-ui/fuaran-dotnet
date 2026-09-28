@@ -7815,7 +7815,50 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.86.0 — the slot Phase 1801 opened unminted, which Phase 1810's `timeStyle` mints as BREAKING (DRAFT — untagged)
+## 0.87.0 — the slot the client and the command-line tool open by joining the published set (DRAFT — untagged)
+
+_Class so far: **ADDITIVE**. `v0.86.0` is tagged, so this change could not ride that slot and opens
+this one. Under the draft-slot rule an additive change that follows RIDES this slot and moves no
+number; a change of a higher class advances it._
+
+### What rides this slot
+
+**`Fuaran.UI.Client` and `Fuaran.UI.Cli` are published — ADDITIVE; two new package ids; NO existing
+type, member or wire byte moves.** Both projects have been in this repository, marked packable, since
+Phase 220 and Phase 224. Neither was named in the build's pack list, so no release emitted them, and
+neither test project was in the gate's roster, so no gate ran them. The tool's README told a reader
+to `dotnet tool install -g Fuaran.UI.Cli` throughout; from this slot's release that command resolves.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI.Client` (new package id) | The typed client over the generation endpoint: `FuaranClient`, `FuaranSession`, the `TurnResult` three-way result, `Render.decodeTreeJson`, the `IFuaranTransport` seam. Plain .NET; not source-packed for Fable. Depends on `Fuaran.UI.Ops`. | Nobody; additive. |
+| `Fuaran.UI.Cli` (new package id) | The `fuaran` dotnet tool: `generate`, `validate`, `scaffold` (and `scaffold form`), `refusal-report`; `recipe` is named and answered by the npm CLI. The package carries its dependencies, so it declares none. | Nobody; additive. |
+| The pack list and the test roster | Both projects are packed, and both test projects run in the `fast` and `full` lanes. | Nobody outside this repository. |
+
+**What this does not claim.** The sources are unchanged by this entry, so the surface published at
+this slot's release is the surface these projects already had — this records a publication, not a
+review. `Fuaran.UI.Client`'s own README states the request/response shape it speaks
+(`SurfaceContract.Version`), and that statement is the one a consumer should read.
+
+*Version.* Opens 0.87.0, because `v0.86.0` is tagged and this change cannot ride a released slot.
+
+---
+
+## 0.86.0 — the slot Phase 1801 opened unminted, which Phase 1810's `timeStyle` minted as BREAKING — released 2026-09-28 as `v0.86.0`
+
+_**Released 2026-09-28: tagged `v0.86.0` at `9846645`, and nuget.org serves 0.86.0 for every
+`Fuaran.UI.*` id the release packs. This slot is a public contract now and NOTHING MAY RIDE IT.** The
+next commit that moves a public contract advances `<Version>` to 0.87.0 and opens that heading above
+this one in the same change-set; an empty 0.87.0 is not opened ahead of it, for the reason the 0.85.0
+closure note below measured._
+
+_The class carried into the release is **BREAKING** on `Fuaran.UI`, the class Phase 1810 minted the
+number at; every entry that rode the slot afterwards records itself at or below it, so the release
+carries the class it was minted with. The substrate pinned at the release is `Fuaran.Core.*` 0.32.0, with the three
+compute packages — `Fuaran.Core.DataFrame`, `Fuaran.Core.Column.Ops` and
+`Fuaran.Core.DataFrame.Conformance` — at 0.34.0 from their own producer, so a consumer adopting
+0.86.0 restores two release lines where 0.85.0 restored one. The paragraphs below are the slot's
+history as each phase wrote it, left as written._
 
 _**The number moved on 2026-09-22, and Phase 1810 is why.** The heading below this line was opened
 by Phase 1801 with its number deliberately unminted, for the reason its own paragraphs record; every
@@ -7851,6 +7894,57 @@ as carrying a change it does not carry, which is the one failure mode a version 
 prevent.
 
 ### What rides this slot
+
+**fuaran#1817 — BREAKING on `Fuaran.UI` at one closed union (`PreEmitDefect` gains five cases);
+ADDITIVE everywhere else; NO wire change; RIDES this slot.** Host emission limits: a host declares
+how much tree it takes (`HostLimits`), and the pre-emit validator refuses the rest before emit with
+FUARAN158–FUARAN162.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI` — `HostLimits` (new file) | New: `HostLimits` (record, every limit optional), `HostLimitKind`, `HostLimitBreach`, `HostLimitMeasurement`, `HostLimitMeter`, and the `HostLimits` module (`unbounded`, `named`, the `email` / `mobile` / `card` presets as data, `declared`, `childCount`, `gridRowCount`, `serializedBytes`, `utf8Length`). | Nobody; additive. |
+| `Fuaran.UI` — `PreEmitDefect` | Gains `HostNodeCountExceeded` — **FUARAN158** — `HostDepthExceeded` — **FUARAN159** — `HostChildrenExceeded` — **FUARAN160** — `HostGridRowsExceeded` — **FUARAN161** — and `HostPayloadBytesExceeded` — **FUARAN162**, all Error, each `nodeId * limit * measured * limits`. | An exhaustive match over `PreEmitDefect`. |
+| `Fuaran.UI` — `PreEmitValidate` | New: `validateWithLimits`, `validateWithMeter`, `hostLimitDefect`, `hostLimitCode`. The four structural limits are metered on the validator's existing walk (one visit per node); the size limit encodes once, only when declared. | Nobody. Every existing entry point runs exactly as before — `HostLimits.unbounded` validates byte-for-byte as `validate`, pinned by `HostLimitsTests`. |
+| `Fuaran.UI.AiTools` — `Capabilities` | New: `emissionLimits : HostLimits -> JVal`, the active limits with the code each breach is refused with. | Nobody; additive. |
+| Corpus — `validator/defect-vocabulary.json`; this repo's `validator-coverage.json` | Both regenerated with the five codes, in this change-set. | A subset host's coverage declaration is covered by its `abstentionDefault`; no wire fixture moves. |
+
+**Not decided here:** whether limits travel in capability negotiation (§15.2) — they are host
+configuration with `DecodePolicy`'s standing, and nothing about them is on the wire.
+
+**fuaran#1889 — ADDITIVE on `Fuaran.UI` and `Fuaran.UI.AiTools`; NO new defect case, NO wire change;
+RIDES this slot.** Charts and grids checked against their data: the report of which readers the
+schema-grounding rules (FUARAN086 / 087 / 097 / 114) judged, which they stood down over and why, and
+where each finding sits in the wire document.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI` — `PreEmitValidate` | New: `bindingChecks : Node<'Msg> -> BindingCheck list`, and the types `BindingCheck`, `BindingDiagnostic`, `ProducedColumn`, `BindingGrade` (`Checked` / `Unchecked`), `UncheckedReason` (`OpenSchema` / `LiveSource` / `NoStaticSchema` / `StaticRows`). Every diagnostic is one of `validate`'s own findings, located by a JSONPath into the canonical encoding and paired with the typed produced schema. | Nobody; additive. `validate` and every other entry point are unchanged — no verdict moves, and the encode runs only inside `bindingChecks`. |
+| `Fuaran.UI.AiTools` — `Tools` | New: `recordBindingChecks ctx root turnId`, which records each finding into the runtime-error sink `getRuntimeErrors` drains (code, reader node id, message + JSONPath + produced schema). | Nobody; additive. |
+| Corpus — `nodes/binding-check-*.json` | Six node round-trip fixtures: a control, one negative per grounding code, and an unchecked document. Certified here by `BindingCheckCorpusTests` and by the TypeScript host over its bundled snapshot. | Every roster codec host round-trips six more documents; no wire shape is new. |
+
+**fuaran#1892 — BREAKING on `Fuaran.UI` at two record shapes and on the C# facade's positional
+grid constructor; ADDITIVE on the wire (two optional `DataGrid` fields, NO profile step);
+BEHAVIOURAL at FUARAN075; RIDES this slot.** The virtualised `DataGrid`: a row window
+(`windowStateKey`) and a declared row total (`rowTotal`), specified in `WIRE_FORMAT.md` "Row window
+and declared total".
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI` — `DataGridSpec<'Msg>` (generated) | Gains `WindowStateKey: string option` and `RowTotal: Binding<int> option`. | **A full literal of the record** (FS0764) stops compiling until it names both; `Fuaran.grid`, the generated `mk` constructor and every `{ … with … }` form are unchanged. The in-repo literals were updated in this change-set. |
+| `Fuaran.UI` — `GridSpecOf<'row, 'Msg>` (typed facade) | The same two slots, APPENDED after `RowKeyField` per the positional-constructor rule. | A full literal of the facade; `Defaults.grid` and `{ Defaults.grid with … }` compile unchanged. The C# `GridSpecOf` constructor gains two trailing parameters — `DataGridOptions<TRow>.WindowStateKey` / `.RowTotal` carry them, so `Fuaran.DataGrid(options)` callers are unaffected. |
+| `Fuaran.UI.Renderer.Core` — `BindingResolver` | New: `RowWindow`, `PresentedWindow<'row>`, `windowOfJVal`, `readWindowDescriptor`, `sourceHostWindowsOn`, `resolveRowTotal`, `presentWindow`, `declaredPageCount`, `gridHostWindows`, `gridPage`, `gridWindow`, `windowRowCount`, `windowRowIndex`. | Nobody; additive. |
+| Client renderer — `DataGrid` arm | Sorts, pages (client-paged only, never when the host windows), then windows; `aria-rowcount` / `aria-rowindex` only where a window is in effect; the window offset joins the page offset for edit write-back; a host-paged grid with a declared total states "Page X of N" and clamps. The grid subscribes its window key and its total's binding keys. | Nobody for a grid declaring neither field — its DOM is unchanged. A host-paged grid that declares `rowTotal` gains a page count. |
+| `PreEmitValidate` — FUARAN075 | A `dependsOn` entry naming the reading grid's OWN `pageStateKey` or `windowStateKey` is the host-slicing re-run edge and no longer reports as a dangling filter reference; every other undeclared name still does. | A host-paged grid that was refused FUARAN075 on its own page key now validates. |
+| Wire — `DataGrid` | `windowStateKey` (optional string) and `rowTotal` (optional int `Binding`), omitted when absent. Every pre-1892 document is byte-unchanged and still valid. | Every roster codec host, in this change-set: `nodes/grid-windowed.json` / `nodes/grid-windowed-sorted.json`, and the new self-enumerated `grid-window/` behaviour family. |
+| Authoring veneers | C# `DataGridOptions<TRow>.WindowStateKey` / `.RowTotal`; the VB `<DataGrid>` element's `window-state-key` / `row-total` attributes and the analyzer vocabulary rows. | Nobody; additive. |
+
+**Pinned.** `GridWindowTests` runs the corpus's `grid-window/` vectors — whose expected answers the
+corpus computes from the specification rules, not from this host — through this host's own
+descriptor read, sort, page slice and window function, and pins the declared-total resolution over
+each binding shape, the who-slices test, the ARIA annotations, the declared-total pager and the
+FUARAN075 exemption (the last made to fail once by removing the exemption). Not claimed here: the
+client renderer does not yet write the descriptor as the viewport moves (the TypeScript renderer
+does), and the server renderer emits a grid as a hydration placeholder with no rows to window.
 
 **fuaran#1854 — ADDITIVE on `Fuaran.UI.Renderer.Core` (one new module); BEHAVIOURAL at the
 CodeBlock render arm of both renderers for the `fstar` / `fst` / `fsharp` / `fs` / `f#` language

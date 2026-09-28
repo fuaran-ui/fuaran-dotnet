@@ -929,6 +929,8 @@ let private genGridSpec: Gen<GridSpec<obj>> =
               StaticRows = None
               KeepRowsTogether = keepRowsTogether
               RepeatHeader = repeatHeader
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
     }
 

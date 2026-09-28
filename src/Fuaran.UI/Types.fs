@@ -1957,6 +1957,17 @@ and GridSpecOf<'row, 'Msg> =
         /// into the erased record. Erases to `DataGridSpec.RowKeyField`; omitted
         /// on the wire when absent. Appended, for the same reason.
         RowKeyField: string option
+        /// Phase 1892 — the row window: the State key carrying
+        /// `{"offset": <int >= 0>, "count": <int >= 1>}`, written by the renderer
+        /// as the viewport moves and read back by the grid. Erases to
+        /// `DataGridSpec.WindowStateKey`; omitted on the wire when absent.
+        /// Appended, per the positional-constructor rule above.
+        WindowStateKey: string option
+        /// Phase 1892 — the declared size of the whole result set, read where
+        /// the host slices (a `Query` whose `dependsOn` names the window or page
+        /// key). Erases to `DataGridSpec.RowTotal`; omitted on the wire when
+        /// absent. Appended, for the same reason.
+        RowTotal: Binding<int> option
     }
 
 /// §4k Q3.2 — Column carries a typed `Kind`, not a nullable `OnEdit`.

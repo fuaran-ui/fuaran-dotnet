@@ -1929,6 +1929,10 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
                 // counting it would mask the very defect this rule looks for.
                 g.SortStateKey |> Option.iter (fun k -> stateReads.Add k |> ignore)
                 g.PageStateKey |> Option.iter (fun k -> stateReads.Add k |> ignore)
+                // Phase 1892 — the window descriptor is the same shape of slot: a
+                // string the renderer READS (`readWindowDescriptor`) and WRITES as
+                // the viewport moves.
+                g.WindowStateKey |> Option.iter (fun k -> stateReads.Add k |> ignore)
 
                 // The write side of the same three slots: a header click writes
                 // the sort descriptor, the pager writes the page descriptor, and
@@ -1936,6 +1940,7 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
                 // to a directly-State-bound `source` (Phase 663).
                 g.SortStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
                 g.PageStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
+                g.WindowStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
                 g.EditStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
 
                 if g.Editable && g.EditStateKey.IsNone then
@@ -1970,6 +1975,9 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
                     // exactly what a live-Transform store's `identityColumn`
                     // wants and what nothing in a rendered tree previously said.
                     tagSourceSite "source" g.RowKeyField g.Source (rowFeedUses g.Source)
+                    // Phase 1892 — the declared total is a scalar binding the
+                    // renderer resolves, so it is a read like any other.
+                    @ (g.RowTotal |> Option.map usesOfBinding |> Option.defaultValue [])
                     @ (match g.StaticRows with
                        | Some sr ->
                            (sr.Headers |> List.collect usesOfText)

@@ -2163,6 +2163,16 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
             @ (match g.PageStateKey, channel with
                | Some k, StateChannel -> [ k ]
                | _ -> [])
+            // Phase 1892 — the window descriptor, on the same argument: the
+            // viewport's write must re-render the grid on the new window. The
+            // declared total is a binding the grid resolves, so it subscribes
+            // through the binding's own keys.
+            @ (match g.WindowStateKey, channel with
+               | Some k, StateChannel -> [ k ]
+               | _ -> [])
+            @ (match g.RowTotal with
+               | Some total -> keysOfBinding channel total
+               | None -> [])
             @ (match g.StaticRows with
                | Some sr ->
                    (sr.Headers |> List.collect (keysOfText channel))
@@ -6760,29 +6770,40 @@ and private renderGrid
             // is the source-shape rule (a `Query` depending on the page key
             // returns the page itself), in which case the pager still renders
             // and drives the query but the grid does NOT slice again.
+            // Phase 1892 — `gridPage` is the one page rule both render legs
+            // read; a HOST-paged grid with a declared `rowTotal` now clamps and
+            // names its last page, and one without keeps to previous/next.
+            let pageInfo = BindingResolver.gridPage ctx.Sources spec (List.length rows)
+
             let pagination =
-                match spec.PageStateKey, spec.PageSize with
-                | Some key, Some size when size > 0 ->
-                    let hostPages = BindingResolver.sourceHostPagesOn spec.Source key
-                    let requested = BindingResolver.readPageDescriptor ctx.Sources key
+                pageInfo
+                |> Option.map (fun (key, size, page, hostPages, _) -> key, size, page, hostPages)
 
-                    let page =
-                        if hostPages then
-                            max 1 requested
-                        else
-                            BindingResolver.clampPage size requested (List.length rows)
-
-                    Some(key, size, page, hostPages)
-                | _ -> None
+            // Phase 1892 — a grid whose HOST returns the window slices nothing:
+            // the rows it resolved ARE the window, page and all.
+            let hostWindows = BindingResolver.gridHostWindows spec
 
             // The rows this render actually paints. `rowOffset` is what makes
             // the page-relative index the cell loop hands back addressable in
             // the FULL set — without it a page-2 edit would commit to the
             // matching row of page 1 (Phase 663's write-back indexes `rows`).
-            let pageRows, rowOffset =
+            let pageRows, pageOffset =
                 match pagination with
-                | Some(_, size, page, false) -> BindingResolver.sliceRowsToPage size page rows, (page - 1) * size
+                | Some(_, size, page, false) when not hostWindows ->
+                    BindingResolver.sliceRowsToPage size page rows, (page - 1) * size
                 | _ -> rows, 0
+
+            // Phase 1892 — the row window, over the page. A client-sliced
+            // window's offset joins the page offset, so an edit in a scrolled
+            // window commits to the row the reader saw; a host-windowed grid's
+            // rows are all `rows` holds, so it adds nothing.
+            let window = BindingResolver.gridWindow ctx.Sources spec pageRows
+
+            let pageRows, rowOffset =
+                match window with
+                | Some w when not hostWindows -> w.Rows, pageOffset + w.Offset
+                | Some w -> w.Rows, pageOffset
+                | None -> pageRows, pageOffset
 
             match pageRows, state.OnEmpty with
             | [], Some emptyNode -> render ctx emptyNode
@@ -7373,11 +7394,7 @@ and private renderGrid
                     match pagination with
                     | None -> Html.none
                     | Some(pageKey, size, page, hostPages) ->
-                        let lastPage =
-                            if hostPages then
-                                None
-                            else
-                                Some(BindingResolver.pageCountOf size (List.length rows))
+                        let lastPage = pageInfo |> Option.bind (fun (_, _, _, _, last) -> last)
 
                         let goTo (target: int) =
                             runSynthesisedAction
@@ -7425,6 +7442,12 @@ and private renderGrid
                               "fuaran-grid"
                               + Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader
                           )
+                          // Phase 1892 — a windowed grid tells assistive
+                          // technology its rows are a slice; an unwindowed one
+                          // carries no attribute, so its markup is unchanged.
+                          match BindingResolver.windowRowCount window with
+                          | Some count -> prop.custom ("aria-rowcount", count)
+                          | None -> ()
                           prop.children
                               [ Html.thead
                                     [ Html.tr
@@ -7526,7 +7549,10 @@ and private renderGrid
                                                           + Theme.gridRowInteractiveClass spec.OnRowClick.IsSome
                                                       )
                                                       prop.onClick (fun _ ->
-                                                          gridRowSelected (runAction ctx) parentNodeId spec row) ]
+                                                          gridRowSelected (runAction ctx) parentNodeId spec row)
+                                                      match BindingResolver.windowRowIndex window rowIndex with
+                                                      | Some index -> prop.custom ("aria-rowindex", index)
+                                                      | None -> () ]
                                                     @ reorderRowProps rowIndex
                                                     @ [ prop.children (reorderCellFor rowIndex @ bodyCells) ]
                                                 ) ] ] ] ]

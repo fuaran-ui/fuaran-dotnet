@@ -249,7 +249,10 @@ internal static class Vocabulary
             // 425) close the last two declared GAPs on this element. Both were
             // attribute-eligible wire fields with no spelling here at all, so
             // authoring either drew FUARAN151 on a field the wire accepts.
-            "reorderable", "row-key-field");
+            "reorderable", "row-key-field",
+            // Phase 1892 — the row window's State key and the declared total.
+            // Listed for the FUARAN151 reason above.
+            "window-state-key", "row-total");
         Add("Custom", "id", "module-id", "component-id", "exposed-node-ids");
         Add("ErrorBoundary", "id");
         Add("FragmentDecl", "id", "name");

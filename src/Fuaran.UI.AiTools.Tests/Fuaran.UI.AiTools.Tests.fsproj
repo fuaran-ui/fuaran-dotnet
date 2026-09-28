@@ -23,6 +23,8 @@
     <Compile Include="FidelityTests.fs" />
     <!-- Phase 1816 - the fuaran.formFromSchema tool: same bytes as the CLI verb. -->
     <Compile Include="FormFromSchemaTests.fs" />
+    <!-- Phase 1889 - binding checks reach the closed loop through getRuntimeErrors, located. -->
+    <Compile Include="BindingChecksToolTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

@@ -1640,6 +1640,13 @@ let private defs: (string * J) list =
             // Phase 1125 — the export affordance; omit-when-false like its
             // neighbours, and out of `required` for the same reason.
             "exportable", JObj [ "type", JStr "boolean" ]
+            // Phase 1892 — the row window's State key and the declared total.
+            // The window DESCRIPTOR lives in State and is validated by the
+            // reader, so the schema describes only the key; `rowTotal` is a
+            // `Binding<int>`, and whether it is read is a relation to the
+            // source shape a structural schema cannot state.
+            "windowStateKey", str
+            "rowTotal", binding "int"
             // Phase 861 — the bound path's declared initial order. Same record
             // and same `minimum: 0` bound the `staticRows` spelling carries.
             "defaultSort",

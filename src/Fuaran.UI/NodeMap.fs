@@ -379,6 +379,10 @@ and mapGridSpec (f: 'a -> 'b) (spec: GridSpec<'a>) : GridSpec<'b> =
       RepeatHeader = spec.RepeatHeader
       // Phase 1125 — nor does the export declaration.
       Exportable = spec.Exportable
+      // Phase 1892 — nor the row window; the declared total is a `Binding`,
+      // which is 'Msg-free, so it copies verbatim too.
+      WindowStateKey = spec.WindowStateKey
+      RowTotal = spec.RowTotal
       Columns = spec.Columns |> List.map (mapColumnErased f)
       OnRowClick = spec.OnRowClick |> Option.map (fun g -> g >> mapAction f)
       Editable = spec.Editable

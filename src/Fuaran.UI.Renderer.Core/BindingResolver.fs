@@ -1891,6 +1891,242 @@ let sliceRowsToPage (pageSize: int) (page: int) (rows: Row list) : Row list =
         |> List.skip (min count ((clamped - 1) * pageSize))
         |> List.truncate pageSize
 
+// ─── The row window (Phase 1892 — `windowStateKey` / `rowTotal`) ─────────────
+//
+// The fourth instance of the Phase-860 grid-behaviour rule, built on the page
+// machinery above and deliberately shaped like it: the grid names a State key,
+// the runtime reads a VALIDATED descriptor from it, the renderer writes it as
+// the viewport moves, and one implementation serves every render leg so a
+// server rendering and a client rendering cannot disagree about which rows are
+// in the window.
+//
+// Who slices extends the page rule by one key. A `Query` whose `dependsOn`
+// names the window key returns the window itself — the grid slices nothing, and
+// the total is the one the document DECLARES through `rowTotal`, since the host
+// alone knows how many rows its query matched. Otherwise the grid holds the rows
+// it presents (the whole set, or the page a host-paged query returned) and
+// windows them, and its total is their count.
+
+/// A usable window descriptor: the 0-based offset of the first row and how many
+/// rows the window holds.
+type RowWindow = { Offset: int; Count: int }
+
+/// What a grid presents once the window is applied: the rows, the index of the
+/// first of them in the range the window moves over, that range's size where it
+/// is known, and whether a window is in effect at all (which is what decides
+/// whether the grid annotates its rows as a slice).
+type PresentedWindow<'row> =
+    { Rows: 'row list
+      Offset: int
+      Total: int option
+      Windowed: bool }
+
+/// A JSON integer, from either spelling a store can hold: an int, or a float
+/// with no fractional part (`2.0` is `2`). Anything else is not an integer.
+let private jvalInt (jv: JVal) : int option =
+    match jv with
+    | JInt i -> Some i
+    | JFloat f when
+        floor f = f
+        && f >= float System.Int32.MinValue
+        && f <= float System.Int32.MaxValue
+        ->
+        Some(int f)
+    | _ -> None
+
+/// Validate a window descriptor value: usable only as an object whose `offset`
+/// is an integer >= 0 and whose `count` is an integer >= 1. Every other shape is
+/// `None` — NO window — which is the honest default: the grid presents every row
+/// it would have presented without the field, so no malformed value can hide a
+/// row. Split from the store read so the corpus's behaviour vectors, which carry
+/// the raw descriptor, run through the same validation the renderer does.
+let windowOfJVal (jv: JVal) : RowWindow option =
+    match jv with
+    | JObj fields ->
+        let memberInt name =
+            fields |> List.tryPick (fun (k, v) -> if k = name then jvalInt v else None)
+
+        match memberInt "offset", memberInt "count" with
+        | Some offset, Some count when offset >= 0 && count >= 1 -> Some { Offset = offset; Count = count }
+        | _ -> None
+    | _ -> None
+
+/// Read the window descriptor carried at `key` in the State store.
+let readWindowDescriptor (sources: BindingSources) (key: string) : RowWindow option =
+    Map.tryFind key sources.State
+    |> Option.bind jvalOfResolved
+    |> Option.bind windowOfJVal
+
+/// Does this source window HOST-side for the given window key? The page rule's
+/// test, on the other key: a `Query` whose `dependsOn` names it re-runs on a
+/// window change and returns the window itself.
+let sourceHostWindowsOn (source: Binding<'T>) (windowKey: string) : bool = sourceHostPagesOn source windowKey
+
+/// Resolve a declared `rowTotal`: an integer >= 0, or `None` — no declared total,
+/// so the total is unknown rather than guessed. Every store-held spelling goes
+/// through [[jvalOfResolved]] and the integer test above, so a total written as
+/// `120.0`, as an `int64` or as a JSON element reads the same, and a fractional
+/// or negative one is refused on every host — including under Fable, where an
+/// `unbox<int>` of `2.5` would succeed and smuggle a fraction into a count. A
+/// `Transform` / `Expr` total resolves through the scalar-slot path and must
+/// yield an integral cell.
+let resolveRowTotal (sources: BindingSources) (rowTotal: Binding<int> option) : int option =
+    let lifted (raw: obj) : int option =
+        jvalOfResolved raw |> Option.bind jvalInt
+
+    let integralCell (c: Fuaran.Core.Cell) : Result<int, string> =
+        match cellToFloat c with
+        | Ok f when
+            floor f = f
+            && f <= float System.Int32.MaxValue
+            && f >= float System.Int32.MinValue
+            ->
+            Ok(int f)
+        | Ok f -> Error(sprintf "a row total must be an integer (got %g)" f)
+        | Error m -> Error m
+
+    rowTotal
+    |> Option.bind (fun binding ->
+        match binding with
+        | Binding.Static(Some n) -> Some n
+        | Binding.Static None -> None
+        | Binding.State(key, fallback) ->
+            match Map.tryFind key sources.State with
+            | Some raw -> lifted raw
+            | None -> fallback
+        | Binding.Query(name, _, _) ->
+            // The accessor first — a host-authored Query may project the total out
+            // of a richer response — then the raw value, which is what the decoded
+            // identity accessor would have handed back anyway.
+            match resolve sources binding with
+            | Resolved v -> lifted (box v)
+            | _ -> Map.tryFind name sources.QueryResults |> Option.bind lifted
+        | Binding.Filter(name, fallback) ->
+            match Map.tryFind name sources.Filters with
+            | Some raw -> lifted raw
+            | None -> fallback
+        | other ->
+            match resolveScalarWith integralCell sources other with
+            | Resolved n -> Some n
+            | _ -> None)
+    |> Option.filter (fun n -> n >= 0)
+
+/// The window a grid presents over `range` — the rows it holds after sort and
+/// page. Pure, and the one function every render leg and the corpus's
+/// `grid-window/` vectors run through.
+///
+/// A host-windowed grid slices nothing: `range` IS the window the host returned,
+/// its position is the descriptor's offset (0 where there is none yet), and its
+/// total is the declared one. Otherwise the offset CLAMPS to
+/// `min(offset, max(0, n - count))`, so a window past the end — a filter that
+/// shrank the set under a scrolled viewport — presents the last full window
+/// rather than an empty grid, exactly as a page past the end clamps to the last
+/// page; and the total is the range's own row count, which is exact.
+let presentWindow
+    (hostWindows: bool)
+    (declaredTotal: int option)
+    (window: RowWindow option)
+    (range: 'row list)
+    : PresentedWindow<'row> =
+    if hostWindows then
+        { Rows = range
+          Offset = window |> Option.map _.Offset |> Option.defaultValue 0
+          Total = declaredTotal
+          Windowed = true }
+    else
+        let n = List.length range
+
+        match window with
+        | None ->
+            { Rows = range
+              Offset = 0
+              Total = Some n
+              Windowed = false }
+        | Some w ->
+            let offset = min w.Offset (max 0 (n - w.Count))
+
+            { Rows = range |> List.skip offset |> List.truncate w.Count
+              Offset = offset
+              Total = Some n
+              Windowed = true }
+
+/// Phase 1892 — the page count a HOST-paged grid can state once its total is
+/// declared: `None` where it is not, so the pager keeps to previous/next.
+let declaredPageCount (pageSize: int) (declaredTotal: int option) : int option =
+    declaredTotal |> Option.map (pageCountOf pageSize)
+
+/// Phase 1892 — does this grid's HOST return the window? Then the grid slices
+/// nothing, neither a page nor a window.
+let gridHostWindows (spec: DataGridSpec<'Msg>) : bool =
+    spec.WindowStateKey |> Option.exists (sourceHostWindowsOn spec.Source)
+
+/// Phase 1892 — the page a paged grid shows and the last page it can name, off
+/// the page rule plus the declared total. A client-paged grid counts its own
+/// rows; a HOST-paged grid clamps and states a page count only when the document
+/// declares `rowTotal`, and otherwise keeps to "page N" with previous/next —
+/// which is what it did before 1892. `None` for a grid that does not page.
+/// Returns `(pageKey, pageSize, page, hostPages, lastPage)`.
+let gridPage
+    (sources: BindingSources)
+    (spec: DataGridSpec<'Msg>)
+    (rowCount: int)
+    : (string * int * int * bool * int option) option =
+    match spec.PageStateKey, spec.PageSize with
+    | Some key, Some size when size > 0 ->
+        let hostPages = sourceHostPagesOn spec.Source key
+        let requested = readPageDescriptor sources key
+
+        let lastPage =
+            if hostPages then
+                declaredPageCount size (resolveRowTotal sources spec.RowTotal)
+            else
+                Some(pageCountOf size rowCount)
+
+        let page =
+            match lastPage with
+            | Some last -> min (max 1 requested) last
+            | None -> max 1 requested
+
+        Some(key, size, page, hostPages, lastPage)
+    | _ -> None
+
+/// Phase 1892 — the window a grid presents over `range` (the rows it holds after
+/// sort and page), or `None` for a grid naming no window key, which renders
+/// exactly as it did before 1892. The declared total is read only where the host
+/// windows; everywhere else the range is the grid's own and counts itself.
+let gridWindow (sources: BindingSources) (spec: DataGridSpec<'Msg>) (range: 'row list) : PresentedWindow<'row> option =
+    spec.WindowStateKey
+    |> Option.map (fun key ->
+        let hostWindows = sourceHostWindowsOn spec.Source key
+
+        let declared =
+            if hostWindows then
+                resolveRowTotal sources spec.RowTotal
+            else
+                None
+
+        presentWindow hostWindows declared (readWindowDescriptor sources key) range)
+
+/// Phase 1892 — the ARIA row annotations a windowed grid carries: the table's
+/// `aria-rowcount` (the total plus the header row, `-1` where the total is
+/// unknown) and each presented row's `aria-rowindex` (its 0-based index in the
+/// range plus 2, the header being row 1). `None` where no window is in effect,
+/// so an unwindowed grid's markup is unchanged.
+let windowRowCount (window: PresentedWindow<'row> option) : int option =
+    window
+    |> Option.filter _.Windowed
+    |> Option.map (fun w ->
+        match w.Total with
+        | Some t -> t + 1
+        | None -> -1)
+
+/// The `aria-rowindex` of the presented row at `rowIndex` (0-based within the
+/// presented rows), or `None` where no window is in effect.
+let windowRowIndex (window: PresentedWindow<'row> option) (rowIndex: int) : int option =
+    window
+    |> Option.filter _.Windowed
+    |> Option.map (fun w -> w.Offset + rowIndex + 2)
+
 /// Phase 750 — lower a `CellKindErased.TonedPill` for one row: the named field's
 /// text IS the pill's label, and its tone is the map's entry for that text, or
 /// `defaultTone` for a value the map does not mention.

@@ -79,6 +79,8 @@ let private gridWith (id: string) (col: ColumnErased<Msg>) : Node<Msg> =
               StaticRows = None
               KeepRowsTogether = false
               RepeatHeader = false
+              WindowStateKey = None
+              RowTotal = None
               Exportable = false }
         ))
 

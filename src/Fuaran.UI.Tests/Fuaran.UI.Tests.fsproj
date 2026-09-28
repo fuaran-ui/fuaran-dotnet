@@ -247,6 +247,7 @@
     <!-- GridDisplayTests pins Phase 425's row-field projection contract. -->
     <Compile Include="GridDisplayTests.fs" />
     <Compile Include="GridReorderTests.fs" />
+    <Compile Include="GridWindowTests.fs" />
     <!-- StateStoreScopingTests pins Phase 128's reset () test-isolation seam
          (clears the single-process store + subscriber list between cases). -->
     <Compile Include="StateStoreScopingTests.fs" />
@@ -437,6 +438,10 @@
     <Compile Include="HostTypeDecoderTests.fs" />
     <!-- Phase 1816 - JSON Schema -> Form: the mapping table, validity, refusal paths, determinism. -->
     <Compile Include="SchemaFormTests.fs" />
+    <!-- Phase 1817 - host emission limits: each limit at N and N+1, the one-walk meter, the unbounded default. -->
+    <Compile Include="HostLimitsTests.fs" />
+    <!-- Phase 1889 - charts and grids checked against their data: the six binding-check corpus fixtures, graded and located. -->
+    <Compile Include="BindingCheckCorpusTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
