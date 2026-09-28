@@ -60,6 +60,15 @@ jobs:
         with:
           path: proofs/.fstar
           key: fstar-${{ runner.os }}-${{ hashFiles('proofs/fstar-pin.json') }}
+      # NU1301: nuget.config declares a `local` folder source three levels above this repo for
+      # inner-loop iteration. It does not exist on the runner, and NuGet hard-errors on a missing
+      # folder source rather than treating it as empty — so mint it, as `ci.yml` does. The leg's
+      # HOST step builds `src/Fuaran.UI.Idl.Tests`, whose `Fuaran.Core.*` pins then restore
+      # anonymously from nuget.org. Without this the models verify and the job still ends red, at
+      # the restore, on the first run after a pin moves past what the runner happens to hold.
+      - name: Create the empty local NuGet feed dir (NU1301 workaround)
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path (Join-Path $env:GITHUB_WORKSPACE '..\..\..\local-nuget-feed') | Out-Null
       # -Runs 1, NOT the kit's -Runs 3, and the reduction is measured rather than convenient.
       # `VocabularyProofs` verifies in 5040s cold on a fast dev machine (proofs/modules.json), so
       # three cold runs of it alone is over four hours before anything else starts, against a
