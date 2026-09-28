@@ -1,0 +1,11 @@
+{
+  "kind": "version",
+  "producer": "fuaran-dotnet",
+  "$note": "The files this repository DERIVES from its own <Version>. docs/prompt-pack/manifest.json carries a languageVersion stamp read from Directory.Build.props, so a version cut re-emits it. Until this declaration existed a cut left the manifest naming the previous version and the gate's AuthoringPack drift target red, with a message that points at the corpus rather than at the one line that moved (the 0.87.0 cut, 2026-09-28). The emit rewrites every authoring-pack file that is out of date; after a cut that is the manifest alone. No copy of the manifest is held in another repository, so no copiedTo is declared.",
+  "derives": [
+    {
+      "emit": "dotnet fsi docs/tools/authoring-pack.fsx --write",
+      "writes": "docs/prompt-pack/manifest.json"
+    }
+  ]
+}
