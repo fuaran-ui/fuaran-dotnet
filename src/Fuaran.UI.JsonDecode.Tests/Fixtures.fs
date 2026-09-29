@@ -8347,6 +8347,99 @@ let bindingCheckUnchecked: Node<obj> =
         [ bindingCheckChart "spend-chart" refFeed "region" [ "revenue" ] false
           bindingCheckGrid "spend-grid" (Binding.Query("spend", unbox, None)) [ "region"; "revenue" ] (Some "region") ]
 
+// ── Phase 1909 — grid column rules follow the cell kind ─────────────────────
+//
+// The same embedded table and `groupBy` as Phase 1889's binding-check fixtures
+// (it produces exactly `dept:string, total:int`), so a finding here is about a
+// column's CELL KIND and nothing else. An ACTION column (Button / ButtonGroup)
+// draws its own label and never reads a field; a TonedPill cell's own `field` is
+// a column reference. Each action cell carries an `onClick`, which crosses the
+// wire as the `"<closure>"` sentinel — the shape an emitted action column takes,
+// and one every codec host re-encodes byte-identically (a host whose `onClick`
+// is required cannot represent its absence).
+
+let private columnKindColumn (label: string) (field: string option) (kind: CellKindErased<obj>) : ColumnErased<obj> =
+    { Label = label
+      Value = None
+      Field = field
+      Sortable = None
+      Editable = None
+      Format = CellFormat.None
+      Kind = kind
+      Width = ColumnWidth.Auto }
+
+let private columnKindGrid (id: string) (columns: ColumnErased<obj> list) : Node<obj> =
+    node
+        id
+        (NodeKind.DataGrid(
+            { SortStateKey = Some "spend-sort"
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort = None
+              Source = bindingCheckFeed
+              RowKey = None
+              RowKeyField = Some "dept"
+              Columns = columns
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false
+              Exportable = true
+              WindowStateKey = None
+              RowTotal = None }
+        ))
+        None
+
+let private columnKindButton: CellKindErased<obj> =
+    CellKindErased.Button(TextSource.Literal "Open", Some(fun _ -> Action.Chain []))
+
+let private columnKindButtonGroup: CellKindErased<obj> =
+    CellKindErased.ButtonGroup
+        [ { Label = TextSource.Literal "Approve"
+            OnClick = Some(fun _ -> Action.Chain []) }
+          { Label = TextSource.Literal "Reject"
+            OnClick = Some(fun _ -> Action.Chain []) } ]
+
+let private columnKindPill (field: string) : CellKindErased<obj> =
+    CellKindErased.TonedPill(field, Map [ "eng", ToneVariant.Info; "sales", ToneVariant.Success ], ToneVariant.Default)
+
+/// Phase 1909 — the CONTROL: a sortable, exportable grid with a Text and a
+/// Numeric column, a TonedPill whose own field the pipeline produces, and a
+/// Button and a ButtonGroup column that declare NO field. Clean outright — no
+/// FUARAN077 on the field-less action columns — and graded checked.
+let gridActionColumnClean: Node<obj> =
+    columnKindGrid
+        "grid-action-column-clean"
+        [ columnKindColumn "Department" (Some "dept") CellKindErased.Text
+          columnKindColumn "Total" (Some "total") CellKindErased.Numeric
+          columnKindColumn "Team" (Some "dept") (columnKindPill "dept")
+          columnKindColumn "Open" None columnKindButton
+          columnKindColumn "Review" None columnKindButtonGroup ]
+
+/// Phase 1909 — FUARAN163: the shape emitters were steered into — a Button
+/// column carrying an invented `field: "action"`, which the pipeline does not
+/// produce. The ONE finding is the "drop it" warning; FUARAN114 does not fire,
+/// because nothing reads an action column's field.
+let gridActionColumnField: Node<obj> =
+    columnKindGrid
+        "grid-action-column-field"
+        [ columnKindColumn "Department" (Some "dept") CellKindErased.Text
+          columnKindColumn "Actions" (Some "action") columnKindButton ]
+
+/// Phase 1909 — FUARAN114's TonedPill sub-case: the pill's OWN field names
+/// `status`, which the closed walk proves the pipeline does not produce. The one
+/// finding is at `$.kind.columns[1].kind.field`.
+let gridTonedPillUngrounded: Node<obj> =
+    columnKindGrid
+        "grid-toned-pill-ungrounded"
+        [ columnKindColumn "Department" (Some "dept") CellKindErased.Text
+          columnKindColumn "Status" (Some "dept") (columnKindPill "status") ]
+
 
 let allNodes: (string * Node<obj>) list =
     [ "Display/Heading", heading
@@ -8531,6 +8624,12 @@ let allNodes: (string * Node<obj>) list =
       bindingCheckGridUngrounded
       "Layout/Box (Phase 1889 - UNCHECKED: a chart over a Transform of an undeclared Ref and a grid over a Query; nothing refused)",
       bindingCheckUnchecked
+      "Visualisation/DataGrid (Phase 1909 - the CONTROL: field-less Button and ButtonGroup action columns and a grounded TonedPill; clean, graded checked)",
+      gridActionColumnClean
+      "Visualisation/DataGrid (Phase 1909 - FUARAN163: a Button action column declaring a field; the only finding, no FUARAN114)",
+      gridActionColumnField
+      "Visualisation/DataGrid (Phase 1909 - FUARAN114 TonedPill sub-case: the pill's own field names a column the pipeline does not produce)",
+      gridTonedPillUngrounded
       "Layout/Box (master-detail — grid + detail card State-bound with a pre-selected defaultValue)",
       masterDetailPreselected
       "Layout/Box (master-detail — Selection defaultValue naming a NON-FIRST row: prune-vs-seed is observable)",

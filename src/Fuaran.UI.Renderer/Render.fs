@@ -6721,9 +6721,14 @@ and private renderGrid
 
                     renderCellValue col.Format value
 
-                (spec.Columns |> List.map _.Label),
+                // Phase 1909 — an action column (Button / ButtonGroup) carries
+                // no data, so the file carries no column for it, even where a
+                // pre-existing tree still declares a `field` on one.
+                let exported = spec.Columns |> List.filter (Fuaran.UI.GridColumn.isAction >> not)
+
+                (exported |> List.map _.Label),
                 (sorted
-                 |> List.map (fun row -> spec.Columns |> List.map (fun col -> cellText col row)))
+                 |> List.map (fun row -> exported |> List.map (fun col -> cellText col row)))
 
             Html.div
                 [ prop.className "fuaran-grid-exportable"
@@ -7339,7 +7344,10 @@ and private renderGrid
                     // opts out. `true` cannot turn the affordance on where the
                     // grid names no sort state key — FUARAN094 refuses that
                     // pre-emit, and the renderer simply does not draw it.
-                    match spec.SortStateKey, col.Field, col.Sortable with
+                    // Phase 1909 — the field is read through `GridColumn.dataField`,
+                    // which is `None` on an action column whatever it declares,
+                    // so a Button / ButtonGroup column never offers a sort.
+                    match spec.SortStateKey, Fuaran.UI.GridColumn.dataField col, col.Sortable with
                     | Some sortKey, Some _, (None | Some true) ->
                         let active =
                             match sortDescriptor with
@@ -7606,9 +7614,13 @@ and private renderGrid
 
                                 renderCellValue col.Format value
 
-                            (spec.Columns |> List.map _.Label),
-                            (rows
-                             |> List.map (fun row -> spec.Columns |> List.map (fun col -> cellText col row)))
+                            // Phase 1909 — an action column carries no data, so
+                            // the file carries no column for it (the AG-Grid
+                            // leg's export makes the same cut).
+                            let exported = spec.Columns |> List.filter (Fuaran.UI.GridColumn.isAction >> not)
+
+                            (exported |> List.map _.Label),
+                            (rows |> List.map (fun row -> exported |> List.map (fun col -> cellText col row)))
 
                         Html.div
                             [ prop.className "fuaran-grid-exportable"

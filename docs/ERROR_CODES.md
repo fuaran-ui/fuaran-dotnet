@@ -77,7 +77,7 @@ The build-time validator's findings carry `FUARAN###` codes (e.g. `FUARAN050` `S
 **Two families share this band, and only one of them is the build-time walker.** The paragraph
 above describes the walker, which reads F# *source* — but the larger family by far is the
 **pre-emit validator**, which reads a *tree* just before it goes on the wire and raises the whole
-`FUARAN047`–`FUARAN162` range. A code you have in hand belongs to whichever family reported it, and
+`FUARAN047`–`FUARAN163` range. A code you have in hand belongs to whichever family reported it, and
 the two are enumerated in different places: the pre-emit family's codes, severities and message
 shapes are published as data in the conformance corpus's `validator/defect-vocabulary.json`
 (generated from the reference host, never hand-maintained), and each host declares which of them it
@@ -98,6 +98,23 @@ lists the columns that pipeline actually yields. It stands down wherever that se
 those are the host's to fill and the tree cannot know their columns. Its siblings: `FUARAN087` (the
 field is produced but the wrong type), `FUARAN097` (a temporal x-axis over a non-date column), and
 `FUARAN114`, the same rule on the read side of a grid.
+
+**Grid columns follow their cell kind (Phase 1909) — `FUARAN077`, `FUARAN114`, `FUARAN163`.** An
+**action column** — cell kind `Button` or `ButtonGroup` — draws its own label and hands the whole
+row to its handler, so it never displays a field, and it carries **no `field`**. Three consequences:
+
+| Code | Severity | On an action column | Repair |
+|---|---|---|---|
+| **`FUARAN077`** | Warning | Not raised: a field-less action column is the correct shape, not a blank one. Still raised on a field-less data column. | Give a data column a `field`. |
+| **`FUARAN114`** | Error | Not raised: an action column's field is read by nothing, so it is not grounded. | — |
+| **`FUARAN163`** | Warning | Raised when an action column declares a `field` — it is never displayed, and sort and export ignore it in every host. | Drop the field. |
+
+A **`TonedPill`** cell's own `field` IS a column reference — the pill's label and its tone key — and
+is grounded as a **`FUARAN114` sub-case** (defect case `PillFieldUngrounded`, naming the column):
+the same window and the same repair (fix the name, or change the pipeline), so it keeps the code. A
+closed schema walk refuses a pill naming a column the pipeline does not produce; an open walk stands
+down and the grid grades unchecked. Unrefused, the pill would draw empty, in the default tone, on
+every row.
 
 **`FUARAN158`–`FUARAN162` (Error) — the tree is more than this host takes (Phase 1817).** A host
 declares an emission budget as a `HostLimits` value and validates with

@@ -139,6 +139,10 @@ type PreEmitDefect =
     /// closure NOR a declarative `Field` (Phase 425) — the column renders
     /// blank in every host. Always give a decoded column a `field`. Carries
     /// the grid node's id and the column label.
+    ///
+    /// Not raised on an ACTION column (`Button` / `ButtonGroup` cell, Phase
+    /// 1909): that cell draws its own label and never displays a field, so a
+    /// field-less action column is the correct shape, not a blank one.
     | BlankGridColumn of nodeId: string * columnLabel: string
     /// **FUARAN078 (Warning)**. A `DataGrid` carries NEITHER a `RowKey`
     /// closure NOR a declarative `RowKeyField` (Phase 425) — no stable row
@@ -1562,8 +1566,12 @@ type PreEmitDefect =
     /// statically-known schema of the `Binding.Transform` the grid reads
     /// (Phase 1149, widened to the whole pipeline by Phase 1486). The row
     /// projection resolves the name against each row and
-    /// finds nothing, so the cell renders blank — or, for `rowKeyField`, every
-    /// row keys off the same empty string and row identity silently collapses.
+    /// finds nothing, so a cell that displays the field renders blank, and sort
+    /// and export read an empty key — or, for `rowKeyField`, every row keys off
+    /// the same empty string and row identity silently collapses. (Phase 1909:
+    /// an action column's field is not grounded at all — see FUARAN163 — and
+    /// the message no longer claims a blank cell for a kind that does not
+    /// display the field.)
     /// A blank cell is indistinguishable from a legitimately empty value, which
     /// is why this is worth a code at all.
     ///
@@ -1602,6 +1610,37 @@ type PreEmitDefect =
     /// the wrong source, and under a pipeline the produced set is no longer
     /// readable off the tree.
     | GridFieldUngrounded of nodeId: string * field: string * schemaColumns: string list
+    /// **FUARAN114 (Error), the `TonedPill` sub-case (Phase 1909)**. A column's
+    /// `TonedPill` cell names, in its OWN `field`, a column the grid's source
+    /// provably cannot produce. That field is the pill's label and its tone-map
+    /// key at once, so a wrong name draws an empty pill in the default tone —
+    /// a silent fallback indistinguishable from a legitimately unmapped value.
+    ///
+    /// A sub-case of FUARAN114 rather than a code of its own because the
+    /// defect and the repair are FUARAN114's exactly — a column reference the
+    /// source does not produce; fix the name or the pipeline — judged over the
+    /// same `SchemaWalk` window with the same restraint (a closed walk refuses,
+    /// an open one stands down). What differs is only WHERE the name was
+    /// written, so this case carries the column label that locates the cell.
+    ///
+    /// Carries the grid node's id, the column label, the pill's field, and the
+    /// PRODUCED column set.
+    | PillFieldUngrounded of nodeId: string * columnLabel: string * field: string * schemaColumns: string list
+    /// **FUARAN163 (Warning)**. An ACTION column — cell kind `Button` or
+    /// `ButtonGroup` (Phase 1909) — declares a `field`. The cell draws a fixed
+    /// label and hands the whole row to its handler, so the field is never
+    /// displayed, and sort and export ignore an action column's field in every
+    /// host. It does nothing, so drop it: an action column carries no `field`
+    /// (operator ruling 2026-09-28).
+    ///
+    /// The rule exists because the opposite advice used to be given: FUARAN077
+    /// warned that a field-less Button column "renders blank", emitters invented
+    /// a field to satisfy it, and FUARAN114 then refused the invented name. An
+    /// action column now raises neither FUARAN077 nor FUARAN114; this warning
+    /// is the whole of what a declared field on one earns.
+    ///
+    /// Carries the grid node's id, the column label and the declared field.
+    | ActionColumnField of nodeId: string * columnLabel: string * field: string
 
     /// **FUARAN137 (Error)**. A chart annotation whose value is NON-FINITE —
     /// NaN, or either infinity (Phase 1490, §4l).
@@ -2785,10 +2824,27 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         "FUARAN114",
         DefectSeverity.Error,
         sprintf
-            "grid '%s' names field '%s', absent from the schema its own source PRODUCES [%s] — the row projection resolves it against nothing, so the cell renders blank (or, for rowKeyField, every row shares one empty key and row identity collapses); fix the name, or change the pipeline so it produces the column (Phase 1149/1486)"
+            "grid '%s' names field '%s', absent from the schema its own source PRODUCES [%s] — everything that reads the name resolves it against nothing: a cell whose kind displays the column's field shows an empty value, sort and export read an empty key, and for rowKeyField every row shares one empty key and row identity collapses; fix the name, or change the pipeline so it produces the column (Phase 1149/1486)"
             nodeId
             field
             (String.concat ", " schemaColumns)
+    | PreEmitDefect.PillFieldUngrounded(nodeId, columnLabel, field, schemaColumns) ->
+        "FUARAN114",
+        DefectSeverity.Error,
+        sprintf
+            "grid '%s' column '%s' has a TonedPill cell naming field '%s', absent from the schema its own source PRODUCES [%s] — the pill's label and its tone key both resolve against nothing, so every row draws an empty pill in the default tone; fix the name, or change the pipeline so it produces the column (Phase 1909)"
+            nodeId
+            columnLabel
+            field
+            (String.concat ", " schemaColumns)
+    | PreEmitDefect.ActionColumnField(nodeId, columnLabel, field) ->
+        "FUARAN163",
+        DefectSeverity.Warning,
+        sprintf
+            "grid '%s' column '%s' is an action column (Button / ButtonGroup cell) and declares field '%s' — an action cell draws its own label and hands the whole row to its handler, so the field is never displayed, and sort and export ignore it; drop the field: an action column carries none (Phase 1909)"
+            nodeId
+            columnLabel
+            field
 
 // ── The schema-grounding window FUARAN086 and FUARAN114 share (Phase 1486) ──
 //
@@ -3744,7 +3800,15 @@ let private validateCore
             let nodeIdStr = n.Id
 
             for col in spec.Columns do
-                if col.Value.IsNone && col.Field.IsNone then
+                // Phase 1909 — an ACTION column (Button / ButtonGroup) draws its
+                // own label and never displays a field, so a field-less one is
+                // not blank and FUARAN077 stands down; a declared field on one is
+                // the dead weight FUARAN163 reports instead.
+                if GridColumn.isAction col then
+                    col.Field
+                    |> Option.iter (fun field ->
+                        defects.Add(PreEmitDefect.ActionColumnField(nodeIdStr, col.Label, field)))
+                elif col.Value.IsNone && col.Field.IsNone then
                     defects.Add(PreEmitDefect.BlankGridColumn(nodeIdStr, col.Label))
 
                 // FUARAN154 (Phase 1734) — FUARAN153's class at a column: a
@@ -3844,8 +3908,23 @@ let private validateCore
                      // Reported per offending name rather than once per grid: a grid
                      // pointed at the wrong source names several missing columns, and
                      // the author repairs each of them.
+                     //
+                     // Phase 1909 — an action column's field is read by nothing
+                     // (FUARAN163 above says drop it), so it is not grounded: an
+                     // Error about a name no host reads would push an emitter
+                     // into inventing one. A TonedPill cell's OWN field IS a
+                     // column reference — the pill's label and tone key — and is
+                     // grounded here, in the same window, as FUARAN114's sub-case.
                      for col in spec.Columns do
-                         col.Field |> Option.iter ground
+                         if not (GridColumn.isAction col) then
+                             col.Field |> Option.iter ground
+
+                         match col.Kind with
+                         | CellKindErased.TonedPill(pillField, _, _) when not (SchemaWalk.has pillField produced) ->
+                             defects.Add(
+                                 PreEmitDefect.PillFieldUngrounded(nodeIdStr, col.Label, pillField, schemaColumns)
+                             )
+                         | _ -> ()
 
                      spec.RowKeyField |> Option.iter ground
              | _ -> ())
@@ -5500,8 +5579,19 @@ let private referenceSlots (case: string) (reader: string) (kindPath: string) (k
             | Some(JArr items) ->
                 items
                 |> List.mapi (fun i col ->
-                    jString (jField "field" col)
-                    |> Option.map (fun f -> f, kindPath + ".columns[" + string i + "].field"))
+                    // Phase 1909 — an action column's field is never grounded,
+                    // so it is no slot a FUARAN114 finding can be about.
+                    let action =
+                        match jField "kind" col |> Option.bind (jField "$type") |> jString with
+                        | Some "Button"
+                        | Some "ButtonGroup" -> true
+                        | _ -> false
+
+                    if action then
+                        None
+                    else
+                        jString (jField "field" col)
+                        |> Option.map (fun f -> f, kindPath + ".columns[" + string i + "].field"))
                 |> List.choose id
             | _ -> []
 
@@ -5510,7 +5600,24 @@ let private referenceSlots (case: string) (reader: string) (kindPath: string) (k
             |> Option.map (fun f -> f, kindPath + ".rowKeyField")
             |> Option.toList
 
-        cols @ key
+        // Phase 1909 — FUARAN114's TonedPill sub-case names the cell's OWN
+        // field, one level down, so it has slots of its own.
+        let pills =
+            match jField "columns" kind with
+            | Some(JArr items) ->
+                items
+                |> List.mapi (fun i col ->
+                    match jField "kind" col with
+                    | Some cellKind when jString (jField "$type" cellKind) = Some "TonedPill" ->
+                        jString (jField "field" cellKind)
+                        |> Option.map (fun f -> f, kindPath + ".columns[" + string i + "].kind.field")
+                    | _ -> None)
+                |> List.choose id
+            | _ -> []
+
+        match case with
+        | "114-pill" -> pills
+        | _ -> cols @ key
 
 /// Every chart and grid in `node`, graded, with `validate`'s findings about each
 /// located by JSONPath and paired with the schema its source produces.
@@ -5595,6 +5702,7 @@ let bindingChecks (node: Node<'Msg>) : BindingCheck list =
             | PreEmitDefect.ChartFieldTypeMismatch(n, f, _) when n = id && reader = "Chart" -> Some("087", f)
             | PreEmitDefect.ChartTemporalXNotDate(n, f, _) when n = id && reader = "Chart" -> Some("097", f)
             | PreEmitDefect.GridFieldUngrounded(n, f, _) when n = id && reader = "DataGrid" -> Some("114", f)
+            | PreEmitDefect.PillFieldUngrounded(n, _, f, _) when n = id && reader = "DataGrid" -> Some("114-pill", f)
             | _ -> None
 
         let diagnostics =

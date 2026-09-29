@@ -1804,7 +1804,10 @@ let sortRowsByDescriptor
     match descriptor with
     | None -> rows
     | Some(colIndex, direction) ->
-        match List.tryItem colIndex columns |> Option.bind _.Field with
+        // Phase 1909 — `GridColumn.dataField`: an action column (Button /
+        // ButtonGroup) sorts nothing even where a pre-existing tree still
+        // declares a field on it, so a descriptor naming one is ignored.
+        match List.tryItem colIndex columns |> Option.bind Fuaran.UI.GridColumn.dataField with
         | None -> rows
         | Some field ->
             rows

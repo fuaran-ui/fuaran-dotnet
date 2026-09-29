@@ -7922,6 +7922,20 @@ where each finding sits in the wire document.
 | `Fuaran.UI.AiTools` — `Tools` | New: `recordBindingChecks ctx root turnId`, which records each finding into the runtime-error sink `getRuntimeErrors` drains (code, reader node id, message + JSONPath + produced schema). | Nobody; additive. |
 | Corpus — `nodes/binding-check-*.json` | Six node round-trip fixtures: a control, one negative per grounding code, and an unchecked document. Certified here by `BindingCheckCorpusTests` and by the TypeScript host over its bundled snapshot. | Every roster codec host round-trips six more documents; no wire shape is new. |
 
+**fuaran#1909 — BREAKING on `Fuaran.UI` at one closed union (`PreEmitDefect` gains two cases);
+BEHAVIOURAL at the FUARAN077 / FUARAN114 verdicts and at the grid's sort and export; ADDITIVE
+otherwise; NO wire change; RIDES this slot.** Grid column rules follow the cell kind: an ACTION column
+(cell kind `Button` / `ButtonGroup`) carries no `field`, and a `TonedPill` cell's own `field` is
+grounded against the source's produced schema.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI` — `GridColumn` (new module in `Fuaran.fs`) | New: `GridColumn.isAction` and `GridColumn.dataField` (the field sort and export read — `None` on an action column whatever it declares). One home for the rule, read by the validator, both renderer legs and the row sorter. | Nobody; additive. |
+| `Fuaran.UI` — `PreEmitDefect` | Gains `ActionColumnField` — **FUARAN163**, Warning, `nodeId * columnLabel * field` ("drop it") — and `PillFieldUngrounded` — **FUARAN114**'s TonedPill sub-case, Error, `nodeId * columnLabel * field * schemaColumns`. | An exhaustive match over `PreEmitDefect`. |
+| `Fuaran.UI` — `PreEmitValidate` | FUARAN077 no longer fires on an action column; FUARAN114 no longer grounds an action column's field (FUARAN163 replaces both); FUARAN114's message no longer claims "the cell renders blank" unconditionally. `bindingChecks` locates the pill sub-case at `columns[i].kind.field` and never locates a finding at an action column's field. | An emitter that invented `field: "action"` to satisfy FUARAN077 now gets a Warning where it got an Error. |
+| `Fuaran.UI.Renderer` / `Fuaran.UI.Renderer.Core` | Neither leg offers a sort affordance on an action column (`sortableHeader`, `AgGridPlan.columnSortable`), `sortRowsByDescriptor` ignores a descriptor naming one, and both export legs omit it. A pre-existing tree that still declares a `field` on an action column keeps rendering exactly as before; sort and export ignore the field. The server renderer is unaffected: it draws no per-column sort affordance (a bound grid is a placeholder, a `staticRows` table has no cell kinds). | A reader who sorted by a Button column's invented field loses that sort — it sorted a column the grid did not display. |
+| Corpus — `nodes/grid-action-column-*.json`, `nodes/grid-toned-pill-ungrounded.json`; `validator/defect-vocabulary.json`; this repo's `validator-coverage.json` | Three node round-trip fixtures (a clean control, one per new code or sub-case), certified here by `GridColumnKindTests`; the vocabulary and coverage regenerated with FUARAN163 and the sub-case. | Every roster codec host round-trips three more documents; no wire shape is new. |
+
 **fuaran#1892 — BREAKING on `Fuaran.UI` at two record shapes and on the C# facade's positional
 grid constructor; ADDITIVE on the wire (two optional `DataGrid` fields, NO profile step);
 BEHAVIOURAL at FUARAN075; RIDES this slot.** The virtualised `DataGrid`: a row window

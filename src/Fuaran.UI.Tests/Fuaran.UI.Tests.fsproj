@@ -442,6 +442,7 @@
     <Compile Include="HostLimitsTests.fs" />
     <!-- Phase 1889 - charts and grids checked against their data: the six binding-check corpus fixtures, graded and located. -->
     <Compile Include="BindingCheckCorpusTests.fs" />
+    <Compile Include="GridColumnKindTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

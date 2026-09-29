@@ -1146,6 +1146,31 @@ module Column =
 
     let withWidth (width: ColumnWidth) (col: Column<'Msg>) : Column<'Msg> = { col with Width = width }
 
+// ─── Grid column rules that follow the cell kind (Phase 1909) ───────────────
+
+/// What a tree-level grid column's CELL KIND says about its `field`. One home
+/// for the rule, read by the pre-emit validator, the first-party and AG-Grid
+/// renderer legs, and the row sorter alike, so no two of them can disagree
+/// about which columns sort and export.
+[<RequireQualifiedAccess>]
+module GridColumn =
+    /// An ACTION column: its cell kind is `Button` or `ButtonGroup`. Such a cell
+    /// draws a fixed label and hands the whole row to its handler, so it never
+    /// displays the column's `field` — the operator ruling (2026-09-28) is that
+    /// an action column carries no `field` at all. A pre-existing tree that
+    /// still declares one keeps rendering; sort and export ignore it.
+    let isAction (col: ColumnErased<'Msg>) : bool =
+        match col.Kind with
+        | CellKindErased.Button _
+        | CellKindErased.ButtonGroup _ -> true
+        | _ -> false
+
+    /// The field the column's DATA is read through — what sort and export key
+    /// off. `None` on an action column whatever it declares, and on a column
+    /// that declares no field.
+    let dataField (col: ColumnErased<'Msg>) : string option =
+        if isAction col then None else col.Field
+
 // ─── Drawing style helpers (Phase 877) ───────────────────────────────────────
 
 /// Authoring helpers over `DrawStyle`. The record-with idiom

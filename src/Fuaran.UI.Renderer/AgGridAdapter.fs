@@ -245,11 +245,17 @@ let private buildColumnDef<'Msg>
     (col: ColumnErased<'Msg>)
     : obj =
     // Phase 425 — the closure wins; else the declarative `Field` projects the row property; else empty.
+    // Phase 1909 — read through `GridColumn.dataField`, so an action column's
+    // value is empty whatever field a pre-existing tree declares on it: its
+    // cell renderer draws the buttons, and AG's own value readers (the
+    // comparator's inputs, its filter) find no data there. The per-column
+    // `sortable` it is handed is `AgGridPlan.columnSortable`'s, already false
+    // on an action column.
     let cellValue (row: Row) : CellValue =
         match col.Value with
         | Some accessor -> accessor row
         | None ->
-            match col.Field with
+            match Fuaran.UI.GridColumn.dataField col with
             | Some field -> BindingResolver.projectRowFieldValue row field
             | None -> CellValue.Empty
 

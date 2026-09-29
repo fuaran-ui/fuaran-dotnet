@@ -352,10 +352,12 @@ type Plan =
 
 /// Phase 861's per-column sort narrowing, in the spelling `Render.fs`'s
 /// `sortableHeader` uses: `Some sortKey, Some field, (None | Some true)`.
+/// Phase 1909 — the field is `GridColumn.dataField`, so an action column
+/// (Button / ButtonGroup) is never sortable, even where it declares a field.
 let columnSortable (spec: GridSpec<'Msg>) : bool list =
     spec.Columns
     |> List.map (fun col ->
-        match spec.SortStateKey, col.Field, col.Sortable with
+        match spec.SortStateKey, Fuaran.UI.GridColumn.dataField col, col.Sortable with
         | Some _, Some _, (None | Some true) -> true
         | _ -> false)
 
