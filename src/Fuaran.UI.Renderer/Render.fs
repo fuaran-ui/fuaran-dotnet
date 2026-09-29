@@ -2916,6 +2916,152 @@ let private announceTransfer (nodeId: string) (message: string) : unit =
     if not (isNull (box el)) then
         el.textContent <- message
 
+// ─── The grid window viewport (Phase 1911) ─────────────────────────────────
+//
+// The interactive half of `windowStateKey` on the reference host. Phase 1892
+// gave this renderer the READ — `renderGrid` presents the window the key holds
+// and subscribes to the key — but nothing here ever WROTE it, so an F# client
+// showed the first window forever. A grid declaring the key now renders inside
+// a vertical scroll container that measures the visible rows on mount, on every
+// render, on scroll and on resize, and writes `{"offset", "count"}` through the
+// same `SetState` route the pager's `{"page": N}` takes. The measurement and the
+// dedupe are `BindingResolver.stepWindowWriter` — pure, shared with the .NET
+// tests, and parity-locked with the TS renderer's `GridWindowViewport` — so an
+// unchanged window is never written and a write that re-renders cannot loop.
+//
+// The scroll extent of the whole range is kept by a spacer row before the
+// window and one after it (none after where the total is unknown), so the
+// scrollbar describes the set rather than the window. No `fuaran-*` class is
+// minted: the container and spacers are structure, styled inline, exactly as
+// the TS viewport styles them. A grid declaring no window key never reaches
+// this component and emits byte-identical DOM to before; on .NET (no React) the
+// call site renders the table without the viewport and writes nothing, which
+// is the static-host rule.
+//
+// This component holds hooks, which the rest of this file deliberately does
+// not; it is mounted through React's own `createElement` for the reason
+// `ComboboxControl` and `PopoverSurface` are — a stable module-level function
+// component, so its refs survive re-renders.
+//
+// Finding (Phase 1911, recorded where the next reader meets it): the phase's
+// fourth task asked for "the F# client's window row" in `render-fidelity.json`
+// to move from "reads" to "reads and writes". The manifest carries no such row
+// — it declares per-NodeKind source / fallback / client-rich tiers, render
+// obligations, intrinsic ARIA and speech rulings, and nothing about which host
+// reads or writes a state key — so there was no row to move, and inventing a
+// host-capability axis in that generated artefact is a wire-contract change,
+// not a fidelity update.
+
+/// Measure a grid viewport: `[| scrollTop; headHeight; rowHeight; clientHeight |]`,
+/// a `0` wherever the element is missing or has no layout (the pure measure
+/// then falls back as the TS viewport does).
+[<Fable.Core.Emit("""(function(el){
+  if (el == null) return [0, 0, 0, 0];
+  var row = el.querySelector('tbody > tr.fuaran-grid-row');
+  var head = el.querySelector('thead');
+  return [
+    el.scrollTop || 0,
+    head != null ? head.getBoundingClientRect().height : 0,
+    row != null ? row.getBoundingClientRect().height : 0,
+    el.clientHeight || 0
+  ];
+})($0)""")>]
+let private measureGridViewport (el: obj) : float array = Fable.Core.Util.jsNative
+
+/// Re-measure when the viewport is resized (the visible count changes). A host
+/// without `ResizeObserver` (an older test DOM) keeps the scroll and render
+/// triggers and loses only this one.
+[<Fable.Core.Emit("""(function(el, onResize){
+  if (el == null || typeof ResizeObserver === 'undefined') return function(){};
+  var observer = new ResizeObserver(function(){ onResize(); });
+  observer.observe(el);
+  return function(){ observer.disconnect(); };
+})($0, $1)""")>]
+let private observeViewportResize (el: obj) (onResize: unit -> unit) : unit -> unit = Fable.Core.Util.jsNative
+
+[<Fable.Core.Import("createElement", "react")>]
+let private createViewportElement (componentFn: obj) (props: obj) : ReactElement = Fable.Core.Util.jsNative
+
+type private GridWindowViewportProps =
+    {| offset: int
+       presentedCount: int
+       total: int option
+       colSpan: int
+       windowKey: string
+       current: BindingResolver.RowWindow option
+       write: string -> JVal -> unit
+       renderTable: ReactElement list -> ReactElement list -> ReactElement |}
+
+let private renderGridWindowViewport (props: GridWindowViewportProps) : ReactElement =
+    let viewportRef = React.useElementRef ()
+
+    let rowHeight, setRowHeight =
+        React.useState BindingResolver.defaultWindowRowHeightPx
+
+    let lastWritten = React.useRef (None: BindingResolver.RowWindow option)
+
+    let measure () =
+        match viewportRef.current with
+        | None -> ()
+        | Some el ->
+            let m = measureGridViewport (box el)
+            let measured = m[2]
+
+            if measured > 0.0 && measured <> rowHeight then
+                setRowHeight measured
+
+            let written, write =
+                BindingResolver.stepWindowWriter
+                    (Some props.windowKey)
+                    props.current
+                    lastWritten.current
+                    { ScrollTop = m[0]
+                      HeaderHeight = m[1]
+                      RowHeight = (if measured > 0.0 then measured else rowHeight)
+                      ViewportHeight = m[3] }
+
+            lastWritten.current <- written
+            write |> Option.iter (fun (key, descriptor) -> props.write key descriptor)
+
+    // The latest closure, so the scroll handler and the resize observer (bound
+    // once) always measure against this render's `current`.
+    let measureRef = React.useRef measure
+    measureRef.current <- measure
+
+    // After every render: a re-render with an unchanged viewport writes nothing.
+    React.useEffect (fun () -> measureRef.current ())
+
+    // A resized viewport changes the visible count.
+    React.useEffect (
+        (fun () ->
+            match viewportRef.current with
+            | None -> (fun () -> ())
+            | Some el -> observeViewportResize (box el) (fun () -> measureRef.current ())),
+        [||]
+    )
+
+    let spacer (rows: int) : ReactElement list =
+        if rows > 0 then
+            [ Html.tr
+                  [ prop.custom ("aria-hidden", "true")
+                    prop.style [ style.custom ("height", string (float rows * rowHeight) + "px") ]
+                    prop.children [ Html.td [ prop.colSpan props.colSpan ] ] ] ]
+        else
+            []
+
+    let trailing =
+        match props.total with
+        | Some total -> max 0 (total - props.offset - props.presentedCount)
+        | None -> 0
+
+    Html.div
+        [ prop.ref viewportRef
+          prop.style
+              [ style.custom ("overflowY", "auto")
+                style.custom ("maxHeight", string BindingResolver.windowViewportMaxHeightPx + "px") ]
+          prop.onScroll (fun _ -> measureRef.current ())
+          prop.children [ props.renderTable (spacer props.offset) (spacer trailing) ] ]
+
 let rec private renderKind
     (ctx: RenderContext<'Msg>)
     (parentNodeId: string)
@@ -7444,7 +7590,7 @@ and private renderGrid
                                           ) ]
                                     step "Next" (page + 1) atEnd ] ]
 
-                let gridTable =
+                let gridTableWith (before: ReactElement list) (after: ReactElement list) =
                     Html.table
                         [ prop.className (
                               "fuaran-grid"
@@ -7466,7 +7612,8 @@ and private renderGrid
                                             ) ] ]
                                 Html.tbody
                                     [ prop.children
-                                          [ for (rowIndex, row) in List.indexed pageRows ->
+                                          [ yield! before
+                                            for (rowIndex, row) in List.indexed pageRows ->
                                                 let isSelected =
                                                     match selectedKey, rowKeyOf with
                                                     | Some sel, Some keyOf -> keyOf row = sel
@@ -7563,7 +7710,39 @@ and private renderGrid
                                                       | None -> () ]
                                                     @ reorderRowProps rowIndex
                                                     @ [ prop.children (reorderCellFor rowIndex @ bodyCells) ]
-                                                ) ] ] ] ]
+                                                )
+                                            yield! after ] ] ] ]
+
+                // Phase 1911 — a grid declaring `windowStateKey` renders inside
+                // the scroll viewport that WRITES the window as it moves (see
+                // `renderGridWindowViewport`); a grid declaring none renders the
+                // table exactly as before, with no spacer and no container.
+                let gridTable =
+                    match spec.WindowStateKey, window with
+                    | Some windowKey, Some presented ->
+#if FABLE_COMPILER
+                        createViewportElement
+                            (box renderGridWindowViewport)
+                            (box
+                                {| offset = presented.Offset
+                                   presentedCount = List.length presented.Rows
+                                   total = presented.Total
+                                   colSpan = List.length spec.Columns + List.length reorderHeaderCells
+                                   windowKey = windowKey
+                                   current = BindingResolver.readWindowDescriptor ctx.Sources windowKey
+                                   write =
+                                    fun (key: string) (descriptor: JVal) ->
+                                        runSynthesisedAction ctx (Action.SetState(key, Some descriptor, None))
+                                   renderTable = gridTableWith |})
+#else
+                        // .NET has no React to mount the viewport: the table
+                        // renders the window the seeded State determines and
+                        // writes nothing — the static-host rule.
+                        ignore windowKey
+                        ignore presented
+                        gridTableWith [] []
+#endif
+                    | _ -> gridTableWith [] []
 
                 let paged =
                     match pagination with

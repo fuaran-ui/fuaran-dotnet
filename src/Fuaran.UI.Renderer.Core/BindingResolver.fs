@@ -2130,6 +2130,90 @@ let windowRowIndex (window: PresentedWindow<'row> option) (rowIndex: int) : int 
     |> Option.filter _.Windowed
     |> Option.map (fun w -> w.Offset + rowIndex + 2)
 
+// ─── Phase 1911 — the window a scrolling viewport writes ─────────────────────
+//
+// The WRITE half of `windowStateKey`, which Phase 1892 left to the interactive
+// hosts: as the grid's scroll viewport moves, the renderer measures which rows
+// are visible and writes `{"offset", "count"}` to the key through the same
+// `SetState` route the pager's `{"page": N}` takes. The measurement and the
+// write decision live HERE, pure, so the Fable viewport in `Render.fs` and the
+// .NET tests run one function rather than a copy each.
+//
+// Parity-locked with the TS renderer's `GridWindowViewport`
+// (`packages/renderer/src/render/Visualisation.tsx`): the same two constants,
+// the same arithmetic, and the same dedupe — a window equal to the one last
+// written, or to the one State already holds, is never written, so a write that
+// re-renders the grid cannot loop.
+
+/// The row height assumed until a rendered row can be measured (the TS
+/// renderer's `DEFAULT_WINDOW_ROW_HEIGHT_PX`).
+let defaultWindowRowHeightPx: float = 32.0
+
+/// The viewport's height bound, and the height assumed where none is measurable
+/// (the TS renderer's `WINDOW_VIEWPORT_MAX_HEIGHT_PX`).
+let windowViewportMaxHeightPx: float = 480.0
+
+/// What a grid's scroll viewport measured on one scroll, resize or render, in
+/// CSS pixels. A figure `<= 0` is "not measurable" — no row rendered yet, a
+/// container with no layout (a test DOM) — and falls back as the TS viewport's
+/// does: the row height to [[defaultWindowRowHeightPx]], the viewport height to
+/// [[windowViewportMaxHeightPx]]. `HeaderHeight` is the table head's height,
+/// `0` where there is none; `ScrollTop` is the container's scroll offset.
+type ViewportMeasure =
+    { ScrollTop: float
+      HeaderHeight: float
+      RowHeight: float
+      ViewportHeight: float }
+
+/// The window a viewport shows: the first row whose top edge is at or above the
+/// scroll offset (below the header), and how many rows the viewport's height
+/// holds, rounded up so a partly visible last row is in the window. The offset
+/// is never negative and the count never below 1, so the result is always a
+/// USABLE descriptor ([[windowOfJVal]] reads it back unchanged).
+let measureWindow (m: ViewportMeasure) : RowWindow =
+    let rowHeight =
+        if m.RowHeight > 0.0 then
+            m.RowHeight
+        else
+            defaultWindowRowHeightPx
+
+    let viewport =
+        if m.ViewportHeight > 0.0 then
+            m.ViewportHeight
+        else
+            windowViewportMaxHeightPx
+
+    { Offset = max 0 (int (floor ((m.ScrollTop - m.HeaderHeight) / rowHeight)))
+      Count = max 1 (int (ceil (viewport / rowHeight))) }
+
+/// The descriptor a window is written as: `{"offset": n, "count": n}`, the
+/// shape [[windowOfJVal]] validates.
+let windowDescriptorJVal (w: RowWindow) : JVal =
+    JObj [ "offset", JInt w.Offset; "count", JInt w.Count ]
+
+/// One step of a grid's window writer. Given the grid's window key (`None` for a
+/// grid declaring no `windowStateKey`), the window State currently holds at it,
+/// the window this viewport last wrote, and a fresh measurement, returns the
+/// window the viewport has now written and the write it owes — `None` where the
+/// grid names no key (a grid without `windowStateKey` NEVER writes), and `None`
+/// where the measured window equals the one last written or the one State
+/// already holds (an unchanged window is never written).
+let stepWindowWriter
+    (windowKey: string option)
+    (current: RowWindow option)
+    (lastWritten: RowWindow option)
+    (measure: ViewportMeasure)
+    : RowWindow option * (string * JVal) option =
+    match windowKey with
+    | None -> lastWritten, None
+    | Some key ->
+        let next = measureWindow measure
+
+        if lastWritten = Some next || current = Some next then
+            lastWritten, None
+        else
+            Some next, Some(key, windowDescriptorJVal next)
+
 /// Phase 750 — lower a `CellKindErased.TonedPill` for one row: the named field's
 /// text IS the pill's label, and its tone is the map's entry for that text, or
 /// `defaultTone` for a value the map does not mention.

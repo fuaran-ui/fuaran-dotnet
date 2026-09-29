@@ -386,3 +386,128 @@ let tests =
                         (Some("p", 10, 9, true, None))
                         "no last page"
                 } ] ]
+
+// ============================================================================
+//  Phase 1911 — the viewport's WRITE half on the reference host. The Fable
+//  viewport in `Render.fs` runs `BindingResolver.stepWindowWriter` on every
+//  scroll, resize and render; these tests drive the same function with a
+//  scripted sequence of measurements, reflecting each write back into State the
+//  way `SetState` does, so the descriptor sequence a scroll produces is pinned
+//  on .NET without a DOM.
+// ============================================================================
+
+/// A measurement at `scrollTop` over 32px rows under a 40px header, in a
+/// viewport `height` pixels tall.
+let private at (scrollTop: float) (height: float) : BindingResolver.ViewportMeasure =
+    { ScrollTop = scrollTop
+      HeaderHeight = 40.0
+      RowHeight = 32.0
+      ViewportHeight = height }
+
+/// Run a scripted scroll: each measurement steps the writer, and each write is
+/// reflected into the window State holds, as the renderer's `SetState` does.
+/// Returns every write in order.
+let private script
+    (windowKey: string option)
+    (seeded: BindingResolver.RowWindow option)
+    (measures: BindingResolver.ViewportMeasure list)
+    : (string * JVal) list =
+    let folder (current, lastWritten, writes) measure =
+        let written, write =
+            BindingResolver.stepWindowWriter windowKey current lastWritten measure
+
+        match write with
+        | Some(key, descriptor) ->
+            let held =
+                BindingResolver.readWindowDescriptor
+                    { BindingResolver.empty with
+                        State = Map.ofList [ key, nn descriptor ] }
+                    key
+
+            held, written, writes @ [ key, descriptor ]
+        | None -> current, written, writes
+
+    let _, _, writes = List.fold folder (seeded, None, []) measures
+    writes
+
+let private descriptor (offset: int) (count: int) : JVal =
+    JObj [ "offset", JInt offset; "count", JInt count ]
+
+[<Tests>]
+let writerTests =
+    testList
+        "Fuaran.UI.GridWindow.writer"
+        [ test "a scripted scroll writes the expected descriptor sequence, and nothing for an unchanged window" {
+              let writes =
+                  script
+                      (Some "w")
+                      None
+                      [ at 0.0 320.0 // mount: rows 0..9 visible
+                        at 10.0 320.0 // still row 0 at the top — unchanged
+                        at 40.0 320.0 // the header scrolled away, row 0 still first — unchanged
+                        at 72.0 320.0 // row 1 first
+                        at 72.0 320.0 // a re-render at rest — unchanged
+                        at 400.0 320.0 // row 11 first
+                        at 1000.0 320.0 // row 30 first
+                        at 1000.0 160.0 ] // a resize halves the visible count
+
+              Expect.equal
+                  writes
+                  [ "w", descriptor 0 10
+                    "w", descriptor 1 10
+                    "w", descriptor 11 10
+                    "w", descriptor 30 10
+                    "w", descriptor 30 5 ]
+                  "one write per changed window, in scroll order"
+          }
+          test "a grid without a window key never writes" {
+              let writes =
+                  script None None [ at 0.0 320.0; at 72.0 320.0; at 1000.0 160.0; at 5000.0 0.0 ]
+
+              Expect.isEmpty writes "no key, no write"
+          }
+          test "a window State already holds is not written again" {
+              let writes =
+                  script (Some "w") (Some { Offset = 1; Count = 10 }) [ at 72.0 320.0; at 90.0 320.0 ]
+
+              Expect.isEmpty writes "the seeded window is the measured one"
+          }
+          test "an unmeasurable viewport falls back to the TS viewport's defaults" {
+              let measured =
+                  BindingResolver.measureWindow
+                      { ScrollTop = 64.0
+                        HeaderHeight = 0.0
+                        RowHeight = 0.0
+                        ViewportHeight = 0.0 }
+
+              Expect.equal
+                  measured
+                  { BindingResolver.RowWindow.Offset = 2
+                    BindingResolver.RowWindow.Count = 15 }
+                  "32px rows in a 480px viewport"
+          }
+          test "the written descriptor reads back through the renderer's own reader and moves the window" {
+              let _, write =
+                  BindingResolver.stepWindowWriter (Some "w") None None (at 400.0 320.0)
+
+              match write with
+              | None -> failtest "a first measurement writes"
+              | Some(key, jv) ->
+                  let sources =
+                      { BindingResolver.empty with
+                          State = Map.ofList [ key, nn jv ] }
+
+                  let spec =
+                      erased
+                          { Defaults.grid<Row, obj> with
+                              Source = Binding.State("rows", None)
+                              WindowStateKey = Some "w" }
+
+                  let rows = [ for i in 0..99 -> Map.ofList [ "id", nn (string i) ] ]
+
+                  match BindingResolver.gridWindow sources spec rows with
+                  | None -> failtest "a windowed grid presents a window"
+                  | Some presented ->
+                      Expect.equal presented.Offset 11 "the next window starts at the written offset"
+                      Expect.equal (idsOf presented.Rows) [ for i in 11..20 -> string i ] "and holds the written count"
+          } ]
