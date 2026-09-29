@@ -170,6 +170,9 @@
     <!-- Phase 1532 — decode-time recovery is a declared policy axis with a
          document-length ceiling, and each decode reports what it repaired. -->
     <Compile Include="RecoveryPolicyTests.fs" />
+    <!-- Phase 1910 - the stored-emission sample: real model emissions with the verdict every
+         host gives them, plus the declared recovery-class divergence (an open spec question). -->
+    <Compile Include="StoredEmissionTests.fs" />
     <Compile Include="ValidatorCoverageTests.fs" />
     <!-- Phase 1647 - the corpus-only-payload gate (the fuaran#1094 class). Runs the emit
          into a throwaway directory and reports what a wholesale regen would delete. -->
