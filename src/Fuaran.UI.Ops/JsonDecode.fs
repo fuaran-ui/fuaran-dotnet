@@ -1332,7 +1332,11 @@ let private amendDefect (original: DecodeError) (rewritten: DecodeError) : Decod
     let sink = DefectSink.Current
 
     if not (isNull sink) then
-        let i = sink.LastIndexOf original
+        // A backwards scan rather than `LastIndexOf`, which Fable does not lower.
+        let mutable i = sink.Count - 1
+
+        while i >= 0 && not (sink.[i] = original) do
+            i <- i - 1
 
         if i >= 0 then sink.[i] <- rewritten else sink.Add rewritten
 
