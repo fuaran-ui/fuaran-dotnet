@@ -948,6 +948,18 @@ let private encodeTreeOp<'Msg> (op: TreeOp<'Msg>) : Appender =
 /// Pairs with `ArgsJsonContract.validate` as the AI pre-emit self-check —
 /// `encodeNode tree |> ArgsJsonContract.validate` catches wire-shape
 /// violations cheaper than the apply-engine envelope.
+///
+/// **Which encoder a tool that emits wire JSON uses (Phase 1921).** THIS one:
+/// the bytes an AI tool, a CLI verb or any other emitter hands out as a node's
+/// wire JSON are `encodeNode`'s, the encoding the wire-format corpus certifies
+/// and every other host's parity tables are cut against. `Generated.encodeNode`
+/// is the STRUCTURAL encoder: it spells whatever tree it is given, so over a
+/// tree the §16 projection would rewrite (an explicit auto-binding value, an
+/// all-default style, an all-`None` state) it emits bytes no other host
+/// produces. An emitter below this layer, which cannot reach the projection
+/// (`SchemaForm.deriveWire` in `Fuaran.UI`), may use the structural encoder only
+/// over trees it constructs canonically, and pins that with a test comparing
+/// its bytes with this function's — `SchemaFormParityTests` is the instance.
 let encodeNode<'Msg> (node: Node<'Msg>) : string =
     let sb = StringBuilder()
     nodeAppender node sb
