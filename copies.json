@@ -101,6 +101,14 @@
       ],
       "check": "fingerprint",
       "regen": "A MODEL, not scaffolding: the decode-combinator model the generated `Vocabulary.fst` opens, generic in its numeric carriers. Its theorems are re-checked by this repository's leg and appear on this repository's ladder (`decode-total`, `decode-node-wf`) — and so does the premise they rest on (`parser-null-absorption`), because a copy of a model is a copy of its premises. Copy it FROM the consumer path above; a theorem that moves there is a finding here before it is a red gate nobody caused."
+    },
+    {
+      "source": "src/Fuaran.UI.Tests/fixtures/schema-form-parity.json",
+      "consumers": [
+        "Fuaran/Fuaran-UI/fuaran-ts/packages/ui/test/fixtures/schema-form-parity.json"
+      ],
+      "check": "bytes",
+      "regen": "Phase 1921. The schema-to-form parity table is AUTHORED in fuaran-ts (certified there by `schemaForm.parity.certify.fsx` against this repository's canonical encoder) and copied HERE so `SchemaFormParityTests` holds the AI tool / CLI bytes to it. Copy it FROM the consumer path above, then update the test's `FixtureSha256` pin in the same change."
     }
   ]
 }

@@ -19,6 +19,10 @@
          Fuaran.UI.JsonDecode.Tests and the checker here, so the bytes that project WRITES and the
          bytes this one EXPECTS are produced by one function. Must precede EnumTokenTests.fs. -->
     <Compile Include="..\..\tests\enum-tokens\EnumTokens.fs" Link="EnumTokens.fs" />
+    <!-- Phase 1921 - the schema-to-form parity table, byte-copied from fuaran-ts (copies.json). -->
+    <Content Include="fixtures\schema-form-parity.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="..\Fuaran.UI.Renderer\content\fuaran-reference.css">
       <Link>fuaran-reference.css</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -438,6 +442,8 @@
     <Compile Include="HostTypeDecoderTests.fs" />
     <!-- Phase 1816 - JSON Schema -> Form: the mapping table, validity, refusal paths, determinism. -->
     <Compile Include="SchemaFormTests.fs" />
+    <!-- Phase 1921 - the TS mirror's 81-case parity table (a hash-pinned copy), held against the tool/CLI bytes. -->
+    <Compile Include="SchemaFormParityTests.fs" />
     <!-- Phase 1817 - host emission limits: each limit at N and N+1, the one-walk meter, the unbounded default. -->
     <Compile Include="HostLimitsTests.fs" />
     <!-- Phase 1889 - charts and grids checked against their data: the six binding-check corpus fixtures, graded and located. -->

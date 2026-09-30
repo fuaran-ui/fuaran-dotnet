@@ -45,6 +45,8 @@ module Fuaran.UI.SchemaForm
 //  |                                                |   Phase 864 reuse rule)                  |
 //  | `title` / `description`                        | label (property name when absent) / help |
 //  | `default`                                      | the value binding `State(<field id>, default)` |
+//  |                                                |   (none when it equals the control's own empty |
+//  |                                                |   placeholder — the §16 canonical absence) |
 //  | `integer` `exclusiveMinimum` / `exclusiveMaximum` | the next whole number inside the bound |
 //  | local `$ref` (`#/...`)                         | resolved; sibling `title` / `description` win |
 //  | `type: [T, "null"]`                            | `T` (the form's absence is the null)     |
@@ -473,6 +475,59 @@ let private options (values: string list) : SelectOption list =
 
 let private stateDefault (fieldId: string) (value: 'T option) : Binding<'T> option =
     value |> Option.map (fun v -> Binding.State(fieldId, Some v))
+
+/// Phase 1921 — a value slot that spells the field's exact auto-binding,
+/// `State(<field id>, <the control's own placeholder>)`, IS the omitted slot
+/// (WIRE_FORMAT §16; the placeholders are `Defaults.ControlValueDefaults`, the
+/// one table decode, the canonical encoder's collapse and the resolver share).
+/// A schema `default` equal to that placeholder (`""`, `0`, `false`, `[]`,
+/// `#000000`) therefore derives to NO value slot, so every tree `derive` returns
+/// is already canonical and `deriveWire`'s structural encoding is byte-identical
+/// to `CanonicalJson.encodeNode`'s. The arms are the value-bearing kinds this
+/// derivation emits; the choice family is absent because its placeholder is "no
+/// selection" and a derived default is always a selection. Pinned against the
+/// canonical encoder over the cross-host parity table (`SchemaFormParityTests`).
+let private withoutAutoValue (field: FormField<'Msg>) : FormField<'Msg> =
+    let collapse (placeholder: 'v) (value: Binding<'v> option) : Binding<'v> option =
+        match value with
+        | Some(Binding.State(key, Some v)) when key = field.Id && v = placeholder -> None
+        | v -> v
+
+    let kind =
+        match field.Kind with
+        | FormFieldKind.Text(value, oc) ->
+            FormFieldKind.Text(collapse Fuaran.UI.Defaults.ControlValueDefaults.text value, oc)
+        | FormFieldKind.TextArea(value, oc, rows) ->
+            FormFieldKind.TextArea(collapse Fuaran.UI.Defaults.ControlValueDefaults.text value, oc, rows)
+        | FormFieldKind.Number(value, oc) ->
+            FormFieldKind.Number(collapse Fuaran.UI.Defaults.ControlValueDefaults.number value, oc)
+        | FormFieldKind.RangedNumber(value, oc, mn, mx, st) ->
+            FormFieldKind.RangedNumber(collapse Fuaran.UI.Defaults.ControlValueDefaults.number value, oc, mn, mx, st)
+        | FormFieldKind.Checkbox(value, ot) ->
+            FormFieldKind.Checkbox(collapse Fuaran.UI.Defaults.ControlValueDefaults.checkbox value, ot)
+        | FormFieldKind.Toggle(value, ot) ->
+            FormFieldKind.Toggle(collapse Fuaran.UI.Defaults.ControlValueDefaults.checkbox value, ot)
+        | FormFieldKind.DateTime(value, oc, variant, mn, mx, st) ->
+            FormFieldKind.DateTime(
+                collapse Fuaran.UI.Defaults.ControlValueDefaults.dateTime value,
+                oc,
+                variant,
+                mn,
+                mx,
+                st
+            )
+        | FormFieldKind.Color(oc, value) ->
+            FormFieldKind.Color(oc, collapse Fuaran.UI.Defaults.ControlValueDefaults.color value)
+        | FormFieldKind.Tokens(allowFreeText, oc, suggestions, value) ->
+            FormFieldKind.Tokens(
+                allowFreeText,
+                oc,
+                suggestions,
+                collapse Fuaran.UI.Defaults.ControlValueDefaults.tokens value
+            )
+        | kind -> kind
+
+    { field with Kind = kind }
 
 /// The control a property derives to, or `None` when it was refused (the
 /// refusal is already recorded).
@@ -985,7 +1040,7 @@ let derive (options: SchemaFormOptions<'Msg>) (schema: JVal) : Result<Node<'Msg>
         Ok(
             Fuaran.UI.Fuaran.form
                 options.FormId
-                { Fields = fields
+                { Fields = fields |> List.map withoutAutoValue
                   OnSubmit = options.OnSubmit
                   SubmitLabel = options.SubmitLabel
                   Disabled = None }
@@ -995,6 +1050,13 @@ let derive (options: SchemaFormOptions<'Msg>) (schema: JVal) : Result<Node<'Msg>
 /// encoding, `Error` is the refusal list's (`SchemaFormRefusal.toJson`). The AI
 /// tool (`fuaran.formFromSchema`) and the CLI verb (`fuaran scaffold form`) are
 /// both this function, which is what makes their bytes the same.
+///
+/// The encoder is `Generated.encodeNode`, the STRUCTURAL one, because this
+/// module sits below the §16 projection (`Introspect.canonicalForm`, in
+/// `Fuaran.UI.Ops`). Its bytes equal `CanonicalJson.encodeNode`'s only because
+/// `derive` returns canonical trees (Phase 1921, `withoutAutoValue`) — the rule
+/// `CanonicalJson.encodeNode`'s own doc comment states for every tool that
+/// emits wire JSON.
 let deriveWire (options: SchemaFormOptions<'Msg>) (schema: JVal) : Result<string, string> =
     match derive options schema with
     | Ok node -> Ok(Generated.encodeNode node)
