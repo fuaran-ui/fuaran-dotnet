@@ -12,22 +12,22 @@ module Fuaran.UI.JsonDecode.Tests.StoredEmission
 //  reddens that host's gate.
 //
 //  Measured over the whole stored evaluation corpus (12,707 unique emissions),
-//  this host with `Recovery.Off` and the TypeScript host accept exactly the same
-//  set. The only disagreement is this host's default recovery (fuaran#850's
-//  implied node close, fuaran#855's uniqueness-gated over-close), which the
-//  specification does not describe — an open specification question, recorded
-//  in the family's `openQuestions`, not a defect of either host.
+//  this host's strict decoder and the TypeScript host's accept exactly the same
+//  set. The one-time disagreement was this host's decode-time recovery, and
+//  Phase 1923 ruled it out of decode: decode is strict, and repair is the
+//  separate `JsonDecode.repair` (WIRE_FORMAT.md §28).
 //
-//  So this leg asserts two things per fixture:
+//  So this leg asserts, per fixture:
 //
-//    * with `Recovery.Off`, the declared verdict (the cross-host answer);
-//    * with the DEFAULT policy, the declared verdict too, unless the fixture
-//      names a `referenceRecovery` — in which case the default decoder accepts
-//      it by exactly that recovery and no other. A real emission this host
-//      starts repairing without a declaration is a new divergence, and it goes
-//      red here rather than surfacing in the next evaluation run.
+//    * the DEFAULT (strict) decoder gives the declared verdict, and names no
+//      repair;
+//    * `repair` returns the declared outcome — the applied ids, or the refusal
+//      token — and the strict decode of what it returns is the declared
+//      `repairedVerdict`;
+//    * the opt-in `Recovery.Lenient` decoder agrees with repair-then-decode, so
+//      the transitional path cannot drift from the function it is defined as.
 //
-//  Counter-sensitive (the default decode records `Reliance`), so the list runs
+//  Counter-sensitive (the lenient decode records `Reliance`), so the list runs
 //  sequenced beside the other recovery suites.
 // ============================================================================
 
@@ -43,7 +43,10 @@ type private StoredEmission =
       Verdict: string
       Code: string option
       Path: string option
-      Recovery: string option }
+      RepairOutcome: string
+      Applied: string list
+      Reason: string option
+      RepairedVerdict: string option }
 
 /// A JSON string's value, refusing null rather than letting it through as a string.
 let private text (v: JsonElement) : string =
@@ -59,7 +62,13 @@ let private optStr (el: JsonElement) (name: string) : string option =
 let private familyDir () =
     Path.Combine(Fuaran.Tests.CorpusRoot.find (), "stored-emissions")
 
-let private load () : string * StoredEmission list * string list =
+/// A declared decode answer: the string `"accept"`, or `{code, path}`.
+let private verdictOf (v: JsonElement) : string =
+    match v.ValueKind with
+    | JsonValueKind.String -> if text v = "accept" then "accepted" else text v
+    | _ -> sprintf "%s at %s" (text (v.GetProperty "code")) (text (v.GetProperty "path"))
+
+let private load () : string * StoredEmission list =
     let root = Fuaran.Tests.CorpusRoot.find ()
 
     use doc =
@@ -70,11 +79,6 @@ let private load () : string * StoredEmission list * string list =
     if kind <> "stored-emission-sample" then
         failwithf "stored-emissions/manifest.json declares kind '%s'" kind
 
-    let recoveries =
-        [ for q in doc.RootElement.GetProperty("openQuestions").EnumerateArray() do
-              for r in q.GetProperty("recoveries").EnumerateArray() do
-                  text r ]
-
     let fixtures =
         [ for el in doc.RootElement.GetProperty("fixtures").EnumerateArray() do
               { Id = text (el.GetProperty("id"))
@@ -82,11 +86,21 @@ let private load () : string * StoredEmission list * string list =
                 Verdict = text (el.GetProperty("verdict"))
                 Code = optStr el "expectedErrorCode"
                 Path = optStr el "expectedPath"
-                Recovery = optStr el "referenceRecovery" } ]
+                RepairOutcome = text (el.GetProperty("repair").GetProperty("outcome"))
+                Applied =
+                  match el.GetProperty("repair").TryGetProperty "applied" with
+                  | true, a -> [ for x in a.EnumerateArray() -> text x ]
+                  | _ -> []
+                Reason = optStr (el.GetProperty "repair") "reason"
+                RepairedVerdict =
+                  match el.GetProperty("repair").TryGetProperty "repairedVerdict" with
+                  | true, v -> Some(verdictOf v)
+                  | _ -> None } ]
 
-    root, fixtures, recoveries
+    root, fixtures
 
-let private strict = DecodePolicy.admitAll |> DecodePolicy.withRecovery Recovery.Off
+let private lenient =
+    DecodePolicy.admitAll |> DecodePolicy.withRecovery Recovery.Lenient
 
 let private answer (r: Result<_, JsonDecode.DecodeError>) : string =
     match r with
@@ -101,7 +115,7 @@ let private expected (fx: StoredEmission) : string =
 
 [<Tests>]
 let tests =
-    let root, fixtures, recoveries = load ()
+    let root, fixtures = load ()
 
     let perFixture =
         [ for fx in fixtures do
@@ -109,24 +123,35 @@ let tests =
                   let text =
                       File.ReadAllText(Path.Combine(root, fx.InputFile.Replace('/', Path.DirectorySeparatorChar)))
 
-                  Expect.equal
-                      (answer (JsonDecode.decodeNodeWithPolicy strict text))
-                      (expected fx)
-                      "with recovery off, the declared cross-host verdict"
-
                   let outcome = JsonDecode.decodeNodeWithOutcome DecodePolicy.admitAll text
+                  Expect.equal (answer outcome.Result) (expected fx) "the strict default decoder: the declared verdict"
+                  Expect.isEmpty outcome.Recovered "the default decoder repaired nothing"
 
-                  match fx.Recovery with
-                  | None ->
-                      Expect.equal (answer outcome.Result) (expected fx) "the default decoder gives the same verdict"
-                      Expect.isEmpty outcome.Recovered "the default decoder repaired nothing"
-                  | Some recovery ->
+                  let lenientOutcome = JsonDecode.decodeNodeWithOutcome lenient text
+
+                  match JsonDecode.repair text, fx.RepairOutcome with
+                  | Repair.RepairOutcome.Repaired(repaired, applied), "repaired" ->
+                      Expect.equal applied fx.Applied "repair applies exactly the declared ids"
+
                       Expect.equal
-                          (answer outcome.Result)
-                          "accepted"
-                          "the default decoder accepts the declared recovery-class emission"
+                          (Some(answer (JsonDecode.decodeNode repaired)))
+                          fx.RepairedVerdict
+                          "the strict decode of the repaired text"
 
-                      Expect.equal outcome.Recovered [ recovery ] "by exactly the declared recovery"
+                      Expect.equal
+                          (answer lenientOutcome.Result)
+                          (answer (JsonDecode.decodeNode repaired))
+                          "Lenient = repair, then strict decode"
+
+                      Expect.equal lenientOutcome.Recovered applied "and names what repair applied"
+                  | Repair.RepairOutcome.NotRepairable reason, "not-repairable" ->
+                      Expect.equal (Some reason) fx.Reason "the declared refusal token"
+
+                      Expect.equal
+                          (answer lenientOutcome.Result)
+                          (expected fx)
+                          "Lenient cannot decode what repair refuses"
+                  | got, want -> failtestf "declared %s, repair returned %A" want got
               } ]
 
     testSequenced
@@ -155,17 +180,9 @@ let tests =
               Expect.equal onDisk declared "the directory holds exactly the declared emissions"
           }
 
-          test "every declared recovery is one the open question names" {
-              let named = fixtures |> List.choose (fun f -> f.Recovery)
-              Expect.isNonEmpty named "the recovery class is sampled"
-
-              for r in named do
-                  Expect.contains recoveries r "a recovery the open question lists"
-
-              Expect.containsAll
-                  recoveries
-                  [ JsonDecode.Reliance.ImpliedNodeClose; JsonDecode.Reliance.OverCloseUnique ]
-                  "the open question names this host's two recoveries by their Reliance ids"
+          test "the repair class is sampled, by both catalogue ids" {
+              for id in Repair.RepairId.catalogue do
+                  Expect.exists fixtures (fun f -> f.Applied = [ id ]) (sprintf "a fixture repaired by %s" id)
           }
 
           yield! perFixture ]

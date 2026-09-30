@@ -173,6 +173,8 @@
     <!-- Phase 1910 - the stored-emission sample: real model emissions with the verdict every
          host gives them, plus the declared recovery-class divergence (an open spec question). -->
     <Compile Include="StoredEmissionTests.fs" />
+    <!-- Phase 1923 - deliberate repair (WIRE_FORMAT.md 28): the repair/ corpus family, byte-exact. -->
+    <Compile Include="RepairTests.fs" />
     <Compile Include="ValidatorCoverageTests.fs" />
     <!-- Phase 1647 - the corpus-only-payload gate (the fuaran#1094 class). Runs the emit
          into a throwaway directory and reports what a wholesale regen would delete. -->

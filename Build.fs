@@ -199,7 +199,7 @@ let private packableProjects =
       // `fuaran` dotnet tool built on it (Phase 224). Both were marked
       // `IsPackable=true` from the day they landed and named by no entry here, so
       // no release emitted either — while the tool's README told a reader to
-      // `dotnet tool install` a package no registry served. Published from 0.87.0.
+      // `dotnet tool install` a package no registry served. Published from 0.88.0 (the 0.87.0 slot, superseded before release).
       // Neither is source-packed for Fable: the client is plain .NET
       // (System.Net.Http), and the browser path is the TypeScript client's.
       // The client precedes the tool because the tool project-references it, so

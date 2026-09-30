@@ -866,52 +866,14 @@ let private tryParse (input: string) : Result<Json, DecodeErrorCode * string> =
 
             Error(code, message)
 
-// ─── Implied-node-close decode recovery (fuaran#850) ──────────────────────
+// ─── Decode-time recovery -> deliberate repair (fuaran#850 / #855) ────────
 //
-// The one malformed-emission class the wire grammar cannot teach away: a node
-// wrapper's closing brace dropped at the end of a `children[]` / `cases[]`
-// element (or the root node left open at EOF), typically after a run of ≥2
-// closing braces — the model closes the nested spec value and `kind` and stops
-// one brace short of the node's own `}`. Measured on stored model emissions
-// (2026-08-15): the emission is canonical in intent and correct in vocabulary,
-// and fails on a brace count in a run; teaching the brace rule in the prompt
-// has zero measured effect (failures re-emit the exact fragment the teaching
-// quotes as its own wrong half), so the class is closed at the decode boundary
-// instead.
-//
-// The remedy is measured, not assumed. Auto-close at EOF — the obvious fix —
-// recovers NONE of the mid-document cells: the missing brace is owed
-// mid-document, so the `]` that follows it is already mis-parsed and appending
-// closers at the end fixes nothing (pinned as a test so the wrong fix cannot
-// return). What recovers the whole measured set is auto-close on an
-// ANCESTOR-LEGAL TOKEN: when `]` (or the array-level `,` that separates two
-// element objects) arrives while node wrappers opened inside that array are
-// still open, close the owed wrappers implicitly; when EOF arrives with the
-// document prefix-valid and every open wrapper closable, close what is owed.
-//
-// CONTRACT — bounded, profile-gated, fails closed:
-//   - Attempted ONLY after `tryParse` fails with `INVALID_JSON` (never on
-//     `LIMIT_EXCEEDED`, and never on a document that parses — the happy path
-//     does not enter this code at all).
-//   - INSERT-ONLY OWED CLOSERS: the recovery inserts `}` for wrappers that are
-//     demonstrably open at a boundary where their close is the only insert-only
-//     reading (plus the matching `]`/`}` closers at a clean EOF). It never
-//     invents content, keys, values, or brackets that open anything.
-//   - PROFILE-GATED: mid-document closes fire only into an array keyed
-//     `children` / `cases` (the node-wrapper positions of the measured class).
-//     The same defect inside any other array does NOT recover — it stays a
-//     visible error, so the demand signal for other classes is not eaten.
-//   - FAILS CLOSED: any input outside the profile — genuinely-ambiguous
-//     nesting (a wrapper that is mid-key, awaiting a value, or after a `,`),
-//     an over-closed document, an unterminated string, a truncated tail, or a
-//     repaired text that still does not parse — returns the ORIGINAL error
-//     unchanged.
-//   - COUNTED: every recovery is recorded under the `Reliance` counter id
-//     `implied-node-close`, surfacing exactly the way the §16 leniencies are
-//     measured. This is error RECOVERY, not §16 shorthand normalisation — a
-//     silently-recovered class stops generating demand signal, and the counter
-//     is what keeps it measurable while ceasing to be a loss (see
-//     `docs/migrations/850-implied-node-close-recovery.md`).
+// The two recoveries that used to run inside this decoder live in
+// `Repair.fs` now (WIRE_FORMAT.md §28, Phase 1923). This decoder is strict by
+// default (`Recovery.Off`); `Recovery.Lenient` is `repair` followed by the
+// strict decode — one implementation, entered from two places. The
+// `Reliance` counters stay here because only the lenient decode path writes
+// them: `repair` itself is pure.
 
 /// Reliance accounting for decode-time recoveries — the read side of the
 /// "recover WITH the coercion counted" posture. A recovery that fired is a
@@ -927,7 +889,7 @@ module Reliance =
     /// wrapper's dropped closing brace at a `children[]`/`cases[]`/root
     /// boundary, repaired by ancestor-legal-token auto-close.
     [<Literal>]
-    let ImpliedNodeClose = "implied-node-close"
+    let ImpliedNodeClose = Repair.RepairId.ImpliedNodeClose
 
     /// Counter id for an ACCEPTED uniqueness-gated over-close recovery
     /// (fuaran#855): an over-closed document whose surplus closer admitted
@@ -935,7 +897,7 @@ module Reliance =
     /// decoder. Distinct from the refusal counter below — the two are separate
     /// measurements, not two readings of one.
     [<Literal>]
-    let OverCloseUnique = "over-close-unique"
+    let OverCloseUnique = Repair.RepairId.OverCloseUnique
 
     /// Counter id for a REFUSED over-close repair (fuaran#855): the document
     /// matched the over-closed profile and the gate declined — zero clean
@@ -971,666 +933,6 @@ module Reliance =
 
     /// Zero every counter (per-run measurement isolation; tests).
     let reset () : unit = counters <- Map.empty
-
-module private ImpliedNodeClose =
-    [<RequireQualifiedAccess>]
-    type Kind =
-        | Obj
-        | Arr
-
-    /// Between-token expectation of the innermost open container. A container
-    /// with an open child sits in `Value` (object) / `Value` or `ValueOrClose`
-    /// (array) until the child completes — which is what makes the owed-wrapper
-    /// chain checkable: a frame BELOW the top is mid-value by construction, and
-    /// its pending value IS the frame above it.
-    [<RequireQualifiedAccess>]
-    type State =
-        /// Object, after `{` — a key or `}` may follow.
-        | KeyOrClose
-        /// Object, after `,` — a key must follow.
-        | Key
-        /// Object, after a key — `:` must follow.
-        | Colon
-        /// A value must follow (object: after `:`; array: after `,`).
-        | Value
-        /// After a complete member / element — `,` or the closer.
-        | CommaOrClose
-        /// Array, after `[` — a value or `]` may follow.
-        | ValueOrClose
-
-    type Frame =
-        {
-            Kind: Kind
-            mutable State: State
-            /// Arr frames only: the object key whose value this array is (None
-            /// for an array nested directly in an array) — the profile gate.
-            ArrKey: string option
-            /// Obj frames only: the most recently read member key.
-            mutable LastKey: string option
-        }
-
-    /// The array keys the mid-document recovery may close owed wrappers into —
-    /// the node-list positions of the measured class. Deliberately NOT every
-    /// array: a dropped brace in a data array stays a visible error.
-    let private recoveryArrayKeys = [ "children"; "cases" ]
-
-    /// Scan `text`, closing owed node wrappers at ancestor-legal tokens.
-    /// `Some repaired` when the profile matched and a bounded repair exists;
-    /// `None` otherwise (the caller falls back to the original error).
-    let tryRecover (text: string) : string option =
-        if isNull text then
-            None
-        else
-            let n = text.Length
-            let mutable i = 0
-            let stack = ResizeArray<Frame>()
-            let inserts = ResizeArray<int>()
-            let mutable rootDone = false
-            let mutable failed = false
-            let mutable finished = false
-
-            let isWsChar c =
-                c = ' ' || c = '\t' || c = '\n' || c = '\r'
-
-            let skipWsLocal () =
-                while i < n && isWsChar text[i] do
-                    i <- i + 1
-
-            // Skip a string literal (cursor on the opening quote); false on an
-            // unterminated string — the truncation fingerprint, never recovered.
-            let skipString () =
-                i <- i + 1
-                let mutable closed = false
-
-                while not closed && i < n do
-                    let c = text[i]
-
-                    if c = '\\' then
-                        i <- i + 2
-                    elif c = '"' then
-                        i <- i + 1
-                        closed <- true
-                    else
-                        i <- i + 1
-
-                closed
-
-            let readKey () : string option =
-                let start = i
-
-                if skipString () then
-                    Some(text.Substring(start + 1, i - start - 2))
-                else
-                    None
-
-            let top () = stack[stack.Count - 1]
-
-            // A completed value: advance the enclosing frame (or mark the root
-            // value complete).
-            let completeValue () =
-                if stack.Count = 0 then
-                    rootDone <- true
-                else
-                    (top ()).State <- State.CommaOrClose
-
-            let isScalarStart c =
-                c = '-' || (c >= '0' && c <= '9') || c = 't' || c = 'f' || c = 'n'
-
-            let skipScalar () =
-                let isScalarChar c =
-                    c = '-'
-                    || c = '+'
-                    || c = '.'
-                    || (c >= '0' && c <= '9')
-                    || (c >= 'a' && c <= 'z')
-                    || (c >= 'A' && c <= 'Z')
-
-                while i < n && isScalarChar text[i] do
-                    i <- i + 1
-
-            // Consume the opening of one value at the cursor. Malformed scalars
-            // are tolerated here — the repaired text re-parses through the real
-            // parser, which is the validator of record.
-            let openValue () : bool =
-                let c = text[i]
-
-                if c = '{' then
-                    stack.Add
-                        { Kind = Kind.Obj
-                          State = State.KeyOrClose
-                          ArrKey = None
-                          LastKey = None }
-
-                    i <- i + 1
-                    true
-                elif c = '[' then
-                    let key =
-                        if stack.Count > 0 && (top ()).Kind = Kind.Obj then
-                            (top ()).LastKey
-                        else
-                            None
-
-                    stack.Add
-                        { Kind = Kind.Arr
-                          State = State.ValueOrClose
-                          ArrKey = key
-                          LastKey = None }
-
-                    i <- i + 1
-                    true
-                elif c = '"' then
-                    if skipString () then
-                        completeValue ()
-                        true
-                    else
-                        false
-                elif isScalarStart c then
-                    skipScalar ()
-                    completeValue ()
-                    true
-                else
-                    false
-
-            let isClosableObj (f: Frame) =
-                f.Kind = Kind.Obj
-                && (f.State = State.CommaOrClose || f.State = State.KeyOrClose)
-
-            // Close the owed object-wrapper chain so the current token can be
-            // consumed at the nearest enclosing array — the ancestor-legal-token
-            // rule. The TOP frame must be a closable object (between members);
-            // every frame beneath it in the chain is an object mid-value (its
-            // pending value is the frame above, completed by the implied close);
-            // the chain ends at the first enclosing array, which must be keyed
-            // `children` / `cases`. Anything else fails closed.
-            let closeOwedWrappers () : bool =
-                if stack.Count = 0 || not (isClosableObj (top ())) then
-                    false
-                else
-                    let mutable k = 1
-
-                    while k < stack.Count
-                          && stack[stack.Count - 1 - k].Kind = Kind.Obj
-                          && stack[stack.Count - 1 - k].State = State.Value do
-                        k <- k + 1
-
-                    if k >= stack.Count then
-                        false // the chain ran to the root — no enclosing array
-                    else
-                        let target = stack[stack.Count - 1 - k]
-
-                        let profileOk =
-                            target.Kind = Kind.Arr
-                            && (match target.ArrKey with
-                                | Some key -> List.contains key recoveryArrayKeys
-                                | None -> false)
-
-                        if not profileOk then
-                            false
-                        else
-                            for _ in 1..k do
-                                inserts.Add i
-                                stack.RemoveAt(stack.Count - 1)
-
-                            // The implied closes complete the array's pending
-                            // element.
-                            target.State <- State.CommaOrClose
-                            true
-
-            skipWsLocal ()
-
-            if i >= n || text[i] <> '{' then
-                None
-            else
-                openValue () |> ignore // pushes the root object frame
-
-                while not failed && not finished do
-                    skipWsLocal ()
-
-                    if i >= n then
-                        finished <- true
-                    elif rootDone then
-                        failed <- true // trailing content
-                    else
-                        let f = top ()
-                        let c = text[i]
-
-                        match f.Kind, f.State with
-                        | Kind.Obj, State.KeyOrClose ->
-                            if c = '}' then
-                                i <- i + 1
-                                stack.RemoveAt(stack.Count - 1)
-                                completeValue ()
-                            elif c = '"' then
-                                match readKey () with
-                                | Some key ->
-                                    f.LastKey <- Some key
-                                    f.State <- State.Colon
-                                | None -> failed <- true
-                            else
-                                failed <- true
-                        | Kind.Obj, State.Key ->
-                            if c = '"' then
-                                match readKey () with
-                                | Some key ->
-                                    f.LastKey <- Some key
-                                    f.State <- State.Colon
-                                | None -> failed <- true
-                            else
-                                failed <- true
-                        | Kind.Obj, State.Colon ->
-                            if c = ':' then
-                                i <- i + 1
-                                f.State <- State.Value
-                            else
-                                failed <- true
-                        | Kind.Obj, State.Value -> failed <- not (openValue ())
-                        | Kind.Obj, State.CommaOrClose ->
-                            if c = ',' then
-                                // Lookahead: an object continuation must be a
-                                // key. `,` then `{` is only legal at an ancestor
-                                // ARRAY — the second signature of the class (the
-                                // wrapper owed its close before the separator).
-                                let save = i
-                                i <- i + 1
-                                skipWsLocal ()
-
-                                if i < n && text[i] = '"' then
-                                    f.State <- State.Key
-                                elif i < n && text[i] = '{' then
-                                    i <- save
-
-                                    if not (closeOwedWrappers ()) then
-                                        failed <- true
-                                else
-                                    failed <- true
-                            elif c = '}' then
-                                i <- i + 1
-                                stack.RemoveAt(stack.Count - 1)
-                                completeValue ()
-                            elif c = ']' then
-                                // The first signature of the class: `]` while
-                                // node wrappers inside the array are still open.
-                                if not (closeOwedWrappers ()) then
-                                    failed <- true
-                            else
-                                failed <- true
-                        | Kind.Obj, State.ValueOrClose -> failed <- true // unreachable
-                        | Kind.Arr, (State.ValueOrClose | State.Value) ->
-                            if c = ']' && f.State = State.ValueOrClose then
-                                i <- i + 1
-                                stack.RemoveAt(stack.Count - 1)
-                                completeValue ()
-                            else
-                                failed <- not (openValue ())
-                        | Kind.Arr, State.CommaOrClose ->
-                            if c = ',' then
-                                i <- i + 1
-                                f.State <- State.Value
-                            elif c = ']' then
-                                i <- i + 1
-                                stack.RemoveAt(stack.Count - 1)
-                                completeValue ()
-                            else
-                                failed <- true
-                        | Kind.Arr, _ -> failed <- true // unreachable
-
-                if failed then
-                    None
-                else
-                    // EOF. The TOP frame's own state gates (between members /
-                    // elements only — a mid-key, post-`:`, or post-`,` cut is
-                    // genuine truncation, never recovered). Frames below it are
-                    // mid-value by construction (their value IS the frame
-                    // above), so the implied close of the child completes them.
-                    let eofCloses = ResizeArray<char>()
-                    let mutable eofOk = true
-
-                    if not rootDone then
-                        if stack.Count = 0 then
-                            eofOk <- false
-                        else
-                            let t = top ()
-
-                            let topClosable =
-                                match t.Kind, t.State with
-                                | Kind.Obj, (State.CommaOrClose | State.KeyOrClose) -> true
-                                | Kind.Arr, (State.CommaOrClose | State.ValueOrClose) -> true
-                                | _ -> false
-
-                            if not topClosable then
-                                eofOk <- false
-                            else
-                                for idx in stack.Count - 1 .. -1 .. 0 do
-                                    eofCloses.Add(if stack[idx].Kind = Kind.Obj then '}' else ']')
-
-                    if not eofOk then
-                        None
-                    elif inserts.Count = 0 && eofCloses.Count = 0 then
-                        // The scanner consumed the document cleanly but the real
-                        // parser rejected it — the failure is not this class.
-                        None
-                    elif inserts.Count + eofCloses.Count > Fuaran.UI.WireLimits.MaxJsonDepth then
-                        None
-                    else
-                        // Insert positions are ascending by construction.
-                        let sb = System.Text.StringBuilder(n + inserts.Count + eofCloses.Count)
-
-                        let mutable prev = 0
-
-                        for pos in inserts do
-                            sb.Append(text.Substring(prev, pos - prev)).Append '}' |> ignore
-                            prev <- pos
-
-                        sb.Append(text.Substring prev) |> ignore
-
-                        for ch in eofCloses do
-                            sb.Append ch |> ignore
-
-                        Some(sb.ToString())
-
-// ─── Uniqueness-gated over-close recovery (fuaran#855) ────────────────────
-//
-// The MIRROR of the fuaran#850 class, with the sign of the defect reversed and
-// the default of the gate reversed with it. 850's emission owes a closer and
-// drops it; this one emits a closer it does not owe — `…}}}` where `}}` was
-// owed, one level past the node. Same boundary, opposite direction.
-//
-// The two are not symmetric problems, and the asymmetry is structural rather
-// than incidental. An OWED closer has exactly one legal home: when `]` arrives
-// with objects still open inside the array, the grammar admits precisely one
-// repair, which is why 850 could measure its recovery as determined. A SURPLUS
-// closer has as many candidate homes as there are enclosing levels, and every
-// choice re-assigns the fields that follow it to a different owner. Measured
-// over the stored instances of this class: on the grammar alone most admit two
-// to five distinct minimal-deletion repairs, and after decoding every candidate
-// through this very decoder, six of the first sixteen STILL admit two to five
-// repairs that each decode clean.
-//
-// What that ambiguity costs is field ownership, not node placement — which is
-// what makes it dangerous. On the worst measured cell the five clean repairs
-// produce the IDENTICAL node skeleton and differ only in which object owns the
-// five trailing fields; the LEFTMOST legal deletion — the obvious
-// implementation — buries all five inside a `Static` binding and renders a bare
-// unformatted number with no trend and no icon. That tree passes every gate.
-// The reliance counter can report THAT a coercion happened; it cannot report
-// that the coercion chose the right owner, and nothing downstream can either.
-//
-// CONTRACT — the same shape as 850, with the opposite default:
-//   - Attempted ONLY after `tryParse` fails with `INVALID_JSON` and after the
-//     850 recovery has declined (850 fails closed on over-closure, so the two
-//     never contend). Never on `LIMIT_EXCEEDED`, never on a document that
-//     parses — the happy path does not enter this code at all.
-//   - PROFILE-GATED: a string-aware structural scan must show the document
-//     NET over-closed by one or two closers, with the surplus uncompensated
-//     (the running minimum depth equals the final depth — a surplus that is
-//     later re-opened is a differently-shaped defect), and not cut inside a
-//     string.
-//   - DELETE-ONLY, BOUNDED: candidates are the document with one or two
-//     structural closers removed, enumerated exhaustively within stated bounds.
-//     Nothing is ever inserted, and no key, value or bracket is invented.
-//   - ACCEPT IFF EXACTLY ONE CANDIDATE DECODES CLEAN. Uniqueness is evaluated
-//     over the COMPLETE enumeration, de-duplicated by parsed value — two
-//     deletions inside one whitespace-interrupted closer run yield different
-//     strings and the identical document, and that is one repair, not two.
-//   - REFUSES BY DEFAULT: zero clean candidates, two or more, or an enumeration
-//     past the bounds all return the ORIGINAL error unchanged. An
-//     `INVALID_JSON` the demand loop can feed on is worth more than a wrong
-//     tree no counter can flag.
-//   - COUNTED BOTH WAYS: `Reliance.OverCloseUnique` on an acceptance,
-//     `Reliance.OverCloseRefused` on a refusal (see
-//     `docs/migrations/855-uniqueness-gated-overclose-recovery.md`).
-//
-// The failure-offset rule — "the repair lies in the contiguous closer run
-// ending at the first mismatch" — was measured on the same set and selects a
-// schema-clean repair in eleven of sixteen. It is used here for candidate
-// ORDERING ONLY, and it is worth being explicit that ordering CANNOT change the
-// verdict: uniqueness is a property of the whole enumeration, so a rule that
-// merely reorders it can never override the count. Five of sixteen have their
-// true repair outside that run, which is exactly why it is not the gate.
-
-module private OverClose =
-    /// The surplus this gate will consider. Every measured instance is one or
-    /// two; three would be a differently-shaped defect, not a deeper one.
-    [<Literal>]
-    let MaxSurplus = 2
-
-    /// Structural closers the enumeration will draw from. The largest measured
-    /// instance is a 34 KB document with 286.
-    [<Literal>]
-    let MaxCloserPositions = 512
-
-    /// Deletion sets enumerated. The largest measured instance needs 2,628
-    /// (a surplus of two over 73 closers); past this the gate refuses rather
-    /// than spending unbounded work on the failure path.
-    [<Literal>]
-    let MaxDeletionSets = 8192
-
-    /// Distinct parseable candidates decoded. The largest measured instance
-    /// yields five; a document yielding more than this is not the measured
-    /// class and the gate refuses rather than widening.
-    [<Literal>]
-    let MaxDistinctCandidates = 32
-
-    type Profile =
-        {
-            /// Surplus closers — 1 or 2 for every measured instance.
-            Surplus: int
-            /// Every structural closer position, ascending.
-            Closers: int[]
-            /// The contiguous closer run ending at the first mismatch
-            /// (whitespace-tolerant), inclusive. ORDERING ONLY.
-            RunLo: int
-            RunHi: int
-        }
-
-    /// String-aware structural scan. `Some profile` when the document is
-    /// over-closed by a net, uncompensated one or two closers and is not cut
-    /// inside a string; `None` otherwise — and a `None` here is NOT a refusal
-    /// of this class, it is a document that was never in it, so nothing is
-    /// counted for it.
-    ///
-    /// The FIRST STRUCTURAL MISMATCH is where a closer either finds no open
-    /// bracket at all or disagrees in kind with the innermost one — which for
-    /// this class is the surplus closer itself, since it pops the enclosing
-    /// `children[]` array with a `}`. It is the position the parser fails at,
-    /// recomputed here rather than recovered from the error message.
-    ///
-    /// A note on what is deliberately NOT checked. "No crossed brackets before
-    /// the mismatch" reads like a second gate and is in fact vacuous: the
-    /// mismatch IS the first crossing, so nothing can cross before it. Stating
-    /// it as an implemented condition would have been decoration, and an
-    /// earlier draft of this scan did exactly that — it evaluated crossing over
-    /// the whole document and so rejected every real instance of the class,
-    /// because the surplus closer is itself the crossing.
-    let profile (text: string) : Profile option =
-        if isNull text || text.Length = 0 then
-            None
-        else
-            let n = text.Length
-            let closers = ResizeArray<int>()
-            let opens = ResizeArray<char>()
-            let mutable i = 0
-            let mutable depth = 0
-            let mutable minDepth = 0
-            let mutable firstMismatch = -1
-            let mutable inString = false
-
-            while i < n do
-                let c = text[i]
-
-                if inString then
-                    if c = '\\' then
-                        i <- i + 1
-                    elif c = '"' then
-                        inString <- false
-                elif c = '"' then
-                    inString <- true
-                elif c = '{' || c = '[' then
-                    depth <- depth + 1
-                    opens.Add c
-                elif c = '}' || c = ']' then
-                    closers.Add i
-                    depth <- depth - 1
-
-                    if opens.Count = 0 then
-                        if firstMismatch < 0 then
-                            firstMismatch <- i
-                    else
-                        let opened = opens[opens.Count - 1]
-                        opens.RemoveAt(opens.Count - 1)
-
-                        if (opened = '{') <> (c = '}') && firstMismatch < 0 then
-                            firstMismatch <- i
-
-                    if depth < minDepth then
-                        minDepth <- depth
-
-                i <- i + 1
-
-            let surplus = -depth
-
-            if inString then
-                None // cut inside a string — the truncation fingerprint
-            elif depth >= 0 || minDepth <> depth then
-                // Not net over-closed, or the surplus is compensated by a later
-                // re-opening — a differently-shaped defect either way.
-                None
-            elif surplus > MaxSurplus then
-                None
-            elif firstMismatch < 0 then
-                None
-            else
-                // Walk back from the mismatch over the contiguous run of
-                // closers. Whitespace between them is part of the run — a
-                // pretty-printed emission separates its closers by newlines.
-                let mutable lo = firstMismatch
-                let mutable j = firstMismatch - 1
-                let mutable scanning = true
-
-                while scanning && j >= 0 do
-                    let c = text[j]
-
-                    if c = ' ' || c = '\t' || c = '\n' || c = '\r' then
-                        j <- j - 1
-                    elif c = '}' || c = ']' then
-                        lo <- j
-                        j <- j - 1
-                    else
-                        scanning <- false
-
-                Some
-                    { Surplus = surplus
-                      Closers = closers.ToArray()
-                      RunLo = lo
-                      RunHi = firstMismatch }
-
-    /// The candidate repaired documents, failure-run-first. `None` when a bound
-    /// is exceeded — which IS a refusal of a profile-matching document, so the
-    /// caller counts it.
-    ///
-    /// **Lazy on purpose.** A surplus of two enumerates every unordered pair of
-    /// deletions, so the candidate COUNT is quadratic in the closer positions —
-    /// `m(m-1)/2`, up to `MaxDeletionSets` — and each candidate is a full copy
-    /// of the document. Materialising them all at once therefore costs
-    /// `sets x length`, which at the bounds is hundreds of megabytes of live
-    /// string before a single one is parsed: 8,128 candidates of a 34 KB
-    /// document is ~527 MiB, and the largest MEASURED instance (73 closers, a
-    /// surplus of two) is 2,628 candidates.
-    ///
-    /// That cost lands on the SUCCESS path, not just a pathological one. The
-    /// caller must see the whole enumeration to decide uniqueness — a second
-    /// clean decode is what turns an acceptance into a refusal — so it cannot
-    /// stop early, and a document that recovers pays in full.
-    ///
-    /// Yielding one at a time makes the peak `O(length)` instead. It does NOT
-    /// change the verdict, and that is the point: same candidates, same order,
-    /// same count, so every accept/refuse is bit-for-bit what the eager form
-    /// gave. Only the work stays quadratic; the memory no longer is. The bound
-    /// check below is still EAGER — it is arithmetic on the closer count, so a
-    /// refusal past the bounds is decided before anything is generated.
-    let candidates (text: string) (p: Profile) : string seq option =
-        let m = p.Closers.Length
-
-        let sets =
-            if p.Surplus = 1 then
-                int64 m
-            else
-                int64 m * int64 (m - 1) / 2L
-
-        if m > MaxCloserPositions || sets > int64 MaxDeletionSets then
-            None
-        else
-            let inRun pos = pos >= p.RunLo && pos <= p.RunHi
-
-            // `b < 0` for a single deletion; otherwise `a < b`.
-            let repaired (a: int) (b: int) =
-                let sb = System.Text.StringBuilder(text.Length)
-
-                if b < 0 then
-                    sb.Append(text.Substring(0, a)).Append(text.Substring(a + 1)) |> ignore
-                else
-                    sb
-                        .Append(text.Substring(0, a))
-                        .Append(text.Substring(a + 1, b - a - 1))
-                        .Append(text.Substring(b + 1))
-                    |> ignore
-
-                sb.ToString()
-
-            // Two passes: the failure-run-touching sets first. Ordering only —
-            // the verdict is a count over the union of both passes.
-            Some(
-                seq {
-                    for pass in 0..1 do
-                        if p.Surplus = 1 then
-                            for x in 0 .. m - 1 do
-                                let a = p.Closers[x]
-
-                                if inRun a = (pass = 0) then
-                                    yield repaired a -1
-                        else
-                            for x in 0 .. m - 2 do
-                                for y in x + 1 .. m - 1 do
-                                    let a = p.Closers[x]
-                                    let b = p.Closers[y]
-
-                                    if (inRun a || inRun b) = (pass = 0) then
-                                        yield repaired a b
-                }
-            )
-
-/// Parse a NODE payload with the fuaran#850 implied-node-close recovery. A
-/// document that parses takes the identical `tryParse` path (the recovery code
-/// never runs); an `INVALID_JSON` failure whose profile matches the class is
-/// re-parsed from the bounded repair (counted under
-/// `Reliance.ImpliedNodeClose`); everything else — profile mismatch, ambiguous
-/// nesting, a repair that still fails to parse, `LIMIT_EXCEEDED` — surfaces
-/// the ORIGINAL error unchanged.
-let private tryParseNodeWithRecovery
-    (policy: DecodePolicy)
-    (json: string)
-    : Result<Json * string list, DecodeErrorCode * string> =
-    match tryParse json with
-    | Ok j -> Ok(j, [])
-    | Error failure ->
-        let original = Error failure
-
-        match failure with
-        // Phase 1532 — `Recovery.Off` declines this repair too. The policy axis
-        // is "does this host want a malformed document repaired at all", and a
-        // host that says no to the enumerating gate has not said yes to the
-        // cheap one.
-        | DecodeErrorCode.INVALID_JSON, _ when not (DecodePolicy.recovers policy) -> original
-        | DecodeErrorCode.INVALID_JSON, _ ->
-            match ImpliedNodeClose.tryRecover json with
-            | Some repaired ->
-                match tryParse repaired with
-                | Ok j ->
-                    Reliance.record Reliance.ImpliedNodeClose
-                    Ok(j, [ Reliance.ImpliedNodeClose ])
-                | Error _ -> original
-            | None -> original
-        | _ -> original
 
 // ─── The recognised NodeKind vocabulary (WIRE_FORMAT.md §3.2) ──────────────
 //
@@ -10438,110 +9740,58 @@ let private parseFailure (code: DecodeErrorCode, message: string) : Result<'a, D
             (Some "well-formed JSON object per the canonical-JSON shape")
 
 
-/// The fuaran#855 uniqueness gate, decode side. `Some tree` iff the document
-/// matched the over-closed profile and EXACTLY ONE de-duplicated candidate
-/// repair decoded clean through the canonical decoder; `None` in every other
-/// case, so the caller surfaces the original `INVALID_JSON` unchanged.
+/// The strict parser, in the shape `Repair.repairWith` asks for.
+let private repairParse (text: string) : Repair.Parse<Json> =
+    match tryParse text with
+    | Ok j -> Repair.Parse.Parsed j
+    | Error(DecodeErrorCode.LIMIT_EXCEEDED, _) -> Repair.Parse.OverLimit
+    | Error _ -> Repair.Parse.Malformed
+
+/// Repair a malformed canonical-JSON NODE document, deliberately (WIRE_FORMAT.md
+/// §28; Phase 1923). Pure: text in, text out, nothing counted.
 ///
-/// This lives beside `decodeNode` rather than with `OverClose` because
-/// uniqueness is a property the SCHEMA decides, not the grammar: on the grammar
-/// alone ten of the first sixteen measured instances are ambiguous, and it is
-/// decoding every candidate that narrows them to six. A gate written at the
-/// parse boundary would have had to guess exactly where the evidence says it
-/// must not.
-let private tryOverCloseUnique (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> option =
-    if not (DecodePolicy.recovers policy) then
-        // Phase 1532 — `Recovery.Off`. The gate does not run, so nothing is
-        // enumerated and nothing is counted: a document this policy never
-        // examined has not been refused BY THE GATE, it was refused by the
-        // parser, and the reliance counters measure the gate.
-        None
-    else
+/// `Repaired(text, applied)` names every catalogue repair it performed
+/// (`Repair.RepairId`); a document that already parses comes back unchanged
+/// with `applied = []`. `NotRepairable reason` carries a `Repair.Refusal` token.
+///
+/// The repaired text is NOT a decoded tree and is not trusted: decode it
+/// strictly (`decodeNode`) and validate the result, exactly as for text that
+/// needed no repair. The `over-close-unique` uniqueness gate decodes each
+/// candidate under the UNNARROWED decoder — repair is a property of the text,
+/// and a §23 admission policy applies at the decode that follows, so a policy
+/// can refuse a repaired document but never makes one repairable.
+let repair (text: string) : Repair.RepairOutcome =
+    Repair.repairWith repairParse (fun j -> Result.isOk (decodeNodeAst (walkRoot DecodePolicy.admitAll) "$" j)) text
 
-        match OverClose.profile json with
-        | None -> None // never in the class — not a refusal, so not counted
-        | Some p ->
-            let refuse () =
-                Reliance.record Reliance.OverCloseRefused
-                None
-
-            // Phase 1532 — the document-length ceiling, checked AFTER the profile
-            // scan so only documents genuinely in the class are counted as refused.
-            // The profile scan is one linear pass; the enumeration below is the
-            // amplifier, because every candidate is a full copy of the document plus
-            // a full re-parse of it. Bounding the candidate COUNT without bounding
-            // the document SIZE bounded one factor of a product.
-            if json.Length > DecodePolicy.MaxRecoverableLength then
-                refuse ()
-            else
-
-                match OverClose.candidates json p with
-                | None -> refuse () // past the enumeration bounds
-                | Some cands ->
-                    // De-duplicate on the PARSED VALUE: deleting either of two closers
-                    // separated only by whitespace yields two different strings and one
-                    // document, and counting that as two repairs would refuse a
-                    // genuinely-unique cell.
-                    let seen = ResizeArray<Json>()
-                    let mutable clean = 0
-                    let mutable accepted = None
-                    let mutable overflow = false
-
-                    // `cands` is lazy, so each repaired document is built, parsed and
-                    // dropped before the next exists — see `OverClose.candidates`. The
-                    // enumerator is stepped by hand rather than with `Seq.iter` because
-                    // the overflow guard must stop GENERATION, not merely skip the
-                    // remaining items: a `for` over the sequence would go on building
-                    // full document copies after the verdict is already settled.
-                    use e = cands.GetEnumerator()
-
-                    while not overflow && e.MoveNext() do
-                        match tryParse e.Current with
-                        | Ok j ->
-                            let mutable known = false
-
-                            for k in 0 .. seen.Count - 1 do
-                                if not known && seen[k] = j then
-                                    known <- true
-
-                            if not known then
-                                seen.Add j
-
-                                if seen.Count > OverClose.MaxDistinctCandidates then
-                                    overflow <- true
-                                else
-                                    // The candidate repairs decode under the SAME policy
-                                    // as the original document. A recovery path that
-                                    // decoded under admit-all would let a malformed
-                                    // emission carry in a kind the policy refuses — the
-                                    // repair would be the bypass.
-                                    match decodeNodeAst (walkRoot policy) "$" j with
-                                    | Ok tree ->
-                                        clean <- clean + 1
-
-                                        if clean = 1 then
-                                            accepted <- Some tree
-                                    | Error _ -> ()
-                        | Error _ -> ()
-
-                    // The whole gate, in one line: exactly one, or nothing.
-                    if overflow || clean <> 1 then
-                        refuse ()
-                    else
-                        Reliance.record Reliance.OverCloseUnique
-                        accepted |> Option.map Ok
-
-/// The shared node-decode spine: the ordinary parse, then the fuaran#850
-/// insert-only recovery, then the fuaran#855 uniqueness gate, then the original
-/// error. The two recoveries never contend — 850 fails closed on an over-closed
-/// document, which is precisely the profile 855 requires.
+/// The shared node-decode spine (Phase 1923). A document that parses is decoded
+/// under `policy`. A parse failure is the answer under `Recovery.Off` — the
+/// default. Under the opt-in `Recovery.Lenient` an `INVALID_JSON` failure is
+/// handed to `repair`, and a repaired text is decoded strictly under `policy`:
+/// the lenient decoder IS `repair` then strict decode, one implementation.
+/// Only this path writes the `Reliance` counters.
 let private decodeNodeCoreWith (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> * string list =
-    match tryParseNodeWithRecovery policy json with
-    | Ok(j, applied) -> decodeNodeAst (walkRoot policy) "$" j, applied
-    | Error((DecodeErrorCode.INVALID_JSON, _) as failure) ->
-        match tryOverCloseUnique policy json with
-        | Some decoded -> decoded, [ Reliance.OverCloseUnique ]
-        | None -> parseFailure failure, []
+    match tryParse json with
+    | Ok j -> decodeNodeAst (walkRoot policy) "$" j, []
+    | Error((DecodeErrorCode.INVALID_JSON, _) as failure) when DecodePolicy.recovers policy ->
+        match repair json with
+        | Repair.RepairOutcome.Repaired(repaired, applied) when not applied.IsEmpty ->
+            for id in applied do
+                Reliance.record id
+
+            match tryParse repaired with
+            | Ok j -> decodeNodeAst (walkRoot policy) "$" j, applied
+            | Error _ -> parseFailure failure, []
+        | Repair.RepairOutcome.NotRepairable reason when
+            reason = Repair.Refusal.OverCloseAmbiguous
+            || reason = Repair.Refusal.OverCloseNoCleanCandidate
+            || reason = Repair.Refusal.OverCloseBounds
+            ->
+            // The over-close gate examined the document and declined — counted,
+            // because a class that is silently refused stops generating demand
+            // signal exactly as one silently recovered does.
+            Reliance.record Reliance.OverCloseRefused
+            parseFailure failure, []
+        | _ -> parseFailure failure, []
     | Error failure -> parseFailure failure, []
 
 let private decodeNodeCore (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> =

@@ -43,6 +43,13 @@ open System
 open System.IO
 open Expecto
 open Fuaran.UI.Ops
+open Fuaran.UI.KindPolicy
+
+/// Phase 1923 — decode is strict by default, and this recovery is reached
+/// through the transitional `Recovery.Lenient` opt-in (`repair` then strict
+/// decode). The suite pins the recovery itself, so it decodes under that opt-in.
+let private lenient =
+    DecodePolicy.admitAll |> DecodePolicy.withRecovery Recovery.Lenient
 
 // ─── Fixture loading ──────────────────────────────────────────────────────
 
@@ -73,7 +80,7 @@ let private overClosedUnique =
     """{"id":"root","kind":{"$type":"Box","role":"Group","layout":{"$type":"Auto"},"children":[{"id":"m1","kind":{"$type":"Metric","label":"Revenue","value":{"$type":"Static","value":1420}}}},{"id":"m2","kind":{"$type":"Metric","label":"Cost","value":{"$type":"Static","value":7}}}]}}"""
 
 let private expectRefused (label: string) (json: string) =
-    match JsonDecode.decodeNode json with
+    match JsonDecode.decodeNodeWithPolicy lenient json with
     | Ok _ -> failtestf "%s: expected the gate to refuse; the document decoded" label
     | Error e ->
         Expect.equal e.Code "INVALID_JSON" (sprintf "%s: the ORIGINAL error code survives" label)
@@ -106,7 +113,10 @@ let tests =
                   | Some intended ->
                       // Labelled UNAMBIGUOUS: the gate must recover, and the
                       // tree must be the labelled one — not merely a tree.
-                      match JsonDecode.decodeNodeObj text, JsonDecode.decodeNodeObj (File.ReadAllText intended) with
+                      match
+                          JsonDecode.decodeNodeObjWithPolicy lenient text,
+                          JsonDecode.decodeNodeObjWithPolicy lenient (File.ReadAllText intended)
+                      with
                       | Ok got, Ok want ->
                           Expect.equal
                               (canonical got)
@@ -151,7 +161,7 @@ let tests =
               // (a) The wrong fix is genuinely AVAILABLE — it decodes clean, so
               //     a leftmost-first gate would have accepted it. The pin is
               //     meaningless unless this holds.
-              match JsonDecode.decodeNodeObj leftmost with
+              match JsonDecode.decodeNodeObjWithPolicy lenient leftmost with
               | Ok _ -> ()
               | Error e -> failtestf "the leftmost-legal repair should decode clean; got %s at %s" e.Code e.Path
 
@@ -163,7 +173,10 @@ let tests =
               //     differs from the repair the failure-offset rule selects.
               let failureOffsetRepair = emission.Remove(1031, 1)
 
-              match JsonDecode.decodeNodeObj leftmost, JsonDecode.decodeNodeObj failureOffsetRepair with
+              match
+                  JsonDecode.decodeNodeObjWithPolicy lenient leftmost,
+                  JsonDecode.decodeNodeObjWithPolicy lenient failureOffsetRepair
+              with
               | Ok wrong, Ok other ->
                   Expect.notEqual
                       (canonical wrong)
@@ -175,7 +188,10 @@ let tests =
           test "the synthetic instance — a genuinely unique repair recovers and re-encodes canonically" {
               let corrected = overClosedUnique.Replace("""1420}}}},{""", """1420}}},{""")
 
-              match JsonDecode.decodeNodeObj overClosedUnique, JsonDecode.decodeNodeObj corrected with
+              match
+                  JsonDecode.decodeNodeObjWithPolicy lenient overClosedUnique,
+                  JsonDecode.decodeNodeObjWithPolicy lenient corrected
+              with
               | Ok recovered, Ok intended ->
                   Expect.equal
                       (canonical recovered)
@@ -255,7 +271,7 @@ let tests =
                   String.replicate (Fuaran.UI.WireLimits.MaxJsonDepth + 10) """{"a":"""
                   + String.replicate 4 "}"
 
-              match JsonDecode.decodeNode hostile with
+              match JsonDecode.decodeNodeWithPolicy lenient hostile with
               | Ok _ -> failtest "expected LIMIT_EXCEEDED"
               | Error e -> Expect.equal e.Code "LIMIT_EXCEEDED" "the limit classification survives"
           }
@@ -286,7 +302,7 @@ let tests =
               for e in nodeEntries do
                   let wire = Corpus.readPayload corpusRoot e.InputFile
 
-                  match JsonDecode.decodeNodeObj wire with
+                  match JsonDecode.decodeNodeObjWithPolicy lenient wire with
                   | Ok decoded ->
                       Expect.equal
                           (canonical decoded)

@@ -17,8 +17,9 @@ module Fuaran.UI.JsonDecode.Tests.RecoveryPolicy
 //
 //  Two things follow, and this suite pins both:
 //
-//    * `DecodePolicy.Recovery` — `Off` for an untrusted ingress, `Lenient`
-//      (the default, so nothing shipped changes) otherwise.
+//    * `DecodePolicy.Recovery` — `Off` (the default since Phase 1923: decode
+//      is strict, and repair is the separate `JsonDecode.repair`), or the
+//      transitional opt-in `Lenient`, which is `repair` then strict decode.
 //    * `DecodePolicy.MaxRecoverableLength` — past it, `Lenient` refuses to
 //      enumerate and the document surfaces its original parser error.
 //
@@ -50,8 +51,10 @@ let private impliedNodeClose =
 let private valid =
     """{"id":"root","kind":{"$type":"Metric","label":"Revenue","value":{"$type":"Static","value":1420}}}"""
 
-let private lenient = DecodePolicy.admitAll
-let private strict = DecodePolicy.admitAll |> DecodePolicy.withRecovery Recovery.Off
+let private lenient =
+    DecodePolicy.admitAll |> DecodePolicy.withRecovery Recovery.Lenient
+
+let private strict = DecodePolicy.admitAll
 
 /// `overClosedUnique` inflated past `MaxRecoverableLength` with a long label,
 /// and NOTHING else changed: same surplus, same closer positions, same unique
@@ -74,15 +77,22 @@ let tests =
     testSequenced
     <| testList
         "Fuaran.UI.Ops.JsonDecode — recovery as a declared policy (Phase 1532)"
-        [ test "the default is unchanged — a shipped policy recovers" {
-              Expect.isTrue (DecodePolicy.recovers DecodePolicy.admitAll) "admitAll"
-              Expect.isTrue (DecodePolicy.recovers (DecodePolicy.admitting "p" [ "Metric" ])) "admitting"
+        [ test "the default is strict (Phase 1923) — no shipped policy recovers" {
+              Expect.isFalse (DecodePolicy.recovers DecodePolicy.admitAll) "admitAll"
+              Expect.isFalse (DecodePolicy.recovers (DecodePolicy.admitting "p" [ "Metric" ])) "admitting"
 
-              Expect.isTrue
+              Expect.isFalse
                   (DecodePolicy.recovers (DecodePolicy.excludingFrom "p" [ "Metric"; "Custom" ] [ "Custom" ]))
                   "excludingFrom"
 
-              Expect.isFalse (DecodePolicy.recovers strict) "and only an explicit Off declines"
+              Expect.isTrue (DecodePolicy.recovers lenient) "and only an explicit Lenient repairs"
+          }
+
+          test "the default entry points are strict — decodeNode repairs nothing" {
+              for json in [ overClosedUnique; impliedNodeClose ] do
+                  match JsonDecode.decodeNodeObj json with
+                  | Ok _ -> failtest "the default decoder must not repair a malformed document"
+                  | Error e -> Expect.equal e.Code "INVALID_JSON" "the parser's refusal is the answer"
           }
 
           test "under Lenient both recoveries still fire (the pre-phase behaviour)" {

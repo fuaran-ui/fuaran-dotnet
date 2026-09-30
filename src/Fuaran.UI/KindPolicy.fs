@@ -47,28 +47,27 @@ type Admission =
     /// Exactly these wire discriminators (`kind.$type`), and no others.
     | AdmitOnly of Set<string>
 
-/// What a policy does with a document the parser refuses (Phase 1532).
+/// What a policy does with a document the parser refuses (Phase 1532; the
+/// default moved in Phase 1923).
 ///
-/// Decode-time RECOVERY repairs a malformed document and decodes the repair. It
-/// exists because a model emitting canonical JSON drops a closing brace often
-/// enough to be worth measuring, and the two shipped recoveries are careful:
-/// each is profile-gated, bounded, fails closed, and is counted. What they were
-/// not is OPTIONAL — every failed decode entered them, including one arriving
-/// on an untrusted ingress where a repair is not wanted at any price and the
-/// enumeration is an amplifier: a large over-closed payload had every candidate
-/// repair built and re-parsed, at a cost multiplied by the document's own size.
-///
-/// So recovery becomes an axis a host declares, rather than a behaviour it
-/// cannot decline.
+/// Decode is STRICT: a document the parser refuses is `INVALID_JSON`, and that
+/// is the answer every conformant host gives (WIRE_FORMAT.md §20, §28). Repair
+/// of malformed JSON is a separate, deliberate act — `JsonDecode.repair`, whose
+/// every repair is named by a stable catalogue id (§28). `Recovery.Lenient` is
+/// kept as an explicit, named opt-in for existing callers during the
+/// transition, and it is exactly `repair` followed by the strict decode: one
+/// implementation, not a second copy of either repair.
 [<RequireQualifiedAccess>]
 type Recovery =
     /// Parse, or fail. No repair is attempted, nothing is enumerated, and an
-    /// `INVALID_JSON` document costs one parse. The posture for an ingress
-    /// carrying documents the host did not emit.
+    /// `INVALID_JSON` document costs one parse. THE DEFAULT (Phase 1923), and
+    /// the posture every conformant host decodes at.
     | Off
-    /// The shipped behaviour: both bounded recoveries run, subject to the
-    /// document-length ceiling below. `Lenient` is the default so that
-    /// declaring a policy does not silently change what decodes.
+    /// Opt-in: on `INVALID_JSON`, run `JsonDecode.repair` and strictly decode
+    /// what it returns, counting each applied repair under `Reliance`. The
+    /// over-close enumeration stays subject to the document-length ceiling
+    /// below. Prefer calling `repair` yourself, where the applied ids are
+    /// returned to you rather than inferred.
     | Lenient
 
 /// A host's declared decode-time kind admission policy.
@@ -83,15 +82,16 @@ type DecodePolicy =
         Identity: string
         Admission: Admission
         /// What this policy does with a document the parser refuses (Phase 1532).
-        /// `Recovery.Lenient` in every shipped constructor, so the default is
-        /// unchanged; a host narrows it with `DecodePolicy.withRecovery`.
+        /// `Recovery.Off` in every shipped constructor since Phase 1923 — decode
+        /// is strict; a host that still wants the transitional lenient decode
+        /// opts in with `DecodePolicy.withRecovery Recovery.Lenient`.
         Recovery: Recovery
     }
 
 module DecodePolicy =
-
-    /// The document-length ceiling above which `Recovery.Lenient` declines to
-    /// enumerate repairs (Phase 1532), in UTF-16 characters of the source text.
+    /// The document-length ceiling above which the `over-close-unique` repair
+    /// declines to enumerate (Phase 1532; `Repair.MaxOverCloseLength` since Phase
+    /// 1923, WIRE_FORMAT.md §28), in UTF-16 code units of the source text.
     ///
     /// **Why a ceiling at all.** The over-close gate's other bounds cap the
     /// NUMBER of candidates (8,192 deletion sets, 32 distinct parseable
@@ -111,19 +111,19 @@ module DecodePolicy =
     [<Literal>]
     let MaxRecoverableLength = 65536
 
-    /// The shipped default: admit every recognised kind, recover leniently.
-    /// Supplying this is byte-for-byte indistinguishable from supplying no
-    /// policy at all.
+    /// The shipped default: admit every recognised kind, decode strictly
+    /// (`Recovery.Off`, Phase 1923). Supplying this is byte-for-byte
+    /// indistinguishable from supplying no policy at all.
     let admitAll: DecodePolicy =
         { Identity = "admit-all"
           Admission = Admission.AdmitAll
-          Recovery = Recovery.Lenient }
+          Recovery = Recovery.Off }
 
     /// Admit exactly `kinds`, named by their WIRE discriminators (`kind.$type`).
     let admitting (identity: string) (kinds: string seq) : DecodePolicy =
         { Identity = identity
           Admission = Admission.AdmitOnly(Set.ofSeq kinds)
-          Recovery = Recovery.Lenient }
+          Recovery = Recovery.Off }
 
     /// Admit everything in `vocabulary` except `excluded` — the exclusion form,
     /// resolved to an allow-list AT CONSTRUCTION against the vocabulary the
@@ -138,19 +138,19 @@ module DecodePolicy =
     let excludingFrom (identity: string) (vocabulary: string seq) (excluded: string seq) : DecodePolicy =
         { Identity = identity
           Admission = Admission.AdmitOnly(Set.difference (Set.ofSeq vocabulary) (Set.ofSeq excluded))
-          Recovery = Recovery.Lenient }
+          Recovery = Recovery.Off }
 
-    /// Set this policy's recovery posture. The narrowing an untrusted ingress
-    /// declares:
+    /// Set this policy's recovery posture. `Off` is the default; the
+    /// transitional opt-in is:
     ///
     /// ```fsharp
-    /// let ingress = DecodePolicy.admitAll |> DecodePolicy.withRecovery Recovery.Off
+    /// let legacy = DecodePolicy.admitAll |> DecodePolicy.withRecovery Recovery.Lenient
     /// ```
     ///
     /// `Off` is a REFUSAL to repair, never a different repair: a document that
-    /// parses decodes identically under both postures, so turning recovery off
-    /// can only turn a would-be recovery into the `INVALID_JSON` the parser
-    /// already produced.
+    /// parses decodes identically under both postures, so recovery can only
+    /// turn the `INVALID_JSON` the parser produced into a decode of the text
+    /// `JsonDecode.repair` returned.
     let withRecovery (recovery: Recovery) (policy: DecodePolicy) : DecodePolicy = { policy with Recovery = recovery }
 
     /// Does this policy attempt decode-time recovery at all?

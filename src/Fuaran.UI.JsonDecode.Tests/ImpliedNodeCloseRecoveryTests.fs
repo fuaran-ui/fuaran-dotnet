@@ -26,6 +26,13 @@ open System
 open System.IO
 open Expecto
 open Fuaran.UI.Ops
+open Fuaran.UI.KindPolicy
+
+/// Phase 1923 — decode is strict by default, and this recovery is reached
+/// through the transitional `Recovery.Lenient` opt-in (`repair` then strict
+/// decode). The suite pins the recovery itself, so it decodes under that opt-in.
+let private lenient =
+    DecodePolicy.admitAll |> DecodePolicy.withRecovery Recovery.Lenient
 
 // ─── Fixture loading ──────────────────────────────────────────────────────
 
@@ -61,14 +68,14 @@ let private droppedNodeCloseBeforeComma =
     """{"id":"root","kind":{"$type":"Box","role":"Group","layout":{"$type":"Auto"},"children":[{"id":"m1","kind":{"$type":"Metric","label":"Revenue","value":{"$type":"Static","value":1200000}},{"id":"m2","kind":{"$type":"Metric","label":"Cost","value":{"$type":"Static","value":7}}}]}}"""
 
 let private expectRecovered (label: string) (json: string) =
-    match JsonDecode.decodeNode json with
+    match JsonDecode.decodeNodeWithPolicy lenient json with
     | Ok _ -> ()
     | Error e -> failtestf "%s: expected the recovery to repair this document; got %s at %s" label e.Code e.Path
 
 /// Fail-closed assertion: the decode fails as INVALID_JSON with the parser's
 /// ORIGINAL message (offset intact), i.e. the recovery declined.
 let private expectFailsClosed (label: string) (json: string) =
-    match JsonDecode.decodeNode json with
+    match JsonDecode.decodeNodeWithPolicy lenient json with
     | Ok _ -> failtestf "%s: expected INVALID_JSON (fail closed); the document decoded" label
     | Error e ->
         Expect.equal e.Code "INVALID_JSON" (sprintf "%s: the original error code survives" label)
@@ -95,7 +102,7 @@ let tests =
                   let name = Path.GetFileName file
                   let text = File.ReadAllText file
 
-                  match JsonDecode.decodeNode text, Map.tryFind name expectedResiduals with
+                  match JsonDecode.decodeNodeWithPolicy lenient text, Map.tryFind name expectedResiduals with
                   | Ok _, None -> clean <- clean + 1
                   | Ok _, Some(path, _) ->
                       failtestf "%s: decoded clean but the record names it a MISSING_FIELD residual at %s" name path
@@ -157,7 +164,10 @@ let tests =
               // well-formed JSON: re-encode equals the correctly-braced form.
               let corrected = droppedNodeClose.Replace("""1200000}}]}}""", """1200000}}}]}}""")
 
-              match JsonDecode.decodeNodeObj droppedNodeClose, JsonDecode.decodeNodeObj corrected with
+              match
+                  JsonDecode.decodeNodeObjWithPolicy lenient droppedNodeClose,
+                  JsonDecode.decodeNodeObjWithPolicy lenient corrected
+              with
               | Ok recovered, Ok intended ->
                   Expect.equal
                       (Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeNode recovered)
@@ -217,7 +227,7 @@ let tests =
               // the limit error untouched.
               let hostile = String.replicate (Fuaran.UI.WireLimits.MaxJsonDepth + 10) """{"a":"""
 
-              match JsonDecode.decodeNode hostile with
+              match JsonDecode.decodeNodeWithPolicy lenient hostile with
               | Ok _ -> failtest "expected LIMIT_EXCEEDED"
               | Error e -> Expect.equal e.Code "LIMIT_EXCEEDED" "the limit classification survives"
           }
@@ -233,7 +243,7 @@ let tests =
               for e in nodeEntries do
                   let wire = Corpus.readPayload corpusRoot e.InputFile
 
-                  match JsonDecode.decodeNodeObj wire with
+                  match JsonDecode.decodeNodeObjWithPolicy lenient wire with
                   | Ok decoded ->
                       // Byte-identity: the decode result is the same tree the
                       // pre-850 decoder produced — its canonical re-encode is

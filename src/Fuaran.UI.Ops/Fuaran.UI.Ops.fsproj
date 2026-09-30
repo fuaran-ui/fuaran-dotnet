@@ -23,6 +23,10 @@
          Compiled BEFORE Apply.fs so the apply engine's UpdateProp
          dispatcher can call into JsonDecode.Coerce.* for structural
          typed-coercion of the wire-decoded Map<string,obj> shape. -->
+    <!-- Phase 1923: deliberate repair (WIRE_FORMAT.md §28) — the catalogue and
+         the text-level machinery, compiled BEFORE the decoder that parameterises
+         it and publishes the complete entry point as JsonDecode.repair. -->
+    <Compile Include="Repair.fs" />
     <Compile Include="JsonDecode.fs" />
     <!-- Draft 2020-12 JSON Schema generator for the canonical wire format
          (Phase 96). Standalone string-builder (no internal deps); the third

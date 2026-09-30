@@ -753,8 +753,16 @@
          Class ADDITIVE - two new package ids, no existing type, member or
          wire byte moves. It ADVANCES rather than riding 0.86.0 because
          v0.86.0 is TAGGED. An UNTAGGED DRAFT: additive changes ride it, a
-         higher class advances it. See STABILITY.md "0.87.0". -->
-    <Version>0.87.0</Version>
+         higher class advances it. See STABILITY.md "0.87.0".
+
+         0.88.0 (2026-09-30) is opened by Phase 1923: the default decode policy
+         becomes Recovery.Off and the two decode-time recoveries become the
+         separate JsonDecode.repair (WIRE_FORMAT.md section 28). Class BREAKING
+         (a default moves), so it ADVANCES the untagged ADDITIVE 0.87.0 draft
+         rather than riding it; 0.87.0 is superseded before release. An UNTAGGED
+         DRAFT: additive changes ride it, a higher class advances it. See
+         STABILITY.md "0.88.0". -->
+    <Version>0.88.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

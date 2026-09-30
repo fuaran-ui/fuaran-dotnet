@@ -166,19 +166,24 @@ let grammarTests =
                   """{"id":"a","kind":{"$type":"Markdown","text":"x"}} {"id":"b"}"""
                   "INVALID_JSON"
 
-              // A SURPLUS CLOSING BRACE is where row 2 meets this host's repair
-              // layer, and the interaction is worth pinning rather than
-              // asserting away. Before ratification the parser stopped at the
-              // root value and silently ignored the remainder; it refuses now,
-              // and the fuaran#855 over-close uniqueness gate reconstructs the
-              // document and admits it. Same acceptance, different act — an
-              // attributed, counted, single-candidate repair instead of a silent
-              // truncation nothing recorded. §20.2's repair-layer note is the
-              // spec side of this.
-              match JsonDecode.decodeNodeObj """{"id":"a","kind":{"$type":"Markdown","text":"x"}}}""" with
-              | Ok _ -> ()
-              | Error e ->
-                  failtestf "a surplus closing brace should reach the over-close repair, not the caller: %s" e.Message
+              // A SURPLUS CLOSING BRACE is where row 2 meets repair, and the
+              // interaction is worth pinning rather than asserting away (Phase
+              // 1923, WIRE_FORMAT.md §28). The strict decoder — the default —
+              // refuses it, exactly as row 2 requires. `repair` is a separate,
+              // deliberate act: it returns the document with the surplus deleted
+              // and names `over-close-unique`, and only then does it decode.
+              let surplus = """{"id":"a","kind":{"$type":"Markdown","text":"x"}}}"""
+              expectRefused "a surplus closing brace, under the strict default" surplus "INVALID_JSON"
+
+              match JsonDecode.repair surplus with
+              | Repair.RepairOutcome.Repaired(repaired, applied) ->
+                  Expect.equal applied [ Repair.RepairId.OverCloseUnique ] "repair names the repair it made"
+
+                  match JsonDecode.decodeNodeObj repaired with
+                  | Ok _ -> ()
+                  | Error e -> failtestf "the repaired text must decode strictly: %s" e.Message
+              | Repair.RepairOutcome.NotRepairable reason ->
+                  failtestf "a unique surplus closer should be repairable: %s" reason
 
               // Trailing WHITESPACE is not trailing content — the check must not
               // refuse a document a conformant encoder could have produced with a

@@ -487,12 +487,18 @@ let overCloseCostProfile =
             """{"id":"r","kind":{"$type":"Box","children":[%s],"layout":{"$type":"Auto"},"role":"Group"}}"""
             children
 
+    // Phase 1923 — decode is strict by default; the recovery this pins is the
+    // opt-in `Recovery.Lenient` path (`repair` then strict decode).
+    let lenient =
+        Fuaran.UI.KindPolicy.DecodePolicy.admitAll
+        |> Fuaran.UI.KindPolicy.DecodePolicy.withRecovery Fuaran.UI.KindPolicy.Recovery.Lenient
+
     let measureAlloc (json: string) : int64 * Result<unit, string> =
-        Fuaran.UI.Ops.JsonDecode.decodeNodeObj json |> ignore // warm, so JIT is not measured
+        Fuaran.UI.Ops.JsonDecode.decodeNodeObjWithPolicy lenient json |> ignore // warm, so JIT is not measured
         let before = GC.GetAllocatedBytesForCurrentThread()
 
         let outcome =
-            match Fuaran.UI.Ops.JsonDecode.decodeNodeObj json with
+            match Fuaran.UI.Ops.JsonDecode.decodeNodeObjWithPolicy lenient json with
             | Ok _ -> Ok()
             | Error e -> Error e.Code
 

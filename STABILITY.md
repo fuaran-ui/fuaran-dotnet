@@ -216,6 +216,7 @@ The following are covered by the semver rules above:
   refused (that addresses the spec wholesale, which is `EditNode`'s job), and a non-leading `Kind`
   segment (`"Columns[i].Kind"`, `"Fields[i].Kind"`) remains deliberately unaddressable.
 - The `ErrorRender.render` entry point.
+- `Fuaran.UI.Ops.JsonDecode.repair` and the `Fuaran.UI.Ops.Repair` catalogue (`RepairId`, `CatalogueVersion`, `Refusal`, `RepairOutcome`) – deliberate repair of malformed canonical JSON, WIRE_FORMAT.md §28 (0.88.0). **The decoder is strict by default** (`Recovery.Off`); the ids, the refusal tokens and the byte-exact output are pinned by the corpus's `repair/` family, so changing any of them is a catalogue-version change.
 - `Fuaran.UI.Ops.JsonDecode.{decodeNode, decodeOp, DecodeError, DecodeErrorCode}` – the structural decoder mirroring `Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeNode` / `encodeOp`. **Forward-coupling rule:** adding a new `NodeKind` / `Spec` / `TreeOp` / `Binding<'T>` / `Action<'Msg>` case in any future phase MUST update the decoder in the same commit. **Wire-shape lock declaration** (Phase 62): the `Binding.Local` wire shape's `$type: "Local"` discriminator + the `LocalFlushTrigger` `$type` enumeration (`OnBlur` / `OnSubmit` / `OnDebounce` / `OnCommitAction`) + the `Action.CommitLocal` `$type` is part of the stable structural-decoder surface – JsonDecode breakage on any of these is a major-version bump. **Wire-shape lock declaration** (Phase 64): the `Action.WriteToClipboard` `$type` discriminator + its `text` field is part of the stable structural-decoder surface on the same axis. **Wire-shape lock declaration** (Phase 70): the `Custom` discriminator's optional `contentHash` (with `algorithm` / `hash` / `strictness` sub-fields) + `exposedNodeIds` array fields are part of the stable structural-decoder surface – JsonDecode breakage on either is a major-version bump. **Wire-shape lock declaration** (Phase 102): the `Binding.Format` `$type: "Format"` discriminator + its `format` / `locale` / `source` fields, the `Format` `$type` enumeration (`Number` / `Currency` / `Percent` / `Date` / `RelativeTime`) + its field names (`decimals` / `isoCode` / `dateStyle` / `unit`), the `LocaleSource` `$type` enumeration (`Ambient` / `Explicit` + `tag`), and the `DateStyle` / `RelativeTimeUnit` bare-enum string sets are part of the stable structural-decoder surface on the same axis. **Wire-shape lock declaration** (Phase 136): the `Action.ReadFileBody` `$type` discriminator + its `fileRef` (string) + `encoding` fields, and the `FileReadEncoding` bare-enum string set (`Text` / `Base64` / `DataUrl`), are part of the stable structural-decoder surface on the same axis (the blob handle + `onRead` continuation never serialise).
 
 ### `Fuaran.UI.OpStream.Abstractions`
@@ -7815,7 +7816,53 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.87.0 — the slot the client and the command-line tool open by joining the published set (DRAFT — untagged)
+## 0.88.0 — the slot Phase 1923 opens: decode is strict, and repair is a separate named act (DRAFT — untagged)
+
+_Class: **BREAKING** on `Fuaran.UI` and `Fuaran.UI.Ops` — a behavioural change to a default, with
+no type or member removed. `v0.86.0` is tagged and 0.87.0 is an untagged draft whose class is
+ADDITIVE, so under the draft-slot rule this change, being of a higher class than the draft carries,
+ADVANCES the number rather than riding 0.87.0: the number is what tells a consumer what adopting it
+costs, and 0.87.0 says "additive". Everything 0.87.0 carried rides here unchanged (see its entry
+below); 0.87.0 is superseded before release. An additive change that follows rides this slot; a
+higher class advances it._
+
+### What rides this slot
+
+**fuaran#1923 — the default `DecodePolicy` is `Recovery.Off`; the two decode-time recoveries are
+lifted out of decode into `repair` (WIRE_FORMAT.md §28). BREAKING (a default moves); ADDITIVE
+everywhere else; the WIRE is unchanged — the specification now says what the reference host's
+default had been doing, and makes it opt-in.**
+
+Phase 1910 measured the one disagreement between this host's decoder and the TypeScript host's over
+12,707 stored model emissions: 282 documents this host accepted and the other refused, every one a
+malformed document this host REPAIRED inside decode (fuaran#850 `implied-node-close`, fuaran#855
+`over-close-unique`). Neither repair was specified, and `over-close-unique` accepted a surplus closer
+after the root value, which ratified §20.2 row 2 requires `INVALID_JSON` for — so the reference
+default was non-conformant on that sub-class. The ruling keeps the value and removes the silence:
+decode is strict; repair is a separate, pure function whose every repair is named.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `DecodePolicy.admitAll` / `admitting` / `excludingFrom` | `Recovery` is `Off` (was `Lenient`). `decodeNode` / `decodeNodeObj` (which use `admitAll`) are therefore strict: a malformed document is `INVALID_JSON` at `$`, and `Recovered` is always empty. | **Every caller that decodes model output and relied on silent repair.** It now gets `INVALID_JSON` for the 2.5% of stored emissions that are repair-class (316 of 12,707; 282 of them decoded after repair). Remedy: call `JsonDecode.repair` on an `INVALID_JSON` and decode what it returns, or opt the policy back in with `DecodePolicy.withRecovery Recovery.Lenient`. |
+| `Recovery.Lenient` | Kept as the explicit, named opt-in for the transition, and re-expressed as `repair` then strict decode — one implementation. The `Reliance` counters and `DecodeOutcome.Recovered` are written only on this path, with the same ids. | A lenient caller under a NARROWED admission policy: the `over-close-unique` uniqueness gate now decodes candidates UNNARROWED (repair is a property of the text, §28.2.2) and the policy applies at the decode that follows, so a document whose clean candidates differ between the narrowed and the unnarrowed decoder can get a different answer. No measured document does. |
+| `Fuaran.UI.Ops.Repair` (new module) | The catalogue: `RepairId` (`implied-node-close`, `over-close-unique`, `catalogue`), `CatalogueVersion` (1), the `Refusal` tokens, `RepairOutcome` (`Repaired of Text * Applied` / `NotRepairable of Reason`), `MaxOverCloseLength`. The two recoveries' text machinery moved here verbatim. | Nobody; additive. |
+| `JsonDecode.repair : string -> Repair.RepairOutcome` (new) | The complete, pure entry point — the identity on a document that parses; names every repair it applies. | Nobody; additive. |
+
+**Evidence.** The `repair/` corpus family (21 cases: every catalogue entry, every refusal token, the
+identity, the §20.2 row 2 input and the eight real repair-class emissions of `stored-emissions/`) is
+certified byte-exact by this host and by the TypeScript host. Re-measured over the same 12,707 stored
+emissions on 2026-09-30: the two hosts' default decoders accept exactly the same 7,667; `repair`
+returns byte-identical text, identical ids and identical refusal tokens on every one; repair then
+strict decode accepts the same 7,949 on both.
+
+**No kind is added, merged or retired**, so the vocabulary-growth charter's gates are not engaged.
+**No escape hatch is created or widened** — the change narrows what the default decoder accepts.
+
+*Version.* Advances 0.87.0 → 0.88.0: a BREAKING change cannot ride an ADDITIVE draft.
+
+---
+
+## 0.87.0 — the slot the client and the command-line tool open by joining the published set (DRAFT — untagged; superseded by 0.88.0 before release)
 
 _Class so far: **ADDITIVE**. `v0.86.0` is tagged, so this change could not ride that slot and opens
 this one. Under the draft-slot rule an additive change that follows RIDES this slot and moves no

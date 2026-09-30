@@ -24,8 +24,8 @@ Cross-repo development conventions (port allocation, launcher patterns, formatti
 | `Fuaran.UI.Telemetry.Abstractions` | Telemetry record types + `IFuaranTelemetrySink` |
 | `Fuaran.UI.Telemetry.Default` | NoOp / InMemory / Console sinks + `applyWithTelemetry` |
 | `Fuaran.UI.Telemetry.Drift` | Aggregate metrics + window-over-window regression detector. **Not published** — `IsPackable=false` since Phase 1532; a project in this repo, run by hand, and the last version any registry serves is 0.77.0 |
-| `Fuaran.UI.Client` | Typed F#/.NET client over the generation endpoint — `generate` + session turn-loop (repair diffs) + the closed repair loop + decode glue. Published from 0.87.0 |
-| `Fuaran.UI.Cli` | The `fuaran` dotnet tool — `generate` / `validate` / `scaffold` over the public surfaces. Published from 0.87.0 |
+| `Fuaran.UI.Client` | Typed F#/.NET client over the generation endpoint — `generate` + session turn-loop (repair diffs) + the closed repair loop + decode glue. Published from 0.88.0 (the 0.87.0 slot, superseded before release) |
+| `Fuaran.UI.Cli` | The `fuaran` dotnet tool — `generate` / `validate` / `scaffold` over the public surfaces. Published from 0.88.0 (the 0.87.0 slot, superseded before release) |
 | `Fuaran.UI.Renderer.Web` | Embedded browser renderer for .NET hosts — the built `@fuaran-ui/renderer` bundle + reference CSS as embedded static web assets, `MapFuaranRenderer()`, and the mount snippet. No Node toolchain on the consumer side |
 | `Fuaran.UI.AiWire` | Portable AI-connector wire substrate — ordered `JsonValue` + byte-stable canonical writer + host-bridged parser, the provider contract records and error vocabulary, and the one-method `IHttpTransport` egress seam. FSharp.Core + Fable.Core only; references no other package here and none references it |
 
