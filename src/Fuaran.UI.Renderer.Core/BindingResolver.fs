@@ -2144,6 +2144,11 @@ let windowRowIndex (window: PresentedWindow<'row> option) (rowIndex: int) : int 
 // the same arithmetic, and the same dedupe — a window equal to the one last
 // written, or to the one State already holds, is never written, so a write that
 // re-renders the grid cannot loop.
+//
+// Phase 1922 — the parity is CERTIFIED, not just asserted: the corpus's
+// `grid-window-writer/` vectors (scripted measurements, the expected write at
+// every step) run through `stepWindowWriter` here and through the TS
+// renderer's own `stepWindowWriter`, which `GridWindowViewport` now calls.
 
 /// The row height assumed until a rendered row can be measured (the TS
 /// renderer's `DEFAULT_WINDOW_ROW_HEIGHT_PX`).

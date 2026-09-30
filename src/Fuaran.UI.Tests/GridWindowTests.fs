@@ -511,3 +511,114 @@ let writerTests =
                       Expect.equal presented.Offset 11 "the next window starts at the written offset"
                       Expect.equal (idsOf presented.Rows) [ for i in 11..20 -> string i ] "and holds the written count"
           } ]
+
+
+// ============================================================================
+//  Phase 1922 — the corpus's `grid-window-writer/` vectors: a scripted sequence
+//  of viewport measurements run through THIS host's pure writer and descriptor
+//  reader, each write reflected into the held window as `SetState` does. The TS
+//  renderer runs the same file through its own `stepWindowWriter`, so the two
+//  clients are certified against one script rather than against each other.
+// ============================================================================
+
+/// Read a RAW held value through the renderer's own State-store read.
+let private heldOf (raw: JsonElement) : BindingResolver.RowWindow option =
+    BindingResolver.readWindowDescriptor
+        { BindingResolver.empty with
+            State = Map.ofList [ "held", nn (jvalOf raw) ] }
+        "held"
+
+let private writerVectors () : (string * JsonElement * JsonElement) list =
+    match Fuaran.Tests.CorpusRoot.tryFind () with
+    | None -> []
+    | Some root ->
+        let path =
+            Path.Combine(root, "grid-window-writer", "grid-window-writer-vectors.json")
+
+        if not (File.Exists path) then
+            failtestf
+                "the corpus at %s holds no grid-window-writer/grid-window-writer-vectors.json — a behaviour family cannot be certified by reading nothing"
+                root
+
+        let doc = JsonDocument.Parse(File.ReadAllText path)
+
+        [ for v in doc.RootElement.GetProperty("vectors").EnumerateArray() ->
+              v.GetProperty("id").GetString() |> string,
+              v.GetProperty("input").Clone(),
+              v.GetProperty("expected").Clone() ]
+
+/// Run one writer script exactly as the family's description prescribes; one
+/// entry per step, the written window or `None`.
+let private runWriter (input: JsonElement) : BindingResolver.RowWindow option list =
+    let windowKey =
+        match input.TryGetProperty "windowStateKey" with
+        | true, k -> k.GetString() |> Option.ofObj
+        | _ -> None
+
+    let figure (m: JsonElement) (name: string) =
+        match m.TryGetProperty name with
+        | true, v -> v.GetDouble()
+        | _ -> 0.0
+
+    let seeded =
+        match input.TryGetProperty "held" with
+        | true, h -> heldOf h
+        | _ -> None
+
+    let folder (held, lastWritten, writes) (step: JsonElement) =
+        let held =
+            match step.TryGetProperty "held" with
+            | true, h -> heldOf h
+            | _ -> held
+
+        let m = step.GetProperty "measure"
+
+        let written, write =
+            BindingResolver.stepWindowWriter
+                windowKey
+                held
+                lastWritten
+                { ScrollTop = m.GetProperty("scrollTop").GetDouble()
+                  HeaderHeight = m.GetProperty("headerHeight").GetDouble()
+                  RowHeight = figure m "rowHeight"
+                  ViewportHeight = figure m "viewportHeight" }
+
+        match write with
+        | Some(_, descriptor) ->
+            // Reflect the write into State through the same reader the renderer uses.
+            let reflected =
+                BindingResolver.readWindowDescriptor
+                    { BindingResolver.empty with
+                        State = Map.ofList [ "held", nn descriptor ] }
+                    "held"
+
+            reflected, written, reflected :: writes
+        | None -> held, written, None :: writes
+
+    let _, _, writes =
+        Seq.fold folder (seeded, None, []) (input.GetProperty("steps").EnumerateArray())
+
+    List.rev writes
+
+[<Tests>]
+let writerVectorTests =
+    testList
+        "Fuaran.UI.GridWindow.writerVectors"
+        [ testCase "the grid-window-writer corpus vectors agree with this host's window writer"
+          <| fun () ->
+              match writerVectors () with
+              | [] -> skiptest Fuaran.Tests.CorpusRoot.AbsentSkipReason
+              | vectors ->
+                  Expect.isGreaterThanOrEqual vectors.Length 10 "the family carries its full vector set"
+
+                  for (id, input, expected) in vectors do
+                      let want =
+                          [ for w in expected.GetProperty("writes").EnumerateArray() ->
+                                if w.ValueKind = JsonValueKind.Null then
+                                    None
+                                else
+                                    Some
+                                        { BindingResolver.RowWindow.Offset = w.GetProperty("offset").GetInt32()
+                                          BindingResolver.RowWindow.Count = w.GetProperty("count").GetInt32() } ]
+
+                      Expect.equal (runWriter input) want $"{id}: the write owed at each step" ]
