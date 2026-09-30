@@ -189,6 +189,8 @@
          token's refusal exactly as it was. Reads no corpus fixture: the subject
          is a message, and the corpus pins no WRONG_NODE_KIND vector. -->
     <Compile Include="KindNearMissTests.fs" />
+    <!-- Phase 1935: every independent defect (WIRE_FORMAT §29) — the corpus lists, the canonical order, the entry point. -->
+    <Compile Include="DefectListTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

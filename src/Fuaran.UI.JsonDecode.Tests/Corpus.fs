@@ -297,7 +297,10 @@ let private writeManifest
         "Fuaran canonical wire-format conformance corpus. node-round-trip / op-round-trip "
         + "fixtures: decode inputFile, re-encode, assert byte-equal to expectedFile. reject "
         + "fixtures: decode inputFile, assert DecodeError.Code = expectedErrorCode and "
-        + "DecodeError.Path starts with expectedPath. lenient-accept fixtures (WIRE_FORMAT "
+        + "DecodeError.Path starts with expectedPath. A reject fixture carrying expectedDefects "
+        + "(WIRE_FORMAT 29) also lists EVERY independent defect the document holds, as {code, path} "
+        + "in canonical order: a host that reports defect lists asserts exactly that list; the "
+        + "single-error assertion holds for every host. lenient-accept fixtures (WIRE_FORMAT "
         + "16): decode the SHORTHAND inputFile, re-encode, assert byte-equal to expectedFile "
         + "(the verbose canonical form) — a conformant host MUST accept the shorthand and "
         + "normalise it; rejecting it, or decoding it to different bytes, is non-conformant. "
@@ -417,6 +420,23 @@ let private writeManifest
             |> Option.iter (fun c -> w.WriteString("expectedErrorCode", c))
 
             e.ExpectedPath |> Option.iter (fun p -> w.WriteString("expectedPath", p))
+
+            // Phase 1935 — a multi-defect reject fixture's FULL defect list
+            // (WIRE_FORMAT §29), in canonical order.
+            if e.Kind = "reject" then
+                match Map.tryFind e.Id RejectFixtures.expectedDefects with
+                | Some defects ->
+                    w.WriteStartArray("expectedDefects")
+
+                    for (code, path) in defects do
+                        w.WriteStartObject()
+                        w.WriteString("code", DecodeErrorCode.toString code)
+                        w.WriteString("path", path)
+                        w.WriteEndObject()
+
+                    w.WriteEndArray()
+                | None -> ()
+
             w.WriteString("description", e.Description)
             w.WriteEndObject()
         // Verbatim, so a property this emitter does not model — or an order it
@@ -925,6 +945,26 @@ let private optStr (el: JsonElement) (name: string) : string option =
         | null -> None
         | s -> Some s
     | _ -> None
+
+/// Phase 1935 — each reject fixture's `expectedDefects` (WIRE_FORMAT §29), as
+/// (code, path) pairs in manifest order, keyed by fixture id. A fixture without
+/// the property is absent from the map.
+let expectedDefects () : Map<string, (string * string) list> =
+    let root = findRoot ()
+    use doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "manifest.json")))
+
+    doc.RootElement.GetProperty("fixtures").EnumerateArray()
+    |> Seq.choose (fun el ->
+        match el.TryGetProperty "expectedDefects" with
+        | true, ds ->
+            let pairs =
+                ds.EnumerateArray()
+                |> Seq.map (fun d -> requireStr d "code", requireStr d "path")
+                |> List.ofSeq
+
+            Some(requireStr el "id", pairs)
+        | _ -> None)
+    |> Map.ofSeq
 
 /// Parse `manifest.json` into the fixture index.
 let load () : string * FixtureEntry list =

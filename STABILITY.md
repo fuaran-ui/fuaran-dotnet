@@ -7860,6 +7860,35 @@ strict decode accepts the same 7,949 on both.
 
 *Version.* Advances 0.87.0 → 0.88.0: a BREAKING change cannot ride an ADDITIVE draft.
 
+**fuaran#1935 — a node refusal reports every independent defect (WIRE_FORMAT.md §29). ADDITIVE
+surface; the refusal a multi-defect document gets is REFINED (the same code and path on every
+document holding one defect); the WIRE is unchanged.**
+
+A node decode used to stop at the first defect its walk reached, so which of several defects a
+refusal named was an accident of member order — two hosts named different first errors on 21 stored
+emissions — and an authoring loop paid a turn per defect. The decoder now collects every defect the
+§29.1 rules call independent (sibling members, sibling elements, a missing member whatever its
+siblings hold) and stops where they say to (`INVALID_JSON`, a §21 breach, a discriminator defect),
+orders the list canonically (§29.3), and the single-error form returns its head.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `JsonDecode.decodeNodeWithDefects : DecodePolicy -> string -> Result<WireTree, DecodeError list>` / `decodeNodeObjWithDefects` (new) | The refusal as its full list: never empty, canonical order, one entry per (`Code`, `Path`); `INVALID_JSON` and a §21 breach are one-entry lists. An accepted document is `Ok` exactly as from `decodeNodeWithPolicy`. | Nobody; additive. |
+| `JsonDecode.orderDefects : DecodeError list -> DecodeError list` (new) | The §29.3 order, for a consumer holding defects from elsewhere. | Nobody; additive. |
+| `decodeNode` / `decodeNodeObj` / `…WithPolicy` / `…WithOutcome` | On a document holding SEVERAL defects, the one error returned is the canonical first rather than whichever the walk reached first. On a document holding one defect, nothing changes. Accept and refuse are unchanged on every document. | A caller that pinned which of several defects a refusal named. None in this repository's corpus did: every reject fixture holding one defect names the same error. |
+| Five array-element paths | `params[i]` (a `Transform` / `Expr` binding), `dependsOn[i]` (`Query`), `choices[i]` (a hole value space), `holes[i]` (a fragment), `capabilities[i]` (`Mount`) now carry the element's index; each read `[]`, which made two elements' defects one entry. | A caller matching those five paths as text. The corpus pins none of them. |
+| `decodeOp` and every other entry point | Unchanged: §29 binds the node decoder only (§29.6). | Nobody. |
+
+**Evidence.** The `reject/` family gains ten multi-defect fixtures carrying `expectedDefects` (one
+per rule that decides a list, the `Box` `layout` + `role` case among them), and five earlier fixtures
+carry the list too, each having turned out to hold a latent second defect. This host and the
+TypeScript host certify every node reject fixture's list exactly. Over the 12,707 stored emissions
+of §28: 5,040 refused by each host, the lists identical on every one; 1,429 refusals carry more than
+one defect, 4,883 defects beyond the first between them.
+
+*Version.* Rides the 0.88.0 draft: the slot is untagged and its class is already BREAKING, which
+this change does not exceed.
+
 ---
 
 ## 0.87.0 — the slot the client and the command-line tool open by joining the published set (DRAFT — untagged; superseded by 0.88.0 before release)

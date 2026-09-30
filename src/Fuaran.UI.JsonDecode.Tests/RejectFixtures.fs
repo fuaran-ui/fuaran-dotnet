@@ -2123,4 +2123,136 @@ let all: RejectFixture list =
         ExpectedPath = "$.kind.value.key"
         IsOp = false
         Description =
-          "a State binding carrying `defaultValue` and no `key` — §5's absent-default posture makes the default optional and the key required, and a host that read the optionality the other way about would decode a reader of the empty key rather than refuse. Accept twin: the `state-absent-default` node fixture (Phase 1656)" } ]
+          "a State binding carrying `defaultValue` and no `key` — §5's absent-default posture makes the default optional and the key required, and a host that read the optionality the other way about would decode a reader of the empty key rather than refuse. Accept twin: the `state-absent-default` node fixture (Phase 1656)" }
+      // ─── Phase 1935 — multi-defect refusals (WIRE_FORMAT §29) ───────────
+      //
+      // Each carries its FULL defect list in `expectedDefects` below. The
+      // single-error fields are chosen so that EVERY listed defect satisfies them
+      // (one code, a shared path prefix): a host at the §29.5 floor, reporting any
+      // one of the defects, passes the ordinary reject leg unchanged.
+      { Id = "reject-multi-box-layout-role"
+        Json =
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"a","kind":{"$type":"Markdown","text":"x"}}],"layout":{"$type":"Flex","direction":"Sideways","wrap":false},"role":"Panel"}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind"
+        IsOp = false
+        Description =
+          "WIRE_FORMAT §29 — a Box whose `layout` (its direction) and `role` are both unrecognised: two sibling members, two defects, reported together in canonical order (`layout.direction` before `role`). The commonest two-defect shape in the stored-emission census, and the one on which two hosts named different first errors before §29" }
+      { Id = "reject-multi-box-layout-role-missing"
+        Json = """{"id":"root","kind":{"$type":"Box","children":[{"id":"a","kind":{"$type":"Markdown","text":"x"}}]}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind"
+        IsOp = false
+        Description =
+          "WIRE_FORMAT §29 — a Box with neither `layout` nor `role`: a missing member is independent of its siblings, so both absences are reported" }
+      { Id = "reject-multi-sibling-nodes-index-order"
+        Json =
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"n0","kind":{"$type":"Markdown","text":"x"}},{"id":"n1","kind":{"$type":"Markdown","text":"x"}},{"id":"n2","kind":{"$type":"Markdown","text":5}},{"id":"n3","kind":{"$type":"Markdown","text":"x"}},{"id":"n4","kind":{"$type":"Markdown","text":"x"}},{"id":"n5","kind":{"$type":"Markdown","text":"x"}},{"id":"n6","kind":{"$type":"Markdown","text":"x"}},{"id":"n7","kind":{"$type":"Markdown","text":"x"}},{"id":"n8","kind":{"$type":"Markdown","text":"x"}},{"id":"n9","kind":{"$type":"Markdown","text":"x"}},{"id":"n10","kind":{"$type":"Markdown","text":true}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.children"
+        IsOp = false
+        Description =
+          "WIRE_FORMAT §29.3 — defects in two sibling nodes, both reported, ordered by index NUMERICALLY (`children[2]` before `children[10]`, which a string sort would reverse)" }
+      { Id = "reject-multi-stop-unknown-layout"
+        Json =
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"a","kind":{"$type":"Markdown","text":"x"}}],"layout":{"$type":"Stack","direction":7,"wrap":"no","gap":"wide"},"role":"Group"}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.layout.$type"
+        IsOp = false
+        Description =
+          "WIRE_FORMAT §29.1 stop rule — an unrecognised `$type` makes its object's members meaningless: the discriminator is the one defect reported, never the members it would have selected" }
+      { Id = "reject-multi-stop-missing-layout-discriminator"
+        Json =
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"a","kind":{"$type":"Markdown","text":"x"}}],"layout":{"direction":7,"wrap":"no"},"role":"Group"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.layout.$type"
+        IsOp = false
+        Description =
+          "WIRE_FORMAT §29.1 stop rule — a MISSING `$type` likewise: the absent discriminator is the one defect reported, and the ill-typed members beside it are not" }
+      { Id = "reject-multi-stop-wrong-node-kind"
+        Json = """{"id":"root","kind":{"$type":"Carousel","children":7,"text":5,"role":"Nope"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_NODE_KIND
+        ExpectedPath = "$.kind.$type"
+        IsOp = false
+        Description =
+          "WIRE_FORMAT §29.1 stop rule — an unrecognised node kind: one defect, whatever its kind object's other members hold" }
+      { Id = "reject-multi-stop-invalid-json"
+        Json = """{"id":"","kind":{"$type":"Carousel","text":5}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "WIRE_FORMAT §29.1 stop rule — a document that does not parse has no tree to walk: `INVALID_JSON` alone, whatever the text would have held" }
+      { Id = "reject-multi-map-key-order"
+        Json =
+          """{"id":"root","kind":{"$type":"DataGrid","columns":[{"field":"id","kind":{"$type":"Text"},"label":"Shipment"},{"field":"carrier","kind":{"$type":"TonedPill","field":"carrier","map":{"Meridian":"Info"}},"label":"Carrier"},{"field":"status","kind":{"$type":"TonedPill","default":"Subdued","field":"status","map":{"On time":"Fine","Delayed":"Late","Cancelled":"Gone"}},"label":"Status"}],"rowKeyField":"id","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"carrier":{"validity":[true,true,true],"values":["Northwind","Meridian","Northwind"]},"id":{"validity":[true,true,true],"values":["SHP-1001","SHP-1002","SHP-1003"]},"status":{"validity":[true,true,true],"values":["On time","Delayed","Cancelled"]}},"schema":[{"name":"id","type":"string"},{"name":"carrier","type":"string"},{"name":"status","type":"string"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.columns"
+        IsOp = false
+        Description =
+          "WIRE_FORMAT §29.3 — three bad values in one open map (a TonedPill `map`), reported in Ordinal KEY order (`Cancelled`, `Delayed`, `On time`) whatever order the document wrote them in" }
+      { Id = "reject-multi-context-member"
+        Json =
+          """{"id":"root","kind":{"$type":"Form","disabled":{"$type":"State","defaultValue":false,"key":"formBusy"},"fields":[{"help":"Full legal name","kind":{"$type":"Text","onChange":"<closure>","value":{"$type":"Static","value":7}},"required":true},{"id":"age","kind":{"$type":"Number","onChange":"<closure>","value":{"$type":"Static","value":0}},"label":"Age","required":false},{"id":"agree","kind":{"$type":"Checkbox","onToggle":"<closure>","value":{"$type":"Static","value":false}},"label":"I agree","required":true},{"id":"tier","kind":{"$type":"Choice","onChange":"<closure>","options":{"$type":"Static","value":[{"label":"Basic","value":"basic"},{"label":"Pro","value":"pro"}]},"value":{"$type":"Static","value":"basic"}},"label":"Tier","required":false},{"id":"notes","kind":{"$type":"TextArea","onChange":"<closure>","rows":5,"value":{"$type":"Static","value":""}},"label":"Notes","required":false}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Save"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.fields"
+        IsOp = false
+        Description =
+          "WIRE_FORMAT §29.1 — a member read in the context of a sibling (a form field's `kind`, decoded under its `id`) is not decoded when that sibling is defective: the missing `id` and the missing `label` are reported, the kind's ill-typed value is not" }
+      { Id = "reject-multi-stop-limit-depth"
+        Json =
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"d29","kind":{"$type":"Box","children":[{"id":"d28","kind":{"$type":"Box","children":[{"id":"d27","kind":{"$type":"Box","children":[{"id":"d26","kind":{"$type":"Box","children":[{"id":"d25","kind":{"$type":"Box","children":[{"id":"d24","kind":{"$type":"Box","children":[{"id":"d23","kind":{"$type":"Box","children":[{"id":"d22","kind":{"$type":"Box","children":[{"id":"d21","kind":{"$type":"Box","children":[{"id":"d20","kind":{"$type":"Box","children":[{"id":"d19","kind":{"$type":"Box","children":[{"id":"d18","kind":{"$type":"Box","children":[{"id":"d17","kind":{"$type":"Box","children":[{"id":"d16","kind":{"$type":"Box","children":[{"id":"d15","kind":{"$type":"Box","children":[{"id":"d14","kind":{"$type":"Box","children":[{"id":"d13","kind":{"$type":"Box","children":[{"id":"d12","kind":{"$type":"Box","children":[{"id":"d11","kind":{"$type":"Box","children":[{"id":"d10","kind":{"$type":"Box","children":[{"id":"d9","kind":{"$type":"Box","children":[{"id":"d8","kind":{"$type":"Box","children":[{"id":"d7","kind":{"$type":"Box","children":[{"id":"d6","kind":{"$type":"Box","children":[{"id":"d5","kind":{"$type":"Box","children":[{"id":"d4","kind":{"$type":"Box","children":[{"id":"d3","kind":{"$type":"Box","children":[{"id":"d2","kind":{"$type":"Box","children":[{"id":"d1","kind":{"$type":"Box","children":[{"id":"d0","kind":{"$type":"Box","children":[{"id":"leaf","kind":{"$type":"Markdown","text":"x"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}},{"id":"b","kind":{"$type":"Markdown","text":5}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath = "$.kind.children"
+        IsOp = false
+        Description =
+          "WIRE_FORMAT §29.1 stop rule — a §21 breach ends the walk: the depth breach in `children[0]` is the one defect reported, and the ill-typed node in `children[1]` is not" } ]
+
+/// The FULL defect list of each multi-defect reject fixture (WIRE_FORMAT §29;
+/// Phase 1935), emitted as the manifest's `expectedDefects`. An entry absent here
+/// is a single-defect fixture: its list is exactly its one expected error.
+///
+/// Five pre-§29 fixtures appear here too: each carries a second, latent defect
+/// (a Form whose `onSubmit` is the closure sentinel, which the reject leg never
+/// reached because the decode stopped at the first). Their single-error fields
+/// are unchanged; the list now names what the documents actually hold.
+let expectedDefects: Map<string, (DecodeErrorCode * string) list> =
+    Map.ofList
+        [ "reject-multi-box-layout-role",
+          [ DecodeErrorCode.UNKNOWN_DU_CASE, "$.kind.layout.direction"
+            DecodeErrorCode.UNKNOWN_DU_CASE, "$.kind.role" ]
+          "reject-multi-box-layout-role-missing",
+          [ DecodeErrorCode.MISSING_FIELD, "$.kind.layout"
+            DecodeErrorCode.MISSING_FIELD, "$.kind.role" ]
+          "reject-multi-sibling-nodes-index-order",
+          [ DecodeErrorCode.WRONG_TYPE, "$.kind.children[2].kind.text"
+            DecodeErrorCode.WRONG_TYPE, "$.kind.children[10].kind.text" ]
+          "reject-multi-stop-unknown-layout", [ DecodeErrorCode.UNKNOWN_DU_CASE, "$.kind.layout.$type" ]
+          "reject-multi-stop-missing-layout-discriminator", [ DecodeErrorCode.MISSING_FIELD, "$.kind.layout.$type" ]
+          "reject-multi-stop-wrong-node-kind", [ DecodeErrorCode.WRONG_NODE_KIND, "$.kind.$type" ]
+          "reject-multi-stop-invalid-json", [ DecodeErrorCode.INVALID_JSON, "$" ]
+          "reject-multi-map-key-order",
+          [ DecodeErrorCode.UNKNOWN_DU_CASE, "$.kind.columns[2].kind.map.Cancelled"
+            DecodeErrorCode.UNKNOWN_DU_CASE, "$.kind.columns[2].kind.map.Delayed"
+            DecodeErrorCode.UNKNOWN_DU_CASE, "$.kind.columns[2].kind.map.On time" ]
+          "reject-multi-context-member",
+          [ DecodeErrorCode.MISSING_FIELD, "$.kind.fields[0].id"
+            DecodeErrorCode.MISSING_FIELD, "$.kind.fields[0].label" ]
+          "reject-multi-stop-limit-depth",
+          [ DecodeErrorCode.LIMIT_EXCEEDED,
+            "$.kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0].kind.children[0]" ]
+          "reject-color-value-not-hex",
+          [ DecodeErrorCode.WRONG_TYPE, "$.kind.fields[0].kind.value"
+            DecodeErrorCode.WRONG_TYPE, "$.kind.onSubmit" ]
+          "reject-combobox-allowfreetext-nonbool",
+          [ DecodeErrorCode.WRONG_TYPE, "$.kind.fields[0].kind.allowFreeText"
+            DecodeErrorCode.WRONG_TYPE, "$.kind.onSubmit" ]
+          "reject-rating-max-zero",
+          [ DecodeErrorCode.WRONG_TYPE, "$.kind.fields[0].kind.max"
+            DecodeErrorCode.WRONG_TYPE, "$.kind.onSubmit" ]
+          "reject-tokens-closed-without-suggestions",
+          [ DecodeErrorCode.WRONG_TYPE, "$.kind.fields[0].kind.allowFreeText"
+            DecodeErrorCode.WRONG_TYPE, "$.kind.onSubmit" ]
+          "reject-tokens-value-not-list",
+          [ DecodeErrorCode.WRONG_TYPE, "$.kind.fields[0].kind.value.value"
+            DecodeErrorCode.WRONG_TYPE, "$.kind.onSubmit" ] ]

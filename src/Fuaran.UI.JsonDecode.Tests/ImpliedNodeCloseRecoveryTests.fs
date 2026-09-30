@@ -112,12 +112,40 @@ let tests =
                       // carried — the defect a well-formed emission would have
                       // surfaced anyway.
                       Expect.equal e.Code "MISSING_FIELD" (sprintf "%s: the residual is a MISSING_FIELD" name)
-                      Expect.equal e.Path path (sprintf "%s: the residual path is the recorded one" name)
 
-                      Expect.stringContains
-                          e.Message
-                          (sprintf "'%s'" field)
-                          (sprintf "%s: the residual names the missing field" name)
+                      // Phase 1935 — a refusal names the canonical FIRST of its
+                      // defects (WIRE_FORMAT §29), and the recorded residual is
+                      // one of them: emission-06 also lacks a Switch case's
+                      // `match`, which sorts ahead of `stateKey`.
+                      // Through `repair` (which counts nothing) and the strict
+                      // decoder, so the Reliance delta below stays the 36 the
+                      // loop's own decodes recorded.
+                      let defects =
+                          match JsonDecode.repair text with
+                          | Repair.RepairOutcome.Repaired(repaired, _) ->
+                              match
+                                  JsonDecode.decodeNodeObjWithDefects
+                                      Fuaran.UI.KindPolicy.DecodePolicy.admitAll
+                                      repaired
+                              with
+                              | Error ds -> ds
+                              | Ok _ -> []
+                          | Repair.RepairOutcome.NotRepairable _ -> []
+
+                      Expect.equal (List.tryHead defects) (Some e) (sprintf "%s: the refusal is the list's head" name)
+
+                      match defects |> List.tryFind (fun d -> d.Path = path) with
+                      | None -> failtestf "%s: the recorded residual %s is not among the defects %A" name path defects
+                      | Some residual ->
+                          Expect.equal
+                              residual.Code
+                              "MISSING_FIELD"
+                              (sprintf "%s: the residual is a MISSING_FIELD" name)
+
+                          Expect.stringContains
+                              residual.Message
+                              (sprintf "'%s'" field)
+                              (sprintf "%s: the residual names the missing field" name)
                   | Error e, None ->
                       failtestf "%s: expected clean decode; got %s at %s: %s" name e.Code e.Path e.Message
 
