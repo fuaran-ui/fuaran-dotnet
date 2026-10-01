@@ -34,6 +34,11 @@ let private roundTrip (json: string) : string =
     | Ok n -> CanonicalJson.encodeNode n
     | Error e -> failtestf "decode refused %s: %s at %s" json e.Message e.Path
 
+let private codesOf (n: Node<obj>) : string list =
+    match PreEmitValidate.validate n with
+    | Ok() -> []
+    | Error ds -> ds |> List.map (fun d -> let code, _, _ = PreEmitValidate.describe d in code)
+
 let private refusal (json: string) : string * string =
     match decodeNodeObj json with
     | Ok _ -> failtestf "decode accepted %s" json
@@ -89,11 +94,52 @@ let tests =
               Expect.equal (roundTrip input) expected "placeholder in, clean form out"
               Expect.equal (roundTrip expected) expected "the clean form is a fixed point")
 
-          testCase "a bound value on a multi-select is WRONG_TYPE at value" (fun _ ->
+          testCase "a bound value on a multi-select normalises away too" (fun _ ->
+              // Models that followed the pre-1962 type wrote a REAL binding beside
+              // `values` (14 of the 16 stored emissions carrying both); a
+              // multi-select never reads it, so it is dropped, not refused.
               let input =
-                  """{"id":"t","kind":{"$type":"Select","label":"Tags","multiple":true,"source":{"$type":"Static","value":[]},"value":{"$type":"Static","value":"red"},"values":{"$type":"State","key":"tags"}}}"""
+                  """{"id":"t","kind":{"$type":"Select","label":"Tags","multiple":true,"source":{"$type":"Static","value":[]},"value":{"$type":"State","defaultValue":"red","key":"primary"},"values":{"$type":"State","key":"tags"}}}"""
 
-              Expect.equal (refusal input) ("WRONG_TYPE", "$.kind.value") "refused, not dropped")
+              let expected =
+                  """{"id":"t","kind":{"$type":"Select","label":"Tags","multiple":true,"source":{"$type":"Static","value":[]},"values":{"$type":"State","key":"tags"}}}"""
+
+              Expect.equal (roundTrip input) expected "dropped, not refused")
+
+          testCase "a MALFORMED value on a multi-select still refuses" (fun _ ->
+              let input =
+                  """{"id":"t","kind":{"$type":"Select","label":"Tags","multiple":true,"source":{"$type":"Static","value":[]},"value":{"$type":"Nope"},"values":{"$type":"State","key":"tags"}}}"""
+
+              Expect.equal (fst (refusal input)) "UNKNOWN_DU_CASE" "decoded before it is dropped")
+
+          testCase "the pre-emit validator names a constructed multi-select carrying a value (FUARAN164)" (fun _ ->
+              let n: Node<obj> =
+                  { Fuaran.multiSelect
+                        "tags"
+                        (TextSource.Literal "Tags")
+                        options
+                        (Binding.State("tags", None))
+                        (fun _ -> Action.Chain []) with
+                      Kind =
+                          NodeKind.Select(
+                              { Defaults.select with
+                                  Label = TextSource.Literal "Tags"
+                                  Source = options
+                                  Multiple = Some true
+                                  Values = Some(Binding.State("tags", None)) }
+                          ) }
+
+              let codes = codesOf n
+
+              Expect.contains codes "FUARAN164" "the record literal kept Defaults.select's value"
+
+              let clean =
+                  Fuaran.multiSelect "tags" (TextSource.Literal "Tags") options (Binding.State("tags", None)) (fun _ ->
+                      Action.Chain [])
+
+              let cleanCodes = codesOf clean
+
+              Expect.isFalse (List.contains "FUARAN164" cleanCodes) "multiSelect carries no value")
 
           testCase "a single-select without value is MISSING_FIELD at value" (fun _ ->
               let input =

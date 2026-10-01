@@ -7821,7 +7821,8 @@ document that declares no ceiling is exactly the control it was.
 _Class: **BREAKING** on `Fuaran.UI`, by the surface guard (`surface-guard.ps1 -Baseline` over the
 `Fuaran.UI` 0.88.0 assembly against this build): `SelectSpec.Value` is RETYPED from
 `Binding<string>` to `Binding<string> option`, the record's primary constructor changes with it, and
-the generated `mkSelect` loses its `value` parameter. 0.89.0 is an untagged draft whose class is
+the generated `mkSelect` loses its `value` parameter, and `PreEmitDefect` gains a case. 0.89.0 is an
+untagged draft whose class is
 ADDITIVE (Phase 1961), so under the draft-slot rule this change, being of a higher class than that
 draft carries, ADVANCES it rather than riding it — the 0.87.0 → 0.88.0 precedent. Phase 1961's
 additive surface rides into this slot unchanged; 0.89.0 is superseded before release. `Fuaran.UI.Ops`
@@ -7844,10 +7845,16 @@ literals._
   "required unless a sibling is `true`"; a union would mean a hand-written codec beside the generated
   one for one kind, which is the drift the generated layer exists to remove. So the slot is `opt` in
   the IDL and the rule is enforced where a field's siblings are visible:
-  - **decode** (`JsonDecode`): absent on a single-select is `MISSING_FIELD`; the empty-`Static`
-    placeholder on a multi-select (`{"$type":"Static"}`, or with `"value":null`) is a §16 lenient
-    accept that normalises to `None`; any other `value` on a multi-select is `WRONG_TYPE` (refused,
-    not silently dropped — it would be a second selection the control never reads);
+  - **decode** (`JsonDecode`): absent on a single-select is `MISSING_FIELD`; a `value` on a
+    multi-select — the empty-`Static` placeholder (`{"$type":"Static"}`, or with `"value":null`) or
+    a real binding — is decoded (a malformed one still refuses) and then dropped, a §16 lenient
+    accept that normalises to `None`. Refusing a non-placeholder `value` was the operator's other
+    option and was measured out: 14 of the 16 stored emissions carrying both keys carry a real
+    binding there, and refusing them would have stopped documents that decode today from reading;
+  - **validate**: `PreEmitValidate` raises the new **`FUARAN164`** (Warning) on a constructed
+    multi-select that still carries a `Value` — the encoder writes what the record holds, so that
+    tree emits a binding every decoder drops (`PreEmitDefect.MultiSelectValueIgnored`, a new case:
+    an exhaustive `match` over `PreEmitDefect` gains an arm);
   - **construction**: `Fuaran.select` drops a `Value` handed to a multi-select and fills an absent one
     on a single-select with the empty `Static` ("no selection"); `Fuaran.multiSelect` sets `None`;
     `Defaults.select` (a single-select) carries `Some(Binding.Static None)`; the C# `Select` veneer
@@ -7866,9 +7873,13 @@ literals._
   a new multi-select with `MISSING_FIELD` — the profile does not step; this is one coordinated change
   across every host in the WIRE_FORMAT §11.0 roster (operator ruling 2026-10-01).
 
-  **Measured** (2026-10-01, the stored emissions in the corpus's `stored-emissions/`): see the
-  phase's outcome for the re-measure of the 4 `values`-only and 16 placeholder-carrying `Select`
-  nodes.
+  **Measured** (2026-10-01, every `emittedText` / `raw_output` in the evaluation store, deduplicated
+  by sha256; the reference decoder at 0.88.0 against this build): of the 4 `values`-only multi-select
+  documents, 2 were refused `MISSING_FIELD` at the select's `value` and now decode and re-encode
+  stably; the other 2 are refused, before and after, for an unrelated `UNKNOWN_DU_CASE` elsewhere in
+  the document. All 16 documents carrying both keys decoded before and decode now; every one
+  re-encodes stably and without a `value` on the multi-select (before, 2 re-encoded the placeholder
+  and 14 re-encoded the real binding the model wrote).
 
 ## 0.89.0 — the slot Phase 1961 opens: the repair catalogue's version 2, `wrong-type-close` (DRAFT — untagged; superseded by 0.90.0 before release)
 

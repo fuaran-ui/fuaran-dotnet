@@ -6407,12 +6407,14 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
 
         // Phase 1962 — `value` is the SINGLE-select binding (WIRE_FORMAT §3.2).
         // A single-select requires it. A multi-select carries `values` and no
-        // `value`: the empty-`Static` placeholder every pre-1962 multi-select
-        // carried (`{"$type":"Static"}`, or with `"value":null`) is a §16
-        // lenient accept that normalises to the absent slot, and any other
-        // `value` there is WRONG_TYPE — it would be a second, contradicting
-        // selection the control never reads. An unreadable `multiple` is its own
-        // defect, so the presence rule is not applied on top of it.
+        // `value`: one that still carries a `value` — the empty-`Static`
+        // placeholder every pre-1962 multi-select carried, or a binding a model
+        // wrote beside its `values` — is a §16 lenient accept that normalises to
+        // the absent slot, because a multi-select never reads it. The `value` is
+        // still decoded first, so a MALFORMED one refuses exactly as before. The
+        // pre-emit validator names a constructed multi-select carrying one
+        // (FUARAN164). An unreadable `multiple` is its own defect, so the
+        // presence rule is not applied on top of it.
         let valueR =
             let decodeValue v =
                 decodeBindingChoiceValue (path + ".value") v
@@ -6421,14 +6423,7 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
             | Ok(Some true) ->
                 match tryField fields "value" with
                 | None -> Ok Option.None
-                | Some v ->
-                    match decodeValue v with
-                    | Ok(Binding.Static None) -> Ok Option.None
-                    | Ok _ ->
-                        wrongType
-                            (path + ".value")
-                            "no `value` on a multi-select (`\"multiple\":true` carries its selection in `values`)"
-                    | Error e -> Error e
+                | Some v -> decodeValue v |> Result.map (fun _ -> Option.None)
             | Ok _ ->
                 requireField path fields "value" "Binding<string>"
                 |> Result.bind decodeValue

@@ -77,7 +77,7 @@ The build-time validator's findings carry `FUARAN###` codes (e.g. `FUARAN050` `S
 **Two families share this band, and only one of them is the build-time walker.** The paragraph
 above describes the walker, which reads F# *source* — but the larger family by far is the
 **pre-emit validator**, which reads a *tree* just before it goes on the wire and raises the whole
-`FUARAN047`–`FUARAN163` range. A code you have in hand belongs to whichever family reported it, and
+`FUARAN047`–`FUARAN164` range. A code you have in hand belongs to whichever family reported it, and
 the two are enumerated in different places: the pre-emit family's codes, severities and message
 shapes are published as data in the conformance corpus's `validator/defect-vocabulary.json`
 (generated from the reference host, never hand-maintained), and each host declares which of them it
@@ -115,6 +115,14 @@ the same window and the same repair (fix the name, or change the pipeline), so i
 closed schema walk refuses a pill naming a column the pipeline does not produce; an open walk stands
 down and the grid grades unchecked. Unrefused, the pill would draw empty, in the default tone, on
 every row.
+
+**`FUARAN164` (Warning) — a multi-select carries a `value` it never reads (Phase 1962).** A
+`Select` with `Multiple = Some true` carries its selection in `Values`; the canonical wire carries no
+`value` on it (`WIRE_FORMAT.md` §3.2), and every conformant decoder drops one it meets. A constructed
+tree that still holds a `Value` there emits a binding that does nothing. The usual cause is a record
+literal built from `Defaults.select` — a single-select, whose `Value` is the empty `Static` — with
+`Multiple = Some true` set. Repair: set `Value = None`, or build through `Fuaran.multiSelect` /
+`Fuaran.select`, which clear it.
 
 **`FUARAN158`–`FUARAN162` (Error) — the tree is more than this host takes (Phase 1817).** A host
 declares an emission budget as a `HostLimits` value and validates with

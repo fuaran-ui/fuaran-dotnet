@@ -2584,9 +2584,10 @@ let inputKinds: IdlKind list =
             // `values`). The IDL's per-field optionality cannot say "required
             // unless a sibling is true", so the slot is `opt` here and the rule is
             // enforced where a field's siblings are visible: the decoder (absent on
-            // a single-select is MISSING_FIELD; the empty-`Static` placeholder on a
-            // multi-select normalises away; any other `value` there is WRONG_TYPE)
-            // and the `select` / `multiSelect` constructors. WIRE_FORMAT §3.2.
+            // a single-select is MISSING_FIELD; a `value` on a multi-select is a
+            // lenient accept that normalises away) and the `select` / `multiSelect`
+            // constructors, with FUARAN164 naming a constructed multi-select that
+            // still carries one. WIRE_FORMAT §3.2.
             opt "value" (bindingOf TStr)
             opt "placeholder" (TUnion("TextSource", []))
             opt "disabled" (bindingOf TBool)

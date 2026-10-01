@@ -742,17 +742,15 @@ let generatedLayerTests =
               //    `schemaInexpressibleRejects`. That is the discriminator worth
               //    noting: this pair is structure-inexpressible and
               //    schema-expressible, where 725's ordered pair was neither.
-              //  - the two Phase-1962 `Select` fixtures are the same SIBLING
-              //    class keyed on a VALUE rather than a presence: `value` is
-              //    required unless `multiple` is `true`, and on a multi-select
-              //    only the empty-`Static` placeholder is admitted. The IDL can
-              //    only declare `value` Optional, so the generated decoder accepts
-              //    both; `schema.json` states the relation with `if`/`then`/`else`,
-              //    so they too stay out of `schemaInexpressibleRejects`.
+              //  - the Phase-1962 `Select` fixture is the same SIBLING class keyed
+              //    on a VALUE rather than a presence: `value` is required unless
+              //    `multiple` is `true`. The IDL can only declare `value`
+              //    Optional, so the generated decoder accepts its absence;
+              //    `schema.json` states the relation with `if`/`else`, so it too
+              //    stays out of `schemaInexpressibleRejects`.
               Expect.equal
                   policyOwned
-                  [ "reject-1962-multiselect-bound-value.json"
-                    "reject-1962-select-missing-value.json"
+                  [ "reject-1962-select-missing-value.json"
                     "reject-action-print-with-payload.json"
                     "reject-box-masonry-nonpositive-cols.json"
                     "reject-chart-annotation-date-unparseable.json"

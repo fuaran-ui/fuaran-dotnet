@@ -2096,19 +2096,18 @@ let private leniencyFamilies: LeniencyFamily list =
           + "from lenient-null-static-options below, which normalises to a typed empty and is "
           + "never-taught for that reason; the two are different rules at different positions and do not "
           + "share a family. The initialValue alias takes the same arm, so one fixture pins both." }
-      { Name = "Multi-select placeholder value as the spelling of absence (Phase 1962)"
+      { Name = "A multi-select's value, which it never reads (Phase 1962)"
         Class = AlreadyCanonical
-        FixtureIds = [ "lenient-1962-multiselect-placeholder-value" ]
+        FixtureIds = [ "lenient-1962-multiselect-value-dropped" ]
         Evidence =
           "JUDGEMENT: the canonical multi-select carries `values` and NO `value`, and the leniency "
-          + "accepts the longer spelling every pre-1962 multi-select carried - the empty-Static "
-          + "placeholder `\"value\":{\"$type\":\"Static\"}` (or with `\"value\":null`) beside `values`. "
-          + "Δ bytes is negative on the accepted side, so there is nothing to teach beyond the "
-          + "canonical Select rule the catalogue already states. Loss-free and total on its domain "
-          + "BECAUSE the domain is exactly the empty Static: a multi-select never read `value`, and "
-          + "the placeholder carries no selection, so dropping it loses nothing. Any OTHER `value` on "
-          + "a multi-select is outside the domain and is refused (reject-1962-multiselect-bound-value), "
-          + "never normalised - normalising a real binding away would discard what an author wrote." }
+          + "accepts a `value` beside `\"multiple\":true` - the empty-Static placeholder every pre-1962 "
+          + "multi-select carried, or a binding a model wrote there - and drops it. Δ bytes is negative "
+          + "on the accepted side, so there is nothing to teach beyond the canonical Select rule the "
+          + "catalogue already states. Loss-free and total on its domain BECAUSE a multi-select never "
+          + "read `value`: no renderer, write-back or derivation consulted it once `multiple` was true, "
+          + "so dropping it changes nothing a reader can observe. A MALFORMED value is outside the "
+          + "domain and still refuses as a malformed binding." }
       { Name = "Tagged Static at an I18n argument slot (Phase 1661)"
         Class = AlreadyCanonical
         FixtureIds = [ "lenient-1661-i18n-arg-tagged-static" ]

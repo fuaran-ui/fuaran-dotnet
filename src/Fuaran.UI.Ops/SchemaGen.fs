@@ -259,22 +259,12 @@ let private forbidding (names: string list) (r: J) : J =
     | _ -> r
 
 /// Phase 1962 — the single/multi `value` rule on `SelectSpec`, a relation
-/// between two sibling keys that Draft 2020-12 states with `if`/`then`/`else`.
-/// A single-select (`multiple` absent or `false`) REQUIRES `value`. A
-/// multi-select (`"multiple":true`) carries its selection in `values`; the only
-/// `value` the decoder still accepts beside it is the empty-`Static` placeholder
-/// (`{"$type":"Static"}`, with or without `"value":null`), a §16 lenient accept
-/// that normalises away — any other is `WRONG_TYPE`, and so fails here too.
+/// between two sibling keys that Draft 2020-12 states with `if`/`else`. A
+/// single-select (`multiple` absent or `false`) REQUIRES `value`. A multi-select
+/// (`"multiple":true`) carries its selection in `values`; a `value` beside it is
+/// a §16 lenient accept the decoder normalises away (it is still a
+/// `Binding_str_choice`, so a malformed one fails here as it does there).
 let private selectValueRule (r: J) : J =
-    let emptyStatic =
-        JObj
-            [ "type", JStr "object"
-              "properties",
-              JObj
-                  [ "$type", JObj [ "const", JStr "Static" ]
-                    "value", JObj [ "type", JStr "null" ] ]
-              "required", JArr [ JStr "$type" ] ]
-
     match r with
     | JObj fields ->
         JObj(
@@ -283,7 +273,6 @@ let private selectValueRule (r: J) : J =
                 JObj
                     [ "properties", JObj [ "multiple", JObj [ "const", JBool true ] ]
                       "required", JArr [ JStr "multiple" ] ]
-                "then", JObj [ "properties", JObj [ "value", emptyStatic ] ]
                 "else", JObj [ "required", JArr [ JStr "value" ] ] ]
         )
     | _ -> r
