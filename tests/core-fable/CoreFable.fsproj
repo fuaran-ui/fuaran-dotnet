@@ -31,8 +31,31 @@
   <PropertyGroup Condition="'$(CoreParity)' == 'true'">
     <DefineConstants>$(DefineConstants);CORE_PARITY</DefineConstants>
   </PropertyGroup>
+  <!--
+    `CoreFableSkipCompute=true` is set by the script for a Core-only cut, and only then: the compute
+    packages ship from their own producer from 0.33.0 and pin an older Core until this Core release is
+    published, so they are gated by their own producer's cut, not compiled against this candidate. The
+    references below stay in the file either way (the script's membership check reads them); the
+    condition decides whether they are restored, and `CORE_FABLE_COMPUTE` whether Program.fs touches them.
+  -->
+  <PropertyGroup Condition="'$(CoreFableSkipCompute)' != 'true'">
+    <DefineConstants>$(DefineConstants);CORE_FABLE_COMPUTE</DefineConstants>
+  </PropertyGroup>
+  <!-- A Core cut at or above 0.33.0 spells `EffectClass.Determinism` as a set (fuaran-core Phase 319).
+       Pinned, `FuaranCoreVersion` is unset and the pin's spelling compiles; the pin raise to 0.33.0
+       retires the old arm in Program.fs and this condition with it. -->
+  <PropertyGroup Condition="'$(FuaranCoreVersion)' != '' and $([MSBuild]::VersionGreaterThanOrEquals('$(FuaranCoreVersion)', '0.33.0'))">
+    <DefineConstants>$(DefineConstants);CORE_DETERMINISM_SET</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.fs" />
+  </ItemGroup>
+  <!-- The compute packages ($ComputeOwned in the script, less the C#-only half). -->
+  <ItemGroup Condition="'$(CoreFableSkipCompute)' != 'true'">
+    <PackageReference Include="Fuaran.Core.DataFrame" />
+    <!-- First shipped at 0.32.0 (fuaran-core Phase 257); unconditional since Phase 1874 raised this repository's pin to carry it. -->
+    <PackageReference Include="Fuaran.Core.DataFrame.Conformance" />
+    <PackageReference Include="Fuaran.Core.Column.Ops" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
@@ -44,16 +67,12 @@
     <PackageReference Include="Fuaran.Core.Validator" />
     <PackageReference Include="Fuaran.Core.Function" />
     <PackageReference Include="Fuaran.Core.Column" />
-    <PackageReference Include="Fuaran.Core.DataFrame" />
     <PackageReference Include="Fuaran.Core.Query" />
     <PackageReference Include="Fuaran.Core.Conformance" />
-    <!-- First shipped at 0.32.0 (fuaran-core Phase 257); unconditional since Phase 1874 raised this repository's pin to carry it. -->
-    <PackageReference Include="Fuaran.Core.DataFrame.Conformance" />
     <PackageReference Include="Fuaran.Core.Projection" />
     <PackageReference Include="Fuaran.Core.AiSurface" />
     <PackageReference Include="Fuaran.Core.Propagation" />
     <PackageReference Include="Fuaran.Core.Idl" />
-    <PackageReference Include="Fuaran.Core.Column.Ops" />
     <PackageReference Include="Fuaran.Core.Observer" />
   </ItemGroup>
 </Project>

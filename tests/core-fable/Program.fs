@@ -7,6 +7,14 @@ module CoreFable.Program
 // rests on. A touch matters beyond the project reference because `inline` members and generic
 // instantiations are only compiled where they are used.
 //
+// Two constants come from `CoreFable.fsproj`. `CORE_FABLE_COMPUTE` is defined whenever the compute
+// packages (`Fuaran.Core.DataFrame`, `Fuaran.Core.Column.Ops`, `Fuaran.Core.DataFrame.Conformance`)
+// are compiled, which is every mode except a Core-only cut: those packages ship from their own
+// producer from 0.33.0, and a Core candidate is not what they were built against. Every touch that
+// names a compute type or module sits under it. `CORE_DETERMINISM_SET` is defined when a Core cut is
+// at or above 0.33.0, whose `EffectClass.Determinism` is a set of factors (fuaran-core Phase 319);
+// below it the old single-case spelling compiles.
+//
 // With `CORE_PARITY` defined (see `core-fable.ps1`), the program is also the VALUE leg: `--vectors`
 // prints `Fuaran.Core.ParityVectors.lines ()` — the cross-pipeline table the conformance kit ships
 // — which the runner executes under .NET and under node and byte-compares. The table is compiled by
@@ -75,6 +83,8 @@ let private functionTouch =
 
 // Column + DataFrame — the cell-type probe + the Phase-55 float cell-string.
 let private columnTouch = Cell.typeOf (Int 1)
+
+#if CORE_FABLE_COMPUTE
 let private dataFrameTouch = DataFrame.cellString (Float 1.5)
 
 // Delta (Phase 98) — the delta algebra's encode AND decode, plus the identity witness. Named here
@@ -168,10 +178,22 @@ let private slotAndClockTouch =
         | Ok _ -> "UNPINNED NOW WAS NOT REFUSED"
         | Error e -> DataFrame.errorString e
 
-    let reason =
-        ChainBreakReason.toString (ChainBreakReason.ofString "prev-hash link broken")
+    sprintf "%s|%s|%s|%s|%s" wire bound unbound pinned unpinned
+#endif
 
-    sprintf "%s|%s|%s|%s|%s|%s" wire bound unbound pinned unpinned reason
+// Phase 125's third shape, `ChainBreakReason`, is Fuaran.Core.OpStream's rather than the compute
+// layer's, so it is touched on its own: a Core-only cut that skips the compute touches above still
+// compiles it.
+let private chainBreakTouch =
+    ChainBreakReason.toString (ChainBreakReason.ofString "prev-hash link broken")
+
+// fuaran-core Phase 319 (Core 0.33.0) made `EffectClass.Determinism` a set of factors, spelled through
+// `Effect.deterministic` / `clock` / `random` / `network`; below it the determinism was one case.
+#if CORE_DETERMINISM_SET
+let private networkDeterminism = Effect.network
+#else
+let private networkDeterminism = Network
+#endif
 
 // Query — declaration codec round-trip, plus the seam's `Deferred` envelope (Phase 198): the
 // resolver answers in `Deferred<QueryResult>` and that envelope has to encode under Fable too.
@@ -182,7 +204,7 @@ let private queryTouch =
           ResultSchema = [ "n", IntType ]
           Effect =
             { Host = ReadsHost
-              Determinism = Network }
+              Determinism = networkDeterminism }
           Source = Ref "src"
           TimeoutMs = Some 5000
           PageSize = None }
@@ -476,6 +498,7 @@ let private constructThenEncodeTouch =
 // the `StreamWitness` that makes a table's edits a hash-chained stream. Named deliberately, like
 // `deltaTouch` and `incrementalTouch`: the package's own Description ends "Fable-clean", and until
 // this phase nothing in the repository held it to that.
+#if CORE_FABLE_COMPUTE
 let private columnOpsTouch =
     let t: Table =
         { Schema = [ "id", StringType; "amount", IntType ]
@@ -500,6 +523,20 @@ let private columnOpsTouch =
         inverted
         (ColumnOps.changeOf op)
         (ColumnOps.streamWitness.Apply op t |> Result.mapError ColumnOps.rejectionString)
+
+// The compute touches, consumed by `main` below. Empty when the compute packages are not compiled
+// (a Core-only cut), so nothing outside this block names a compute type or module.
+let private computeTouches =
+    [ dataFrameTouch
+      // `deltaTouch` was defined by Phase 98 but never referenced here, so the whole point of the
+      // file — a compile error attached to the line that names the surface — did not apply to it.
+      (sprintf "%A" deltaTouch)
+      (sprintf "%A" incrementalTouch)
+      slotAndClockTouch
+      columnOpsTouch ]
+#else
+let private computeTouches: string list = []
+#endif
 
 // Observer (Phase 185) — the runtime-verification seam. Its header has claimed
 // "FSharp.Core only + Fable-clean … the same engine drives the in-memory .NET test substrate and a
@@ -555,12 +592,7 @@ let main argv =
           validatorTouch
           functionTouch
           (sprintf "%A" columnTouch)
-          dataFrameTouch
-          // `deltaTouch` was defined by Phase 98 but never referenced here, so the whole point of the
-          // file — a compile error attached to the line that names the surface — did not apply to it.
-          (sprintf "%A" deltaTouch)
-          (sprintf "%A" incrementalTouch)
-          slotAndClockTouch
+          chainBreakTouch
           queryTouch
           (sprintf "%A" (List.length conformanceTouch))
           projectionTouch
@@ -570,8 +602,8 @@ let main argv =
           foldConfluenceTouch
           sampleAdequacyTouch
           constructThenEncodeTouch
-          columnOpsTouch
           observerTouch ]
+        @ computeTouches
         |> List.iter (printfn "%s")
 
         0

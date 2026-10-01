@@ -225,7 +225,13 @@ lower (no Expecto, no `System.IO`, no reflection).
      `Directory.Packages.props`. A compute cut runs
      `pwsh ./tests/core-fable/core-fable.ps1 -ComputeVersion <v> -ComputeFeed <folder of .nupkg>`,
      independent of the Core pair (either pair alone, or both together); with neither pair, every
-     package follows `Directory.Packages.props`.
+     package follows `Directory.Packages.props`. **A Core-only cut skips the compute packages and
+     prints that it did**: they pin an older Core until the Core release under test is published, so
+     they are gated by their own producer's cut, not compiled against the Core candidate
+     (`CoreFableSkipCompute` drops their references; `CORE_FABLE_COMPUTE` gates their touches in
+     `Program.fs`). `CORE_DETERMINISM_SET` is defined for a Core cut at or above 0.33.0, whose
+     `EffectClass.Determinism` is a set (fuaran-core Phase 319), so the smoke program compiles
+     against both Core lines; a pinned run reads the pin's spelling.
    - **Its law-family calls are not adoption.** `CoreFable.fsproj` declares
      `<CoreConformanceCensusExemption>reason</...>`, so the Core-conformance census
      (`src/Fuaran.UI.Tests/CoreConformanceCensus.fs`) skips it and prints the exemption on every
