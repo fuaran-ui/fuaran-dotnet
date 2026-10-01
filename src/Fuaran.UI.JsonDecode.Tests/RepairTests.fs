@@ -55,6 +55,7 @@ type private Family =
       Catalogue: string list
       Refusals: string list
       Hosts: Map<string, string>
+      HostVersions: Map<string, int>
       Cases: Case list }
 
 let private load () : Family =
@@ -75,6 +76,10 @@ let private load () : Family =
       Hosts =
         r.GetProperty("hostStatements").EnumerateObject()
         |> Seq.map (fun p -> p.Name, text p.Value)
+        |> Map.ofSeq
+      HostVersions =
+        r.GetProperty("hostCatalogueVersions").EnumerateObject()
+        |> Seq.map (fun p -> p.Name, p.Value.GetInt32())
         |> Map.ofSeq
       Cases =
         [ for el in r.GetProperty("cases").EnumerateArray() do
@@ -169,10 +174,33 @@ let tests =
                         Repair.Refusal.NotInCatalogue
                         Repair.Refusal.OverCloseAmbiguous
                         Repair.Refusal.OverCloseNoCleanCandidate
-                        Repair.Refusal.OverCloseBounds ])
+                        Repair.Refusal.OverCloseBounds
+                        Repair.Refusal.WrongTypeCloseAmbiguous
+                        Repair.Refusal.WrongTypeCloseNoCandidate ])
                   "the refusal tokens"
 
               Expect.equal (Map.tryFind "fuaran-dotnet" fam.Hosts) (Some "implements") "this host implements repair"
+
+              Expect.equal
+                  (Map.tryFind "fuaran-dotnet" fam.HostVersions)
+                  (Some Repair.CatalogueVersion)
+                  "this host declares the catalogue version it implements (§28.5)"
+          }
+
+          test "wrong-type-close composes with implied-node-close, in that order, and nothing else does" {
+              // §28.2.3: the one composition the catalogue states. A case pins it,
+              // and no case applies any other pair.
+              Expect.exists
+                  fam.Cases
+                  (fun c -> c.Applied = [ Repair.RepairId.WrongTypeClose; Repair.RepairId.ImpliedNodeClose ])
+                  "a case completed by implied-node-close"
+
+              for c in fam.Cases do
+                  if c.Applied.Length > 1 then
+                      Expect.equal
+                          c.Applied
+                          [ Repair.RepairId.WrongTypeClose; Repair.RepairId.ImpliedNodeClose ]
+                          (sprintf "%s: the only stated composition" c.Id)
           }
 
           test "the ids are continuous with the Reliance vocabulary" {

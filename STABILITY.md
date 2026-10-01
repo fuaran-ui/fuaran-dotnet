@@ -7816,6 +7816,39 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.89.0 — the slot Phase 1961 opens: the repair catalogue's version 2, `wrong-type-close` (DRAFT — untagged)
+
+_Class: **ADDITIVE** on `Fuaran.UI.Ops`, by the surface guard (`surface-guard.ps1 -Baseline` over
+the published `Fuaran.UI.Ops` 0.88.0 against this build: three fields added, nothing removed or
+retyped). `v0.88.0` is tagged, so this change ADVANCES the number rather than riding it. An additive
+change that follows rides this slot; a higher class advances it._
+
+### What rides this slot
+
+- **Phase 1961 — `wrong-type-close`, catalogue version 2** (WIRE_FORMAT.md §28.2.3). `repair` gains a
+  third entry, tried after the two version-1 entries: a `}` that meets a `children[]` / `cases[]`
+  array has two owed readings — insert the dropped `]` before it, or replace it with `]` — each
+  completed at most once by `implied-node-close`; the entry repairs iff they yield exactly one
+  distinct document, and refuses otherwise. Surface added: `Repair.RepairId.WrongTypeClose`
+  (`"wrong-type-close"`, also in `RepairId.catalogue`), `Repair.Refusal.WrongTypeCloseAmbiguous` and
+  `Repair.Refusal.WrongTypeCloseNoCandidate`; `Repair.CatalogueVersion` is `2`.
+
+  **What a consumer sees.** No version-1 outcome moves: the entry is reached only by documents
+  neither version-1 entry applies to, which version 1 returned as `not-in-catalogue`. Some of those
+  now come back `Repaired` with `applied` naming `wrong-type-close` (alone, or followed by
+  `implied-node-close`), or `NotRepairable` with one of the two new tokens. Code that matches refusal
+  tokens as strings and treats an unknown one as an error should admit the two new tokens. The
+  opt-in `Recovery.Lenient` decode, being `repair` then strict decode, now recovers those documents
+  too and counts `wrong-type-close` in `Reliance`; its refusal counter `over-close-refused` is
+  unchanged in meaning and does not count the new tokens. `CatalogueVersion` is a literal: a consumer
+  that compiled against 0.88.0 keeps the inlined `1` until it rebuilds.
+
+  **Measured** (2026-10-01, the 394 stored emissions that are not valid JSON): version 1 refuses 38
+  as `not-in-catalogue`; version 2 repairs 1 of them, refuses 3 under its own tokens, and leaves 34.
+  Version-1 counts unchanged (288 `implied-node-close`, 27 `over-close-unique`, 39
+  `over-close-ambiguous`, 2 `over-close-no-clean-candidate`). The certifying fixtures are the
+  `repair/` family's version-2 cases.
+
 ## 0.88.0 — the slot Phase 1923 opens: decode is strict, and repair is a separate named act (DRAFT — untagged)
 
 _Class: **BREAKING** on `Fuaran.UI` and `Fuaran.UI.Ops` — a behavioural change to a default, with

@@ -13,6 +13,9 @@ module Fuaran.UI.Ops.Repair
 //                         `children[]` / `cases[]` element (or the root) owes
 //    over-close-unique    fuaran#855 — delete one or two surplus closers, iff
 //                         exactly one deletion decodes clean
+//    wrong-type-close     Phase 1961 (catalogue version 2) — a `}` that met a
+//                         `children[]` / `cases[]` array, repaired iff its
+//                         three readings yield exactly one distinct document
 //
 //  Repair touches STRUCTURE only: it inserts or deletes closing brackets and
 //  never invents or edits a key or a value. Its output is not trusted — the
@@ -51,14 +54,20 @@ module RepairId =
     [<Literal>]
     let OverCloseUnique = "over-close-unique"
 
+    /// Phase 1961 (catalogue version 2) — a `}` that met a `children[]` /
+    /// `cases[]` array, repaired iff its three readings (insert the dropped
+    /// `]`, replace the `}`, delete it) yield exactly one distinct document.
+    [<Literal>]
+    let WrongTypeClose = "wrong-type-close"
+
     /// The closed catalogue, in the order `repair` tries its entries.
-    let catalogue = [ ImpliedNodeClose; OverCloseUnique ]
+    let catalogue = [ ImpliedNodeClose; OverCloseUnique; WrongTypeClose ]
 
 /// The catalogue version (WIRE_FORMAT.md §28.2). A new repair, or a change to
 /// an existing one's admissibility or output, is a specification change with
 /// fixtures, and moves this number.
 [<Literal>]
-let CatalogueVersion = 1
+let CatalogueVersion = 2
 
 /// Why `repair` declined (WIRE_FORMAT.md §28.4) — stable tokens, asserted
 /// byte-for-byte by the `repair/` corpus family.
@@ -86,6 +95,18 @@ module Refusal =
     /// candidates).
     [<Literal>]
     let OverCloseBounds = "over-close-bounds"
+
+    /// The document is in the wrong-type-close profile and two or more of its
+    /// readings yield distinct documents — which closer was meant is not
+    /// determined, so nothing is chosen (Phase 1961).
+    [<Literal>]
+    let WrongTypeCloseAmbiguous = "wrong-type-close-ambiguous"
+
+    /// The document is in the wrong-type-close profile and no reading yields a
+    /// document that parses — the mismatch is not the document's only defect
+    /// (Phase 1961).
+    [<Literal>]
+    let WrongTypeCloseNoCandidate = "wrong-type-close-no-candidate"
 
 /// The result of `repair` (WIRE_FORMAT.md §28.3).
 [<RequireQualifiedAccess>]
@@ -778,6 +799,135 @@ module private OverClose =
                 }
             )
 
+// ─── wrong-type-close (Phase 1961; §28.2.3) ───────────────────────────────
+//
+// The third shape, and the one with two readings rather than one. A `}`
+// arrives while the innermost open container is a node-list ARRAY: an object
+// closer met an array. Either the array's own `]` was dropped (insert it before
+// the `}`), or the `}` was written for the `]` (replace it), or the `}` is a
+// surplus (delete it). The three readings usually disagree about the document,
+// so the entry is admissible only where they do not: every reading is formed,
+// each one that parses (directly, or after `implied-node-close` completes it)
+// is kept, the survivors are de-duplicated by parsed value, and the entry
+// repairs iff exactly ONE distinct document remains. Two is ambiguous and is
+// refused; none is refused too. Nothing is guessed.
+//
+// Measured before it was specified (2026-10-01, the 38 stored emissions the
+// version-1 catalogue classes `not-in-catalogue`): 23 are not bracket defects
+// at all (comments, arithmetic in a value, unescaped quotes), 6 are truncated,
+// and 9 have a mismatched closer. NONE of the 38 is repaired by replacing a
+// closer alone — the "closer of the wrong type" reading never parses by itself
+// in the data — but a dropped `]` before a `}` does, and where the emission
+// also ends early, all three readings converge on one document once the end of
+// input is completed. The other seven mismatches carry a second, independent
+// defect and are refused by this entry, as they should be.
+//
+// PROFILE-GATED like `implied-node-close`: the array must be the value of a
+// member keyed `children` or `cases`. The same defect in a data array stays a
+// visible error, so the demand signal for other classes is not eaten — and the
+// `]`-meets-object mirror is deliberately NOT this entry's: an owed `}` before a
+// `]` is `implied-node-close`'s class, whose version-1 profile gate this entry
+// must not re-open from the side.
+
+module private WrongTypeClose =
+    /// The node-list array keys — the same positions `implied-node-close` is
+    /// gated to.
+    let private profileArrayKeys = [ "children"; "cases" ]
+
+    /// String-aware scan to the FIRST structural mismatch. `Some offset` when
+    /// that mismatch is a `}` read while the innermost open container is an
+    /// array that is the value of a member keyed `children` / `cases`; `None`
+    /// for every other document — one with no mismatch, a mismatch of another
+    /// shape, a closer with nothing open, or a cut inside a string.
+    let profile (text: string) : int option =
+        if isNull (box text) then
+            None
+        else
+            let n = text.Length
+            // (isArray, the member key the array is the value of)
+            let opens = ResizeArray<bool * string option>()
+            let mutable i = 0
+            let mutable result: int option = None
+            let mutable stop = false
+            // The most recent string literal, while only whitespace and at most
+            // one `:` have followed it: what makes `"children": [` a keyed array.
+            let mutable lastString: string option = None
+            let mutable colon = false
+
+            while not stop && i < n do
+                let c = text[i]
+
+                if c = '"' then
+                    let start = i
+                    let mutable closed = false
+                    i <- i + 1
+
+                    while not closed && i < n do
+                        let d = text[i]
+
+                        if d = '\\' then
+                            i <- i + 2
+                        elif d = '"' then
+                            closed <- true
+                            i <- i + 1
+                        else
+                            i <- i + 1
+
+                    if closed then
+                        lastString <- Some(text.Substring(start + 1, i - start - 2))
+                        colon <- false
+                    else
+                        stop <- true // cut inside a string: the truncation fingerprint
+                else
+                    if c = ':' && lastString.IsSome && not colon then
+                        colon <- true
+                    elif c = ' ' || c = '\t' || c = '\n' || c = '\r' then
+                        ()
+                    elif c = '[' then
+                        opens.Add(true, (if colon then lastString else None))
+                        lastString <- None
+                    elif c = '{' then
+                        opens.Add(false, None)
+                        lastString <- None
+                    elif c = '}' || c = ']' then
+                        if opens.Count = 0 then
+                            stop <- true
+                        else
+                            let isArr, key = opens[opens.Count - 1]
+
+                            if isArr = (c = ']') then
+                                opens.RemoveAt(opens.Count - 1)
+                            else
+                                stop <- true
+
+                                let keyed =
+                                    match key with
+                                    | Some k -> List.contains k profileArrayKeys
+                                    | None -> false
+
+                                if c = '}' && isArr && keyed then
+                                    result <- Some i
+
+                        lastString <- None
+                    else
+                        lastString <- None
+
+                    i <- i + 1
+
+            result
+
+    /// The two OWED readings of the `}` at `at`, in the order the
+    /// specification enumerates them: the dropped `]` inserted before it, and
+    /// the `}` replaced by `]`. The third reading — the `}` is a surplus — is
+    /// deliberately not one: a surplus closer has as many homes as there are
+    /// enclosing levels, which is `over-close-unique`'s enumeration to make,
+    /// not this entry's guess.
+    let readings (text: string) (at: int) : string list =
+        let before = text.Substring(0, at)
+        let after = text.Substring(at + 1)
+
+        [ before + "]}" + after; before + "]" + after ]
+
 /// What the strict parser says about one text — the three answers `repair`
 /// needs.
 [<RequireQualifiedAccess>]
@@ -799,7 +949,12 @@ type internal Parse<'J> =
 ///      candidates are enumerated, de-duplicated by parsed value, and each
 ///      distinct one is decoded; exactly one clean decode is the result — the
 ///      FIRST candidate text, in enumeration order, that parses to it.
-///   5. Otherwise `not-in-catalogue`.
+///   5. `wrong-type-close` (Phase 1961): if the text is in its profile, the
+///      three readings are formed; a reading that does not parse is offered
+///      once to `implied-node-close`; the parsing ones are de-duplicated by
+///      parsed value, and exactly one distinct document is the result — the
+///      first reading, in order, that yields it, with the ids it applied.
+///   6. Otherwise `not-in-catalogue`.
 let internal repairWith<'J when 'J: equality>
     (parse: string -> Parse<'J>)
     (decodesClean: 'J -> bool)
@@ -822,7 +977,53 @@ let internal repairWith<'J when 'J: equality>
         | Some repaired -> RepairOutcome.Repaired(repaired, [ RepairId.ImpliedNodeClose ])
         | None ->
             match OverClose.profile text with
-            | None -> RepairOutcome.NotRepairable Refusal.NotInCatalogue
+            | None ->
+                match WrongTypeClose.profile text with
+                | None -> RepairOutcome.NotRepairable Refusal.NotInCatalogue
+                | Some at ->
+                    // A reading that parses as formed applied this entry alone;
+                    // one that parses only once `implied-node-close` completes
+                    // it applied both, in that order. Nothing else composes.
+                    let resolve (reading: string) : (string * 'J * string list) option =
+                        match parse reading with
+                        | Parse.Parsed j -> Some(reading, j, [ RepairId.WrongTypeClose ])
+                        | Parse.Malformed
+                        | Parse.OverLimit ->
+                            match ImpliedNodeClose.tryRecover reading with
+                            | Some completed ->
+                                match parse completed with
+                                | Parse.Parsed j ->
+                                    Some(completed, j, [ RepairId.WrongTypeClose; RepairId.ImpliedNodeClose ])
+                                | Parse.Malformed
+                                | Parse.OverLimit -> None
+                            | None -> None
+
+                    // De-duplicate on the PARSED VALUE, keeping the first
+                    // reading (in order) that yields each distinct document.
+                    let distinct = ResizeArray<string * 'J * string list>()
+
+                    for reading in WrongTypeClose.readings text at do
+                        match resolve reading with
+                        | Some(t, j, applied) ->
+                            let mutable known = false
+
+                            for k in 0 .. distinct.Count - 1 do
+                                let _, seen, _ = distinct[k]
+
+                                if not known && seen = j then
+                                    known <- true
+
+                            if not known then
+                                distinct.Add((t, j, applied))
+                        | None -> ()
+
+                    if distinct.Count = 1 then
+                        let t, _, applied = distinct[0]
+                        RepairOutcome.Repaired(t, applied)
+                    elif distinct.Count = 0 then
+                        RepairOutcome.NotRepairable Refusal.WrongTypeCloseNoCandidate
+                    else
+                        RepairOutcome.NotRepairable Refusal.WrongTypeCloseAmbiguous
             | Some p ->
                 // The length ceiling is checked AFTER the profile scan, so only
                 // documents genuinely in the class are refused under it. The
