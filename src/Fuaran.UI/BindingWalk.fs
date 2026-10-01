@@ -630,6 +630,10 @@ let isEmptySeed (fingerprint: objnull) : bool =
     | :? Fuaran.Core.Table as t -> t = emptyTable
     | _ -> false
 
+// RowCodec is [<Obsolete>] at Fuaran.Core 0.33.0 (fuaran-core Phase 299); Phase 1960 moves this
+// call site off it. Suppressed for this function only, reopened straight after.
+#nowarn "44"
+
 /// Phase 1075 — normalise a ROW-MAJOR feed (a grid / chart `source`) to the
 /// canonical columnar `Table`, through the same path a live Transform source
 /// takes. `None` when the rows do not decode as a table (a ragged row set —
@@ -639,6 +643,8 @@ let private tableOfRows (rows: Fuaran.Core.Row seq) : Fuaran.Core.Table option =
     | Ok(Fuaran.Core.Embedded t) -> Some t
     | Ok(Fuaran.Core.Ref _)
     | Error _ -> None
+
+#warnon "44"
 
 // ─── the live-Transform SITE key (Phase 1586) ────────────────────────────────
 

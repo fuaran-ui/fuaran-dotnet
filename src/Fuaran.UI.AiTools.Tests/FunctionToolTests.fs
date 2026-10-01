@@ -43,7 +43,7 @@ type QNode =
 /// The inner witness effect — a live query reads the network.
 let private networkEffect: Fuaran.Core.EffectClass =
     { Host = Fuaran.Core.ReadsHost
-      Determinism = Fuaran.Core.Network }
+      Determinism = Fuaran.Core.Effect.network }
 
 /// The foreign query-function witness. It declares NO holes on the fragment it
 /// produces here (the query is already fully applied — a resolved result node),
@@ -171,7 +171,11 @@ let tests =
               let joined = FunctionTool.composedEffect queryWitness queryOut outer
 
               Expect.equal joined.Host Fuaran.Core.ReadsHost "host axis joined up to ReadsHost (from the query)"
-              Expect.equal joined.Determinism Fuaran.Core.Network "determinism axis joined up to Network (live query)"
+
+              Expect.equal
+                  joined.Determinism
+                  Fuaran.Core.Effect.network
+                  "determinism axis joined up to Network (live query)"
 
           testCase "hygiene — two refs binding the same foreign sub-function into distinct slots do not capture"
           <| fun _ ->

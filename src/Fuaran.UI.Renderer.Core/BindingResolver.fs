@@ -203,6 +203,9 @@ let private cellToObj (c: Fuaran.Core.Cell) : obj =
     | Fuaran.Core.Str s -> box s
     | Fuaran.Core.Cell.Date s -> box s
     | Fuaran.Core.Cell.Timestamp s -> box s
+    // Core 0.33.0's exact decimal (fuaran-core Phase 276) is carried as its canonical text, as
+    // the date cells are: no host float can hold it exactly.
+    | Fuaran.Core.Cell.Decimal s -> box s
     | Fuaran.Core.Null -> null
 
 /// Coerce a resolved scalar to a `Cell`. Every numeric arm yields `Float` (int/float are
@@ -832,6 +835,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
                          | Fuaran.Core.Str _ -> "string"
                          | Fuaran.Core.Cell.Date _ -> "date"
                          | Fuaran.Core.Cell.Timestamp _ -> "timestamp"
+                         | Fuaran.Core.Cell.Decimal _ -> "decimal"
                          | Fuaran.Core.Null -> "null")
                         ex.Message
                 )
@@ -1215,6 +1219,7 @@ let cellToText (c: Fuaran.Core.Cell) : Result<string, string> =
     | Fuaran.Core.Bool b -> Ok(if b then "true" else "false")
     | Fuaran.Core.Cell.Date s -> Ok s
     | Fuaran.Core.Cell.Timestamp s -> Ok s
+    | Fuaran.Core.Cell.Decimal s -> Ok s
     | Fuaran.Core.Null -> Error "Transform yielded a null cell in a text slot"
 
 /// Coerce a result cell to a numeric-slot float.
@@ -1236,6 +1241,10 @@ let cellToFloat (c: Fuaran.Core.Cell) : Result<float, string> =
                 "Transform yielded a date cell ('%s') in a numeric slot — project a numeric column, or aggregate with count / sum / mean"
                 s
         )
+    | Fuaran.Core.Cell.Decimal s ->
+        match Fuaran.Core.DecimalText.tryToFloat s with
+        | Some f -> Ok f
+        | None -> Error(sprintf "Transform yielded a decimal cell ('%s') outside the numeric slot's range" s)
     | Fuaran.Core.Null -> Error "Transform yielded a null cell in a numeric slot"
 
 /// Fuaran-UI Phase 1534 — the BOOLEAN coercion, the third of the trio beside
@@ -1251,7 +1260,8 @@ let cellToBool (c: Fuaran.Core.Cell) : Result<bool, string> =
     match c with
     | Fuaran.Core.Bool b -> Ok b
     | Fuaran.Core.Int _
-    | Fuaran.Core.Float _ ->
+    | Fuaran.Core.Float _
+    | Fuaran.Core.Cell.Decimal _ ->
         Error
             "a numeric cell is not a boolean — compare it (`=`, `>`, `isNull`) rather than relying on a truthiness rule the hosts do not share"
     | Fuaran.Core.Str s ->

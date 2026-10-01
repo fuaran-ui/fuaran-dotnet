@@ -4728,9 +4728,15 @@ type ChartProvenance =
 let specWireJson<'Msg> (spec: ChartSpec<'Msg>) : string =
     Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeNodeKindJson (NodeKind.Chart spec))
 
+// RowCodec is [<Obsolete>] at Fuaran.Core 0.33.0 (fuaran-core Phase 299); Phase 1960 moves these
+// call sites off it. Suppressed for this function only, reopened straight after.
+#nowarn "44"
+
 /// The canonical wire JSON of a typed row feed (`RowCodec.encodeRows`).
 let dataWireJson (rows: Row seq) : string =
     Fuaran.Core.Canon.render (Fuaran.Core.RowCodec.encodeRows rows)
+
+#warnon "44"
 
 /// The stamp's spec leg — `sha256:<hex>` over `specWireJson`.
 let specHashOf<'Msg> (spec: ChartSpec<'Msg>) : string =
@@ -4772,6 +4778,10 @@ let stampOf<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq option) : ChartStamp =
       DataFingerprint = dataFingerprintOf rows
       LoweringVersion = loweringVersion }
 
+// RowCodec is [<Obsolete>] at Fuaran.Core 0.33.0 (fuaran-core Phase 299); Phase 1960 moves these
+// call sites off it. Suppressed for this function only, reopened straight after.
+#nowarn "44"
+
 /// The canonical-JSON provenance document embedded in a self-describing SVG, or
 /// `None` under `ChartProvenance.Off`.
 let provenanceDocument<'Msg> (provenance: ChartProvenance) (spec: ChartSpec<'Msg>) (rows: Row seq) : string option =
@@ -4792,6 +4802,8 @@ let provenanceDocument<'Msg> (provenance: ChartProvenance) (spec: ChartSpec<'Msg
             |> List.choose id
 
         Option.Some(Fuaran.Core.Canon.render (Fuaran.Core.Canon.typed provenanceDocumentType fields))
+
+#warnon "44"
 
 /// What a self-describing chart SVG recovers to.
 type RecoveredChart =

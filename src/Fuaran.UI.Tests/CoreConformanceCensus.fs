@@ -610,6 +610,39 @@ let census: (string * Adoption) list =
       "Conformance.capabilityLawsWith",
       CarriedBy
           "unfiled — Fuaran.UI.AiTools.Capabilities (validate, then makeInvoker's host body) is a host dispatch path over a Core CapabilityRegistry, the subject this family certifies; adoption is one CapabilitySeamWitness whose Dispatch is that path, in Fuaran.UI.AiTools.Tests"
+      // ---- arrived with the Fuaran.Core 0.33.0 pin raise ----
+      // The `…At` names are the kit's naming rule applied to the three witness-taking forms above
+      // and to `aiSurfaceLaws` (fuaran-core Phase 297). The old names stay as obsolete forwards on
+      // this pin, so each pair is classified alike.
+      "Conformance.aiSurfaceLawsAt",
+      NotUsed
+          "Fuaran.Core.AiSurface at a domain's policy — no project in this tier references Fuaran.Core.AiSurface (see aiSurfaceLaws)"
+      "Conformance.queryLawsAt",
+      NotUsed
+          "Fuaran.Core.Query's registry seam at a domain's QuerySeamWitness — no project here references the Core query registry (see queryLawsWith)"
+      "Conformance.capabilityPipelineLawsAt",
+      NotUsed
+          "Fuaran.Core.Function's CapabilityPipeline at a domain's CapabilityPipelineWitness — the tier composes no capability pipeline"
+      "Conformance.capabilityLawsAt",
+      CarriedBy
+          "unfiled — the successor name of capabilityLawsWith, with the same subject here: Fuaran.UI.AiTools.Capabilities (validate, then makeInvoker's host body) over a Core CapabilityRegistry; adoption is one CapabilitySeamWitness in Fuaran.UI.AiTools.Tests"
+      // `reconcileLaws` (adopted above) pins the kit's default hash; this form takes the domain's.
+      // The tier's shipped hash is SHA-256, which `laneFoldLawsWith` already runs under, so the
+      // family has a subject here and is enrolled by name rather than filed as unused.
+      "Conformance.reconcileLawsWith",
+      CarriedBy
+          "unfiled — two-branch reconciliation under the tier's SHA-256 hashFn; adoption is one call beside the reconcileLaws test in Fuaran.UI.OpStream.Dag.Tests/CoreDagLawTests.fs, with the uiHashFn laneFoldLawsWith already uses"
+      // The keyed apply engine (`Ops.applyContainedKeyed`). Same subject and same gap as
+      // `keyedChildrenLaws` above: the tier's keyed positions exist, and no KeyedWitness covers them.
+      "Conformance.keyedApplyLaws",
+      CarriedBy
+          "unfiled — Apply.fs delegates the structural-five to Core's applyContained, not applyContainedKeyed, and the tier's keyed positions (ErrorBoundary fallback, state.onEmpty / onLoading) have no KeyedWitness; adoption needs that witness, as keyedChildrenLaws does"
+      "Conformance.witnessSurfaceLaws",
+      NotUsed
+          "a domain witness — the family takes no witness and certifies the field freeze of the Fuaran.Core build this tier compiled against; Core's own suite runs it on every gate"
+      "WireNullTolerance.laws",
+      NotUsed
+          "Fuaran.Core.Wire's own null-tolerance decoders over a fixed corpus — the tier's wire decoders are generated here (Generated.fs), not Core's, and null tolerance at this tier's wire is gated by the wire-format conformance corpus"
       "Conformance.capabilityPipelineIncrementalLaws",
       NotUsed "Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline"
       "Conformance.normalizeLaws",

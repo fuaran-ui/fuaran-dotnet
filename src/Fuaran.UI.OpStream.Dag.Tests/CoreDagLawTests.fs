@@ -173,7 +173,7 @@ let tests =
               // the kit's FNV-1a, this one supplies the tier's shipped SHA-256. Node ids are
               // content hashes of (parents, actor, op), so the hash is what decides whether two
               // lanes carrying the same ops stay distinct chains — not a formality.
-              FoldConfluence.laneFoldLawsWith coreSw footprintOfEqOp uiHashFn hashState laneGen 3 seed 60
+              FoldConfluence.laneFoldLawsWith coreSw footprintOfEqOp hashState laneGen 3 uiHashFn seed 60
               |> assertAllPassed "laneFoldLawsWith over the tier's SHA-256"
 
           // ---- the skeleton-op families -----------------------------------
@@ -217,7 +217,7 @@ let tests =
               // which Core's algebra has no case for) is unreachable from this generator and is
               // certified by `laneFoldLaws` above, which folds real `TreeOp` lanes — understating
               // a vertical op's footprint turns that family red, and only that family.
-              CoreConf.concurrencyLawsWith uiFootprintOfSkeleton nodew idw opGen encodeNode seed 100
+              CoreConf.concurrencyLawsWith nodew idw opGen encodeNode uiFootprintOfSkeleton seed 100
               |> assertAllPassed "concurrencyLawsWith over the tier's own footprint projection"
 
           testCase "proposal arbitration partitions totally and confluently (arbitrationLaws)"

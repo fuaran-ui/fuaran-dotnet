@@ -89,7 +89,7 @@ module LawVectorExport =
                     Holes = [ hole ]
                     Effect =
                       { Host = ReadsHost
-                        Determinism = Random } }
+                        Determinism = Effect.random } }
 
               yield
                   { Iteration = i

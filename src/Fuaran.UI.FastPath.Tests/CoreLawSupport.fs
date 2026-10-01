@@ -204,7 +204,7 @@ module CoreLawSupport =
 
     let impureEffect: EffectClass =
         { Host = ReadsHost
-          Determinism = Random }
+          Determinism = Effect.random }
 
     /// A fresh, wholly-unbound artifact-function over a bank pattern.
     let fnOf (tag: string) (declared: EffectClass) (p: FastPath.Pattern) : PatternFn =

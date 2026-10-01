@@ -7849,6 +7849,35 @@ change that follows rides this slot; a higher class advances it._
   `over-close-ambiguous`, 2 `over-close-no-clean-candidate`). The certifying fixtures are the
   `repair/` family's version-2 cases.
 
+- **The `Fuaran.Core.*` pins move 0.32.0 → 0.33.0 (operator-ordered raise); NO SURFACE CHANGE here;
+  RIDES this slot.** The corpus's `laws/` carries Core 0.33.0's emission (corpus `db82354`), which
+  the 0.32.0 kit cannot read, so the `Core function laws (Fuaran.UI.FastPath)` legs were red against
+  corpus `main` until this raise. Re-emitting Core's laws at `v0.33.0` reproduces the corpus's
+  `laws/` byte for byte, so the corpus does not change. The compute packages stay on their own line
+  (`FuaranCoreComputeVersion`, 0.34.0) and restore beside Core 0.33.0 with no downgrade or float.
+  _Class: by the surface guard (`surface-guard.ps1 -Baseline` over each published 0.88.0 package
+  against this build): every package's surface is unchanged except `Fuaran.UI.Ops`, whose three
+  added fields are Phase 1961's, above._ The Core changes a consumer meets through this tier are
+  Core's own and arrive at the Core raise, not here:
+
+  - **Determinism is a factor set** (fuaran-core Phase 319). `Fuaran.Core.EffectClass.Determinism`
+    is a `Set<DeterminismFactor>`; the four single-case values are `Effect.deterministic` / `clock`
+    / `random` / `network`. The UI's own `DeterminismSource` stays the four-case wire enum; no wire
+    byte or fixture moves. Lowering a Core set back to it (`FunctionTool`'s effect audit) maps a
+    single factor to its own case and a multi-factor set to the old chain's maximum
+    (`Network > Random > Clock > Deterministic`), which is the pre-raise behaviour. That mapping is
+    interim until Phase 1966 rules the wire vocabulary.
+  - **`Cell.Decimal`** (fuaran-core Phase 276). A Transform result cell holding an exact decimal is
+    now admitted in scalar slots: as its canonical text in a text slot, through
+    `DecimalText.tryToFloat` in a numeric slot (refused by name past the float range), and refused
+    in a boolean slot like the other numeric cells.
+  - **`RowCodec` is `[<Obsolete>]`** (fuaran-core Phase 299). `Fuaran.UI.Charts` still encodes a
+    chart's row feed through it; the FS0044 is suppressed around the two functions that call it,
+    and Phase 1960 moves them off it.
+  - **The conformance kit's moved signatures** (fuaran-core Phases 297/330): the six report types
+    left `module Conformance`, and `snapshotLawsWith`, `concurrencyLawsWith` and
+    `FoldConfluence.laneFoldLawsWith` take their pinned parameter last before the seed. Test call
+    sites only.
 ## 0.88.0 — the slot Phase 1923 opens: decode is strict, and repair is a separate named act (DRAFT — untagged)
 
 _Class: **BREAKING** on `Fuaran.UI` and `Fuaran.UI.Ops` — a behavioural change to a default, with

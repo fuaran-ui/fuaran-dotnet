@@ -578,7 +578,16 @@ module CoreFunctionLawTests =
                           | Ok doc -> doc
                           | Error m -> failtestf "%s did not parse: %s" path m
 
-                      let manifest = parse manifestPath
+                      // The index spans every family in `laws/`, and a family with no sampled
+                      // draw (the decimal row, from Fuaran.Core 0.33.0) records `seed` and
+                      // `iterations` as `null`, which the wire JVal model cannot hold. The
+                      // index is read null-tolerantly for that reason alone; the row asserted
+                      // below carries no null, and Core's own file is still read strictly.
+                      let manifest =
+                          match Json.parseTolerantOfNull (File.ReadAllText manifestPath) with
+                          | Ok doc -> doc
+                          | Error m -> failtestf "%s did not parse: %s" manifestPath m
+
                       let file = parse (LawVectorExport.capabilityPath corpusDir)
                       let field = LawVectorExport.field
 

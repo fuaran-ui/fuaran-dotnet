@@ -30,8 +30,8 @@ let private mkCap (id: string) (det: Fuaran.Core.DeterminismSource) : Fuaran.Cor
 
 let private registry =
     Fuaran.Core.Registry.empty
-    |> Fuaran.Core.Registry.register (mkCap "forecast" Fuaran.Core.Deterministic)
-    |> Result.bind (Fuaran.Core.Registry.register (mkCap "score" Fuaran.Core.Random))
+    |> Fuaran.Core.Registry.register (mkCap "forecast" Fuaran.Core.Effect.deterministic)
+    |> Result.bind (Fuaran.Core.Registry.register (mkCap "score" Fuaran.Core.Effect.random))
     |> function
         | Ok r -> r
         | Error e -> failwithf "registry build failed: %A" e

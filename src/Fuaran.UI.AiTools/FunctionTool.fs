@@ -68,10 +68,10 @@ let private toCoreEffect (e: EffectClass) : Fuaran.Core.EffectClass =
         | HostEffect.WritesHost -> Fuaran.Core.WritesHost
       Determinism =
         match e.Determinism with
-        | DeterminismSource.Deterministic -> Fuaran.Core.Deterministic
-        | DeterminismSource.Clock -> Fuaran.Core.Clock
-        | DeterminismSource.Random -> Fuaran.Core.Random
-        | DeterminismSource.Network -> Fuaran.Core.Network }
+        | DeterminismSource.Deterministic -> Fuaran.Core.Effect.deterministic
+        | DeterminismSource.Clock -> Fuaran.Core.Effect.clock
+        | DeterminismSource.Random -> Fuaran.Core.Effect.random
+        | DeterminismSource.Network -> Fuaran.Core.Effect.network }
 
 let private rawId (NodeId s) : string = s
 
@@ -291,11 +291,19 @@ let private fromCoreEffect (e: Fuaran.Core.EffectClass) : EffectClass =
         | Fuaran.Core.ReadsHost -> HostEffect.ReadsHost
         | Fuaran.Core.WritesHost -> HostEffect.WritesHost
       Determinism =
-        match e.Determinism with
-        | Fuaran.Core.Deterministic -> DeterminismSource.Deterministic
-        | Fuaran.Core.Clock -> DeterminismSource.Clock
-        | Fuaran.Core.Random -> DeterminismSource.Random
-        | Fuaran.Core.Network -> DeterminismSource.Network }
+        // interim until Phase 1966 rules the wire vocabulary: Core's determinism is a factor
+        // set (fuaran-core Phase 319); a single factor maps to its own case, and a multi-factor
+        // set to the old chain's maximum (Network > Random > Clock > Deterministic).
+        let d = e.Determinism
+
+        if d.Contains Fuaran.Core.DeterminismFactor.NetworkFactor then
+            DeterminismSource.Network
+        elif d.Contains Fuaran.Core.DeterminismFactor.RandomFactor then
+            DeterminismSource.Random
+        elif d.Contains Fuaran.Core.DeterminismFactor.ClockFactor then
+            DeterminismSource.Clock
+        else
+            DeterminismSource.Deterministic }
 
 /// Effect-soundness audit for a UI fragment (the runtime teeth on the mandatory
 /// effect signature). A `FragmentDecl` MUST declare an `EffectClass` at least as

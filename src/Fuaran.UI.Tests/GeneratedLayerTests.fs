@@ -781,14 +781,13 @@ let generatedLayerTests =
                     "reject-fieldrule-length-unordered.json"
                     "reject-formfield-near-miss-validation.json"
                     "reject-image-srcset-nonpositive-width.json"
-                    // §20.2 rows 1, 3 (leading zero), 5 and 6 — the substrate
-                    // parser's divergence, declared per §20.1 rule 2.
+                    // §20.2 rows 1 and 5 — the substrate parser's divergence, declared
+                    // per §20.1 rule 2. Rows 3 (leading zero) and 6 (the three
+                    // surrogate fixtures) left this list at the Fuaran.Core 0.33.0 raise:
+                    // Core's parser holds to the JSON grammar there (fuaran-core
+                    // Phase 299), so the generated layer refuses them structurally.
                     "reject-json-duplicate-key.json"
-                    "reject-json-lone-high-surrogate.json"
-                    "reject-json-lone-low-surrogate.json"
-                    "reject-json-number-leading-zero.json"
                     "reject-json-raw-control-char.json"
-                    "reject-json-surrogate-pair-split.json"
                     // Fuaran-UI Phase 1662 — §21.8's node bound on the PIPELINE
                     // surface. The `reject-limit-node-depth` class on the
                     // expression axis: a COUNT over a recursive structure,
