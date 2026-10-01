@@ -2837,6 +2837,23 @@ let select: Node<obj> =
         ))
         None
 
+/// Phase 1962 — an explicitly authored `"multiple":false`. `multiple` is an
+/// ordinary optional field emitted as authored, NOT omit-at-default: `Some false`
+/// decodes as single-select (so it carries `value`, not `values`) and re-encodes
+/// with the key kept. Without this vector a host that drops the key read green.
+let selectMultipleFalse: Node<obj> =
+    node
+        "select-multiple-false"
+        (NodeKind.Select(
+            { Defaults.select with
+                Label = TextSource.Literal "Size"
+                Source = Binding.Static(Some [ { Value = "s"; Label = "Small" }; { Value = "l"; Label = "Large" } ])
+                Value = Some(Binding.Static(Some "s"))
+                OnChange = Some(fun _ -> placeholderChain)
+                Multiple = Some false }
+        ))
+        None
+
 /// Round-trip cover for the Phase 291 multi-select `Select`. `Multiple = true`
 /// + a `Values` `Binding<string list>` (non-empty Static → the `<opaque>`
 /// sentinel, mirroring `Source`). `OnChangeMulti = None` (Phase 426): the
@@ -8581,6 +8598,7 @@ let allNodes: (string * Node<obj>) list =
       fileUploadMaxFiles
       "Input/Select", select
       "Input/Select (multi-select — list value)", multiSelect
+      "Input/Select (Phase 1962 — an explicit multiple:false, emitted as authored)", selectMultipleFalse
       "Input/Form (Phase 426 — handler-free write-back fields, State-bound)", formDeclarative
       "Input/Form (Phase 596 — symmetric auto-bind, omitted-value fields)", formDeclarativeMinimal
       "Input/Form (Phase 864 — declared field rules: format / pattern / length pair / cross-field compare)",

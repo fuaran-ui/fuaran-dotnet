@@ -7881,6 +7881,12 @@ literals._
   re-encodes stably and without a `value` on the multi-select (before, 2 re-encoded the placeholder
   and 14 re-encoded the real binding the model wrote).
 
+- **Phase 1962 amendment — an explicit `"multiple":false` round-trips as written** (operator ruling
+  2026-10-01). `multiple` is emitted as authored, never omit-at-default; this host already kept it
+  (`Multiple = Some false`), but no fixture said so, and two hosts dropped it unseen. The corpus gains
+  `nodes/select-multiple-false.json`, generated from `Fixtures.selectMultipleFalse`. No surface change
+  here: the slot's class is unchanged.
+
 ## 0.89.0 — the slot Phase 1961 opens: the repair catalogue's version 2, `wrong-type-close` (DRAFT — untagged; superseded by 0.90.0 before release)
 
 _Class: **ADDITIVE** on `Fuaran.UI.Ops`, by the surface guard (`surface-guard.ps1 -Baseline` over
