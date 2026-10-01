@@ -70,6 +70,16 @@
   the `$ComputeOwned` list below, kept in step with `Directory.Packages.props` beside this script.
   Neither pair passed: every package follows `Directory.Packages.props`, exactly as before.
 
+  A CORE-ONLY CUT SKIPS THE COMPUTE PACKAGES, and says so. The compute packages pin an older
+  Fuaran.Core until this Core release is published, so compiling them against the Core candidate
+  reports their producer's next raise, not a defect in the candidate; they are gated by their own
+  producer's cut (`-ComputeVersion`/`-ComputeFeed`). The script sets `CoreFableSkipCompute=true`,
+  which drops their references from the restore and leaves `CORE_FABLE_COMPUTE` undefined, so
+  `Program.fs` compiles only its Core touches. Pinned, compute-only and both-producers runs compile
+  them as before. Separately, `CoreFable.fsproj` defines `CORE_DETERMINISM_SET` when a Core cut is at
+  or above 0.33.0 (fuaran-core Phase 319 made `EffectClass.Determinism` a set), so the smoke program
+  compiles against both Core lines; pinned runs read the pin's spelling.
+
   MEMBERSHIP IS CHECKED, NOT REMEMBERED. The Core packages this gate is responsible for are derived
   — from this repository's own `Fuaran.Core.*` pins by default, and from the candidate's packages
   in a cut-time run — and each must be referenced by `CoreFable.fsproj` or listed in
@@ -109,10 +119,14 @@ $project = Join-Path $PSScriptRoot 'CoreFable.fsproj'
 $coreOverride = [bool] ($CoreVersion -or $CoreFeed)
 $computeOverride = [bool] ($ComputeVersion -or $ComputeFeed)
 $override = $coreOverride -or $computeOverride
+# A Core-only cut compiles the Core surface alone (see the header): the compute packages are gated by
+# their own producer's cut.
+$skipCompute = $coreOverride -and -not $computeOverride
 
 # The packages the SECOND producer ships (its repository's derived roster: the three this gate
 # references, plus the C#-only half `exclusions.json` names). Every other Fuaran.Core.* package is
-# Fuaran.Core's. Keep in step with the compute ItemGroup in this directory's Directory.Packages.props.
+# Fuaran.Core's. Keep in step with the compute ItemGroups in this directory's Directory.Packages.props
+# and CoreFable.fsproj.
 $ComputeOwned = @('Fuaran.Core.DataFrame', 'Fuaran.Core.Column.Ops', 'Fuaran.Core.DataFrame.Conformance', 'Fuaran.Core.DataFrame.CSharp')
 
 function Fail([string] $message) {
@@ -183,12 +197,13 @@ $outDir = Join-Path $scratch 'out'
 
 # Every property below is read by MSBuild from the environment, which is what lets `dotnet restore`,
 # `dotnet fable` and `dotnet build` all see the same values. Cleared at the end either way.
-$touchedEnv = @('FuaranCoreVersion', 'CoreFableComputeVersion', 'CoreParity', 'NUGET_PACKAGES')
+$touchedEnv = @('FuaranCoreVersion', 'CoreFableComputeVersion', 'CoreFableSkipCompute', 'CoreParity', 'NUGET_PACKAGES')
 $savedEnv = @{}
 foreach ($name in $touchedEnv) { $savedEnv[$name] = [Environment]::GetEnvironmentVariable($name) }
 [Environment]::SetEnvironmentVariable('CoreParity', $null)
 [Environment]::SetEnvironmentVariable('FuaranCoreVersion', $null)
 [Environment]::SetEnvironmentVariable('CoreFableComputeVersion', $null)
+[Environment]::SetEnvironmentVariable('CoreFableSkipCompute', $null)
 
 $pinsFile = Join-Path $repoRoot 'Directory.Packages.props'
 $pinsText = Get-Content -Raw $pinsFile
@@ -306,7 +321,8 @@ if ($override) {
     [Environment]::SetEnvironmentVariable('NUGET_PACKAGES', (Join-Path $scratch 'packages'))
     $restoreArgs += @('--configfile', $config)
     if (-not $coreOverride) { $modeParts.Insert(0, "Fuaran.Core at the pin ($($pins['Fuaran.Core.Conformance']))") }
-    if (-not $computeOverride) { $modeParts.Add("compute at the pin ($($pins['Fuaran.Core.DataFrame']))") }
+    if ($skipCompute) { $modeParts.Add('compute packages skipped') }
+    elseif (-not $computeOverride) { $modeParts.Add("compute at the pin ($($pins['Fuaran.Core.DataFrame']))") }
     $modeLine = "cut-time run — " + ($modeParts -join '; ')
 }
 else {
@@ -314,6 +330,11 @@ else {
 }
 
 Write-Host "==== core-fable: $modeLine" -ForegroundColor Cyan
+
+if ($skipCompute) {
+    [Environment]::SetEnvironmentVariable('CoreFableSkipCompute', 'true')
+    Write-Host '  compute packages SKIPPED: a Core-only cut compiles the Core surface; the compute packages are gated by their own producer''s cut (-ComputeVersion/-ComputeFeed)' -ForegroundColor Yellow
+}
 
 try {
     # ── Membership ──────────────────────────────────────────────────────────
@@ -416,16 +437,27 @@ try {
     if (-not (Test-Path -LiteralPath $entry)) { Fail "no emitted entry point at $entry" }
 
     # Every referenced package was actually transpiled. `fable_modules/<id>.<version>/` is what Fable
-    # writes per compiled package; a reference it ignored would leave no directory.
+    # writes per compiled package; a reference it ignored would leave no directory. A Core-only cut
+    # does not compile the compute packages, so it expects them absent — and checks that they are,
+    # so a skip that did not happen cannot pass for one that did.
     $modulesDir = Join-Path $outDir 'fable_modules'
     $emitted = @(if (Test-Path -LiteralPath $modulesDir) { Get-ChildItem -LiteralPath $modulesDir -Directory | ForEach-Object Name })
-    $notEmitted = @($referenced | Where-Object {
+    $compiled = @(if ($skipCompute) { $referenced | Where-Object { $_ -notin $ComputeOwned } } else { $referenced })
+    if ($skipCompute) {
+        $leaked = @($referenced | Where-Object { $_ -in $ComputeOwned } | Where-Object {
+                $id = $_
+                $emitted | Where-Object { $_ -match ('^' + [regex]::Escape($id) + '\.\d') }
+            })
+        if ($leaked.Count -gt 0) { Fail ("a Core-only cut transpiled the compute packages it skips: " + ($leaked -join ', ')) }
+    }
+    $notEmitted = @($compiled | Where-Object {
             $id = $_
             -not ($emitted | Where-Object { $_ -match ('^' + [regex]::Escape($id) + '\.\d') })
         })
     if ($notEmitted.Count -gt 0) { Fail ("referenced but not transpiled: " + ($notEmitted -join ', ')) }
 
-    Write-Host "  compile: green — $($referenced.Count) Fuaran.Core packages transpiled at $resolvedText (compute packages at $computeResolvedText)" -ForegroundColor Green
+    $computeNote = if ($skipCompute) { 'compute packages skipped' } else { "compute packages at $computeResolvedText" }
+    Write-Host "  compile: green — $($compiled.Count) Fuaran.Core packages transpiled at $resolvedText ($computeNote)" -ForegroundColor Green
 
     # ── The parity leg ──────────────────────────────────────────────────────
 
