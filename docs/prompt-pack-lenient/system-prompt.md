@@ -317,7 +317,7 @@ InputKind =
 | Filters { items:FilterSpec[] }
 | Button { label:TextSource; onClick:Action; variant:"Primary"|"Secondary"|"Tertiary"|"Destructive"; disabled?:Binding_bool; icon?:str }
 | FileUpload { accept:str[]; label:TextSource; multiple:bool; acceptPaste?:bool; capture?:"Camera"|"Microphone"; destination?:str; disabled?:Binding_bool; dropTarget?:bool; maxBytes?:int; maxFiles?:int }
-| Select { label:TextSource; source:Binding_list_SelectOption; value:Binding_str_choice; disabled?:Binding_bool; multiple?:bool; placeholder?:TextSource; values?:Binding_list_str }
+| Select { label:TextSource; source:Binding_list_SelectOption; disabled?:Binding_bool; multiple?:bool; placeholder?:TextSource; value?:Binding_str_choice; values?:Binding_list_str }
 VisKind =
 | DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; exportable?:bool; keepRowsTogether?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; repeatHeader?:bool; rowKeyField?:str; rowTotal?:Binding_int; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool }; transferInKey?:str; transferOutKey?:str; windowStateKey?:str }
 | Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding_hosted; xField:str; yFields:str[]; annotations?:ChartAnnotation[]; dataLabels?:"Off"|"Ends"; legendPosition?:"Top"|"Right"|"Bottom"|"None"; stacked?:bool; subtitle?:TextSource; title?:TextSource; valueFormat?:Format; xScale?:"Category"|"Temporal"; xTitle?:TextSource; yTitle?:TextSource }

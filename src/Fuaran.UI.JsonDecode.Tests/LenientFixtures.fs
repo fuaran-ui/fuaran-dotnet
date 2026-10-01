@@ -911,6 +911,25 @@ let all: LenientFixture list =
         Description =
           "Parameterised fragments — a `FragmentDecl` carrying the REDUNDANT pure-deterministic `effect` and an empty `holes` list is decode-accepted and re-encodes with both keys OMITTED. Neither slot is optional-with-a-convention any more: both are omit-at-default on every conformant host, so the redundant form is input-only (Phase 1670)" }
 
+      // ─── Phase 1962 — a multi-select's placeholder `value` ─────────────
+      //
+      // Until Phase 1962 the type model required `value` on every `Select`, so
+      // every multi-select carried a meaningless empty `Static` beside its real
+      // `values` binding. The canonical multi-select now carries `values` and no
+      // `value`; the placeholder stays decode-accepted, so every stored document
+      // (eval results, saved sessions, op-streams) still reads, and normalises to
+      // the clean form. Both spellings of the placeholder ride — the bare
+      // `{"$type":"Static"}` the encoder wrote and the `"value":null` form the
+      // pre-429 encoder wrote — one per child, so a host that matched only one
+      // spelling fails the other child.
+      { Id = "lenient-1962-multiselect-placeholder-value"
+        LenientJson =
+          """{"id":"len-1962","kind":{"$type":"Box","children":[{"id":"len-1962-tags","kind":{"$type":"Select","label":"Tags","multiple":true,"source":{"$type":"Static","value":[{"label":"Red","value":"red"},{"label":"Green","value":"green"}]},"value":{"$type":"Static"},"values":{"$type":"State","key":"tags"}}},{"id":"len-1962-depts","kind":{"$type":"Select","label":"Departments","multiple":true,"source":{"$type":"Static","value":[{"label":"Sales","value":"sales"}]},"value":{"$type":"Static","value":null},"values":{"$type":"Filter","name":"depts"}}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"len-1962","kind":{"$type":"Box","children":[{"id":"len-1962-tags","kind":{"$type":"Select","label":"Tags","multiple":true,"source":{"$type":"Static","value":[{"label":"Red","value":"red"},{"label":"Green","value":"green"}]},"values":{"$type":"State","key":"tags"}}},{"id":"len-1962-depts","kind":{"$type":"Select","label":"Departments","multiple":true,"source":{"$type":"Static","value":[{"label":"Sales","value":"sales"}]},"values":{"$type":"Filter","name":"depts"}}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+        Description =
+          "§3.2 — a multi-select (`\"multiple\":true`) carrying the empty-`Static` placeholder `value` (bare, or with `\"value\":null`) beside its `values` decodes and re-encodes WITHOUT `value`: a multi-select carries `values` and no `value`, and the placeholder every pre-1962 multi-select carried normalises away. A non-placeholder `value` there is refused (reject-1962-multiselect-bound-value) (Phase 1962)" }
+
       // ─── Phase 1670 — the `FragmentRef` twin, and why it is NOT here ───────
       //
       // `FragmentRefSpec.Args = Some Map.empty` is the third member of the same

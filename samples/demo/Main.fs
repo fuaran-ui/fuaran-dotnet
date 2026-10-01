@@ -253,7 +253,7 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                       { Defaults.select<Msg> with
                           Label = TextSource.Literal "Contributor peer"
                           Source = Binding.Static(Some contributorOptions)
-                          Value = binding.stateNoDefault "contributorPick"
+                          Value = Some(binding.stateNoDefault "contributorPick")
                           OnChange = Some(fun v -> Action.dispatch (PickContributor v))
                           Placeholder = Some(TextSource.Literal "Choose a peer…") }
                   |> Node.onEmpty (Fuaran.markdown "no-contributors" "No Contributor peers configured.")

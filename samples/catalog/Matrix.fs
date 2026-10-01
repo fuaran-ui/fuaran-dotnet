@@ -237,7 +237,7 @@ let private demoSelect (tone, weight, emphasis) : Node<unit> =
                           { Value = "portal-peer"
                             Label = "Portal peer" } ]
                 )
-            Value = Binding.Static None
+            Value = Some(Binding.Static None)
             OnChange = Some(fun _ -> Action.Chain [])
             Placeholder = Some(TextSource.Literal "Choose a peer…") }
 

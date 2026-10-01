@@ -2879,7 +2879,7 @@ let tests =
                       { Defaults.select<Msg> with
                           Label = TextSource.Literal "Tier"
                           Source = Binding.Static(Some [])
-                          Value = Binding.State("tier", None) }
+                          Value = Some(Binding.State("tier", None)) }
 
               let tree = dashboard "root" [ picker; switchReader "sw" "tier" ]
               Expect.isEmpty (noWriterDefects tree) "the write-back default writes the slot it is bound to"
@@ -3536,7 +3536,7 @@ let tests =
                       "choice"
                       { Defaults.select<Msg> with
                           Label = TextSource.Literal ""
-                          Value = Binding.State("choice", None) }
+                          Value = Some(Binding.State("choice", None)) }
 
               let form =
                   Fuaran.form

@@ -169,7 +169,12 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
 
                 []
             | NodeKind.Select s ->
-                handler nodeId "SelectSpec.onChange" s.OnChange.IsSome (isWritable s.Value) "$state (value)"
+                handler
+                    nodeId
+                    "SelectSpec.onChange"
+                    s.OnChange.IsSome
+                    (s.Value |> Option.exists isWritable)
+                    "$state (value)"
 
                 handler
                     nodeId

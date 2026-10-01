@@ -396,7 +396,10 @@ let select<'Msg> : SelectSpec<'Msg> =
     // `Value` gets the chosen option written back by the renderer.
     { Label = emptyLiteral
       Source = Binding.Static(Some [])
-      Value = Binding.Static None
+      // Phase 1962 — a single-select CARRIES `value`; "no selection" is the
+      // empty `Static`, not an absent binding. A multi-select carries `values`
+      // and no `value` (`Fuaran.multiSelect` clears it).
+      Value = Some(Binding.Static None)
       OnChange = Option.None
       Placeholder = Option.None
       Disabled = Option.None

@@ -313,7 +313,9 @@ let extractBindingSlots (kind: NodeKind<'Msg>) : BindingSlotInfo list =
         | None -> []
     | NodeKind.Select(spec) ->
         [ slotInfo "Source" spec.Source
-          slotInfo "Value" spec.Value
+          match spec.Value with
+          | Some value -> slotInfo "Value" value
+          | None -> ()
           match spec.Disabled with
           | Some disabled -> slotInfo "Disabled" disabled
           | None -> () ]
@@ -510,7 +512,10 @@ let resolveSlot (sources: BindingResolver.BindingSources) (kind: NodeKind<'Msg>)
         | Some disabled -> resolveTo sources disabled
         | None -> SlotResolution.NoOverride
     | NodeKind.Select(spec), "Source" -> resolveTo sources spec.Source
-    | NodeKind.Select(spec), "Value" -> resolveTo sources spec.Value
+    | NodeKind.Select(spec), "Value" ->
+        match spec.Value with
+        | Some value -> resolveTo sources value
+        | None -> SlotResolution.NoOverride
     | NodeKind.Select(spec), "Disabled" ->
         match spec.Disabled with
         | Some disabled -> resolveTo sources disabled

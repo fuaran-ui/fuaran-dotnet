@@ -1500,7 +1500,7 @@ and SelectSpec<'Msg> =
       OnChange: (string option -> Action<'Msg>) option
       OnChangeMulti: (string list -> Action<'Msg>) option
       Source: Binding<SelectOption list>
-      Value: Binding<string>
+      Value: Binding<string> option
       Placeholder: TextSource option
       Disabled: Binding<bool> option
       Multiple: bool option
@@ -2426,7 +2426,7 @@ and private encScrollAreaSpec<'Msg> (s: ScrollAreaSpec<'Msg>) : JVal =
     Canon.typed "ScrollArea" ([ Some("children", JArr(List.map encNode s.Children)); Some("orientation", encScrollOrientation s.Orientation); (s.MaxHeight |> Option.map (fun v -> "maxHeight", JInt v)); (s.MaxWidth |> Option.map (fun v -> "maxWidth", JInt v)) ] |> List.choose id)
 
 and private encSelectSpec<'Msg> (s: SelectSpec<'Msg>) : JVal =
-    Canon.typed "Select" ([ Some("label", encTextSource s.Label); (s.OnChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (s.OnChangeMulti |> Option.map (fun v -> "onChangeMulti", JStr "<closure>")); Some("source", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) s.Source); Some("value", (encBinding JStr) s.Value); (s.Placeholder |> Option.map (fun v -> "placeholder", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (s.Multiple |> Option.map (fun v -> "multiple", JBool v)); (s.Values |> Option.map (fun v -> "values", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
+    Canon.typed "Select" ([ Some("label", encTextSource s.Label); (s.OnChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (s.OnChangeMulti |> Option.map (fun v -> "onChangeMulti", JStr "<closure>")); Some("source", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) s.Source); (s.Value |> Option.map (fun v -> "value", (encBinding JStr) v)); (s.Placeholder |> Option.map (fun v -> "placeholder", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (s.Multiple |> Option.map (fun v -> "multiple", JBool v)); (s.Values |> Option.map (fun v -> "values", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
 
 and private encSkeletonSpec (s: SkeletonSpec) : JVal =
     Canon.typed "Skeleton" ([ Some("rows", JInt s.Rows) ] |> List.choose id)
@@ -4238,7 +4238,7 @@ and private decSelectSpec (j: JVal) : Result<SelectSpec<obj>, string> =
     (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
     (dPresent "onChangeMulti" __fs |> Result.map (Option.map (fun () -> (fun (_: string list) -> Action.Chain [])))) |> Result.bind (fun onChangeMulti ->
     dReq "source" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun source ->
-    dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
+    dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
     dOpt "placeholder" __fs decTextSource |> Result.bind (fun placeholder ->
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     dOpt "multiple" __fs dBool |> Result.bind (fun multiple ->
@@ -4584,8 +4584,8 @@ let mkProgress (id: string) (fraction: Binding<float>) : Node<'Msg> =
 let mkScrollArea (id: string) (children: Node<'Msg> list) (orientation: ScrollOrientation) : Node<'Msg> =
     { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkSelect (id: string) (label: TextSource) (source: Binding<SelectOption list>) (value: Binding<string>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; OnChangeMulti = None; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+let mkSelect (id: string) (label: TextSource) (source: Binding<SelectOption list>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; OnChangeMulti = None; Source = source; Value = None; Placeholder = None; Disabled = None; Multiple = None; Values = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkSkeleton (id: string) (rows: int) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Skeleton { Rows = rows }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }

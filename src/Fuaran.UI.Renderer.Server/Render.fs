@@ -1923,7 +1923,8 @@ and private renderKind
         // The select value is `Binding<string>` since the swap — a null/empty
         // resolution is no-selection (the segmented-filter shape).
         let selected =
-            BindingResolver.tryResolve ctx.Sources spec.Value
+            spec.Value
+            |> Option.bind (BindingResolver.tryResolve ctx.Sources)
             |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
 
         let isDisabled =

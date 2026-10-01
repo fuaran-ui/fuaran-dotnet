@@ -824,7 +824,8 @@ let private genSelectSpec: Gen<SelectSpec<obj>> =
             { Defaults.select with
                 Label = label
                 Source = source
-                Value = value
+                // Phase 1962 — a multi-select carries `values` and no `value`.
+                Value = (if multiple then Option.None else Some value)
                 OnChange =
                     (if withHandlers then
                          Some(fun _ -> Action.Chain [])

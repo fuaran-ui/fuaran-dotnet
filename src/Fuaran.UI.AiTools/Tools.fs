@@ -117,12 +117,16 @@ let private extractBindings (ctx: IntrospectionContext) (kind: NodeKind<'Msg>) :
         match spec.Disabled with
         | Some disabled -> Map.ofList [ "Disabled", resolveSlot ctx disabled ]
         | None -> Map.empty
-    // Select: Source + Value always resolve; Disabled is the optional bound
+    // Select: Source always resolves, Value when present (a multi-select has
+    // none — Phase 1962); Disabled is the optional bound
     // disabled-state (Phase 130) — added only when `Some`, mirroring
     // Button.Disabled / Metric.Trend.
     | NodeKind.Select(spec) ->
         let baseMap =
-            Map.ofList [ "Source", resolveSlot ctx spec.Source; "Value", resolveSlot ctx spec.Value ]
+            Map.ofList (
+                [ "Source", resolveSlot ctx spec.Source ]
+                @ (spec.Value |> Option.map (fun v -> "Value", resolveSlot ctx v) |> Option.toList)
+            )
 
         match spec.Disabled with
         | Some disabled -> baseMap |> Map.add "Disabled" (resolveSlot ctx disabled)
@@ -207,7 +211,7 @@ let private extractSlot<'Msg>
                       Source = BindingSource.Static }
             )
     | NodeKind.Select(spec), "Source" -> Some(resolveSlot ctx spec.Source)
-    | NodeKind.Select(spec), "Value" -> Some(resolveSlot ctx spec.Value)
+    | NodeKind.Select(spec), "Value" -> spec.Value |> Option.map (resolveSlot ctx)
     // Phase 130: Select / Form / FileUpload optional bound disabled-state.
     // When absent, surface as Resolved with no value (synthetic-None posture,
     // mirroring Button.Disabled / Tabs.ActiveTag / Metric.Trend) so the

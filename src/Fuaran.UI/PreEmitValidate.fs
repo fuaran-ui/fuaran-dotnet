@@ -4379,7 +4379,7 @@ let private validateCore
 
                 if spec.OnChangeMulti.IsNone && not valuesLive then
                     defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select(multiple)"))
-            elif spec.OnChange.IsNone && not (isWriteBackTarget spec.Value) then
+            elif spec.OnChange.IsNone && not (spec.Value |> Option.exists isWriteBackTarget) then
                 defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select"))
         | NodeKind.Filters spec ->
             // Phase 1113 — a filter chip carries an ordinary `FormFieldKind`

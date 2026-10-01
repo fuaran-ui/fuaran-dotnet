@@ -6388,10 +6388,6 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
             requireFieldAliased path fields "source" [ "options"; "data" ] "Binding<SelectOption list>"
             |> Result.bind (decodeBindingSelectOptions (path + ".source"))
 
-        let valueR =
-            requireField path fields "value" "Binding<string>"
-            |> Result.bind (decodeBindingChoiceValue (path + ".value"))
-
         let placeholderR =
             match tryField fields "placeholder" with
             | None -> Ok None
@@ -6408,6 +6404,39 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
             match tryField fields "multiple" with
             | None -> Ok Option.None
             | Some v -> requireBool (path + ".multiple") v |> Result.map Some
+
+        // Phase 1962 — `value` is the SINGLE-select binding (WIRE_FORMAT §3.2).
+        // A single-select requires it. A multi-select carries `values` and no
+        // `value`: the empty-`Static` placeholder every pre-1962 multi-select
+        // carried (`{"$type":"Static"}`, or with `"value":null`) is a §16
+        // lenient accept that normalises to the absent slot, and any other
+        // `value` there is WRONG_TYPE — it would be a second, contradicting
+        // selection the control never reads. An unreadable `multiple` is its own
+        // defect, so the presence rule is not applied on top of it.
+        let valueR =
+            let decodeValue v =
+                decodeBindingChoiceValue (path + ".value") v
+
+            match multipleR with
+            | Ok(Some true) ->
+                match tryField fields "value" with
+                | None -> Ok Option.None
+                | Some v ->
+                    match decodeValue v with
+                    | Ok(Binding.Static None) -> Ok Option.None
+                    | Ok _ ->
+                        wrongType
+                            (path + ".value")
+                            "no `value` on a multi-select (`\"multiple\":true` carries its selection in `values`)"
+                    | Error e -> Error e
+            | Ok _ ->
+                requireField path fields "value" "Binding<string>"
+                |> Result.bind decodeValue
+                |> Result.map Some
+            | Error _ ->
+                match tryField fields "value" with
+                | None -> Ok Option.None
+                | Some v -> decodeValue v |> Result.map Some
 
         let valuesR =
             match tryField fields "values" with

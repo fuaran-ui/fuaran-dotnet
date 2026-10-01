@@ -1977,6 +1977,31 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a Binding.Local carrying BOTH an `onCommit` closure sentinel and a declared `commitTo` key. The SetState value/valueFrom law, applied to the buffer's flush: exactly one commit destination. A decoding host can honour only the declared one — the closure is `\"<closure>\"` and nothing more — so admitting the pair would make the same bytes commit to two different places depending on who read them (Fuaran-UI Phase 1538)" }
+      // ─── Phase 1962 — the single/multi `value` rule ─────────────────────
+      //
+      // `value` is the SINGLE-select binding. A single-select without one is
+      // refused as it always was; a multi-select carries `values` and no
+      // `value`, and the one `value` it still decode-accepts is the empty
+      // `Static` placeholder every pre-1962 multi-select carried (pinned on the
+      // lenient side). Any OTHER `value` beside `"multiple":true` is a second
+      // selection the control never reads — refused rather than silently
+      // dropped, so a document cannot mean two things to two readers.
+      { Id = "reject-1962-select-missing-value"
+        Json =
+          """{"id":"x","kind":{"$type":"Select","label":"Region","source":{"$type":"Static","value":[{"label":"UK","value":"uk"}]}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.value"
+        IsOp = false
+        Description =
+          "a single-select (`multiple` absent) with no `value`. `value` is the single-select binding and is required there; only a multi-select omits it (WIRE_FORMAT §3.2, Phase 1962)" }
+      { Id = "reject-1962-multiselect-bound-value"
+        Json =
+          """{"id":"x","kind":{"$type":"Select","label":"Tags","multiple":true,"source":{"$type":"Static","value":[{"label":"Red","value":"red"}]},"value":{"$type":"State","key":"tag"},"values":{"$type":"Static","value":["red"]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.value"
+        IsOp = false
+        Description =
+          "a multi-select (`\"multiple\":true`) carrying a NON-placeholder `value` beside its `values`. A multi-select's selection is `values`; the only `value` still accepted there is the empty-`Static` placeholder (lenient-1962-multiselect-placeholder-value), and any other is a second, contradicting selection, so it is refused rather than dropped (WIRE_FORMAT §3.2, Phase 1962)" }
       { Id = "reject-limit-json-depth-at-max"
         Json =
           String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "["

@@ -352,8 +352,19 @@ let private kindsBlock (idl: JsonElement) (ann: Annotations) : string * string S
         for k in ks do
             let tag = str "tag" k
 
+            // A `hostOnly` field (`Button.tooltip`) is typed host surface, never
+            // a wire key — the encoder does not emit it and a decoder ignores it
+            // (§10.1) — so it is not listed in a table of wire fields (Phase 1962;
+            // it was rendered `tooltip*` against a legend reading `*` as "carries
+            // `"<closure>"` on the wire", which contradicted §4, §9 and §10.1).
+            let isHostOnly (f: JsonElement) =
+                match prop "optionality" f with
+                | Some o -> str "$type" o = "hostOnly"
+                | None -> false
+
             let fields =
                 arr "fields" k
+                |> List.filter (isHostOnly >> not)
                 |> List.map (fun f -> str "name" f, renderFieldToken f)
                 |> List.sortWith (fun (a, _) (b, _) -> ordinal a b)
                 |> List.map (fun (_, token) -> "`" + token + "`")

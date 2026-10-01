@@ -172,7 +172,12 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
     // rather than aspirational.
     | NodeKind.Button _ -> [ "Label"; "Variant"; "Icon"; "Tooltip" ]
     | NodeKind.FileUpload _ -> [ "Label"; "Accept"; "Multiple" ]
-    | NodeKind.Select _ -> [ "Label"; "Source"; "Value"; "Placeholder" ]
+    // Phase 1962 — a multi-select carries `Values`, not `Value`.
+    | NodeKind.Select s ->
+        if s.Multiple = Some true then
+            [ "Label"; "Source"; "Placeholder" ]
+        else
+            [ "Label"; "Source"; "Value"; "Placeholder" ]
     // -- Visualisation --
     // Phase 1473 — the grid's two print-break declarations are plain wire
     // booleans with a coercion, so an `UpdateProp` sets them exactly as it sets
@@ -249,7 +254,12 @@ let availableBindingSlots (kind: NodeKind<'Msg>) : string list =
     // Select's bound source / value plus the Phase 130 optional bound
     // disabled-state (always listed; synthetic-None when absent, mirroring
     // Button.Disabled / Metric.Trend).
-    | NodeKind.Select(_) -> [ "Source"; "Value"; "Disabled" ]
+    // Phase 1962 — a multi-select has no `Value` slot (it carries `Values`).
+    | NodeKind.Select(s) ->
+        if s.Multiple = Some true then
+            [ "Source"; "Disabled" ]
+        else
+            [ "Source"; "Value"; "Disabled" ]
     // Form / FileUpload gain a single optional bound disabled-state slot
     // (Phase 130 — the interactive-state class-fix). Form had no binding slot
     // before; FileUpload neither. Both are always listed.

@@ -2905,7 +2905,7 @@
         {
           "name": "value",
           "optionality": {
-            "$type": "required"
+            "$type": "optional"
           },
           "type": {
             "$type": "union",

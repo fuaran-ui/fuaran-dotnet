@@ -720,7 +720,7 @@ let tests =
                                   // the default-less State read (it was a
                                   // `Binding<string option>` with a `None` default).
                                   Source = Binding.Static(Some [])
-                                  Value = binding.stateNoDefault "pick" } ]
+                                  Value = Some(binding.stateNoDefault "pick") } ]
 
                     for (expected, node) in cases do
                         Expect.equal (wireTypeOf node) expected (sprintf "the encoder's $type for %s" expected)

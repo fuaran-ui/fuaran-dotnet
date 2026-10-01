@@ -2579,7 +2579,15 @@ let inputKinds: IdlKind list =
             // byte-diff found it silently dropped.
             opt "onChangeMulti" (handlerOf "string list" "string[]")
             req "source" (bindingOf (TList(TRecord "SelectOption")))
-            req "value" (bindingOf TStr)
+            // Phase 1962 — `value` is the SINGLE-select binding: required when
+            // `multiple` is not `true`, absent when it is (a multi-select carries
+            // `values`). The IDL's per-field optionality cannot say "required
+            // unless a sibling is true", so the slot is `opt` here and the rule is
+            // enforced where a field's siblings are visible: the decoder (absent on
+            // a single-select is MISSING_FIELD; the empty-`Static` placeholder on a
+            // multi-select normalises away; any other `value` there is WRONG_TYPE)
+            // and the `select` / `multiSelect` constructors. WIRE_FORMAT §3.2.
+            opt "value" (bindingOf TStr)
             opt "placeholder" (TUnion("TextSource", []))
             opt "disabled" (bindingOf TBool)
             opt "multiple" TBool

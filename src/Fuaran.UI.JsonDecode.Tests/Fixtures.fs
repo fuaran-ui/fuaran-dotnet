@@ -2824,7 +2824,7 @@ let select: Node<obj> =
             { Defaults.select with
                 Label = TextSource.Literal "Region"
                 Source = Binding.Static(Some [ { Value = "uk"; Label = "UK" } ])
-                Value = Binding.Static(Some "uk")
+                Value = Some(Binding.Static(Some "uk"))
                 // `Some` (Phase 426) — keeps `"onChange":"<closure>"` on the
                 // wire, byte-identical to the pre-426 corpus.
                 OnChange = Some(fun _ -> placeholderChain)
@@ -2851,6 +2851,7 @@ let multiSelect: Node<obj> =
                 Label = TextSource.Literal "Tags"
                 Source = Binding.Static(Some [ { Value = "red"; Label = "Red" }; { Value = "green"; Label = "Green" } ])
                 OnChange = Some(fun _ -> placeholderChain)
+                Value = None
                 Multiple = Some true
                 Values = Some(Binding.Static(Some [ "red"; "green" ])) }
         ))
@@ -3302,7 +3303,7 @@ let controlsDeclarative: Node<obj> =
                 { Defaults.select with
                     Label = TextSource.Literal "Region"
                     Source = Binding.Static(Some [ { Value = "uk"; Label = "UK" } ])
-                    Value = Binding.State("region", None)
+                    Value = Some(Binding.State("region", None))
                     Placeholder = Some(TextSource.Literal "Choose one") }
             ))
             None
@@ -3357,6 +3358,7 @@ let multiSelectClosure: Node<obj> =
                     Label = TextSource.Literal "Tags"
                     Source = Binding.Static(Some [ { Value = "red"; Label = "Red" } ])
                     OnChange = Some(fun _ -> placeholderChain)
+                    Value = None
                     Multiple = Some true
                     Values = Some(Binding.Static(Some [ "red" ]))
                     OnChangeMulti = Some(fun _ -> placeholderChain) }
@@ -4357,6 +4359,7 @@ let multiselectChipListParam: Node<obj> =
                                             { Value = "sales"; Label = "Sales" }
                                             { Value = "ops"; Label = "Operations" } ]
                                   )
+                              Value = None
                               Multiple = Some true
                               Values = Some(Binding.Filter("depts", None)) }
                       ))
@@ -8140,7 +8143,7 @@ let stateAbsentDefault: Node<obj> =
                 { Defaults.select with
                     Label = TextSource.Literal "Region"
                     Source = Binding.State("regionOptions", None)
-                    Value = Binding.State("region", Some "uk") }
+                    Value = Some(Binding.State("region", Some "uk")) }
             ))
             None
 

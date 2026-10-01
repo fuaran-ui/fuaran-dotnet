@@ -2091,7 +2091,7 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
         let __v =
             keysOfText channel s.Label
             @ keysOfBinding channel s.Source
-            @ keysOfBinding channel s.Value
+            @ keysOfBindingOpt channel s.Value
             // Phase 291 — the multi-select value binding (Some only in multi mode).
             @ keysOfBindingOpt channel s.Values
             @ keysOfTextOpt channel s.Placeholder
@@ -5440,8 +5440,11 @@ and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : R
     // `Value` is `Binding<string>` since the swap — a null/empty
     // resolution is no-selection (the same projection as
     // `renderSegmentedChoiceCore`).
+    // Phase 1962 — absent on a multi-select, which renders through its own
+    // path; a single-select always carries one.
     let selected =
-        BindingResolver.tryResolve ctx.Sources spec.Value
+        spec.Value
+        |> Option.bind (BindingResolver.tryResolve ctx.Sources)
         |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
 
     let placeholderItem =
@@ -5508,7 +5511,9 @@ and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : R
 
                       match spec.OnChange with
                       | Some onChange -> runAction ctx (onChange chosen)
-                      | None -> writeBackTo ctx spec.Value (chosen |> Option.map box))
+                      | None ->
+                          spec.Value
+                          |> Option.iter (fun value -> writeBackTo ctx value (chosen |> Option.map box)))
                   prop.children (placeholderItem @ optionItems) ]
 
     Html.label

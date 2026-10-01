@@ -1874,14 +1874,14 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
                 noteOpaqueIf fu.OnSelect.IsSome
                 usesOfText fu.Label @ usesOfBindingOpt fu.Disabled, []
             | NodeKind.Select s ->
-                noteWriteBackOf readerId s.Value
+                s.Value |> Option.iter (noteWriteBackOf readerId)
                 s.Values |> Option.iter (noteWriteBackOf readerId)
                 noteOpaqueIf (s.OnChange.IsSome || s.OnChangeMulti.IsSome)
 
                 let uses =
                     usesOfText s.Label
                     @ usesOfBinding s.Source
-                    @ usesOfBinding s.Value
+                    @ usesOfBindingOpt s.Value
                     @ usesOfBindingOpt s.Values
                     @ usesOfTextOpt s.Placeholder
                     @ usesOfBindingOpt s.Disabled

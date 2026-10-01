@@ -771,8 +771,15 @@
          Class ADDITIVE by the surface guard (three new string literals, nothing
          removed or retyped) against the published 0.88.0. It ADVANCES because
          v0.88.0 is TAGGED. An UNTAGGED DRAFT: additive changes ride it, a
-         higher class advances it. See STABILITY.md "0.89.0". -->
-    <Version>0.89.0</Version>
+         higher class advances it. See STABILITY.md "0.89.0".
+
+         0.90.0 (2026-10-01) is opened by Phase 1962: SelectSpec.Value becomes
+         an option (a multi-select carries values and no value, WIRE_FORMAT.md
+         3.2). Class BREAKING by the surface guard (a record field retyped), so
+         it ADVANCES the untagged ADDITIVE 0.89.0 draft rather than riding it;
+         0.89.0 is superseded before release. An UNTAGGED DRAFT: additive
+         changes ride it, a higher class advances it. See STABILITY.md "0.90.0". -->
+    <Version>0.90.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

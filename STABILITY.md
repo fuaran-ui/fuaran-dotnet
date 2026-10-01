@@ -7816,7 +7816,61 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.89.0 — the slot Phase 1961 opens: the repair catalogue's version 2, `wrong-type-close` (DRAFT — untagged)
+## 0.90.0 — the slot Phase 1962 opens: a multi-select `Select` carries `values` and no `value` (DRAFT — untagged)
+
+_Class: **BREAKING** on `Fuaran.UI`, by the surface guard (`surface-guard.ps1 -Baseline` over the
+`Fuaran.UI` 0.88.0 assembly against this build): `SelectSpec.Value` is RETYPED from
+`Binding<string>` to `Binding<string> option`, the record's primary constructor changes with it, and
+the generated `mkSelect` loses its `value` parameter. 0.89.0 is an untagged draft whose class is
+ADDITIVE (Phase 1961), so under the draft-slot rule this change, being of a higher class than that
+draft carries, ADVANCES it rather than riding it — the 0.87.0 → 0.88.0 precedent. Phase 1961's
+additive surface rides into this slot unchanged; 0.89.0 is superseded before release. `Fuaran.UI.Ops`
+moves with it (the decoder's behaviour, below) but its own surface delta is still Phase 1961's three
+literals._
+
+### What rides this slot
+
+- **Phase 1962 — the single/multi `value` rule** (WIRE_FORMAT.md §3.2, the Phase 291 paragraph made
+  literally true). A `Select` with `"multiple":true` carries `values` and **no** `value`; one without
+  `multiple` carries `value` and no `values`. Until now `SelectSpec.Value` was required whatever
+  `Multiple` said, so every canonical multi-select carried a meaningless `"value":{"$type":"Static"}`
+  beside its real `values` binding, and the decoder refused the `values`-only shape the spec's own
+  prose describes (four stored model emissions were refused for exactly that).
+
+  **The representation, and why.** `SelectSpec.Value` is `Binding<string> option`: `Some` on a
+  single-select, `None` on a multi-select. The alternative — a single/multi union — was the operator's
+  other option and is the stronger type, but `SelectSpec` is generated from the IDL, whose
+  optionality is per field (`required` / `optional` / `omitDefault` / `hostOnly`) and cannot say
+  "required unless a sibling is `true`"; a union would mean a hand-written codec beside the generated
+  one for one kind, which is the drift the generated layer exists to remove. So the slot is `opt` in
+  the IDL and the rule is enforced where a field's siblings are visible:
+  - **decode** (`JsonDecode`): absent on a single-select is `MISSING_FIELD`; the empty-`Static`
+    placeholder on a multi-select (`{"$type":"Static"}`, or with `"value":null`) is a §16 lenient
+    accept that normalises to `None`; any other `value` on a multi-select is `WRONG_TYPE` (refused,
+    not silently dropped — it would be a second selection the control never reads);
+  - **construction**: `Fuaran.select` drops a `Value` handed to a multi-select and fills an absent one
+    on a single-select with the empty `Static` ("no selection"); `Fuaran.multiSelect` sets `None`;
+    `Defaults.select` (a single-select) carries `Some(Binding.Static None)`; the C# `Select` veneer
+    always supplies one and `MultiSelect` never does (the VB dialect maps through it);
+  - **apply**: `ReplaceBinding` of the `Value` slot on a multi-select is refused as slot-not-found;
+  - **schema** (`schema.json`): `if`/`then`/`else` states the same relation.
+
+  **What a consumer sees.** Code that reads `spec.Value` now reads an option. A record literal that
+  sets `Value = b` on a single-select writes `Value = Some b`; one that builds a multi-select from
+  `Defaults.select` should set `Value = None` (or go through `Fuaran.select` / `multiSelect`, which do
+  it) — left at the default it still encodes the placeholder, which every conformant decoder accepts
+  and normalises away. `mkSelect` builds a single-select with no `value`; pass the result through
+  `Fuaran.select` or set `Value`. On the wire: the corpus's `nodes/multiselect-1.json`,
+  `nodes/multiselect-chip-list-param.json` and `nodes/controls-closure.json` lose the placeholder;
+  every stored document that carries it still decodes. A reader that still requires `value` refuses
+  a new multi-select with `MISSING_FIELD` — the profile does not step; this is one coordinated change
+  across every host in the WIRE_FORMAT §11.0 roster (operator ruling 2026-10-01).
+
+  **Measured** (2026-10-01, the stored emissions in the corpus's `stored-emissions/`): see the
+  phase's outcome for the re-measure of the 4 `values`-only and 16 placeholder-carrying `Select`
+  nodes.
+
+## 0.89.0 — the slot Phase 1961 opens: the repair catalogue's version 2, `wrong-type-close` (DRAFT — untagged; superseded by 0.90.0 before release)
 
 _Class: **ADDITIVE** on `Fuaran.UI.Ops`, by the surface guard (`surface-guard.ps1 -Baseline` over
 the published `Fuaran.UI.Ops` 0.88.0 against this build: three fields added, nothing removed or
@@ -7849,7 +7903,11 @@ change that follows rides this slot; a higher class advances it._
   `over-close-ambiguous`, 2 `over-close-no-clean-candidate`). The certifying fixtures are the
   `repair/` family's version-2 cases.
 
-## 0.88.0 — the slot Phase 1923 opens: decode is strict, and repair is a separate named act (DRAFT — untagged)
+## 0.88.0 — the slot Phase 1923 opens: decode is strict, and repair is a separate named act — released 2026-09-30 as `v0.88.0`
+
+_**Released 2026-09-30: tagged `v0.88.0` at `ea01a98`.** This slot is a public contract now and nothing
+may ride it. (Its heading read "DRAFT — untagged" until Phase 1962 corrected it; the tag predates
+that correction.)_
 
 _Class: **BREAKING** on `Fuaran.UI` and `Fuaran.UI.Ops` — a behavioural change to a default, with
 no type or member removed. `v0.86.0` is tagged and 0.87.0 is an untagged draft whose class is

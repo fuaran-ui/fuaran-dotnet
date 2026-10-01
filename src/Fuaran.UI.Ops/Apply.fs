@@ -1999,11 +1999,13 @@ let private replaceBindingSelect
                         Source = castBinding<SelectOption list> b }
                 )
             )
-        | "Value" ->
+        // Phase 1962 — a multi-select has no `Value` slot (it carries
+        // `Values`), so binding one there is refused rather than installed.
+        | "Value" when spec.Multiple <> Some true ->
             Ok(
                 NodeKind.Select(
                     { spec with
-                        Value = castBinding<string> b }
+                        Value = Some(castBinding<string> b) }
                 )
             )
         // Phase 130: optional bound disabled-state; replacing it installs
