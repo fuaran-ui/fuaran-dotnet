@@ -7816,7 +7816,52 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.89.0 — the slot Phase 1961 opens: the repair catalogue's version 2, `wrong-type-close` (DRAFT — untagged)
+## 0.90.0 — the slot the Fuaran.Core 0.34.0 raise opens (DRAFT — untagged)
+
+_Class: **BREAKING** (source) on `Fuaran.UI`. The raise moves every `Fuaran.Core.*` pin from 0.32.0 to
+0.34.0 (0.33.0 is skipped here), and Core 0.34.0's IDL generator regenerates the structural layer
+with typed decode errors. 0.89.0 is an untagged draft whose class is ADDITIVE, so under the
+draft-slot rule this change, being of a higher class, ADVANCES the number rather than riding it.
+Everything 0.89.0 carried rides here unchanged (see its entry below); 0.89.0 is superseded before
+release. An additive change that follows rides this slot; a higher class advances it. The compute
+packages (`Fuaran.Core.DataFrame`, `Fuaran.Core.Column.Ops`, `Fuaran.Core.DataFrame.Conformance`)
+are a separate producer and are NOT moved by this raise._
+
+### What rides this slot
+
+- **The generated decoders refuse with Core's `DecodeError`** (fuaran-core Phase 337).
+  `Fuaran.UI.Generated.decodeNode` and every generated decoder answer `Result<_, DecodeError>` where
+  they answered `Result<_, string>`. **Consumer edit:** `decodeNode s |> Result.mapError
+  DecodeError.describe` is the previous function, sentence for sentence; or branch on `e.Code` and
+  report `DecodePath.render e.Path`. No document that decoded before is refused now, and none refused
+  before decodes. The hand decoder (`JsonDecode`) is unchanged.
+- **A `Switch.autoAdvanceMs` that is not positive** is refused by the generated decoder as
+  `OutOfRange` at `autoAdvanceMs`, with the sentence it had before.
+- **A decimal cell** (`Fuaran.Core.Cell.Decimal`, Core 0.33.0) is handled by every renderer-side cell
+  coercion: a row carries it as its canonical text, a text slot reads that text, a numeric slot reads
+  it at its nearest float (refusing one outside the float range), and a boolean slot refuses it as a
+  numeric cell. The UI tier's own sources never infer a decimal column; the arms exist because the
+  union is closed.
+- **The fragment effect class crosses to Core's determinism SET and back** (fuaran-core Phase 319).
+  The UI `DeterminismSource` is unchanged; the audit lowers Core's set to it by maximum rank (network
+  over random over clock, empty is deterministic), which is the value the chain's join produced
+  before, so no audit verdict moves.
+- **Nothing on the wire moves.** The corpus round-trips byte-identically; the vocabulary's one edit
+  is a declaration fix the new well-formedness check demanded (`SemanticStyle.direction`'s
+  omit-at-default names the wire string `auto`), which changes no emitted byte.
+- **Core-side behaviour a consumer may notice through this tier:** `RowCodec` is obsolete in Core
+  0.33.0 (the row-feed wire still uses it, with the warning scoped to its call sites), and the
+  advisory wire-profile report (`src/Fuaran.UI.Idl/WireProfile.fs`, not shipped) now grades a
+  required field added to an existing owner as a MAJOR step, following Core's classifier.
+
+**Not releasable as it stands.** The compute packages this tier pins at 0.34.0 were built against
+Core 0.32.0 and do not survive Core 0.34.0: `Fuaran.Core.DataFrame` builds `ColumnError.NotJson` from
+a string (`DataFrame.fs`, `Delta.fs`; Core 0.33.0 made its payload a `JsonError`), so every Fable
+compile of a package that sources it fails and the .NET path throws `MissingMethodException` on a
+malformed pipeline; and `Fuaran.Core.DataFrame.Conformance` builds `Families.LawFamily` without the
+two fields Core 0.33.0 added. This slot waits on a compute release built against Core 0.34.0.
+
+## 0.89.0 — the slot Phase 1961 opens: the repair catalogue's version 2, `wrong-type-close` (DRAFT — untagged; superseded by 0.90.0 before release)
 
 _Class: **ADDITIVE** on `Fuaran.UI.Ops`, by the surface guard (`surface-guard.ps1 -Baseline` over
 the published `Fuaran.UI.Ops` 0.88.0 against this build: three fields added, nothing removed or

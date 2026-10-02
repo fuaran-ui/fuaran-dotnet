@@ -173,6 +173,20 @@ module CoreLawSupport =
               slotHole "slot" "body" (Some "Markdown") ]
           Build = fun v -> UiTree.markdown ("host-" + valueOf v "title" "0") "host" }
 
+    /// A two-value-hole twin of `soundPattern`, for `memoLaws` alone. From Core 0.33.0
+    /// (fuaran-core Phase 290) that family BUILDS a param-set whose first value spells the
+    /// key separator and the next binding, and it needs two addresses to build it from;
+    /// `soundPattern` has one, so the arm was never reached and the kit's strict cell reports
+    /// that as red rather than green. Same space and the same valid-for-every-binding
+    /// construction as `soundPattern`.
+    let memoPattern: FastPath.Pattern =
+        { Id = "law-memo"
+          Title = "Law fixture — memo"
+          Summary = "A two-hole pattern whose whole declared hole space yields a valid tree."
+          ResultType = "Markdown"
+          Holes = [ FastPath.numberHole "a" "a" 1 5; FastPath.numberHole "b" "b" 1 5 ]
+          Build = fun v -> UiTree.markdown ("vm-" + valueOf v "a" "1" + "-" + valueOf v "b" "1") "memo" }
+
     /// Every pattern the witness can resolve: the PUBLIC seed catalogue (so the
     /// tier-shaped assertions run over the real bank, not only over fixtures)
     /// plus this project's law fixtures.
@@ -183,7 +197,8 @@ module CoreLawSupport =
           yield innerAPattern
           yield innerBPattern
           yield outerPattern
-          yield hostPattern ]
+          yield hostPattern
+          yield memoPattern ]
         |> List.map (fun p -> p.Id, p)
         |> Map.ofList
 
@@ -204,7 +219,7 @@ module CoreLawSupport =
 
     let impureEffect: EffectClass =
         { Host = ReadsHost
-          Determinism = Random }
+          Determinism = Effect.random }
 
     /// A fresh, wholly-unbound artifact-function over a bank pattern.
     let fnOf (tag: string) (declared: EffectClass) (p: FastPath.Pattern) : PatternFn =
@@ -380,25 +395,31 @@ module CoreLawSupport =
     /// `FastPath.tryInstantiate` runs before a built tree leaves the bank. Each
     /// node of an artifact-function is instantiated and put through it, so the
     /// verdict the laws read is the verdict the shipped seam would give.
-    let validatorRegistry: Validator.Registry<PatternFn, string> =
-        Validator.empty<PatternFn, string>
-        |> Validator.register (
-            Validator.perNode "fastpath/pre-emit" (fun _ f ->
-                match PreEmitValidate.validate (instantiate f) with
-                | Ok() -> []
-                | Error defects ->
-                    defects
-                    |> List.map (fun d ->
-                        let code, severity, message = PreEmitValidate.describe d
+    let validatorRegistry: Validator.RuleRegistry<PatternFn, string> =
+        // Core 0.33.0: `register` refuses a duplicate id and answers a `Result`; one family
+        // cannot collide, so the `Error` arm is unreachable.
+        match
+            Validator.ofFamilies
+                [ Validator.perNode "fastpath/pre-emit" (fun _ f ->
+                      match PreEmitValidate.validate (instantiate f) with
+                      | Ok() -> []
+                      | Error defects ->
+                          defects
+                          |> List.map (fun d ->
+                              let code, severity, message = PreEmitValidate.describe d
 
-                        { Code = code
-                          Severity =
-                            match severity with
-                            | PreEmitValidate.DefectSeverity.Error -> Severity.Error
-                            | PreEmitValidate.DefectSeverity.Warning -> Severity.Warning
-                          Message = message
-                          Node = Some f.Tag }))
-        )
+                              { Code = code
+                                Severity =
+                                  match severity with
+                                  | PreEmitValidate.DefectSeverity.Error -> Severity.Error
+                                  | PreEmitValidate.DefectSeverity.Warning -> Severity.Warning
+                                Message = message
+                                Node = Some f.Tag
+                                Family = ""
+                                Related = [] })) ]
+        with
+        | Ok registry -> registry
+        | Error e -> failwithf "the pre-emit oracle did not register: %A" e
 
     // -----------------------------------------------------------------------
     //  generators
@@ -495,9 +516,11 @@ module CoreLawSupport =
         let av = 1 + a
         let bv = 1 + ((a + (b % 4) + 1) % 5)
 
-        { PureFn = soundPattern |> fnOf "memo-pure" pureEffect
-          Args = Map.ofList [ "n", ValueArg(string av) ]
-          ArgsAlt = Map.ofList [ "n", ValueArg(string bv) ]
+        // Two addresses (`memoPattern`), so the kit's separator arm has a pair to build
+        // from; `b` is held at the drawn value in both sets so the alternate still differs.
+        { PureFn = memoPattern |> fnOf "memo-pure" pureEffect
+          Args = Map.ofList [ "a", ValueArg(string av); "b", ValueArg(string (1 + e)) ]
+          ArgsAlt = Map.ofList [ "a", ValueArg(string bv); "b", ValueArg(string (1 + e)) ]
           EffectingFn = soundPattern |> fnOf "memo-effecting" impureEffect
           EffectingArgs = Map.ofList [ "n", ValueArg(string (1 + e)) ] },
         r3

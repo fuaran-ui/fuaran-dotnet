@@ -133,10 +133,10 @@ let private toCoreEffect (e: EffectClass) : Fuaran.Core.EffectClass =
         | HostEffect.WritesHost -> Fuaran.Core.WritesHost
       Determinism =
         match e.Determinism with
-        | DeterminismSource.Deterministic -> Fuaran.Core.Deterministic
-        | DeterminismSource.Clock -> Fuaran.Core.Clock
-        | DeterminismSource.Random -> Fuaran.Core.Random
-        | DeterminismSource.Network -> Fuaran.Core.Network }
+        | DeterminismSource.Deterministic -> Fuaran.Core.Effect.deterministic
+        | DeterminismSource.Clock -> Fuaran.Core.Effect.clock
+        | DeterminismSource.Random -> Fuaran.Core.Effect.random
+        | DeterminismSource.Network -> Fuaran.Core.Effect.network }
 
 let private rawId (NodeId s) : string = s
 
@@ -176,7 +176,9 @@ let uiValidityRegistry<'Msg> : Fuaran.Core.Validator.Registry<Node<'Msg>, NodeId
                         { Code = code
                           Severity = sev
                           Message = msg
-                          Node = None }) }
+                          Node = None
+                          Family = ""
+                          Related = [] }) }
 
     { Families = [ family ] }
 
@@ -398,9 +400,11 @@ let private toCounterexample<'Msg>
 
     let defect =
         match cx.Defect with
-        | Conf.DidNotApply e -> sprintf "binding did not apply (%A)" e
-        | Conf.ValidatorRejected ds -> ds |> List.map (fun d -> d.Code + ": " + d.Message) |> String.concat "; "
-        | Conf.EffectObserved(declared, observed) -> sprintf "effect leak — declared %A, observed %A" declared observed
+        | Fuaran.Core.VerifyDefect.DidNotApply e -> sprintf "binding did not apply (%A)" e
+        | Fuaran.Core.VerifyDefect.ValidatorRejected ds ->
+            ds |> List.map (fun d -> d.Code + ": " + d.Message) |> String.concat "; "
+        | Fuaran.Core.VerifyDefect.EffectObserved(declared, observed) ->
+            sprintf "effect leak — declared %A, observed %A" declared observed
 
     { Binding = binding; Defect = defect }
 
@@ -458,8 +462,8 @@ let certifyFragment<'Msg>
 
     let coverage =
         match report.Coverage with
-        | Conf.Exhaustive n -> Exhaustive n
-        | Conf.Sampled(drawn, size) -> Sampled(drawn, size)
+        | Fuaran.Core.VerifyCoverage.Exhaustive n -> Exhaustive n
+        | Fuaran.Core.VerifyCoverage.Sampled(drawn, size) -> Sampled(drawn, size)
 
     let structureOnly =
         match fragment.Kind with

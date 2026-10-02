@@ -22,7 +22,7 @@ open Fuaran.UI.Types
 /// order. This is the compute analogue of node-introspection — an agent reads it to learn the
 /// invokable surface, just as it reads the node schema to learn the emittable surface.
 let discover (registry: Fuaran.Core.CapabilityRegistry) : (string * Fuaran.Core.JVal) list =
-    Fuaran.Core.Registry.enumerate registry
+    Fuaran.Core.CapabilityRegistry.enumerate registry
     |> List.map (fun cap -> cap.Id, Fuaran.Core.Function.toJsonSchema cap.Signature)
 
 /// Validate a typed invocation against the registry (default-deny by shape, FGP 3): resolve the
@@ -34,9 +34,14 @@ let validate
     (capabilityId: string)
     (args: (string * string) list)
     : Result<Fuaran.Core.Capability, Fuaran.Core.InvokeError> =
-    match Fuaran.Core.Registry.tryFind capabilityId registry with
+    match Fuaran.Core.CapabilityRegistry.tryFind capabilityId registry with
     | None ->
-        Error(Fuaran.Core.NoSuchCapability(capabilityId, Fuaran.Core.Registry.enumerate registry |> List.map _.Id))
+        Error(
+            Fuaran.Core.NoSuchCapability(
+                capabilityId,
+                Fuaran.Core.CapabilityRegistry.enumerate registry |> List.map _.Id
+            )
+        )
     | Some cap -> Fuaran.Core.Capability.validateArgs cap args |> Result.map (fun () -> cap)
 
 /// Build a `BindingResolver.CapabilityInvoker`-shaped function (`id -> args -> Deferred<obj>`) from

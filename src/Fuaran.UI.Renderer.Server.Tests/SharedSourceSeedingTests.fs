@@ -70,7 +70,7 @@ let private pairJson (childrenInOrder: string list) =
 let private decode (json: string) : Node<obj> =
     match Fuaran.UI.Generated.decodeNode json with
     | Ok node -> node
-    | Error e -> failwithf "decode failed: %s" e
+    | Error e -> failwithf "decode failed: %s" (Fuaran.Core.DecodeError.describe e)
 
 let rec private findNode (id: string) (node: Node<obj>) : Node<obj> =
     if node.Id = id then

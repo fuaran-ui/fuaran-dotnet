@@ -64,7 +64,7 @@ let private listParamDoc =
 /// accept, which is why this probe does not construct the tree in F#.
 let private decodedRowsBinding (json: string) : Binding<Fuaran.Core.Row seq> =
     match Fuaran.UI.Generated.decodeNode json with
-    | Error e -> failtestf "the probe document did not decode: %s" e
+    | Error e -> failtestf "the probe document did not decode: %s" (Fuaran.Core.DecodeError.describe e)
     | Ok node ->
         match Fuaran.UI.PreEmitValidate.validate node with
         | Error defects -> failtestf "the probe document did not validate: %A" defects
@@ -175,7 +175,8 @@ let tests =
                   """{"id":"clear-service-filter","kind":{"$type":"Button","icon":"x","label":"Clear filter","onClick":{"$type":"SetState","key":"service","value":[]},"variant":"Tertiary"}}"""
 
               match Fuaran.UI.Generated.decodeNode taught with
-              | Error e -> failtestf "the taught clear fragment does not decode: %s" e
+              | Error e ->
+                  failtestf "the taught clear fragment does not decode: %s" (Fuaran.Core.DecodeError.describe e)
               | Ok _ -> ()
           }
 
@@ -184,7 +185,8 @@ let tests =
                   """{"id":"close-quick-add","kind":{"$type":"Button","label":"Close","onClick":{"$type":"SetState","key":"quick-add-open","value":false},"variant":"Tertiary"}}"""
 
               match Fuaran.UI.Generated.decodeNode taught with
-              | Error e -> failtestf "the taught boolean-close fragment does not decode: %s" e
+              | Error e ->
+                  failtestf "the taught boolean-close fragment does not decode: %s" (Fuaran.Core.DecodeError.describe e)
               | Ok _ -> ()
           }
 

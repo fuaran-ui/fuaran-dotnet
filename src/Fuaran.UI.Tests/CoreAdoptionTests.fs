@@ -299,7 +299,9 @@ let private entryOf (op: TreeOp<obj>) : StreamEntry<obj> =
 let private entrySw: Fuaran.Core.StreamWitness<StreamEntry<obj>, EqNode, ApplyError> =
     { Apply = fun entry e -> UiApply.apply entry.Op e.Node |> Result.map wrap
       Encode = StreamEntry.encode
-      Decode = fun _ -> Error "StreamEntry decode is not exercised by certifyStream" }
+      // Core 0.34.0's `certifyStream` round-trips the chain through JSONL (fuaran-core Phase 301),
+      // so the witness carries the tier's shipped decoder rather than a refusing stub.
+      Decode = StreamEntry.decode (fun raw -> Fuaran.UI.Ops.JsonDecode.decodeOp raw |> Result.mapError (sprintf "%A")) }
 
 let private entryStreamGen: Fuaran.Core.StreamGen<StreamEntry<obj>, EqNode> =
     { State0 = baseTree

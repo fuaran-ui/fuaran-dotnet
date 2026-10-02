@@ -224,17 +224,15 @@ let opGen: Fuaran.Core.OpGen<EqNode, NodeId> =
 //  in `CoreDagLawTests.fs`, so the confluence claim is made about THIS function
 //  rather than about Core's.
 
-let private emptyFp: Fuaran.Core.Footprint =
-    { Reads = Set.empty
-      StructureWrites = Set.empty
-      ContentWrites = Set.empty
-      UnknownParentWrites = Set.empty }
+let private emptyFp: Fuaran.Core.Footprint = Fuaran.Core.Footprint.empty
 
 let private unionFp (a: Fuaran.Core.Footprint) (b: Fuaran.Core.Footprint) : Fuaran.Core.Footprint =
     { Reads = Set.union a.Reads b.Reads
       StructureWrites = Set.union a.StructureWrites b.StructureWrites
       ContentWrites = Set.union a.ContentWrites b.ContentWrites
-      UnknownParentWrites = Set.union a.UnknownParentWrites b.UnknownParentWrites }
+      UnknownParentWrites = Set.union a.UnknownParentWrites b.UnknownParentWrites
+      SlotReads = Set.union a.SlotReads b.SlotReads
+      SlotWrites = Set.union a.SlotWrites b.SlotWrites }
 
 let private skeletonFp (op: Fuaran.Core.SkeletonOp<EqNode, NodeId>) : Fuaran.Core.Footprint =
     Fuaran.Core.Ops.footprint nodew idw [ op ]
@@ -283,15 +281,26 @@ let rec private skeletonToTreeOp (op: Fuaran.Core.SkeletonOp<EqNode, NodeId>) : 
     // nearest case, `EditNode`, swaps the node's whole `Kind` — children included — where
     // `UpdateNode` keeps the children the tree holds. Mapping it there would put a different
     // op's footprint under the law, so, like `ReplaceRoot` above, it is outside this
-    // projection's vocabulary; Core's generator draws no `UpdateNode` at this pin, and one that
-    // starts to will fail here by name rather than certify a borrowed footprint.
+    // projection's vocabulary. Core's generator draws one from Core 0.33.0 (fuaran-core Phase
+    // 297: `genOp` draws every op kind), so `uiFootprintOfSkeleton` below answers it with Core's
+    // own footprint rather than reaching here; inside a `Batch` (which Core fills with structural
+    // ops only) it still fails by name.
     | Fuaran.Core.SkeletonOp.UpdateNode _ ->
         failwith
             "skeletonToTreeOp: Core's UpdateNode keeps the target's children and the tier's TreeOp has no in-place op that does, so it is outside this projection's vocabulary"
 
+/// The tier's footprint of a Core op script. A top-level `UpdateNode` has no image in the tier's
+/// `TreeOp` (see `skeletonToTreeOp`), so it is given Core's own footprint (`skeletonFp`): the
+/// tier claims nothing about an op it does not have, and the law stays about the tier's
+/// projection over every op it does.
 let uiFootprintOfSkeleton (ops: Fuaran.Core.SkeletonOp<EqNode, NodeId> list) : Fuaran.Core.Footprint =
     ops
-    |> List.fold (fun acc op -> unionFp acc (footprintOfTreeOp (skeletonToTreeOp op))) emptyFp
+    |> List.fold
+        (fun acc op ->
+            match op with
+            | Fuaran.Core.SkeletonOp.UpdateNode _ -> unionFp acc (skeletonFp op)
+            | _ -> unionFp acc (footprintOfTreeOp (skeletonToTreeOp op)))
+        emptyFp
 
 // ---------------------------------------------------------------------------
 //  the stream witness (dagLaws / laneFoldLaws)

@@ -4595,7 +4595,7 @@
             "$type": "omitDefault",
             "default": {
               "$type": "enum",
-              "case": "Auto"
+              "case": "auto"
             }
           },
           "type": {
@@ -5703,7 +5703,7 @@
                 "$type": "fn",
                 "hostSurface": {
                   "fsharp": "string -> Result<'T, string>",
-                  "placeholder": "(Fuaran.UI.HostPrelude.LocalCodec.identityParse decT)",
+                  "placeholder": "(Fuaran.UI.HostPrelude.LocalCodec.identityParse (decT >> Result.mapError DecodeError.describe))",
                   "typescript": "(s: string) => T"
                 },
                 "wire": "<closure>"
@@ -7108,7 +7108,7 @@
               "type": {
                 "$type": "hosted",
                 "hostSurface": {
-                  "decode": "(fun (j: JVal) -> match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decRangePair __other)",
+                  "decode": "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decRangePair __other) |> Result.mapError DecodeError.describe)",
                   "encode": "(fun (v: Binding<RangePair>) -> match v with | Binding.Static(Some p) -> encRangePair p | __other -> encBinding encRangePair __other)",
                   "fsharp": "Binding<RangePair>"
                 },
@@ -7306,7 +7306,7 @@
               "type": {
                 "$type": "hosted",
                 "hostSurface": {
-                  "decode": "(fun (j: JVal) -> match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateTimeRangePair __other)",
+                  "decode": "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateTimeRangePair __other) |> Result.mapError DecodeError.describe)",
                   "encode": "(fun (v: Binding<DateTimeRangePair>) -> match v with | Binding.Static(Some p) -> encDateTimeRangePair p | __other -> encBinding encDateTimeRangePair __other)",
                   "fsharp": "Binding<DateTimeRangePair>"
                 },

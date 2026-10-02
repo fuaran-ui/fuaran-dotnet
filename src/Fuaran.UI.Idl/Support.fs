@@ -56,7 +56,7 @@ let private switchProjection: Gen.KindProjection =
         """and private encSwitchSpec<'Msg> (s: SwitchSpec<'Msg>) : JVal =
     Canon.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); (match s.On with | Binding.State (key, None) -> Some("stateKey", JStr key) | on -> Some("on", (encBinding JStr) on)); (s.AutoAdvanceMs |> Option.map (fun v -> "autoAdvanceMs", JInt v)) ] |> List.choose id)"""
       Decoder =
-        """and private decSwitchSpec (j: JVal) : Result<SwitchSpec<obj>, string> =
+        """and private decSwitchSpec (j: JVal) : Result<SwitchSpec<obj>, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dReq "cases" __fs (dList decSwitchCase) |> Result.bind (fun cases ->
     dReq "default" __fs decNode |> Result.bind (fun ``default`` ->
@@ -74,7 +74,7 @@ let private switchProjection: Gen.KindProjection =
     // emitter's misunderstanding of the slot.
     (match dOpt "autoAdvanceMs" __fs dInt with
      | Ok (Some ms) when ms > 0 -> Ok (Some ms)
-     | Ok (Some _) -> Error "autoAdvanceMs must be a positive integer"
+     | Ok (Some _) -> dFail DecodeCode.OutOfRange "positive integer" "autoAdvanceMs must be a positive integer" |> dUnder (PathSegment.Key "autoAdvanceMs")
      | Ok None -> Ok None
      | Error e -> Error e) |> Result.bind (fun autoAdvanceMs ->
     Ok { Cases = cases; Default = ``default``; On = on; AutoAdvanceMs = autoAdvanceMs })))))"""
@@ -680,7 +680,7 @@ and private decTransformSource (j: JVal) : Result<TransformSource, string> =
     | JObj fields ->
         match fields |> List.tryFind (fun (k, _) -> k = "$type") with
         | Some(_, JStr(("State" | "Selection" | "Query") as tag)) ->
-            decBinding dJson j |> Result.bind (fun b ->
+            decBinding dJson j |> Result.mapError DecodeError.describe |> Result.bind (fun b ->
                 let carried =
                     match b with
                     | Binding.State(_, dv) -> dv
@@ -721,8 +721,8 @@ and private decTransformSource (j: JVal) : Result<TransformSource, string> =
 // discriminator's own text into a caption.
 and private decI18nArg (j: JVal) : Result<Binding<JVal>, string> =
     match j with
-    | JObj fields when fields |> List.exists (fun (k, _) -> k = "$type") -> decBinding dJson j
-    | literal -> dJson literal |> Result.map (Some >> Binding.Static)"""
+    | JObj fields when fields |> List.exists (fun (k, _) -> k = "$type") -> decBinding dJson j |> Result.mapError DecodeError.describe
+    | literal -> dJson literal |> Result.map (Some >> Binding.Static) |> Result.mapError DecodeError.describe"""
         AccessorSplice =
             Some
                 """// Phase 818 — JVal-level accessor for a data-shaped Action (the

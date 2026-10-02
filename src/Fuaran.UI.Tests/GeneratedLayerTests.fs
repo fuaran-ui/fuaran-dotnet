@@ -354,7 +354,7 @@ let generatedLayerTests =
                   |> List.exists json.Contains
 
               let classify (name: string, json: string) =
-                  match Generated.decodeNode json with
+                  match Generated.decodeNode json |> Result.mapError Fuaran.Core.DecodeError.describe with
                   | Ok node when Generated.encodeNode node = json -> None
                   | Ok node when carriesEnvelope json && not (carriesEnvelope (Generated.encodeNode node)) ->
                       // Phase 671 scoped the envelope out on the stated grounds that
@@ -721,6 +721,12 @@ let generatedLayerTests =
               //    stricter" nor "it is looser" — it is a different accept set,
               //    which is why §20.1 refuses to recognise a host-level claim.
               //
+              //    Re-measured at the Fuaran.Core 0.34.0 pin: the substrate parser
+              //    holds to the JSON grammar since its 0.33.0 (fuaran-core Phase
+              //    299), so it now ALSO refuses row 3's leading-zero arm and row 6
+              //    in all three shapes, and those four fixtures left this list —
+              //    the evidence the note below describes. Rows 1 and 5 remain.
+              //
               //    Note what this list does NOT mean here. Every other entry is a
               //    shape structure CANNOT judge; these six are shapes it could
               //    judge and does not, because the judging happens one layer
@@ -781,14 +787,11 @@ let generatedLayerTests =
                     "reject-fieldrule-length-unordered.json"
                     "reject-formfield-near-miss-validation.json"
                     "reject-image-srcset-nonpositive-width.json"
-                    // §20.2 rows 1, 3 (leading zero), 5 and 6 — the substrate
-                    // parser's divergence, declared per §20.1 rule 2.
+                    // §20.2 rows 1 and 5 — the substrate parser's divergence,
+                    // declared per §20.1 rule 2 (rows 3's leading zero and 6
+                    // closed at the Core 0.34.0 pin; see the note above).
                     "reject-json-duplicate-key.json"
-                    "reject-json-lone-high-surrogate.json"
-                    "reject-json-lone-low-surrogate.json"
-                    "reject-json-number-leading-zero.json"
                     "reject-json-raw-control-char.json"
-                    "reject-json-surrogate-pair-split.json"
                     // Fuaran-UI Phase 1662 — §21.8's node bound on the PIPELINE
                     // surface. The `reject-limit-node-depth` class on the
                     // expression axis: a COUNT over a recursive structure,

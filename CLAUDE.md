@@ -229,9 +229,9 @@ lower (no Expecto, no `System.IO`, no reflection).
      prints that it did**: they pin an older Core until the Core release under test is published, so
      they are gated by their own producer's cut, not compiled against the Core candidate
      (`CoreFableSkipCompute` drops their references; `CORE_FABLE_COMPUTE` gates their touches in
-     `Program.fs`). `CORE_DETERMINISM_SET` is defined for a Core cut at or above 0.33.0, whose
-     `EffectClass.Determinism` is a set (fuaran-core Phase 319), so the smoke program compiles
-     against both Core lines; a pinned run reads the pin's spelling.
+     `Program.fs`). The smoke program is written for the pinned Core line; the version-conditional
+     arms that let it compile against two lines at once are retired by the pin raise that ends the
+     need for them.
    - **Its law-family calls are not adoption.** `CoreFable.fsproj` declares
      `<CoreConformanceCensusExemption>reason</...>`, so the Core-conformance census
      (`src/Fuaran.UI.Tests/CoreConformanceCensus.fs`) skips it and prints the exemption on every

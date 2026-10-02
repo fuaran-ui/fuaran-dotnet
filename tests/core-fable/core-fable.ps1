@@ -76,9 +76,8 @@
   producer's cut (`-ComputeVersion`/`-ComputeFeed`). The script sets `CoreFableSkipCompute=true`,
   which drops their references from the restore and leaves `CORE_FABLE_COMPUTE` undefined, so
   `Program.fs` compiles only its Core touches. Pinned, compute-only and both-producers runs compile
-  them as before. Separately, `CoreFable.fsproj` defines `CORE_DETERMINISM_SET` when a Core cut is at
-  or above 0.33.0 (fuaran-core Phase 319 made `EffectClass.Determinism` a set), so the smoke program
-  compiles against both Core lines; pinned runs read the pin's spelling.
+  them as before. The smoke program is written for the pinned Core line (0.34.0); the arms that let it
+  compile against an older line were retired with the pin raise.
 
   MEMBERSHIP IS CHECKED, NOT REMEMBERED. The Core packages this gate is responsible for are derived
   — from this repository's own `Fuaran.Core.*` pins by default, and from the candidate's packages

@@ -68,10 +68,10 @@ let private toCoreEffect (e: EffectClass) : Fuaran.Core.EffectClass =
         | HostEffect.WritesHost -> Fuaran.Core.WritesHost
       Determinism =
         match e.Determinism with
-        | DeterminismSource.Deterministic -> Fuaran.Core.Deterministic
-        | DeterminismSource.Clock -> Fuaran.Core.Clock
-        | DeterminismSource.Random -> Fuaran.Core.Random
-        | DeterminismSource.Network -> Fuaran.Core.Network }
+        | DeterminismSource.Deterministic -> Fuaran.Core.Effect.deterministic
+        | DeterminismSource.Clock -> Fuaran.Core.Effect.clock
+        | DeterminismSource.Random -> Fuaran.Core.Effect.random
+        | DeterminismSource.Network -> Fuaran.Core.Effect.network }
 
 let private rawId (NodeId s) : string = s
 
@@ -290,12 +290,19 @@ let private fromCoreEffect (e: Fuaran.Core.EffectClass) : EffectClass =
         | Fuaran.Core.Pure -> HostEffect.Pure
         | Fuaran.Core.ReadsHost -> HostEffect.ReadsHost
         | Fuaran.Core.WritesHost -> HostEffect.WritesHost
+      // Core's determinism is a factor SET since its 0.33.0 (fuaran-core Phase 319); the UI
+      // DU is the chain, which is the set's projection by maximum rank (empty is
+      // Deterministic, otherwise the highest of clock < random < network) — exactly the
+      // value the chain's max-join produced before.
       Determinism =
-        match e.Determinism with
-        | Fuaran.Core.Deterministic -> DeterminismSource.Deterministic
-        | Fuaran.Core.Clock -> DeterminismSource.Clock
-        | Fuaran.Core.Random -> DeterminismSource.Random
-        | Fuaran.Core.Network -> DeterminismSource.Network }
+        if Set.contains Fuaran.Core.NetworkFactor e.Determinism then
+            DeterminismSource.Network
+        elif Set.contains Fuaran.Core.RandomFactor e.Determinism then
+            DeterminismSource.Random
+        elif Set.contains Fuaran.Core.ClockFactor e.Determinism then
+            DeterminismSource.Clock
+        else
+            DeterminismSource.Deterministic }
 
 /// Effect-soundness audit for a UI fragment (the runtime teeth on the mandatory
 /// effect signature). A `FragmentDecl` MUST declare an `EffectClass` at least as

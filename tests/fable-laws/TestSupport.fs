@@ -167,17 +167,15 @@ let mkLeaf (id: string) : EqNode = mkLeafText id ""
 //  It is not asserted directly. `FoldConfluence.laneFoldLaws` is instantiated with it below, so
 //  the fold-confluence claim is made about THIS function.
 
-let private emptyFp: Fuaran.Core.Footprint =
-    { Reads = Set.empty
-      StructureWrites = Set.empty
-      ContentWrites = Set.empty
-      UnknownParentWrites = Set.empty }
+let private emptyFp: Fuaran.Core.Footprint = Fuaran.Core.Footprint.empty
 
 let private unionFp (a: Fuaran.Core.Footprint) (b: Fuaran.Core.Footprint) : Fuaran.Core.Footprint =
     { Reads = Set.union a.Reads b.Reads
       StructureWrites = Set.union a.StructureWrites b.StructureWrites
       ContentWrites = Set.union a.ContentWrites b.ContentWrites
-      UnknownParentWrites = Set.union a.UnknownParentWrites b.UnknownParentWrites }
+      UnknownParentWrites = Set.union a.UnknownParentWrites b.UnknownParentWrites
+      SlotReads = Set.union a.SlotReads b.SlotReads
+      SlotWrites = Set.union a.SlotWrites b.SlotWrites }
 
 let private skeletonFp (op: Fuaran.Core.SkeletonOp<EqNode, NodeId>) : Fuaran.Core.Footprint =
     Fuaran.Core.Ops.footprint nodew idw [ op ]

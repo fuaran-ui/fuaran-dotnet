@@ -161,7 +161,7 @@ let lk_node__Node__accessibility__present (#num #flt: eqtype) (x: node num flt) 
     let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
     let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
     let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
-    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (s2) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
     let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
     sk_node__Node__accessibility__hit #num #flt (enc_opt_r_accessibility #num #flt f0) (s1)
 #pop-options
@@ -175,10 +175,10 @@ let lk_node__Node__accessibility__absent (#num #flt: eqtype) (x: node num flt) :
     let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
     let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
     let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
-    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (s2) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
     let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
     sk_node__Node__accessibility__none #num #flt (enc_opt_r_accessibility #num #flt f0) (s1);
-    sk_node__Node__fallback__skip #num #flt "accessibility" (enc_opt_node #num #flt f1) (s2);
+    sk_node__Node__fallback__skip #num #flt "accessibility" (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2);
     sk_node__Node__state__skip #num #flt "accessibility" (enc_opt_r_state_behaviour #num #flt f2) (s3);
     sk_node__Node__style__skip #num #flt "accessibility" (enc_opt_r_semantic_style #num #flt f3) (s4);
     sk_node__Node__tooltip__skip #num #flt "accessibility" (enc_opt_u_text_source #num #flt f4) (s5);
@@ -194,10 +194,10 @@ let lk_node__Node__fallback__present (#num #flt: eqtype) (x: node num flt) : Lem
     let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
     let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
     let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
-    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (s2) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
     let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
     sk_node__Node__accessibility__skip #num #flt "fallback" (enc_opt_r_accessibility #num #flt f0) (s1);
-    sk_node__Node__fallback__hit #num #flt (enc_opt_node #num #flt f1) (s2)
+    sk_node__Node__fallback__hit #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2)
 #pop-options
 
 (* lk_node__Node__fallback__absent — fallback absent *)
@@ -209,14 +209,44 @@ let lk_node__Node__fallback__absent (#num #flt: eqtype) (x: node num flt) : Lemm
     let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
     let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
     let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
-    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (s2) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
     let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
     sk_node__Node__accessibility__skip #num #flt "fallback" (enc_opt_r_accessibility #num #flt f0) (s1);
-    sk_node__Node__fallback__none #num #flt (enc_opt_node #num #flt f1) (s2);
+    sk_node__Node__fallback__none #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2);
     sk_node__Node__state__skip #num #flt "fallback" (enc_opt_r_state_behaviour #num #flt f2) (s3);
     sk_node__Node__style__skip #num #flt "fallback" (enc_opt_r_semantic_style #num #flt f3) (s4);
     sk_node__Node__tooltip__skip #num #flt "fallback" (enc_opt_u_text_source #num #flt f4) (s5);
     sk_node__Node__visible__skip #num #flt "fallback" (enc_opt_u_binding__bool #num #flt f5) ([])
+#pop-options
+
+(* lk_node__Node__id — id — a fixed key, at a position the conditionals before it move *)
+#push-options "--fuel 8 --ifuel 4"
+let lk_node__Node__id (#num #flt: eqtype) (x: node num flt) : Lemma (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> get_prop "id" (enc_node #num #flt x) == Ok (JStr i))) =
+  match x with
+  | C__node__Node i k f0 f1 f2 f3 f4 f5 ->
+    let s5 = sfx_node__Node__visible #num #flt (enc_opt_u_binding__bool #num #flt f5) ([]) in
+    let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
+    let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
+    let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
+    let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
+    sk_node__Node__accessibility__skip #num #flt "id" (enc_opt_r_accessibility #num #flt f0) (s1);
+    sk_node__Node__fallback__skip #num #flt "id" (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2)
+#pop-options
+
+(* lk_node__Node__kind — kind — a fixed key, at a position the conditionals before it move *)
+#push-options "--fuel 8 --ifuel 4"
+let lk_node__Node__kind (#num #flt: eqtype) (x: node num flt) : Lemma (ensures (match x with | C__node__Node i k f0 f1 f2 f3 f4 f5 -> get_prop "kind" (enc_node #num #flt x) == Ok (enc_vkind k))) =
+  match x with
+  | C__node__Node i k f0 f1 f2 f3 f4 f5 ->
+    let s5 = sfx_node__Node__visible #num #flt (enc_opt_u_binding__bool #num #flt f5) ([]) in
+    let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
+    let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
+    let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
+    let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
+    sk_node__Node__accessibility__skip #num #flt "kind" (enc_opt_r_accessibility #num #flt f0) (s1);
+    sk_node__Node__fallback__skip #num #flt "kind" (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2)
 #pop-options
 
 (* lk_node__Node__state__present — state present *)
@@ -228,10 +258,10 @@ let lk_node__Node__state__present (#num #flt: eqtype) (x: node num flt) : Lemma 
     let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
     let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
     let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
-    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (s2) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
     let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
     sk_node__Node__accessibility__skip #num #flt "state" (enc_opt_r_accessibility #num #flt f0) (s1);
-    sk_node__Node__fallback__skip #num #flt "state" (enc_opt_node #num #flt f1) (s2);
+    sk_node__Node__fallback__skip #num #flt "state" (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2);
     sk_node__Node__state__hit #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3)
 #pop-options
 
@@ -244,10 +274,10 @@ let lk_node__Node__state__absent (#num #flt: eqtype) (x: node num flt) : Lemma (
     let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
     let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
     let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
-    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (s2) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
     let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
     sk_node__Node__accessibility__skip #num #flt "state" (enc_opt_r_accessibility #num #flt f0) (s1);
-    sk_node__Node__fallback__skip #num #flt "state" (enc_opt_node #num #flt f1) (s2);
+    sk_node__Node__fallback__skip #num #flt "state" (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2);
     sk_node__Node__state__none #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3);
     sk_node__Node__style__skip #num #flt "state" (enc_opt_r_semantic_style #num #flt f3) (s4);
     sk_node__Node__tooltip__skip #num #flt "state" (enc_opt_u_text_source #num #flt f4) (s5);
@@ -263,10 +293,10 @@ let lk_node__Node__style__present (#num #flt: eqtype) (x: node num flt) : Lemma 
     let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
     let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
     let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
-    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (s2) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
     let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
     sk_node__Node__accessibility__skip #num #flt "style" (enc_opt_r_accessibility #num #flt f0) (s1);
-    sk_node__Node__fallback__skip #num #flt "style" (enc_opt_node #num #flt f1) (s2);
+    sk_node__Node__fallback__skip #num #flt "style" (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2);
     sk_node__Node__state__skip #num #flt "style" (enc_opt_r_state_behaviour #num #flt f2) (s3);
     sk_node__Node__style__hit #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4)
 #pop-options
@@ -280,10 +310,10 @@ let lk_node__Node__style__absent (#num #flt: eqtype) (x: node num flt) : Lemma (
     let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
     let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
     let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
-    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (s2) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
     let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
     sk_node__Node__accessibility__skip #num #flt "style" (enc_opt_r_accessibility #num #flt f0) (s1);
-    sk_node__Node__fallback__skip #num #flt "style" (enc_opt_node #num #flt f1) (s2);
+    sk_node__Node__fallback__skip #num #flt "style" (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2);
     sk_node__Node__state__skip #num #flt "style" (enc_opt_r_state_behaviour #num #flt f2) (s3);
     sk_node__Node__style__none #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4);
     sk_node__Node__tooltip__skip #num #flt "style" (enc_opt_u_text_source #num #flt f4) (s5);
@@ -299,10 +329,10 @@ let lk_node__Node__tooltip__present (#num #flt: eqtype) (x: node num flt) : Lemm
     let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
     let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
     let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
-    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (s2) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
     let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
     sk_node__Node__accessibility__skip #num #flt "tooltip" (enc_opt_r_accessibility #num #flt f0) (s1);
-    sk_node__Node__fallback__skip #num #flt "tooltip" (enc_opt_node #num #flt f1) (s2);
+    sk_node__Node__fallback__skip #num #flt "tooltip" (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2);
     sk_node__Node__state__skip #num #flt "tooltip" (enc_opt_r_state_behaviour #num #flt f2) (s3);
     sk_node__Node__style__skip #num #flt "tooltip" (enc_opt_r_semantic_style #num #flt f3) (s4);
     sk_node__Node__tooltip__hit #num #flt (enc_opt_u_text_source #num #flt f4) (s5)
@@ -317,10 +347,10 @@ let lk_node__Node__tooltip__absent (#num #flt: eqtype) (x: node num flt) : Lemma
     let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
     let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
     let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
-    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (s2) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
     let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
     sk_node__Node__accessibility__skip #num #flt "tooltip" (enc_opt_r_accessibility #num #flt f0) (s1);
-    sk_node__Node__fallback__skip #num #flt "tooltip" (enc_opt_node #num #flt f1) (s2);
+    sk_node__Node__fallback__skip #num #flt "tooltip" (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2);
     sk_node__Node__state__skip #num #flt "tooltip" (enc_opt_r_state_behaviour #num #flt f2) (s3);
     sk_node__Node__style__skip #num #flt "tooltip" (enc_opt_r_semantic_style #num #flt f3) (s4);
     sk_node__Node__tooltip__none #num #flt (enc_opt_u_text_source #num #flt f4) (s5);
@@ -336,10 +366,10 @@ let lk_node__Node__visible__present (#num #flt: eqtype) (x: node num flt) : Lemm
     let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
     let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
     let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
-    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (s2) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
     let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
     sk_node__Node__accessibility__skip #num #flt "visible" (enc_opt_r_accessibility #num #flt f0) (s1);
-    sk_node__Node__fallback__skip #num #flt "visible" (enc_opt_node #num #flt f1) (s2);
+    sk_node__Node__fallback__skip #num #flt "visible" (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2);
     sk_node__Node__state__skip #num #flt "visible" (enc_opt_r_state_behaviour #num #flt f2) (s3);
     sk_node__Node__style__skip #num #flt "visible" (enc_opt_r_semantic_style #num #flt f3) (s4);
     sk_node__Node__tooltip__skip #num #flt "visible" (enc_opt_u_text_source #num #flt f4) (s5);
@@ -355,10 +385,10 @@ let lk_node__Node__visible__absent (#num #flt: eqtype) (x: node num flt) : Lemma
     let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt f4) (s5) in
     let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt f3) (s4) in
     let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt f2) (s3) in
-    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (s2) in
+    let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in
     let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt f0) (s1) in
     sk_node__Node__accessibility__skip #num #flt "visible" (enc_opt_r_accessibility #num #flt f0) (s1);
-    sk_node__Node__fallback__skip #num #flt "visible" (enc_opt_node #num #flt f1) (s2);
+    sk_node__Node__fallback__skip #num #flt "visible" (enc_opt_node #num #flt f1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2);
     sk_node__Node__state__skip #num #flt "visible" (enc_opt_r_state_behaviour #num #flt f2) (s3);
     sk_node__Node__style__skip #num #flt "visible" (enc_opt_r_semantic_style #num #flt f3) (s4);
     sk_node__Node__tooltip__skip #num #flt "visible" (enc_opt_u_text_source #num #flt f4) (s5);
@@ -549,7 +579,7 @@ let sk_vkind__Embed__permissions__none (#num #flt: eqtype) (e: option (jval num 
   = reveal_opaque (`%sfx_vkind__Embed__permissions) (sfx_vkind__Embed__permissions #num #flt e rest)
 
 (* lk_vkind__Embed__aspect_ratio__present — aspectRatio not at its default *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Embed__aspect_ratio__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Embed f0 f1 f2 f3 -> not (f0 = C__e_image_aspect__Natural) | _ -> false)) (ensures (match x with | C__vkind__Embed f0 f1 f2 f3 -> get_prop "aspectRatio" (enc_vkind #num #flt x) == Ok (enc_e_image_aspect f0) | _ -> True)) =
   match x with
   | C__vkind__Embed f0 f1 f2 f3 ->
@@ -560,7 +590,7 @@ let lk_vkind__Embed__aspect_ratio__present (#num #flt: eqtype) (x: vkind num flt
 #pop-options
 
 (* lk_vkind__Embed__aspect_ratio__absent — aspectRatio at its default *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Embed__aspect_ratio__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Embed f0 f1 f2 f3 -> f0 = C__e_image_aspect__Natural | _ -> false)) (ensures (Error? (get_prop "aspectRatio" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Embed f0 f1 f2 f3 ->
@@ -572,7 +602,7 @@ let lk_vkind__Embed__aspect_ratio__absent (#num #flt: eqtype) (x: vkind num flt)
 #pop-options
 
 (* lk_vkind__Embed__permissions__present — permissions not at its default *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Embed__permissions__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Embed f0 f1 f2 f3 -> not (f1 = []) | _ -> false)) (ensures (match x with | C__vkind__Embed f0 f1 f2 f3 -> get_prop "permissions" (enc_vkind #num #flt x) == Ok (JArr (enc_items_l_e_embed_permission f1)) | _ -> True)) =
   match x with
   | C__vkind__Embed f0 f1 f2 f3 ->
@@ -584,7 +614,7 @@ let lk_vkind__Embed__permissions__present (#num #flt: eqtype) (x: vkind num flt)
 #pop-options
 
 (* lk_vkind__Embed__permissions__absent — permissions at its default *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Embed__permissions__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Embed f0 f1 f2 f3 -> f1 = [] | _ -> false)) (ensures (Error? (get_prop "permissions" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Embed f0 f1 f2 f3 ->
@@ -596,7 +626,7 @@ let lk_vkind__Embed__permissions__absent (#num #flt: eqtype) (x: vkind num flt) 
 #pop-options
 
 (* lk_vkind__Embed__src — src — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Embed__src (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Embed? x)) (ensures (match x with | C__vkind__Embed f0 f1 f2 f3 -> get_prop "src" (enc_vkind #num #flt x) == Ok (enc_u_binding__str f2) | _ -> True)) =
   match x with
   | C__vkind__Embed f0 f1 f2 f3 ->
@@ -608,7 +638,7 @@ let lk_vkind__Embed__src (#num #flt: eqtype) (x: vkind num flt) : Lemma (require
 #pop-options
 
 (* lk_vkind__Embed__title — title — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Embed__title (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Embed? x)) (ensures (match x with | C__vkind__Embed f0 f1 f2 f3 -> get_prop "title" (enc_vkind #num #flt x) == Ok (enc_u_text_source f3) | _ -> True)) =
   match x with
   | C__vkind__Embed f0 f1 f2 f3 ->
@@ -653,7 +683,7 @@ let sk_vkind__Fact__tone__none (#num #flt: eqtype) (e: option (jval num flt)) (r
   = reveal_opaque (`%sfx_vkind__Fact__tone) (sfx_vkind__Fact__tone #num #flt e rest)
 
 (* lk_vkind__Fact__emphasis__present — emphasis not at its default *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Fact__emphasis__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> not (f0 = false) | _ -> false)) (ensures (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> get_prop "emphasis" (enc_vkind #num #flt x) == Ok (JBool f0) | _ -> True)) =
   match x with
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
@@ -666,7 +696,7 @@ let lk_vkind__Fact__emphasis__present (#num #flt: eqtype) (x: vkind num flt) : L
 #pop-options
 
 (* lk_vkind__Fact__emphasis__absent — emphasis at its default *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Fact__emphasis__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> f0 = false | _ -> false)) (ensures (Error? (get_prop "emphasis" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
@@ -682,7 +712,7 @@ let lk_vkind__Fact__emphasis__absent (#num #flt: eqtype) (x: vkind num flt) : Le
 #pop-options
 
 (* lk_vkind__Fact__help__present — help present *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Fact__help__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> Some? f1 | _ -> false)) (ensures (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> get_prop "help" (enc_vkind #num #flt x) == Ok (enc_u_text_source (Some?.v f1)) | _ -> True)) =
   match x with
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
@@ -696,7 +726,7 @@ let lk_vkind__Fact__help__present (#num #flt: eqtype) (x: vkind num flt) : Lemma
 #pop-options
 
 (* lk_vkind__Fact__help__absent — help absent *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Fact__help__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "help" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
@@ -712,7 +742,7 @@ let lk_vkind__Fact__help__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma 
 #pop-options
 
 (* lk_vkind__Fact__icon__present — icon present *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Fact__icon__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> Some? f2 | _ -> false)) (ensures (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> get_prop "icon" (enc_vkind #num #flt x) == Ok (JStr (Some?.v f2)) | _ -> True)) =
   match x with
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
@@ -727,7 +757,7 @@ let lk_vkind__Fact__icon__present (#num #flt: eqtype) (x: vkind num flt) : Lemma
 #pop-options
 
 (* lk_vkind__Fact__icon__absent — icon absent *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Fact__icon__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> None? f2 | _ -> false)) (ensures (Error? (get_prop "icon" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
@@ -743,7 +773,7 @@ let lk_vkind__Fact__icon__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma 
 #pop-options
 
 (* lk_vkind__Fact__label — label — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Fact__label (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Fact? x)) (ensures (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> get_prop "label" (enc_vkind #num #flt x) == Ok (enc_u_text_source f3) | _ -> True)) =
   match x with
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
@@ -758,7 +788,7 @@ let lk_vkind__Fact__label (#num #flt: eqtype) (x: vkind num flt) : Lemma (requir
 #pop-options
 
 (* lk_vkind__Fact__tone__present — tone not at its default *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Fact__tone__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> not (f4 = C__e_tone_variant__Default) | _ -> false)) (ensures (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> get_prop "tone" (enc_vkind #num #flt x) == Ok (enc_e_tone_variant f4) | _ -> True)) =
   match x with
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
@@ -774,7 +804,7 @@ let lk_vkind__Fact__tone__present (#num #flt: eqtype) (x: vkind num flt) : Lemma
 #pop-options
 
 (* lk_vkind__Fact__tone__absent — tone at its default *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Fact__tone__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> f4 = C__e_tone_variant__Default | _ -> false)) (ensures (Error? (get_prop "tone" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
@@ -790,7 +820,7 @@ let lk_vkind__Fact__tone__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma 
 #pop-options
 
 (* lk_vkind__Fact__value — value — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Fact__value (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Fact? x)) (ensures (match x with | C__vkind__Fact f0 f1 f2 f3 f4 f5 -> get_prop "value" (enc_vkind #num #flt x) == Ok (enc_u_text_source f5) | _ -> True)) =
   match x with
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
@@ -877,7 +907,7 @@ let sk_vkind__FileUpload__on_select__none (#num #flt: eqtype) (e: option (jval n
   = reveal_opaque (`%sfx_vkind__FileUpload__on_select) (sfx_vkind__FileUpload__on_select #num #flt e rest)
 
 (* lk_vkind__FileUpload__accept_paste__present — acceptPaste not at its default *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__accept_paste__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "acceptPaste" (enc_vkind #num #flt x) == Ok (JBool f1) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -894,7 +924,7 @@ let lk_vkind__FileUpload__accept_paste__present (#num #flt: eqtype) (x: vkind nu
 #pop-options
 
 (* lk_vkind__FileUpload__accept_paste__absent — acceptPaste at its default *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__accept_paste__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false | _ -> false)) (ensures (Error? (get_prop "acceptPaste" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -918,7 +948,7 @@ let lk_vkind__FileUpload__accept_paste__absent (#num #flt: eqtype) (x: vkind num
 #pop-options
 
 (* lk_vkind__FileUpload__capture__present — capture present *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__capture__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f2 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "capture" (enc_vkind #num #flt x) == Ok (enc_e_capture_source (Some?.v f2)) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -936,7 +966,7 @@ let lk_vkind__FileUpload__capture__present (#num #flt: eqtype) (x: vkind num flt
 #pop-options
 
 (* lk_vkind__FileUpload__capture__absent — capture absent *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__capture__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f2 | _ -> false)) (ensures (Error? (get_prop "capture" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -960,7 +990,7 @@ let lk_vkind__FileUpload__capture__absent (#num #flt: eqtype) (x: vkind num flt)
 #pop-options
 
 (* lk_vkind__FileUpload__destination__present — destination present *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__destination__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f3 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "destination" (enc_vkind #num #flt x) == Ok (JStr (Some?.v f3)) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -979,7 +1009,7 @@ let lk_vkind__FileUpload__destination__present (#num #flt: eqtype) (x: vkind num
 #pop-options
 
 (* lk_vkind__FileUpload__destination__absent — destination absent *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__destination__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f3 | _ -> false)) (ensures (Error? (get_prop "destination" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -1003,7 +1033,7 @@ let lk_vkind__FileUpload__destination__absent (#num #flt: eqtype) (x: vkind num 
 #pop-options
 
 (* lk_vkind__FileUpload__disabled__present — disabled present *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__disabled__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f4 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "disabled" (enc_vkind #num #flt x) == Ok (enc_u_binding__bool (Some?.v f4)) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -1023,7 +1053,7 @@ let lk_vkind__FileUpload__disabled__present (#num #flt: eqtype) (x: vkind num fl
 #pop-options
 
 (* lk_vkind__FileUpload__disabled__absent — disabled absent *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__disabled__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f4 | _ -> false)) (ensures (Error? (get_prop "disabled" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -1047,7 +1077,7 @@ let lk_vkind__FileUpload__disabled__absent (#num #flt: eqtype) (x: vkind num flt
 #pop-options
 
 (* lk_vkind__FileUpload__drop_target__present — dropTarget not at its default *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__drop_target__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f5 = false) | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "dropTarget" (enc_vkind #num #flt x) == Ok (JBool f5) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -1068,7 +1098,7 @@ let lk_vkind__FileUpload__drop_target__present (#num #flt: eqtype) (x: vkind num
 #pop-options
 
 (* lk_vkind__FileUpload__drop_target__absent — dropTarget at its default *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__drop_target__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f5 = false | _ -> false)) (ensures (Error? (get_prop "dropTarget" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -1092,7 +1122,7 @@ let lk_vkind__FileUpload__drop_target__absent (#num #flt: eqtype) (x: vkind num 
 #pop-options
 
 (* lk_vkind__FileUpload__label — label — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__label (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__FileUpload? x)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "label" (enc_vkind #num #flt x) == Ok (enc_u_text_source f6) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -1113,7 +1143,7 @@ let lk_vkind__FileUpload__label (#num #flt: eqtype) (x: vkind num flt) : Lemma (
 #pop-options
 
 (* lk_vkind__FileUpload__max_bytes__present — maxBytes present *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__max_bytes__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f7 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "maxBytes" (enc_vkind #num #flt x) == Ok (JInt (Some?.v f7)) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -1135,7 +1165,7 @@ let lk_vkind__FileUpload__max_bytes__present (#num #flt: eqtype) (x: vkind num f
 #pop-options
 
 (* lk_vkind__FileUpload__max_bytes__absent — maxBytes absent *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__max_bytes__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f7 | _ -> false)) (ensures (Error? (get_prop "maxBytes" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -1159,7 +1189,7 @@ let lk_vkind__FileUpload__max_bytes__absent (#num #flt: eqtype) (x: vkind num fl
 #pop-options
 
 (* lk_vkind__FileUpload__max_files__present — maxFiles present *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__max_files__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f8 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "maxFiles" (enc_vkind #num #flt x) == Ok (JInt (Some?.v f8)) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -1182,7 +1212,7 @@ let lk_vkind__FileUpload__max_files__present (#num #flt: eqtype) (x: vkind num f
 #pop-options
 
 (* lk_vkind__FileUpload__max_files__absent — maxFiles absent *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__max_files__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f8 | _ -> false)) (ensures (Error? (get_prop "maxFiles" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -1206,7 +1236,7 @@ let lk_vkind__FileUpload__max_files__absent (#num #flt: eqtype) (x: vkind num fl
 #pop-options
 
 (* lk_vkind__FileUpload__multiple — multiple — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__multiple (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__FileUpload? x)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "multiple" (enc_vkind #num #flt x) == Ok (JBool f9) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -1229,7 +1259,7 @@ let lk_vkind__FileUpload__multiple (#num #flt: eqtype) (x: vkind num flt) : Lemm
 #pop-options
 
 (* lk_vkind__FileUpload__on_select__present — onSelect present *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__on_select__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f10 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "onSelect" (enc_vkind #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -1253,7 +1283,7 @@ let lk_vkind__FileUpload__on_select__present (#num #flt: eqtype) (x: vkind num f
 #pop-options
 
 (* lk_vkind__FileUpload__on_select__absent — onSelect absent *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__FileUpload__on_select__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f10 | _ -> false)) (ensures (Error? (get_prop "onSelect" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
@@ -1468,7 +1498,7 @@ let sk_vkind__Link__target__none (#num #flt: eqtype) (e: option (jval num flt)) 
   = reveal_opaque (`%sfx_vkind__Link__target) (sfx_vkind__Link__target #num #flt e rest)
 
 (* lk_vkind__Link__protection__present — protection present *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__Link__protection__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> Some? f3 | _ -> false)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> get_prop "protection" (enc_vkind #num #flt x) == Ok (enc_e_link_protection (Some?.v f3)) | _ -> True)) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
@@ -1480,7 +1510,7 @@ let lk_vkind__Link__protection__present (#num #flt: eqtype) (x: vkind num flt) :
 #pop-options
 
 (* lk_vkind__Link__protection__absent — protection absent *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__Link__protection__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> None? f3 | _ -> false)) (ensures (Error? (get_prop "protection" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
@@ -1494,7 +1524,7 @@ let lk_vkind__Link__protection__absent (#num #flt: eqtype) (x: vkind num flt) : 
 #pop-options
 
 (* lk_vkind__Link__rel__present — rel present *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__Link__rel__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> Some? f4 | _ -> false)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> get_prop "rel" (enc_vkind #num #flt x) == Ok (JStr (Some?.v f4)) | _ -> True)) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
@@ -1507,7 +1537,7 @@ let lk_vkind__Link__rel__present (#num #flt: eqtype) (x: vkind num flt) : Lemma 
 #pop-options
 
 (* lk_vkind__Link__rel__absent — rel absent *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__Link__rel__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> None? f4 | _ -> false)) (ensures (Error? (get_prop "rel" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
@@ -1521,7 +1551,7 @@ let lk_vkind__Link__rel__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (
 #pop-options
 
 (* lk_vkind__Link__target__present — target present *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__Link__target__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> Some? f5 | _ -> false)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> get_prop "target" (enc_vkind #num #flt x) == Ok (JStr (Some?.v f5)) | _ -> True)) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
@@ -1535,7 +1565,7 @@ let lk_vkind__Link__target__present (#num #flt: eqtype) (x: vkind num flt) : Lem
 #pop-options
 
 (* lk_vkind__Link__target__absent — target absent *)
-#push-options "--fuel 10 --ifuel 4"
+#push-options "--fuel 12 --ifuel 4"
 let lk_vkind__Link__target__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> None? f5 | _ -> false)) (ensures (Error? (get_prop "target" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
@@ -1759,7 +1789,7 @@ let sk_vkind__ScrollArea__max_width__none (#num #flt: eqtype) (e: option (jval n
   = reveal_opaque (`%sfx_vkind__ScrollArea__max_width) (sfx_vkind__ScrollArea__max_width #num #flt e rest)
 
 (* lk_vkind__ScrollArea__max_height__present — maxHeight present *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__ScrollArea__max_height__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> Some? f1 | _ -> false)) (ensures (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> get_prop "maxHeight" (enc_vkind #num #flt x) == Ok (JInt (Some?.v f1)) | _ -> True)) =
   match x with
   | C__vkind__ScrollArea f0 f1 f2 f3 ->
@@ -1770,7 +1800,7 @@ let lk_vkind__ScrollArea__max_height__present (#num #flt: eqtype) (x: vkind num 
 #pop-options
 
 (* lk_vkind__ScrollArea__max_height__absent — maxHeight absent *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__ScrollArea__max_height__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "maxHeight" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__ScrollArea f0 f1 f2 f3 ->
@@ -1782,7 +1812,7 @@ let lk_vkind__ScrollArea__max_height__absent (#num #flt: eqtype) (x: vkind num f
 #pop-options
 
 (* lk_vkind__ScrollArea__max_width__present — maxWidth present *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__ScrollArea__max_width__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> Some? f2 | _ -> false)) (ensures (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> get_prop "maxWidth" (enc_vkind #num #flt x) == Ok (JInt (Some?.v f2)) | _ -> True)) =
   match x with
   | C__vkind__ScrollArea f0 f1 f2 f3 ->
@@ -1794,7 +1824,7 @@ let lk_vkind__ScrollArea__max_width__present (#num #flt: eqtype) (x: vkind num f
 #pop-options
 
 (* lk_vkind__ScrollArea__max_width__absent — maxWidth absent *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__ScrollArea__max_width__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> None? f2 | _ -> false)) (ensures (Error? (get_prop "maxWidth" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__ScrollArea f0 f1 f2 f3 ->
@@ -1806,7 +1836,7 @@ let lk_vkind__ScrollArea__max_width__absent (#num #flt: eqtype) (x: vkind num fl
 #pop-options
 
 (* lk_vkind__ScrollArea__orientation — orientation — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__ScrollArea__orientation (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__ScrollArea? x)) (ensures (match x with | C__vkind__ScrollArea f0 f1 f2 f3 -> get_prop "orientation" (enc_vkind #num #flt x) == Ok (enc_e_scroll_orientation f3) | _ -> True)) =
   match x with
   | C__vkind__ScrollArea f0 f1 f2 f3 ->
@@ -1846,7 +1876,7 @@ let sk_vkind__Toast__tone__none (#num #flt: eqtype) (e: option (jval num flt)) (
   = reveal_opaque (`%sfx_vkind__Toast__tone) (sfx_vkind__Toast__tone #num #flt e rest)
 
 (* lk_vkind__Toast__dismissable__present — dismissable not at its default *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Toast__dismissable__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Toast f0 f1 f2 f3 -> not (f0 = true) | _ -> false)) (ensures (match x with | C__vkind__Toast f0 f1 f2 f3 -> get_prop "dismissable" (enc_vkind #num #flt x) == Ok (JBool f0) | _ -> True)) =
   match x with
   | C__vkind__Toast f0 f1 f2 f3 ->
@@ -1857,7 +1887,7 @@ let lk_vkind__Toast__dismissable__present (#num #flt: eqtype) (x: vkind num flt)
 #pop-options
 
 (* lk_vkind__Toast__dismissable__absent — dismissable at its default *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Toast__dismissable__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Toast f0 f1 f2 f3 -> f0 = true | _ -> false)) (ensures (Error? (get_prop "dismissable" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Toast f0 f1 f2 f3 ->
@@ -1869,7 +1899,7 @@ let lk_vkind__Toast__dismissable__absent (#num #flt: eqtype) (x: vkind num flt) 
 #pop-options
 
 (* lk_vkind__Toast__message — message — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Toast__message (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Toast? x)) (ensures (match x with | C__vkind__Toast f0 f1 f2 f3 -> get_prop "message" (enc_vkind #num #flt x) == Ok (enc_u_text_source f1) | _ -> True)) =
   match x with
   | C__vkind__Toast f0 f1 f2 f3 ->
@@ -1880,7 +1910,7 @@ let lk_vkind__Toast__message (#num #flt: eqtype) (x: vkind num flt) : Lemma (req
 #pop-options
 
 (* lk_vkind__Toast__open — open — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Toast__open (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Toast? x)) (ensures (match x with | C__vkind__Toast f0 f1 f2 f3 -> get_prop "open" (enc_vkind #num #flt x) == Ok (enc_u_binding__bool f2) | _ -> True)) =
   match x with
   | C__vkind__Toast f0 f1 f2 f3 ->
@@ -1891,7 +1921,7 @@ let lk_vkind__Toast__open (#num #flt: eqtype) (x: vkind num flt) : Lemma (requir
 #pop-options
 
 (* lk_vkind__Toast__tone__present — tone not at its default *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Toast__tone__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Toast f0 f1 f2 f3 -> not (f3 = C__e_tone_variant__Default) | _ -> false)) (ensures (match x with | C__vkind__Toast f0 f1 f2 f3 -> get_prop "tone" (enc_vkind #num #flt x) == Ok (enc_e_tone_variant f3) | _ -> True)) =
   match x with
   | C__vkind__Toast f0 f1 f2 f3 ->
@@ -1903,7 +1933,7 @@ let lk_vkind__Toast__tone__present (#num #flt: eqtype) (x: vkind num flt) : Lemm
 #pop-options
 
 (* lk_vkind__Toast__tone__absent — tone at its default *)
-#push-options "--fuel 8 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Toast__tone__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Toast f0 f1 f2 f3 -> f3 = C__e_tone_variant__Default | _ -> false)) (ensures (Error? (get_prop "tone" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Toast f0 f1 f2 f3 ->
@@ -2377,7 +2407,7 @@ let sk_u_binding__bool__Local__on_commit__none (#num #flt: eqtype) (e: option (j
   = reveal_opaque (`%sfx_u_binding__bool__Local__on_commit) (sfx_u_binding__bool__Local__on_commit #num #flt e rest)
 
 (* lk_u_binding__bool__Local__codec__present — codec present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__bool__Local__codec__present (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "codec" (enc_u_binding__bool #num #flt x) == Ok (enc_u_format (Some?.v f0)) | _ -> True)) =
   match x with
   | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2389,7 +2419,7 @@ let lk_u_binding__bool__Local__codec__present (#num #flt: eqtype) (x: u_binding_
 #pop-options
 
 (* lk_u_binding__bool__Local__codec__absent — codec absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__bool__Local__codec__absent (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "codec" (enc_u_binding__bool #num #flt x)))) =
   match x with
   | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2403,7 +2433,7 @@ let lk_u_binding__bool__Local__codec__absent (#num #flt: eqtype) (x: u_binding__
 #pop-options
 
 (* lk_u_binding__bool__Local__commit_to__present — commitTo present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__bool__Local__commit_to__present (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "commitTo" (enc_u_binding__bool #num #flt x) == Ok (JStr (Some?.v f1)) | _ -> True)) =
   match x with
   | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2416,7 +2446,7 @@ let lk_u_binding__bool__Local__commit_to__present (#num #flt: eqtype) (x: u_bind
 #pop-options
 
 (* lk_u_binding__bool__Local__commit_to__absent — commitTo absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__bool__Local__commit_to__absent (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "commitTo" (enc_u_binding__bool #num #flt x)))) =
   match x with
   | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2430,7 +2460,7 @@ let lk_u_binding__bool__Local__commit_to__absent (#num #flt: eqtype) (x: u_bindi
 #pop-options
 
 (* lk_u_binding__bool__Local__flush_on — flushOn — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__bool__Local__flush_on (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__Local? x)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "flushOn" (enc_u_binding__bool #num #flt x) == Ok (enc_u_local_flush_trigger f2) | _ -> True)) =
   match x with
   | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2443,7 +2473,7 @@ let lk_u_binding__bool__Local__flush_on (#num #flt: eqtype) (x: u_binding__bool 
 #pop-options
 
 (* lk_u_binding__bool__Local__format — format — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__bool__Local__format (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__Local? x)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "format" (enc_u_binding__bool #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2456,7 +2486,7 @@ let lk_u_binding__bool__Local__format (#num #flt: eqtype) (x: u_binding__bool nu
 #pop-options
 
 (* lk_u_binding__bool__Local__initial_from — initialFrom — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__bool__Local__initial_from (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__Local? x)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "initialFrom" (enc_u_binding__bool #num #flt x) == Ok (enc_u_binding__bool f4) | _ -> True)) =
   match x with
   | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2469,7 +2499,7 @@ let lk_u_binding__bool__Local__initial_from (#num #flt: eqtype) (x: u_binding__b
 #pop-options
 
 (* lk_u_binding__bool__Local__on_commit__present — onCommit present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__bool__Local__on_commit__present (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f5 | _ -> false)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "onCommit" (enc_u_binding__bool #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2483,7 +2513,7 @@ let lk_u_binding__bool__Local__on_commit__present (#num #flt: eqtype) (x: u_bind
 #pop-options
 
 (* lk_u_binding__bool__Local__on_commit__absent — onCommit absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__bool__Local__on_commit__absent (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> None? f5 | _ -> false)) (ensures (Error? (get_prop "onCommit" (enc_u_binding__bool #num #flt x)))) =
   match x with
   | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2497,7 +2527,7 @@ let lk_u_binding__bool__Local__on_commit__absent (#num #flt: eqtype) (x: u_bindi
 #pop-options
 
 (* lk_u_binding__bool__Local__parse — parse — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__bool__Local__parse (#num #flt: eqtype) (x: u_binding__bool num flt) : Lemma (requires (C__u_binding__bool__Local? x)) (ensures (match x with | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "parse" (enc_u_binding__bool #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2707,7 +2737,7 @@ let sk_u_binding__flt__Local__on_commit__none (#num #flt: eqtype) (e: option (jv
   = reveal_opaque (`%sfx_u_binding__flt__Local__on_commit) (sfx_u_binding__flt__Local__on_commit #num #flt e rest)
 
 (* lk_u_binding__flt__Local__codec__present — codec present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__flt__Local__codec__present (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "codec" (enc_u_binding__flt #num #flt x) == Ok (enc_u_format (Some?.v f0)) | _ -> True)) =
   match x with
   | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2719,7 +2749,7 @@ let lk_u_binding__flt__Local__codec__present (#num #flt: eqtype) (x: u_binding__
 #pop-options
 
 (* lk_u_binding__flt__Local__codec__absent — codec absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__flt__Local__codec__absent (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "codec" (enc_u_binding__flt #num #flt x)))) =
   match x with
   | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2733,7 +2763,7 @@ let lk_u_binding__flt__Local__codec__absent (#num #flt: eqtype) (x: u_binding__f
 #pop-options
 
 (* lk_u_binding__flt__Local__commit_to__present — commitTo present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__flt__Local__commit_to__present (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "commitTo" (enc_u_binding__flt #num #flt x) == Ok (JStr (Some?.v f1)) | _ -> True)) =
   match x with
   | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2746,7 +2776,7 @@ let lk_u_binding__flt__Local__commit_to__present (#num #flt: eqtype) (x: u_bindi
 #pop-options
 
 (* lk_u_binding__flt__Local__commit_to__absent — commitTo absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__flt__Local__commit_to__absent (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "commitTo" (enc_u_binding__flt #num #flt x)))) =
   match x with
   | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2760,7 +2790,7 @@ let lk_u_binding__flt__Local__commit_to__absent (#num #flt: eqtype) (x: u_bindin
 #pop-options
 
 (* lk_u_binding__flt__Local__flush_on — flushOn — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__flt__Local__flush_on (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (C__u_binding__flt__Local? x)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "flushOn" (enc_u_binding__flt #num #flt x) == Ok (enc_u_local_flush_trigger f2) | _ -> True)) =
   match x with
   | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2773,7 +2803,7 @@ let lk_u_binding__flt__Local__flush_on (#num #flt: eqtype) (x: u_binding__flt nu
 #pop-options
 
 (* lk_u_binding__flt__Local__format — format — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__flt__Local__format (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (C__u_binding__flt__Local? x)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "format" (enc_u_binding__flt #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2786,7 +2816,7 @@ let lk_u_binding__flt__Local__format (#num #flt: eqtype) (x: u_binding__flt num 
 #pop-options
 
 (* lk_u_binding__flt__Local__initial_from — initialFrom — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__flt__Local__initial_from (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (C__u_binding__flt__Local? x)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "initialFrom" (enc_u_binding__flt #num #flt x) == Ok (enc_u_binding__flt f4) | _ -> True)) =
   match x with
   | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2799,7 +2829,7 @@ let lk_u_binding__flt__Local__initial_from (#num #flt: eqtype) (x: u_binding__fl
 #pop-options
 
 (* lk_u_binding__flt__Local__on_commit__present — onCommit present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__flt__Local__on_commit__present (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f5 | _ -> false)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "onCommit" (enc_u_binding__flt #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2813,7 +2843,7 @@ let lk_u_binding__flt__Local__on_commit__present (#num #flt: eqtype) (x: u_bindi
 #pop-options
 
 (* lk_u_binding__flt__Local__on_commit__absent — onCommit absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__flt__Local__on_commit__absent (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> None? f5 | _ -> false)) (ensures (Error? (get_prop "onCommit" (enc_u_binding__flt #num #flt x)))) =
   match x with
   | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2827,7 +2857,7 @@ let lk_u_binding__flt__Local__on_commit__absent (#num #flt: eqtype) (x: u_bindin
 #pop-options
 
 (* lk_u_binding__flt__Local__parse — parse — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__flt__Local__parse (#num #flt: eqtype) (x: u_binding__flt num flt) : Lemma (requires (C__u_binding__flt__Local? x)) (ensures (match x with | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "parse" (enc_u_binding__flt #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2962,7 +2992,7 @@ let sk_u_binding__json__Local__on_commit__none (#num #flt: eqtype) (e: option (j
   = reveal_opaque (`%sfx_u_binding__json__Local__on_commit) (sfx_u_binding__json__Local__on_commit #num #flt e rest)
 
 (* lk_u_binding__json__Local__codec__present — codec present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__json__Local__codec__present (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "codec" (enc_u_binding__json #num #flt x) == Ok (enc_u_format (Some?.v f0)) | _ -> True)) =
   match x with
   | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2974,7 +3004,7 @@ let lk_u_binding__json__Local__codec__present (#num #flt: eqtype) (x: u_binding_
 #pop-options
 
 (* lk_u_binding__json__Local__codec__absent — codec absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__json__Local__codec__absent (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "codec" (enc_u_binding__json #num #flt x)))) =
   match x with
   | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -2988,7 +3018,7 @@ let lk_u_binding__json__Local__codec__absent (#num #flt: eqtype) (x: u_binding__
 #pop-options
 
 (* lk_u_binding__json__Local__commit_to__present — commitTo present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__json__Local__commit_to__present (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "commitTo" (enc_u_binding__json #num #flt x) == Ok (JStr (Some?.v f1)) | _ -> True)) =
   match x with
   | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3001,7 +3031,7 @@ let lk_u_binding__json__Local__commit_to__present (#num #flt: eqtype) (x: u_bind
 #pop-options
 
 (* lk_u_binding__json__Local__commit_to__absent — commitTo absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__json__Local__commit_to__absent (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "commitTo" (enc_u_binding__json #num #flt x)))) =
   match x with
   | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3015,7 +3045,7 @@ let lk_u_binding__json__Local__commit_to__absent (#num #flt: eqtype) (x: u_bindi
 #pop-options
 
 (* lk_u_binding__json__Local__flush_on — flushOn — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__json__Local__flush_on (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (C__u_binding__json__Local? x)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "flushOn" (enc_u_binding__json #num #flt x) == Ok (enc_u_local_flush_trigger f2) | _ -> True)) =
   match x with
   | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3028,7 +3058,7 @@ let lk_u_binding__json__Local__flush_on (#num #flt: eqtype) (x: u_binding__json 
 #pop-options
 
 (* lk_u_binding__json__Local__format — format — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__json__Local__format (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (C__u_binding__json__Local? x)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "format" (enc_u_binding__json #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3041,7 +3071,7 @@ let lk_u_binding__json__Local__format (#num #flt: eqtype) (x: u_binding__json nu
 #pop-options
 
 (* lk_u_binding__json__Local__initial_from — initialFrom — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__json__Local__initial_from (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (C__u_binding__json__Local? x)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "initialFrom" (enc_u_binding__json #num #flt x) == Ok (enc_u_binding__json f4) | _ -> True)) =
   match x with
   | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3054,7 +3084,7 @@ let lk_u_binding__json__Local__initial_from (#num #flt: eqtype) (x: u_binding__j
 #pop-options
 
 (* lk_u_binding__json__Local__on_commit__present — onCommit present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__json__Local__on_commit__present (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f5 | _ -> false)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "onCommit" (enc_u_binding__json #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3068,7 +3098,7 @@ let lk_u_binding__json__Local__on_commit__present (#num #flt: eqtype) (x: u_bind
 #pop-options
 
 (* lk_u_binding__json__Local__on_commit__absent — onCommit absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__json__Local__on_commit__absent (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> None? f5 | _ -> false)) (ensures (Error? (get_prop "onCommit" (enc_u_binding__json #num #flt x)))) =
   match x with
   | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3082,7 +3112,7 @@ let lk_u_binding__json__Local__on_commit__absent (#num #flt: eqtype) (x: u_bindi
 #pop-options
 
 (* lk_u_binding__json__Local__parse — parse — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__json__Local__parse (#num #flt: eqtype) (x: u_binding__json num flt) : Lemma (requires (C__u_binding__json__Local? x)) (ensures (match x with | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "parse" (enc_u_binding__json #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3217,7 +3247,7 @@ let sk_u_binding__str__Local__on_commit__none (#num #flt: eqtype) (e: option (jv
   = reveal_opaque (`%sfx_u_binding__str__Local__on_commit) (sfx_u_binding__str__Local__on_commit #num #flt e rest)
 
 (* lk_u_binding__str__Local__codec__present — codec present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__str__Local__codec__present (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f0 | _ -> false)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "codec" (enc_u_binding__str #num #flt x) == Ok (enc_u_format (Some?.v f0)) | _ -> True)) =
   match x with
   | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3229,7 +3259,7 @@ let lk_u_binding__str__Local__codec__present (#num #flt: eqtype) (x: u_binding__
 #pop-options
 
 (* lk_u_binding__str__Local__codec__absent — codec absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__str__Local__codec__absent (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> None? f0 | _ -> false)) (ensures (Error? (get_prop "codec" (enc_u_binding__str #num #flt x)))) =
   match x with
   | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3243,7 +3273,7 @@ let lk_u_binding__str__Local__codec__absent (#num #flt: eqtype) (x: u_binding__s
 #pop-options
 
 (* lk_u_binding__str__Local__commit_to__present — commitTo present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__str__Local__commit_to__present (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f1 | _ -> false)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "commitTo" (enc_u_binding__str #num #flt x) == Ok (JStr (Some?.v f1)) | _ -> True)) =
   match x with
   | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3256,7 +3286,7 @@ let lk_u_binding__str__Local__commit_to__present (#num #flt: eqtype) (x: u_bindi
 #pop-options
 
 (* lk_u_binding__str__Local__commit_to__absent — commitTo absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__str__Local__commit_to__absent (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> None? f1 | _ -> false)) (ensures (Error? (get_prop "commitTo" (enc_u_binding__str #num #flt x)))) =
   match x with
   | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3270,7 +3300,7 @@ let lk_u_binding__str__Local__commit_to__absent (#num #flt: eqtype) (x: u_bindin
 #pop-options
 
 (* lk_u_binding__str__Local__flush_on — flushOn — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__str__Local__flush_on (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (C__u_binding__str__Local? x)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "flushOn" (enc_u_binding__str #num #flt x) == Ok (enc_u_local_flush_trigger f2) | _ -> True)) =
   match x with
   | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3283,7 +3313,7 @@ let lk_u_binding__str__Local__flush_on (#num #flt: eqtype) (x: u_binding__str nu
 #pop-options
 
 (* lk_u_binding__str__Local__format — format — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__str__Local__format (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (C__u_binding__str__Local? x)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "format" (enc_u_binding__str #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3296,7 +3326,7 @@ let lk_u_binding__str__Local__format (#num #flt: eqtype) (x: u_binding__str num 
 #pop-options
 
 (* lk_u_binding__str__Local__initial_from — initialFrom — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__str__Local__initial_from (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (C__u_binding__str__Local? x)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "initialFrom" (enc_u_binding__str #num #flt x) == Ok (enc_u_binding__str f4) | _ -> True)) =
   match x with
   | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3309,7 +3339,7 @@ let lk_u_binding__str__Local__initial_from (#num #flt: eqtype) (x: u_binding__st
 #pop-options
 
 (* lk_u_binding__str__Local__on_commit__present — onCommit present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__str__Local__on_commit__present (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> Some? f5 | _ -> false)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "onCommit" (enc_u_binding__str #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3323,7 +3353,7 @@ let lk_u_binding__str__Local__on_commit__present (#num #flt: eqtype) (x: u_bindi
 #pop-options
 
 (* lk_u_binding__str__Local__on_commit__absent — onCommit absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__str__Local__on_commit__absent (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> None? f5 | _ -> false)) (ensures (Error? (get_prop "onCommit" (enc_u_binding__str #num #flt x)))) =
   match x with
   | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3337,7 +3367,7 @@ let lk_u_binding__str__Local__on_commit__absent (#num #flt: eqtype) (x: u_bindin
 #pop-options
 
 (* lk_u_binding__str__Local__parse — parse — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 14 --ifuel 4"
 let lk_u_binding__str__Local__parse (#num #flt: eqtype) (x: u_binding__str num flt) : Lemma (requires (C__u_binding__str__Local? x)) (ensures (match x with | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 -> get_prop "parse" (enc_u_binding__str #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 ->
@@ -3765,6 +3795,8 @@ let rec rt_node (#num #flt: eqtype) (x: node num flt) : Lemma (ensures dec_node 
   | C__node__Node i k f0 f1 f2 f3 f4 f5 ->
     (match f0 with | None -> lk_node__Node__accessibility__absent #num #flt x | Some _ -> lk_node__Node__accessibility__present #num #flt x);
     (match f1 with | None -> lk_node__Node__fallback__absent #num #flt x | Some _ -> lk_node__Node__fallback__present #num #flt x);
+    lk_node__Node__id #num #flt x;
+    lk_node__Node__kind #num #flt x;
     (match f2 with | None -> lk_node__Node__state__absent #num #flt x | Some _ -> lk_node__Node__state__present #num #flt x);
     (match f3 with | None -> lk_node__Node__style__absent #num #flt x | Some _ -> lk_node__Node__style__present #num #flt x);
     (match f4 with | None -> lk_node__Node__tooltip__absent #num #flt x | Some _ -> lk_node__Node__tooltip__present #num #flt x);

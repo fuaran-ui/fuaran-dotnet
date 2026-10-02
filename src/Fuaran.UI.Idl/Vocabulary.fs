@@ -494,7 +494,9 @@ let private textSource =
                         THosted
                             { FSharp = "Binding<JVal>"
                               Encode = "encI18nArg"
-                              Decode = "decI18nArg" }
+                              Decode = "decI18nArg"
+                              Wire = None
+                              Format = None }
                     )) ]
             Annotations = Annotations.Empty } ] }
 
@@ -639,7 +641,7 @@ let private binding =
                         "string"
                         "Result<'T, string>"
                         "(s: string) => T"
-                        "(Fuaran.UI.HostPrelude.LocalCodec.identityParse decT)")
+                        "(Fuaran.UI.HostPrelude.LocalCodec.identityParse (decT >> Result.mapError DecodeError.describe))")
                 opt "codec" (TUnion("Format", []))
                 opt "commitTo" TStr ]
             Annotations = Annotations.Empty }
@@ -678,7 +680,9 @@ let private binding =
                     (THosted
                         { FSharp = "TransformSource"
                           Encode = "encTransformSource"
-                          Decode = "decTransformSource" })
+                          Decode = "decTransformSource"
+                          Wire = None
+                          Format = None })
                 req
                     "pipeline"
                     (TList(
@@ -686,7 +690,9 @@ let private binding =
                             { FSharp = "Fuaran.Core.Transform"
                               Encode = "Fuaran.Core.DataFrameCodec.encodeTransform"
                               Decode =
-                                "(fun __j -> Fuaran.Core.DataFrameCodec.decodeTransform __j |> Result.mapError string)" }
+                                "(fun __j -> Fuaran.Core.DataFrameCodec.decodeTransform __j |> Result.mapError string)"
+                              Wire = None
+                              Format = None }
                     ))
                 opt "params" (TList(TRecord "TransformParam")) ]
             Annotations = Annotations.Empty }
@@ -718,7 +724,9 @@ let private binding =
                     (THosted
                         { FSharp = "Fuaran.Core.ColExpr"
                           Encode = "Fuaran.Core.DataFrameCodec.encodeExpr"
-                          Decode = "(fun __j -> Fuaran.Core.DataFrameCodec.decodeExpr __j |> Result.mapError string)" })
+                          Decode = "(fun __j -> Fuaran.Core.DataFrameCodec.decodeExpr __j |> Result.mapError string)"
+                          Wire = None
+                          Format = None })
                 opt "params" (TList(TRecord "TransformParam")) ]
             Annotations = Annotations.Empty }
           // Host-registered capability value. Same wire shape as `Action.Invoke`.
@@ -1177,7 +1185,9 @@ let private formFieldKind =
                           Encode =
                             "(fun (v: Binding<RangePair>) -> match v with | Binding.Static(Some p) -> encRangePair p | __other -> encBinding encRangePair __other)"
                           Decode =
-                            "(fun (j: JVal) -> match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decRangePair __other)" })
+                            "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decRangePair __other) |> Result.mapError DecodeError.describe)"
+                          Wire = None
+                          Format = None })
                 opt "onChange" (handlerOf "float * float" "[number, number]")
                 opt "min" TFloat
                 opt "max" TFloat
@@ -1216,7 +1226,9 @@ let private formFieldKind =
                           Encode =
                             "(fun (v: Binding<DateTimeRangePair>) -> match v with | Binding.Static(Some p) -> encDateTimeRangePair p | __other -> encBinding encDateTimeRangePair __other)"
                           Decode =
-                            "(fun (j: JVal) -> match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateTimeRangePair __other)" })
+                            "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateTimeRangePair __other) |> Result.mapError DecodeError.describe)"
+                          Wire = None
+                          Format = None })
                 opt "onChange" (handlerOf "string * string" "[string, string]")
                 req "variant" (TEnum "DateTimeVariant")
                 opt "min" TStr
@@ -2023,7 +2035,9 @@ let private icon = TStr
 let private semanticStyleRecord =
     { Name = "SemanticStyle"
       Fields =
-        [ omit "direction" (TEnum "TextDirection") (VEnum "Auto")
+        // A `VEnum` names the WIRE string (Fuaran.Core 0.34.0 resolves it to the host case
+        // through the enum's mapping and refuses a string the enum does not admit).
+        [ omit "direction" (TEnum "TextDirection") (VEnum "auto")
           omit "emphasis" (TEnum "Emphasis") (VEnum "Normal")
           omit "role" (TEnum "StyleRole") (VEnum "None")
           omit "tone" (TEnum "ToneVariant") (VEnum "Default")
@@ -2089,7 +2103,9 @@ let private accessibilityRecord =
               (THosted
                   { FSharp = "Fuaran.UI.HostPrelude.AriaRole"
                     Encode = "Fuaran.UI.HostPrelude.encAriaRole"
-                    Decode = "Fuaran.UI.HostPrelude.decAriaRole" })
+                    Decode = "Fuaran.UI.HostPrelude.decAriaRole"
+                    Wire = None
+                    Format = None })
           opt "speak" TS ] }
 
 // ─── Display kinds (flat `$type`-discriminated) ────────────────────────────
@@ -2836,7 +2852,9 @@ let visKinds: IdlKind list =
                     THosted
                         { FSharp = "Fuaran.Core.Row seq"
                           Encode = "Fuaran.Core.RowCodec.encodeRows"
-                          Decode = "Fuaran.Core.RowCodec.decodeRows" }
+                          Decode = "Fuaran.Core.RowCodec.decodeRows"
+                          Wire = None
+                          Format = None }
                 ))
             opt "staticRows" (TRecord "StaticRows")
             opt "onRowClick" (handlerOf "Fuaran.Core.Row" "unknown") ] }
@@ -2853,7 +2871,9 @@ let visKinds: IdlKind list =
                     THosted
                         { FSharp = "Fuaran.Core.Row seq"
                           Encode = "Fuaran.Core.RowCodec.encodeRows"
-                          Decode = "Fuaran.Core.RowCodec.decodeRows" }
+                          Decode = "Fuaran.Core.RowCodec.decodeRows"
+                          Wire = None
+                          Format = None }
                 ))
             // Phase 1585 — omit-when-`false`. Every decoder in the estate already
             // reads absence as `false` (the F# hand decoder since Phase 126, and

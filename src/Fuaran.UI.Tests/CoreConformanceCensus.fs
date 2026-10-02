@@ -625,7 +625,71 @@ let census: (string * Adoption) list =
           "a host dataframe evaluator — QueryRefine consumes Fuaran.Core.DataFrame.evalPipeline as the pinned reference rather than shipping a second evaluator, so the parity laws have no host implementation to compare against the reference"
       "Conformance.canonicalFloatLaws",
       NotUsed
-          "Wire.Canon.canonicalFloat — the tier's canonical-JSON encoder carries its own Fable-safe float formatter (CanonicalJson.formatFiniteDouble), and this family is self-contained over Core's encoder rather than taking a host one; cross-host float parity here is gated by the wire-format conformance corpus, a multi-host oracle it cannot replace" ]
+          "Wire.Canon.canonicalFloat — the tier's canonical-JSON encoder carries its own Fable-safe float formatter (CanonicalJson.formatFiniteDouble), and this family is self-contained over Core's encoder rather than taking a host one; cross-host float parity here is gated by the wire-format conformance corpus, a multi-host oracle it cannot replace"
+
+      // ---- the families the 0.34.0 pin raise brings (Core 0.33.0 and 0.34.0) ----
+      // Classified at the raise, not adopted in it. Where the family's subject exists here the row
+      // is `CarriedBy` and names the witness an adoption would supply; where it does not, the row
+      // names the mechanism the tier does not use, so the next reader can check it.
+      //
+      // The four `…At` forms are Core 0.33.0's renaming of the domain-witness forms (fuaran-core
+      // Phase 297); the `…With` spellings above are its obsolete forwards for that draft and are
+      // classified the same way.
+      "Conformance.aiSurfaceLawsAt",
+      NotUsed
+          "Fuaran.Core.AiSurface at a domain's AiSurfaceWitness — no project in this tier references Fuaran.Core.AiSurface (see aiSurfaceLaws)"
+      "Conformance.capabilityLawsAt",
+      CarriedBy
+          "unfiled — the 0.33.0 name of capabilityLawsWith (see that row): Fuaran.UI.AiTools.Capabilities is a host dispatch path over a Core CapabilityRegistry; adoption is one CapabilitySeamWitness whose Dispatch is that path, in Fuaran.UI.AiTools.Tests"
+      "Conformance.capabilityPipelineLawsAt",
+      NotUsed
+          "Fuaran.Core.Function's CapabilityPipeline at a domain's witness — the tier composes no capability pipeline"
+      "Conformance.queryLawsAt",
+      NotUsed
+          "Fuaran.Core.Query's registry seam at a domain's QuerySeamWitness — no project here references the Core query registry (see queryLaws)"
+      "Conformance.observerLaws",
+      CarriedBy
+          "unfiled — Fuaran.UI.LayoutObserver is a domain instance of Fuaran.Core.Observer (Phase 322), the subject this family certifies; adoption is one ObserverWitness (Core 0.33.0, fuaran-core Phase 298) over the in-memory layout observer"
+      "Conformance.containmentLaws",
+      CarriedBy
+          "unfiled — Fuaran.UI.Ops.Apply delegates the structural-five apply to Core's applyContained under the tier's container predicate (containerLaws above), so containment at the tier's own NodeWitness / OpGen has a subject here; adoption runs it at the witnesses CoreAdoptionTests already builds"
+      "Conformance.footprintLawsAt",
+      CarriedBy
+          "unfiled — the tier projects its TreeOp onto Core's Footprint (Fuaran.UI.OpStream.Dag.Tests' footprintOfTreeOp, certified by footprintLaws and laneFoldLaws above); this form certifies a footprint at a domain's own ops and StreamWitness, which that projection is"
+      "Conformance.reconcileLawsWith",
+      CarriedBy
+          "unfiled — reconcileLaws is adopted above at the kit's hash; this form pins the domain's hash, and the tier ships one (SHA-256, as laneFoldLawsWith is instantiated with)"
+      "Conformance.keyedApplyLaws",
+      CarriedBy
+          "unfiled — the KeyedWitness keyedChildrenLaws names above (ErrorBoundary fallback, state.onEmpty, state.onLoading) is this family's subject too"
+      "Conformance.keyedArbitrationLaws", CarriedBy "unfiled — needs the same KeyedWitness as keyedChildrenLaws above"
+      "Conformance.keyedArbitrationLawsWith",
+      CarriedBy "unfiled — needs the same KeyedWitness as keyedChildrenLaws above"
+      "Conformance.checkpointLaws",
+      NotUsed
+          "Fuaran.Core.OpStream.Dag's lane-DAG checkpoint (Dag.Checkpoint, Core 0.34.0, fuaran-core Phase 288) — the tier checkpoints its DAG through its own DagReplay.replayFromCheckpoint (Fuaran.UI.OpStream.Dag.Merge) and takes no Core DAG checkpoint"
+      "Conformance.reachLaws",
+      NotUsed
+          "Fuaran.Core.OpStream.Dag's reachability index (Dag.Reach, fuaran-core Phase 289) — no project here builds a Reach index or calls an index-taking DAG overload"
+      "Conformance.laneLaws",
+      NotUsed
+          "Fuaran.Core.OpStream.Dag's lane store and whole-DAG order (Dag.loadLanes / totalOrderBy / replayAllBy, fuaran-core Phase 311) — no project here loads lanes or orders a DAG through them"
+      "Conformance.placementLaws",
+      NotUsed
+          "Fuaran.Core.Ops' TreePlacement algebra (fuaran-core Phase 312) — the tier places children through its own Fuaran.UI.Ops.Placement and calls no Core placement"
+      "Conformance.loweringLaws",
+      NotUsed "Fuaran.Core.Ops.lower (fuaran-core Phase 312) — no project here lowers a tree to ops through Core"
+      "Conformance.freshIdLaws",
+      NotUsed
+          "Fuaran.Core's FreshIds minting helper (fuaran-core Phase 312) — the tier mints ids through its own FreshIds (Fuaran.UI.Ops.Placement) and calls no Core minting"
+      "Conformance.referenceLaws",
+      NotUsed "a Core RefWitness — the tier declares no Core reference seam (no project here builds a RefWitness)"
+      "Conformance.witnessSurfaceLaws",
+      NotUsed
+          "the kit's own witness-record field freeze — it certifies Core's witness records and takes no domain witness, so it has no subject in a consumer"
+      "WireNullTolerance.laws",
+      NotUsed
+          "the kit's null-tolerance vectors over Core's own Wire decoders — a fixed Core corpus with no host implementation to hand it; the tier's null handling is certified by the wire-format conformance corpus" ]
 
 // ---------------------------------------------------------------------------
 //  the roster — by reflection over the PINNED kit

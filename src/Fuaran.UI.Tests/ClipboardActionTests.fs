@@ -137,7 +137,8 @@ let tests =
                               "A bare string upgrades to TextSource.Literal — no shipped document breaks"
                       | other -> failtestf "Expected WriteToClipboard, got %A" other
                   | other -> failtestf "Expected a Button, got %A" other
-              | Error e -> failtestf "Expected the legacy spelling to decode, got: %s" e
+              | Error e ->
+                  failtestf "Expected the legacy spelling to decode, got: %s" (Fuaran.Core.DecodeError.describe e)
           }
 
           test "a wrong-typed clipboard payload is REFUSED" {

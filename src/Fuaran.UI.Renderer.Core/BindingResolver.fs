@@ -204,6 +204,9 @@ let private cellToObj (c: Fuaran.Core.Cell) : obj =
     | Fuaran.Core.Cell.Date s -> box s
     | Fuaran.Core.Cell.Timestamp s -> box s
     | Fuaran.Core.Null -> null
+    // Fuaran.Core 0.33.0 (D72): a decimal cell carries canonical decimal text, which is
+    // also its wire form (a JSON string), so a row carries it as that text.
+    | Fuaran.Core.Cell.Decimal s -> box s
 
 /// Coerce a resolved scalar to a `Cell`. Every numeric arm yields `Float` (int/float are
 /// indistinguishable under Fable, so this stays cross-host-deterministic); DataFrame
@@ -832,7 +835,8 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
                          | Fuaran.Core.Str _ -> "string"
                          | Fuaran.Core.Cell.Date _ -> "date"
                          | Fuaran.Core.Cell.Timestamp _ -> "timestamp"
-                         | Fuaran.Core.Null -> "null")
+                         | Fuaran.Core.Null -> "null"
+                         | Fuaran.Core.Cell.Decimal _ -> "decimal")
                         ex.Message
                 )
     | Binding.Invoke(capabilityId, args) ->
@@ -1215,6 +1219,7 @@ let cellToText (c: Fuaran.Core.Cell) : Result<string, string> =
     | Fuaran.Core.Bool b -> Ok(if b then "true" else "false")
     | Fuaran.Core.Cell.Date s -> Ok s
     | Fuaran.Core.Cell.Timestamp s -> Ok s
+    | Fuaran.Core.Cell.Decimal s -> Ok s
     | Fuaran.Core.Null -> Error "Transform yielded a null cell in a text slot"
 
 /// Coerce a result cell to a numeric-slot float.
@@ -1237,6 +1242,12 @@ let cellToFloat (c: Fuaran.Core.Cell) : Result<float, string> =
                 s
         )
     | Fuaran.Core.Null -> Error "Transform yielded a null cell in a numeric slot"
+    // Fuaran.Core 0.33.0 (D72): a decimal column is numeric; a numeric slot reads it at its
+    // nearest float, as Core's own float readings of a decimal do.
+    | Fuaran.Core.Cell.Decimal s ->
+        match Fuaran.Core.DecimalText.tryToFloat s with
+        | Some f -> Ok f
+        | None -> Error(sprintf "Transform yielded a decimal cell ('%s') outside the float range in a numeric slot" s)
 
 /// Fuaran-UI Phase 1534 — the BOOLEAN coercion, the third of the trio beside
 /// `cellToText` / `cellToFloat`. Strict: only a `Bool` cell is a boolean.
@@ -1251,7 +1262,8 @@ let cellToBool (c: Fuaran.Core.Cell) : Result<bool, string> =
     match c with
     | Fuaran.Core.Bool b -> Ok b
     | Fuaran.Core.Int _
-    | Fuaran.Core.Float _ ->
+    | Fuaran.Core.Float _
+    | Fuaran.Core.Cell.Decimal _ ->
         Error
             "a numeric cell is not a boolean — compare it (`=`, `>`, `isNull`) rather than relying on a truthiness rule the hosts do not share"
     | Fuaran.Core.Str s ->

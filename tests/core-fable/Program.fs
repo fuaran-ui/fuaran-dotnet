@@ -7,17 +7,14 @@ module CoreFable.Program
 // rests on. A touch matters beyond the project reference because `inline` members and generic
 // instantiations are only compiled where they are used.
 //
-// Two constants come from `CoreFable.fsproj`. `CORE_FABLE_COMPUTE` is defined whenever the compute
+// One constant comes from `CoreFable.fsproj`. `CORE_FABLE_COMPUTE` is defined whenever the compute
 // packages (`Fuaran.Core.DataFrame`, `Fuaran.Core.Column.Ops`, `Fuaran.Core.DataFrame.Conformance`)
 // are compiled, which is every mode except a Core-only cut: those packages ship from their own
 // producer from 0.33.0, and a Core candidate is not what they were built against. Every touch that
-// names a compute type or module sits under it. `CORE_DETERMINISM_SET` is defined when a Core cut is
-// at or above 0.33.0, whose `EffectClass.Determinism` is a set of factors (fuaran-core Phase 319);
-// below it the old single-case spelling compiles. `CORE_CAPABILITY_REGISTRY` is defined when a Core cut
-// is at or above 0.34.0, where `Registry` is `CapabilityRegistry` and the old name an obsolete alias
-// (fuaran-core Phase 295); below it the old name compiles. `CORE_FOOTPRINT_SLOTS` is defined at the same
-// cut, where `Footprint` carries slot reads and writes (fuaran-core Phase 340) and is built from
-// `Footprint.empty`; below it the four-field literal compiles.
+// names a compute type or module sits under it. The program is written for Fuaran.Core 0.34.0, the
+// pin: the version-conditional arms that let it compile against the 0.32.0 pin and a 0.33.0 / 0.34.0
+// candidate alike were retired when the pin was raised to 0.34.0, so a cut-time run against an older
+// Core line is no longer a supported mode.
 //
 // With `CORE_PARITY` defined (see `core-fable.ps1`), the program is also the VALUE leg: `--vectors`
 // prints `Fuaran.Core.ParityVectors.lines ()` — the cross-pipeline table the conformance kit ships
@@ -74,23 +71,17 @@ let private functionTouch =
     // retyped `Registry.dispatch` has to compile under Fable too. Named deliberately, because
     // `Function.toJsonSchema` alone reached neither dispatcher.
     let cap = Capability.create "c" sg (ClientIsland Fable)
-#if CORE_CAPABILITY_REGISTRY
+
     let reg =
         CapabilityRegistry.empty
         |> CapabilityRegistry.register cap
         |> Result.toOption
         |> Option.get
-#else
-    let reg = Registry.empty |> Registry.register cap |> Result.toOption |> Option.get
-#endif
+
     let body (_: Capability) () : Deferred<string> = Pending
 
     let dispatched =
-#if CORE_CAPABILITY_REGISTRY
         match CapabilityRegistry.dispatch reg "c" [] body with
-#else
-        match Registry.dispatch reg "c" [] body with
-#endif
         | Ok Pending -> "pending"
         | Ok other -> sprintf "%A" other
         | Error e -> sprintf "%A" e
@@ -204,12 +195,8 @@ let private chainBreakTouch =
     ChainBreakReason.toString (ChainBreakReason.ofString "prev-hash link broken")
 
 // fuaran-core Phase 319 (Core 0.33.0) made `EffectClass.Determinism` a set of factors, spelled through
-// `Effect.deterministic` / `clock` / `random` / `network`; below it the determinism was one case.
-#if CORE_DETERMINISM_SET
+// `Effect.deterministic` / `clock` / `random` / `network`.
 let private networkDeterminism = Effect.network
-#else
-let private networkDeterminism = Network
-#endif
 
 // Query — declaration codec round-trip, plus the seam's `Deferred` envelope (Phase 198): the
 // resolver answers in `Deferred<QueryResult>` and that envelope has to encode under Fable too.
@@ -451,18 +438,11 @@ let private foldConfluenceTouch =
     let noAddr: Set<string> = Set.empty
 
     let fp (_: string) : Footprint =
-#if CORE_FOOTPRINT_SLOTS
         { Footprint.empty with
             Reads = noAddr
             StructureWrites = noAddr
             ContentWrites = noAddr
             UnknownParentWrites = noAddr }
-#else
-        { Reads = noAddr
-          StructureWrites = noAddr
-          ContentWrites = noAddr
-          UnknownParentWrites = noAddr }
-#endif
 
     let gen: LaneGen<string, string> =
         { State0 = ""

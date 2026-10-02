@@ -4,8 +4,8 @@ module Fuaran.UI.WireProfileTests
 //  Phase 1670 — the go-red proof for `WIRE_FORMAT.md` §15.4's WIRING.
 //
 //  `Fuaran.Core.Idl.Diff`'s own suite proves the CLASSIFIER: that a removed tag
-//  reads as breaking, that a required field added to an existing owner breaks
-//  emitters, and the rest. None of that says anything about whether §15.4's rule
+//  reads as breaking, that a required field added to an existing owner is a
+//  wire break (since Fuaran.Core 0.34.0), and the rest. None of that says anything about whether §15.4's rule
 //  — the one this repository's wire profile actually follows — is applied to
 //  this vocabulary's artifact, which is the half that was missing and the half
 //  this phase added.
@@ -97,22 +97,26 @@ let tests =
           // The other half of the same ruling: the exemption is about OPTIONAL,
           // and saying so is only worth anything if the neighbouring case is
           // known to be different.
-          testCase "a new REQUIRED field moves no profile either — but for the opposite reason" (fun _ ->
+          // Fuaran.Core 0.34.0 (fuaran-core Phase 304) grades a required field added to an
+          // existing owner as a WIRE break: every document written before it lacks the member,
+          // and the decoder refuses a document missing a required member. Before that it was an
+          // emitter break, and this pair pinned NO STEP plus a report naming the emitters. The
+          // step follows the substrate's classification, so it is now the major row's.
+          testCase "a new REQUIRED field is a major - old documents stop decoding" (fun _ ->
               Expect.equal
                   (stepOf baseText (Artifact.render (withExtraField Required)))
-                  NoStep
-                  "a required field is not a CONSUMER-side event, so the profile counter still says nothing about \
-                   it; the report is expected to name the EMITTER break instead of stepping the minor")
+                  Major
+                  "a required-field addition did not read as a `/vN/` event, but every document written before \
+                   it lacks the member and is refused")
 
-          testCase "a new required field's report names the emitter break" (fun _ ->
+          testCase "a new required field's report names the wire break" (fun _ ->
               match reportBetween baseText (Artifact.render (withExtraField Required)) with
               | Error e -> failtestf "the report refused a well-formed pair: %s" e
               | Ok r ->
                   Expect.stringContains
                       r
-                      "EMITTERS"
-                      "a required-field addition reported NO STEP without saying why — silence here is the \
-                       0.2.0 / orchestration-0.1.3 lesson repeating")
+                      "a REQUIRED field added"
+                      "a required-field addition stepped the profile without the row that says why")
 
           // What DOES bump the minor, stated as a test rather than as prose.
           testCase "a new node KIND bumps the minor" (fun _ ->

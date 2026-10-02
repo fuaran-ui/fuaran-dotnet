@@ -461,11 +461,11 @@ let tests =
               // and the config is named explicitly as the canonical `{seq,actor,op}` binding the
               // tier's `HashChain.computeHash` composes.
               CoreConf.snapshotLawsWith
-                  CoreStream.canonicalConfig
                   entrySw
                   entryStreamGen
                   stateEncode
                   hashFn
+                  CoreStream.canonicalConfig
                   20260904
                   100
               |> assertAllPassed "snapshotLawsWith over the Fuaran.UI StreamEntry provenance envelope"

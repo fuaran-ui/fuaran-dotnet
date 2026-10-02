@@ -382,12 +382,12 @@ module CoreFunctionLawTests =
                       | Error m -> failtestf "iteration %d: the declaration did not decode (%s)" d.Iteration m
 
                       match
-                          Registry.empty
-                          |> Registry.register d.Cap
-                          |> Result.bind (Registry.register d.CapB)
+                          CapabilityRegistry.empty
+                          |> CapabilityRegistry.register d.Cap
+                          |> Result.bind (CapabilityRegistry.register d.CapB)
                       with
                       | Ok r ->
-                          let ids = Registry.enumerate r |> List.map (fun c -> c.Id)
+                          let ids = CapabilityRegistry.enumerate r |> List.map (fun c -> c.Id)
 
                           Expect.equal
                               ids

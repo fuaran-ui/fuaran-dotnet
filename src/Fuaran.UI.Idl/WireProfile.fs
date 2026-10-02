@@ -121,8 +121,9 @@ let step (cs: Diff.Classification list) : ProfileStep * string =
                "")
     elif sev Diff.BreakingForEmitters then
         NoStep,
-        "NO profile step — but at least one change breaks EMITTERS (a required field arrived, or an optional one "
-        + "became required). A behind CONSUMER is unaffected, which is all the profile counter measures, so "
+        "NO profile step — but at least one change breaks EMITTERS (an authoring default was withdrawn or moved; "
+        + "since Fuaran.Core 0.34.0 a required field arriving is graded a wire break instead, because the documents "
+        + "written before it stop decoding). A behind CONSUMER is unaffected, which is all the profile counter measures, so "
         + "stepping the minor would say nothing true; every downstream EMITTER nonetheless needs a coordinated "
         + "change. Treat this as the more expensive of the two, not the cheaper."
     else

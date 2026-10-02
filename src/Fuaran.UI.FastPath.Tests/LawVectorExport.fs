@@ -65,6 +65,20 @@ module LawVectorExport =
           Cap: Capability
           CapB: Capability }
 
+    /// Every non-empty determinism set over the three factors in mask order
+    /// (mask 1..7, bit 0 clock, bit 1 random, bit 2 network); iteration `i`
+    /// declares the (i mod 7)th, as Core's sample has since its 0.33.0 (the
+    /// determinism axis became a factor set, fuaran-core Phase 319).
+    let nonEmptySets: DeterminismSource list =
+        let allFactors = [ ClockFactor; RandomFactor; NetworkFactor ]
+
+        [ for mask in 1..7 ->
+              allFactors
+              |> List.indexed
+              |> List.filter (fun (k, _) -> (mask >>> k) &&& 1 = 1)
+              |> List.map snd
+              |> Set.ofList ]
+
     let draws () : Draw list =
         let mutable rng = ConfRng.ofSeed seed
 
@@ -89,7 +103,7 @@ module LawVectorExport =
                     Holes = [ hole ]
                     Effect =
                       { Host = ReadsHost
-                        Determinism = Random } }
+                        Determinism = List.item (i % 7) nonEmptySets } }
 
               yield
                   { Iteration = i
@@ -218,14 +232,14 @@ module LawVectorExport =
                             | Error e, _ -> Error e
                             | Ok r, JStr s ->
                                 match CapabilityCodec.decode s with
-                                | Ok c -> Registry.register c r |> Result.mapError (sprintf "%A")
+                                | Ok c -> CapabilityRegistry.register c r |> Result.mapError (sprintf "%A")
                                 | Error m -> Error m
                             | Ok _, _ -> Error "a declaration is not a string")
-                        (Ok Registry.empty)
+                        (Ok CapabilityRegistry.empty)
 
                 match registered with
                 | Error m -> Some(sprintf "%s: the declarations did not register (%s)" id m)
-                | Ok r -> differs [ "ids", JArr(Registry.enumerate r |> List.map (fun c -> JStr c.Id)) ]
+                | Ok r -> differs [ "ids", JArr(CapabilityRegistry.enumerate r |> List.map (fun c -> JStr c.Id)) ]
             | _ -> Some(sprintf "%s: input.declarations missing" id)
         | Some other, _ -> Some(sprintf "%s: unknown case `%s`" id other)
         | None, _ -> Some(sprintf "%s: no case" id)

@@ -288,7 +288,7 @@ let tests =
                   Expect.equal d.Index 7 "the report carries the vector index, which is what reproduces it"
                   Expect.stringContains (render d) "seed" "the rendered report names the seed")
 
-          testCase "the engine's omit-default blind spot is exactly one field, and it is named" (fun _ ->
+          testCase "the engine's omit-default blind spot is empty at the Core 0.34.0 pin" (fun _ ->
               // The SCOPE of the finding the steering pass exists for, derived
               // from the vocabulary rather than remembered. Two directions of
               // failure, both worth catching:
@@ -302,9 +302,16 @@ let tests =
               //    alphabet at its two wire-comparison sites. In the second case
               //    the steering pass is dead code and should be retired with the
               //    engine bump that fixes it.
+              //
+              // The second case happened at the Fuaran.Core 0.34.0 pin (fuaran-core
+              // Phase 292): a `VEnum` default names the WIRE string, resolved to the
+              // host case through `IdlEnum.CaseOf` by every backend, and a host-case
+              // spelling is refused at load. `SemanticStyle.direction` now declares
+              // `auto`, so the set is empty and the steering pass is inert; it is left
+              // for a separate retirement rather than removed inside the pin raise.
               Expect.equal
                   (blindSpotFields vocabulary)
-                  [ "SemanticStyle.direction" ]
+                  []
                   "the OmitDefault-on-a-case-mapped-enum set moved — see the finding in IdlCertificationSupport before adjusting this list")
 
           testCase "the sampler draws node envelopes on every presence polarity" (fun _ ->
@@ -410,7 +417,10 @@ let tests =
               let fsharpDivergences =
                   List.zip reference hostedVectors
                   |> List.mapi (fun i (w, isHosted) ->
-                      match (G.decodeNode w: Result<G.Node<obj>, string>) with
+                      match
+                          (G.decodeNode w |> Result.mapError Fuaran.Core.DecodeError.describe
+                          : Result<G.Node<obj>, string>)
+                      with
                       | Error e ->
                           if isHosted then
                               outOfDomainHosted <- outOfDomainHosted + 1
@@ -435,7 +445,13 @@ let tests =
 
               let vectorsJs =
                   vs
-                  |> List.mapi (fun i v -> sprintf "  [%d, %s]," i (Gen.typescriptValue v))
+                  |> List.mapi (fun i v ->
+                      // Fuaran.Core 0.34.0: the value is emitted against its declared
+                      // slot type (here the node), and a value that does not fit is
+                      // refused rather than emitted — a failure here, never a skip.
+                      match Gen.typescriptValue vocabulary TNode v with
+                      | Ok js -> sprintf "  [%d, %s]," i js
+                      | Error e -> failtestf "vector %d: the TypeScript backend refused the value: %A" i e)
                   |> String.concat "\n"
 
               let harness =

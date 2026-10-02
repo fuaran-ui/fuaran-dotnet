@@ -79,7 +79,7 @@ let private tree (name: string) : Node<obj> option =
     |> Option.bind (fun p ->
         match Generated.decodeNode ((File.ReadAllText p).Trim()) with
         | Ok node -> Some node
-        | Error e -> failtestf "corpus fixture '%s' did not decode: %s" name e)
+        | Error e -> failtestf "corpus fixture '%s' did not decode: %s" name (Fuaran.Core.DecodeError.describe e))
 
 /// Every node fixture, decoded, as (fixture name, tree) — the corpus a query
 /// runs over. A fixture that fails to decode fails the suite loudly: a silently
@@ -96,7 +96,7 @@ let private corpus () : (string * Node<obj>) list =
 
             match Generated.decodeNode ((File.ReadAllText p).Trim()) with
             | Ok node -> name, node
-            | Error e -> failtestf "corpus fixture '%s' did not decode: %s" name e)
+            | Error e -> failtestf "corpus fixture '%s' did not decode: %s" name (Fuaran.Core.DecodeError.describe e))
 
 // ── an independent tree oracle (NOT the evaluator's own relation) ────────────
 

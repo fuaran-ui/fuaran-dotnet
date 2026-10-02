@@ -40,6 +40,10 @@
        is what keeps every definition and every emitted lemma first-order.
 
    VOCABULARY. Discriminator "$type", nested-kind envelope, ordinal-sorted key order.
+   The node object carries `id`, the kind object under `kind` and the envelope's members;
+   the kind object carries the discriminator and the kind's members.
+   Every object literal is Ordinal-sorted, the fixed keys merged among the members.
+   A shape the literal cannot carry is refused by name, never emitted.
    20 of 43 kinds are modelled; 14 declared types and 22 enums are reached.
    The kinds NOT modelled — named here rather than silently missing, because a reader
    of the theorem needs to know what it does not cover. Two different reasons, and
@@ -1250,32 +1254,32 @@ let rd_r_semantic_style__Mk__weight (#num #flt: eqtype) (el: jval num flt) : Tot
 let rec enc_node (#num #flt: eqtype) (x: node num flt) : Tot (jval num flt) (decreases x) =
   match x with
   | C__node__Node i k e0 e1 e2 e3 e4 e5 ->
-    JObj (("id", JStr i) :: ("kind", enc_vkind k) :: (let s5 = sfx_node__Node__visible #num #flt (enc_opt_u_binding__bool #num #flt e5) ([]) in let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt e4) (s5) in let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt e3) (s4) in let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt e2) (s3) in let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt e1) (s2) in let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt e0) (s1) in s0))
+    JObj ((let s5 = sfx_node__Node__visible #num #flt (enc_opt_u_binding__bool #num #flt e5) ([]) in let s4 = sfx_node__Node__tooltip #num #flt (enc_opt_u_text_source #num #flt e4) (s5) in let s3 = sfx_node__Node__style #num #flt (enc_opt_r_semantic_style #num #flt e3) (s4) in let s2 = sfx_node__Node__state #num #flt (enc_opt_r_state_behaviour #num #flt e2) (s3) in let s1 = sfx_node__Node__fallback #num #flt (enc_opt_node #num #flt e1) (("id", JStr i) :: ("kind", enc_vkind k) :: s2) in let s0 = sfx_node__Node__accessibility #num #flt (enc_opt_r_accessibility #num #flt e0) (s1) in s0))
 
 and enc_vkind (#num #flt: eqtype) (x: vkind num flt) : Tot (jval num flt) (decreases x) =
   match x with
   | C__vkind__Badge f0 f1 ->
     JObj (("$type", JStr "Badge") :: ("label", enc_u_text_source f0) :: ("variant", enc_e_badge_variant f1) :: [])
   | C__vkind__Callout f0 f1 f2 f3 f4 ->
-    JObj (("$type", JStr "Callout") :: (let s3 = sfx_vkind__Callout__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f4) ([]) in let s2 = sfx_vkind__Callout__icon #num #flt (enc_opt_str #num #flt f3) (s3) in let s1 = sfx_vkind__Callout__heading #num #flt (enc_opt_u_text_source #num #flt f2) (s2) in let s0 = sfx_vkind__Callout__dismissable #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in ("body", enc_u_text_source f0) :: s0))
+    JObj ((let s3 = sfx_vkind__Callout__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f4) ([]) in let s2 = sfx_vkind__Callout__icon #num #flt (enc_opt_str #num #flt f3) (s3) in let s1 = sfx_vkind__Callout__heading #num #flt (enc_opt_u_text_source #num #flt f2) (s2) in let s0 = sfx_vkind__Callout__dismissable #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in ("$type", JStr "Callout") :: ("body", enc_u_text_source f0) :: s0))
   | C__vkind__CodeBlock f0 f1 f2 f3 f4 ->
     JObj (("$type", JStr "CodeBlock") :: ("code", JStr f0) :: ("copyable", JBool f1) :: ("highlightLines", JArr (enc_items_l_int f2)) :: ("language", JStr f3) :: ("lineNumbers", JBool f4) :: [])
   | C__vkind__Disclosure f0 f1 f2 f3 f4 ->
     JObj (("$type", JStr "Disclosure") :: ("children", JArr (enc_items_l_node f0)) :: ("defaultOpen", JBool f1) :: ("heading", enc_u_text_source f2) :: (match f3 with | None -> ("open", enc_u_binding__bool f4) :: [] | Some w -> ("onToggle", JStr "<closure>") :: ("open", enc_u_binding__bool f4) :: []))
   | C__vkind__Embed f0 f1 f2 f3 ->
-    JObj (("$type", JStr "Embed") :: (let s1 = sfx_vkind__Embed__permissions #num #flt (enc_dflt_l_e_embed_permission #num #flt ([]) f1 (JArr (enc_items_l_e_embed_permission f1))) (("src", enc_u_binding__str f2) :: ("title", enc_u_text_source f3) :: []) in let s0 = sfx_vkind__Embed__aspect_ratio #num #flt (enc_dflt_e_image_aspect #num #flt (C__e_image_aspect__Natural) f0) (s1) in s0))
+    JObj ((let s1 = sfx_vkind__Embed__permissions #num #flt (enc_dflt_l_e_embed_permission #num #flt ([]) f1 (JArr (enc_items_l_e_embed_permission f1))) (("src", enc_u_binding__str f2) :: ("title", enc_u_text_source f3) :: []) in let s0 = sfx_vkind__Embed__aspect_ratio #num #flt (enc_dflt_e_image_aspect #num #flt (C__e_image_aspect__Natural) f0) (s1) in ("$type", JStr "Embed") :: s0))
   | C__vkind__ErrorBoundary f0 f1 ->
     JObj (("$type", JStr "ErrorBoundary") :: ("child", enc_node f0) :: ("fallback", enc_node f1) :: [])
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
-    JObj (("$type", JStr "Fact") :: (let s3 = sfx_vkind__Fact__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f4) (("value", enc_u_text_source f5) :: []) in let s2 = sfx_vkind__Fact__icon #num #flt (enc_opt_str #num #flt f2) (("label", enc_u_text_source f3) :: s3) in let s1 = sfx_vkind__Fact__help #num #flt (enc_opt_u_text_source #num #flt f1) (s2) in let s0 = sfx_vkind__Fact__emphasis #num #flt (enc_dflt_bool #num #flt (false) f0) (s1) in s0))
+    JObj ((let s3 = sfx_vkind__Fact__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f4) (("value", enc_u_text_source f5) :: []) in let s2 = sfx_vkind__Fact__icon #num #flt (enc_opt_str #num #flt f2) (("label", enc_u_text_source f3) :: s3) in let s1 = sfx_vkind__Fact__help #num #flt (enc_opt_u_text_source #num #flt f1) (s2) in let s0 = sfx_vkind__Fact__emphasis #num #flt (enc_dflt_bool #num #flt (false) f0) (s1) in ("$type", JStr "Fact") :: s0))
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    JObj (("$type", JStr "FileUpload") :: (let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in let s2 = sfx_vkind__FileUpload__destination #num #flt (enc_opt_str #num #flt f3) (s3) in let s1 = sfx_vkind__FileUpload__capture #num #flt (enc_opt_e_capture_source #num #flt f2) (s2) in let s0 = sfx_vkind__FileUpload__accept_paste #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in ("accept", JArr (enc_items_l_str f0)) :: s0))
+    JObj ((let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in let s2 = sfx_vkind__FileUpload__destination #num #flt (enc_opt_str #num #flt f3) (s3) in let s1 = sfx_vkind__FileUpload__capture #num #flt (enc_opt_e_capture_source #num #flt f2) (s2) in let s0 = sfx_vkind__FileUpload__accept_paste #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in ("$type", JStr "FileUpload") :: ("accept", JArr (enc_items_l_str f0)) :: s0))
   | C__vkind__Heading f0 f1 f2 ->
     JObj (("$type", JStr "Heading") :: ("level", JInt f0) :: ("text", enc_u_text_source f1) :: ("variant", enc_e_heading_variant f2) :: [])
   | C__vkind__Icon f0 f1 f2 f3 ->
-    JObj (("$type", JStr "Icon") :: (let s2 = sfx_vkind__Icon__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f3) ([]) in let s1 = sfx_vkind__Icon__size #num #flt (enc_dflt_e_icon_size #num #flt (C__e_icon_size__Medium) f2) (s2) in let s0 = sfx_vkind__Icon__label #num #flt (enc_opt_str #num #flt f1) (s1) in ("icon", JStr f0) :: s0))
+    JObj ((let s2 = sfx_vkind__Icon__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f3) ([]) in let s1 = sfx_vkind__Icon__size #num #flt (enc_dflt_e_icon_size #num #flt (C__e_icon_size__Medium) f2) (s2) in let s0 = sfx_vkind__Icon__label #num #flt (enc_opt_str #num #flt f1) (s1) in ("$type", JStr "Icon") :: ("icon", JStr f0) :: s0))
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
-    JObj (("$type", JStr "Link") :: (let s2 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in let s1 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s2) in let s0 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s1) in ("download", JBool f0) :: ("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s0))
+    JObj ((let s2 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in let s1 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s2) in let s0 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s1) in ("$type", JStr "Link") :: ("download", JBool f0) :: ("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s0))
   | C__vkind__List f0 f1 ->
     JObj (("$type", JStr "List") :: ("items", JArr (enc_items_l_u_text_source f0)) :: ("ordered", JBool f1) :: [])
   | C__vkind__Markdown f0 ->
@@ -1283,9 +1287,9 @@ and enc_vkind (#num #flt: eqtype) (x: vkind num flt) : Tot (jval num flt) (decre
   | C__vkind__Math f0 f1 ->
     JObj (("$type", JStr "Math") :: ("display", enc_e_math_display f0) :: ("source", JStr f1) :: [])
   | C__vkind__Progress f0 f1 f2 f3 f4 ->
-    JObj (("$type", JStr "Progress") :: (let s3 = sfx_vkind__Progress__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f4) ([]) in let s2 = sfx_vkind__Progress__label #num #flt (enc_opt_u_text_source #num #flt f3) (s3) in let s1 = sfx_vkind__Progress__indeterminate #num #flt (enc_dflt_bool #num #flt (false) f2) (s2) in let s0 = sfx_vkind__Progress__caveat #num #flt (enc_opt_u_text_source #num #flt f0) (("fraction", enc_u_binding__flt f1) :: s1) in s0))
+    JObj ((let s3 = sfx_vkind__Progress__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f4) ([]) in let s2 = sfx_vkind__Progress__label #num #flt (enc_opt_u_text_source #num #flt f3) (s3) in let s1 = sfx_vkind__Progress__indeterminate #num #flt (enc_dflt_bool #num #flt (false) f2) (s2) in let s0 = sfx_vkind__Progress__caveat #num #flt (enc_opt_u_text_source #num #flt f0) (("fraction", enc_u_binding__flt f1) :: s1) in ("$type", JStr "Progress") :: s0))
   | C__vkind__ScrollArea f0 f1 f2 f3 ->
-    JObj (("$type", JStr "ScrollArea") :: (let s1 = sfx_vkind__ScrollArea__max_width #num #flt (enc_opt_int #num #flt f2) (("orientation", enc_e_scroll_orientation f3) :: []) in let s0 = sfx_vkind__ScrollArea__max_height #num #flt (enc_opt_int #num #flt f1) (s1) in ("children", JArr (enc_items_l_node f0)) :: s0))
+    JObj ((let s1 = sfx_vkind__ScrollArea__max_width #num #flt (enc_opt_int #num #flt f2) (("orientation", enc_e_scroll_orientation f3) :: []) in let s0 = sfx_vkind__ScrollArea__max_height #num #flt (enc_opt_int #num #flt f1) (s1) in ("$type", JStr "ScrollArea") :: ("children", JArr (enc_items_l_node f0)) :: s0))
   | C__vkind__Skeleton f0 ->
     JObj (("$type", JStr "Skeleton") :: ("rows", JInt f0) :: [])
   | C__vkind__SplitPanel f0 f1 ->
@@ -1293,7 +1297,7 @@ and enc_vkind (#num #flt: eqtype) (x: vkind num flt) : Tot (jval num flt) (decre
   | C__vkind__SummaryList f0 f1 ->
     JObj (("$type", JStr "SummaryList") :: ("children", JArr (enc_items_l_node f0)) :: (match f1 with | None -> [] | Some w -> ("heading", enc_u_text_source w) :: []))
   | C__vkind__Toast f0 f1 f2 f3 ->
-    JObj (("$type", JStr "Toast") :: (let s1 = sfx_vkind__Toast__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f3) ([]) in let s0 = sfx_vkind__Toast__dismissable #num #flt (enc_dflt_bool #num #flt (true) f0) (("message", enc_u_text_source f1) :: ("open", enc_u_binding__bool f2) :: s1) in s0))
+    JObj ((let s1 = sfx_vkind__Toast__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f3) ([]) in let s0 = sfx_vkind__Toast__dismissable #num #flt (enc_dflt_bool #num #flt (true) f0) (("message", enc_u_text_source f1) :: ("open", enc_u_binding__bool f2) :: s1) in ("$type", JStr "Toast") :: s0))
 
 and enc_r_accessibility (#num #flt: eqtype) (x: r_accessibility num flt) : Tot (jval num flt) (decreases x) =
   match x with
@@ -1308,7 +1312,7 @@ and enc_u_binding__bool (#num #flt: eqtype) (x: u_binding__bool num flt) : Tot (
   | C__u_binding__bool__Filter f0 f1 ->
     JObj (("$type", JStr "Filter") :: (match f0 with | None -> ("name", JStr f1) :: [] | Some w -> ("defaultValue", JBool w) :: ("name", JStr f1) :: []))
   | C__u_binding__bool__Selection f0 f1 f2 ->
-    JObj (("$type", JStr "Selection") :: (let s1 = sfx_u_binding__bool__Selection__field #num #flt (enc_opt_str #num #flt f1) (("nodeId", JStr f2) :: []) in let s0 = sfx_u_binding__bool__Selection__default_value #num #flt (enc_opt_bool #num #flt f0) (s1) in s0))
+    JObj ((let s1 = sfx_u_binding__bool__Selection__field #num #flt (enc_opt_str #num #flt f1) (("nodeId", JStr f2) :: []) in let s0 = sfx_u_binding__bool__Selection__default_value #num #flt (enc_opt_bool #num #flt f0) (s1) in ("$type", JStr "Selection") :: s0))
   | C__u_binding__bool__State f0 f1 ->
     JObj (("$type", JStr "State") :: (match f0 with | None -> ("key", JStr f1) :: [] | Some w -> ("defaultValue", JBool w) :: ("key", JStr f1) :: []))
   | C__u_binding__bool__Now f0 ->
@@ -1316,7 +1320,7 @@ and enc_u_binding__bool (#num #flt: eqtype) (x: u_binding__bool num flt) : Tot (
   | C__u_binding__bool__Computed f0 ->
     JObj (("$type", JStr "Computed") :: ("fn", JStr "<closure>") :: [])
   | C__u_binding__bool__Local f0 f1 f2 f3 f4 f5 f6 ->
-    JObj (("$type", JStr "Local") :: (let s2 = sfx_u_binding__bool__Local__on_commit #num #flt (enc_opt_closure #num #flt f5) (("parse", JStr "<closure>") :: []) in let s1 = sfx_u_binding__bool__Local__commit_to #num #flt (enc_opt_str #num #flt f1) (("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__bool f4) :: s2) in let s0 = sfx_u_binding__bool__Local__codec #num #flt (enc_opt_u_format #num #flt f0) (s1) in s0))
+    JObj ((let s2 = sfx_u_binding__bool__Local__on_commit #num #flt (enc_opt_closure #num #flt f5) (("parse", JStr "<closure>") :: []) in let s1 = sfx_u_binding__bool__Local__commit_to #num #flt (enc_opt_str #num #flt f1) (("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__bool f4) :: s2) in let s0 = sfx_u_binding__bool__Local__codec #num #flt (enc_opt_u_format #num #flt f0) (s1) in ("$type", JStr "Local") :: s0))
   | C__u_binding__bool__Format f0 f1 f2 ->
     JObj (("$type", JStr "Format") :: ("format", enc_u_format f0) :: ("locale", enc_u_locale_source f1) :: ("source", enc_u_binding__flt f2) :: [])
   | C__u_binding__bool__I18n f0 f1 ->
@@ -1348,7 +1352,7 @@ and enc_u_format (#num #flt: eqtype) (x: u_format num flt) : Tot (jval num flt) 
   | C__u_format__Percent f0 ->
     JObj (("$type", JStr "Percent") :: (match f0 with | None -> [] | Some w -> ("decimals", JInt w) :: []))
   | C__u_format__DateTime f0 f1 ->
-    JObj (("$type", JStr "DateTime") :: (let s1 = sfx_u_format__DateTime__time_style #num #flt (enc_opt_e_time_style #num #flt f1) ([]) in let s0 = sfx_u_format__DateTime__date_style #num #flt (enc_opt_e_date_style #num #flt f0) (s1) in s0))
+    JObj ((let s1 = sfx_u_format__DateTime__time_style #num #flt (enc_opt_e_time_style #num #flt f1) ([]) in let s0 = sfx_u_format__DateTime__date_style #num #flt (enc_opt_e_date_style #num #flt f0) (s1) in ("$type", JStr "DateTime") :: s0))
   | C__u_format__RelativeTime f0 ->
     JObj (("$type", JStr "RelativeTime") :: ("unit", enc_e_relative_time_unit f0) :: [])
   | C__u_format__Duration f0 f1 ->
@@ -1365,7 +1369,7 @@ and enc_u_binding__flt (#num #flt: eqtype) (x: u_binding__flt num flt) : Tot (jv
   | C__u_binding__flt__Filter f0 f1 ->
     JObj (("$type", JStr "Filter") :: (match f0 with | None -> ("name", JStr f1) :: [] | Some w -> ("defaultValue", JFloat w) :: ("name", JStr f1) :: []))
   | C__u_binding__flt__Selection f0 f1 f2 ->
-    JObj (("$type", JStr "Selection") :: (let s1 = sfx_u_binding__flt__Selection__field #num #flt (enc_opt_str #num #flt f1) (("nodeId", JStr f2) :: []) in let s0 = sfx_u_binding__flt__Selection__default_value #num #flt (enc_opt_flt #num #flt f0) (s1) in s0))
+    JObj ((let s1 = sfx_u_binding__flt__Selection__field #num #flt (enc_opt_str #num #flt f1) (("nodeId", JStr f2) :: []) in let s0 = sfx_u_binding__flt__Selection__default_value #num #flt (enc_opt_flt #num #flt f0) (s1) in ("$type", JStr "Selection") :: s0))
   | C__u_binding__flt__State f0 f1 ->
     JObj (("$type", JStr "State") :: (match f0 with | None -> ("key", JStr f1) :: [] | Some w -> ("defaultValue", JFloat w) :: ("key", JStr f1) :: []))
   | C__u_binding__flt__Now f0 ->
@@ -1373,7 +1377,7 @@ and enc_u_binding__flt (#num #flt: eqtype) (x: u_binding__flt num flt) : Tot (jv
   | C__u_binding__flt__Computed f0 ->
     JObj (("$type", JStr "Computed") :: ("fn", JStr "<closure>") :: [])
   | C__u_binding__flt__Local f0 f1 f2 f3 f4 f5 f6 ->
-    JObj (("$type", JStr "Local") :: (let s2 = sfx_u_binding__flt__Local__on_commit #num #flt (enc_opt_closure #num #flt f5) (("parse", JStr "<closure>") :: []) in let s1 = sfx_u_binding__flt__Local__commit_to #num #flt (enc_opt_str #num #flt f1) (("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__flt f4) :: s2) in let s0 = sfx_u_binding__flt__Local__codec #num #flt (enc_opt_u_format #num #flt f0) (s1) in s0))
+    JObj ((let s2 = sfx_u_binding__flt__Local__on_commit #num #flt (enc_opt_closure #num #flt f5) (("parse", JStr "<closure>") :: []) in let s1 = sfx_u_binding__flt__Local__commit_to #num #flt (enc_opt_str #num #flt f1) (("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__flt f4) :: s2) in let s0 = sfx_u_binding__flt__Local__codec #num #flt (enc_opt_u_format #num #flt f0) (s1) in ("$type", JStr "Local") :: s0))
   | C__u_binding__flt__Format f0 f1 f2 ->
     JObj (("$type", JStr "Format") :: ("format", enc_u_format f0) :: ("locale", enc_u_locale_source f1) :: ("source", enc_u_binding__flt f2) :: [])
   | C__u_binding__flt__I18n f0 f1 ->
@@ -1401,7 +1405,7 @@ and enc_u_binding__json (#num #flt: eqtype) (x: u_binding__json num flt) : Tot (
   | C__u_binding__json__Filter f0 f1 ->
     JObj (("$type", JStr "Filter") :: (match f0 with | None -> ("name", JStr f1) :: [] | Some w -> ("defaultValue", w) :: ("name", JStr f1) :: []))
   | C__u_binding__json__Selection f0 f1 f2 ->
-    JObj (("$type", JStr "Selection") :: (let s1 = sfx_u_binding__json__Selection__field #num #flt (enc_opt_str #num #flt f1) (("nodeId", JStr f2) :: []) in let s0 = sfx_u_binding__json__Selection__default_value #num #flt (enc_opt_json #num #flt f0) (s1) in s0))
+    JObj ((let s1 = sfx_u_binding__json__Selection__field #num #flt (enc_opt_str #num #flt f1) (("nodeId", JStr f2) :: []) in let s0 = sfx_u_binding__json__Selection__default_value #num #flt (enc_opt_json #num #flt f0) (s1) in ("$type", JStr "Selection") :: s0))
   | C__u_binding__json__State f0 f1 ->
     JObj (("$type", JStr "State") :: (match f0 with | None -> ("key", JStr f1) :: [] | Some w -> ("defaultValue", w) :: ("key", JStr f1) :: []))
   | C__u_binding__json__Now f0 ->
@@ -1409,7 +1413,7 @@ and enc_u_binding__json (#num #flt: eqtype) (x: u_binding__json num flt) : Tot (
   | C__u_binding__json__Computed f0 ->
     JObj (("$type", JStr "Computed") :: ("fn", JStr "<closure>") :: [])
   | C__u_binding__json__Local f0 f1 f2 f3 f4 f5 f6 ->
-    JObj (("$type", JStr "Local") :: (let s2 = sfx_u_binding__json__Local__on_commit #num #flt (enc_opt_closure #num #flt f5) (("parse", JStr "<closure>") :: []) in let s1 = sfx_u_binding__json__Local__commit_to #num #flt (enc_opt_str #num #flt f1) (("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__json f4) :: s2) in let s0 = sfx_u_binding__json__Local__codec #num #flt (enc_opt_u_format #num #flt f0) (s1) in s0))
+    JObj ((let s2 = sfx_u_binding__json__Local__on_commit #num #flt (enc_opt_closure #num #flt f5) (("parse", JStr "<closure>") :: []) in let s1 = sfx_u_binding__json__Local__commit_to #num #flt (enc_opt_str #num #flt f1) (("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__json f4) :: s2) in let s0 = sfx_u_binding__json__Local__codec #num #flt (enc_opt_u_format #num #flt f0) (s1) in ("$type", JStr "Local") :: s0))
   | C__u_binding__json__Format f0 f1 f2 ->
     JObj (("$type", JStr "Format") :: ("format", enc_u_format f0) :: ("locale", enc_u_locale_source f1) :: ("source", enc_u_binding__flt f2) :: [])
   | C__u_binding__json__I18n f0 f1 ->
@@ -1438,7 +1442,7 @@ and enc_u_binding__str (#num #flt: eqtype) (x: u_binding__str num flt) : Tot (jv
   | C__u_binding__str__Filter f0 f1 ->
     JObj (("$type", JStr "Filter") :: (match f0 with | None -> ("name", JStr f1) :: [] | Some w -> ("defaultValue", JStr w) :: ("name", JStr f1) :: []))
   | C__u_binding__str__Selection f0 f1 f2 ->
-    JObj (("$type", JStr "Selection") :: (let s1 = sfx_u_binding__str__Selection__field #num #flt (enc_opt_str #num #flt f1) (("nodeId", JStr f2) :: []) in let s0 = sfx_u_binding__str__Selection__default_value #num #flt (enc_opt_str #num #flt f0) (s1) in s0))
+    JObj ((let s1 = sfx_u_binding__str__Selection__field #num #flt (enc_opt_str #num #flt f1) (("nodeId", JStr f2) :: []) in let s0 = sfx_u_binding__str__Selection__default_value #num #flt (enc_opt_str #num #flt f0) (s1) in ("$type", JStr "Selection") :: s0))
   | C__u_binding__str__State f0 f1 ->
     JObj (("$type", JStr "State") :: (match f0 with | None -> ("key", JStr f1) :: [] | Some w -> ("defaultValue", JStr w) :: ("key", JStr f1) :: []))
   | C__u_binding__str__Now f0 ->
@@ -1446,7 +1450,7 @@ and enc_u_binding__str (#num #flt: eqtype) (x: u_binding__str num flt) : Tot (jv
   | C__u_binding__str__Computed f0 ->
     JObj (("$type", JStr "Computed") :: ("fn", JStr "<closure>") :: [])
   | C__u_binding__str__Local f0 f1 f2 f3 f4 f5 f6 ->
-    JObj (("$type", JStr "Local") :: (let s2 = sfx_u_binding__str__Local__on_commit #num #flt (enc_opt_closure #num #flt f5) (("parse", JStr "<closure>") :: []) in let s1 = sfx_u_binding__str__Local__commit_to #num #flt (enc_opt_str #num #flt f1) (("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__str f4) :: s2) in let s0 = sfx_u_binding__str__Local__codec #num #flt (enc_opt_u_format #num #flt f0) (s1) in s0))
+    JObj ((let s2 = sfx_u_binding__str__Local__on_commit #num #flt (enc_opt_closure #num #flt f5) (("parse", JStr "<closure>") :: []) in let s1 = sfx_u_binding__str__Local__commit_to #num #flt (enc_opt_str #num #flt f1) (("flushOn", enc_u_local_flush_trigger f2) :: ("format", JStr "<closure>") :: ("initialFrom", enc_u_binding__str f4) :: s2) in let s0 = sfx_u_binding__str__Local__codec #num #flt (enc_opt_u_format #num #flt f0) (s1) in ("$type", JStr "Local") :: s0))
   | C__u_binding__str__Format f0 f1 f2 ->
     JObj (("$type", JStr "Format") :: ("format", enc_u_format f0) :: ("locale", enc_u_locale_source f1) :: ("source", enc_u_binding__flt f2) :: [])
   | C__u_binding__str__I18n f0 f1 ->

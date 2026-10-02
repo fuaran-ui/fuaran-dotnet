@@ -634,11 +634,19 @@ let isEmptySeed (fingerprint: objnull) : bool =
 /// canonical columnar `Table`, through the same path a live Transform source
 /// takes. `None` when the rows do not decode as a table (a ragged row set —
 /// Core's schema inference is deliberately loud rather than patching).
+// Fuaran.Core 0.33.0 marks `RowCodec` obsolete until the UI tier hosts a row codec of
+// its own; the row feed's wire is still `RowCodec`'s (`Generated.fs` reads and writes
+// `source` through it), so this normalisation keeps the same bytes and the directive is
+// scoped to it.
+#nowarn "44"
+
 let private tableOfRows (rows: Fuaran.Core.Row seq) : Fuaran.Core.Table option =
     match HostPrelude.TransformLive.initialSource (Fuaran.Core.RowCodec.encodeRows rows) with
     | Ok(Fuaran.Core.Embedded t) -> Some t
     | Ok(Fuaran.Core.Ref _)
     | Error _ -> None
+
+#warnon "44"
 
 // ─── the live-Transform SITE key (Phase 1586) ────────────────────────────────
 
