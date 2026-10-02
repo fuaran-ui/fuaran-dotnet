@@ -47,6 +47,13 @@
   <PropertyGroup Condition="'$(FuaranCoreVersion)' != '' and $([MSBuild]::VersionGreaterThanOrEquals('$(FuaranCoreVersion)', '0.33.0'))">
     <DefineConstants>$(DefineConstants);CORE_DETERMINISM_SET</DefineConstants>
   </PropertyGroup>
+  <!-- A Core cut at or above 0.34.0 names the capability registry `CapabilityRegistry`, the old
+       `Registry` an obsolete alias (fuaran-core Phase 295), and widens `Footprint` with slot reads and
+       writes (fuaran-core Phase 340). The pin raise to 0.34.0 retires both old arms in Program.fs and
+       this condition with them. -->
+  <PropertyGroup Condition="'$(FuaranCoreVersion)' != '' and $([MSBuild]::VersionGreaterThanOrEquals('$(FuaranCoreVersion)', '0.34.0'))">
+    <DefineConstants>$(DefineConstants);CORE_CAPABILITY_REGISTRY;CORE_FOOTPRINT_SLOTS</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.fs" />
   </ItemGroup>

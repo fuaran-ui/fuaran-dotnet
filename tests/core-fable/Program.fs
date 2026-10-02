@@ -13,7 +13,11 @@ module CoreFable.Program
 // producer from 0.33.0, and a Core candidate is not what they were built against. Every touch that
 // names a compute type or module sits under it. `CORE_DETERMINISM_SET` is defined when a Core cut is
 // at or above 0.33.0, whose `EffectClass.Determinism` is a set of factors (fuaran-core Phase 319);
-// below it the old single-case spelling compiles.
+// below it the old single-case spelling compiles. `CORE_CAPABILITY_REGISTRY` is defined when a Core cut
+// is at or above 0.34.0, where `Registry` is `CapabilityRegistry` and the old name an obsolete alias
+// (fuaran-core Phase 295); below it the old name compiles. `CORE_FOOTPRINT_SLOTS` is defined at the same
+// cut, where `Footprint` carries slot reads and writes (fuaran-core Phase 340) and is built from
+// `Footprint.empty`; below it the four-field literal compiles.
 //
 // With `CORE_PARITY` defined (see `core-fable.ps1`), the program is also the VALUE leg: `--vectors`
 // prints `Fuaran.Core.ParityVectors.lines ()` — the cross-pipeline table the conformance kit ships
@@ -70,11 +74,23 @@ let private functionTouch =
     // retyped `Registry.dispatch` has to compile under Fable too. Named deliberately, because
     // `Function.toJsonSchema` alone reached neither dispatcher.
     let cap = Capability.create "c" sg (ClientIsland Fable)
+#if CORE_CAPABILITY_REGISTRY
+    let reg =
+        CapabilityRegistry.empty
+        |> CapabilityRegistry.register cap
+        |> Result.toOption
+        |> Option.get
+#else
     let reg = Registry.empty |> Registry.register cap |> Result.toOption |> Option.get
+#endif
     let body (_: Capability) () : Deferred<string> = Pending
 
     let dispatched =
+#if CORE_CAPABILITY_REGISTRY
+        match CapabilityRegistry.dispatch reg "c" [] body with
+#else
         match Registry.dispatch reg "c" [] body with
+#endif
         | Ok Pending -> "pending"
         | Ok other -> sprintf "%A" other
         | Error e -> sprintf "%A" e
@@ -245,9 +261,9 @@ let private projectionTouch =
         { Id = "r"
           Kids = [ { Id = "c"; Kids = [] } ] }
 
-    let p = Projection.project pw Whole root
+    let p = Projection.project pw Scope.Whole root
     let snap = Projection.snapshot pw root
-    let changed = Projection.project pw (ChangedSince snap) root
+    let changed = Projection.project pw (Scope.ChangedSince snap) root
 
     match Projection.parseBack pw (Projection.render p) with
     | Ok _ -> sprintf "%d/%d" (Projection.sizeOf p) (List.length changed.Lines)
@@ -320,7 +336,7 @@ let private aiSurfaceTouch =
                 Title = "Add"
                 PromptAnchors = [ "add {x}" ]
                 Emit = fun _ -> Ok [ "op" ] } ]
-          Decide = fun _ _ -> Allow
+          Decide = fun _ _ -> PolicyDecision.Allow
           Apply = fun op s -> Ok(s @ [ op ])
           Explain = fun m -> { Message = m; Alternatives = [] } }
 
@@ -356,12 +372,13 @@ let private idlTouch =
                       Type = TFloat
                       Opt = Optional
                       Annotations =
-                        { Deprecated =
-                            Some
-                                { Replacement = Some "text"
-                                  Message = Some "carried by the text slot since 0.18.0" }
-                          InProcessOnly = false
-                          Since = Some "0.18.0" } } ] }
+                        { Annotations.Empty with
+                            Deprecated =
+                                Some
+                                    { Replacement = Some "text"
+                                      Message = Some "carried by the text slot since 0.18.0" }
+                            InProcessOnly = false
+                            Since = Some "0.18.0" } } ] }
               { Tag = "Box"
                 Category = "container"
                 Annotations = Annotations.Empty
@@ -434,10 +451,18 @@ let private foldConfluenceTouch =
     let noAddr: Set<string> = Set.empty
 
     let fp (_: string) : Footprint =
+#if CORE_FOOTPRINT_SLOTS
+        { Footprint.empty with
+            Reads = noAddr
+            StructureWrites = noAddr
+            ContentWrites = noAddr
+            UnknownParentWrites = noAddr }
+#else
         { Reads = noAddr
           StructureWrites = noAddr
           ContentWrites = noAddr
           UnknownParentWrites = noAddr }
+#endif
 
     let gen: LaneGen<string, string> =
         { State0 = ""
