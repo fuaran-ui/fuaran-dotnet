@@ -23,7 +23,7 @@
 
 #I "../../src/Fuaran.UI.JsonDecode.Tests/bin/Release/net10.0"
 #r "Fuaran.Core.Column.dll"
-#r "Fuaran.Core.DataFrame.dll"
+#r "Fuaran.Compute.DataFrame.dll"
 #r "Fuaran.Core.Function.dll"
 #r "Fuaran.Core.Ops.dll"
 #r "Fuaran.Core.Tree.dll"

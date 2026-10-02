@@ -79,6 +79,7 @@ module Fuaran.UI.Ops.JsonDecode
 
 open System
 open Fuaran.Core
+open Fuaran.Compute
 open Fuaran.UI.Types
 open Fuaran.UI.KindPolicy
 open Fuaran.UI.Ops.Types
@@ -2479,46 +2480,51 @@ let private decodeIconSource (path: string) (j: Json) : Result<IconSource, Decod
 /// one of them wants the second. That is also why the walk no longer stops on
 /// `sawCol` — short-circuiting on it would UNDER-count, which on the pipeline
 /// caller would silently admit a bypass vector rather than refuse it.
-let private scanExpr (expr: Fuaran.Core.ColExpr) : struct (int * bool) =
+let private scanExpr (expr: Fuaran.Compute.ColExpr) : struct (int * bool) =
     let mutable count = 0
     let mutable sawCol = false
 
-    let rec walk (e: Fuaran.Core.ColExpr) =
+    let rec walk (e: Fuaran.Compute.ColExpr) =
         count <- count + 1
 
         if count <= Fuaran.UI.WireLimits.MaxExprNodes then
             match e with
-            | Fuaran.Core.Col _ -> sawCol <- true
-            | Fuaran.Core.ColExpr.Lit _
-            | Fuaran.Core.ColExpr.Param _
+            | Fuaran.Compute.Col _ -> sawCol <- true
+            | Fuaran.Compute.ColExpr.Lit _
+            | Fuaran.Compute.ColExpr.Param _
             // A `now` literal at a grain (Core 0.23.0) is a leaf: no column, no children.
-            | Fuaran.Core.Now _ -> ()
-            | Fuaran.Core.Binary(_, l, r) ->
+            | Fuaran.Compute.Now _ -> ()
+            | Fuaran.Compute.Binary(_, l, r) ->
                 walk l
                 walk r
-            | Fuaran.Core.Not x
-            | Fuaran.Core.Cast(_, x)
-            | Fuaran.Core.IsNull x -> walk x
-            | Fuaran.Core.Coalesce xs
-            | Fuaran.Core.ApplyFn(_, xs) -> List.iter walk xs
-            | Fuaran.Core.Case(cases, elseExpr) ->
+            | Fuaran.Compute.Not x
+            | Fuaran.Compute.Cast(_, x)
+            | Fuaran.Compute.IsNull x -> walk x
+            | Fuaran.Compute.Coalesce xs
+            | Fuaran.Compute.ApplyFn(_, xs) -> List.iter walk xs
+            | Fuaran.Compute.Case(cases, elseExpr) ->
                 cases
                 |> List.iter (fun (w, t) ->
                     walk w
                     walk t)
 
                 walk elseExpr
-            | Fuaran.Core.InList(x, items) ->
+            | Fuaran.Compute.InList(x, items) ->
                 walk x
                 List.iter walk items
-            | Fuaran.Core.InParam(x, _) -> walk x
+            | Fuaran.Compute.InParam(x, _) -> walk x
+            // The decimal arithmetic cases (Fuaran.Compute 0.36.0, its Phase 277).
+            | Fuaran.Compute.Quotient(dividend, divisor, _) ->
+                walk dividend
+                walk divisor
+            | Fuaran.Compute.Rounded(x, _) -> walk x
 
     walk expr
     struct (count, sawCol)
 
 /// Fuaran-UI Phase 1534 — the two structural rules a `Binding.Expr`'s
 /// expression must satisfy, checked once at decode over the whole tree.
-let private exprAdmissible (path: string) (expr: Fuaran.Core.ColExpr) : Result<unit, DecodeError> =
+let private exprAdmissible (path: string) (expr: Fuaran.Compute.ColExpr) : Result<unit, DecodeError> =
     let struct (count, sawCol) = scanExpr expr
 
     if sawCol then
@@ -2558,8 +2564,11 @@ let private exprAdmissible (path: string) (expr: Fuaran.Core.ColExpr) : Result<u
 /// at the path of the offending `pred` / `expr` member, so an author repairing
 /// the document is told which step to come back under; the FIRST breach wins,
 /// on the ordinary "one error, named precisely" discipline.
-let private pipelineExprsAdmissible (path: string) (pipeline: Fuaran.Core.Transform list) : Result<unit, DecodeError> =
-    let breach (slot: string) (i: int) (expr: Fuaran.Core.ColExpr) =
+let private pipelineExprsAdmissible
+    (path: string)
+    (pipeline: Fuaran.Compute.Transform list)
+    : Result<unit, DecodeError> =
+    let breach (slot: string) (i: int) (expr: Fuaran.Compute.ColExpr) =
         let struct (count, _) = scanExpr expr
 
         if count > Fuaran.UI.WireLimits.MaxExprNodes then
@@ -2581,8 +2590,8 @@ let private pipelineExprsAdmissible (path: string) (pipeline: Fuaran.Core.Transf
     |> List.indexed
     |> List.tryPick (fun (i, step) ->
         match step with
-        | Fuaran.Core.Filter pred -> breach "pred" i pred
-        | Fuaran.Core.Derive(_, expr) -> breach "expr" i expr
+        | Fuaran.Compute.Filter pred -> breach "pred" i pred
+        | Fuaran.Compute.Derive(_, expr) -> breach "expr" i expr
         | _ -> None)
     |> Option.map Error
     |> Option.defaultValue (Ok())
@@ -3128,7 +3137,7 @@ and private bindingGeneric<'T>
                 |> Result.map (fun (source, (format, locale)) -> Binding.Format(source, format, locale))
             | Ok "Transform" ->
                 // Phase 282 — the Compute layer. `source` (a `Fuaran.Core.DataSource`) and `pipeline`
-                // (a `Fuaran.Core.DataFrame` `Transform list`) decode through the `Fuaran.Core` codecs,
+                // (a `Fuaran.Compute.DataFrame` `Transform list`) decode through the `Fuaran.Core` codecs,
                 // which share this host's `Canon` `$type` discipline. Bridge the parsed `Json` sub-tree
                 // to `Fuaran.Core.JVal` and hand it to Core's JVal decoders. Types as `Binding<'T>` for
                 // any `'T` (the case doesn't constrain it); semantically resolves in a `Binding<obj seq>`
@@ -3230,7 +3239,7 @@ and private bindingGeneric<'T>
                     pipeJR
                     |> Result.bind (jsonToJVal 1 (path + ".pipeline"))
                     |> Result.bind (fun v ->
-                        Fuaran.Core.DataFrameCodec.decodePipelineJson v
+                        Fuaran.Compute.DataFrameCodec.decodePipelineJson v
                         |> Result.mapError (coreError (path + ".pipeline")))
                     |> Result.bind (fun pipeline ->
                         pipelineExprsAdmissible path pipeline |> Result.map (fun () -> pipeline))
@@ -3241,7 +3250,7 @@ and private bindingGeneric<'T>
                 |> Result.map (fun (source, (pipeline, ps)) ->
                     Binding.Transform(source, pipeline, (if List.isEmpty ps then None else Some ps)))
             // Fuaran-UI Phase 1534 — the scalar expression binding. `expr` is one
-            // `Fuaran.Core.ColExpr` in Core's own encoding, `params` the same
+            // `Fuaran.Compute.ColExpr` in Core's own encoding, `params` the same
             // name→binding list `Transform` carries and in the same shape (the
             // §3.6 map coercion included), so an author who knows one knows the
             // other and there is one param concept rather than two.
@@ -3273,7 +3282,7 @@ and private bindingGeneric<'T>
                     requireField path fields "expr" "ColExpr object"
                     |> Result.bind (jsonToJVal 1 (path + ".expr"))
                     |> Result.bind (fun v ->
-                        Fuaran.Core.DataFrameCodec.decodeExpr v
+                        Fuaran.Compute.DataFrameCodec.decodeExpr v
                         |> Result.mapError (coreError (path + ".expr")))
                     |> Result.bind (fun expr -> exprAdmissible (path + ".expr") expr |> Result.map (fun () -> expr))
 
@@ -3285,7 +3294,7 @@ and private bindingGeneric<'T>
                         let bound = ps |> List.map (fun p -> p.Name) |> Set.ofList
 
                         match
-                            Fuaran.Core.ColExpr.paramsOf expr
+                            Fuaran.Compute.ColExpr.paramsOf expr
                             |> List.filter (fun n -> not (Set.contains n bound))
                         with
                         | [] -> Ok(Binding.Expr(expr, (if List.isEmpty ps then None else Some ps)))

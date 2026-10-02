@@ -4,6 +4,7 @@ open System
 open System.IO
 open Expecto
 open Fuaran.Core
+open Fuaran.Compute
 open Fuaran.UI.ServerDriven
 
 // ============================================================================
@@ -160,7 +161,7 @@ let private stepOf (j: JVal) : Transform =
             |> field "by"
             |> asArr
             |> List.map (fun b ->
-                Fuaran.Core.Slot.Lit(asStr (field "column" b)), sortDirOf (asStr (field "direction" b)))
+                Fuaran.Compute.Slot.Lit(asStr (field "column" b)), sortDirOf (asStr (field "direction" b)))
         )
     | "window" ->
         let fn =

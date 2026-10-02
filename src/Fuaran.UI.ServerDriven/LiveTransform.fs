@@ -1,6 +1,8 @@
 namespace Fuaran.UI.ServerDriven
 
 open Fuaran.Core
+
+open Fuaran.Compute
 open Fuaran.UI.FragmentMemo
 
 // ============================================================================

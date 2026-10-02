@@ -45,6 +45,7 @@ module CanonicalJson = Fuaran.UI.OpStream.Abstractions.CanonicalJson
 open Fuaran.UI.OpStream.Abstractions
 module CoreStream = Fuaran.Core.OpStream
 module CoreConf = Fuaran.Core.Conformance
+module ComputeConf = Fuaran.Compute.Conformance
 module CoreRng = Fuaran.Core.ConfRng
 // Phase 1878 — the Cases-column registry; the runs below register into it at module init.
 module LawCases = Fuaran.UI.Tests.LawCases
@@ -599,6 +600,8 @@ module Columnar =
 
     open Fuaran.Core
 
+    open Fuaran.Compute
+
     /// One seed for every family and every tier-shaped test below, so a failure
     /// anywhere reproduces from a single number.
     let private lawSeed = 20260904
@@ -731,7 +734,7 @@ module Columnar =
     /// Chosen to reach the three schema-shaping directions the walk must model:
     /// unchanged, appending, and closing.
     let private refinementMenu: (string * Transform list) list =
-        [ "sort", [ Sort [ Fuaran.Core.Slot.Lit "headcount", Asc ] ]
+        [ "sort", [ Sort [ Fuaran.Compute.Slot.Lit "headcount", Asc ] ]
           "filter", [ Filter(Binary(Gt, Col "headcount", Lit(Int 4))) ]
           "derive", [ Derive("total", Binary(Add, Col "headcount", Lit(Int 1))) ]
           "project", [ Project [ "dept", "dept"; "spend", "cost" ] ]
@@ -751,13 +754,13 @@ module Columnar =
     //  initialisation for the same reason the outer module's block is (LawCases.fs's header).
     // -----------------------------------------------------------------------
 
-    let private columnarOpResults = CoreConf.columnarOpLaws lawSeed 100
+    let private columnarOpResults = ComputeConf.columnarOpLaws lawSeed 100
 
     let private columnarOpRun =
         LawCases.adopt [ "Conformance.columnarOpLaws" ] 100 (fun _ -> columnarOpResults)
 
     let private columnarOpWithResults =
-        CoreConf.columnarOpLawsWith ColumnOps.invert CoreConf.columnarOpStreamGen lawSeed 100
+        ComputeConf.columnarOpLawsWith ColumnOps.invert ComputeConf.columnarOpStreamGen lawSeed 100
 
     let private columnarOpWithRun =
         LawCases.adopt [ "Conformance.columnarOpLawsWith" ] 100 (fun _ -> columnarOpWithResults)
@@ -767,7 +770,7 @@ module Columnar =
     let private columnarValidatorRun =
         LawCases.adopt [ "Conformance.columnarValidatorLaws" ] 100 (fun _ -> columnarValidatorResults)
 
-    let private aggregateParityResults = CoreConf.aggregateParityLaws lawSeed 100
+    let private aggregateParityResults = ComputeConf.aggregateParityLaws lawSeed 100
 
     let private aggregateParityRun =
         LawCases.adopt [ "Conformance.aggregateParityLaws" ] 100 (fun _ -> aggregateParityResults)
@@ -777,7 +780,7 @@ module Columnar =
     let private aggregateNullSkipRun =
         LawCases.adopt [ "Conformance.aggregateNullSkipLaws" ] 100 (fun _ -> aggregateNullSkipResults)
 
-    let private schemaWalkResults = CoreConf.schemaWalkLaws lawSeed 100
+    let private schemaWalkResults = ComputeConf.schemaWalkLaws lawSeed 100
 
     let private schemaWalkRun =
         LawCases.adopt [ "Conformance.schemaWalkLaws" ] 100 (fun _ -> schemaWalkResults)

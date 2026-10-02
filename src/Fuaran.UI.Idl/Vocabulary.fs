@@ -687,10 +687,10 @@ let private binding =
                     "pipeline"
                     (TList(
                         THosted
-                            { FSharp = "Fuaran.Core.Transform"
-                              Encode = "Fuaran.Core.DataFrameCodec.encodeTransform"
+                            { FSharp = "Fuaran.Compute.Transform"
+                              Encode = "Fuaran.Compute.DataFrameCodec.encodeTransform"
                               Decode =
-                                "(fun __j -> Fuaran.Core.DataFrameCodec.decodeTransform __j |> Result.mapError string)"
+                                "(fun __j -> Fuaran.Compute.DataFrameCodec.decodeTransform __j |> Result.mapError string)"
                               Wire = None
                               Format = None }
                     ))
@@ -722,9 +722,9 @@ let private binding =
               [ req
                     "expr"
                     (THosted
-                        { FSharp = "Fuaran.Core.ColExpr"
-                          Encode = "Fuaran.Core.DataFrameCodec.encodeExpr"
-                          Decode = "(fun __j -> Fuaran.Core.DataFrameCodec.decodeExpr __j |> Result.mapError string)"
+                        { FSharp = "Fuaran.Compute.ColExpr"
+                          Encode = "Fuaran.Compute.DataFrameCodec.encodeExpr"
+                          Decode = "(fun __j -> Fuaran.Compute.DataFrameCodec.decodeExpr __j |> Result.mapError string)"
                           Wire = None
                           Format = None })
                 opt "params" (TList(TRecord "TransformParam")) ]

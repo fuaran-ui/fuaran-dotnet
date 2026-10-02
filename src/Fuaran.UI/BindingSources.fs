@@ -46,7 +46,7 @@ open Fuaran.UI.Types
 /// design and worth keeping. Whatever holds a session holds the store — a tier
 /// two packages above this one — so the SEAM is declared here, where
 /// `BindingSources` can name it, and the implementation stays where the session
-/// is. Typed over `Fuaran.Core.DataFrame` alone, which this package already
+/// is. Typed over `Fuaran.Compute.DataFrame` alone, which this package already
 /// references for `Binding.Transform`, so declaring it adds no dependency.
 ///
 /// WHAT AN IMPLEMENTATION MUST PROMISE, AND WHAT IT NEED NOT. It must promise
@@ -75,7 +75,7 @@ type ILiveTransformStore =
     /// Evaluate `pipeline` over `source` for the reader identified by `site`,
     /// reusing and updating whatever primed state the store holds for it.
     abstract Evaluate:
-        site: string * pipeline: Fuaran.Core.Transform list * source: Fuaran.Core.Table ->
+        site: string * pipeline: Fuaran.Compute.Transform list * source: Fuaran.Core.Table ->
             Result<Fuaran.Core.Table, string>
 
 /// Data sources the renderer consults when it encounters a binding.

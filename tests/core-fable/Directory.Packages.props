@@ -34,8 +34,9 @@
   <!-- The second producer (the compute repository, from 0.33.0). The script's `$ComputeOwned` list
        names the same three ids; keep the two in step. -->
   <ItemGroup Condition="'$(CoreFableComputeVersion)' != ''">
-    <PackageVersion Update="Fuaran.Core.DataFrame" Version="$(CoreFableComputeVersion)" />
-    <PackageVersion Update="Fuaran.Core.Column.Ops" Version="$(CoreFableComputeVersion)" />
-    <PackageVersion Update="Fuaran.Core.DataFrame.Conformance" Version="$(CoreFableComputeVersion)" />
+    <PackageVersion Update="Fuaran.Compute.DataFrame" Version="$(CoreFableComputeVersion)" />
+    <PackageVersion Update="Fuaran.Compute.ColumnOps" Version="$(CoreFableComputeVersion)" />
+    <PackageVersion Update="Fuaran.Compute.Conformance" Version="$(CoreFableComputeVersion)" />
+    <PackageVersion Update="Fuaran.Compute.PipelineQuery" Version="$(CoreFableComputeVersion)" />
   </ItemGroup>
 </Project>

@@ -11,8 +11,12 @@
          namespaces; the Fuaran.Core repository's last emission of those three was 0.32.0. Their
          versions move on the compute repository's line and every other Fuaran.Core.* pin below
          moves on Fuaran.Core's: one version per PRODUCING repository, so a cut of either never
-         drags the other's pins with it. 0.33.0 and 0.34.0 are additive over 0.32.0 for all three. -->
-    <FuaranCoreComputeVersion>0.34.0</FuaranCoreComputeVersion>
+         drags the other's pins with it. 0.33.0 and 0.34.0 are additive over 0.32.0 for all three.
+         From 0.36.0 the producer ships them under their own ids and the `Fuaran.Compute` namespace
+         (Fuaran.Compute.DataFrame / .ColumnOps / .Conformance; the old ids stop at 0.34.0, built on
+         Core 0.32.0). 0.37.0 is the first built on Fuaran.Core 0.34.0, which the Core pins below
+         require. -->
+    <FuaranCoreComputeVersion>0.37.0</FuaranCoreComputeVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="FSharp.Core" Version="10.1.300" />
@@ -108,14 +112,14 @@
          the kit it was split from. Its C# half, Fuaran.Core.DataFrame.CSharp, is not pinned: no F# tier
          here authors pipelines through the C# facade. From 0.33.0 it ships from the compute
          repository, on FuaranCoreComputeVersion (top of file), like DataFrame and Column.Ops. -->
-    <PackageVersion Include="Fuaran.Core.DataFrame.Conformance" Version="$(FuaranCoreComputeVersion)" />
+    <PackageVersion Include="Fuaran.Compute.Conformance" Version="$(FuaranCoreComputeVersion)" />
     <!-- Fuaran.Core Compute strand — consumed by SHIPPING Fuaran.UI.* (Phase 282/Wave 42, the
          core-ui-spine-unification beachhead): the typed surface (Fuaran.UI), the wire codec seam
          (Fuaran.UI.OpStream.Abstractions encode + Fuaran.UI.Ops decode), and the evaluator
          (Fuaran.UI.Ops, delegating to Fuaran.Core.DataFrame). Fable-distributed (source-packed) so
          the Fable client compiles them; the wire serialises in the shared Canon `$type` discipline. -->
     <PackageVersion Include="Fuaran.Core.Column" Version="0.34.0" />
-    <PackageVersion Include="Fuaran.Core.DataFrame" Version="$(FuaranCoreComputeVersion)" />
+    <PackageVersion Include="Fuaran.Compute.DataFrame" Version="$(FuaranCoreComputeVersion)" />
     <!-- Fuaran.Core.Wire — the canonical JVal JSON AST. Surfaced directly in the
          Fuaran.UI type contract (Custom props / action payloads / I18n args) and in
          TreeOp.UpdateProp's PropValue.Wire case. Already transitive via Column's
@@ -152,6 +156,9 @@
     <PackageVersion Include="Fuaran.Core.Query" Version="0.34.0" />
     <PackageVersion Include="Fuaran.Core.Projection" Version="0.34.0" />
     <PackageVersion Include="Fuaran.Core.AiSurface" Version="0.34.0" />
-    <PackageVersion Include="Fuaran.Core.Column.Ops" Version="$(FuaranCoreComputeVersion)" />
+    <PackageVersion Include="Fuaran.Compute.ColumnOps" Version="$(FuaranCoreComputeVersion)" />
+    <!-- Test-only, for tests/core-fable: the fourth package the compute producer ships (from 0.36.0),
+         which Fuaran.Compute.Conformance references. No shipped Fuaran.UI.* package references it. -->
+    <PackageVersion Include="Fuaran.Compute.PipelineQuery" Version="$(FuaranCoreComputeVersion)" />
   </ItemGroup>
 </Project>

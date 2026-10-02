@@ -646,7 +646,7 @@ let private defs: (string * J) list =
       // lost a task to `source.pipeline: missing field: fn` — a `window` step
       // with no `fn` — which is exactly what a typed union refuses.
       //
-      // The steps are `Fuaran.Core.Transform` cases (the `Fuaran.Core.DataFrame` package), tagged by
+      // The steps are `Fuaran.Compute.Transform` cases (the `Fuaran.Compute.DataFrame` package), tagged by
       // `DataFrameCodec.encodeTransform` / read back by `decodeTransform`; the
       // tags below are that DU's, and `SchemaConformanceTests` pins the union
       // EXHAUSTIVE against the DU itself (reflection over its cases), so a case

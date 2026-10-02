@@ -779,7 +779,9 @@
          Result<_, DecodeError> where they answered Result<_, string>
          (Fuaran.UI.Generated.decodeNode among them), and every shipped
          Fuaran.UI.* package now depends on a Core line that is itself breaking
-         over 0.32.0. Being of a higher class than the untagged ADDITIVE 0.89.0
+         over 0.32.0. The same slot moves the compute packages to their own ids
+         (Fuaran.Compute.* 0.37.0, the first built on Core 0.34.0) and the
+         Fuaran.Compute namespace. Being of a higher class than the untagged ADDITIVE 0.89.0
          draft, it ADVANCES the number rather than riding it; 0.89.0 is superseded
          before release and everything it carried rides here. An UNTAGGED DRAFT:
          additive changes ride it, a higher class advances it. See STABILITY.md

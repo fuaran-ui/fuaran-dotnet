@@ -54,12 +54,14 @@ module Fuaran.UI.ServerDriven.Tests.CoreIncrementalLawsTests
 
 open Expecto
 open Fuaran.Core
+open Fuaran.Compute
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.ServerDriven
 
 module CoreConf = Fuaran.Core.Conformance
-module CoreIncr = Fuaran.Core.IncrementalDelta
+module ComputeConf = Fuaran.Compute.Conformance
+module CoreIncr = Fuaran.Compute.IncrementalDelta
 
 /// Shared with the sibling adoption files: a law family reports per-law verdicts, and a run that
 /// looked at the list without failing on it would be a green test over a red family.
@@ -122,7 +124,7 @@ let private pipelines: (string * Transform list) list =
       [ Filter(Binary(Gt, Col "a", Lit(Int 0)))
         GroupBy([ "b" ], [ { Name = "n"; Fn = Count; Of = "a" } ]) ]
       "sort then filter (merged order)",
-      [ Sort [ Fuaran.Core.Slot.Lit "a", Asc ]
+      [ Sort [ Fuaran.Compute.Slot.Lit "a", Asc ]
         Filter(Binary(Gt, Col "a", Lit(Int 1))) ]
       "partitioned window (bounded frame)",
       [ Window
@@ -146,7 +148,7 @@ let private pipelines: (string * Transform list) list =
       // as the DECLINE class until that pin, and it is kept — renamed — because the class it
       // reaches moved rather than disappeared, and an admitted verb that nothing drew would be an
       // admission this tier never exercised.
-      "limit (restricted — top-N over literal bounds)", [ Limit(Fuaran.Core.Slot.Lit 3, Fuaran.Core.Slot.Lit 0) ]
+      "limit (restricted — top-N over literal bounds)", [ Limit(Fuaran.Compute.Slot.Lit 3, Fuaran.Compute.Slot.Lit 0) ]
       // A window over the WHOLE frame with a running aggregate. Its name claimed a decline until
       // 2026-09-19 and it had not declined for several substrate versions — measured at 0.26.0 and
       // 0.27.0 alike, it plans `RowLocal` — so the label is corrected to what it does. It stays for
@@ -512,7 +514,7 @@ let tests =
                     // consumes. Enrolled here rather than called unused because the tier's live
                     // path IS incremental dataframe evaluation; the census row records that
                     // reasoning where the next reader will look for it.
-                    CoreConf.incrementalLaws seed iterations
+                    ComputeConf.incrementalLaws seed iterations
                     |> assertAllPassed "Conformance.incrementalLaws"
 
                 testCase "dirtyPropagationLaws certifies the propagation seam's cone at this pin"
@@ -530,7 +532,7 @@ let tests =
                     // `ColExpr.Param` reads. Self-contained over Core's own pipelines; enrolled
                     // because the live-Transform seam this tier consumes is where such a param
                     // would be bound.
-                    CoreConf.slotParamLaws seed iterations
+                    ComputeConf.slotParamLaws seed iterations
                     |> assertAllPassed "Conformance.slotParamLaws"
 
                 testCase "nowLaws certifies the pinned evaluation clock at this pin"
@@ -538,7 +540,7 @@ let tests =
                     // The other Phase-125 ask: a `now` literal at a grain evaluates under a pinned
                     // `ClockWitness` and never reads the host's clock — the determinism this
                     // tier's byte-stable projections rest on. Self-contained, same posture.
-                    CoreConf.nowLaws seed iterations |> assertAllPassed "Conformance.nowLaws" ]
+                    ComputeConf.nowLaws seed iterations |> assertAllPassed "Conformance.nowLaws" ]
 
           // ---- (a) + (b) over the tier's own live path ----
 

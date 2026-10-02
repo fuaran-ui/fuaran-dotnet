@@ -5,6 +5,7 @@ using FsTypes = Fuaran.UI.Types;
 using FsGen = Fuaran.UI.Generated;
 using FsJVal = global::Fuaran.Core.JVal;
 using FsCore = global::Fuaran.Core;
+using FsCompute = global::Fuaran.Compute;
 
 namespace Fuaran.UI.CSharp;
 
@@ -261,7 +262,7 @@ public static class Binding
     /// </remarks>
     public static Binding<T> Transform<T>(
         TransformSource source,
-        IEnumerable<FsCore.Transform> pipeline,
+        IEnumerable<FsCompute.Transform> pipeline,
         IEnumerable<(string Name, Binding<Payload> From)>? parameters = null) =>
         new(FsGen.Binding<T>.NewTransform(
             source.Inner,
@@ -276,11 +277,11 @@ public static class Binding
     /// value rather than a frame.
     /// </summary>
     /// <remarks>
-    /// The expression is <c>Fuaran.Core.ColExpr</c> for the reason
+    /// The expression is <c>Fuaran.Compute.ColExpr</c> for the reason
     /// <see cref="Transform{T}"/>'s pipeline is Core's: one algebra, one spelling.
     /// </remarks>
     public static Binding<T> Expr<T>(
-        FsCore.ColExpr expr,
+        FsCompute.ColExpr expr,
         IEnumerable<(string Name, Binding<Payload> From)>? parameters = null) =>
         new(FsGen.Binding<T>.NewExpr(
             expr,

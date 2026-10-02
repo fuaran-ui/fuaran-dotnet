@@ -8,7 +8,7 @@ module CoreFable.Program
 // instantiations are only compiled where they are used.
 //
 // One constant comes from `CoreFable.fsproj`. `CORE_FABLE_COMPUTE` is defined whenever the compute
-// packages (`Fuaran.Core.DataFrame`, `Fuaran.Core.Column.Ops`, `Fuaran.Core.DataFrame.Conformance`)
+// packages (`Fuaran.Compute.DataFrame`, `Fuaran.Compute.ColumnOps`, `Fuaran.Compute.Conformance`)
 // are compiled, which is every mode except a Core-only cut: those packages ship from their own
 // producer from 0.33.0, and a Core candidate is not what they were built against. Every touch that
 // names a compute type or module sits under it. The program is written for Fuaran.Core 0.34.0, the
@@ -22,6 +22,11 @@ module CoreFable.Program
 // the SAME Fable invocation that gates the surfaces it measures, so the two claims cannot drift.
 
 open Fuaran.Core
+#if CORE_FABLE_COMPUTE
+// The compute layer's namespace from its 0.36.0 (its own package ids); a Core-only cut does not
+// reference those packages, so the namespace is opened only where they are compiled.
+open Fuaran.Compute
+#endif
 open Fuaran.Core.Idl
 // Phase 185 — `Fuaran.Core.Observer` is its own namespace, so the touch below needs it opened.
 // `IObserver` is spelled out at its one use site rather than relied on here: `System.IObserver`

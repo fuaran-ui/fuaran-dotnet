@@ -7824,8 +7824,8 @@ with typed decode errors. 0.89.0 is an untagged draft whose class is ADDITIVE, s
 draft-slot rule this change, being of a higher class, ADVANCES the number rather than riding it.
 Everything 0.89.0 carried rides here unchanged (see its entry below); 0.89.0 is superseded before
 release. An additive change that follows rides this slot; a higher class advances it. The compute
-packages (`Fuaran.Core.DataFrame`, `Fuaran.Core.Column.Ops`, `Fuaran.Core.DataFrame.Conformance`)
-are a separate producer and are NOT moved by this raise._
+packages are a separate producer with their own pin; this slot moves them to their own ids at
+0.37.0 (`Fuaran.Compute.*`, below)._
 
 ### What rides this slot
 
@@ -7854,12 +7854,17 @@ are a separate producer and are NOT moved by this raise._
   advisory wire-profile report (`src/Fuaran.UI.Idl/WireProfile.fs`, not shipped) now grades a
   required field added to an existing owner as a MAJOR step, following Core's classifier.
 
-**Not releasable as it stands.** The compute packages this tier pins at 0.34.0 were built against
-Core 0.32.0 and do not survive Core 0.34.0: `Fuaran.Core.DataFrame` builds `ColumnError.NotJson` from
-a string (`DataFrame.fs`, `Delta.fs`; Core 0.33.0 made its payload a `JsonError`), so every Fable
-compile of a package that sources it fails and the .NET path throws `MissingMethodException` on a
-malformed pipeline; and `Fuaran.Core.DataFrame.Conformance` builds `Families.LawFamily` without the
-two fields Core 0.33.0 added. This slot waits on a compute release built against Core 0.34.0.
+**The compute packages move to their own ids at 0.37.0, in the same slot.** The compute packages
+this tier pinned at 0.34.0 were built against Core 0.32.0 and do not survive Core 0.34.0 (a
+`ColumnError.NotJson` built from a string; a `Families.LawFamily` literal without its two new fields),
+and their old ids stop there. Their producer ships them from 0.36.0 as `Fuaran.Compute.DataFrame`,
+`Fuaran.Compute.ColumnOps` and `Fuaran.Compute.Conformance` in the `Fuaran.Compute` namespace, and
+0.37.0 is the first built on Core 0.34.0. So `Fuaran.UI` and `Fuaran.UI.FastPath` now depend on
+`Fuaran.Compute.DataFrame` 0.37.0 instead of `Fuaran.Core.DataFrame` 0.34.0. **Consumer edit:** a
+consumer that names a compute type (`Transform`, `ColExpr`, `DataFrame`, `Incremental`, …) opens
+`Fuaran.Compute` beside `Fuaran.Core`, or spells it `Fuaran.Compute.<name>`. Two compute changes reach
+this tier's surface: `ColExpr` gains `Quotient` and `Rounded` (the producer's decimal arithmetic, its
+0.36.0), which the expression-size walk now descends into; and a derived column is typed by its expression rather than its first cell (its 0.37.0), which no test here pinned.
 
 ## 0.89.0 — the slot Phase 1961 opens: the repair catalogue's version 2, `wrong-type-close` (DRAFT — untagged; superseded by 0.90.0 before release)
 

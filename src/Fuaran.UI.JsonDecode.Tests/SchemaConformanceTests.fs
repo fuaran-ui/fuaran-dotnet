@@ -371,7 +371,7 @@ let staleSchemaGuard =
 // ─── Fuaran-UI Phase 1571 — the typed pipeline step union ───────────────────
 //
 // `Binding.Transform.pipeline` was `{"type":"array","items":true}`: the step
-// shapes `JsonDecode` enforces (through `Fuaran.Core.DataFrameCodec`) reached
+// shapes `JsonDecode` enforces (through `Fuaran.Compute.DataFrameCodec`) reached
 // the published schema as untyped, so a schema-bound emitter had no constraint
 // to honour and the generated catalogue taught `pipeline:any[]`. `SchemaGen`
 // now emits the closed `TransformStep` union. Two claims hold it honest, and
@@ -401,7 +401,7 @@ let private unionTags (defName: string) : Set<string> =
         | tag -> tag)
     |> Set.ofSeq
 
-/// The wire tag a `Fuaran.Core.Transform` case encodes as. Every one
+/// The wire tag a `Fuaran.Compute.Transform` case encodes as. Every one
 /// of the fourteen is its case name with a lowered initial — `Filter` → `filter`,
 /// `GroupBy` → `groupBy` — which is what `DataFrameCodec.encodeTransform` writes
 /// and `decodeTransform` reads back, so the mapping is derived rather than
@@ -410,7 +410,7 @@ let private wireTagOfCaseName (name: string) : string =
     string (System.Char.ToLowerInvariant name[0]) + name.Substring 1
 
 let private transformDuTags: Set<string> =
-    FSharpType.GetUnionCases typeof<Fuaran.Core.Transform>
+    FSharpType.GetUnionCases typeof<Fuaran.Compute.Transform>
     |> Array.map (fun c -> wireTagOfCaseName c.Name)
     |> Set.ofArray
 
@@ -481,7 +481,7 @@ let private stepProbes: StepProbe list =
 let transformStepUnion =
     testList
         "Fuaran.UI.Ops.SchemaGen — TransformStep is the pipeline's typed step union"
-        [ testCase "the emitted union is exhaustive over Fuaran.Core.Transform" (fun () ->
+        [ testCase "the emitted union is exhaustive over Fuaran.Compute.Transform" (fun () ->
               let emitted = unionTags "TransformStep"
 
               let missing = Set.difference transformDuTags emitted
@@ -490,13 +490,13 @@ let transformStepUnion =
               Expect.isEmpty
                   missing
                   (sprintf
-                      "these Fuaran.Core.Transform cases have NO arm in the emitted TransformStep union, so the published schema types them as nothing and a schema-bound emitter cannot spell them: %s"
+                      "these Fuaran.Compute.Transform cases have NO arm in the emitted TransformStep union, so the published schema types them as nothing and a schema-bound emitter cannot spell them: %s"
                       (String.concat ", " missing))
 
               Expect.isEmpty
                   extra
                   (sprintf
-                      "the emitted TransformStep union declares arms Fuaran.Core.Transform has no case for, so the schema admits steps the decoder refuses: %s"
+                      "the emitted TransformStep union declares arms Fuaran.Compute.Transform has no case for, so the schema admits steps the decoder refuses: %s"
                       (String.concat ", " extra)))
 
           for p in stepProbes do

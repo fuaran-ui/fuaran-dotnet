@@ -38,6 +38,8 @@ module Fuaran.UI.PreEmitValidate
 // ============================================================================
 
 open Fuaran.Core
+
+open Fuaran.Compute
 open Fuaran.UI.Types
 open Fuaran.UI.KindPolicy
 
@@ -250,7 +252,7 @@ type PreEmitDefect =
     /// **FUARAN086 (Error)**. A `ChartSpec` field reference (`XField` or a
     /// `YFields` entry) names a column the chart's own source cannot produce
     /// (Phase 640, widened by Phase 1486). The schema is the one
-    /// `Fuaran.Core.SchemaWalk` derives for the `Binding.Transform`'s data
+    /// `Fuaran.Compute.SchemaWalk` derives for the `Binding.Transform`'s data
     /// source under its whole pipeline — so a chart plotting a `derive`d column,
     /// or one the pipeline `project`s or `groupBy`s into being, is now grounded
     /// where it previously passed unjudged, and one plotting a column the
@@ -1578,7 +1580,7 @@ type PreEmitDefect =
     /// **The read-side twin of FUARAN086**, which grounds a chart's field
     /// references against the same schema, over the same window, for the same
     /// reason. **Phase 1486 widened that window from the empty pipeline to the
-    /// whole one**: the produced column set is what `Fuaran.Core.SchemaWalk`
+    /// whole one**: the produced column set is what `Fuaran.Compute.SchemaWalk`
     /// (fuaran-core#112) derives by folding the pipeline over the source's
     /// schema, so `derive`'s added column grounds a grid that reads it, and
     /// `project` / `groupBy` / `unpivot` REFUSE a grid still naming a column
@@ -2852,7 +2854,7 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
 // this source PRODUCE, and is the name the author wrote one of them. Until this
 // phase the answer was derived by hand and only for the trivial case — an
 // `Embedded` table with an EMPTY pipeline — because no static output-schema
-// derivation existed in the pinned substrate. `Fuaran.Core.DataFrame` 0.18.0
+// derivation existed in the pinned substrate. `Fuaran.Compute.DataFrame` 0.18.0
 // ships `SchemaWalk` (fuaran-core#112), so the answer is a call now, and the two
 // rules reach it through this one helper rather than each keeping a copy.
 //
@@ -3885,7 +3887,7 @@ let private validateCore
             // The window is what this tier can DERIVE, and since Phase 1486 that
             // is the whole pipeline rather than the empty one: `producedSchema`
             // walks the grid's own source and steps through
-            // `Fuaran.Core.SchemaWalk`. A CLOSED walk names the produced columns
+            // `Fuaran.Compute.SchemaWalk`. A CLOSED walk names the produced columns
             // and no others, so an absence there is a fact and is refused; an
             // OPEN walk — an unresolvable `Ref`, a pivot whose value columns are
             // named by the data — is an ignorance and stands down, exactly as the
@@ -4674,7 +4676,7 @@ let private validateCore
                  |> List.iteri (fun i at -> checkAddress (sprintf "event marker %d" i) at))
 
             // FUARAN086/087 — grounding over the schema the source PRODUCES
-            // (Phase 1486), which since `Fuaran.Core.DataFrame` 0.18.0 shipped
+            // (Phase 1486), which since `Fuaran.Compute.DataFrame` 0.18.0 shipped
             // `SchemaWalk` is the whole pipeline rather than the empty one. The
             // grid rule below shares the window and the helper: refuse under a
             // CLOSED walk, stand down under an open one.
@@ -5437,7 +5439,7 @@ type UncheckedReason =
     /// The source is a Transform whose produced column set is OPEN: a
     /// `DataSource.Ref` this validator has no host to resolve, or a `pivot`
     /// whose value columns are named by the data. `why` is the walk's own
-    /// account (`Fuaran.Core.SchemaWalk.reason`).
+    /// account (`Fuaran.Compute.SchemaWalk.reason`).
     | OpenSchema of why: string
     /// The source is a LIVE Transform: its embedded table is a decode-time
     /// snapshot, not a statement about the rows a later write will carry.

@@ -210,9 +210,13 @@ let tests =
                       { Schema = [ "dept", Fuaran.Core.StringType ]
                         Columns = [ Fuaran.Core.Column.create "dept" Fuaran.Core.StringType [ Fuaran.Core.Str "eng" ] ] }
 
-              let pipeline: Fuaran.Core.Transform list =
-                  [ Fuaran.Core.Filter(
-                        Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.ColExpr.Param "dept")
+              let pipeline: Fuaran.Compute.Transform list =
+                  [ Fuaran.Compute.Filter(
+                        Fuaran.Compute.Binary(
+                            Fuaran.Compute.Eq,
+                            Fuaran.Compute.Col "dept",
+                            Fuaran.Compute.ColExpr.Param "dept"
+                        )
                     ) ]
 
               let scoped =

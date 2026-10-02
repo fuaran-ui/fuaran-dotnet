@@ -660,13 +660,13 @@ let private hasInclude (keys: IncludeKey list) (key: IncludeKey) : bool =
 /// step's own encoder rather than transcribed. `DataFrameCodec.encodeTransform`
 /// writes each case as a `$type`-discriminated object whose tag IS the wire
 /// spelling (`Filter` → `filter`, `GroupBy` → `groupBy`), so a case added to
-/// `Fuaran.Core.Transform` arrives here without an edit.
+/// `Fuaran.Compute.Transform` arrives here without an edit.
 ///
 /// The fallback is empty rather than invented: a step that did not encode with
 /// a string `$type` is a codec defect to report where codecs are certified,
 /// and naming it something plausible here would hide it.
-let private transformVerb (step: Fuaran.Core.Transform) : string =
-    match Fuaran.Core.DataFrameCodec.encodeTransform step with
+let private transformVerb (step: Fuaran.Compute.Transform) : string =
+    match Fuaran.Compute.DataFrameCodec.encodeTransform step with
     | Fuaran.Core.JObj fields ->
         fields
         |> List.tryPick (fun (k, v) ->

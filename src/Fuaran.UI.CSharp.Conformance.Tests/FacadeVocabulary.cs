@@ -115,13 +115,13 @@ internal static class FacadeVocabulary
         Encodes("Binding.Invoke", Href(Binding.Invoke<string>("cap", ("a", "1"))), "\"$type\":\"Invoke\"");
         Encodes(
             "Binding.Expr",
-            Href(Binding.Expr<string>(global::Fuaran.Core.ColExpr.NewCol("amount"))),
+            Href(Binding.Expr<string>(global::Fuaran.Compute.ColExpr.NewCol("amount"))),
             "\"$type\":\"Expr\"");
         Encodes(
             "Binding.Transform",
             Href(Binding.Transform<string>(
                 TransformSource.Data(global::Fuaran.Core.DataSource.NewRef("sales")),
-                [global::Fuaran.Core.Transform.NewLimit(global::Fuaran.Core.Slot<int>.NewLit(1), global::Fuaran.Core.Slot<int>.NewLit(0))])),
+                [global::Fuaran.Compute.Transform.NewLimit(global::Fuaran.Compute.Slot<int>.NewLit(1), global::Fuaran.Compute.Slot<int>.NewLit(0))])),
             "\"$type\":\"Transform\"");
 
         Encodes("FuaranAction.SetState", Click(FuaranAction.SetState("k", 1)), "\"$type\":\"SetState\"");

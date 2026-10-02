@@ -81,7 +81,7 @@ let identify<'T> (binding: Binding<'T>) : BindingSource * string =
         // standard query path.
         BindingSource.Computed, "$format"
     | Binding.Transform _ ->
-        // Transform binding (Phase 282) — a declarative `Fuaran.Core.DataFrame` pipeline evaluated
+        // Transform binding (Phase 282) — a declarative `Fuaran.Compute.DataFrame` pipeline evaluated
         // client-side as data. Like Format/Local, the probe labels it distinctly ($transform) so
         // the orchestrator knows the field is a computed dataframe, not a standard query path.
         BindingSource.Computed, "$transform"

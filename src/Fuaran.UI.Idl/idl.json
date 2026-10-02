@@ -5833,9 +5833,9 @@
                 "of": {
                   "$type": "hosted",
                   "hostSurface": {
-                    "decode": "(fun __j -> Fuaran.Core.DataFrameCodec.decodeTransform __j |> Result.mapError string)",
-                    "encode": "Fuaran.Core.DataFrameCodec.encodeTransform",
-                    "fsharp": "Fuaran.Core.Transform"
+                    "decode": "(fun __j -> Fuaran.Compute.DataFrameCodec.decodeTransform __j |> Result.mapError string)",
+                    "encode": "Fuaran.Compute.DataFrameCodec.encodeTransform",
+                    "fsharp": "Fuaran.Compute.Transform"
                   },
                   "wire": "json"
                 }
@@ -5867,9 +5867,9 @@
               "type": {
                 "$type": "hosted",
                 "hostSurface": {
-                  "decode": "(fun __j -> Fuaran.Core.DataFrameCodec.decodeExpr __j |> Result.mapError string)",
-                  "encode": "Fuaran.Core.DataFrameCodec.encodeExpr",
-                  "fsharp": "Fuaran.Core.ColExpr"
+                  "decode": "(fun __j -> Fuaran.Compute.DataFrameCodec.decodeExpr __j |> Result.mapError string)",
+                  "encode": "Fuaran.Compute.DataFrameCodec.encodeExpr",
+                  "fsharp": "Fuaran.Compute.ColExpr"
                 },
                 "wire": "json"
               }

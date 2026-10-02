@@ -22,6 +22,7 @@ module Fuaran.UI.Renderer.BindingResolver
 
 open Fuaran.UI.Types
 open Fuaran.Core
+open Fuaran.Compute
 
 // This module lives at the typed-tree's obj-erasure boundary: a `Binding<'T>`
 // resolves through boxed `obj` cells, and `null` is a first-class value there
@@ -762,7 +763,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
         | I18nUnresolved k -> I18nUnresolved k
     | Binding.Transform(source, pipeline, parameters) ->
         // Phase 282 — the declarative Compute layer. Evaluate the serialisable dataframe pipeline
-        // via the `Fuaran.Core.DataFrame` reference evaluator (the same evaluator `transformLaws`
+        // via the `Fuaran.Compute.DataFrame` reference evaluator (the same evaluator `transformLaws`
         // certifies — the param/prune/eval machinery lives in `evalTransformFrame`, shared with the
         // Phase-632 scalar path), then surface the result rows as `Row seq` — each row the
         // `Map<string,obj>` keyed by column name, the cell scalar boxed (fuaran#665 named the
@@ -876,7 +877,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
 and private evalTransformFrame
     (sources: BindingSources)
     (source: TransformSource)
-    (pipeline: Fuaran.Core.Transform list)
+    (pipeline: Fuaran.Compute.Transform list)
     (parameters: TransformParam list)
     : Result<Fuaran.Core.Table, string> =
     evalTransformFrameWithin TransformBudget.defaults sources source pipeline parameters
@@ -889,7 +890,7 @@ and private evalTransformFrameWithin
     (budget: TransformBudget)
     (sources: BindingSources)
     (source: TransformSource)
-    (pipeline: Fuaran.Core.Transform list)
+    (pipeline: Fuaran.Compute.Transform list)
     (parameters: TransformParam list)
     : Result<Fuaran.Core.Table, string> =
     // Phase 610 — coerce a resolved LIST source to `Cell list`. Routed through
@@ -946,15 +947,15 @@ and private evalTransformFrameWithin
             if Map.isEmpty listEnv then
                 pipeline
             else
-                Fuaran.Core.Transform.substituteListParams listEnv pipeline
+                Fuaran.Compute.Transform.substituteListParams listEnv pipeline
 
         // Prune every `filter` step whose params include an unbound name (unset filter ⇒ no constraint).
         let pipeline =
             pipeline
             |> List.filter (fun step ->
                 match step with
-                | Fuaran.Core.Filter pred ->
-                    Fuaran.Core.ColExpr.paramsOf pred
+                | Fuaran.Compute.Filter pred ->
+                    Fuaran.Compute.ColExpr.paramsOf pred
                     |> List.forall (fun p -> not (Set.contains p unbound))
                 | _ -> true)
 
@@ -970,8 +971,8 @@ and private evalTransformFrameWithin
             match TransformBudget.check budget (Fuaran.Core.Table.rowCount inputTable) (List.length pipeline) with
             | Error refusal -> Error refusal
             | Ok() ->
-                match Fuaran.Core.DataFrame.evalPipelineInEnv env pipeline inputTable with
-                | Error e -> Error("Transform evaluation failed: " + Fuaran.Core.DataFrame.errorString e)
+                match Fuaran.Compute.DataFrame.evalPipelineInEnv env pipeline inputTable with
+                | Error e -> Error("Transform evaluation failed: " + Fuaran.Compute.DataFrame.errorString e)
                 | Ok result -> Ok result
 
         // Phase 1761 — the effective pipeline CLOSED over its environment: every
@@ -1001,9 +1002,9 @@ and private evalTransformFrameWithin
             if Map.isEmpty env then
                 pipeline
             else
-                Fuaran.Core.Transform.substitute env pipeline
+                Fuaran.Compute.Transform.substitute env pipeline
 
-        let closed = List.isEmpty (Fuaran.Core.Transform.paramsOf closedPipeline)
+        let closed = List.isEmpty (Fuaran.Compute.Transform.paramsOf closedPipeline)
 
         // The store path, shared by both source arms (Phase 1586 for `Live`,
         // Phase 1761 for `Data`). The budget is checked BEFORE the store for
@@ -1124,7 +1125,7 @@ and private evalTransformFrameWithin
 /// than by inspection.
 and private evalExprCell
     (sources: BindingSources)
-    (expr: Fuaran.Core.ColExpr)
+    (expr: Fuaran.Compute.ColExpr)
     (parameters: TransformParam list)
     : Result<Fuaran.Core.Cell, string> =
     let unitFrame: Fuaran.Core.Table =
@@ -1135,8 +1136,8 @@ and private evalExprCell
                 Cells = [ Fuaran.Core.Bool true ] } ] }
 
     let pipeline =
-        [ Fuaran.Core.Derive("__value", expr)
-          Fuaran.Core.Project [ "__value", "__value" ] ]
+        [ Fuaran.Compute.Derive("__value", expr)
+          Fuaran.Compute.Project [ "__value", "__value" ] ]
 
     // Phase 1761 — the one-row frame is not a SITE, and is kept out of the
     // store the `Data` arm now consults: a 1x1 evaluation costs less than the
@@ -1324,7 +1325,7 @@ let resolveScalarWith<'T>
                 // aggregate completes to 0 here. Every other empty result is the
                 // slot's empty state ("filter matched nothing" renders as absence).
                 match List.tryLast pipeline with
-                | Some(Fuaran.Core.GroupBy([], [ agg ])) when agg.Fn = Fuaran.Core.AggFn.Count ->
+                | Some(Fuaran.Compute.GroupBy([], [ agg ])) when agg.Fn = Fuaran.Core.AggFn.Count ->
                     match coerce (Fuaran.Core.Int 0) with
                     | Ok v -> Resolved v
                     | Error m -> Errored m

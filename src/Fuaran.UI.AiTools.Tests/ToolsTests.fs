@@ -683,8 +683,8 @@ let bindingSlotConsistencyTests =
           // reimplementing the analysis walk it cannot keep in step with.
 
           test "Phase 1615 getNodeState reports a live-Transform site under the binding block" {
-              let pipeline: Fuaran.Core.Transform list =
-                  [ Fuaran.Core.Transform.Project [ "n", "n" ] ]
+              let pipeline: Fuaran.Compute.Transform list =
+                  [ Fuaran.Compute.Transform.Project [ "n", "n" ] ]
 
               let source: Binding<Fuaran.Core.Row seq> =
                   Binding.Transform(

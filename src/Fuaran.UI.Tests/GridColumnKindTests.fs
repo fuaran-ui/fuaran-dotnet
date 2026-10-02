@@ -35,12 +35,12 @@ open Fuaran.UI.PreEmitValidate
 let private source (dataSource: Fuaran.Core.DataSource) : Binding<Row seq> =
     Binding.Transform(
         TransformSource.Data dataSource,
-        [ Fuaran.Core.GroupBy(
+        [ Fuaran.Compute.GroupBy(
               [ "dept" ],
               [ ({ Name = "total"
                    Fn = Fuaran.Core.Sum
                    Of = "amount" }
-                : Fuaran.Core.Agg) ]
+                : Fuaran.Compute.Agg) ]
           ) ],
         None
     )
@@ -64,8 +64,12 @@ let private closedSource: Binding<Row seq> =
 let private openSource: Binding<Row seq> =
     Binding.Transform(
         TransformSource.Data(Fuaran.Core.Ref "spend"),
-        [ Fuaran.Core.Filter(
-              Fuaran.Core.Binary(Fuaran.Core.Gt, Fuaran.Core.Col "amount", Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int 0))
+        [ Fuaran.Compute.Filter(
+              Fuaran.Compute.Binary(
+                  Fuaran.Compute.Gt,
+                  Fuaran.Compute.Col "amount",
+                  Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Int 0)
+              )
           ) ],
         None
     )

@@ -198,7 +198,7 @@ let delegationTests =
               let binding: Fuaran.UI.Types.Binding<float> =
                   Fuaran.UI.Types.Binding.Transform(
                       Fuaran.UI.Types.TransformSource.Data salesTable,
-                      [ Fuaran.Core.GroupBy(
+                      [ Fuaran.Compute.GroupBy(
                             [],
                             [ { Name = "total"
                                 Fn = Fuaran.Core.AggFn.Sum

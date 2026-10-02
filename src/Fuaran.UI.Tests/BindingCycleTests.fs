@@ -139,8 +139,8 @@ let private badgeOf (id: string) (b: Binding<string>) : Node<obj> =
         { Defaults.badge with
             Label = TextSource.Bound b }
 
-let private countPipeline: Fuaran.Core.Transform list =
-    [ Fuaran.Core.GroupBy(
+let private countPipeline: Fuaran.Compute.Transform list =
+    [ Fuaran.Compute.GroupBy(
           [ "b" ],
           [ { Name = "n"
               Fn = Fuaran.Core.Count

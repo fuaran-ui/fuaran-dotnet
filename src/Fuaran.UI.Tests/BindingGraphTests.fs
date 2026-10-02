@@ -68,16 +68,18 @@ let private editedKey = "orders"
 
 let private otherKey = "filters"
 
-let private countPipeline: Fuaran.Core.Transform list =
-    [ Fuaran.Core.GroupBy(
+let private countPipeline: Fuaran.Compute.Transform list =
+    [ Fuaran.Compute.GroupBy(
           [ "b" ],
           [ { Name = "n"
               Fn = Fuaran.Core.Count
               Of = "a" } ]
       ) ]
 
-let private paramPipeline: Fuaran.Core.Transform list =
-    [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Gt, Fuaran.Core.Col "a", Fuaran.Core.ColExpr.Param "threshold")) ]
+let private paramPipeline: Fuaran.Compute.Transform list =
+    [ Fuaran.Compute.Filter(
+          Fuaran.Compute.Binary(Fuaran.Compute.Gt, Fuaran.Compute.Col "a", Fuaran.Compute.ColExpr.Param "threshold")
+      ) ]
 
 let private badgeOf (id: string) (label: TextSource) : Node<obj> =
     Fuaran.badge id { Defaults.badge with Label = label }

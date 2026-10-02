@@ -5,7 +5,7 @@ module Fuaran.UI.QueryRefine
 //
 //  Once a query has resolved to a `Table` (the `QuerySource` `WithRows` path),
 //  follow-on tweaks — "sort descending", "filter to region X", "regroup by
-//  month" — apply as a `Fuaran.Core.DataFrame` pipeline over the columns ALREADY
+//  month" — apply as a `Fuaran.Compute.DataFrame` pipeline over the columns ALREADY
 //  IN HAND, through the pinned reference evaluator. No re-query, no LLM call:
 //  the LLM writes the coarse query once, interaction is native-speed local
 //  algebra. This is the "fluent" feel the portal promises.
@@ -25,6 +25,7 @@ module Fuaran.UI.QueryRefine
 
 open Fuaran.UI.Types
 open Fuaran.Core
+open Fuaran.Compute
 
 /// Why a local refinement could not be applied.
 [<RequireQualifiedAccess>]
@@ -54,7 +55,7 @@ module RefineError =
             + " defect(s))"
 
 /// Apply a local refinement `pipeline` to the ALREADY-FETCHED `rows` via the
-/// `Fuaran.Core.DataFrame` reference evaluator, then RE-TYPE `dashboard` against
+/// `Fuaran.Compute.DataFrame` reference evaluator, then RE-TYPE `dashboard` against
 /// the refined result schema. Returns the refined rows paired with the (still
 /// type-sound) dashboard, or a typed `RefineError`.
 ///

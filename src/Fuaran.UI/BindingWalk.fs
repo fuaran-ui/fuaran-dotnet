@@ -85,7 +85,7 @@ type TransformSiteFacts =
         /// source, or the `Live` arm's decode-time initial snapshot.
         Source: Fuaran.Core.DataSource
         /// The pipeline as the tree carries it.
-        Pipeline: Fuaran.Core.Transform list
+        Pipeline: Fuaran.Compute.Transform list
         /// The reader's SLOT, when the reading node's own arm named it —
         /// `Some "source"` on a grid / chart / map row feed. `None` on every
         /// other binding-bearing slot, and on a Transform nested inside
@@ -712,10 +712,10 @@ let rec private siteChannelOf<'T> (binding: Binding<'T>) : string =
 /// pipeline over 2,000 rows — a key dearer than the work it saves. The
 /// structural hash reads every step and costs about a microsecond. It can still
 /// collide, rarely; that remains a shared key, which remains a recomputation.
-let private pipelineKey (pipeline: Fuaran.Core.Transform list) : string =
+let private pipelineKey (pipeline: Fuaran.Compute.Transform list) : string =
     string (List.length pipeline) + "#" + string (hash pipeline)
 
-let liveSiteKey (source: Binding<JVal>) (pipeline: Fuaran.Core.Transform list) : string =
+let liveSiteKey (source: Binding<JVal>) (pipeline: Fuaran.Compute.Transform list) : string =
     Hashing.sha256Hex (siteChannelOf source + "\n--\n" + pipelineKey pipeline)
 
 /// Fuaran-UI Phase 1761 — the SITE key of one `TransformSource.Data` reader:
@@ -739,7 +739,7 @@ let liveSiteKey (source: Binding<JVal>) (pipeline: Fuaran.Core.Transform list) :
 /// full where they differ — a recomputation, never another site's rows. The
 /// `data:` prefix is one no live channel's rendering begins with, so a data site
 /// never shares a live site's key.
-let dataSiteKey (source: Fuaran.Core.Table) (pipeline: Fuaran.Core.Transform list) : string =
+let dataSiteKey (source: Fuaran.Core.Table) (pipeline: Fuaran.Compute.Transform list) : string =
     Hashing.sha256Hex (
         "data:"
         + string (hash source.Schema)
@@ -776,7 +776,7 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
         // The pure `Transform.paramsOf` derivation (fuaran-core#77) names every
         // param the pipeline actually references — a declared `params` entry
         // outside it is dead weight (FUARAN076).
-        let referenced = Fuaran.Core.Transform.paramsOf pipeline |> Set.ofList
+        let referenced = Fuaran.Compute.Transform.paramsOf pipeline |> Set.ofList
 
         // Phase 865 — the SOURCE slot, recorded as its own case rather than as a
         // `State` read (see `BindingUse.TransformStateSource`). A `Data` source
@@ -876,7 +876,7 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     // checks reach an `Expr` with no rule edited, and a rule that ever needs to
     // tell the two apart can read the param's own binding.
     | Binding.Expr(expr, parameters) ->
-        let referenced = Fuaran.Core.ColExpr.paramsOf expr |> Set.ofList
+        let referenced = Fuaran.Compute.ColExpr.paramsOf expr |> Set.ofList
 
         defaultArg parameters []
         |> List.collect (fun (p: TransformParam) ->

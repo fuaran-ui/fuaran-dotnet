@@ -1,6 +1,8 @@
 ﻿namespace Fuaran.UI
 
 open Fuaran.Core
+
+open Fuaran.Compute
 open Fuaran.UI.Types
 open Fuaran.UI.FastPath
 
@@ -11,7 +13,7 @@ open Fuaran.UI.FastPath
 /// registry type (`FastPath.bank`), never by forking the search engine.
 ///
 /// A few patterns are **ComputeLayer-bound**: their data binding is a real
-/// `Fuaran.Core.DataFrame` transform pipeline, so the bank demonstrates retrieval
+/// `Fuaran.Compute.DataFrame` transform pipeline, so the bank demonstrates retrieval
 /// and the serverless compute layer together — pick the pattern, and its value is
 /// computed client-side from data with no server.
 module SeedCatalogue =
@@ -121,7 +123,7 @@ module SeedCatalogue =
                 Cells = [ Cell.Int 120; Cell.Int 140; Cell.Int 90 ] } ] }
 
     /// Group by region, sum revenue — a real serialisable pipeline, evaluated
-    /// client-side by the consumer's `Fuaran.Core.DataFrame` evaluator.
+    /// client-side by the consumer's `Fuaran.Compute.DataFrame` evaluator.
     let private revenueByRegion: Transform list =
         [ GroupBy(
               [ "region" ],

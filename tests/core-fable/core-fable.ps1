@@ -54,10 +54,10 @@
       cannot quietly stay off once the pin reaches it. The decision table is proven on every run
       (`Test-ParityDecision`), before anything is compiled.
 
-  TWO PRODUCERS, ONE GATE. From 0.33.0 the compute layer — `Fuaran.Core.DataFrame`,
-  `Fuaran.Core.Column.Ops`, `Fuaran.Core.DataFrame.Conformance` (and the C#-only
-  `Fuaran.Core.DataFrame.CSharp`, excluded below) — ships from its own repository under its
-  original package ids, and every other `Fuaran.Core.*` package still ships from Fuaran.Core. This
+  TWO PRODUCERS, ONE GATE. From 0.33.0 the compute layer ships from its own repository, and
+  from its 0.36.0 under its own ids — `Fuaran.Compute.DataFrame`, `Fuaran.Compute.ColumnOps`,
+  `Fuaran.Compute.Conformance`, `Fuaran.Compute.PipelineQuery` — while every `Fuaran.Core.*`
+  package still ships from Fuaran.Core. This
   repository pins the two on separate versions (`FuaranCoreComputeVersion` in
   `Directory.Packages.props`), and this gate takes a candidate for each independently:
 
@@ -122,11 +122,11 @@ $override = $coreOverride -or $computeOverride
 # their own producer's cut.
 $skipCompute = $coreOverride -and -not $computeOverride
 
-# The packages the SECOND producer ships (its repository's derived roster: the three this gate
-# references, plus the C#-only half `exclusions.json` names). Every other Fuaran.Core.* package is
-# Fuaran.Core's. Keep in step with the compute ItemGroups in this directory's Directory.Packages.props
-# and CoreFable.fsproj.
-$ComputeOwned = @('Fuaran.Core.DataFrame', 'Fuaran.Core.Column.Ops', 'Fuaran.Core.DataFrame.Conformance', 'Fuaran.Core.DataFrame.CSharp')
+# The packages the SECOND producer ships (its repository's derived roster, every one of which this
+# gate references). From its 0.36.0 they carry their own ids and the `Fuaran.Compute` namespace; the
+# C#-only half is gone. Every Fuaran.Core.* package is Fuaran.Core's. Keep in step with the compute
+# ItemGroups in this directory's Directory.Packages.props and CoreFable.fsproj.
+$ComputeOwned = @('Fuaran.Compute.DataFrame', 'Fuaran.Compute.ColumnOps', 'Fuaran.Compute.Conformance', 'Fuaran.Compute.PipelineQuery')
 
 function Fail([string] $message) {
     Write-Host "==== core-fable: FAILED — $message" -ForegroundColor Red
@@ -212,7 +212,7 @@ $pinsText = Get-Content -Raw $pinsFile
 $pinProps = @{}
 foreach ($m in [regex]::Matches($pinsText, '<(\w+Version)>\s*([^<\s]+)\s*</\1>')) { $pinProps[$m.Groups[1].Value] = $m.Groups[2].Value }
 $pins = @{}
-foreach ($m in [regex]::Matches($pinsText, '<PackageVersion\s+Include="(Fuaran\.Core\.[^"]+)"\s+Version="([^"]+)"')) {
+foreach ($m in [regex]::Matches($pinsText, '<PackageVersion\s+Include="(Fuaran\.(?:Core|Compute)\.[^"]+)"\s+Version="([^"]+)"')) {
     $id = $m.Groups[1].Value
     $version = $m.Groups[2].Value
     $ref = [regex]::Match($version, '^\$\((\w+)\)$')
@@ -226,8 +226,8 @@ foreach ($m in [regex]::Matches($pinsText, '<PackageVersion\s+Include="(Fuaran\.
 
 function Get-CandidateIds([string] $folder, [string] $version) {
     $escaped = [regex]::Escape($version)
-    @(Get-ChildItem -LiteralPath $folder -Filter "Fuaran.Core.*.$version.nupkg" |
-        ForEach-Object { if ($_.Name -match "^(Fuaran\.Core\..+)\.$escaped\.nupkg$") { $Matches[1] } } |
+    @(Get-ChildItem -LiteralPath $folder -Filter "Fuaran.*.$version.nupkg" |
+        ForEach-Object { if ($_.Name -match "^(Fuaran\.(?:Core|Compute)\..+)\.$escaped\.nupkg$") { $Matches[1] } } |
         Sort-Object -Unique)
 }
 
@@ -321,11 +321,11 @@ if ($override) {
     $restoreArgs += @('--configfile', $config)
     if (-not $coreOverride) { $modeParts.Insert(0, "Fuaran.Core at the pin ($($pins['Fuaran.Core.Conformance']))") }
     if ($skipCompute) { $modeParts.Add('compute packages skipped') }
-    elseif (-not $computeOverride) { $modeParts.Add("compute at the pin ($($pins['Fuaran.Core.DataFrame']))") }
+    elseif (-not $computeOverride) { $modeParts.Add("compute at the pin ($($pins['Fuaran.Compute.DataFrame']))") }
     $modeLine = "cut-time run — " + ($modeParts -join '; ')
 }
 else {
-    $modeLine = "pinned — Fuaran.Core as this repository pins it ($($pins['Fuaran.Core.Conformance'])), the compute packages at $($pins['Fuaran.Core.DataFrame'])"
+    $modeLine = "pinned — Fuaran.Core as this repository pins it ($($pins['Fuaran.Core.Conformance'])), the compute packages at $($pins['Fuaran.Compute.DataFrame'])"
 }
 
 Write-Host "==== core-fable: $modeLine" -ForegroundColor Cyan
@@ -338,7 +338,7 @@ if ($skipCompute) {
 try {
     # ── Membership ──────────────────────────────────────────────────────────
 
-    $referenced = @([regex]::Matches((Get-Content -Raw $project), '<PackageReference\s+Include="(Fuaran\.Core\.[^"]+)"') |
+    $referenced = @([regex]::Matches((Get-Content -Raw $project), '<PackageReference\s+Include="(Fuaran\.(?:Core|Compute)\.[^"]+)"') |
         ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
 
     $exclusions = @(Get-Content -Raw (Join-Path $PSScriptRoot 'exclusions.json') | ConvertFrom-Json)
@@ -385,11 +385,11 @@ try {
     $resolvedText = $conformanceKey.Split('/')[1]
     $hasTable = @($assets['libraries'][$conformanceKey]['files']) -contains 'fable/ParityVectors.fs'
 
-    $computeKey = @($assets['libraries'].Keys | Where-Object { $_ -like 'Fuaran.Core.DataFrame/*' }) | Select-Object -First 1
+    $computeKey = @($assets['libraries'].Keys | Where-Object { $_ -like 'Fuaran.Compute.DataFrame/*' }) | Select-Object -First 1
     $computeResolvedText = if ($computeKey) { $computeKey.Split('/')[1] } else { 'unresolved' }
 
     if ($override) {
-        foreach ($key in @($assets['libraries'].Keys | Where-Object { $_ -like 'Fuaran.Core.*/*' })) {
+        foreach ($key in @($assets['libraries'].Keys | Where-Object { $_ -like 'Fuaran.Core.*/*' -or $_ -like 'Fuaran.Compute.*/*' })) {
             $id, $resolvedVersion = $key.Split('/')
             $expected = Get-ExpectedVersion $id
             if ($expected -and $resolvedVersion -ne $expected) {

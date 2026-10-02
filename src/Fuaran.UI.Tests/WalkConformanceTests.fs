@@ -271,7 +271,7 @@ let private census: CensusRow list =
                                   Binding.State("cw-transform-src", None),
                                   HostPrelude.TransformLive.emptySource
                               ),
-                              [ Fuaran.Core.Transform.GroupBy(
+                              [ Fuaran.Compute.Transform.GroupBy(
                                     [ "team" ],
                                     [ { Name = "n"
                                         Fn = Fuaran.Core.AggFn.Count

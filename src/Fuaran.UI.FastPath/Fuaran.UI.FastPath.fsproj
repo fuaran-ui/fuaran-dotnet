@@ -28,7 +28,7 @@
     <!-- The compute layer (DataSource / Transform) — the ComputeLayer-bound seed
          patterns build data-bound bindings the client-side evaluator runs. -->
     <PackageReference Include="Fuaran.Core.Column" />
-    <PackageReference Include="Fuaran.Core.DataFrame" />
+    <PackageReference Include="Fuaran.Compute.DataFrame" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

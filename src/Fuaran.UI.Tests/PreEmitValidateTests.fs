@@ -136,8 +136,8 @@ let private inertSourceDefects (tree: Node<Msg>) : PreEmitDefect list =
 /// pipeline the sighted emissions carried. Its content is immaterial to the
 /// rule — the rule keys on the SOURCE — but a real pipeline keeps the fixture
 /// recognisable as the emission it stands for.
-let private groupCount: Fuaran.Core.Transform list =
-    [ Fuaran.Core.Transform.GroupBy(
+let private groupCount: Fuaran.Compute.Transform list =
+    [ Fuaran.Compute.Transform.GroupBy(
           [ "team" ],
           [ { Name = "n"
               Fn = Fuaran.Core.AggFn.Count
@@ -1761,7 +1761,7 @@ let tests =
                           Source =
                               Binding.Transform(
                                   TransformSource.Data(Fuaran.Core.DataSource.Embedded table),
-                                  [ Fuaran.Core.Transform.Derive("variance", Fuaran.Core.ColExpr.Col "revenue") ],
+                                  [ Fuaran.Compute.Transform.Derive("variance", Fuaran.Compute.ColExpr.Col "revenue") ],
                                   None
                               )
                           XField = "quarter"
@@ -1775,7 +1775,7 @@ let tests =
           // ── Phase 1486 — FUARAN086 widens to the schema walk ──
           //
           // The chart rule moves with FUARAN114: the window is no longer the
-          // EMPTY pipeline but the schema `Fuaran.Core.SchemaWalk` derives for the
+          // EMPTY pipeline but the schema `Fuaran.Compute.SchemaWalk` derives for the
           // whole one. Two directions and one restraint, the same three the grid
           // rule's tests carry.
 
@@ -1797,7 +1797,7 @@ let tests =
                           Source =
                               Binding.Transform(
                                   TransformSource.Data(Fuaran.Core.DataSource.Embedded table),
-                                  [ Fuaran.Core.Transform.Project [ "quarter", "quarter"; "revenue", "takings" ] ],
+                                  [ Fuaran.Compute.Transform.Project [ "quarter", "quarter"; "revenue", "takings" ] ],
                                   None
                               )
                           XField = "quarter"
@@ -1838,7 +1838,7 @@ let tests =
                           Source =
                               Binding.Transform(
                                   TransformSource.Data(Fuaran.Core.DataSource.Embedded table),
-                                  [ Fuaran.Core.Transform.Project [ "quarter", "quarter"; "revenue", "takings" ] ],
+                                  [ Fuaran.Compute.Transform.Project [ "quarter", "quarter"; "revenue", "takings" ] ],
                                   None
                               )
                           XField = "quarter"
@@ -1861,7 +1861,8 @@ let tests =
                           Source =
                               Binding.Transform(
                                   TransformSource.Data(Fuaran.Core.DataSource.Ref "revenue-by-quarter"),
-                                  [ Fuaran.Core.Transform.Sort [ Fuaran.Core.Slot.Lit "quarter", Fuaran.Core.Asc ] ],
+                                  [ Fuaran.Compute.Transform.Sort
+                                        [ Fuaran.Compute.Slot.Lit "quarter", Fuaran.Compute.Asc ] ],
                                   None
                               )
                           XField = "quarter"

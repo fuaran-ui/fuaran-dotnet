@@ -85,25 +85,25 @@ let private countLabelTransform (threshold: int) : Binding<'T> =
 
     Binding.Transform(
         TransformSource.Data source,
-        [ Fuaran.Core.GroupBy(
+        [ Fuaran.Compute.GroupBy(
               [],
               [ { Name = "n"
                   Fn = Fuaran.Core.AggFn.Count
                   Of = "id" } ]
           )
-          Fuaran.Core.Derive(
+          Fuaran.Compute.Derive(
               "label",
-              Fuaran.Core.Case(
-                  [ Fuaran.Core.Binary(
-                        Fuaran.Core.Gt,
-                        Fuaran.Core.Col "n",
-                        Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int threshold)
+              Fuaran.Compute.Case(
+                  [ Fuaran.Compute.Binary(
+                        Fuaran.Compute.Gt,
+                        Fuaran.Compute.Col "n",
+                        Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Int threshold)
                     ),
-                    Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "busy") ],
-                  Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "quiet")
+                    Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str "busy") ],
+                  Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str "quiet")
               )
           )
-          Fuaran.Core.Project [ "label", "label" ] ],
+          Fuaran.Compute.Project [ "label", "label" ] ],
         None
     )
 
@@ -119,8 +119,8 @@ let private labelInBoolSlot: Binding<bool> =
 
     Binding.Transform(
         TransformSource.Data source,
-        [ Fuaran.Core.Derive("label", Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "busy"))
-          Fuaran.Core.Project [ "label", "label" ] ],
+        [ Fuaran.Compute.Derive("label", Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str "busy"))
+          Fuaran.Compute.Project [ "label", "label" ] ],
         None
     )
 
@@ -148,21 +148,21 @@ let private countExceedsTransform (threshold: int) : Binding<bool> =
 
     Binding.Transform(
         TransformSource.Data source,
-        [ Fuaran.Core.GroupBy(
+        [ Fuaran.Compute.GroupBy(
               [],
               [ { Name = "n"
                   Fn = Fuaran.Core.AggFn.Count
                   Of = "id" } ]
           )
-          Fuaran.Core.Derive(
+          Fuaran.Compute.Derive(
               "over",
-              Fuaran.Core.Binary(
-                  Fuaran.Core.Gt,
-                  Fuaran.Core.Col "n",
-                  Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int threshold)
+              Fuaran.Compute.Binary(
+                  Fuaran.Compute.Gt,
+                  Fuaran.Compute.Col "n",
+                  Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Int threshold)
               )
           )
-          Fuaran.Core.Project [ "over", "over" ] ],
+          Fuaran.Compute.Project [ "over", "over" ] ],
         None
     )
 

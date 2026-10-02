@@ -594,7 +594,8 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
                 (case
                     "Transform"
                     (paramField
-                     @ [ "pipeline", (fun sb -> sb.Append(Fuaran.Core.DataFrameCodec.encodePipeline pipeline) |> ignore)
+                     @ [ "pipeline",
+                         (fun sb -> sb.Append(Fuaran.Compute.DataFrameCodec.encodePipeline pipeline) |> ignore)
                          "source", sourceAppender ]))
         // Fuaran-UI Phase 1534 — the scalar expression binding. `expr` splices
         // Core's own canonical rendering of the `ColExpr`, exactly as `pipeline`
@@ -626,7 +627,7 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
                     "Expr"
                     ([ "expr",
                        (fun sb ->
-                           sb.Append(Fuaran.Core.Canon.render (Fuaran.Core.DataFrameCodec.encodeExpr expr))
+                           sb.Append(Fuaran.Core.Canon.render (Fuaran.Compute.DataFrameCodec.encodeExpr expr))
                            |> ignore) ]
                      @ exprParams))
         | Binding.Invoke(capabilityId, args) ->

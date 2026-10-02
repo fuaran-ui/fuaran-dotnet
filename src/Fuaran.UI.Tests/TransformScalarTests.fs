@@ -53,11 +53,11 @@ let private table =
 let private r42Binding: Binding<string> =
     Binding.Transform(
         TransformSource.Data(table),
-        [ Fuaran.Core.Filter(
-              Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "id", Fuaran.Core.ColExpr.Param "ticketId")
+        [ Fuaran.Compute.Filter(
+              Fuaran.Compute.Binary(Fuaran.Compute.Eq, Fuaran.Compute.Col "id", Fuaran.Compute.ColExpr.Param "ticketId")
           )
-          Fuaran.Core.Project [ "alert", "alert" ]
-          Fuaran.Core.Limit(Fuaran.Core.Slot.Lit 1, Fuaran.Core.Slot.Lit 0) ],
+          Fuaran.Compute.Project [ "alert", "alert" ]
+          Fuaran.Compute.Limit(Fuaran.Compute.Slot.Lit 1, Fuaran.Compute.Slot.Lit 0) ],
         Some
             [ { From =
                   Binding.Selection(
@@ -72,14 +72,14 @@ let private r42Binding: Binding<string> =
 let private countBinding<'T> (severity: string) : Binding<'T> =
     Binding.Transform(
         TransformSource.Data(table),
-        [ Fuaran.Core.Filter(
-              Fuaran.Core.Binary(
-                  Fuaran.Core.Eq,
-                  Fuaran.Core.Col "severity",
-                  Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str severity)
+        [ Fuaran.Compute.Filter(
+              Fuaran.Compute.Binary(
+                  Fuaran.Compute.Eq,
+                  Fuaran.Compute.Col "severity",
+                  Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str severity)
               )
           )
-          Fuaran.Core.GroupBy(
+          Fuaran.Compute.GroupBy(
               [],
               [ { Name = "n"
                   Fn = Fuaran.Core.AggFn.Count
@@ -146,15 +146,15 @@ let tests =
               let emptyLookup: Binding<string> =
                   Binding.Transform(
                       TransformSource.Data(table),
-                      [ Fuaran.Core.Filter(
-                            Fuaran.Core.Binary(
-                                Fuaran.Core.Eq,
-                                Fuaran.Core.Col "id",
-                                Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "TCK-9999")
+                      [ Fuaran.Compute.Filter(
+                            Fuaran.Compute.Binary(
+                                Fuaran.Compute.Eq,
+                                Fuaran.Compute.Col "id",
+                                Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str "TCK-9999")
                             )
                         )
-                        Fuaran.Core.Project [ "alert", "alert" ]
-                        Fuaran.Core.Limit(Fuaran.Core.Slot.Lit 1, Fuaran.Core.Slot.Lit 0) ],
+                        Fuaran.Compute.Project [ "alert", "alert" ]
+                        Fuaran.Compute.Limit(Fuaran.Compute.Slot.Lit 1, Fuaran.Compute.Slot.Lit 0) ],
                       None
                   )
 

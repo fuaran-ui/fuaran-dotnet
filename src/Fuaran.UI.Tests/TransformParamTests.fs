@@ -30,8 +30,10 @@ let private table =
                   Fuaran.Core.IntType
                   [ Fuaran.Core.Int 100; Fuaran.Core.Int 120; Fuaran.Core.Int 90 ] ] }
 
-let private pipeline: Fuaran.Core.Transform list =
-    [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.ColExpr.Param "dept")) ]
+let private pipeline: Fuaran.Compute.Transform list =
+    [ Fuaran.Compute.Filter(
+          Fuaran.Compute.Binary(Fuaran.Compute.Eq, Fuaran.Compute.Col "dept", Fuaran.Compute.ColExpr.Param "dept")
+      ) ]
 
 let private transformBinding: Binding<obj seq> =
     Binding.Transform(
@@ -73,5 +75,5 @@ let tests =
           }
 
           test "Transform.paramsOf derives the pipeline's param edge (no stored edge)" {
-              Expect.equal (Fuaran.Core.Transform.paramsOf pipeline) [ "dept" ] "the derived filter→consumer edge"
+              Expect.equal (Fuaran.Compute.Transform.paramsOf pipeline) [ "dept" ] "the derived filter→consumer edge"
           } ]

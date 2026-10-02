@@ -2,7 +2,7 @@ module Fuaran.UI.Tests.QueryRefineTests
 
 // Phase 324 task 4 — client-side refinement = local data, not round-trips.
 // Proves a follow-on tweak (sort / filter / regroup) applies through the
-// Fuaran.Core.DataFrame evaluator over the already-fetched rows with ZERO
+// Fuaran.Compute.DataFrame evaluator over the already-fetched rows with ZERO
 // re-query and ZERO LLM call, and that a refinement which changes the schema is
 // re-typed against the dashboard (the 323 thread) before re-render.
 //
@@ -16,6 +16,7 @@ open Fuaran.UI.QuerySource
 open Fuaran.UI.QueryRefine
 open Fuaran.UI.QueryBinding
 open Fuaran.Core
+open Fuaran.Compute
 
 // ─── fixtures ────────────────────────────────────────────────────────────────
 
@@ -43,7 +44,7 @@ let private fastPathTests =
           <| fun _ ->
               let dashboard = metricBoundTo "m1" "revenue"
 
-              match refineLocally salesTable [ Sort [ Fuaran.Core.Slot.Lit "revenue", Desc ] ] dashboard with
+              match refineLocally salesTable [ Sort [ Fuaran.Compute.Slot.Lit "revenue", Desc ] ] dashboard with
               | Ok(refined, tree) ->
                   Expect.equal refined.Schema salesTable.Schema "schema unchanged by a sort"
                   Expect.equal (Table.rowCount refined) 3 "all rows retained"
@@ -112,7 +113,7 @@ let private zeroRequeryTests =
               | Ok(_, QueryResolution.WithRows rows) ->
                   // Two follow-on refinements — both local, neither touches the source.
                   Expect.isOk
-                      (refineLocally rows [ Sort [ Fuaran.Core.Slot.Lit "revenue", Desc ] ] dashboard)
+                      (refineLocally rows [ Sort [ Fuaran.Compute.Slot.Lit "revenue", Desc ] ] dashboard)
                       "sort is local"
 
                   Expect.isOk

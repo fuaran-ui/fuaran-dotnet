@@ -38,8 +38,8 @@ let private table =
                   [ Fuaran.Core.Int 100; Fuaran.Core.Int 120; Fuaran.Core.Int 90 ] ] }
 
 /// `dept IN $depts` — the multi-select chip's membership test.
-let private pipeline: Fuaran.Core.Transform list =
-    [ Fuaran.Core.Filter(Fuaran.Core.InParam(Fuaran.Core.Col "dept", "depts")) ]
+let private pipeline: Fuaran.Compute.Transform list =
+    [ Fuaran.Compute.Filter(Fuaran.Compute.InParam(Fuaran.Compute.Col "dept", "depts")) ]
 
 let private bindingFrom (from: Binding<JVal>) : Binding<obj seq> =
     Binding.Transform(TransformSource.Data(table), pipeline, Some [ { From = from; Name = "depts" } ])
@@ -138,8 +138,8 @@ let tests =
           }
 
           test "a selection of numbers scopes a numeric column" {
-              let numeric: Fuaran.Core.Transform list =
-                  [ Fuaran.Core.Filter(Fuaran.Core.InParam(Fuaran.Core.Col "amount", "amounts")) ]
+              let numeric: Fuaran.Compute.Transform list =
+                  [ Fuaran.Compute.Filter(Fuaran.Compute.InParam(Fuaran.Compute.Col "amount", "amounts")) ]
 
               let binding: Binding<obj seq> =
                   Binding.Transform(
@@ -156,9 +156,13 @@ let tests =
           test "a LIST bound to a name the pipeline reads as a SCALAR param is loud, not silent" {
               // Substitution binds `in`/`param` occurrences only, so the scalar `param`
               // reaches Core unbound. Core stays strict; the host does not guess.
-              let scalarPipeline: Fuaran.Core.Transform list =
-                  [ Fuaran.Core.Filter(
-                        Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.ColExpr.Param "depts")
+              let scalarPipeline: Fuaran.Compute.Transform list =
+                  [ Fuaran.Compute.Filter(
+                        Fuaran.Compute.Binary(
+                            Fuaran.Compute.Eq,
+                            Fuaran.Compute.Col "dept",
+                            Fuaran.Compute.ColExpr.Param "depts"
+                        )
                     ) ]
 
               let binding: Binding<obj seq> =
@@ -186,21 +190,24 @@ let tests =
           }
 
           test "Transform.paramsOf names a list param, so reactivity is derived not declared" {
-              Expect.equal (Fuaran.Core.Transform.paramsOf pipeline) [ "depts" ] "the derived chip→grid edge"
+              Expect.equal (Fuaran.Compute.Transform.paramsOf pipeline) [ "depts" ] "the derived chip→grid edge"
           }
 
           test "substituteListParams rewrites the membership test to a literal list" {
               let substituted =
-                  Fuaran.Core.Transform.substituteListParams
+                  Fuaran.Compute.Transform.substituteListParams
                       (Map.ofList [ "depts", [ Fuaran.Core.Str "eng" ] ])
                       pipeline
 
               Expect.equal
                   substituted
-                  [ Fuaran.Core.Filter(
-                        Fuaran.Core.InList(Fuaran.Core.Col "dept", [ Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "eng") ])
+                  [ Fuaran.Compute.Filter(
+                        Fuaran.Compute.InList(
+                            Fuaran.Compute.Col "dept",
+                            [ Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str "eng") ]
+                        )
                     ) ]
                   "InParam resolves to InList by substitution, never through the scalar env"
 
-              Expect.equal (Fuaran.Core.Transform.paramsOf substituted) [] "a substituted step names no param"
+              Expect.equal (Fuaran.Compute.Transform.paramsOf substituted) [] "a substituted step names no param"
           } ]

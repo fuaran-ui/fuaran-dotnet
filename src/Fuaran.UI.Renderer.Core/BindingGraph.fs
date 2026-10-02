@@ -311,7 +311,7 @@ let ofFacts (facts: TreeBindingFacts) : Graph =
                         Set.empty
 
                 let paramReads =
-                    if List.isEmpty (Fuaran.Core.Transform.paramsOf s.Pipeline) then
+                    if List.isEmpty (Fuaran.Compute.Transform.paramsOf s.Pipeline) then
                         Set.empty
                     else
                         readsOfReader d.Reader

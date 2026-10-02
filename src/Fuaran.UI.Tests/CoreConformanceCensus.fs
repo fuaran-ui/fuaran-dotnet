@@ -622,7 +622,7 @@ let census: (string * Adoption) list =
       // `laws/manifest.json` rather than leaving it a gap.
       "Conformance.transformLaws",
       NotUsed
-          "a host dataframe evaluator — QueryRefine consumes Fuaran.Core.DataFrame.evalPipeline as the pinned reference rather than shipping a second evaluator, so the parity laws have no host implementation to compare against the reference"
+          "a host dataframe evaluator — QueryRefine consumes Fuaran.Compute.DataFrame.evalPipeline as the pinned reference rather than shipping a second evaluator, so the parity laws have no host implementation to compare against the reference"
       "Conformance.canonicalFloatLaws",
       NotUsed
           "Wire.Canon.canonicalFloat — the tier's canonical-JSON encoder carries its own Fable-safe float formatter (CanonicalJson.formatFiniteDouble), and this family is self-contained over Core's encoder rather than taking a host one; cross-host float parity here is gated by the wire-format conformance corpus, a multi-host oracle it cannot replace"
@@ -689,7 +689,17 @@ let census: (string * Adoption) list =
           "the kit's own witness-record field freeze — it certifies Core's witness records and takes no domain witness, so it has no subject in a consumer"
       "WireNullTolerance.laws",
       NotUsed
-          "the kit's null-tolerance vectors over Core's own Wire decoders — a fixed Core corpus with no host implementation to hand it; the tier's null handling is certified by the wire-format conformance corpus" ]
+          "the kit's null-tolerance vectors over Core's own Wire decoders — a fixed Core corpus with no host implementation to hand it; the tier's null handling is certified by the wire-format conformance corpus"
+      // ---- the compute kit's families from its own ids (Fuaran.Compute 0.36.0 / 0.37.0) ----
+      "Conformance.plannerLaws",
+      NotUsed
+          "a host pipeline planner — the tier evaluates through Fuaran.Compute.DataFrame.evalPipeline, whose planner is the producer's own, and ships no planner to hold to the as-written fold"
+      "PipelineQueryConformance.laws",
+      NotUsed
+          "Fuaran.Compute.PipelineQuery's registered pipeline query — no shipped project here references the package (the Core Fable gate compiles it only because the compute conformance kit does)"
+      "DeriveTypingConformance.laws",
+      NotUsed
+          "a host dataframe evaluator's derived-column typing — the tier ships no evaluator of its own and consumes the producer's (see transformLaws)" ]
 
 // ---------------------------------------------------------------------------
 //  the roster — by reflection over the PINNED kit
@@ -698,7 +708,7 @@ let census: (string * Adoption) list =
 let private conformanceAssembly = typeof<Fuaran.Core.LawResult>.Assembly
 
 /// The kit ships its law families from TWO assemblies since Core 0.32.0 (fuaran-core#257): the
-/// families that read the dataframe layer moved to `Fuaran.Core.DataFrame.Conformance`, which
+/// families that read the dataframe layer moved to `Fuaran.Compute.Conformance`, which
 /// carries a same-named forwarding `Conformance` module (so every `Conformance.<family>` key is
 /// unchanged) and `IncrementalDelta`. A census that reflected over the kit's assembly alone would
 /// see those families vanish and read the move as a removal. The second assembly is loaded by
@@ -707,13 +717,21 @@ let private conformanceAssembly = typeof<Fuaran.Core.LawResult>.Assembly
 /// does not name it — Core re-keys to it only when the forwards go (its Phase 258).
 let private conformanceAssemblies: Assembly list =
     [ conformanceAssembly
-      Assembly.Load(AssemblyName "Fuaran.Core.DataFrame.Conformance") ]
+      Assembly.Load(AssemblyName "Fuaran.Compute.Conformance") ]
 
 /// The modules the kit publishes law entry points from. Mirrors Core's own census exactly, so the
 /// two agree about what a "family" is; a module the kit stops shipping fails rather than silently
 /// contributing nothing.
+///
+/// The compute kit's two modules of its own (`PipelineQueryConformance`, `DeriveTypingConformance`)
+/// are in its roster from its 0.36.0 and 0.37.0, so they are named here too.
 let private lawModules =
-    [ "Conformance"; "FoldConfluence"; "IncrementalDelta"; "WireNullTolerance" ]
+    [ "Conformance"
+      "FoldConfluence"
+      "IncrementalDelta"
+      "WireNullTolerance"
+      "PipelineQueryConformance"
+      "DeriveTypingConformance" ]
 
 /// Core's roster predicate, character for character — which is over the RETURN TYPE since the
 /// 0.26.0 kit, not over the name shape.
@@ -738,10 +756,14 @@ let private shippedFamilies () : string list =
         [ for moduleName in lawModules do
               let hosts =
                   conformanceAssemblies
-                  |> List.choose (fun asm ->
-                      match asm.GetType("Fuaran.Core." + moduleName) with
-                      | Null -> None
-                      | NonNull t -> Some t)
+                  |> List.collect (fun asm ->
+                      // The compute kit's modules live in the `Fuaran.Compute` namespace from its
+                      // 0.36.0 (its own package ids); the substrate kit's stay in `Fuaran.Core`.
+                      [ "Fuaran.Core."; "Fuaran.Compute." ]
+                      |> List.choose (fun ns ->
+                          match asm.GetType(ns + moduleName) with
+                          | Null -> None
+                          | NonNull t -> Some t))
 
               if List.isEmpty hosts then
                   failtestf "the pinned kit no longer ships a module named %s" moduleName
@@ -901,7 +923,7 @@ let private conformanceTestProjects () =
                 projects
                 |> Array.exists (fun text ->
                     text.Contains "Fuaran.Core.Conformance"
-                    || text.Contains "Fuaran.Core.DataFrame.Conformance")
+                    || text.Contains "Fuaran.Compute.Conformance")
             then
                 Some(leaf dir, dir, String.concat "\n" projects)
             else
@@ -934,8 +956,10 @@ let private aliasesFor (source: string) =
     for m in lawModules do
         map[m] <- m
         map["Fuaran.Core." + m] <- m
+        // The compute kit's namespace from its 0.36.0.
+        map["Fuaran.Compute." + m] <- m
 
-    for m in Regex.Matches(source, @"module\s+([A-Za-z_][\w']*)\s*=\s*Fuaran\.Core\.([A-Za-z_][\w']*)") do
+    for m in Regex.Matches(source, @"module\s+([A-Za-z_][\w']*)\s*=\s*Fuaran\.(?:Core|Compute)\.([A-Za-z_][\w']*)") do
         let alias = m.Groups[1].Value
         let target = m.Groups[2].Value
 
@@ -1064,7 +1088,7 @@ let render (rows: (string * Adoption) list) : string =
 
     line (
         sprintf
-            "Every public law family the pinned `Fuaran.Core.Conformance` and `Fuaran.Core.DataFrame.Conformance` **%s** ship, and how this repo answers for it."
+            "Every public law family the pinned `Fuaran.Core.Conformance` and `Fuaran.Compute.Conformance` **%s** ship, and how this repo answers for it."
             (kitVersion ())
     )
 
@@ -1220,7 +1244,7 @@ let tests =
               // (fuaran-core#257), and the whole is their composition — Core's suite reads it the
               // same way (`KitRoster.census`).
               let kitDeclared =
-                  Fuaran.Core.SampleAdequacy.census @ Fuaran.Core.DataFrameFamilies.census
+                  Fuaran.Core.SampleAdequacy.census @ Fuaran.Compute.DataFrameFamilies.census
                   |> List.map fst
                   |> Set.ofList
 

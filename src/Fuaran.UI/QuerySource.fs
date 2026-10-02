@@ -22,7 +22,7 @@ module Fuaran.UI.QuerySource
 //  block inherits the envelope rather than inventing one. This module is the
 //  async wrapper + the UI gate. It is expressed
 //  over the already-pinned `Fuaran.Core.Column` (`Schema` / `Table` / `DataSource`)
-//  + `Fuaran.Core.DataFrame` (`Transform`) types, NOT `Fuaran.Core.Query` — so it
+//  + `Fuaran.Compute.DataFrame` (`Transform`) types, NOT `Fuaran.Core.Query` — so it
 //  takes no new pin and stays the interim, portability-clean seam the phase
 //  sanctions. Wiring a concrete `IClientQuerySource` into `QueryRegistry.dispatch`
 //  (param validation + Phase 27 capture keying) is the follow-on when real drivers
@@ -45,14 +45,14 @@ open Fuaran.UI.Types
 open Fuaran.Core
 
 /// What the host resolves into rows. `Transform` is the serialisable query the
-/// LLM emits (a `Fuaran.Core.DataFrame` pipeline over a columnar `DataSource`,
+/// LLM emits (a `Fuaran.Compute.DataFrame` pipeline over a columnar `DataSource`,
 /// no closure on the wire); `Dialect` is a raw dialect string a pass-through
 /// HTTP-driver source (Neon / Turso / PlanetScale / D1) executes verbatim. A
 /// thinner, UI-facing sibling to `Fuaran.Core.Query`'s registrable declaration —
 /// the concrete-driver path generalises onto that registry (see header).
 [<RequireQualifiedAccess>]
 type QueryRequest =
-    | Transform of source: Fuaran.Core.DataSource * pipeline: Fuaran.Core.Transform list
+    | Transform of source: Fuaran.Core.DataSource * pipeline: Fuaran.Compute.Transform list
     | Dialect of query: string
 
 /// What a resolve returns. `SchemaOnly` is the privacy path — the typed result

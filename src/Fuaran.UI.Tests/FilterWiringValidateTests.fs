@@ -14,7 +14,7 @@
 //    FUARAN090 — inert editable grid (editable: true without a direct
 //                Binding.State source — Phase 663 write-back floor)
 //    FUARAN114 — a column `field` / `rowKeyField` naming a column the source
-//                cannot PRODUCE — absent from the schema `Fuaran.Core.SchemaWalk`
+//                cannot PRODUCE — absent from the schema `Fuaran.Compute.SchemaWalk`
 //                derives for the whole pipeline (Phase 1149, widened by Phase
 //                1486 — error)
 // ============================================================================
@@ -46,8 +46,10 @@ let private embeddedSource =
         { Schema = [ "dept", Fuaran.Core.StringType ]
           Columns = [ Fuaran.Core.Column.create "dept" Fuaran.Core.StringType [ Fuaran.Core.Str "eng" ] ] }
 
-let private paramPipeline: Fuaran.Core.Transform list =
-    [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.ColExpr.Param "dept")) ]
+let private paramPipeline: Fuaran.Compute.Transform list =
+    [ Fuaran.Compute.Filter(
+          Fuaran.Compute.Binary(Fuaran.Compute.Eq, Fuaran.Compute.Col "dept", Fuaran.Compute.ColExpr.Param "dept")
+      ) ]
 
 let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<Msg> =
     { Id = "grid"
@@ -443,7 +445,7 @@ let tests =
           }
 
           // Phase 1486 — the widening. The window is no longer the EMPTY pipeline
-          // but the schema `Fuaran.Core.SchemaWalk` derives for the whole one, so
+          // but the schema `Fuaran.Compute.SchemaWalk` derives for the whole one, so
           // the shape a grid is most likely to get wrong — a pipeline that
           // renames or drops the column the grid still binds — is now refused
           // instead of passing unjudged.
@@ -457,7 +459,7 @@ let tests =
                       (Some "department")
                       (Binding.Transform(
                           TransformSource.Data(embeddedSource),
-                          [ Fuaran.Core.Project [ "dept", "department" ] ],
+                          [ Fuaran.Compute.Project [ "dept", "department" ] ],
                           None
                       ))
 
@@ -491,7 +493,7 @@ let tests =
                       (Some "dept")
                       (Binding.Transform(
                           TransformSource.Data(embeddedSource),
-                          [ Fuaran.Core.Derive("shouty", Fuaran.Core.Col "dept") ],
+                          [ Fuaran.Compute.Derive("shouty", Fuaran.Compute.Col "dept") ],
                           None
                       ))
 
@@ -513,11 +515,11 @@ let tests =
                       (Some "id")
                       (Binding.Transform(
                           TransformSource.Data(Fuaran.Core.Ref "orders"),
-                          [ Fuaran.Core.Filter(
-                                Fuaran.Core.Binary(
-                                    Fuaran.Core.Eq,
-                                    Fuaran.Core.Col "dept",
-                                    Fuaran.Core.ColExpr.Param "dept"
+                          [ Fuaran.Compute.Filter(
+                                Fuaran.Compute.Binary(
+                                    Fuaran.Compute.Eq,
+                                    Fuaran.Compute.Col "dept",
+                                    Fuaran.Compute.ColExpr.Param "dept"
                                 )
                             ) ],
                           Some

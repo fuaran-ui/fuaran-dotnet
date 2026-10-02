@@ -138,6 +138,6 @@
     <!-- Compute layer (Phase 282): the Binding.Transform case carries Fuaran.Core's columnar +
          dataframe types. Fable-distributed (source-packed), so the Fable client compiles them. -->
     <PackageReference Include="Fuaran.Core.Column" />
-    <PackageReference Include="Fuaran.Core.DataFrame" />
+    <PackageReference Include="Fuaran.Compute.DataFrame" />
   </ItemGroup>
 </Project>

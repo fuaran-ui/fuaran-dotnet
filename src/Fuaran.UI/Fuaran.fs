@@ -342,11 +342,11 @@ module binding =
 
     /// A declarative dataframe transform over a columnar source (Phase 282 / Wave 42 — the Compute
     /// layer). `source` is a `Fuaran.Core.DataSource` (embedded columns or a host-resolved `ref`);
-    /// `pipeline` the full v1 verb set (`Fuaran.Core.DataFrame.Transform list`). Produces the
+    /// `pipeline` the full v1 verb set (`Fuaran.Compute.DataFrame.Transform list`). Produces the
     /// transformed rows as a `Binding<obj seq>` for a data-bearing node (`DataGrid` / `Chart` /
-    /// `Table` / `Metric`); the `Fuaran.UI.Ops` evaluator runs it via the `Fuaran.Core.DataFrame`
-    /// reference evaluator. Authored idiomatically with the `Fuaran.Core.DataFrame` algebra ctors.
-    let transform (source: Fuaran.Core.DataSource) (pipeline: Fuaran.Core.Transform list) : Binding<obj seq> =
+    /// `Table` / `Metric`); the `Fuaran.UI.Ops` evaluator runs it via the `Fuaran.Compute.DataFrame`
+    /// reference evaluator. Authored idiomatically with the `Fuaran.Compute.DataFrame` algebra ctors.
+    let transform (source: Fuaran.Core.DataSource) (pipeline: Fuaran.Compute.Transform list) : Binding<obj seq> =
         Binding.Transform(TransformSource.Data source, pipeline, None)
 
     /// A LIVE declarative dataframe transform (Phase 818 — the reactive-derivation first cut).
@@ -356,7 +356,7 @@ module binding =
     /// The initial snapshot (what SSR / diagnostic evaluation reads) derives from the binding's
     /// carried default data via the Phase-815 normalisation (row-major rows transpose to
     /// columnar); a source with no carried table data starts from the empty table.
-    let transformLive (source: Binding<JVal>) (pipeline: Fuaran.Core.Transform list) : Binding<obj seq> =
+    let transformLive (source: Binding<JVal>) (pipeline: Fuaran.Compute.Transform list) : Binding<obj seq> =
         let initial =
             match source with
             | Binding.State(_, Some data)
@@ -376,7 +376,7 @@ module binding =
     /// (`Binding<JVal>` since the swap — the typed verbatim carrier for the obj-erased position, D3.)
     let transformWith
         (source: Fuaran.Core.DataSource)
-        (pipeline: Fuaran.Core.Transform list)
+        (pipeline: Fuaran.Compute.Transform list)
         (parameters: (string * Binding<JVal>) list)
         : Binding<obj seq> =
         let ps =

@@ -42,6 +42,7 @@ module CoreFunctionLawTests =
     open System.IO
     open Expecto
     open Fuaran.Core
+    open Fuaran.Compute
     open Fuaran.UI
     open Fuaran.UI.FastPath.Tests.CoreLawSupport
 
@@ -125,7 +126,7 @@ module CoreFunctionLawTests =
               <| fun _ ->
                   // Likewise: the FastPath seam binds hole VALUES, not query
                   // parameters. Pin evidence.
-                  CoreConf.paramLaws lawSeed 100
+                  Fuaran.Compute.Conformance.paramLaws lawSeed 100
                   |> assertAllPassed "paramLaws over the pinned Fuaran.Core.Function"
 
               testCase "the Deferred value codec certifies under Core's deferredLaws"

@@ -146,21 +146,21 @@ let tests =
 
                   Binding.Transform(
                       TransformSource.Data source,
-                      [ Fuaran.Core.GroupBy(
+                      [ Fuaran.Compute.GroupBy(
                             [],
                             [ { Name = "n"
                                 Fn = Fuaran.Core.AggFn.Count
                                 Of = "id" } ]
                         )
-                        Fuaran.Core.Derive(
+                        Fuaran.Compute.Derive(
                             "over",
-                            Fuaran.Core.Binary(
-                                Fuaran.Core.Gt,
-                                Fuaran.Core.Col "n",
-                                Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int threshold)
+                            Fuaran.Compute.Binary(
+                                Fuaran.Compute.Gt,
+                                Fuaran.Compute.Col "n",
+                                Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Int threshold)
                             )
                         )
-                        Fuaran.Core.Project [ "over", "over" ] ],
+                        Fuaran.Compute.Project [ "over", "over" ] ],
                       None
                   )
 
@@ -194,25 +194,25 @@ let tests =
               let selector: Binding<string> =
                   Binding.Transform(
                       TransformSource.Data source,
-                      [ Fuaran.Core.GroupBy(
+                      [ Fuaran.Compute.GroupBy(
                             [],
                             [ { Name = "n"
                                 Fn = Fuaran.Core.AggFn.Count
                                 Of = "id" } ]
                         )
-                        Fuaran.Core.Derive(
+                        Fuaran.Compute.Derive(
                             "label",
-                            Fuaran.Core.Case(
-                                [ Fuaran.Core.Binary(
-                                      Fuaran.Core.Gt,
-                                      Fuaran.Core.Col "n",
-                                      Fuaran.Core.ColExpr.Lit(Fuaran.Core.Int 3)
+                            Fuaran.Compute.Case(
+                                [ Fuaran.Compute.Binary(
+                                      Fuaran.Compute.Gt,
+                                      Fuaran.Compute.Col "n",
+                                      Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Int 3)
                                   ),
-                                  Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "busy") ],
-                                Fuaran.Core.ColExpr.Lit(Fuaran.Core.Str "quiet")
+                                  Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str "busy") ],
+                                Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str "quiet")
                             )
                         )
-                        Fuaran.Core.Project [ "label", "label" ] ],
+                        Fuaran.Compute.Project [ "label", "label" ] ],
                       None
                   )
 

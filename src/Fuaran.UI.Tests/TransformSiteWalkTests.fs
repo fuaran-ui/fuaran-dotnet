@@ -35,6 +35,8 @@ open System.IO
 open Expecto
 
 open Fuaran.Core
+
+open Fuaran.Compute
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.JsonDecode
