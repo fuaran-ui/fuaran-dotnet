@@ -7816,7 +7816,7 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.90.0 — the slot the Fuaran.Core 0.34.0 raise opens (DRAFT — untagged)
+## 0.90.0 — the slot the Fuaran.Core 0.34.0 raise opens — released 2026-10-02 as 0.90.0
 
 _Class: **BREAKING** (source) on `Fuaran.UI`. The raise moves every `Fuaran.Core.*` pin from 0.32.0 to
 0.34.0 (0.33.0 is skipped here), and Core 0.34.0's IDL generator regenerates the structural layer
@@ -7899,7 +7899,7 @@ change that follows rides this slot; a higher class advances it._
   `over-close-ambiguous`, 2 `over-close-no-clean-candidate`). The certifying fixtures are the
   `repair/` family's version-2 cases.
 
-## 0.88.0 — the slot Phase 1923 opens: decode is strict, and repair is a separate named act (DRAFT — untagged)
+## 0.88.0 — the slot Phase 1923 opens: decode is strict, and repair is a separate named act — released 2026-09-30 as 0.88.0
 
 _Class: **BREAKING** on `Fuaran.UI` and `Fuaran.UI.Ops` — a behavioural change to a default, with
 no type or member removed. `v0.86.0` is tagged and 0.87.0 is an untagged draft whose class is
