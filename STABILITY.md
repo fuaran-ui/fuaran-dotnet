@@ -7818,11 +7818,14 @@ document that declares no ceiling is exactly the control it was.
 
 ## 0.91.0 — the slot Phase 2005 opens: the compute 0.37.0 adoption completes (DRAFT — untagged)
 
-_Class: **no public surface change** on any shipped package, by the surface guard
-(`surface-guard.ps1 -Baseline` over `Fuaran.UI.Ops` and `Fuaran.UI` built from the `v0.90.0` source
-against this build: "Surface unchanged" for both). `v0.90.0` is released, so nothing may ride it and
-this slot opens the next number. An additive change that follows rides this slot; a breaking one
-advances it._
+_Class: **BREAKING (behaviour)**, with **no public surface change** on any shipped package by the
+surface guard (`surface-guard.ps1 -Baseline` over `Fuaran.UI.Ops` and `Fuaran.UI` built from the
+`v0.90.0` source against this build: "Surface unchanged" for both). The behaviour class is the
+maintainer's ruling: the expression bound now counts a rounding scale as a node, so a document close
+to `MaxExprNodes` that decoded on 0.90.0 may be refused here (see below). A document that validated
+before can now be refused, and a consumer pinning 0.90.0 should be told so. `v0.90.0` is released, so
+nothing may ride it and this slot opens the next number. A change of this class or lower that follows
+rides this slot; a higher one advances it._
 
 ### What rides this slot
 
