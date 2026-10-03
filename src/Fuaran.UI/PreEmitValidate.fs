@@ -278,10 +278,11 @@ type PreEmitDefect =
     /// plot numerically — anything outside int/float/bool (bool coerces 1/0)
     /// reads 0.0 at lowering time, a silently-flat series (Phase 640). Fires
     /// only when the schema is statically known (see FUARAN086) AND the column's
-    /// type is decidable there — a `derive`d column exists with a data-dependent
-    /// type, so it grounds FUARAN086 and says nothing here rather than being
-    /// guessed at. Carries the node id, the field, and the offending column-type
-    /// tag.
+    /// type is decidable there — a `derive` the typer cannot decide (one reading a
+    /// param, `now`, or an undeclared column) exists with a data-dependent type, so
+    /// it grounds FUARAN086 and says nothing here rather than being guessed at;
+    /// a decided one (Fuaran.Compute 0.37.0) is judged by its type. Carries the
+    /// node id, the field, and the offending column-type tag.
     | ChartFieldTypeMismatch of nodeId: string * field: string * columnType: string
     /// **FUARAN088 (Error)**. A `Pie` chart carries other than exactly ONE
     /// `YFields` series (Phase 640/638). The pie lowering REFUSES multi-series
@@ -4683,7 +4684,8 @@ let private validateCore
             //
             // The walk separates two facts the hand-derivation could not: whether
             // a column EXISTS (`has`) and whether its type is DECIDABLE
-            // (`typeOf`). A `Derive`d column exists with a data-dependent type, so
+            // (`typeOf`). A `Derive`d column the typer cannot decide exists with a
+            // data-dependent type (a decided one is typed, Fuaran.Compute 0.37.0), so
             // it grounds FUARAN086 and is silent for FUARAN087/097 — reporting a
             // type mismatch about a type nobody can name would be a guess, and the
             // walk declines to guess precisely so this rule need not either.
@@ -4727,7 +4729,7 @@ let private validateCore
                          defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, spec.XField, schemaColumns))
                      else
                          match colType spec.XField with
-                         // Present, type data-dependent (a `Derive`'s column): the
+                         // Present, type data-dependent (an undecided `Derive`): the
                          // field is grounded and nothing typed can be said.
                          | None -> ()
                          | Some t ->
@@ -5462,8 +5464,8 @@ type BindingGrade =
     | Unchecked of UncheckedReason
 
 /// One column of the schema a source produces. `Type` is the column-type tag
-/// (`int`, `float`, `bool`, `string`, `date`, `timestamp`), or `None` where the
-/// type is data-dependent (a `derive`d column).
+/// (`int`, `float`, `decimal`, `bool`, `string`, `date`, `timestamp`), or `None` where
+/// the type is data-dependent (a `derive` the typer cannot decide).
 type ProducedColumn = { Name: string; Type: string option }
 
 /// One of `validate`'s findings about a reader, located in the wire document.

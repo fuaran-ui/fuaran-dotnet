@@ -66,11 +66,10 @@ module G = Fuaran.UI.Generated
 //     that cannot emit this vocabulary is precisely what leg 3 exists to find.
 //   * The sampled-vector narrowing the HOST PROJECTIONS necessitate lives beside
 //     those projections, in `src/Fuaran.UI.Idl/Support.fs`, rather than in this
-//     file — the posture Core took, at the vocabulary's new home. A SECOND pass
-//     joins it here, steering a draw out of an omit-default hole in the engine's
-//     encoders; that one is a finding about `Fuaran.Core.Idl` rather than about
-//     this vocabulary, so it lives with the sweep (`IdlCertificationSupport`)
-//     and its scope is pinned by name below.
+//     file — the posture Core took, at the vocabulary's new home. (A second pass,
+//     steering draws out of an omit-default hole in the engine's encoders,
+//     retired at Fuaran.Core 0.34.0, which closed the hole; see
+//     `IdlCertificationSupport`.)
 //   * Leg 2's hosted-FREE refusals are OUT OF DOMAIN rather than failures, and
 //     their reasons are pinned by name. Core called such a refusal an outright
 //     failure; since then the support document has grown decode REFINES, which
@@ -216,27 +215,15 @@ type private Divergence =
 let private render (d: Divergence) =
     sprintf "vector %d (seed %d) — %s\n    interpreter: %s\n    this leg   : %s" d.Index seed d.Leg d.Expected d.Actual
 
-/// The sampled vectors, moved into the space every leg agrees on by TWO passes
-/// with two different authorities.
-///
-///  1. `narrowNode` — steers a draw out of the `OmitDefault`-on-a-case-mapped-
-///     enum blind spot in `Fuaran.Core.Idl`'s three encoders. That is a finding
-///     about the packaged engine, not a property of this vocabulary; its whole
-///     argument, and why the pass steers rather than drops, is in
-///     `IdlCertificationSupport`.
-///  2. `VocabularySupport.canonicaliseVector` — the narrowings the HOST
-///     PROJECTIONS necessitate (`Switch`'s `on`-XOR-`stateKey`, `SetState`'s
-///     `value`-XOR-`valueFrom`), declared beside the projections themselves so
-///     retiring a projection retires its narrowing.
-///
-/// In that order, because (1) is a statement about the engine's encoders and
-/// (2) a statement about this host's projection of the wire; (2) may SUPPLY a
-/// member (the deterministic compact `stateKey`) and must therefore see the
-/// steered shape rather than the raw draw.
+/// The sampled vectors, moved into the space every leg agrees on by
+/// `VocabularySupport.canonicaliseVector` — the narrowings the HOST PROJECTIONS
+/// necessitate (`Switch`'s `on`-XOR-`stateKey`, `SetState`'s `value`-XOR-`valueFrom`),
+/// declared beside the projections themselves so retiring a projection retires
+/// its narrowing.
 let private vectors =
     lazy
         (Sample.sampleNodes vocabulary allKindTags seed vectorBudget
-         |> List.map (narrowNode vocabulary >> Fuaran.UI.VocabularySupport.canonicaliseVector))
+         |> List.map Fuaran.UI.VocabularySupport.canonicaliseVector)
 
 /// The reference bytes — leg 1.
 let private interpreter =
@@ -287,32 +274,6 @@ let tests =
               | Some d ->
                   Expect.equal d.Index 7 "the report carries the vector index, which is what reproduces it"
                   Expect.stringContains (render d) "seed" "the rendered report names the seed")
-
-          testCase "the engine's omit-default blind spot is empty at the Core 0.34.0 pin" (fun _ ->
-              // The SCOPE of the finding the steering pass exists for, derived
-              // from the vocabulary rather than remembered. Two directions of
-              // failure, both worth catching:
-              //
-              //  * a SECOND field arrives in the blind spot — a new
-              //    `Declare.enumWith` enum gaining an `OmitDefault` — and the
-              //    steering silently starts covering for it as well. Naming the
-              //    set makes that a conversation rather than a no-op.
-              //  * the set becomes EMPTY, which happens either because the
-              //    declaration moved or because `Fuaran.Core` resolved the
-              //    alphabet at its two wire-comparison sites. In the second case
-              //    the steering pass is dead code and should be retired with the
-              //    engine bump that fixes it.
-              //
-              // The second case happened at the Fuaran.Core 0.34.0 pin (fuaran-core
-              // Phase 292): a `VEnum` default names the WIRE string, resolved to the
-              // host case through `IdlEnum.CaseOf` by every backend, and a host-case
-              // spelling is refused at load. `SemanticStyle.direction` now declares
-              // `auto`, so the set is empty and the steering pass is inert; it is left
-              // for a separate retirement rather than removed inside the pin raise.
-              Expect.equal
-                  (blindSpotFields vocabulary)
-                  []
-                  "the OmitDefault-on-a-case-mapped-enum set moved — see the finding in IdlCertificationSupport before adjusting this list")
 
           testCase "the sampler draws node envelopes on every presence polarity" (fun _ ->
               // The sampler leg on its own, so a regression that stopped

@@ -2513,11 +2513,21 @@ let private scanExpr (expr: Fuaran.Compute.ColExpr) : struct (int * bool) =
                 walk x
                 List.iter walk items
             | Fuaran.Compute.InParam(x, _) -> walk x
-            // The decimal arithmetic cases (Fuaran.Compute 0.36.0, its Phase 277).
-            | Fuaran.Compute.Quotient(dividend, divisor, _) ->
+            // The exact-decimal nodes (Fuaran.Compute 0.36.0): both operands are children, and the
+            // rounding's scale is a slot on the wire — a literal or a param — counted as the one
+            // leaf it is, exactly as a `Lit` / `Param` operand is.
+            | Fuaran.Compute.Quotient(dividend, divisor, rounding) ->
                 walk dividend
                 walk divisor
-            | Fuaran.Compute.Rounded(x, _) -> walk x
+                walkScale rounding.Scale
+            | Fuaran.Compute.Rounded(x, rounding) ->
+                walk x
+                walkScale rounding.Scale
+
+    and walkScale (scale: Fuaran.Compute.Slot<int>) =
+        match scale with
+        | Fuaran.Compute.Slot.Lit _
+        | Fuaran.Compute.Slot.Param _ -> count <- count + 1
 
     walk expr
     struct (count, sawCol)

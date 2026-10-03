@@ -199,8 +199,12 @@ let tests =
 
           testCase "independent op pairs interleave confluently (concurrencyLaws)"
           <| fun _ ->
-              // The defaulted form, pinned to Core's own `Ops.footprint`.
-              CoreConf.concurrencyLaws nodew idw opGen encodeNode seed 100
+              // The defaulted form, pinned to Core's own `Ops.footprint`. 300 iterations, Core's own
+              // suite's figure for this family: from Core 0.33.0 the kit refuses a run that reached no
+              // independent pair (sample adequacy), and under `Ops.footprint` — where a remove, a move
+              // and an in-place update each write an unknown parent — a pair of four-op scripts is
+              // independent only rarely, so the run is sized to reach enough of them.
+              CoreConf.concurrencyLaws nodew idw opGen encodeNode seed 300
               |> assertAllPassed "concurrencyLaws over the Fuaran.UI tree witness"
 
           testCase "the TIER's own footprint projection is confluent (concurrencyLawsWith)"
@@ -217,7 +221,7 @@ let tests =
               // which Core's algebra has no case for) is unreachable from this generator and is
               // certified by `laneFoldLaws` above, which folds real `TreeOp` lanes — understating
               // a vertical op's footprint turns that family red, and only that family.
-              CoreConf.concurrencyLawsWith nodew idw opGen encodeNode uiFootprintOfSkeleton seed 100
+              CoreConf.concurrencyLawsWith nodew idw opGen encodeNode uiFootprintOfSkeleton seed 300
               |> assertAllPassed "concurrencyLawsWith over the tier's own footprint projection"
 
           testCase "proposal arbitration partitions totally and confluently (arbitrationLaws)"

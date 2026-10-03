@@ -1750,9 +1750,9 @@ let tests =
 
               // Phase 1486 — a column the pipeline ADDS. Before the widening this
               // passed because the whole pipelined shape was unjudged; it passes
-              // now because the walk names `variance` as produced. And the
-              // derived column's TYPE is data-dependent, so FUARAN087 says
-              // nothing about it rather than guessing.
+              // now because the walk names `variance` as produced. Since
+              // Fuaran.Compute 0.37.0 the walk also TYPES it — `Col "revenue"` is
+              // a float, so the derive is a float column — and a float plots.
               let piped: Node<Msg> =
                   Fuaran.chart
                       "cht2"
@@ -1770,6 +1770,66 @@ let tests =
               match PreEmitValidate.validate piped with
               | Ok() -> ()
               | Error defects -> failtestf "Expected Ok for a chart plotting a derived column, got: %A" defects
+          }
+
+          // ── Fuaran.Compute 0.37.0 (its Phase 338) — a derived column is typed by its expression ──
+          //
+          // Until 0.37.0 the walk stated a derive's type only when it was a string, and every other
+          // derive was data-dependent, so the chart rules stood down on it. The typer now decides
+          // the column wherever the expression decides it, and the rules read that type like any
+          // other: a decided numeric derive is judged as the number it is.
+          test "a derived column's DECIDED type is judged: a temporal x-axis over an int derive is refused" {
+              let table: Fuaran.Core.Table =
+                  { Schema =
+                      [ "quarter", Fuaran.Core.ColumnType.StringType
+                        "units", Fuaran.Core.ColumnType.IntType ]
+                    Columns = [] }
+
+              let source =
+                  Binding.Transform(
+                      TransformSource.Data(Fuaran.Core.DataSource.Embedded table),
+                      [ Fuaran.Compute.Transform.Derive(
+                            "next",
+                            Fuaran.Compute.ColExpr.Binary(
+                                Fuaran.Compute.BinOp.Add,
+                                Fuaran.Compute.ColExpr.Col "units",
+                                Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Cell.Int 1)
+                            )
+                        ) ],
+                      None
+                  )
+
+              let temporal: Node<Msg> =
+                  Fuaran.chart
+                      "cht"
+                      { Defaults.chart<Msg> with
+                          Kind = ChartKind.Line
+                          Source = source
+                          XField = "next"
+                          YFields = [ "units" ]
+                          XScale = Some ChartXScale.Temporal }
+
+              match PreEmitValidate.validate temporal with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.ChartTemporalXNotDate("cht", "next", "int"))
+                      "an int derive under a date axis is refused, named by its decided type"
+              | Ok() -> failtest "Expected ChartTemporalXNotDate over the int derive"
+
+              // The same derive as a VALUE field plots: an int is numeric.
+              let plotted: Node<Msg> =
+                  Fuaran.chart
+                      "cht2"
+                      { Defaults.chart<Msg> with
+                          Kind = ChartKind.Bar
+                          Source = source
+                          XField = "quarter"
+                          YFields = [ "next" ] }
+
+              match PreEmitValidate.validate plotted with
+              | Ok() -> ()
+              | Error defects -> failtestf "Expected Ok for a chart plotting an int derive, got: %A" defects
           }
 
           // ── Phase 1486 — FUARAN086 widens to the schema walk ──

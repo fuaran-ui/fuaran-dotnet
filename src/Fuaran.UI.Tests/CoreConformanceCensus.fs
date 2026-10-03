@@ -715,9 +715,11 @@ let private conformanceAssembly = typeof<Fuaran.Core.LawResult>.Assembly
 /// name, as Core's own suite does (`KitRoster.assemblies`): an F# module has no `typeof`. Its
 /// `DataFrameConformance` module is the forwards' HOME, not a roster key, and `lawModules` below
 /// does not name it — Core re-keys to it only when the forwards go (its Phase 258).
+let private computeConformanceAssembly =
+    Assembly.Load(AssemblyName "Fuaran.Compute.Conformance")
+
 let private conformanceAssemblies: Assembly list =
-    [ conformanceAssembly
-      Assembly.Load(AssemblyName "Fuaran.Compute.Conformance") ]
+    [ conformanceAssembly; computeConformanceAssembly ]
 
 /// The modules the kit publishes law entry points from. Mirrors Core's own census exactly, so the
 /// two agree about what a "family" is; a module the kit stops shipping fails rather than silently
@@ -785,16 +787,22 @@ let private shippedFamilies () : string list =
 
     List.sort found
 
-/// The pinned kit's version, read from the assembly rather than hard-coded: the version decides
+/// A pinned kit's version, read from its assembly rather than hard-coded: the version decides
 /// which families exist, so a report that named it from a literal could describe a kit that is not
 /// the one the suite ran against.
-let private kitVersion () =
-    match conformanceAssembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>() with
-    | null -> string (conformanceAssembly.GetName().Version)
+let private versionOf (asm: Assembly) =
+    match asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>() with
+    | null -> string (asm.GetName().Version)
     | attr ->
         // `0.18.0+<sha>` — the build metadata moves with every Core build, so it is dropped: the
         // committed report must be stable across rebuilds of the same pinned version.
         attr.InformationalVersion.Split('+')[0]
+
+let private kitVersion () = versionOf conformanceAssembly
+
+/// The compute kit moves on its own version line (0.37.0 against Core's 0.34.0), so the report
+/// names each pin rather than one number for both.
+let private computeKitVersion () = versionOf computeConformanceAssembly
 
 // ---------------------------------------------------------------------------
 //  locating the checkout + reading the test sources
@@ -1088,8 +1096,9 @@ let render (rows: (string * Adoption) list) : string =
 
     line (
         sprintf
-            "Every public law family the pinned `Fuaran.Core.Conformance` and `Fuaran.Compute.Conformance` **%s** ship, and how this repo answers for it."
+            "Every public law family the pinned `Fuaran.Core.Conformance` **%s** and `Fuaran.Compute.Conformance` **%s** ship, and how this repo answers for it."
             (kitVersion ())
+            (computeKitVersion ())
     )
 
     line ""

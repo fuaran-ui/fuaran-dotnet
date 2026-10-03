@@ -7816,7 +7816,41 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.90.0 — the slot the Fuaran.Core 0.34.0 raise opens — released 2026-10-02 as 0.90.0
+## 0.91.0 — the slot Phase 2005 opens: the compute 0.37.0 adoption completes (DRAFT — untagged)
+
+_Class: **no public surface change** on any shipped package, by the surface guard
+(`surface-guard.ps1 -Baseline` over `Fuaran.UI.Ops` and `Fuaran.UI` built from the `v0.90.0` source
+against this build: "Surface unchanged" for both). `v0.90.0` is released, so nothing may ride it and
+this slot opens the next number. An additive change that follows rides this slot; a breaking one
+advances it._
+
+### What rides this slot
+
+- **The expression bound counts the rounding scale** (WIRE_FORMAT.md §21.8). The decode-time node
+  walk over a `ColExpr` (a `Binding.Expr`, and the expressions a `Transform` pipeline embeds) already
+  descended into the operands of `quotient` and `rounded`; it now also counts each one's rounding
+  `scale` slot as the one leaf it is, exactly as a `lit` / `param` operand is counted. **Behaviour a
+  consumer may notice:** an expression built from many `rounded` / `quotient` nodes reaches the
+  `MaxExprNodes` ceiling sooner than it did on 0.90.0, so a document close to the ceiling that
+  decoded there may be refused here, with the same limit error. No type or member moves.
+- **A derived column's decided type reaches the chart checks.** Since the compute packages' 0.37.0
+  the schema walk types a `derive` from its expression wherever the expression decides it, and the
+  chart rules read that type like any other: a temporal x-axis over a decided `int` derive is refused
+  (FUARAN097), and a numeric value field over it is accepted. A derive the typer cannot decide (one
+  reading a param, `now`, or an undeclared column) stays data-dependent and the rules stand down on
+  it, as before. This slot pins the behaviour with a test and corrects the doc comments that still
+  described every derive as data-dependent; no rule's code changes. A `decimal` column is still not
+  numeric for the chart rules.
+- **Test-side only, no shipped surface:** the full-vocabulary sweep's steering pass around the
+  omit-default blind spot is retired (Fuaran.Core 0.34.0 closed the hole, and the three legs agree on
+  the at-default draw without it); the Core DAG suite's two concurrency families run at 300
+  iterations, Core's own figure; and the generated `docs/core-conformance.md` names the two kits'
+  versions separately (`Fuaran.Core.Conformance` 0.34.0, `Fuaran.Compute.Conformance` 0.37.0) where it
+  named one number for both.
+
+---
+
+## 0.90.0 — the slot the Fuaran.Core 0.34.0 raise opens — released 2026-10-02 as `v0.90.0`
 
 _Class: **BREAKING** (source) on `Fuaran.UI`. The raise moves every `Fuaran.Core.*` pin from 0.32.0 to
 0.34.0 (0.33.0 is skipped here), and Core 0.34.0's IDL generator regenerates the structural layer
@@ -7899,7 +7933,7 @@ change that follows rides this slot; a higher class advances it._
   `over-close-ambiguous`, 2 `over-close-no-clean-candidate`). The certifying fixtures are the
   `repair/` family's version-2 cases.
 
-## 0.88.0 — the slot Phase 1923 opens: decode is strict, and repair is a separate named act — released 2026-09-30 as 0.88.0
+## 0.88.0 — the slot Phase 1923 opens: decode is strict, and repair is a separate named act — released 2026-09-30 as `v0.88.0`
 
 _Class: **BREAKING** on `Fuaran.UI` and `Fuaran.UI.Ops` — a behavioural change to a default, with
 no type or member removed. `v0.86.0` is tagged and 0.87.0 is an untagged draft whose class is

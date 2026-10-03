@@ -134,166 +134,18 @@ let manifestFamilySize (kind: string) : int =
 /// told about the override rather than left to conclude the checkout is wrong.
 let absentCorpusSkip: string = Fuaran.Tests.CorpusRoot.AbsentSkipReason
 
-// ─── steering a SAMPLED value out of the engine's blind spot ───────────────
+// ─── the engine's omit-default blind spot — retired at Fuaran.Core 0.34.0 ──
 //
-//  THE FINDING THIS PASS EXISTS FOR — an `OmitDefault` on a CASE-MAPPED enum is
-//  a hole in `Fuaran.Core.Idl`'s three encoders, and the sweep is what made it
-//  visible. `OmitDefault d` says the canonical wire omits a member carrying `d`.
-//  All three legs implement that rule, and they do NOT agree about the alphabet
-//  `d` is written in:
-//
-//    * the F# backend renders the declaration as a HOST CASE NAME
-//      (`if s.Direction = TextDirection.Auto then None else …`) — so a
-//      declaration in the wire alphabet would not even compile;
-//    * the TypeScript backend emits the SAME string as a WIRE comparison
-//      (`s.direction === "Auto" ? null : …`) — which is never true for a
-//      case-mapped enum, whose runtime value is `"auto"`;
-//    * the interpreter compares `IdlValue`s, and `VEnum` carries the WIRE string
-//      (`Idl.fs`: "`VEnum` carries the WIRE string, exactly as `VUnion` carries
-//      the wire tag") — so it too never recognises its own default.
-//
-//  At most one of those can be right about any given declaration, so the fix is
-//  Fuaran.Core's: resolve the declaration through `IdlEnum.WireOf` at the two
-//  wire-alphabet comparison sites, or refuse the declaration. It cannot be
-//  fixed from this repo — declaring the default in either alphabet breaks one
-//  of the three legs — so this pass steers the sampler out of the hole and the
-//  hole is reported upward, with `blindSpotFields` below pinning its scope so a
-//  second instance (or the engine fix that retires the pass) is not silent.
-//
-//  It STEERS rather than drops, and that distinction cost a red run to learn.
-//  `OmitDefault` means the member ALWAYS HAS A VALUE — the sampler never draws
-//  it absent, and both generated host types declare it non-optional — so
-//  removing it from the vector does not produce a narrower value, it produces an
-//  ill-formed one: the TypeScript encoder's `encStr(s.direction)` then runs on
-//  `undefined` and throws on 3,690 of 4,000 vectors. Moving the value to a
-//  different case of the same enum keeps the vector well-formed, keeps the
-//  member exercised, and lands inside the space all three legs agree on.
-//
-//  Only the blind spot is touched. Where the alphabets coincide — an
-//  identity-mapped enum, a bool, an int, a list — all three legs already agree
-//  about the default, and the at-default draw is worth exercising, so the pass
-//  is a no-op there by construction.
-//
-//  It is a STRUCTURAL walk rather than a name-keyed rewrite on purpose. Field
-//  names are not unique across this vocabulary — `direction` is an `OmitDefault
-//  Auto` on `SemanticStyle` and a REQUIRED `Orientation` on a layout record,
-//  `children` is `OmitDefault []` in one place and required in another — so a
-//  rewrite keyed on the name alone would touch members it has no business
-//  touching, and would do it silently.
-
-/// The declared default sits in the engine's blind spot, and here is a value
-/// that does not: `Some` the substitute, `None` when the field is not in the
-/// blind spot or the draw is not at its default.
-let private steerOffBlindSpot (idl: Idl) (ty: IdlType) (d: IdlValue) (v: IdlValue) : IdlValue option =
-    match ty, d, v with
-    | TEnum name, VEnum declaredCase, VEnum sampledWire ->
-        match idl.Enums |> List.tryFind (fun e -> e.Name = name) with
-        // The blind spot exactly: the declaration names a HOST CASE whose wire
-        // spelling differs, and the draw is that wire spelling.
-        | Some e when e.WireOf declaredCase <> declaredCase && sampledWire = e.WireOf declaredCase ->
-            // The first other case, so the substitution is deterministic and the
-            // pinned seed still means one thing. A single-case enum has no other
-            // case; the vector is left alone and the sweep reports whatever
-            // follows rather than this pass inventing a value.
-            e.WireCases |> List.tryFind (fun w -> w <> sampledWire) |> Option.map VEnum
-        | _ -> None
-    | _ -> None
-
-/// Every field in the vocabulary that sits in the blind spot, as
-/// `<owner>.<field>` — the scope of the finding above, derived from the
-/// vocabulary so a second instance cannot arrive unannounced.
-let blindSpotFields (idl: Idl) : string list =
-    let inBlindSpot (f: IdlField) =
-        match f.Opt, f.Type with
-        | OmitDefault(VEnum declaredCase), TEnum name ->
-            idl.Enums
-            |> List.tryFind (fun e -> e.Name = name)
-            |> Option.map (fun e -> e.WireOf declaredCase <> declaredCase)
-            |> Option.defaultValue false
-        | _ -> false
-
-    let named (owner: string) (fields: IdlField list) =
-        fields |> List.filter inBlindSpot |> List.map (fun f -> owner + "." + f.Name)
-
-    [ yield! idl.Records |> List.collect (fun r -> named r.Name r.Fields)
-      yield! idl.Kinds |> List.collect (fun k -> named k.Tag k.Fields)
-      yield! idl.Ops |> List.collect (fun o -> named o.Tag o.Fields)
-      yield!
-          idl.Unions
-          |> List.collect (fun u -> u.Cases |> List.collect (fun c -> named (u.Name + "." + c.Tag) c.Fields))
-      yield! named "node" idl.NodeFields ]
-    |> List.sort
-
-let rec private narrowFields
-    (idl: Idl)
-    (decl: IdlField list)
-    (fields: (string * IdlValue) list)
-    : (string * IdlValue) list =
-    fields
-    |> List.map (fun (n, v) ->
-        match decl |> List.tryFind (fun f -> f.Name = n) with
-        // A member the declaration does not name is left alone: inventing a
-        // judgement about it would be the sampler's business, not the wire's.
-        | None -> n, v
-        | Some f ->
-            let v = narrowValue idl f.Type v
-
-            match f.Opt with
-            | OmitDefault d ->
-                match steerOffBlindSpot idl f.Type d v with
-                | Some steered -> n, steered
-                | None -> n, v
-            | _ -> n, v)
-
-and private narrowValue (idl: Idl) (ty: IdlType) (v: IdlValue) : IdlValue =
-    match ty, v with
-    | TRecord name, VRecord fields ->
-        match idl.Records |> List.tryFind (fun r -> r.Name = name) with
-        | Some r -> VRecord(narrowFields idl r.Fields fields)
-        | None -> v
-    | TList inner, VList xs -> VList(xs |> List.map (narrowValue idl inner))
-    | TMap inner, VMap entries -> VMap(entries |> List.map (fun (k, e) -> k, narrowValue idl inner e))
-    | TUnion(name, _), VUnion(tag, fields) ->
-        // The union's type ARGUMENTS are deliberately not substituted: a `TVar`
-        // slot falls through unnarrowed below, which is conservative — a missed
-        // narrowing shows up as a divergence the sweep reports, where a wrong one
-        // would silently shrink what it measures.
-        match idl.Unions |> List.tryFind (fun u -> u.Name = name) with
-        | Some u ->
-            match u.Cases |> List.tryFind (fun c -> c.Tag = tag) with
-            | Some c -> VUnion(tag, narrowFields idl c.Fields fields)
-            | None -> v
-        | None -> v
-    | TKind, VUnion(tag, fields) ->
-        match idl.Kinds |> List.tryFind (fun k -> k.Tag = tag) with
-        | Some k -> VUnion(tag, narrowFields idl k.Fields fields)
-        | None -> v
-    | TOp, VUnion(tag, fields) ->
-        match idl.Ops |> List.tryFind (fun o -> o.Tag = tag) with
-        | Some o -> VUnion(tag, narrowFields idl o.Fields fields)
-        | None -> v
-    | TNode, _ -> narrowNode idl v
-    | _ -> v
-
-/// Steer a node (bare or enveloped) — the sampler's root shape, and reachable
-/// again through any `TNode` slot.
-and narrowNode (idl: Idl) (v: IdlValue) : IdlValue =
-    let kindFields (tag: string) =
-        idl.Kinds |> List.tryFind (fun k -> k.Tag = tag) |> Option.map _.Fields
-
-    match v with
-    | VNode(id, tag, fields) ->
-        match kindFields tag with
-        | Some decl -> VNode(id, tag, narrowFields idl decl fields)
-        | None -> v
-    | VNodeEnv(id, env, tag, fields) ->
-        let env = narrowFields idl idl.NodeFields env
-
-        match kindFields tag with
-        | Some decl -> VNodeEnv(id, env, tag, narrowFields idl decl fields)
-        | None -> VNodeEnv(id, env, tag, fields)
-    // Not a node shape at all — nothing this pass has anything to say about.
-    | other -> other
+//  A sweep-side pass used to steer sampled values away from an `OmitDefault` on
+//  a CASE-MAPPED enum (`SemanticStyle.direction`, default `Auto` / wire `auto`),
+//  because the three legs disagreed about the alphabet the default was written
+//  in: the F# backend compared host cases, the TypeScript backend and the
+//  interpreter compared wire strings. Fuaran.Core 0.34.0 settled it in the
+//  engine — `VEnum` is the WIRE token throughout, the F# backend resolves it to
+//  the host case (`IdlEnum.CaseOf`), and an undeclared token is refused when the
+//  vocabulary is checked — so the vocabulary now declares `auto`, all three legs
+//  agree about the at-default draw, and the pass and the test pinning its scope
+//  were retired with the pin raise, as that test said they should be.
 
 // ─── running a generated module under node ─────────────────────────────────
 

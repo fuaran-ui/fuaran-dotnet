@@ -293,6 +293,52 @@ let tests =
                       (sprintf "the message should name the limit breached; got: %s" e.Message)
           }
 
+          // ─── The exact-decimal nodes are counted (Fuaran.Compute 0.36.0) ─
+          // `rounded` and `quotient` are new `ColExpr` cases; §21.8's bound must
+          // see their operands and their rounding scale (a slot: one leaf), or a
+          // pipeline could carry an unbounded expression behind them. Each leaf
+          // below is `rounded(col a)` — three nodes — so 170 of them under one
+          // `coalesce` is 511 nodes (inside) and 171 is 514 (past the bound).
+          test "a rounded node's operand and scale count toward the expression bound" {
+              let leaf =
+                  Fuaran.Core.Canon.render (
+                      Fuaran.Compute.DataFrameCodec.encodeExpr (
+                          Fuaran.Compute.Rounded(
+                              Fuaran.Compute.Col "a",
+                              { Scale = Fuaran.Compute.Slot.Lit 2
+                                Mode = Fuaran.Compute.RoundingMode.HalfUp }
+                          )
+                      )
+                  )
+
+              let pipeline (leaves: int) =
+                  Fixtures.pipelineExprNode "x" "derive" leaf false (leaves + 1)
+
+              Expect.isOk (JsonDecode.decodeNodeObj (pipeline 170)) "511 nodes decodes"
+              expectLimit "514 nodes behind rounded" (JsonDecode.decodeNodeObj (pipeline 171))
+          }
+
+          test "a quotient node's two operands and scale count toward the expression bound" {
+              let leaf =
+                  Fuaran.Core.Canon.render (
+                      Fuaran.Compute.DataFrameCodec.encodeExpr (
+                          Fuaran.Compute.Quotient(
+                              Fuaran.Compute.Col "a",
+                              Fuaran.Compute.Col "a",
+                              { Scale = Fuaran.Compute.Slot.Param "s"
+                                Mode = Fuaran.Compute.RoundingMode.HalfEven }
+                          )
+                      )
+                  )
+
+              // four nodes a leaf: 127 leaves is 509, 128 is 513.
+              let pipeline (leaves: int) =
+                  Fixtures.pipelineExprNode "x" "derive" leaf false (leaves + 1)
+
+              Expect.isOk (JsonDecode.decodeNodeObj (pipeline 127)) "509 nodes decodes"
+              expectLimit "513 nodes behind quotient" (JsonDecode.decodeNodeObj (pipeline 128))
+          }
+
           // ─── The limits are internally consistent ───────────────────────
           test "MaxJsonDepth admits a MaxDepth-deep tree of any shape" {
               // A tree level costs several JSON levels (a Box costs 3; the
