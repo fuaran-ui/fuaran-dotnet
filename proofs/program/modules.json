@@ -20,11 +20,11 @@
       "module": "BoundedFold",
       "budgetSeconds": 180,
       "measuredSeconds": 86,
-      "floorSeconds": 43,
-      "fastestSeconds": 86,
+      "floorSeconds": 20,
+      "fastestSeconds": 27,
       "floorPhase": "fuaran#2012",
       "phase": "fuaran#2012",
-      "note": "The shared bounded fold over the action view, with the UI witness's fourteen arms, COPIED from the program repository (../../copies.json). Checked with z3rlimit 60 (the program repository's margin) and --quake 3. SEEDED from one cold run of `check.ps1 -Leg program` on this dev machine, idle tree: 86s, every query 3/3. Budget 180s by the seeding rule (2 x 86 rounded up to the next 10s); floor 43s by floorSeeding (86 halved, rounded down). ONE observation: re-seed the floor DOWNWARDS as a recorded act the first time a genuinely faster cold run is seen. A bump here means the copied model grew, which happens only when the program repository's model did — read its change first."
+      "note": "The shared bounded fold over the action view, with the UI witness's fourteen arms, COPIED from the program repository (../../copies.json). Checked with z3rlimit 60 (the program repository's margin) and --quake 3. SEEDED from one cold run of `check.ps1 -Leg program` on this dev machine, idle tree: 86s, every query 3/3. Budget 180s by the seeding rule (2 x 86 rounded up to the next 10s); floor 43s by floorSeeding (86 halved, rounded down). ONE observation: re-seed the floor DOWNWARDS as a recorded act the first time a genuinely faster cold run is seen. A bump here means the copied model grew, which happens only when the program repository's model did — read its change first. Floor RE-SEEDED DOWNWARDS 2026-10-04, by operator decision (a recorded act under floorSeeding): cold runs of this leg on CI's hosted Windows runners measured 48s, 34s and 27s (proofs.yml runs 37187496364 and 37198038891 with its re-run; the last two failed the 43s floor). The job caches only the F* binary and verifies into a fresh per-run cache directory, and every other module sped up by the same ~1.8x on the faster runners, so these are genuine cold runs. floorSeeding's rule gives 13s (27s halved); the operator set 20s, which keeps a margin above a warm-cache run while clearing the fastest genuine cold run observed."
     },
     {
       "module": "Budget",
