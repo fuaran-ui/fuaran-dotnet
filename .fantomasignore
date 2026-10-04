@@ -26,6 +26,10 @@ src/Fuaran.UI/Generated.fs
 # here for the same reason `**/bin/**` is: the format check covers tracked
 # sources only.
 proofs/.fstar/
+# fuaran#2022 — the same cache for the SECOND proof leg: `check.ps1 -Leg program` works under
+# proofs/program/ and downloads its own copy there. Running that leg and then the gate in one tree
+# failed the Format stage on the cache's OCaml sources until this line was added.
+proofs/program/.fstar/
 
 # fuaran#2012 — the program models' F* EXTRACTIONS and their runtime floor, BYTE COPIES of the
 # program repository's committed oracle (declared in copies.json, canonical there). The proof
