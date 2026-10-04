@@ -17,6 +17,13 @@
          Core 0.32.0). 0.37.0 is the first built on Fuaran.Core 0.34.0, which the Core pins below
          require. -->
     <FuaranCoreComputeVersion>0.37.0</FuaranCoreComputeVersion>
+    <!-- The THIRD producer (fuaran#2012): the bounded program core, consumed by the two program
+         adapters that moved here (src/Fuaran.Program.UI, src/Fuaran.Program.Server.UI) and their
+         suites. Released packages only, never a project reference: the adapters depend on the
+         core, and the core references nothing in this repository. 0.7.1 is the release the
+         adapters were last published beside, built on the same Fuaran.Core 0.34.0 and compute
+         0.37.0 pinned here. One property per producing repository, as above. -->
+    <FuaranProgramVersion>0.7.1</FuaranProgramVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="FSharp.Core" Version="10.1.300" />
@@ -160,5 +167,9 @@
     <!-- Test-only, for tests/core-fable: the fourth package the compute producer ships (from 0.36.0),
          which Fuaran.Compute.Conformance references. No shipped Fuaran.UI.* package references it. -->
     <PackageVersion Include="Fuaran.Compute.PipelineQuery" Version="$(FuaranCoreComputeVersion)" />
+    <!-- The bounded program core (fuaran#2012), on FuaranProgramVersion (top of file). -->
+    <PackageVersion Include="Fuaran.Program.Bounded" Version="$(FuaranProgramVersion)" />
+    <PackageVersion Include="Fuaran.Program.Runtime" Version="$(FuaranProgramVersion)" />
+    <PackageVersion Include="Fuaran.Program.Server" Version="$(FuaranProgramVersion)" />
   </ItemGroup>
 </Project>

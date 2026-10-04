@@ -32,6 +32,9 @@ type private TestSuite =
     {
         Project: string
         RequiresCorpus: bool
+        /// fuaran#2012 — the suite loads the PROGRAM specification's corpus (the program
+        /// adapters' suites); skipped loudly when that corpus is absent, as `RequiresCorpus` is.
+        RequiresProgramSpec: bool
         /// Phase 1553 — the suite-level gate lane, verbatim from the roster. `None` is the ordinary
         /// tier (runs in `full` and `fast`, not in `pure`); `Some "pure"` joins the per-commit lane;
         /// `Some "slow"` leaves `fast` and `pure` both.
@@ -61,6 +64,10 @@ let private readTestSuites () =
               { Project = Path.Combine(repoRoot, relative.Replace('/', Path.DirectorySeparatorChar))
                 RequiresCorpus =
                   match entry.TryGetProperty "requiresCorpus" with
+                  | true, flag -> flag.GetBoolean()
+                  | _ -> false
+                RequiresProgramSpec =
+                  match entry.TryGetProperty "requiresProgramSpec" with
                   | true, flag -> flag.GetBoolean()
                   | _ -> false
                 Lane =
@@ -205,7 +212,13 @@ let private packableProjects =
       // The client precedes the tool because the tool project-references it, so
       // the tool's nupkg is read against a client that has already packed.
       "Fuaran.UI.Client"
-      "Fuaran.UI.Cli" ]
+      "Fuaran.UI.Cli"
+      // fuaran#2012 — the bounded program core's UI adapters, moved here from the program
+      // repository (where 0.7.1 was their last release) under the same ids. They consume the
+      // core by PACKAGE (FuaranProgramVersion), so they pack after the Fuaran.UI.* projects
+      // they reference; the server adapter references the client one, so it follows it.
+      "Fuaran.Program.UI"
+      "Fuaran.Program.Server.UI" ]
     |> List.map (fun name -> Path.Combine(repoRoot, "src", name, $"{name}.fsproj"))
     // Phase 304 — the C# authoring veneer packs alongside the F# tier. It is a
     // .csproj (appended after the .fsproj map). Phase 314 appends the Roslyn
@@ -693,12 +706,30 @@ let private registerTargets (args: string array) =
 
         let corpusPresent = File.Exists corpusManifest
 
+        // fuaran#2012 — the program specification's corpus, resolved as run.ps1 and the suites
+        // resolve it: FUARAN_PROGRAM_SPEC first, the sibling walk second.
+        let programSpecRoot =
+            match System.Environment.GetEnvironmentVariable "FUARAN_PROGRAM_SPEC" with
+            | null
+            | "" -> Path.Combine(repoRoot, "..", "fuaran-program-spec")
+            | declared -> declared.Trim()
+
+        let programSpecPresent =
+            File.Exists(Path.Combine(programSpecRoot, "wire-fixtures", "manifest.json"))
+
         for suite in testSuites do
             if suite.RequiresCorpus && not corpusPresent then
                 Trace.traceImportant (
                     sprintf
                         "SKIPPING %s — wire-format-fixtures corpus absent (single-repo checkout; conformance runs where the workspace corpus is present)."
                         (Path.GetFileNameWithoutExtension suite.Project)
+                )
+            elif suite.RequiresProgramSpec && not programSpecPresent then
+                Trace.traceImportant (
+                    sprintf
+                        "SKIPPING %s — program specification corpus absent at %s (set FUARAN_PROGRAM_SPEC, or clone it beside this repository); the program adapters' conformance and parity did NOT run."
+                        (Path.GetFileNameWithoutExtension suite.Project)
+                        programSpecRoot
                 )
             else
                 // `GetFileNameWithoutExtension` is `string | null` under F# 10 nullness. A rostered

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Written under the program repository's settings, which leave nullness off; moved here
+         with the UI adapter (fuaran#2012) and compiled as it was certified there. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ServerEffectTests.fs" />
+    <Compile Include="HandlerLoopTests.fs" />
+    <Compile Include="EffectConstraintTests.fs" />
+    <Compile Include="DenyListTests.fs" />
+    <Compile Include="ServerDemandedTests.fs" />
+    <Compile Include="ServerSignedEnvelopeTests.fs" />
+    <Compile Include="QuerySchemaTests.fs" />
+    <Compile Include="ServerParityTests.fs" />
+    <Compile Include="ProgramWireConformanceTests.fs" />
+    <Compile Include="ReplayTests.fs" />
+    <Compile Include="HarvestTests.fs" />
+    <Compile Include="DurableInterpreterTests.fs" />
+    <Compile Include="OperatorControlTests.fs" />
+    <Compile Include="DenialDetectorTests.fs" />
+    <Compile Include="ProofOracleTests.fs" />
+    <Compile Include="DemandedCorpus.fs" />
+    <Compile Include="DemandedCorpusTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.Program.Server.UI\Fuaran.Program.Server.UI.fsproj" />
+    <!-- The tier-parity leg reads the SAME fixture files the other placements
+         read, through the same loader. A separate corpus would prove nothing. -->
+    <ProjectReference Include="..\Fuaran.Program.UI.Parity\Fuaran.Program.UI.Parity.fsproj" />
+    <!-- Phase 1717 — the extracted model of two-phase staging, run beside
+         production by ProofOracleTests.fs. -->
+    <ProjectReference Include="..\..\proofs\program\oracle\Fuaran.Program.Proofs.Oracle.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.ServerDriven\Fuaran.UI.ServerDriven.fsproj" />
+  </ItemGroup>
+</Project>

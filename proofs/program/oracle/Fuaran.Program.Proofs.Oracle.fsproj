@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- fuaran#2012 — the extracted F* models of the bounded program core, compiled so the
+         UI adapter's differential hosts can RUN them beside production. The adapter
+         (src/Fuaran.Program.UI, src/Fuaran.Program.Server.UI) moved here from the program
+         repository, and its differentials moved with it.
+
+         EVERY .fs here is a BYTE COPY of a file the program repository commits under
+         proofs/oracle/, declared in ../../../copies.json with that repository's file as the
+         canonical source, so the drift check names any difference whichever side moved. Never
+         edit one here: re-copy it FROM the program repository.
+
+         Two of them are also re-extracted and byte-diffed by this repository's own proof leg,
+         from the copied models beside this directory (../BoundedFold.fst, ../Budget.fst):
+         the two claims hosted HERE are about those models. The other three (Staging,
+         EffectGate, Undo) carry claims hosted in the program repository, whose proof leg
+         holds each to a fresh extraction; they are compiled here only because the server
+         adapter's suite still runs its differentials at the UI witness.
+
+         Compiler settings forced by the extractor's output shape rather than chosen, exactly
+         as the program repository's oracle project sets them: the strict-indentation opt-out
+         (the F# backend emits pre-F#-8 layout), and FS0058 / FS0064 off, scoped to THIS
+         project. The incomplete-match warnings the extractor's field projectors produce are
+         demoted rather than suppressed — see Directory.Build.props beside this file.
+
+         `IsPackable` is false and must stay false: none of this ships. -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <IsPackable>false</IsPackable>
+        <OtherFlags>$(OtherFlags) --strict-indentation-</OtherFlags>
+        <NoWarn>$(NoWarn);58;64</NoWarn>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    </PropertyGroup>
+    <ItemGroup>
+        <!-- The whole runtime the extractions need. Must precede them. -->
+        <Compile Include="Prims.fs" />
+        <Compile Include="BoundedFold.fs" />
+        <Compile Include="Budget.fs" />
+        <Compile Include="Staging.fs" />
+        <!-- EffectGate and Undo open Staging, so they follow it. -->
+        <Compile Include="EffectGate.fs" />
+        <Compile Include="Undo.fs" />
+    </ItemGroup>
+</Project>

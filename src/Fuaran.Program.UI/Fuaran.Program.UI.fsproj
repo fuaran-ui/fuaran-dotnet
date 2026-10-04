@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The UI adapter (the program repository's DECISIONS.md D18; moved to this
+       repository by fuaran#2012, its D32): the UI tier's
+       instantiation of the domain-generic core — the UI witness (view, leaf
+       lowering, codecs, store, claim verifier), the pre-0.6.0 names as aliases
+       over it, and the UI transport loop (the bounded driver, its channel glue,
+       and the client runtime). The core packages reference no UI-tier package;
+       this package references both, and the UI tier references neither.
+
+       Fable-clean, and split from its .NET-only sibling
+       (Fuaran.Program.Server.UI) along the same line as the core. Written by
+       Phase 1896 in a non-packable project under tests/ and moved here, file
+       for file, by Phase 1897. A consumer opens `Fuaran.Program.UI` AFTER its
+       `Fuaran.Program.*` opens: the aliases shadow the generic names by being
+       opened later. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.Program.UI</PackageId>
+    <Description>Fuaran.Program.UI — the UI adapter for the domain-generic bounded program core: the UI witness (the UI tier's action union, node tree, binding store, tree-ops and client effects seen through the core's witness contract), the pre-0.6.0 names as aliases over it, and the UI transport loop (the bounded driver, its channel glue and the client runtime). Fable-clean. Released with the Fuaran.UI tier, in its version line, and built against the core's released packages (0.7.1 was its last release beside the core). Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;program;bounded;ui;adapter</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/ — the client runtime this
+       package carries is what a browser placement runs, so the source
+       distribution matters as much as the assembly. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="ClientEffects.fs" />
+    <Compile Include="UiWitness.fs" />
+    <Compile Include="Aliases.fs" />
+    <Compile Include="BoundedDriver.fs" />
+    <Compile Include="BoundedConnection.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops.Abstractions\Fuaran.UI.Ops.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.ServerDriven\Fuaran.UI.ServerDriven.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fuaran.Program.Runtime" />
+  </ItemGroup>
+
+</Project>

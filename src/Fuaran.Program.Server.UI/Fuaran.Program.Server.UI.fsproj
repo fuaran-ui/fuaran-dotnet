@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The server placement's UI adapter (the program repository's DECISIONS.md D18; moved to this
+       repository by fuaran#2012, its D32): the
+       pre-0.6.0 server names as aliases over the UI witness, and the UI EVENT
+       STEP (the tier's G1 gate in front of the generic core's dispatch) for the
+       session, the durable interpreter and the operator controls. .NET only,
+       like the server placement itself — the Fable-clean half is
+       Fuaran.Program.UI.
+
+       Written by Phase 1896 in a non-packable project under tests/ and moved
+       here, file for file, by Phase 1897. A consumer opens
+       `Fuaran.Program.Server.UI` AFTER `Fuaran.Program.Server`. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.Program.Server.UI</PackageId>
+    <Description>Fuaran.Program.Server.UI — the UI adapter for the server placement of the domain-generic bounded program core: the pre-0.6.0 server names as aliases over the UI witness, and the UI event step (the validation gate in front of the core's dispatch) for the server session, the durable interpreter and the operator controls. .NET only. Released with the Fuaran.UI tier, in its version line, and built against the core's released packages (0.7.1 was its last release beside the core). Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;program;bounded;server;ui;adapter</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="ServerAliases.fs" />
+    <Compile Include="ServerSteps.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.Program.UI\Fuaran.Program.UI.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops.Abstractions\Fuaran.UI.Ops.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.ServerDriven\Fuaran.UI.ServerDriven.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fuaran.Program.Server" />
+  </ItemGroup>
+
+</Project>

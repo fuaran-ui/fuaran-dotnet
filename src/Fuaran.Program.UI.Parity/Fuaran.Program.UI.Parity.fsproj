@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Written under the program repository's settings, which leave nullness off; moved here
+         with the UI adapter (fuaran#2012) and compiled as it was certified there. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <!-- The comparison + the seeds are Fable-clean and travel to the Fable leg as
+       source; only FixtureIo is .NET-only, and the Fable leg has its own loader
+       over node's fs reading the SAME files. -->
+  <ItemGroup>
+    <Compile Include="Parity.fs" />
+    <Compile Include="Seeds.fs" />
+    <Compile Include="FixtureIo.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.Program.UI\Fuaran.Program.UI.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.ServerDriven\Fuaran.UI.ServerDriven.fsproj" />
+  </ItemGroup>
+</Project>

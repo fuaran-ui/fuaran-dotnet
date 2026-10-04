@@ -181,9 +181,26 @@ started against a one-kind copy of this script WHILE the 90 GB run was in flight
 minutes with `Fatal error: allocation failure during minor GC`. That is a CONTENTION observation.
 The one-kind script has never been checked on its own, so nothing here claims it cannot be.)_
 
+## The program models — a second leg (fuaran#2012)
+
+The UI adapters of the bounded program core (`src/Fuaran.Program.UI`, `src/Fuaran.Program.Server.UI`)
+moved here from the program repository, and the two proof claims ABOUT them moved with them:
+`model-agrees-with-shipped-code` (the bounded fold over the UI witness's fourteen arms) and
+`budget-model-agrees-with-shipped-code` (the UI witness's weighing and the bounded driver's G2 gate).
+Their models are that repository's, so they live here as **byte copies** under `program/` —
+`program/BoundedFold.fst`, `program/Budget.fst`, and the extractions and runtime floor the
+differentials compile under `program/oracle/` — each declared in `../copies.json` with the program
+repository's file as canonical. `check.ps1 -Leg program` re-checks the two copied models on this
+repository's pin (at the program repository's `z3rlimit`, 60), re-extracts them and byte-diffs each
+extraction against its copied oracle, then runs the two differential families in
+`src/Fuaran.Program.UI.Parity.Tests` beside the adapter. Its cost declarations are
+`program/modules.json`. The other three extractions under `program/oracle/` (Staging, EffectGate,
+Undo) carry claims hosted in the program repository, whose leg holds them to a fresh extraction;
+they are compiled here only for the server UI suite's differentials at the UI witness.
+
 ## What is not here, and why
 
-**No oracle project, and no extracted F\#.** An oracle exists so a differential can run the
+**No oracle project for the three models above, and no extracted F\# of them.** An oracle exists so a differential can run the
 extracted model beside the **production** code over the same inputs. None of the three models has
 production code on this side to run beside — `WireDecode` models combinators this repository does
 not ship, and the generated pair models a decoder a generator emits into a consuming host rather
@@ -215,6 +232,7 @@ for a reason nobody could attribute.
 | `VocabularyProofs.fst` | **GENERATED** from the same walk: the round trip and totality over `Vocabulary`. |
 | `modules.json` | What the leg costs, per module: the budget (a smoke detector) and the floor (a gate), with the seeding rule for each. |
 | `oracle/` | The kit's two runtime shims. Unused today — see "What is not here". |
+| `program/` | The program models' leg (fuaran#2012): copied models, their copied extractions and runtime floor (`program/oracle/`, an oracle project), and `program/modules.json`. |
 | `../proofs.json` | The claims ladder. Checked against this tree by `Proofs.Ladder`. |
 
 ### One template is deliberately not carried

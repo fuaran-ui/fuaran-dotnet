@@ -21,6 +21,8 @@ This document declares which Fuaran *language-tier* surfaces are stable, what co
 | `Fuaran.UI.ThemeManifest` | Apache-2.0 | pre-1.0 |
 | `Fuaran.UI.Telemetry.*` | Apache-2.0 | pre-1.0 |
 | `Fuaran.UI.Memo` | Apache-2.0 | pre-1.0 |
+| `Fuaran.Program.UI` | Apache-2.0 | pre-1.0 — arrived in 0.91.0 (fuaran#2012), see that slot |
+| `Fuaran.Program.Server.UI` | Apache-2.0 | pre-1.0 — arrived in 0.91.0 (fuaran#2012), see that slot |
 
 The language tier is licensed **Apache-2.0**. See [`LICENSE`](LICENSE).
 
@@ -7829,6 +7831,24 @@ rides this slot; a higher one advances it._
 
 ### What rides this slot
 
+- **Two packages ARRIVE: `Fuaran.Program.UI` and `Fuaran.Program.Server.UI` (fuaran#2012).** The
+  UI tier's adapters for the bounded program core — the UI witness, the pre-0.6.0 aliases over the
+  generic core, the UI transport loop (the bounded driver, its channel glue and the client runtime;
+  Fable-clean) and the server placement's UI instantiation (.NET only) — moved here from the program
+  repository, file for file, with their UI-typed suites (`src/Fuaran.Program.UI.*Tests`,
+  `src/Fuaran.Program.Server.UI.Tests`, the parity project and its Fable leg, the `RunQuery`
+  benchmark) and the `client-program` sample. **Same package ids, same namespaces, same surface; a
+  VERSION JUMP:** they were last published from the program repository at **0.7.1**, and their first
+  release from here is this slot's version, **0.91.0**, in this repository's lockstep line from then
+  on. A consumer moving from `0.7.1` to `0.91.0` of either takes the surface 0.7.1 shipped, compiled
+  against this repository's `Fuaran.UI.*` at the same version rather than the 0.90.0 the program
+  repository pinned. They consume the program core (`Fuaran.Program.Bounded`, `.Runtime`, `.Server`)
+  at its released **0.7.1**, by package (`FuaranProgramVersion` in `Directory.Packages.props`). The
+  dependency runs one way: the core references no `Fuaran.UI.*` package. **Additive for this
+  repository** — no existing package's surface moves, so it rides this slot's class rather than
+  advancing it. Two proof claims about the adapters moved with them (`proofs.json`
+  `model-agrees-with-shipped-code`, `budget-model-agrees-with-shipped-code`; `proofs/check.ps1
+  -Leg program`), over byte copies of the program repository's models declared in `copies.json`.
 - **The expression bound counts the rounding scale** (WIRE_FORMAT.md §21.8). The decode-time node
   walk over a `ColExpr` (a `Binding.Expr`, and the expressions a `Transform` pipeline embeds) already
   descended into the operands of `quotient` and `rounded`; it now also counts each one's rounding

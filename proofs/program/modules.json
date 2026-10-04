@@ -1,0 +1,40 @@
+{
+  "kind": "proofModules",
+  "subject": "fuaran-dotnet / program models",
+  "$comment": "The cost declaration for this repository's SECOND proof leg (fuaran#2012): the program models COPIED from the program repository (BoundedFold, Budget — see ../check.ps1, DECLARATION 1b, and ../../copies.json). Same file shape, same rules and the same reading as ../modules.json beside the first leg — a budget is a smoke detector, a floor is a gate — kept separate because the kit takes one cost file per leg and coverage is checked both ways per leg. The numbers are SEEDED HERE, from cold runs of this leg on this repository's pin and flags; the program repository's own measurements are of a different leg on a different machine and load.",
+  "seeding": {
+    "rule": "budgetSeconds = max(2 x the slowest observed cold-cache run, minimumBudgetSeconds), rounded up to the next 10s.",
+    "toleranceFactor": 2,
+    "minimumBudgetSeconds": 20,
+    "$comment": "The tolerance is applied ONCE, here, when a number is seeded — `check.ps1` multiplies nothing, so the pair it prints is the measurement against the ceiling and there is no second arithmetic to hold in your head. Seed from the SLOWEST observed cold run rather than the median: concurrent sessions on one machine can inflate a cold check by ~1.8x with nothing about the tree changed, so a budget seeded from the median fires on a busy afternoon and teaches a reader to ignore it. `minimumBudgetSeconds` is the floor UNDER THE CEILING, for the sub-5s modules where 2x is inside ordinary process-start noise; it is a different thing from an entry's `floorSeconds`, which is the per-module time floor below, and the two are named apart deliberately."
+  },
+  "floorSeeding": {
+    "rule": "floorSeconds = the FASTEST genuine cold run ever observed, halved, rounded DOWN to the whole second; 0 for a module whose fastest genuine cold run is under 5s.",
+    "divisor": 2,
+    "zeroBelowSeconds": 5,
+    "$comment": "The floor is the budget's mirror and the two are deliberately NOT symmetric in what they do. A budget is a ceiling and a smoke detector: an overshoot is a true measurement of a true cost, so it warns and the leg stays green. A floor is a gate: `check.ps1` FAILS the leg on the spot, naming the module and the time, because a module that verified faster than it can possibly verify has not told you it is fast — it has told you the measurement is worthless, and everything measured after it shares the apparatus. Implausibly fast is the one direction in which a lie looks like good news. Seed from the FASTEST observed rather than the median, and halve on top, for the mirror of the budget's reason: a floor that fires on a fast quiet machine teaches a reader to ignore it, and the failure this catches lands at or near ZERO seconds, so an enormous margin costs nothing in detection. The `zeroBelowSeconds` rule is for the modules where halving lands inside process-start noise: a positive floor there would be a coin toss, and an explicit 0 is a different statement from an absent one and reads as one. An ABSENT `floorSeconds` is a cost finding rather than a failure — a sibling adding a model should no more go red for a floor nobody has measured than for a budget nobody has measured. `check.ps1 -NoFloor` is the deliberate opt-out for a machine genuinely that fast, and it says so in the log. Re-seeding a floor DOWNWARDS is the same recorded act as bumping a budget upwards: the new number, the `fastestSeconds` it came from, and your phase.",
+    "$adopterNote": "Both rules are the kit's, copied verbatim with the template. An adopter that changed one would be declaring a different discipline under the same key names, which is the one edit this file must not carry."
+  },
+  "modules": [
+    {
+      "module": "BoundedFold",
+      "budgetSeconds": 180,
+      "measuredSeconds": 86,
+      "floorSeconds": 43,
+      "fastestSeconds": 86,
+      "floorPhase": "fuaran#2012",
+      "phase": "fuaran#2012",
+      "note": "The shared bounded fold over the action view, with the UI witness's fourteen arms, COPIED from the program repository (../../copies.json). Checked with z3rlimit 60 (the program repository's margin) and --quake 3. SEEDED from one cold run of `check.ps1 -Leg program` on this dev machine, idle tree: 86s, every query 3/3. Budget 180s by the seeding rule (2 x 86 rounded up to the next 10s); floor 43s by floorSeeding (86 halved, rounded down). ONE observation: re-seed the floor DOWNWARDS as a recorded act the first time a genuinely faster cold run is seen. A bump here means the copied model grew, which happens only when the program repository's model did — read its change first."
+    },
+    {
+      "module": "Budget",
+      "budgetSeconds": 20,
+      "measuredSeconds": 3,
+      "floorSeconds": 0,
+      "fastestSeconds": 3,
+      "floorPhase": "fuaran#2012",
+      "phase": "fuaran#2012",
+      "note": "The interaction budget (saturating arithmetic, the tree walk, the G2 gate), COPIED from the program repository. SEEDED from the same cold run: 3s. Budget 20s, the seeding rule's minimum (2 x 3 is inside process-start noise); floor 0 by floorSeeding's zeroBelowSeconds rule, an explicit zero rather than an absent one."
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Fable client convention: gate every Fable-only file via FABLE_COMPILER
+         + DEBUG so Fable transpiles them but a .NET build does not try to
+         compile Browser.Types-flavoured code. -->
+    <DefineConstants Condition="'$(Configuration)' != 'Release'">FABLE_COMPILER;DEBUG</DefineConstants>
+    <DefineConstants Condition="'$(Configuration)' == 'Release'">FABLE_COMPILER</DefineConstants>
+    <!-- Feliz / Fable.Elmish pre-date the F# 10 nullness checker, and under
+         Fable it is the ENTRY project's properties that govern the whole source
+         graph — including the sources this project consumes from packages. The
+         libraries themselves keep nullness on. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="index.html" />
+    <None Include="vite.config.mts" />
+    <None Include="package.json" />
+    <None Include="ports.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Main.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Phase 1896: the core packages are domain-generic, so a UI-tree sample
+         runs through the UI adapter package (promoted to src/ by Phase
+         1897). -->
+    <ProjectReference Include="..\..\src\Fuaran.Program.UI\Fuaran.Program.UI.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Fable.Core" />
+    <PackageReference Include="Feliz" />
+    <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.ServerDriven\Fuaran.UI.ServerDriven.fsproj" />
+  </ItemGroup>
+</Project>

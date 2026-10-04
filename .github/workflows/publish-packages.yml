@@ -165,15 +165,20 @@ jobs:
             exit 1
           fi
           # Defence in depth behind the dedicated output dir: every packable
-          # project in Build.fs carries a Fuaran.UI.* id, so anything else
-          # reaching this loop means the output dir was re-pointed at a shared
-          # location. Refuse rather than publish it.
+          # project in Build.fs carries a Fuaran.UI.* id or, since fuaran#2012,
+          # one of the two program UI adapter ids (Fuaran.Program.UI,
+          # Fuaran.Program.Server.UI), so anything else reaching this loop means
+          # the output dir was re-pointed at a shared location. Refuse rather
+          # than publish it. The adapter patterns name the two ids exactly (plus
+          # the version) so no other Fuaran.Program.* pack can pass.
           for pkg in "${pkgs[@]}"; do
             case "$(basename "$pkg")" in
               Fuaran.UI.*) ;;
+              Fuaran.Program.UI.[0-9]*.nupkg) ;;
+              Fuaran.Program.Server.UI.[0-9]*.nupkg) ;;
               *)
                 echo "refusing to push unexpected package id: $(basename "$pkg")" >&2
-                echo "this workflow publishes only this repo's own Fuaran.UI.* packs." >&2
+                echo "this workflow publishes only this repo's own Fuaran.UI.* and program UI adapter packs." >&2
                 exit 1
                 ;;
             esac

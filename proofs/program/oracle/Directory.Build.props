@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <!-- fuaran#2012 — the oracle project differs from this repository's settings in the
+       respects a GENERATED extraction needs, and inherits every other: the explicit import
+       below keeps central package management and the FSharp.Core pin.
+
+       What differs, and why only here. The files compiled in this directory are not written
+       by anyone: they are the F* extractor's output, held to a fresh extraction by a proof
+       leg. Their incomplete pattern matches are the extractor's field projectors over types
+       whose totality the PROVER established, and they predate F#'s nullness checking. So the
+       repository-wide promotion of every warning to an error is lifted for this project ALONE
+       (the warnings are still printed and still read; `NoWarn` is deliberately not used), and
+       nullness is off, as it is where the extractions are produced. Nothing hand-written
+       compiles in this directory, and nothing should. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsAsErrors></WarningsAsErrors>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+</Project>

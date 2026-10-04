@@ -49,6 +49,11 @@
   a Core pin that predates the parity table is STATED rather than skipped, and how every Core
   version cut runs the same script against its candidate packages.
 
+  AND A FOURTH, SINCE fuaran#2012: THE PROGRAM UI ADAPTER'S PARITY LEG (c). The bounded program
+  core's UI adapter moved here from the program repository with its suites; its client placement is
+  compiled to JavaScript and RUN under node over the program specification's driver-semantics family
+  (section 2c). Skipped loudly when that corpus, a sibling clone, is absent.
+
   THE DERIVATION (Phase 1606). Fuaran.UI 0.78.0 shipped a Renderer whose `#if FABLE_COMPILER` arm
   did not compile — four bare `JVal` / `JStr` uses with no `open Fuaran.Core` — invisible to the
   .NET build, which compiles only the `#else` arm, and to this gate, whose hand-kept list did not
@@ -1626,6 +1631,95 @@ else {
                 Clear-RecordedGreen 'CoreFable'
                 $failures.Add("the Fuaran.Core Fable gate FAILED (exit $coreFableExit) — see tests/core-fable/core-fable.ps1's output above")
             }
+        }
+    }
+}
+
+# ── 2c. The program UI adapter's tier-parity leg under Fable (fuaran#2012) ───
+#
+# The UI adapter of the bounded program core (src/Fuaran.Program.UI) moved here from the program
+# repository, and its parity leg (c) moved with it: the client placement compiled to JavaScript and
+# RUN under node over the program specification's driver-semantics family, compared step by step
+# with the recorded expectation the .NET legs (src/Fuaran.Program.UI.Parity.Tests) compare with.
+# The portability half above already compiles the adapter under its own settings; this is the
+# behaviour half, because "it compiles under Fable" and "it behaves the same under Fable" are
+# different claims. --noCache is load-bearing for the reason the law harness gives.
+#
+# The corpus is the program specification's, a sibling clone (or FUARAN_PROGRAM_SPEC) — the same
+# input the roster's `requiresProgramSpec` suites read, and skipped LOUDLY on the same condition.
+# A narrow lane may skip it by content address, like every other subject; the full lane always runs
+# it. Not run under a redirected -SrcRoot, for 2b's reason.
+
+$programParityProject = Join-Path $repoRoot 'src' 'Fuaran.Program.UI.Parity.Fable' 'Fuaran.Program.UI.Parity.Fable.fsproj'
+$programSpecRoot =
+    if ($env:FUARAN_PROGRAM_SPEC) { $env:FUARAN_PROGRAM_SPEC.Trim() }
+    else { Join-Path $repoRoot '..' 'fuaran-program-spec' }
+$programSpecCorpus = Join-Path $programSpecRoot 'wire-fixtures'
+
+if ($PSBoundParameters.ContainsKey('SrcRoot')) {
+    Write-Host ''
+    Write-Host '  the program UI parity leg: not run under a redirected -SrcRoot' -ForegroundColor DarkGray
+}
+elseif (-not (Test-Path -LiteralPath (Join-Path $programSpecCorpus 'manifest.json') -PathType Leaf)) {
+    Write-Host ''
+    Write-Host "  the program UI parity leg: SKIPPED - the program specification corpus is absent at $programSpecCorpus (set FUARAN_PROGRAM_SPEC, or clone it beside this repository); leg (c) did NOT run" -ForegroundColor Yellow
+}
+elseif (-not (Get-Command node -CommandType Application -ErrorAction SilentlyContinue)) {
+    Write-Host ''
+    Write-Host '  the program UI parity leg: SKIPPED - no `node` on PATH; the leg needs a JS runtime.' -ForegroundColor Yellow
+}
+else {
+    $programParityLabel = ConvertTo-RepoRelative $programParityProject
+    Write-Stage "the program UI parity leg (c) — $programParityLabel"
+
+    $programParitySemantics = @(
+        "dotnet fable -o output --noCache + node $(Get-NodeVersionTag) over the driver-semantics family"
+        "corpus $(Get-CachedFileSha256 (Join-Path $programSpecCorpus 'manifest.json'))"
+    ) -join ' + '
+    $programParityAddress = Get-CompileAddress $programParityProject $programParitySemantics
+    $programParityRecorded = if ($laneMaySkip) { Test-RecordedGreen 'ProgramUiParity' $programParityAddress $programParitySemantics } else { $null }
+
+    if ($programParityRecorded) {
+        Add-Timing $programParityLabel 'skipped' 0
+        Write-Host "  SKIPPED BY ADDRESS $programParityLabel" -ForegroundColor Yellow
+        Write-Host "    address $programParityAddress" -ForegroundColor DarkGray
+        Write-Host "    recorded green in lane '$($programParityRecorded.lane)' at $($programParityRecorded.recordedUtc)" -ForegroundColor DarkGray
+    }
+    else {
+        $programParityOut = Join-Path (Split-Path -Parent $programParityProject) 'output'
+        Remove-Item -Recurse -Force $programParityOut -ErrorAction SilentlyContinue
+
+        $programParityClock = [Diagnostics.Stopwatch]::StartNew()
+        $programParityFable = & dotnet fable $programParityProject -o $programParityOut --noCache 2>&1
+        $programParityFableExit = $LASTEXITCODE
+        $programParityFable = @($programParityFable | ForEach-Object { [string] $_ })
+        foreach ($line in $programParityFable) { Write-Host "  $line" }
+
+        if ($programParityFableExit -ne 0) {
+            $programParityClock.Stop()
+            Add-Timing "$programParityLabel (Fable compile)" 'FAILED' $programParityClock.Elapsed.TotalSeconds
+            Clear-RecordedGreen 'ProgramUiParity'
+            $failures.Add("Fable compile of the program UI parity leg FAILED (exit $programParityFableExit)")
+        }
+        else {
+            # A child process, never piped: its exit status is the verdict.
+            & node (Join-Path $programParityOut 'Main.js') (Resolve-Path -LiteralPath $programSpecCorpus).Path
+            $programParityExit = $LASTEXITCODE
+            $programParityClock.Stop()
+
+            if ($programParityExit -eq 0) {
+                Add-Timing $programParityLabel 'compiled' $programParityClock.Elapsed.TotalSeconds
+                Write-RecordedGreen 'ProgramUiParity' $programParityAddress $programParitySemantics
+            }
+            else {
+                Add-Timing $programParityLabel 'FAILED' $programParityClock.Elapsed.TotalSeconds
+                Clear-RecordedGreen 'ProgramUiParity'
+                $failures.Add("the program UI parity leg FAILED under node (exit $programParityExit) — see its output above")
+            }
+        }
+
+        if (-not $KeepOutput) {
+            Remove-Item -Recurse -Force $programParityOut -ErrorAction SilentlyContinue
         }
     }
 }

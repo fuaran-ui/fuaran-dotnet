@@ -26,3 +26,10 @@ src/Fuaran.UI/Generated.fs
 # here for the same reason `**/bin/**` is: the format check covers tracked
 # sources only.
 proofs/.fstar/
+
+# fuaran#2012 — the program models' F* EXTRACTIONS and their runtime floor, BYTE COPIES of the
+# program repository's committed oracle (declared in copies.json, canonical there). The proof
+# leg byte-diffs two of them against a fresh extraction and the copies registry compares all of
+# them with their canonical files, so a Fantomas pass here would break both guards. Never edit
+# them; re-copy from the program repository.
+proofs/program/oracle/*.fs

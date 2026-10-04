@@ -19,8 +19,16 @@
 #   -Strict          promote every cost finding to a red leg
 #   -NoFloor         do not enforce the per-module time floors declared in modules.json
 #   -CacheDir <dir>  put the checked-module cache somewhere you name
+#
+# And one of this caller's own (fuaran#2012), because this repository now runs TWO legs:
+#   -Leg all|vocabulary|program   which leg to run; `all` (the default) runs both, in that order.
+#                    `program` alone is minutes; `vocabulary` alone is the hour-and-a-half
+#                    VocabularyProofs check (see modules.json) — a session that touched only the
+#                    program models re-checks them without paying for the other.
 [CmdletBinding()]
 param(
+    [ValidateSet('all', 'vocabulary', 'program')]
+    [string] $Leg = 'all',
     [switch] $Extract,
     [switch] $SkipOracleHost,
     [switch] $Strict,
@@ -48,6 +56,23 @@ $ErrorActionPreference = 'Stop'
 # (`../src/Fuaran.UI.Idl.Tests/FStarVocabularyTests.fs`), which matches
 # `^\$modules\s*=\s*@\(...\)` against this file — so it stays ONE literal line.
 $modules = @('WireDecode', 'Vocabulary', 'VocabularyProofs')
+
+# ---- DECLARATION 1b: the program models (fuaran#2012) — a SECOND leg ------------------------------
+# The bounded program core's UI adapter (src/Fuaran.Program.UI, src/Fuaran.Program.Server.UI) moved
+# here from the program repository, and the two proof claims that are ABOUT that adapter moved with
+# it (../proofs.json `model-agrees-with-shipped-code`, `budget-model-agrees-with-shipped-code`).
+# Their models are COPIES: proofs/program/<Module>.fst and the extractions under
+# proofs/program/oracle/ are byte copies of the program repository's, declared in ../copies.json
+# with that repository's files as canonical. This leg re-checks the copied models on the shared pin,
+# re-extracts them and byte-diffs each extraction against its copied oracle, then runs the two
+# differential hosts beside the adapter. A second invocation of the kit rather than more entries in
+# the first, because the kit takes one proofs directory and one host project, and these models have
+# their own of each — and their own runtime floor (oracle/Prims.fs), which is the program
+# repository's rather than the kit's.
+#   BoundedFold — the shared bounded fold over the action view, with the UI witness's fourteen arms.
+#   Budget      — the interaction budget: the saturating arithmetic, the tree walk, the G2 gate.
+# The line below is READ AS TEXT by the `Proofs.Ladder` family, like `$modules` above: ONE literal line.
+$programModules = @('BoundedFold', 'Budget')
 
 # ---- The extraction exemption, and why it covers everything here ---------------------------------
 #
@@ -91,25 +116,65 @@ $hostFilters = @(
 $hostProject = 'src/Fuaran.UI.Idl.Tests'
 $hostProjectFile = 'src/Fuaran.UI.Idl.Tests/Fuaran.UI.Idl.Tests.fsproj'
 
+# ---- DECLARATION 3b: the program leg's host and its two families (fuaran#2012) ------------------
+# The differential hosts moved with the adapter, case for case and go-red case for go-red case: each
+# runs the copied extraction beside the adapter's production code over the program specification's
+# driver-semantics family (a sibling clone, or FUARAN_PROGRAM_SPEC) and an arm-complete corpus.
+$programHostProject = 'src/Fuaran.Program.UI.Parity.Tests'
+$programHostProjectFile = 'src/Fuaran.Program.UI.Parity.Tests/Fuaran.Program.UI.Parity.Tests.fsproj'
+$programHostFilters = @(
+    @{
+        Filter  = 'Phase 1715 - the proved bounded fold as oracle'
+        Failure = 'the bounded fold differential (model-agrees-with-shipped-code) is RED — the extracted BoundedFold model and the UI adapter disagree; the failing case is named above'
+    }
+    @{
+        Filter  = 'Phase 1716 - the proved budget as oracle'
+        Failure = 'the budget differential (budget-model-agrees-with-shipped-code) is RED — the extracted Budget model and the UI adapter disagree; the failing case is named above'
+    }
+)
+
 # ---- nothing below here is per-repository --------------------------------------------------------
 
-$legArgs = @{
+$common = @{ Runs = $Runs }
+if ($Extract) { $common.Extract = $true }
+if ($SkipOracleHost) { $common.SkipOracleHost = $true }
+if ($Strict) { $common.Strict = $true }
+if ($NoFloor) { $common.NoFloor = $true }
+if ($CacheDir) { $common.CacheDir = $CacheDir }
+
+$vocabularyArgs = @{
     Modules         = $modules
     ProofOnly       = $proofOnly
     ProofsDir       = $PSScriptRoot
     HostProject     = $hostProject
     HostProjectFile = $hostProjectFile
     HostFilters     = $hostFilters
-    Runs            = $Runs
-}
-if ($Extract) { $legArgs.Extract = $true }
-if ($SkipOracleHost) { $legArgs.SkipOracleHost = $true }
-if ($Strict) { $legArgs.Strict = $true }
-if ($NoFloor) { $legArgs.NoFloor = $true }
-if ($CacheDir) { $legArgs.CacheDir = $CacheDir }
+} + $common
+
+# The program leg: its own proofs directory, oracle and cost declarations, this repository's pin,
+# and the program repository's z3rlimit (60: the margin its leg runs these models under, so a green
+# check here is the same claim as a green check there).
+$programArgs = @{
+    Modules         = $programModules
+    ProofsDir       = (Join-Path $PSScriptRoot 'program')
+    RepoRoot        = (Split-Path $PSScriptRoot -Parent)
+    PinFile         = (Join-Path $PSScriptRoot 'fstar-pin.json')
+    ZRlimit         = 60
+    HostProject     = $programHostProject
+    HostProjectFile = $programHostProjectFile
+    HostFilters     = $programHostFilters
+} + $common
 
 # `&` and not `.`: a dot-sourced script's `exit` does NOT propagate to its caller, so a dot-source
 # here would print the kit's red line and then return 0 — a green leg over a failed proof. The kit's
 # template records that both forms were measured before this one was chosen; do not "simplify" it.
-& (Join-Path $PSScriptRoot 'kit/check-proof-leg.ps1') @legArgs
-exit $LASTEXITCODE
+# The first red leg stops the run and its exit code is this script's.
+if ($Leg -in @('all', 'vocabulary')) {
+    & (Join-Path $PSScriptRoot 'kit/check-proof-leg.ps1') @vocabularyArgs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+if ($Leg -in @('all', 'program')) {
+    & (Join-Path $PSScriptRoot 'kit/check-proof-leg.ps1') @programArgs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+exit 0

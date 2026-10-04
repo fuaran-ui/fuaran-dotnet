@@ -264,12 +264,20 @@ let generationTests =
 /// line AS TEXT. Reading the script rather than a second list is deliberate:
 /// a model added to the leg without a claim is caught, and there is no second
 /// place to keep in step.
+/// Since fuaran#2012 the script runs a SECOND leg over the copied program models, declared
+/// the same way on its own `$programModules` line; both lines are read, so a program model
+/// checked with no claim is caught exactly as a vocabulary one is.
 let private checkedModules () : string list =
-    let m = Regex.Match(read checkScriptPath, @"(?m)^\$modules\s*=\s*@\((.*)\)\s*$")
+    let script = read checkScriptPath
 
-    Expect.isTrue m.Success "proofs/check.ps1 declares $modules on one literal line"
+    let declared (name: string) =
+        let m = Regex.Match(script, @"(?m)^\$" + name + @"\s*=\s*@\((.*)\)\s*$")
 
-    [ for g in Regex.Matches(m.Groups[1].Value, @"'([^']+)'") -> g.Groups[1].Value ]
+        Expect.isTrue m.Success (sprintf "proofs/check.ps1 declares $%s on one literal line" name)
+
+        [ for g in Regex.Matches(m.Groups[1].Value, @"'([^']+)'") -> g.Groups[1].Value ]
+
+    declared "modules" @ declared "programModules"
 
 type private Row =
     { Id: string

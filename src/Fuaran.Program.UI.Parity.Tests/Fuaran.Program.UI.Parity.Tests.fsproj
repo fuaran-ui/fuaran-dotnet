@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tier parity for the UI adapter (the .NET legs over the program specification's
+       driver-semantics family), and the differential host of the two proof claims that are
+       ABOUT the UI adapter: the bounded fold over the UI witness's fourteen arms, and the UI
+       witness's data-bearing weighing with the UI BoundedDriver's G2 gate. Moved here from the
+       program repository with the adapter (fuaran#2012); the core's half of each claim stays
+       there, compared at its toy witness. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Written under the program repository's settings, which leave nullness off; the
+         suite is compiled as it was certified there. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ParityTests.fs" />
+    <!-- Phase 1715 — the differential host for the proved bounded fold and budget. It
+         references the oracle project under proofs/program/, which holds the copied F*
+         extractions (declared in copies.json); nothing packs it and nothing but this suite
+         consumes it. -->
+    <Compile Include="ProofOracleTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.Program.UI.Parity\Fuaran.Program.UI.Parity.fsproj" />
+    <ProjectReference Include="..\..\proofs\program\oracle\Fuaran.Program.Proofs.Oracle.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>
