@@ -183,7 +183,7 @@ The one-kind script has never been checked on its own, so nothing here claims it
 
 ## The program models — a second leg (fuaran#2012)
 
-The UI adapters of the bounded program core (`src/Fuaran.Program.UI`, `src/Fuaran.Program.Server.UI`)
+The UI adapters of the bounded program core (`src/Fuaran.UI.Program`, `src/Fuaran.UI.Program.Server`)
 moved here from the program repository, and the two proof claims ABOUT them moved with them:
 `model-agrees-with-shipped-code` (the bounded fold over the UI witness's fourteen arms) and
 `budget-model-agrees-with-shipped-code` (the UI witness's weighing and the bounded driver's G2 gate).
@@ -193,7 +193,7 @@ differentials compile under `program/oracle/` — each declared in `../copies.js
 repository's file as canonical. `check.ps1 -Leg program` re-checks the two copied models on this
 repository's pin (at the program repository's `z3rlimit`, 60), re-extracts them and byte-diffs each
 extraction against its copied oracle, then runs the two differential families in
-`src/Fuaran.Program.UI.Parity.Tests` beside the adapter. Its cost declarations are
+`src/Fuaran.UI.Program.Parity.Tests` beside the adapter. Its cost declarations are
 `program/modules.json`. The other three extractions under `program/oracle/` (Staging, EffectGate,
 Undo) carry claims hosted in the program repository, whose leg holds them to a fresh extraction;
 they are compiled here only for the server UI suite's differentials at the UI witness.

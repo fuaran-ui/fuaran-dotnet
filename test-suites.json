@@ -161,27 +161,27 @@
       "note": "Phase 224 — the `fuaran` dotnet tool's commands (generate / validate / scaffold). Corpus-independent; writes its inputs to the system temp directory, so it is not a `pure` suite. Rostered when the package joined the published set at 0.87.0; it had run in no gate before that."
     },
     {
-      "project": "src/Fuaran.Program.UI.Bounded.Tests/Fuaran.Program.UI.Bounded.Tests.fsproj",
+      "project": "src/Fuaran.UI.Program.Bounded.Tests/Fuaran.UI.Program.Bounded.Tests.fsproj",
       "lane": "pure",
-      "note": "fuaran#2012 — the bounded program core's interpreter invariants and the server driver's loop, at the UI witness (src/Fuaran.Program.UI). Moved from the program repository with the adapter, where it was a `pure` runner too: no corpus, no filesystem."
+      "note": "fuaran#2012 — the bounded program core's interpreter invariants and the server driver's loop, at the UI witness (src/Fuaran.UI.Program). Moved from the program repository with the adapter, where it was a `pure` runner too: no corpus, no filesystem."
     },
     {
-      "project": "src/Fuaran.Program.UI.Runtime.Tests/Fuaran.Program.UI.Runtime.Tests.fsproj",
+      "project": "src/Fuaran.UI.Program.Runtime.Tests/Fuaran.UI.Program.Runtime.Tests.fsproj",
       "lane": "pure",
       "note": "fuaran#2012 — the client placement's loop and the effect seam, at the UI witness. Moved with the adapter; `pure` there and here."
     },
     {
-      "project": "src/Fuaran.Program.Server.UI.Tests/Fuaran.Program.Server.UI.Tests.fsproj",
+      "project": "src/Fuaran.UI.Program.Server.Tests/Fuaran.UI.Program.Server.Tests.fsproj",
       "requiresProgramSpec": true,
-      "note": "fuaran#2012 — the server-logic placement through the server UI adapter (src/Fuaran.Program.Server.UI): handlers, the server-effect seam, the query-schema check, replay and durable execution, tier-parity leg (d), the program wire codec certified against the specification's UI-vocabulary vectors, and the demanded corpus's emitter. Loads the program specification's corpus at start-up."
+      "note": "fuaran#2012 — the server-logic placement through the server UI adapter (src/Fuaran.UI.Program.Server): handlers, the server-effect seam, the query-schema check, replay and durable execution, tier-parity leg (d), the program wire codec certified against the specification's UI-vocabulary vectors, and the demanded corpus's emitter. Loads the program specification's corpus at start-up."
     },
     {
-      "project": "src/Fuaran.Program.UI.Parity.Tests/Fuaran.Program.UI.Parity.Tests.fsproj",
+      "project": "src/Fuaran.UI.Program.Parity.Tests/Fuaran.UI.Program.Parity.Tests.fsproj",
       "requiresProgramSpec": true,
       "note": "fuaran#2012 — tier parity legs (a) and (b) over the program specification's driver-semantics family, and the differential host of the two proof claims about the UI adapter (proofs.json `model-agrees-with-shipped-code`, `budget-model-agrees-with-shipped-code`). `--emit-fixtures` regenerates that family's scenarios."
     },
     {
-      "project": "src/Fuaran.Program.UI.Bench/Fuaran.Program.UI.Bench.fsproj",
+      "project": "src/Fuaran.UI.Program.Bench/Fuaran.UI.Program.Bench.fsproj",
       "note": "fuaran#2012 — the RunQuery benchmark's smoke pass through the server UI adapter; the measurement runs under `--full`."
     }
   ]

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tier parity leg (c) for the UI adapter: the client placement compiled to JavaScript and
+       run under node over the program specification's driver-semantics family — the same
+       scenario files and the same runner the .NET legs in Fuaran.UI.Program.Parity.Tests read.
+       Moved here from the program repository with the adapter (fuaran#2012); that repository
+       keeps the toy family's Fable leg. Never built by the solution: the Fable stage
+       (tests/fable-laws/fable-check.ps1) compiles and runs it. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <DefineConstants>FABLE_COMPILER</DefineConstants>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI.Program.Parity\Fuaran.UI.Program.Parity.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Fable.Core" />
+  </ItemGroup>
+</Project>

@@ -58,7 +58,7 @@ $ErrorActionPreference = 'Stop'
 $modules = @('WireDecode', 'Vocabulary', 'VocabularyProofs')
 
 # ---- DECLARATION 1b: the program models (fuaran#2012) — a SECOND leg ------------------------------
-# The bounded program core's UI adapter (src/Fuaran.Program.UI, src/Fuaran.Program.Server.UI) moved
+# The bounded program core's UI adapter (src/Fuaran.UI.Program, src/Fuaran.UI.Program.Server) moved
 # here from the program repository, and the two proof claims that are ABOUT that adapter moved with
 # it (../proofs.json `model-agrees-with-shipped-code`, `budget-model-agrees-with-shipped-code`).
 # Their models are COPIES: proofs/program/<Module>.fst and the extractions under
@@ -120,8 +120,8 @@ $hostProjectFile = 'src/Fuaran.UI.Idl.Tests/Fuaran.UI.Idl.Tests.fsproj'
 # The differential hosts moved with the adapter, case for case and go-red case for go-red case: each
 # runs the copied extraction beside the adapter's production code over the program specification's
 # driver-semantics family (a sibling clone, or FUARAN_PROGRAM_SPEC) and an arm-complete corpus.
-$programHostProject = 'src/Fuaran.Program.UI.Parity.Tests'
-$programHostProjectFile = 'src/Fuaran.Program.UI.Parity.Tests/Fuaran.Program.UI.Parity.Tests.fsproj'
+$programHostProject = 'src/Fuaran.UI.Program.Parity.Tests'
+$programHostProjectFile = 'src/Fuaran.UI.Program.Parity.Tests/Fuaran.UI.Program.Parity.Tests.fsproj'
 $programHostFilters = @(
     @{
         Filter  = 'Phase 1715 - the proved bounded fold as oracle'

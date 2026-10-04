@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The RunQuery benchmark (Phase 1896). With no arguments it runs a quick
+       smoke pass — one small table, a few repetitions — so the gate keeps the
+       harness compiling and running without paying for the measurement. The
+       measurement itself is the same program run in Release with the full switch, and its
+       recorded numbers live in docs/runquery-benchmark.md. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Written under the program repository's settings, which leave nullness off; moved here
+         with the UI adapter (fuaran#2012) and compiled as it was certified there. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI.Program.Server\Fuaran.UI.Program.Server.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+  </ItemGroup>
+
+</Project>

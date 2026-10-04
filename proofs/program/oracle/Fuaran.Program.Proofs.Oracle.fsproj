@@ -2,7 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <!-- fuaran#2012 — the extracted F* models of the bounded program core, compiled so the
          UI adapter's differential hosts can RUN them beside production. The adapter
-         (src/Fuaran.Program.UI, src/Fuaran.Program.Server.UI) moved here from the program
+         (src/Fuaran.UI.Program, src/Fuaran.UI.Program.Server) moved here from the program
          repository, and its differentials moved with it.
 
          EVERY .fs here is a BYTE COPY of a file the program repository commits under

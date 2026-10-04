@@ -21,8 +21,8 @@ This document declares which Fuaran *language-tier* surfaces are stable, what co
 | `Fuaran.UI.ThemeManifest` | Apache-2.0 | pre-1.0 |
 | `Fuaran.UI.Telemetry.*` | Apache-2.0 | pre-1.0 |
 | `Fuaran.UI.Memo` | Apache-2.0 | pre-1.0 |
-| `Fuaran.Program.UI` | Apache-2.0 | pre-1.0 — arrived in 0.91.0 (fuaran#2012), see that slot |
-| `Fuaran.Program.Server.UI` | Apache-2.0 | pre-1.0 — arrived in 0.91.0 (fuaran#2012), see that slot |
+| `Fuaran.UI.Program` | Apache-2.0 | pre-1.0 — arrived in 0.91.0 (fuaran#2012, renamed fuaran#2022), see that slot |
+| `Fuaran.UI.Program.Server` | Apache-2.0 | pre-1.0 — arrived in 0.91.0 (fuaran#2012, renamed fuaran#2022), see that slot |
 
 The language tier is licensed **Apache-2.0**. See [`LICENSE`](LICENSE).
 
@@ -7831,14 +7831,14 @@ rides this slot; a higher one advances it._
 
 ### What rides this slot
 
-- **Two packages ARRIVE: `Fuaran.Program.UI` and `Fuaran.Program.Server.UI` (fuaran#2012).** The
-  UI tier's adapters for the bounded program core — the UI witness, the pre-0.6.0 aliases over the
+- **Two packages ARRIVE: `Fuaran.UI.Program` and `Fuaran.UI.Program.Server` (fuaran#2012, renamed by
+  fuaran#2022 — see the next entry).** The UI tier's adapters for the bounded program core — the UI witness, the pre-0.6.0 aliases over the
   generic core, the UI transport loop (the bounded driver, its channel glue and the client runtime;
   Fable-clean) and the server placement's UI instantiation (.NET only) — moved here from the program
-  repository, file for file, with their UI-typed suites (`src/Fuaran.Program.UI.*Tests`,
-  `src/Fuaran.Program.Server.UI.Tests`, the parity project and its Fable leg, the `RunQuery`
-  benchmark) and the `client-program` sample. **Same package ids, same namespaces, same surface; a
-  VERSION JUMP:** they were last published from the program repository at **0.7.1**, and their first
+  repository, file for file, with their UI-typed suites (`src/Fuaran.UI.Program.*Tests`,
+  `src/Fuaran.UI.Program.Server.Tests`, the parity project and its Fable leg, the `RunQuery`
+  benchmark) and the `client-program` sample. **Same surface, renamed ids and namespaces (next
+  entry), and a VERSION JUMP:** they were last published from the program repository at **0.7.1**, and their first
   release from here is this slot's version, **0.91.0**, in this repository's lockstep line from then
   on. A consumer moving from `0.7.1` to `0.91.0` of either takes the surface 0.7.1 shipped, compiled
   against this repository's `Fuaran.UI.*` at the same version rather than the 0.90.0 the program
@@ -7849,6 +7849,20 @@ rides this slot; a higher one advances it._
   advancing it. Two proof claims about the adapters moved with them (`proofs.json`
   `model-agrees-with-shipped-code`, `budget-model-agrees-with-shipped-code`; `proofs/check.ps1
   -Leg program`), over byte copies of the program repository's models declared in `copies.json`.
+- **BREAKING for anyone who took the program repository's packages: the two adapters are RENAMED
+  into the UI family (fuaran#2022; `docs/DECISIONS.md` D9).** `Fuaran.Program.UI` becomes
+  **`Fuaran.UI.Program`** and `Fuaran.Program.Server.UI` becomes **`Fuaran.UI.Program.Server`** — the
+  package ids, the assemblies and the root namespaces alike (`open Fuaran.Program.UI` →
+  `open Fuaran.UI.Program`, `open Fuaran.Program.Server.UI` → `open Fuaran.UI.Program.Server`; every
+  module under them keeps its name). No type, member or behaviour moves. The old ids' **last version
+  is 0.7.1**, published from the program repository; nothing was ever published under them from this
+  repository, so the rename rides this draft rather than costing a released consumer a second move. A
+  consumer migrating from `0.7.1` changes its `PackageReference` ids, its `PackageVersion` pins and its
+  `open` lines in the same change, and takes the version jump above at the same time. **The old ids
+  are deprecated on nuget.org** in favour of the new ones once the new ids are published (an operator
+  act on the registry, not part of this repository's release); they receive no further versions. The
+  test, parity and benchmark projects moved with them (`src/Fuaran.UI.Program.*`), and the demanded
+  corpus's `generator` field now names the emitter at its new path.
 - **The expression bound counts the rounding scale** (WIRE_FORMAT.md §21.8). The decode-time node
   walk over a `ColExpr` (a `Binding.Expr`, and the expressions a `Transform` pipeline embeds) already
   descended into the operands of `quotient` and `rounded`; it now also counts each one's rounding

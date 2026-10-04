@@ -214,11 +214,12 @@ let private packableProjects =
       "Fuaran.UI.Client"
       "Fuaran.UI.Cli"
       // fuaran#2012 — the bounded program core's UI adapters, moved here from the program
-      // repository (where 0.7.1 was their last release) under the same ids. They consume the
+      // repository (where 0.7.1 was their last release); fuaran#2022 renamed them into the UI
+      // family before their first release from here (docs/DECISIONS.md D9). They consume the
       // core by PACKAGE (FuaranProgramVersion), so they pack after the Fuaran.UI.* projects
       // they reference; the server adapter references the client one, so it follows it.
-      "Fuaran.Program.UI"
-      "Fuaran.Program.Server.UI" ]
+      "Fuaran.UI.Program"
+      "Fuaran.UI.Program.Server" ]
     |> List.map (fun name -> Path.Combine(repoRoot, "src", name, $"{name}.fsproj"))
     // Phase 304 — the C# authoring veneer packs alongside the F# tier. It is a
     // .csproj (appended after the .fsproj map). Phase 314 appends the Roslyn

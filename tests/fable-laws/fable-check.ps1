@@ -1637,10 +1637,10 @@ else {
 
 # ── 2c. The program UI adapter's tier-parity leg under Fable (fuaran#2012) ───
 #
-# The UI adapter of the bounded program core (src/Fuaran.Program.UI) moved here from the program
+# The UI adapter of the bounded program core (src/Fuaran.UI.Program) moved here from the program
 # repository, and its parity leg (c) moved with it: the client placement compiled to JavaScript and
 # RUN under node over the program specification's driver-semantics family, compared step by step
-# with the recorded expectation the .NET legs (src/Fuaran.Program.UI.Parity.Tests) compare with.
+# with the recorded expectation the .NET legs (src/Fuaran.UI.Program.Parity.Tests) compare with.
 # The portability half above already compiles the adapter under its own settings; this is the
 # behaviour half, because "it compiles under Fable" and "it behaves the same under Fable" are
 # different claims. --noCache is load-bearing for the reason the law harness gives.
@@ -1650,7 +1650,7 @@ else {
 # A narrow lane may skip it by content address, like every other subject; the full lane always runs
 # it. Not run under a redirected -SrcRoot, for 2b's reason.
 
-$programParityProject = Join-Path $repoRoot 'src' 'Fuaran.Program.UI.Parity.Fable' 'Fuaran.Program.UI.Parity.Fable.fsproj'
+$programParityProject = Join-Path $repoRoot 'src' 'Fuaran.UI.Program.Parity.Fable' 'Fuaran.UI.Program.Parity.Fable.fsproj'
 $programSpecRoot =
     if ($env:FUARAN_PROGRAM_SPEC) { $env:FUARAN_PROGRAM_SPEC.Trim() }
     else { Join-Path $repoRoot '..' 'fuaran-program-spec' }

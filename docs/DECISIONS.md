@@ -10,6 +10,42 @@ consequence.
 
 ---
 
+## 2026-10-04 — D9: the program UI adapters take UI-family ids before their first release from here
+
+**Operator decision, 2026-10-04 (Phase 2022).** The two adapters that instantiate the bounded program
+core over this tier's types arrived here in Phase 2012 under the ids they had carried in the program
+repository, `Fuaran.Program.UI` and `Fuaran.Program.Server.UI`. They are renamed **`Fuaran.UI.Program`**
+and **`Fuaran.UI.Program.Server`** — package id, assembly, project directory and root namespace — and
+their test, parity and benchmark projects follow as `Fuaran.UI.Program.*`.
+
+**Why.** Since Phase 2012 the adapters live in this tier, depend on it, and version in its lockstep
+line; the program core references nothing here. A `Fuaran.Program.*` id on a package this repository
+releases says the opposite of that dependency — it reads as a member of the core's family, released
+on the core's line, which is the confusion that the move existed to remove. Under the UI prefix the
+id says where the package is released, what it depends on, and whose version line it follows.
+
+**Why now.** This is the cheapest point the rename will ever have. Nothing has been published from
+this repository under the old ids — the 0.91.0 slot that carries them is an untagged draft — and the
+registry's publishing trust for them has not been set up here. After a first release a rename costs
+every consumer of that release a second migration; before it, the only consumers are those of the old
+ids' last version, 0.7.1, published from the program repository, and they take one move (new ids, the
+version jump, new `open` lines) instead of two.
+
+**Consequences.** `STABILITY.md`'s 0.91.0 slot records the rename as breaking for anyone who took the
+old ids, and names 0.7.1 as their last version. The old ids are deprecated on the registry in favour
+of the new ones once the new ids are published; that is an act on the registry, outside this
+repository. The publish workflow's id filter needs no adapter-specific arm any more: every package
+this repository packs again carries a `Fuaran.UI.*` id. The program proof models and extractions under
+`proofs/program/` are byte copies of the program repository's files and keep their wording; only the
+host and project names that point at them moved.
+
+**Rejected.** Keeping the old ids — it leaves a package family prefix that no longer matches the
+repository, the version line or the dependency direction, and the rename only grows more expensive.
+A forwarding package under each old id — a second package to version and release for consumers who
+can change one reference, when the registry's deprecation pointer already tells them where to go.
+
+---
+
 ## 2026-09-23 — D8: the temporal vocabulary is renamed on the 0.2.0 clean-break precedent, riding the untagged 0.86.0 draft — not a profile major
 
 **Operator ruling, driver session, 2026-09-23 — recorded before any renamed byte (Phase 1811, task

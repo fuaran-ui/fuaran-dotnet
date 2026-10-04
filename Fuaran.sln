@@ -199,23 +199,23 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FableLaws", "tests\fable-la
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.UI.AiWire", "src\Fuaran.UI.AiWire\Fuaran.UI.AiWire.fsproj", "{D0FA5C1B-15D5-4ACD-93FF-66FECD665CC4}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.Program.UI", "src\Fuaran.Program.UI\Fuaran.Program.UI.fsproj", "{18729D56-0B8D-41B7-80E8-88EDCA0CA0F2}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.UI.Program", "src\Fuaran.UI.Program\Fuaran.UI.Program.fsproj", "{18729D56-0B8D-41B7-80E8-88EDCA0CA0F2}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.Program.Server.UI", "src\Fuaran.Program.Server.UI\Fuaran.Program.Server.UI.fsproj", "{7D3E76D2-1D7D-48DA-B583-F63B23A755F0}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.UI.Program.Server", "src\Fuaran.UI.Program.Server\Fuaran.UI.Program.Server.fsproj", "{7D3E76D2-1D7D-48DA-B583-F63B23A755F0}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.Program.UI.Bounded.Tests", "src\Fuaran.Program.UI.Bounded.Tests\Fuaran.Program.UI.Bounded.Tests.fsproj", "{20313DA0-5F0D-4564-B45F-CA56A4C3A712}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.UI.Program.Bounded.Tests", "src\Fuaran.UI.Program.Bounded.Tests\Fuaran.UI.Program.Bounded.Tests.fsproj", "{20313DA0-5F0D-4564-B45F-CA56A4C3A712}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.Program.UI.Runtime.Tests", "src\Fuaran.Program.UI.Runtime.Tests\Fuaran.Program.UI.Runtime.Tests.fsproj", "{72F18E4C-420E-43AD-9AE4-D10FEA9697A5}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.UI.Program.Runtime.Tests", "src\Fuaran.UI.Program.Runtime.Tests\Fuaran.UI.Program.Runtime.Tests.fsproj", "{72F18E4C-420E-43AD-9AE4-D10FEA9697A5}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.Program.Server.UI.Tests", "src\Fuaran.Program.Server.UI.Tests\Fuaran.Program.Server.UI.Tests.fsproj", "{5227C7FD-7697-4A64-A14E-AD30CF9EA4AD}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.UI.Program.Server.Tests", "src\Fuaran.UI.Program.Server.Tests\Fuaran.UI.Program.Server.Tests.fsproj", "{5227C7FD-7697-4A64-A14E-AD30CF9EA4AD}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.Program.UI.Parity", "src\Fuaran.Program.UI.Parity\Fuaran.Program.UI.Parity.fsproj", "{697015CA-6379-47AD-B685-5414FFD8F572}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.UI.Program.Parity", "src\Fuaran.UI.Program.Parity\Fuaran.UI.Program.Parity.fsproj", "{697015CA-6379-47AD-B685-5414FFD8F572}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.Program.Proofs.Oracle", "proofs\program\oracle\Fuaran.Program.Proofs.Oracle.fsproj", "{89F973BC-619B-41D0-8915-713783CB469A}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.Program.UI.Parity.Tests", "src\Fuaran.Program.UI.Parity.Tests\Fuaran.Program.UI.Parity.Tests.fsproj", "{08E38742-5A12-4273-B05B-F6BC32748BFB}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.UI.Program.Parity.Tests", "src\Fuaran.UI.Program.Parity.Tests\Fuaran.UI.Program.Parity.Tests.fsproj", "{08E38742-5A12-4273-B05B-F6BC32748BFB}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.Program.UI.Bench", "src\Fuaran.Program.UI.Bench\Fuaran.Program.UI.Bench.fsproj", "{7D511752-862B-4D0C-9D88-3CDAC31ED46E}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fuaran.UI.Program.Bench", "src\Fuaran.UI.Program.Bench\Fuaran.UI.Program.Bench.fsproj", "{7D511752-862B-4D0C-9D88-3CDAC31ED46E}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "ClientProgram", "samples\client-program\ClientProgram.fsproj", "{EBC46BFE-863C-4EBF-A24A-F2C2690EC300}"
 EndProject

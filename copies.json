@@ -175,12 +175,12 @@
       "regen": "fuaran#2012. A copied F* EXTRACTION of a program model, compiled by proofs/program/oracle for the UI adapter's differential hosts. Copy it FROM the consumer path above; the program repository's proof leg is what holds that file to a fresh extraction. Its claims are hosted in the program repository; the copy is here only because the server UI suite still runs its differential at the UI witness."
     },
     {
-      "source": "src/Fuaran.Program.Server.UI.Tests/conformance/demanded-effect-projection.json",
+      "source": "src/Fuaran.UI.Program.Server.Tests/conformance/demanded-effect-projection.json",
       "consumers": [
         "Fuaran/Fuaran-Program/conformance/demanded-effect-projection.json"
       ],
       "check": "bytes",
-      "regen": "fuaran#2012, and the one record here whose WRITER is this repository: two of the demanded corpus's vectors are real harvests of a UI program, which only the server UI adapter can produce, so the emitter moved here (src/Fuaran.Program.Server.UI.Tests/emit-demanded-conformance.fsx) while the canonical corpus stays in the program repository beside the codec that is its authority, which certifies every vector's recorded read against its own decoder. Regenerate HERE with that script, then copy the file TO the consumer path above."
+      "regen": "fuaran#2012, and the one record here whose WRITER is this repository: two of the demanded corpus's vectors are real harvests of a UI program, which only the server UI adapter can produce, so the emitter moved here (src/Fuaran.UI.Program.Server.Tests/emit-demanded-conformance.fsx) while the canonical corpus stays in the program repository beside the codec that is its authority, which certifies every vector's recorded read against its own decoder. Regenerate HERE with that script, then copy the file TO the consumer path above."
     }
   ]
 }

@@ -18,7 +18,7 @@
          require. -->
     <FuaranCoreComputeVersion>0.37.0</FuaranCoreComputeVersion>
     <!-- The THIRD producer (fuaran#2012): the bounded program core, consumed by the two program
-         adapters that moved here (src/Fuaran.Program.UI, src/Fuaran.Program.Server.UI) and their
+         adapters that moved here (src/Fuaran.UI.Program, src/Fuaran.UI.Program.Server) and their
          suites. Released packages only, never a project reference: the adapters depend on the
          core, and the core references nothing in this repository. 0.7.1 is the release the
          adapters were last published beside, built on the same Fuaran.Core 0.34.0 and compute

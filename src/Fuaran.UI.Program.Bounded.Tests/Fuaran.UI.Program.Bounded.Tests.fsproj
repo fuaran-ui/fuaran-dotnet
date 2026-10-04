@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Written under the program repository's settings, which leave nullness off; moved here
+         with the UI adapter (fuaran#2012) and compiled as it was certified there. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="BoundedActionsTests.fs" />
+    <Compile Include="BoundedDriverTests.fs" />
+    <Compile Include="BoundedConnectionTests.fs" />
+    <Compile Include="DemandedTests.fs" />
+    <Compile Include="DemandedDecodeTests.fs" />
+    <Compile Include="SignedEnvelopeTests.fs" />
+    <Compile Include="PreCutEnvelopeTests.fs" />
+    <!-- Program.fs is the Expecto entry point and stays last. -->
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI.Program\Fuaran.UI.Program.fsproj" />
+  </ItemGroup>
+  <!-- The fixtures author trees (Fuaran.UI), build TreeOps + decode wire JSON
+       (Fuaran.UI.Ops), assert against the op-stream sink contract
+       (OpStream.Abstractions), use BindingSources as the store
+       (Renderer.Core), and read the lowered DomPatch / ClientEffect wire
+       vocabulary (ServerDriven). -->
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.ServerDriven\Fuaran.UI.ServerDriven.fsproj" />
+  </ItemGroup>
+</Project>
