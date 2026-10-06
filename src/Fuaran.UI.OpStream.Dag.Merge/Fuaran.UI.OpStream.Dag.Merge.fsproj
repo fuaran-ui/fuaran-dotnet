@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>Published as a compiled assembly for .NET hosts and not offered to Fable consumers: its sources are not packed under fable/ and have never been through the Fable stage. Whether to distribute it to Fable consumers is a decision of its own (source-packing would add it to the Fable stage's portability set); Phase 2128 records the standing answer rather than changing it.</FableDotNetOnly>
     <PackageId>Fuaran.UI.OpStream.Dag.Merge</PackageId>
     <Description>M1 branch-merge engine for the Fuaran op-stream DAG (opt-in, rung-4). LCA over the DAG (unique-base), spine replay, fast-forward, and disjoint-(NodeId,facet) auto-merge with a deterministic NodeId-canonical-bytes tie-break (no wall-clock). Merge nodes commit to the canonical encoding of the resulting tree (outcome-hash), so two hosts agree iff they reach the same tree; overlapping changes refuse with the contended cells named. Requires IDagOpStreamSink, so DAG behaviour is structurally unreachable from the linear path. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

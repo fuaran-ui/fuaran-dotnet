@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>The SQLite-backed DAG op-stream sink (Microsoft.Data.Sqlite); it needs a .NET process with a file system, never a browser.</FableDotNetOnly>
     <PackageId>Fuaran.UI.OpStream.Dag.Sqlite</PackageId>
     <Description>SQLite-backed IDagOpStreamSink — durable content-addressed branching-DAG sink. The trunk-head compare-and-swap is a conditional UPDATE … WHERE head = expected (atomic at the statement level), so concurrent advancers leave exactly one winner. Opt-in (rung-4) companion to Fuaran.UI.OpStream.Dag.Abstractions. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

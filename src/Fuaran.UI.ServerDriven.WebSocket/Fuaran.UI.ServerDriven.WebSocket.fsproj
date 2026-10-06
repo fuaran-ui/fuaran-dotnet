@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>The server-side WebSocket transport for server-driven sessions; it runs only in a .NET server process. The client-side surface is Fuaran.UI.ServerDriven, which ships its sources.</FableDotNetOnly>
     <PackageId>Fuaran.UI.ServerDriven.WebSocket</PackageId>
     <Description>Fuaran server-driven backend 2 — one bidirectional WebSocket channel over ASP.NET. The lower-latency transport for measured high-frequency interaction (per-keystroke, drag, live cursors). A first-class second backend whose structural identity to the SSE backend (differing only in channel + endpoint glue) is the architectural-integrity check that IFuaranLiveChannel is genuinely transport-neutral. No platform-SDK dependency. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

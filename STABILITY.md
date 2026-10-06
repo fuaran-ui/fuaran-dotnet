@@ -7935,6 +7935,23 @@ ride it and this slot opens the next number. A change of this class or lower tha
   0.35.1 kit by Core's own emit; this tier reads it and now certifies the pinned kit against it.
   A re-emit of the wire corpus at this pin is byte-identical.
 
+### What rides this slot — Phase 2128
+
+- **`Fuaran.UI.Telemetry.Default` ships its F# sources under `fable/` (fuaran#2128) — a packaging
+  fix, additive.** Until this slot it packed none (0.84.0 through 0.91.0), so Fable read it as an
+  assembly whose types point at the `Fuaran.UI.Telemetry.Abstractions` ASSEMBLY, which Fable replaces
+  with that package's sources: every Fable consumer handing a sink from `NoOpSink.create` (or any sink
+  here) to code typed against `IFuaranTelemetrySink` failed with FS0074. **Consumer cost:** none on
+  .NET; a Fable consumer now transpiles the package and needs nothing else. `Apply.applyWithTelemetry`
+  reads a per-pipeline monotonic clock (`performance.now()` under Fable, a `Stopwatch` on .NET), so the
+  package gains a `Fable.Core` dependency it already had transitively through `Fuaran.UI.Ops`;
+  `TimeToApplyMs` is unchanged on .NET.
+- **The gate keeps every Fable-reachable package honest.** `build/FablePackCheck.fs` (in
+  `DriftChecks`) fails a published package that references a source-shipped one while shipping no
+  sources itself, unless its fsproj declares `<FableDotNetOnly>why</FableDotNetOnly>`; eighteen
+  packages carry that declaration, metadata only. The Fable stage's packed-consumer leg
+  (`tests/fable-pack-consumer/`) Fable-compiles a consumer against the PACKED telemetry packages.
+
 ---
 
 ## 0.91.0 — the slot Phase 2005 opens: the compute 0.37.0 adoption completes (DRAFT — untagged)

@@ -15,6 +15,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>The server placement of the program UI adapter, over the Fuaran.Program.Server package; it runs in a .NET server process. The client placement, Fuaran.UI.Program, ships its sources.</FableDotNetOnly>
     <PackageId>Fuaran.UI.Program.Server</PackageId>
     <Description>Fuaran.UI.Program.Server — the UI adapter for the server placement of the domain-generic bounded program core: the pre-0.6.0 server names as aliases over the UI witness, and the UI event step (the validation gate in front of the core's dispatch) for the server session, the durable interpreter and the operator controls. .NET only. Released with the Fuaran.UI tier, in its version line, and built against the core's released packages (its previous package id, retired in fuaran#2022, last released 0.7.1 beside the core). Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

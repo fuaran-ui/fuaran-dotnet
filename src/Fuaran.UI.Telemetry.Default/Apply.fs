@@ -7,6 +7,24 @@ open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.Telemetry.Abstractions
 
+// ── The monotonic clock, per pipeline (Phase 2128) ──────────────────────────
+// This package ships its sources to Fable consumers, and Fable lowers no `Stopwatch` member the
+// timing needs (`StartNew`, `Elapsed`, `GetTimestamp` and `Frequency` are all refused). So the
+// clock is the `RenderTiming.nowMs` shape from `Fuaran.UI.Renderer`: `performance.now()` under
+// Fable (monotonic, high-resolution, `Date.now()` where `performance` is absent), a process
+// `Stopwatch` on .NET. Same unit — milliseconds — on both.
+module private Clock =
+#if FABLE_COMPILER
+    open Fable.Core
+
+    [<Emit("(typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()")>]
+    let nowMs () : float = jsNative
+#else
+    let private clock = Stopwatch.StartNew()
+
+    let nowMs () : float = clock.Elapsed.TotalMilliseconds
+#endif
+
 // ============================================================================
 //  Apply-engine telemetry wrapper.
 //
@@ -71,9 +89,11 @@ let applyWithTelemetry
     (op: TreeOp<'Msg>)
     (tree: Node<'Msg>)
     : Result<Node<'Msg>, ApplyError> =
-    let sw = Stopwatch.StartNew()
+    // `mutable` is load-bearing: Fable inlines a once-used `let` at its use site, which would read
+    // the start AFTER the apply and report ~0 ms; a mutable binding is never inlined.
+    let mutable started = Clock.nowMs ()
     let result = Apply.apply op tree
-    sw.Stop()
+    let elapsedMs = Clock.nowMs () - started
 
     let telemetry =
         { StreamId = ctx.StreamId
@@ -81,7 +101,7 @@ let applyWithTelemetry
           OpKind = OpKind.ofTreeOp op
           NodeId = OpApplyTelemetry.topLevelNodeId op
           Outcome = OpOutcome.ofApplyResult result
-          TimeToApplyMs = sw.Elapsed.TotalMilliseconds
+          TimeToApplyMs = elapsedMs
           PromptId = ctx.PromptId
           UserId = ctx.UserId
           Timestamp = DateTimeOffset.UtcNow }

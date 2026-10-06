@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>The pure-SSR page-set layer: it discovers markdown pages on disk (System.IO) and renders them on a .NET server or at static-export time. It is not a browser surface.</FableDotNetOnly>
     <PackageId>Fuaran.UI.Site</PackageId>
     <Description>The page-set layer for pure-SSR Fuaran sites. Discovers markdown pages (frontmatter + filename→route derivation), gates the set with a typed SiteCheck (route uniqueness, known-layout membership, non-empty titles, the nav frontmatter contract — an unknown layout is an error, never a silent fall-through), computes a once-at-startup RenderPlan through three host-owned seams (layout dispatch, body renderer, document shell), projects primary navigation from the pages themselves (nav-order/nav-title frontmatter → ordered crawlable Link nodes, current page marked aria-current), and plans the static export (route→file mapping, sitemap.xml, robots.txt, public-asset copy). The host owns content, layout trees, and chrome; this package owns discovery, routes, gates, and export. No Giraffe / ASP.NET / markdown dependency. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

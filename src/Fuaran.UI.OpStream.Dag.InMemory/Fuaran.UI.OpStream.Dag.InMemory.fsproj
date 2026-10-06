@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>Published as a compiled assembly for .NET hosts and not offered to Fable consumers: its sources are not packed under fable/ and have never been through the Fable stage. Whether to distribute it to Fable consumers is a decision of its own (source-packing would add it to the Fable stage's portability set); Phase 2128 records the standing answer rather than changing it.</FableDotNetOnly>
     <PackageId>Fuaran.UI.OpStream.Dag.InMemory</PackageId>
     <Description>In-memory IDagOpStreamSink — per-process content-addressed branching-DAG sink with a guarded-ref tryAdvanceHead CAS. Opt-in (rung-4) companion to Fuaran.UI.OpStream.Dag.Abstractions, for tests and ephemeral preview environments. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

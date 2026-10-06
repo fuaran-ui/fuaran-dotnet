@@ -1111,6 +1111,17 @@ let private registerTargets (args: string array) =
 
     "CssCheck" ==> "DriftChecks" |> ignore
 
+    // Phase 2128 — every published package a Fable consumer can reach ships its `fable/` sources or
+    // declares `<FableDotNetOnly>why</...>` in its own fsproj. The rules, their go-red proof and why
+    // the boundary breaks are in `build/FablePackCheck.fs`; the published set is `packableProjects`
+    // (the F# ones), the list `Pack` packs. Pure IO over committed project files, so no `Build` dep.
+    Target.create "FablePackCheck" (fun _ ->
+        packableProjects
+        |> List.filter (fun p -> p.EndsWith ".fsproj")
+        |> FablePackCheck.run (Path.Combine(repoRoot, "src")))
+
+    "FablePackCheck" ==> "DriftChecks" |> ignore
+
     // Phase 577 — the embedded browser-renderer assets, on exactly the shape
     // above and for the same reason. `Fuaran.UI.Renderer.Web` embeds a BUILT
     // ARTEFACT from fuaran-ts; a byte copy across a repo boundary goes stale

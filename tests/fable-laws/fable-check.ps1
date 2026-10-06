@@ -54,6 +54,14 @@
   compiled to JavaScript and RUN under node over the program specification's driver-semantics family
   (section 2c). Skipped loudly when that corpus, a sibling clone, is absent.
 
+  AND A FIFTH, SINCE PHASE 2128: THE PACKED-CONSUMER LEG (section 2d). Every compile above enters a
+  project and reaches the rest by ProjectReference, which Fable always compiles from SOURCE, so none of
+  them can see a package that ships no `fable/` sources. `tests/fable-pack-consumer/` packs
+  `Fuaran.UI.Telemetry.Default` and its closure and Fable-compiles a consumer against the PACKAGES,
+  which is what a downstream client sees; it is skipped only by `-SkipPackConsumer` or by a matching
+  address in a narrow lane. Its static twin, over every published package, is the FAKE
+  `FablePackCheck` target (`build/FablePackCheck.fs`).
+
   THE DERIVATION (Phase 1606). Fuaran.UI 0.78.0 shipped a Renderer whose `#if FABLE_COMPILER` arm
   did not compile — four bare `JVal` / `JStr` uses with no `open Fuaran.Core` — invisible to the
   .NET build, which compiles only the `#else` arm, and to this gate, whose hand-kept list did not
@@ -417,6 +425,9 @@ param(
     # for the reason `-SkipFable` is not one: a lane decides whether a skip is ARMED, not which
     # part of the stage runs.
     [switch] $SkipCoreFable,
+    # Skip the packed-consumer leg (`tests/fable-pack-consumer/`, Phase 2128) — a switch, never a
+    # lane, for the same reason.
+    [switch] $SkipPackConsumer,
     # Keep the emitted JavaScript and the two captured outputs for inspection.
     [switch] $KeepOutput,
     # Print the derived portability set — entries, why each is one, what they cover, and every
@@ -1720,6 +1731,77 @@ else {
 
         if (-not $KeepOutput) {
             Remove-Item -Recurse -Force $programParityOut -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+# ── 2d. The packed-consumer leg (Phase 2128) ───────────────────────────────
+#
+# Every compile above reaches its dependencies by ProjectReference, and Fable compiles a
+# ProjectReference from source whatever the package ships — so this stage could not see that
+# `Fuaran.UI.Telemetry.Default` packed no `fable/` sources, and every downstream Fable consumer of it
+# failed with FS0074. `tests/fable-pack-consumer/fable-pack-consumer.ps1` packs it and its
+# ProjectReference closure, restores a consumer against those PACKAGES and Fable-compiles it; its
+# header says what green means. Run as a child process, like 2b, and recorded like any other subject.
+#
+# The address is the consumer's own PLUS the producer's: `Get-CompileAddress` over
+# `Fuaran.UI.Telemetry.Default` covers every source and project file in the closure the script packs,
+# so an edit to any packed package misses the record. Not run under a redirected -SrcRoot, for 2b's
+# reason.
+
+if ($SkipPackConsumer) {
+    Write-Host ''
+    Write-Host '  the packed-consumer leg: SKIPPED by -SkipPackConsumer' -ForegroundColor Yellow
+}
+elseif ($PSBoundParameters.ContainsKey('SrcRoot')) {
+    Write-Host ''
+    Write-Host '  the packed-consumer leg: not run under a redirected -SrcRoot' -ForegroundColor DarkGray
+}
+else {
+    $packConsumerDir = Join-Path $repoRoot 'tests' 'fable-pack-consumer'
+    $packConsumerScript = Join-Path $packConsumerDir 'fable-pack-consumer.ps1'
+    $packConsumerProject = Join-Path $packConsumerDir 'FablePackConsumer.fsproj'
+    $packProducerProject = Join-Path $repoRoot 'src' 'Fuaran.UI.Telemetry.Default' 'Fuaran.UI.Telemetry.Default.fsproj'
+
+    Write-Stage "the packed-consumer leg — $(ConvertTo-RepoRelative $packConsumerScript)"
+
+    if (-not (Test-Path -LiteralPath $packConsumerScript -PathType Leaf)) {
+        $failures.Add("the packed-consumer leg script is missing: $packConsumerScript")
+    }
+    else {
+        $packProducerAddress = Get-CompileAddress $packProducerProject 'packed producer'
+        $packConsumerSemantics = @(
+            "pwsh fable-pack-consumer.ps1 $(Get-CachedFileSha256 $packConsumerScript)"
+            "producer $packProducerAddress"
+            "version $(Get-CachedFileSha256 (Join-Path $repoRoot 'Directory.Build.props'))"
+        ) -join ' + '
+        # An unresolvable producer address must never match a record: `$null` means "compile".
+        $packConsumerAddress = if ($packProducerAddress) { Get-CompileAddress $packConsumerProject $packConsumerSemantics } else { $null }
+        $packConsumerRecorded = if ($laneMaySkip -and $packConsumerAddress) { Test-RecordedGreen 'PackConsumer' $packConsumerAddress $packConsumerSemantics } else { $null }
+        $packConsumerLabel = ConvertTo-RepoRelative $packConsumerProject
+
+        if ($packConsumerRecorded) {
+            Add-Timing $packConsumerLabel 'skipped' 0
+            Write-Host "  SKIPPED BY ADDRESS $packConsumerLabel" -ForegroundColor Yellow
+            Write-Host "    address $packConsumerAddress" -ForegroundColor DarkGray
+            Write-Host "    recorded green in lane '$($packConsumerRecorded.lane)' at $($packConsumerRecorded.recordedUtc)" -ForegroundColor DarkGray
+        }
+        else {
+            # A child process, never piped: its exit status is the verdict.
+            $packConsumerClock = [Diagnostics.Stopwatch]::StartNew()
+            & pwsh -NoProfile -File $packConsumerScript
+            $packConsumerExit = $LASTEXITCODE
+            $packConsumerClock.Stop()
+
+            if ($packConsumerExit -eq 0) {
+                Add-Timing $packConsumerLabel 'compiled' $packConsumerClock.Elapsed.TotalSeconds
+                if ($packConsumerAddress) { Write-RecordedGreen 'PackConsumer' $packConsumerAddress $packConsumerSemantics }
+            }
+            else {
+                Add-Timing $packConsumerLabel 'FAILED' $packConsumerClock.Elapsed.TotalSeconds
+                Clear-RecordedGreen 'PackConsumer'
+                $failures.Add("the packed-consumer leg FAILED (exit $packConsumerExit) — see tests/fable-pack-consumer/fable-pack-consumer.ps1's output above")
+            }
         }
     }
 }

@@ -4,6 +4,9 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>The build-time F# AST walker, built on FSharp.Compiler.Service; it runs in a .NET build, never in a browser.</FableDotNetOnly>
     <PackageId>Fuaran.UI.Validator</PackageId>
     <Description>Fuaran build-time validator — F# AST walker that gates Fuaran Node trees at compile time. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

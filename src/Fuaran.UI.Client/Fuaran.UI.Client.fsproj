@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>The typed .NET client over the generation endpoint (System.Net.Http); the browser path is the TypeScript client's.</FableDotNetOnly>
     <PackageId>Fuaran.UI.Client</PackageId>
     <Description>Fuaran.UI.Client — a thin, typed F#/.NET client over the Fuaran generation endpoint: a typed generate call, a session/turn-loop helper so each subsequent prompt is a cheap repair diff, and decode glue to Fuaran.UI.Renderer. The F# mirror of the TypeScript @fuaran-ui/client. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

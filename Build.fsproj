@@ -6,6 +6,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="build/FablePackCheck.fs" />
     <Compile Include="Build.fs" />
   </ItemGroup>
   <ItemGroup>

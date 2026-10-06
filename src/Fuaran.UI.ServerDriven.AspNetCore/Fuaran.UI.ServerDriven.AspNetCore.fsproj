@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>The ASP.NET Core host adapter for server-driven sessions; it runs only inside an ASP.NET Core process. The client-side surface is Fuaran.UI.ServerDriven, which ships its sources.</FableDotNetOnly>
     <PackageId>Fuaran.UI.ServerDriven.AspNetCore</PackageId>
     <Description>Fuaran server-driven backend 1 (v1 default) — SSE-push + POST-receive over ASP.NET. The thin transport glue around the Fuaran.UI.ServerDriven core: an SSE IFuaranLiveChannel, the POST inbound parser, the connection registry, and the GET-stream / POST-event endpoint wiring (mapFuaranLive). Default because SSE+POST rides natively through proxies/CDNs/WAFs, gets per-event HTTP governance for free, and maps reconnect 1:1 onto the journal via Last-Event-ID. No platform-SDK dependency (the SSE framing is self-contained). Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

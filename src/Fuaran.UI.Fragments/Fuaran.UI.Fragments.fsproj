@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>Published as a compiled assembly for .NET hosts and not offered to Fable consumers: its sources are not packed under fable/ and have never been through the Fable stage. Whether to distribute it to Fable consumers is a decision of its own (source-packing would add it to the Fable stage's portability set); Phase 2128 records the standing answer rather than changing it.</FableDotNetOnly>
     <PackageId>Fuaran.UI.Fragments</PackageId>
     <Description>The certified fragment library for Fuaran UI — a curated set of parameterised FragmentDecls (typed holes over bounded value-spaces, declared two-axis effect classes, wire round-trip fixtures in the shared conformance corpus) for the composite shapes consumer apps keep re-deriving: a labelled metric row, a KPI strip, a filter bar, a confirm/cancel pair, an empty-state panel, a section header, a metric card, a loading placeholder. Every fragment is certified valid-for-all-bindings by the recipe-certification floor before it ships. APPLICATION-SPACE composition: fragments are reusable composition for consumer apps, content packs and pattern banks — they are not a second language vocabulary and never gate or substitute for NodeKind admission. FSharp.Core + Fuaran.UI only (Fable-clean; no renderer, ops or host dependency). Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

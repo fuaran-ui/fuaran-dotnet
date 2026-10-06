@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>The Giraffe host adapter for the page-set layer; it runs only in a .NET server process.</FableDotNetOnly>
     <PackageId>Fuaran.UI.Site.Giraffe</PackageId>
     <Description>Giraffe host adapter for the Fuaran.UI.Site page-set layer. Serves a computed RenderPlan as one exact-match GET route per pre-rendered page, an optional raw-markdown agent route per page (/x → /x.md, text/markdown), and the SEO pair (sitemap.xml + robots.txt) derived from the same page set. Giraffe is isolated to this package — Fuaran.UI.Site stays web-framework-free. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

@@ -11,6 +11,15 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/ (same convention as
+       Fuaran.UI.Telemetry.Abstractions). Phase 2128: without it Fable read this
+       package as an assembly whose types point at the Abstractions ASSEMBLY,
+       which Fable replaces with that package's sources, so every Fable consumer
+       handing a sink built here to the abstraction failed with FS0074.
+       tests/fable-pack-consumer/ proves the packed artefact. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
   <ItemGroup>
     <Compile Include="NoOpSink.fs" />
     <Compile Include="InMemorySink.fs" />
@@ -25,5 +34,10 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
+    <!-- Fable.Core: used only under `#if FABLE_COMPILER` for the `[<Emit>]`
+         monotonic clock in Apply.fs (Phase 2128). Harmless on .NET — the Emit
+         code is fenced out and never compiled — and already a transitive
+         dependency through Fuaran.UI.Ops. -->
+    <PackageReference Include="Fable.Core" />
   </ItemGroup>
 </Project>

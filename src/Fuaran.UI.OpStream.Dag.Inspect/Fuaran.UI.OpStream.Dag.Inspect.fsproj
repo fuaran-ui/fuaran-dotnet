@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>Published as a compiled assembly for .NET hosts and not offered to Fable consumers: its sources are not packed under fable/ and have never been through the Fable stage. Whether to distribute it to Fable consumers is a decision of its own (source-packing would add it to the Fable stage's portability set); Phase 2128 records the standing answer rather than changing it.</FableDotNetOnly>
     <PackageId>Fuaran.UI.OpStream.Dag.Inspect</PackageId>
     <Description>DAG-aware op-stream inspector substrate for the Fuaran op-stream DAG (opt-in, rung-4). A derived, read-only view over the branching DAG: a layered render model (branches, merge nodes, heads/leaves from the sink topology), audition-by-content-addressed-coordinate (replay a node to its snapshot, with a host preview hook), a precedence + retention/tombstone overlay, and arbitrary-coordinate snapshot-diff (the DAG generalisation of the linear Phase 57 adjacent-step diff). Consumes the DAG abstractions + merge engine + the linear Replay TreeDiff; emits no op-stream records or telemetry (FGP 5 — a consumer of the stream, not a writer). Requires the DAG packages, so it is structurally unreachable from the light path. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

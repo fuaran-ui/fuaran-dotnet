@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>The Giraffe (ASP.NET Core) host adapter; it runs only in a .NET server process.</FableDotNetOnly>
     <PackageId>Fuaran.UI.Giraffe</PackageId>
     <Description>Fuaran SSR host-integration adapter for Giraffe / ASP.NET (Phase 162). Turns "render this Node tree as a crawlable page" into one HttpHandler call: a typed DocumentShell (title / meta / canonical / OG+Twitter / JSON-LD / stylesheet+script refs) composed around the body fragment Renderer.Server emits, plus a deterministic strong-ETag/304 + render-cache seam (IFuaranRenderCache) for high-fan-out SEO surfaces. Giraffe is isolated to this package — the language tier and Renderer.Server stay Giraffe-free. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
