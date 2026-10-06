@@ -2050,10 +2050,6 @@ let private emissionGrammarDefects (n: Node<'Msg>) : PreEmitDefect list =
 
     List.ofSeq defects
 
-/// Render a defect as its stable (code, severity, message) triple — the ONE
-/// projection every consumer shares (the .NET validator oracle, certification
-/// counterexamples, and Fable-side hosts surfacing advisories to a model).
-/// Exhaustive by construction: a new defect case cannot ship without its code.
 /// Severity of a described defect. Local to this module (not `Fuaran.Core.Severity`)
 /// so `Fuaran.UI` keeps its lean dependency set; the .NET validator maps it to the
 /// Core type at its own boundary.
@@ -2062,792 +2058,1166 @@ type DefectSeverity =
     | Error
     | Warning
 
-let describe (d: PreEmitDefect) : string * DefectSeverity * string =
+/// One row of the pre-emit code table: one MESSAGE SHAPE a defect can render to.
+///
+/// `Variant` is the defect case, qualified by the sub-case or flag that selects a
+/// different message (`UnhonourableSort.NoSortStateKey`, `PopoverWithoutAnchor.NoAnchor`),
+/// so every row carries exactly one template. A code may span several rows — that is
+/// how a code with more than one message shape (FUARAN114's grid and pill halves, the
+/// sub-cased defects) is spelt — but every row of one code carries one severity.
+///
+/// `Template` is the message with each argument written as a `{name}` hole; `describe`
+/// renders it, and `docs/ERROR_CODES.md` publishes it, so the two cannot disagree.
+/// `Notes` records the provenance of the rule (the roadmap phases that introduced or
+/// widened it), which is history and therefore lives here rather than in the walk.
+type DefectCodeRow =
+    { Variant: string
+      Code: string
+      Severity: DefectSeverity
+      Template: string
+      Notes: string }
+
+/// The pre-emit code table — the ONE source for every code, severity and message
+/// shape `describe` can mint, and for the published table in `docs/ERROR_CODES.md`.
+[<RequireQualifiedAccess>]
+module DefectCodes =
+
+    let private row (variant: string, code: string, severity: DefectSeverity, template: string, notes: string) =
+        { Variant = variant
+          Code = code
+          Severity = severity
+          Template = template
+          Notes = notes }
+
+    /// Every row, in the order the defect cases are declared.
+    let table: DefectCodeRow list =
+        [ row ("DuplicateNodeId", "FUARAN-DUP-ID", DefectSeverity.Error, "node id '{nodeId}' appears {count} times", "")
+          row ("EmptyNodeId", "FUARAN-EMPTY-ID", DefectSeverity.Error, "a node carries an empty id", "")
+          row (
+              "EmptyCustomKindIdentifier",
+              "FUARAN-EMPTY-CUSTOM",
+              DefectSeverity.Error,
+              "Custom node has empty moduleId='{moduleId}' / componentId='{componentId}'",
+              ""
+          )
+          row (
+              "KindNotAdmitted",
+              "FUARAN104",
+              DefectSeverity.Warning,
+              "node '{nodeId}' is a '{kind}', which decode policy '{policy}' does not admit",
+              "Phase 1020"
+          )
+          row (
+              "CustomPropSchemaViolation",
+              "FUARAN068",
+              DefectSeverity.Error,
+              "custom node '{nodeId}' ({moduleId}/{componentId}) violates its declared prop schema — {propDefectCount} prop defect(s)",
+              ""
+          )
+          row (
+              "TabHeaderCountMismatch",
+              "FUARAN047",
+              DefectSeverity.Error,
+              "tabs '{nodeId}' declares {headerCount} headers but {childrenCount} children — the renderer aligns headers 1:1 with children by index",
+              ""
+          )
+          row (
+              "TabTagCountMismatch",
+              "FUARAN048",
+              DefectSeverity.Error,
+              "tabs '{nodeId}' declares {tagCount} tags but {childrenCount} children — the tag → index round-trip needs parity",
+              ""
+          )
+          row (
+              "TabActiveTagWithoutTags",
+              "FUARAN049",
+              DefectSeverity.Warning,
+              "tabs '{nodeId}' sets ActiveTag but TabTags = None — the tag binding has nothing to resolve against",
+              ""
+          )
+          row (
+              "DecorativeFilter",
+              "FUARAN074",
+              DefectSeverity.Warning,
+              "filter '{name}' (declared on '{declaringNodeId}') is consumed by nothing — no Binding.Filter read, Query.dependsOn, or Transform param references it",
+              "Phases 421, 424"
+          )
+          row (
+              "DanglingFilterReference",
+              "FUARAN075",
+              DefectSeverity.Error,
+              "'{readerNodeId}' declares a filter edge on '{name}' (dependsOn / Transform param source) but no Filters chip declares that name",
+              "Phases 421, 424, 862, 1892"
+          )
+          row (
+              "UnreferencedTransformParam",
+              "FUARAN076",
+              DefectSeverity.Warning,
+              "'{readerNodeId}' declares Transform param '{name}' but the pipeline never references it (paramsOf)",
+              "Phases 421, 424"
+          )
+          row (
+              "BlankGridColumn",
+              "FUARAN077",
+              DefectSeverity.Warning,
+              "grid '{nodeId}' column '{columnLabel}' has neither a value closure nor a field — it renders blank",
+              "Phase 425"
+          )
+          row (
+              "UnstableRowIdentity",
+              "FUARAN078",
+              DefectSeverity.Warning,
+              "grid '{nodeId}' has neither rowKey nor rowKeyField — no stable row identity",
+              "Phases 425, 427"
+          )
+          row (
+              "OrphanQueryFetch",
+              "FUARAN072",
+              DefectSeverity.Warning,
+              "'{readerNodeId}' calls into Query '{queryName}' but no Binding.Query in the tree reads that slot — an orphan fetch (name typo?)",
+              "Phase 428"
+          )
+          row (
+              "CallResultDropped",
+              "FUARAN073",
+              DefectSeverity.Warning,
+              "'{readerNodeId}' calls '{endpoint}' with neither an onResult closure nor an into target — the response is dropped (fine for a command endpoint; add into for data)",
+              "Phase 428"
+          )
+          row (
+              "DanglingSelection",
+              "FUARAN070",
+              DefectSeverity.Error,
+              "'{readerNodeId}' reads Binding.Selection on '{target}' but no node with that id exists — point the binding at the selection-producing node's id",
+              "Phase 427"
+          )
+          row (
+              "SelectionOverNonProducer",
+              "FUARAN071",
+              DefectSeverity.Warning,
+              "'{readerNodeId}' reads Binding.Selection on '{target}', which is not a selection-producing (Visualisation) node — nothing in the tree will write that selection",
+              "Phase 427"
+          )
+          row (
+              "DuplicateWriteBackKey",
+              "FUARAN085",
+              DefectSeverity.Warning,
+              "state key '{stateKey}' has {writerCount} handler-free write-back writers ({writers}) — typing in one silently overwrites the other's captured value; give each field its own key",
+              "Phase 596"
+          )
+          row (
+              "InertControl",
+              "FUARAN069",
+              DefectSeverity.Warning,
+              "{control} on '{nodeId}' has no event handler and no writable value binding — bind its value to $state.<key> / $filters.<name>, or supply the handler (Phase 426 write-back default)",
+              "Phases 423, 426"
+          )
+          row (
+              "DuplicateSwitchMatch",
+              "FUARAN082",
+              DefectSeverity.Error,
+              "Switch '{nodeId}' has two or more cases matching '{matchValue}' — first-match-wins makes the later case dead; give each case a distinct match value (Phase 392)",
+              "Phase 392"
+          )
+          row (
+              "VisibleStateNoWriter",
+              "FUARAN148",
+              DefectSeverity.Warning,
+              "node '{nodeId}' is visible only while state key '{key}' is true, and nothing in this tree writes it — a default-less State binding resolves to false at a bool slot, so the node is removed with nothing saying why; declare the default (true = visible unless something says otherwise) or add the writer (Phase 1535)",
+              "Phases 782, 1535"
+          )
+          row (
+              "SwitchCaseSelectorShape.BothPresent",
+              "FUARAN147",
+              DefectSeverity.Error,
+              "Switch '{nodeId}' case {caseIndex} carries both 'match' and 'when' — exactly one selects a case; 'match' compares the switch's `on` selector against a literal, 'when' evaluates a Binding<bool> and needs no selector (Phase 1535)",
+              "Phase 1535"
+          )
+          row (
+              "SwitchCaseSelectorShape.NeitherPresent",
+              "FUARAN147",
+              DefectSeverity.Error,
+              "Switch '{nodeId}' case {caseIndex} carries neither 'match' nor 'when' — a case that names no condition can never be selected; give it a literal 'match' against the switch's `on` selector, or a 'when' Binding<bool> predicate (Phase 1535)",
+              "Phase 1535"
+          )
+          row (
+              "UngroundedSwitchStateKey",
+              "FUARAN083",
+              DefectSeverity.Warning,
+              "Switch '{nodeId}' has an empty stateKey — it can never resolve a case and is stuck on its default; name the state key the switch selects on (Phase 392)",
+              "Phases 12, 392, 768"
+          )
+          row (
+              "ChartFieldUngrounded",
+              "FUARAN086",
+              DefectSeverity.Error,
+              "chart '{nodeId}' references field '{field}' absent from the schema its own source PRODUCES [{schemaColumns}] — it would lower silently flat/empty; fix the name, or change the pipeline so it produces the column (Phase 640/1486)",
+              "Phases 640, 1486"
+          )
+          row (
+              "ChartFieldTypeMismatch",
+              "FUARAN087",
+              DefectSeverity.Error,
+              "chart '{nodeId}' plots field '{field}' of type '{columnType}' — the lowering reads non-numeric cells as 0.0, a silently flat series (Phase 640)",
+              "Phase 640"
+          )
+          row (
+              "ChartAnnotationNonFinite",
+              "FUARAN137",
+              DefectSeverity.Error,
+              "chart '{nodeId}' {subject} carries the value {value} — an annotation addresses a place on the value axis, and NaN / Infinity names none; it would also enter the axis domain and take every gridline, tick and mark to NaN with it. Give a finite value in the axis's own units, or drop the annotation (Phase 1490)",
+              "Phases 1490, 1492"
+          )
+          row (
+              "ChartAnnotationKeyUngrounded.Absent",
+              "FUARAN138",
+              DefectSeverity.Error,
+              "chart '{nodeId}' {subject} addresses the category '{key}', which none of the rows carries — a band axis's domain IS the set of keys in its rows, so a key outside that set names no band to draw at. Use a key the x column carries, or declare xScale 'Temporal' and address a date (Phase 1491)",
+              "Phases 1491, 1492"
+          )
+          row (
+              "ChartAnnotationKeyUngrounded.Repeated",
+              "FUARAN138",
+              DefectSeverity.Error,
+              "chart '{nodeId}' {subject} addresses the category '{key}', which {occurrences} rows carry — an annotation is placed from the band's own extent, and a duplicated key has two, so which one it lands on would depend on traversal order rather than on the data. Aggregate the rows to one per key, or address a key that appears once (Phase 1491)",
+              "Phases 1491, 1492"
+          )
+          row (
+              "ChartAnnotationAxisMismatch",
+              "FUARAN139",
+              DefectSeverity.Error,
+              "chart '{nodeId}' {subject} carries a {addressForm} address on a {axisForm} x axis — an annotation addresses the axis in the axis's own form, and the language refuses the mismatch rather than coercing it (a date read as a category grounds against no band; a category read as a date lands on 1970-01-01). Give the address in the axis's form, or change the axis (Phase 1491)",
+              "Phases 1491, 1492"
+          )
+          row (
+              "ChartAnnotationDateUnparseable",
+              "FUARAN140",
+              DefectSeverity.Error,
+              "chart '{nodeId}' {subject} carries the date '{iso}', which is not a readable ISO-8601 day — a temporal address enters the axis extent before the ticks are chosen, so an unreadable one would be placed at 1970-01-01 and drag the whole axis back with it. Give a canonical YYYY-MM-DD date naming a real calendar day (Phase 1491)",
+              "Phases 1491, 1492"
+          )
+          row (
+              "ChartAnnotationRangeUnordered",
+              "FUARAN141",
+              DefectSeverity.Error,
+              "chart '{nodeId}' {subject} runs from '{fromText}' to '{toText}', which is backwards on the axis it addresses — a band names an interval, and the ends are not interchangeable. Swap them; the language will not, because a pair written backwards is a mistake about the data and drawing the band you did not describe would carry it through to the reader (Phase 1492)",
+              "Phase 1492"
+          )
+          row (
+              "ChartPieSeriesShape",
+              "FUARAN088",
+              DefectSeverity.Error,
+              "pie chart '{nodeId}' declares {seriesCount} series — the pie lowering refuses anything but exactly one (no silent truncation; Phase 638/640)",
+              "Phases 638, 640"
+          )
+          row (
+              "ChartStackedMeaningless",
+              "FUARAN089",
+              DefectSeverity.Warning,
+              "chart '{nodeId}' sets Stacked=true on kind {kind} — the lowering ignores it (dead intent; Phase 637/640)",
+              "Phases 637, 640"
+          )
+          row (
+              "InertEditableGrid",
+              "FUARAN090",
+              DefectSeverity.Warning,
+              "grid '{nodeId}' sets editable=true but its source is not a direct $state binding — edits have nowhere to go, every cell renders read-only; source the grid (and any chart that should track edits) from a shared {\"$type\":\"State\",\"key\":…,\"default\":[rows]} binding",
+              "Phase 663"
+          )
+          row (
+              "MaxDepthExceeded",
+              "FUARAN091",
+              DefectSeverity.Error,
+              "node '{nodeId}' nests deeper than the wire limit MaxDepth = {limit} (WIRE_FORMAT §21) — the tree was not walked past this point; flatten the nesting",
+              "Phase 781"
+          )
+          row (
+              "SkeletonRowsOutOfRange",
+              "FUARAN152",
+              DefectSeverity.Error,
+              "Skeleton '{nodeId}' declares rows = {rows}, outside 0 … {maxRows} (WIRE_FORMAT §21.9) — a negative count draws nothing, and a count above the bound names more placeholder rows than any conformant host may carry, so the encoded tree would be refused on decode; pick a count in range",
+              "Phase 1666"
+          )
+          row (
+              "BadgeToneContradictsLabel",
+              "FUARAN153",
+              DefectSeverity.Warning,
+              "Badge '{nodeId}' reads \"{label}\" and is toned {variant} — the label and the tone name two different severities, and the tone is what a reader scanning the page acts on first. Tone it {label} to agree with the word, or reword the label to the severity you meant. If the badge is deliberately untoned, Neutral and Brand carry no severity claim and this rule is silent on them",
+              "Phase 1734"
+          )
+          row (
+              "PillToneContradictsValue",
+              "FUARAN154",
+              DefectSeverity.Warning,
+              "a TonedPill column on '{nodeId}' paints the value \"{value}\" in the {tone} tone — the value names one severity and the tone names another, so every row carrying it is coloured against what it says. Map \"{value}\" to the {value} tone, or drop the entry and let the column's default carry it",
+              "Phase 1734"
+          )
+          row (
+              "UnstyledDateFormat",
+              "FUARAN155",
+              DefectSeverity.Error,
+              "'{nodeId}' formats an instant with a Date format that declares neither dateStyle nor timeStyle, so nothing says what the reader is shown. Declare dateStyle for a date, timeStyle for a time of day, or both for a date-time",
+              "Phase 1810"
+          )
+          row (
+              "FallbackRepeatsKind",
+              "FUARAN156",
+              DefectSeverity.Error,
+              "'{nodeId}' declares a fallback that itself contains a {kind} — the kind it stands in for. A reader that needs the fallback is one that cannot read {kind}, so this fallback would be a placeholder too. Build the fallback from kinds every reader has (a Markdown or a Box of them)",
+              "Phase 1812"
+          )
+          row (
+              "NestedFallback",
+              "FUARAN157",
+              DefectSeverity.Error,
+              "'{nodeId}' declares a fallback in which '{innerId}' declares a fallback of its own. A behind reader lifts one fallback — the one on the node it cannot read — and never consults a fallback's fallback, so the inner one has no reader. Remove it, or make the inner node plain",
+              "Phase 1812"
+          )
+          row (
+              "HostNodeCountExceeded",
+              "FUARAN158",
+              DefectSeverity.Error,
+              "the tree carries {measured} nodes, over the {limit} this host allows (maxNodes, host limits '{limits}'); '{nodeId}' is the first node past the budget. Emit less: summarise, page a list, or split the content across views",
+              "Phase 1817"
+          )
+          row (
+              "HostDepthExceeded",
+              "FUARAN159",
+              DefectSeverity.Error,
+              "'{nodeId}' is the first node below nesting level {limit}, the deepest this host allows (maxDepth, host limits '{limits}'); the tree reaches level {measured}. Flatten the nesting — remove a wrapper box, or lift the subtree a level",
+              "Phase 1817"
+          )
+          row (
+              "HostChildrenExceeded",
+              "FUARAN160",
+              DefectSeverity.Error,
+              "container '{nodeId}' holds {measured} direct children; this host allows {limit} (maxChildren, host limits '{limits}'). Group the children into sub-containers, or move the repeated items into a list or grid",
+              "Phase 1817"
+          )
+          row (
+              "HostGridRowsExceeded",
+              "FUARAN161",
+              DefectSeverity.Error,
+              "grid '{nodeId}' carries {measured} inline rows; this host allows {limit} (maxGridRows, host limits '{limits}'). Trim the rows to the ones the reader needs, or bind the grid to a source the host pages",
+              "Phase 1817"
+          )
+          row (
+              "HostPayloadBytesExceeded",
+              "FUARAN162",
+              DefectSeverity.Error,
+              "the tree rooted at '{nodeId}' encodes to {measured} bytes; this host allows {limit} (maxSerializedBytes, host limits '{limits}'). Emit less content, or move large inline data (static rows, long text) behind a bound source",
+              "Phase 1817"
+          )
+          row (
+              "UnsafeUrlScheme",
+              "FUARAN142",
+              DefectSeverity.Warning,
+              "node '{nodeId}' declares a {slot} the renderer floor refuses: {reason}. Every conformant host refuses this before it reaches the document, so the slot renders as a refusal marker rather than as the destination you wrote. If the intent was to run something on click, the wire has typed actions for it (Action.Notify, Action.Call, Action.SetState); if the destination is real, name its scheme (http / https / mailto / tel / ftp / sftp) or write a same-origin relative path",
+              "Phase 1523"
+          )
+          row (
+              "UnsafeCssValue",
+              "FUARAN143",
+              DefectSeverity.Warning,
+              "node '{nodeId}' declares '{value}' in its {slot} slot, which carries a character or function that lets a CSS value leave its own declaration (a semicolon, a brace, a backslash, a control byte, `url(`, `expression(`). Every renderer emits an empty value here instead, because the same string in a style attribute is a second declaration the document never wrote - and `url(` is a network request made at render time with no user act. Write a single CSS value with none of those",
+              "Phase 1523"
+          )
+          row (
+              "MalformedTrackList",
+              "FUARAN144",
+              DefectSeverity.Warning,
+              "grid '{nodeId}' declares templateColumns '{value}', which is not shaped like a CSS track-list. It is safe - the renderers emit it - but no browser reads it as a column definition, so the grid falls back to one column. Write track sizes (1fr 2fr auto), a repeat(...), or a minmax(...)",
+              "Phase 1523"
+          )
+          row (
+              "UnsafePaintValue",
+              "FUARAN145",
+              DefectSeverity.Warning,
+              "node '{nodeId}' declares '{value}' as its {slot} paint, which is not a colour. The renderers emit `none` instead: an SVG paint slot accepts `url(...)` as a paint-server reference, which is also how a remote fetch is spelled, so the slot admits only hex (#rgb / #rrggbb / #rrggbbaa), a bare ident (every named colour and keyword - red, steelblue, currentColor, none, transparent, inherit), and the colour functions (rgb, rgba, hsl, hsla, oklch, oklab, lch, lab, color)",
+              "Phase 1523"
+          )
+          row (
+              "UnsupportedLinkAnchor",
+              "FUARAN146",
+              DefectSeverity.Warning,
+              "link '{nodeId}' declares {slot}='{value}', which every renderer drops. `target` is closed to `_self` and `_blank` - `_parent` / `_top` navigate a document that framed this one, and a named frame addresses a browsing context this document did not create. `rel` is closed to the descriptive tokens, and `opener` in particular is refused: it re-enables window.opener on a `_blank` link, handing the opened page a live reference to this one. A `_blank` link is emitted with `noopener noreferrer` whether or not it asks",
+              "Phase 1523"
+          )
+          row (
+              "ProtectedNonMailtoLink",
+              "FUARAN092",
+              DefectSeverity.Warning,
+              "link '{nodeId}' sets protection=\"email\" on a non-mailto href — the Email strategy only protects a mailto: address, so the renderers ignore the flag (dead intent); drop the protection or point the href at mailto:<address>",
+              "Phase 812"
+          )
+          row (
+              "PageSizeWithoutPageKey",
+              "FUARAN093",
+              DefectSeverity.Error,
+              "grid '{nodeId}' declares pageSize but no pageStateKey — nothing carries the page position, so the grid renders every row and the page size is dead intent; add pageStateKey naming the State key the pager writes {\"page\":N} to",
+              "Phase 862"
+          )
+          row (
+              "DoublePagedGrid",
+              "FUARAN096",
+              DefectSeverity.Warning,
+              "grid '{nodeId}' pages client-side on pageStateKey '{pageStateKey}' while its source is a query depending on that same key — the host already returns the page, so slicing it again would page the page; drop pageSize to let the host page, or drop the dependsOn to page client-side",
+              "Phase 862"
+          )
+          row (
+              "UnhonourableSort.NoSortStateKey",
+              "FUARAN094",
+              DefectSeverity.Error,
+              "grid '{nodeId}' column '{label}' declares sortable=true but the grid names no sortStateKey — a column narrows a behaviour, it cannot turn one on; add sortStateKey to the grid or drop the column flag",
+              "Phases 861, 863"
+          )
+          row (
+              "UnhonourableSort.ColumnHasNoField",
+              "FUARAN094",
+              DefectSeverity.Error,
+              "grid '{nodeId}' column '{label}' declares sortable=true but has no field — nothing names the row property to order by; add field, or drop the flag and let the column render unsorted",
+              "Phases 861, 863"
+          )
+          row (
+              "UnhonourableSort.DefaultSortColumnOutOfRange",
+              "FUARAN094",
+              DefectSeverity.Error,
+              "grid '{nodeId}' declares defaultSort on column {column} but the grid has {count} column(s) — the declared order can never be applied; point it at an existing column index",
+              "Phases 861, 863"
+          )
+          row (
+              "UneditableColumnDeclared.GridNotEditable",
+              "FUARAN095",
+              DefectSeverity.Error,
+              "grid '{nodeId}' column '{columnLabel}' declares editable=true but the grid is not editable — a column narrows a behaviour, it cannot turn one on; set editable on the grid, or drop the column flag",
+              "Phase 863"
+          )
+          row (
+              "UneditableColumnDeclared.NoReachableDestination",
+              "FUARAN095",
+              DefectSeverity.Error,
+              "grid '{nodeId}' column '{columnLabel}' is editable but no destination is reachable — declare editStateKey, or source the grid from a direct {\"$type\":\"State\",\"key\":…} binding so the edit has somewhere to commit",
+              "Phase 863"
+          )
+          row (
+              "ChartTemporalXNotDate",
+              "FUARAN097",
+              DefectSeverity.Error,
+              "chart '{nodeId}' declares a temporal x-axis over field '{field}' of type '{columnType}' — a date axis needs a date column, and every row's x would read as 1970-01-01; give the column type 'date' (canonical ISO-8601 YYYY-MM-DD cells), or drop xScale to plot the values as categories (Phase 882)",
+              "Phases 882, 1486"
+          )
+          row (
+              "SetStateNoReader",
+              "FUARAN098",
+              DefectSeverity.Warning,
+              "'{nodeId}' writes state key '{key}' but nothing in the tree reads it — the gesture runs and the user sees no change (a fake affordance); bind a reader to {\"$type\":\"State\",\"key\":\"{key}\"}, select a Switch on it, or name it as a grid's sortStateKey/pageStateKey. If the key is written for the HOST to read, this warning is expected and can be ignored (Phase 932)",
+              "Phases 782, 860, 866, 932"
+          )
+          row (
+              "ReservedStateKeyWrite.Declared",
+              "FUARAN149",
+              DefectSeverity.Warning,
+              "'{nodeId}' writes state key '{key}', which the host has reserved — every tree-originated write to it is refused at dispatch, so the gesture runs and nothing happens; write a key the host has not closed, or ask the host to expose the slot through a Query or a Call (Phase 1550)",
+              "Phases 782, 1550"
+          )
+          row (
+              "ReservedStateKeyWrite.Undeclared",
+              "FUARAN149",
+              DefectSeverity.Warning,
+              "'{nodeId}' writes state key '{key}', which is not host-reserved and which nothing in this tree reads — the shape of a host-owned slot a rendered tree can reach. If the key is the HOST's, declare it (StateStore.declareReserved) and this write is refused instead of silently landing in the host's slot; if it is the tree's own, FUARAN098 beside this says what is missing (Phase 1550)",
+              "Phases 782, 1550"
+          )
+          row (
+              "DateLiteralWhereNowPlausible",
+              "FUARAN102",
+              DefectSeverity.Warning,
+              "'{nodeId}' names the current instant and states a hardcoded date: \"{literal}\" — the value was true when it was written and is wrong from the next day onward; bind the slot to {\"$type\":\"Now\"} (with a Format binding for the display shape) so the host furnishes the instant. If the date is genuinely historical, reword the label so it does not read as the present",
+              "Phase 765"
+          )
+          row (
+              "SwitchKeyNoWriter",
+              "FUARAN103",
+              DefectSeverity.Warning,
+              "switch '{nodeId}' selects on state key '{key}' but nothing in the tree can write it — one branch renders forever; give the key a writer (an Action.SetState on a button, a Call with into: {\"$type\":\"State\",\"key\":\"{key}\"}, or a control write-back slot bound to it), or select on the binding that already changes (a Selection, a Filter, a Query). If the key is written by the HOST, this warning is expected and can be ignored",
+              "Phases 768, 782, 1122, 1646"
+          )
+          row (
+              "TransformSourceInert",
+              "FUARAN105",
+              DefectSeverity.Warning,
+              "'{nodeId}' derives from a Transform over state key '{key}', but NOTHING in the tree seeds that key — no reader declares a defaultValue for it and nothing writes it — so the pipeline runs over an EMPTY table and renders a plausible wrong answer (a count of zero) that nothing reports; declare the rows once on any reader of the key ({\"$type\":\"State\",\"key\":\"{key}\",\"defaultValue\":[…]}), which seeds the slot for every reader including this one, or give the key a writer. If the key is populated by the HOST, this warning is expected and can be ignored",
+              "Phases 782, 865, 1075, 1665"
+          )
+          row (
+              "ConflictingStateSeeds",
+              "FUARAN106",
+              DefectSeverity.Error,
+              "state key '{key}' is seeded twice with DIFFERENT values — '{firstNodeId}' and '{secondNodeId}' each declare a defaultValue for it, and a key has one slot, so only the first declaration ('{firstNodeId}') takes effect and the second is silently discarded; declare the value ONCE and let the other reader carry {\"$type\":\"State\",\"key\":\"{key}\"} with no defaultValue, or give the two readers different keys if they are genuinely different data",
+              "Phases 782, 1075"
+          )
+          row (
+              "DuplicateInlineTable",
+              "FUARAN107",
+              DefectSeverity.Warning,
+              "'{firstNodeId}' and '{secondNodeId}' each carry their own inline copy of the SAME table — the two copies can silently diverge, and nothing in the tree says they are meant to be one source; declare the rows once under a state key ({seedKeyState}) and have the other read {\"$type\":\"State\",\"key\":\"<key>\"} with no defaultValue, which resolves to the seeded slot. If the two are genuinely independent data that happen to match, this warning is expected and can be ignored",
+              "Phase 1075"
+          )
+          row (
+              "CompareKeyUnreachable",
+              "FUARAN099",
+              DefectSeverity.Error,
+              "form '{nodeId}' field '{fieldId}' compares against state key '{key}', but no field in the form owns that key and nothing in the tree writes it — the predicate can never be met or unmet, only absent, so the field reads as constrained and is not; point 'against' at a sibling field's id (a form field's value lives in State under its own id), or give the key a writer",
+              "Phases 782, 864"
+          )
+          row (
+              "RuleSlotUnhonourable",
+              "FUARAN100",
+              DefectSeverity.Warning,
+              "form '{nodeId}' field '{fieldId}' declares {slot} on a {control} control, which cannot honour it — the constraint is carried and never applied (dead intent); move the rule to a text control, or drop the slot. If a host you target DOES honour it, this warning is expected and can be ignored",
+              "Phase 864"
+          )
+          row (
+              "CompareDuplicatesBound",
+              "FUARAN101",
+              DefectSeverity.Warning,
+              "form '{nodeId}' field '{fieldId}' compares against a LITERAL while its control already declares {bound} — two sources for one bound, free to disagree, and nothing decides which wins; drop the compare and keep the control's bound, or make the operand read something that changes ({\"$type\":\"State\",\"key\":\"<sibling field id>\"}), which is what the rule slot is for",
+              "Phase 864"
+          )
+          row (
+              "MediaWithoutLabel",
+              "FUARAN108",
+              DefectSeverity.Error,
+              "media node '{nodeId}' has an EMPTY label — a media element is a transport, not a picture, so it is never decorative and there is no honest empty case the way there is for an image's alt; without a name it is announced to a screen reader as \"video\" or \"audio\" and nothing more, telling the reader that a player exists and not what it plays. Give 'label' the text a listener needs to decide whether to play it",
+              "Phase 1076"
+          )
+          row (
+              "TrackWithoutLabel",
+              "FUARAN113",
+              DefectSeverity.Error,
+              "media node '{nodeId}' carries a text track at index {trackIndex} with an EMPTY label - a track's label IS its entry in the user agent's track menu, and it is the only thing that tells one track from another there, so an unlabelled one is offered as its kind alone and a reader choosing between two captions tracks is shown two identical choices. Give the track's 'label' the text a reader needs to pick it",
+              "Phase 1110"
+          )
+          row (
+              "EmbedWithoutTitle",
+              "FUARAN115",
+              DefectSeverity.Error,
+              "embed node '{nodeId}' has an EMPTY title — a frame is a focus container a reader tabs into, not a picture, so it is never decorative; without a name it is announced to a screen reader as \"frame\" and nothing more, telling the reader that something is embedded and not what. Give 'title' the text a reader needs to decide whether to enter it",
+              "Phase 1111"
+          )
+          row (
+              "EmbedSandboxWeakened",
+              "FUARAN116",
+              DefectSeverity.Warning,
+              "embed node '{nodeId}' declares both AllowScripts and AllowSameOrigin — against a SAME-ORIGIN document that pair is the documented sandbox escape, because the framed document can then reach its own frame element and remove the sandbox attribute. It is also what every real cross-origin embed needs, and nothing in this tree says which this is, so this is a warning rather than a refusal: confirm the source is a third-party origin, or drop AllowSameOrigin if the provider does not need its own storage",
+              "Phase 1111"
+          )
+          row (
+              "EmptyTooltipDeclaration",
+              "FUARAN118",
+              DefectSeverity.Warning,
+              "node '{nodeId}' declares a tooltip and leaves it EMPTY — a hint that hints nothing. The renderers emit no hint element for an empty one, so the markup you expected is silently absent and so is the aria-describedby that would have carried it to a screen reader; write the sentence the reader needs, or drop the slot",
+              "Phase 1112"
+          )
+          row (
+              "TooltipOnHiddenNode",
+              "FUARAN119",
+              DefectSeverity.Warning,
+              "node '{nodeId}' carries a tooltip while declaring accessibility.hidden = true — aria-hidden removes the node and its whole subtree from the accessibility tree, taking the hint and its aria-describedby with it, so what is left is a hover affordance for sighted pointer users on a node declared not to be part of the interface. Drop the hint, or drop the hidden declaration if the node was meant to be announced",
+              "Phase 1112"
+          )
+          row (
+              "ComboboxWithoutOptions",
+              "FUARAN120",
+              DefectSeverity.Warning,
+              "combobox '{fieldId}' on node '{nodeId}' declares a STATIC and EMPTY option list — a typeahead with nothing to suggest, and no dynamic source that could supply anything later. It renders, it takes focus, and it opens no listbox: with allowFreeText it is a plain text input you did not ask for, and without it no value is admissible at all. Give the options a Query / State source if the suggestions arrive at runtime, list them if they are known, or use a Text field if free text is what you meant",
+              "Phase 1113"
+          )
+          row (
+              "RatingValueOutOfScale",
+              "FUARAN132",
+              DefectSeverity.Warning,
+              "rating '{fieldId}' on node '{nodeId}' declares the static value {value} on a scale of 0 to {max} — a figure the control cannot show. The renderer clamps into the scale and announces the clamped figure, so the reader is told something the document did not say. Correct the value, or raise max if the larger scale is what you meant",
+              "Phase 1130"
+          )
+          row (
+              "ColorValueNotHex",
+              "FUARAN133",
+              DefectSeverity.Error,
+              "colour field '{fieldId}' on node '{nodeId}' declares the static value '{value}', which is not the canonical #rrggbb hex form. This is the one shape a native colour input can hold, and it is what the decoder accepts: a tree carrying anything else encodes to a document no conformant host will read back, including this one. Write the six-digit form (#ff8800), or bind the value if it arrives at runtime",
+              "Phase 1130"
+          )
+          row (
+              "TokensAdmitsNothing",
+              "FUARAN135",
+              DefectSeverity.Warning,
+              "token field '{fieldId}' on node '{nodeId}' admits no free text and declares a STATIC and EMPTY suggestion list — no token can ever be put into it, by any gesture. It renders as an empty chip row beside an entry box that refuses every keystroke. Give the suggestions a Query / State source if they arrive at runtime, list them if they are known, or leave allowFreeText at its default of true if open tokens are what you meant",
+              "Phase 1121"
+          )
+          row (
+              "TokensStaticDuplicate",
+              "FUARAN136",
+              DefectSeverity.Warning,
+              "token field '{fieldId}' on node '{nodeId}' declares the static token '{token}' more than once. A token list is a set the reader sees as chips, and two identical chips are one fact drawn twice with two remove buttons that do different things. The renderer refuses a duplicate at the moment of adding and the server-side submission floor refuses it on arrival; remove the repeat here",
+              "Phase 1121"
+          )
+          row (
+              "UploadGestureWithoutHandler",
+              "FUARAN121",
+              DefectSeverity.Warning,
+              "file upload '{nodeId}' declares {gestures} and carries no onSelect handler — the gesture is invited and consumes nothing. A picker at least leaves the chosen filename in the user agent's own chrome; a dropped or pasted file disappears on release with no feedback at all, so the reader is told the upload worked and it did not. Wire onSelect, or drop the gesture declaration until it is wired",
+              "Phase 1115"
+          )
+          row (
+              "CaptureAcceptMismatch",
+              "FUARAN134",
+              DefectSeverity.Warning,
+              "file upload '{nodeId}' asks for the {device} but its accept list ({accept}) does not select that device. The capture keyword asks the platform for a recording device; which one it opens is decided by accept, so this document opens whichever the user agent guesses and the reader is handed a device you did not name. Add the device's own media type to accept (image/* or video/* for the camera, audio/* for the microphone), or drop the capture declaration if the ordinary file picker was what you meant",
+              "Phases 1116, 1130"
+          )
+          row (
+              "PopoverWithoutAnchor.NoAnchor",
+              "FUARAN122",
+              DefectSeverity.Warning,
+              "popover '{nodeId}' declares no anchor — a Popover is positioned against the node it was opened from, and with nothing to position against the renderer leaves it in the document flow wherever the node happens to sit, which is the static floor and not the surface you asked for. Set anchor to the id of the control that opens it, or use modality Modal if a blocking dialog is what you meant",
+              "Phase 1119"
+          )
+          row (
+              "PopoverWithoutAnchor.DanglingAnchor",
+              "FUARAN122",
+              DefectSeverity.Warning,
+              "popover '{nodeId}' declares anchor = '{target}', which is not a node in this tree — the anchor resolves to no element, so the popover is left in the document flow exactly as an undeclared one is, and the declaration reads as honoured when it was not. Point it at a node that exists (a dangling anchor is usually a typo or a node that has since moved), or drop the declaration and use modality Modal if a blocking dialog is what you meant",
+              "Phase 1119"
+          )
+          row (
+              "AnchorOnBlockingModal",
+              "FUARAN123",
+              DefectSeverity.Warning,
+              "modal '{nodeId}' declares anchor = '{anchor}' while its modality is Modal — a dead declaration. A blocking dialog is positioned by its scrim and not by an element, so the id rides the wire, survives every round trip and changes nothing on any host. Set modality to Popover if an anchored surface is what you meant, or drop the anchor",
+              "Phase 1119"
+          )
+          row (
+              "DirectionOnTextlessNode",
+              "FUARAN124",
+              DefectSeverity.Warning,
+              "node '{nodeId}' declares style.direction while its kind is {kind} — a dead declaration. A direction states which way a run of text reads and isolates it from the bidirectional context around it, and this kind lays out no text and holds no children to inherit it, so the declaration rides the wire, survives every round trip and changes nothing on any host. Move it to the node that carries the text, or drop it",
+              "Phase 1472"
+          )
+          row (
+              "DeadPrintBreak.RepeatHeaderNoHeader",
+              "FUARAN125",
+              DefectSeverity.Warning,
+              "grid '{nodeId}' declares repeatHeader while it renders no header cells — a dead declaration. Repeating a header at the top of every page needs a header row group with something in it, so this rides the wire, survives every round trip and changes nothing on any host. Give the grid its columns (or, on the static leg, its headers), or drop the declaration",
+              "Phase 1473"
+          )
+          row (
+              "DeadPrintBreak.NoSubtreeToKeepTogether",
+              "FUARAN125",
+              DefectSeverity.Warning,
+              "node '{nodeId}' declares keepTogether while it renders no subtree — a dead declaration. Keeping a subtree whole across a page boundary needs a subtree that could straddle one, and this container has no rendered children, so the declaration rides the wire, survives every round trip and changes nothing on any host. Move it to the container that holds the content, or drop it",
+              "Phase 1473"
+          )
+          row (
+              "DeadExportAffordance.NoRowSource",
+              "FUARAN131",
+              DefectSeverity.Warning,
+              "grid '{nodeId}' declares exportable while it names no row source — a dead control. The reader is offered a download of the rows this grid holds, and it holds none and can never be given any on this binding, so the file would be a header record and nothing else. Give the grid a source (or staticRows), or drop the declaration",
+              "Phase 1125"
+          )
+          row (
+              "DeadExportAffordance.NoColumns",
+              "FUARAN131",
+              DefectSeverity.Warning,
+              "grid '{nodeId}' declares exportable while it declares no columns — a dead control. The columns are the exported file's fields, so with none the header record is empty and so is every row record, whatever the source resolves to. Give the grid its columns, or drop the declaration",
+              "Phase 1125"
+          )
+          row (
+              "TreeItemIdDuplicated",
+              "FUARAN126",
+              DefectSeverity.Error,
+              "tree '{nodeId}' carries more than one row with the id '{itemId}' — a row id is what the expanded set and the selection NAME, so a repeated one makes both ambiguous: expanding one row opens two, and a restored selection lands on whichever the host reached first. Give every row in this tree its own id",
+              "Phase 1120"
+          )
+          row (
+              "DeadTransferPairing.NoSource",
+              "FUARAN129",
+              DefectSeverity.Warning,
+              "grid '{nodeId}' accepts transfers on the key '{key}' and no grid in this tree releases to it — a dead drop zone. The grid draws its place control and its rows accept drops, so a reader is invited to move something into it, and no drag that could satisfy the invitation can ever begin. Declare transferOutKey '{key}' on the grid rows should come FROM, or drop transferInKey",
+              "Phase 1123"
+          )
+          row (
+              "DeadTransferPairing.NoTarget",
+              "FUARAN129",
+              DefectSeverity.Warning,
+              "grid '{nodeId}' releases transfers to the key '{key}' and no grid in this tree accepts from it — a drag handle with nowhere to go. A reader can lift a row and will find no list that will take it. Declare transferInKey '{key}' on the grid rows should go TO, or drop transferOutKey",
+              "Phase 1123"
+          )
+          row (
+              "TransferWithoutRowIdentity",
+              "FUARAN130",
+              DefectSeverity.Warning,
+              "grid '{nodeId}' declares a cross-container transfer with no rowKeyField — the transfer record names the moved row by its identity, and a rowKey closure crosses the wire as the closure placeholder, so a decoded transfer out of this grid would report that nothing moved. Name the column that identifies a row with rowKeyField",
+              "Phase 1123"
+          )
+          row (
+              "DeadAutoAdvance.NoWritableSelector",
+              "FUARAN128",
+              DefectSeverity.Warning,
+              "switch '{nodeId}' declares autoAdvanceMs while it selects on a binding that is not a state key — a dead declaration. Timed advance moves the switch's OWN key, and a switch driven by a selection, a filter or a query has no key of its own to move, so the interval rides the wire, survives every round trip and advances nothing on any host. Select on a state key, or drop the interval",
+              "Phase 1122"
+          )
+          row (
+              "DeadAutoAdvance.NotEnoughCases",
+              "FUARAN128",
+              DefectSeverity.Warning,
+              "switch '{nodeId}' declares autoAdvanceMs while it carries fewer than two cases — a dead declaration. There is nowhere for a tick to advance to but the case already showing, so the interval would rewrite the key with the value it already holds. Give the switch the cases it cycles through, or drop the interval",
+              "Phase 1122"
+          )
+          row (
+              "TreeItemWithoutLabel",
+              "FUARAN127",
+              DefectSeverity.Error,
+              "tree '{nodeId}' carries a row '{itemId}' with an EMPTY label — a row's label is the only thing a reader walking the hierarchy has, so an unnamed one is announced as its level and its position and nothing else. Give the row's 'label' the text a reader needs to decide whether to open it",
+              "Phase 1120"
+          )
+          row (
+              "InteractiveWithoutAccessibleName",
+              "FUARAN109",
+              DefectSeverity.Warning,
+              "{kind} '{nodeId}' reaches a screen reader with no name — '{slot}' is empty and the node declares neither accessibility.label nor accessibility.labelledBy, so its accessible name would have to come from its text content and there is none; give '{slot}' the text a listener needs, or name the element with accessibility.label",
+              "Phase 727"
+          )
+          row (
+              "DanglingAccessibilityReference",
+              "FUARAN110",
+              DefectSeverity.Warning,
+              "node '{nodeId}' declares accessibility.{slot} = '{target}', which is not a node in this tree — the emitted {attribute} points at nothing and the browser ignores it, so the element is announced as though the reference had never been written; point it at a node that exists, or drop the slot and name the element with accessibility.label",
+              "Phase 727"
+          )
+          row (
+              "EmptyAccessibilityDeclaration",
+              "FUARAN111",
+              DefectSeverity.Warning,
+              "node '{nodeId}' declares accessibility.{slot} and leaves it EMPTY — a declared name that names nothing, which the renderer drops rather than emits, and which additionally silences the missing-name check that would otherwise have caught this node; give the slot real text, or remove it so the element's own content supplies the name",
+              "Phase 727"
+          )
+          row (
+              "WireLossyActionClosure",
+              "FUARAN112",
+              DefectSeverity.Warning,
+              "node '{nodeId}' carries a host closure in '{slot}' — the canonical encoder drops the payload and the decoder rebuilds it as \"<closure>\", so a decoding host receives an affordance that fires and does nothing; replace it with a wire-representable action (Action.Notify, or Action.Call with into:) and bind the typed behaviour host-side to the artifact's declared action hole. Encode with encodeNodeForTransport to have this refused rather than warned. If this tree is rendered IN PROCESS and never serialised, the closure is correct and this warning is expected",
+              "Phase 577"
+          )
+          row (
+              "GridFieldUngrounded",
+              "FUARAN114",
+              DefectSeverity.Error,
+              "grid '{nodeId}' names field '{field}', absent from the schema its own source PRODUCES [{schemaColumns}] — everything that reads the name resolves it against nothing: a cell whose kind displays the column's field shows an empty value, sort and export read an empty key, and for rowKeyField every row shares one empty key and row identity collapses; fix the name, or change the pipeline so it produces the column (Phase 1149/1486)",
+              "Phases 1149, 1486, 1909"
+          )
+          row (
+              "PillFieldUngrounded",
+              "FUARAN114",
+              DefectSeverity.Error,
+              "grid '{nodeId}' column '{columnLabel}' has a TonedPill cell naming field '{field}', absent from the schema its own source PRODUCES [{schemaColumns}] — the pill's label and its tone key both resolve against nothing, so every row draws an empty pill in the default tone; fix the name, or change the pipeline so it produces the column (Phase 1909)",
+              "Phases 1149, 1909"
+          )
+          row (
+              "ActionColumnField",
+              "FUARAN163",
+              DefectSeverity.Warning,
+              "grid '{nodeId}' column '{columnLabel}' is an action column (Button / ButtonGroup cell) and declares field '{field}' — an action cell draws its own label and hands the whole row to its handler, so the field is never displayed, and sort and export ignore it; drop the field: an action column carries none (Phase 1909)",
+              "Phase 1909"
+          ) ]
+
+    let private byVariant: Map<string, DefectCodeRow> =
+        table |> List.map (fun r -> r.Variant, r) |> Map.ofList
+
+    /// The row for a variant. Total over every variant `describe` produces — the
+    /// table test reflects over the defect union to hold that.
+    let rowOf (variant: string) : DefectCodeRow =
+        match Map.tryFind variant byVariant with
+        | Some r -> r
+        | None -> failwithf "PreEmitValidate.DefectCodes: no code-table row for variant '%s'" variant
+
+    let private isHoleStart (c: char) =
+        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+
+    let private isHoleChar (c: char) = isHoleStart c || (c >= '0' && c <= '9')
+
+    /// Fill a template's `{name}` holes from `args`, in ONE left-to-right pass, so a
+    /// value that itself contains a brace is copied rather than re-read as a hole.
+    /// Only `{` + letter + letters/digits + `}` is a hole; any other brace is text
+    /// (a message may quote a JSON object). A hole with no argument is left as written.
+    let render (template: string) (args: (string * string) list) : string =
+        // Pieces joined once at the end rather than a StringBuilder: the module is
+        // Fable-compiled, and plain string pieces lower identically on every pipeline.
+        let pieces = ResizeArray<string>()
+        let mutable runStart = 0
+        let mutable i = 0
+
+        while i < template.Length do
+            if template[i] = '{' && i + 1 < template.Length && isHoleStart template[i + 1] then
+                let mutable j = i + 1
+
+                while j < template.Length && isHoleChar template[j] do
+                    j <- j + 1
+
+                if j < template.Length && template[j] = '}' then
+                    let name = template.Substring(i + 1, j - i - 1)
+
+                    match List.tryFind (fun (k, _) -> k = name) args with
+                    | Some(_, v) ->
+                        pieces.Add(template.Substring(runStart, i - runStart))
+                        pieces.Add v
+                        runStart <- j + 1
+                    | None -> ()
+
+                    i <- j + 1
+                else
+                    i <- i + 1
+            else
+                i <- i + 1
+
+        pieces.Add(template.Substring(runStart))
+        String.concat "" pieces
+
+    let private severityName (s: DefectSeverity) =
+        match s with
+        | DefectSeverity.Error -> "Error"
+        | DefectSeverity.Warning -> "Warning"
+
+    /// The table as the Markdown `docs/ERROR_CODES.md` publishes between its
+    /// generated-section markers: one heading per code (ordinal order), one fenced
+    /// template per row. A test holds the document to this text byte for byte.
+    let toMarkdown () : string =
+        let lines = ResizeArray<string>()
+        let line (s: string) = lines.Add(s + "\n")
+
+        let codes = table |> List.map (fun r -> r.Code) |> List.distinct |> List.sort
+
+        for code in codes do
+            let rows = table |> List.filter (fun r -> r.Code = code)
+            line (sprintf "#### `%s` — %s" code (severityName (List.head rows).Severity))
+            line ""
+
+            for r in rows do
+                let notes = if r.Notes = "" then "" else sprintf " (%s)" r.Notes
+                line (sprintf "`%s`%s" r.Variant notes)
+                line ""
+                line "```text"
+                line r.Template
+                line "```"
+                line ""
+
+        String.concat "" lines
+
+/// The variant and the message arguments of a defect — the per-case half of
+/// `describe`, which renders the matching code-table row's template with them.
+let private describeArgs (d: PreEmitDefect) : string * (string * string) list =
     match d with
-    | PreEmitDefect.DuplicateNodeId(id, count) ->
-        "FUARAN-DUP-ID", DefectSeverity.Error, sprintf "node id '%s' appears %d times" id count
-    | PreEmitDefect.EmptyNodeId -> "FUARAN-EMPTY-ID", DefectSeverity.Error, "a node carries an empty id"
-    | PreEmitDefect.EmptyCustomKindIdentifier(m, c) ->
-        "FUARAN-EMPTY-CUSTOM",
-        DefectSeverity.Error,
-        sprintf "Custom node has empty moduleId='%s' / componentId='%s'" m c
+    | PreEmitDefect.DuplicateNodeId(nodeId, count) -> "DuplicateNodeId", [ "nodeId", nodeId; "count", string count ]
+    | PreEmitDefect.EmptyNodeId -> "EmptyNodeId", []
+    | PreEmitDefect.EmptyCustomKindIdentifier(moduleId, componentId) ->
+        "EmptyCustomKindIdentifier", [ "moduleId", moduleId; "componentId", componentId ]
     | PreEmitDefect.KindNotAdmitted(nodeId, kind, policy) ->
-        "FUARAN104",
-        DefectSeverity.Warning,
-        sprintf "node '%s' is a '%s', which decode policy '%s' does not admit" nodeId kind policy
+        "KindNotAdmitted", [ "nodeId", nodeId; "kind", kind; "policy", policy ]
     | PreEmitDefect.CustomPropSchemaViolation(nodeId, moduleId, componentId, propDefects) ->
-        "FUARAN068",
-        DefectSeverity.Error,
-        sprintf
-            "custom node '%s' (%s/%s) violates its declared prop schema — %d prop defect(s)"
-            nodeId
-            moduleId
-            componentId
-            (List.length propDefects)
+        "CustomPropSchemaViolation",
+        [ "nodeId", nodeId
+          "moduleId", moduleId
+          "componentId", componentId
+          "propDefectCount", string (List.length propDefects) ]
     | PreEmitDefect.TabHeaderCountMismatch(nodeId, headerCount, childrenCount) ->
-        "FUARAN047",
-        DefectSeverity.Error,
-        sprintf
-            "tabs '%s' declares %d headers but %d children — the renderer aligns headers 1:1 with children by index"
-            nodeId
-            headerCount
-            childrenCount
+        "TabHeaderCountMismatch",
+        [ "nodeId", nodeId
+          "headerCount", string headerCount
+          "childrenCount", string childrenCount ]
     | PreEmitDefect.TabTagCountMismatch(nodeId, tagCount, childrenCount) ->
-        "FUARAN048",
-        DefectSeverity.Error,
-        sprintf
-            "tabs '%s' declares %d tags but %d children — the tag → index round-trip needs parity"
-            nodeId
-            tagCount
-            childrenCount
-    | PreEmitDefect.TabActiveTagWithoutTags nodeId ->
-        "FUARAN049",
-        DefectSeverity.Warning,
-        sprintf "tabs '%s' sets ActiveTag but TabTags = None — the tag binding has nothing to resolve against" nodeId
+        "TabTagCountMismatch",
+        [ "nodeId", nodeId
+          "tagCount", string tagCount
+          "childrenCount", string childrenCount ]
+    | PreEmitDefect.TabActiveTagWithoutTags nodeId -> "TabActiveTagWithoutTags", [ "nodeId", nodeId ]
     | PreEmitDefect.DecorativeFilter(declaringNodeId, name) ->
-        "FUARAN074",
-        DefectSeverity.Warning,
-        sprintf
-            "filter '%s' (declared on '%s') is consumed by nothing — no Binding.Filter read, Query.dependsOn, or Transform param references it"
-            name
-            declaringNodeId
+        "DecorativeFilter", [ "name", name; "declaringNodeId", declaringNodeId ]
     | PreEmitDefect.DanglingFilterReference(readerNodeId, name) ->
-        "FUARAN075",
-        DefectSeverity.Error,
-        sprintf
-            "'%s' declares a filter edge on '%s' (dependsOn / Transform param source) but no Filters chip declares that name"
-            readerNodeId
-            name
+        "DanglingFilterReference", [ "readerNodeId", readerNodeId; "name", name ]
     | PreEmitDefect.UnreferencedTransformParam(readerNodeId, name) ->
-        "FUARAN076",
-        DefectSeverity.Warning,
-        sprintf "'%s' declares Transform param '%s' but the pipeline never references it (paramsOf)" readerNodeId name
+        "UnreferencedTransformParam", [ "readerNodeId", readerNodeId; "name", name ]
     | PreEmitDefect.BlankGridColumn(nodeId, columnLabel) ->
-        "FUARAN077",
-        DefectSeverity.Warning,
-        sprintf "grid '%s' column '%s' has neither a value closure nor a field — it renders blank" nodeId columnLabel
-    | PreEmitDefect.UnstableRowIdentity nodeId ->
-        "FUARAN078",
-        DefectSeverity.Warning,
-        sprintf "grid '%s' has neither rowKey nor rowKeyField — no stable row identity" nodeId
+        "BlankGridColumn", [ "nodeId", nodeId; "columnLabel", columnLabel ]
+    | PreEmitDefect.UnstableRowIdentity nodeId -> "UnstableRowIdentity", [ "nodeId", nodeId ]
     | PreEmitDefect.OrphanQueryFetch(readerNodeId, queryName) ->
-        "FUARAN072",
-        DefectSeverity.Warning,
-        sprintf
-            "'%s' calls into Query '%s' but no Binding.Query in the tree reads that slot — an orphan fetch (name typo?)"
-            readerNodeId
-            queryName
+        "OrphanQueryFetch", [ "readerNodeId", readerNodeId; "queryName", queryName ]
     | PreEmitDefect.CallResultDropped(readerNodeId, endpoint) ->
-        "FUARAN073",
-        DefectSeverity.Warning,
-        sprintf
-            "'%s' calls '%s' with neither an onResult closure nor an into target — the response is dropped (fine for a command endpoint; add into for data)"
-            readerNodeId
-            endpoint
+        "CallResultDropped", [ "readerNodeId", readerNodeId; "endpoint", endpoint ]
     | PreEmitDefect.DanglingSelection(readerNodeId, target) ->
-        "FUARAN070",
-        DefectSeverity.Error,
-        sprintf
-            "'%s' reads Binding.Selection on '%s' but no node with that id exists — point the binding at the selection-producing node's id"
-            readerNodeId
-            target
+        "DanglingSelection", [ "readerNodeId", readerNodeId; "target", target ]
     | PreEmitDefect.SelectionOverNonProducer(readerNodeId, target) ->
-        "FUARAN071",
-        DefectSeverity.Warning,
-        sprintf
-            "'%s' reads Binding.Selection on '%s', which is not a selection-producing (Visualisation) node — nothing in the tree will write that selection"
-            readerNodeId
-            target
+        "SelectionOverNonProducer", [ "readerNodeId", readerNodeId; "target", target ]
     | PreEmitDefect.DuplicateWriteBackKey(stateKey, writers) ->
-        "FUARAN085",
-        DefectSeverity.Warning,
-        sprintf
-            "state key '%s' has %d handler-free write-back writers (%s) — typing in one silently overwrites the other's captured value; give each field its own key"
-            stateKey
-            (List.length writers)
-            (writers
-             |> List.map (fun (nid, fid) -> sprintf "%s/%s" nid fid)
-             |> String.concat ", ")
-    | PreEmitDefect.InertControl(nodeId, control) ->
-        "FUARAN069",
-        DefectSeverity.Warning,
-        sprintf
-            "%s on '%s' has no event handler and no writable value binding — bind its value to $state.<key> / $filters.<name>, or supply the handler (Phase 426 write-back default)"
-            control
-            nodeId
+        "DuplicateWriteBackKey",
+        [ "stateKey", stateKey
+          "writerCount", string (List.length writers)
+          "writers",
+          (writers
+           |> List.map (fun (nid, fid) -> sprintf "%s/%s" nid fid)
+           |> String.concat ", ") ]
+    | PreEmitDefect.InertControl(nodeId, control) -> "InertControl", [ "control", control; "nodeId", nodeId ]
     | PreEmitDefect.DuplicateSwitchMatch(nodeId, matchValue) ->
-        "FUARAN082",
-        DefectSeverity.Error,
-        sprintf
-            "Switch '%s' has two or more cases matching '%s' — first-match-wins makes the later case dead; give each case a distinct match value (Phase 392)"
-            nodeId
-            matchValue
-    | PreEmitDefect.VisibleStateNoWriter(nodeId, key) ->
-        "FUARAN148",
-        DefectSeverity.Warning,
-        sprintf
-            "node '%s' is visible only while state key '%s' is true, and nothing in this tree writes it — a default-less State binding resolves to false at a bool slot, so the node is removed with nothing saying why; declare the default (true = visible unless something says otherwise) or add the writer (Phase 1535)"
-            nodeId
-            key
-    | PreEmitDefect.SwitchCaseSelectorShape(nodeId, caseIndex, bothPresent) ->
-        "FUARAN147",
-        DefectSeverity.Error,
-        (if bothPresent then
-             sprintf
-                 "Switch '%s' case %d carries both 'match' and 'when' — exactly one selects a case; 'match' compares the switch's `on` selector against a literal, 'when' evaluates a Binding<bool> and needs no selector (Phase 1535)"
-                 nodeId
-                 caseIndex
-         else
-             sprintf
-                 "Switch '%s' case %d carries neither 'match' nor 'when' — a case that names no condition can never be selected; give it a literal 'match' against the switch's `on` selector, or a 'when' Binding<bool> predicate (Phase 1535)"
-                 nodeId
-                 caseIndex)
-    | PreEmitDefect.UngroundedSwitchStateKey nodeId ->
-        "FUARAN083",
-        DefectSeverity.Warning,
-        sprintf
-            "Switch '%s' has an empty stateKey — it can never resolve a case and is stuck on its default; name the state key the switch selects on (Phase 392)"
-            nodeId
+        "DuplicateSwitchMatch", [ "nodeId", nodeId; "matchValue", matchValue ]
+    | PreEmitDefect.VisibleStateNoWriter(nodeId, key) -> "VisibleStateNoWriter", [ "nodeId", nodeId; "key", key ]
+    | PreEmitDefect.SwitchCaseSelectorShape(nodeId, caseIndex, true) ->
+        "SwitchCaseSelectorShape.BothPresent", [ "nodeId", nodeId; "caseIndex", string caseIndex ]
+    | PreEmitDefect.SwitchCaseSelectorShape(nodeId, caseIndex, false) ->
+        "SwitchCaseSelectorShape.NeitherPresent", [ "nodeId", nodeId; "caseIndex", string caseIndex ]
+    | PreEmitDefect.UngroundedSwitchStateKey nodeId -> "UngroundedSwitchStateKey", [ "nodeId", nodeId ]
     | PreEmitDefect.ChartFieldUngrounded(nodeId, field, schemaColumns) ->
-        "FUARAN086",
-        DefectSeverity.Error,
-        sprintf
-            "chart '%s' references field '%s' absent from the schema its own source PRODUCES [%s] — it would lower silently flat/empty; fix the name, or change the pipeline so it produces the column (Phase 640/1486)"
-            nodeId
-            field
-            (String.concat ", " schemaColumns)
+        "ChartFieldUngrounded",
+        [ "nodeId", nodeId
+          "field", field
+          "schemaColumns", (String.concat ", " schemaColumns) ]
     | PreEmitDefect.ChartFieldTypeMismatch(nodeId, field, columnType) ->
-        "FUARAN087",
-        DefectSeverity.Error,
-        sprintf
-            "chart '%s' plots field '%s' of type '%s' — the lowering reads non-numeric cells as 0.0, a silently flat series (Phase 640)"
-            nodeId
-            field
-            columnType
+        "ChartFieldTypeMismatch", [ "nodeId", nodeId; "field", field; "columnType", columnType ]
     | PreEmitDefect.ChartAnnotationNonFinite(nodeId, subject, value) ->
-        "FUARAN137",
-        DefectSeverity.Error,
-        sprintf
-            "chart '%s' %s carries the value %s — an annotation addresses a place on the value axis, and NaN / Infinity names none; it would also enter the axis domain and take every gridline, tick and mark to NaN with it. Give a finite value in the axis's own units, or drop the annotation (Phase 1490)"
-            nodeId
-            subject
-            value
+        "ChartAnnotationNonFinite", [ "nodeId", nodeId; "subject", subject; "value", value ]
+    | PreEmitDefect.ChartAnnotationKeyUngrounded(nodeId, subject, key, 0) ->
+        "ChartAnnotationKeyUngrounded.Absent", [ "nodeId", nodeId; "subject", subject; "key", key ]
     | PreEmitDefect.ChartAnnotationKeyUngrounded(nodeId, subject, key, occurrences) ->
-        "FUARAN138",
-        DefectSeverity.Error,
-        (if occurrences = 0 then
-             sprintf
-                 "chart '%s' %s addresses the category '%s', which none of the rows carries — a band axis's domain IS the set of keys in its rows, so a key outside that set names no band to draw at. Use a key the x column carries, or declare xScale 'Temporal' and address a date (Phase 1491)"
-                 nodeId
-                 subject
-                 key
-         else
-             sprintf
-                 "chart '%s' %s addresses the category '%s', which %d rows carry — an annotation is placed from the band's own extent, and a duplicated key has two, so which one it lands on would depend on traversal order rather than on the data. Aggregate the rows to one per key, or address a key that appears once (Phase 1491)"
-                 nodeId
-                 subject
-                 key
-                 occurrences)
+        "ChartAnnotationKeyUngrounded.Repeated",
+        [ "nodeId", nodeId
+          "subject", subject
+          "key", key
+          "occurrences", string occurrences ]
     | PreEmitDefect.ChartAnnotationAxisMismatch(nodeId, subject, addressForm, axisForm) ->
-        "FUARAN139",
-        DefectSeverity.Error,
-        sprintf
-            "chart '%s' %s carries a %s address on a %s x axis — an annotation addresses the axis in the axis's own form, and the language refuses the mismatch rather than coercing it (a date read as a category grounds against no band; a category read as a date lands on 1970-01-01). Give the address in the axis's form, or change the axis (Phase 1491)"
-            nodeId
-            subject
-            addressForm
-            axisForm
+        "ChartAnnotationAxisMismatch",
+        [ "nodeId", nodeId
+          "subject", subject
+          "addressForm", addressForm
+          "axisForm", axisForm ]
     | PreEmitDefect.ChartAnnotationDateUnparseable(nodeId, subject, iso) ->
-        "FUARAN140",
-        DefectSeverity.Error,
-        sprintf
-            "chart '%s' %s carries the date '%s', which is not a readable ISO-8601 day — a temporal address enters the axis extent before the ticks are chosen, so an unreadable one would be placed at 1970-01-01 and drag the whole axis back with it. Give a canonical YYYY-MM-DD date naming a real calendar day (Phase 1491)"
-            nodeId
-            subject
-            iso
+        "ChartAnnotationDateUnparseable", [ "nodeId", nodeId; "subject", subject; "iso", iso ]
     | PreEmitDefect.ChartAnnotationRangeUnordered(nodeId, subject, fromText, toText) ->
-        "FUARAN141",
-        DefectSeverity.Error,
-        sprintf
-            "chart '%s' %s runs from '%s' to '%s', which is backwards on the axis it addresses — a band names an interval, and the ends are not interchangeable. Swap them; the language will not, because a pair written backwards is a mistake about the data and drawing the band you did not describe would carry it through to the reader (Phase 1492)"
-            nodeId
-            subject
-            fromText
-            toText
+        "ChartAnnotationRangeUnordered",
+        [ "nodeId", nodeId; "subject", subject; "fromText", fromText; "toText", toText ]
     | PreEmitDefect.ChartPieSeriesShape(nodeId, seriesCount) ->
-        "FUARAN088",
-        DefectSeverity.Error,
-        sprintf
-            "pie chart '%s' declares %d series — the pie lowering refuses anything but exactly one (no silent truncation; Phase 638/640)"
-            nodeId
-            seriesCount
+        "ChartPieSeriesShape", [ "nodeId", nodeId; "seriesCount", string seriesCount ]
     | PreEmitDefect.ChartStackedMeaningless(nodeId, kind) ->
-        "FUARAN089",
-        DefectSeverity.Warning,
-        sprintf
-            "chart '%s' sets Stacked=true on kind %s — the lowering ignores it (dead intent; Phase 637/640)"
-            nodeId
-            kind
-    | PreEmitDefect.InertEditableGrid nodeId ->
-        "FUARAN090",
-        DefectSeverity.Warning,
-        sprintf
-            "grid '%s' sets editable=true but its source is not a direct $state binding — edits have nowhere to go, every cell renders read-only; source the grid (and any chart that should track edits) from a shared {\"$type\":\"State\",\"key\":…,\"default\":[rows]} binding"
-            nodeId
-    | PreEmitDefect.MaxDepthExceeded(nodeId, limit) ->
-        "FUARAN091",
-        DefectSeverity.Error,
-        sprintf
-            "node '%s' nests deeper than the wire limit MaxDepth = %d (WIRE_FORMAT §21) — the tree was not walked past this point; flatten the nesting"
-            nodeId
-            limit
+        "ChartStackedMeaningless", [ "nodeId", nodeId; "kind", kind ]
+    | PreEmitDefect.InertEditableGrid nodeId -> "InertEditableGrid", [ "nodeId", nodeId ]
+    | PreEmitDefect.MaxDepthExceeded(nodeId, limit) -> "MaxDepthExceeded", [ "nodeId", nodeId; "limit", string limit ]
     | PreEmitDefect.SkeletonRowsOutOfRange(nodeId, rows) ->
-        "FUARAN152",
-        DefectSeverity.Error,
-        sprintf
-            "Skeleton '%s' declares rows = %d, outside 0 … %d (WIRE_FORMAT §21.9) — a negative count draws nothing, and a count above the bound names more placeholder rows than any conformant host may carry, so the encoded tree would be refused on decode; pick a count in range"
-            nodeId
-            rows
-            WireLimits.MaxSkeletonRows
+        "SkeletonRowsOutOfRange",
+        [ "nodeId", nodeId
+          "rows", string rows
+          "maxRows", string WireLimits.MaxSkeletonRows ]
     | PreEmitDefect.BadgeToneContradictsLabel(nodeId, label, variant) ->
-        "FUARAN153",
-        DefectSeverity.Warning,
-        sprintf
-            "Badge '%s' reads \"%s\" and is toned %s — the label and the tone name two different severities, and the tone is what a reader scanning the page acts on first. Tone it %s to agree with the word, or reword the label to the severity you meant. If the badge is deliberately untoned, Neutral and Brand carry no severity claim and this rule is silent on them"
-            nodeId
-            label
-            variant
-            label
+        "BadgeToneContradictsLabel", [ "nodeId", nodeId; "label", label; "variant", variant ]
     | PreEmitDefect.PillToneContradictsValue(nodeId, value, tone) ->
-        "FUARAN154",
-        DefectSeverity.Warning,
-        sprintf
-            "a TonedPill column on '%s' paints the value \"%s\" in the %s tone — the value names one severity and the tone names another, so every row carrying it is coloured against what it says. Map \"%s\" to the %s tone, or drop the entry and let the column's default carry it"
-            nodeId
-            value
-            tone
-            value
-            value
-    | PreEmitDefect.UnstyledDateFormat nodeId ->
-        "FUARAN155",
-        DefectSeverity.Error,
-        sprintf
-            "'%s' formats an instant with a Date format that declares neither dateStyle nor timeStyle, so nothing says what the reader is shown. Declare dateStyle for a date, timeStyle for a time of day, or both for a date-time"
-            nodeId
-    | PreEmitDefect.FallbackRepeatsKind(nodeId, kind) ->
-        "FUARAN156",
-        DefectSeverity.Error,
-        sprintf
-            "'%s' declares a fallback that itself contains a %s — the kind it stands in for. A reader that needs the fallback is one that cannot read %s, so this fallback would be a placeholder too. Build the fallback from kinds every reader has (a Markdown or a Box of them)"
-            nodeId
-            kind
-            kind
-    | PreEmitDefect.NestedFallback(nodeId, innerId) ->
-        "FUARAN157",
-        DefectSeverity.Error,
-        sprintf
-            "'%s' declares a fallback in which '%s' declares a fallback of its own. A behind reader lifts one fallback — the one on the node it cannot read — and never consults a fallback's fallback, so the inner one has no reader. Remove it, or make the inner node plain"
-            nodeId
-            innerId
+        "PillToneContradictsValue", [ "nodeId", nodeId; "value", value; "tone", tone ]
+    | PreEmitDefect.UnstyledDateFormat nodeId -> "UnstyledDateFormat", [ "nodeId", nodeId ]
+    | PreEmitDefect.FallbackRepeatsKind(nodeId, kind) -> "FallbackRepeatsKind", [ "nodeId", nodeId; "kind", kind ]
+    | PreEmitDefect.NestedFallback(nodeId, innerId) -> "NestedFallback", [ "nodeId", nodeId; "innerId", innerId ]
     | PreEmitDefect.HostNodeCountExceeded(nodeId, limit, measured, limits) ->
-        "FUARAN158",
-        DefectSeverity.Error,
-        sprintf
-            "the tree carries %d nodes, over the %d this host allows (maxNodes, host limits '%s'); '%s' is the first node past the budget. Emit less: summarise, page a list, or split the content across views"
-            measured
-            limit
-            limits
-            nodeId
+        "HostNodeCountExceeded",
+        [ "measured", string measured
+          "limit", string limit
+          "limits", limits
+          "nodeId", nodeId ]
     | PreEmitDefect.HostDepthExceeded(nodeId, limit, measured, limits) ->
-        "FUARAN159",
-        DefectSeverity.Error,
-        sprintf
-            "'%s' is the first node below nesting level %d, the deepest this host allows (maxDepth, host limits '%s'); the tree reaches level %d. Flatten the nesting — remove a wrapper box, or lift the subtree a level"
-            nodeId
-            limit
-            limits
-            measured
+        "HostDepthExceeded",
+        [ "nodeId", nodeId
+          "limit", string limit
+          "limits", limits
+          "measured", string measured ]
     | PreEmitDefect.HostChildrenExceeded(nodeId, limit, measured, limits) ->
-        "FUARAN160",
-        DefectSeverity.Error,
-        sprintf
-            "container '%s' holds %d direct children; this host allows %d (maxChildren, host limits '%s'). Group the children into sub-containers, or move the repeated items into a list or grid"
-            nodeId
-            measured
-            limit
-            limits
+        "HostChildrenExceeded",
+        [ "nodeId", nodeId
+          "measured", string measured
+          "limit", string limit
+          "limits", limits ]
     | PreEmitDefect.HostGridRowsExceeded(nodeId, limit, measured, limits) ->
-        "FUARAN161",
-        DefectSeverity.Error,
-        sprintf
-            "grid '%s' carries %d inline rows; this host allows %d (maxGridRows, host limits '%s'). Trim the rows to the ones the reader needs, or bind the grid to a source the host pages"
-            nodeId
-            measured
-            limit
-            limits
+        "HostGridRowsExceeded",
+        [ "nodeId", nodeId
+          "measured", string measured
+          "limit", string limit
+          "limits", limits ]
     | PreEmitDefect.HostPayloadBytesExceeded(nodeId, limit, measured, limits) ->
-        "FUARAN162",
-        DefectSeverity.Error,
-        sprintf
-            "the tree rooted at '%s' encodes to %d bytes; this host allows %d (maxSerializedBytes, host limits '%s'). Emit less content, or move large inline data (static rows, long text) behind a bound source"
-            nodeId
-            measured
-            limit
-            limits
+        "HostPayloadBytesExceeded",
+        [ "nodeId", nodeId
+          "measured", string measured
+          "limit", string limit
+          "limits", limits ]
     | PreEmitDefect.UnsafeUrlScheme(nodeId, slot, reason) ->
-        "FUARAN142",
-        DefectSeverity.Warning,
-        sprintf
-            "node '%s' declares a %s the renderer floor refuses: %s. Every conformant host refuses this before it reaches the document, so the slot renders as a refusal marker rather than as the destination you wrote. If the intent was to run something on click, the wire has typed actions for it (Action.Notify, Action.Call, Action.SetState); if the destination is real, name its scheme (http / https / mailto / tel / ftp / sftp) or write a same-origin relative path"
-            nodeId
-            slot
-            reason
+        "UnsafeUrlScheme", [ "nodeId", nodeId; "slot", slot; "reason", reason ]
     | PreEmitDefect.UnsafeCssValue(nodeId, slot, value) ->
-        "FUARAN143",
-        DefectSeverity.Warning,
-        sprintf
-            "node '%s' declares '%s' in its %s slot, which carries a character or function that lets a CSS value leave its own declaration (a semicolon, a brace, a backslash, a control byte, `url(`, `expression(`). Every renderer emits an empty value here instead, because the same string in a style attribute is a second declaration the document never wrote - and `url(` is a network request made at render time with no user act. Write a single CSS value with none of those"
-            nodeId
-            value
-            slot
-    | PreEmitDefect.MalformedTrackList(nodeId, value) ->
-        "FUARAN144",
-        DefectSeverity.Warning,
-        sprintf
-            "grid '%s' declares templateColumns '%s', which is not shaped like a CSS track-list. It is safe - the renderers emit it - but no browser reads it as a column definition, so the grid falls back to one column. Write track sizes (1fr 2fr auto), a repeat(...), or a minmax(...)"
-            nodeId
-            value
+        "UnsafeCssValue", [ "nodeId", nodeId; "value", value; "slot", slot ]
+    | PreEmitDefect.MalformedTrackList(nodeId, value) -> "MalformedTrackList", [ "nodeId", nodeId; "value", value ]
     | PreEmitDefect.UnsafePaintValue(nodeId, slot, value) ->
-        "FUARAN145",
-        DefectSeverity.Warning,
-        sprintf
-            "node '%s' declares '%s' as its %s paint, which is not a colour. The renderers emit `none` instead: an SVG paint slot accepts `url(...)` as a paint-server reference, which is also how a remote fetch is spelled, so the slot admits only hex (#rgb / #rrggbb / #rrggbbaa), a bare ident (every named colour and keyword - red, steelblue, currentColor, none, transparent, inherit), and the colour functions (rgb, rgba, hsl, hsla, oklch, oklab, lch, lab, color)"
-            nodeId
-            value
-            slot
+        "UnsafePaintValue", [ "nodeId", nodeId; "value", value; "slot", slot ]
     | PreEmitDefect.UnsupportedLinkAnchor(nodeId, slot, value) ->
-        "FUARAN146",
-        DefectSeverity.Warning,
-        sprintf
-            "link '%s' declares %s='%s', which every renderer drops. `target` is closed to `_self` and `_blank` - `_parent` / `_top` navigate a document that framed this one, and a named frame addresses a browsing context this document did not create. `rel` is closed to the descriptive tokens, and `opener` in particular is refused: it re-enables window.opener on a `_blank` link, handing the opened page a live reference to this one. A `_blank` link is emitted with `noopener noreferrer` whether or not it asks"
-            nodeId
-            slot
-            value
-    | PreEmitDefect.ProtectedNonMailtoLink nodeId ->
-        "FUARAN092",
-        DefectSeverity.Warning,
-        sprintf
-            "link '%s' sets protection=\"email\" on a non-mailto href — the Email strategy only protects a mailto: address, so the renderers ignore the flag (dead intent); drop the protection or point the href at mailto:<address>"
-            nodeId
-    | PreEmitDefect.PageSizeWithoutPageKey nodeId ->
-        "FUARAN093",
-        DefectSeverity.Error,
-        sprintf
-            "grid '%s' declares pageSize but no pageStateKey — nothing carries the page position, so the grid renders every row and the page size is dead intent; add pageStateKey naming the State key the pager writes {\"page\":N} to"
-            nodeId
+        "UnsupportedLinkAnchor", [ "nodeId", nodeId; "slot", slot; "value", value ]
+    | PreEmitDefect.ProtectedNonMailtoLink nodeId -> "ProtectedNonMailtoLink", [ "nodeId", nodeId ]
+    | PreEmitDefect.PageSizeWithoutPageKey nodeId -> "PageSizeWithoutPageKey", [ "nodeId", nodeId ]
     | PreEmitDefect.DoublePagedGrid(nodeId, pageStateKey) ->
-        "FUARAN096",
-        DefectSeverity.Warning,
-        sprintf
-            "grid '%s' pages client-side on pageStateKey '%s' while its source is a query depending on that same key — the host already returns the page, so slicing it again would page the page; drop pageSize to let the host page, or drop the dependsOn to page client-side"
-            nodeId
-            pageStateKey
-    | PreEmitDefect.UnhonourableSort(nodeId, reason) ->
-        "FUARAN094",
-        DefectSeverity.Error,
-        (match reason with
-         | SortDefect.NoSortStateKey label ->
-             sprintf
-                 "grid '%s' column '%s' declares sortable=true but the grid names no sortStateKey — a column narrows a behaviour, it cannot turn one on; add sortStateKey to the grid or drop the column flag"
-                 nodeId
-                 label
-         | SortDefect.ColumnHasNoField label ->
-             sprintf
-                 "grid '%s' column '%s' declares sortable=true but has no field — nothing names the row property to order by; add field, or drop the flag and let the column render unsorted"
-                 nodeId
-                 label
-         | SortDefect.DefaultSortColumnOutOfRange(column, count) ->
-             sprintf
-                 "grid '%s' declares defaultSort on column %d but the grid has %d column(s) — the declared order can never be applied; point it at an existing column index"
-                 nodeId
-                 column
-                 count)
-    | PreEmitDefect.UneditableColumnDeclared(nodeId, columnLabel, reason) ->
-        "FUARAN095",
-        DefectSeverity.Error,
-        (match reason with
-         | EditDefect.GridNotEditable ->
-             sprintf
-                 "grid '%s' column '%s' declares editable=true but the grid is not editable — a column narrows a behaviour, it cannot turn one on; set editable on the grid, or drop the column flag"
-                 nodeId
-                 columnLabel
-         | EditDefect.NoReachableDestination ->
-             sprintf
-                 "grid '%s' column '%s' is editable but no destination is reachable — declare editStateKey, or source the grid from a direct {\"$type\":\"State\",\"key\":…} binding so the edit has somewhere to commit"
-                 nodeId
-                 columnLabel)
+        "DoublePagedGrid", [ "nodeId", nodeId; "pageStateKey", pageStateKey ]
+    | PreEmitDefect.UnhonourableSort(nodeId, SortDefect.NoSortStateKey label) ->
+        "UnhonourableSort.NoSortStateKey", [ "nodeId", nodeId; "label", label ]
+    | PreEmitDefect.UnhonourableSort(nodeId, SortDefect.ColumnHasNoField label) ->
+        "UnhonourableSort.ColumnHasNoField", [ "nodeId", nodeId; "label", label ]
+    | PreEmitDefect.UnhonourableSort(nodeId, SortDefect.DefaultSortColumnOutOfRange(column, count)) ->
+        "UnhonourableSort.DefaultSortColumnOutOfRange",
+        [ "nodeId", nodeId; "column", string column; "count", string count ]
+    | PreEmitDefect.UneditableColumnDeclared(nodeId, columnLabel, EditDefect.GridNotEditable) ->
+        "UneditableColumnDeclared.GridNotEditable", [ "nodeId", nodeId; "columnLabel", columnLabel ]
+    | PreEmitDefect.UneditableColumnDeclared(nodeId, columnLabel, EditDefect.NoReachableDestination) ->
+        "UneditableColumnDeclared.NoReachableDestination", [ "nodeId", nodeId; "columnLabel", columnLabel ]
     | PreEmitDefect.ChartTemporalXNotDate(nodeId, field, columnType) ->
-        "FUARAN097",
-        DefectSeverity.Error,
-        sprintf
-            "chart '%s' declares a temporal x-axis over field '%s' of type '%s' — a date axis needs a date column, and every row's x would read as 1970-01-01; give the column type 'date' (canonical ISO-8601 YYYY-MM-DD cells), or drop xScale to plot the values as categories (Phase 882)"
-            nodeId
-            field
-            columnType
-    | PreEmitDefect.SetStateNoReader(nodeId, key) ->
-        "FUARAN098",
-        DefectSeverity.Warning,
-        sprintf
-            "'%s' writes state key '%s' but nothing in the tree reads it — the gesture runs and the user sees no change (a fake affordance); bind a reader to {\"$type\":\"State\",\"key\":\"%s\"}, select a Switch on it, or name it as a grid's sortStateKey/pageStateKey. If the key is written for the HOST to read, this warning is expected and can be ignored (Phase 932)"
-            nodeId
-            key
-            key
-    | PreEmitDefect.ReservedStateKeyWrite(nodeId, key, declared) ->
-        "FUARAN149",
-        DefectSeverity.Warning,
-        (if declared then
-             sprintf
-                 "'%s' writes state key '%s', which the host has reserved — every tree-originated write to it is refused at dispatch, so the gesture runs and nothing happens; write a key the host has not closed, or ask the host to expose the slot through a Query or a Call (Phase 1550)"
-                 nodeId
-                 key
-         else
-             sprintf
-                 "'%s' writes state key '%s', which is not host-reserved and which nothing in this tree reads — the shape of a host-owned slot a rendered tree can reach. If the key is the HOST's, declare it (StateStore.declareReserved) and this write is refused instead of silently landing in the host's slot; if it is the tree's own, FUARAN098 beside this says what is missing (Phase 1550)"
-                 nodeId
-                 key)
+        "ChartTemporalXNotDate", [ "nodeId", nodeId; "field", field; "columnType", columnType ]
+    | PreEmitDefect.SetStateNoReader(nodeId, key) -> "SetStateNoReader", [ "nodeId", nodeId; "key", key ]
+    | PreEmitDefect.ReservedStateKeyWrite(nodeId, key, true) ->
+        "ReservedStateKeyWrite.Declared", [ "nodeId", nodeId; "key", key ]
+    | PreEmitDefect.ReservedStateKeyWrite(nodeId, key, false) ->
+        "ReservedStateKeyWrite.Undeclared", [ "nodeId", nodeId; "key", key ]
     | PreEmitDefect.DateLiteralWhereNowPlausible(nodeId, literal) ->
-        "FUARAN102",
-        DefectSeverity.Warning,
-        sprintf
-            "'%s' names the current instant and states a hardcoded date: \"%s\" — the value was true when it was written and is wrong from the next day onward; bind the slot to {\"$type\":\"Now\"} (with a Format binding for the display shape) so the host furnishes the instant. If the date is genuinely historical, reword the label so it does not read as the present"
-            nodeId
-            literal
-    | PreEmitDefect.SwitchKeyNoWriter(nodeId, key) ->
-        "FUARAN103",
-        DefectSeverity.Warning,
-        sprintf
-            "switch '%s' selects on state key '%s' but nothing in the tree can write it — one branch renders forever; give the key a writer (an Action.SetState on a button, a Call with into: {\"$type\":\"State\",\"key\":\"%s\"}, or a control write-back slot bound to it), or select on the binding that already changes (a Selection, a Filter, a Query). If the key is written by the HOST, this warning is expected and can be ignored"
-            nodeId
-            key
-            key
-    | PreEmitDefect.TransformSourceInert(nodeId, key) ->
-        "FUARAN105",
-        DefectSeverity.Warning,
-        sprintf
-            "'%s' derives from a Transform over state key '%s', but NOTHING in the tree seeds that key — no reader declares a defaultValue for it and nothing writes it — so the pipeline runs over an EMPTY table and renders a plausible wrong answer (a count of zero) that nothing reports; declare the rows once on any reader of the key ({\"$type\":\"State\",\"key\":\"%s\",\"defaultValue\":[…]}), which seeds the slot for every reader including this one, or give the key a writer. If the key is populated by the HOST, this warning is expected and can be ignored"
-            nodeId
-            key
-            key
+        "DateLiteralWhereNowPlausible", [ "nodeId", nodeId; "literal", literal ]
+    | PreEmitDefect.SwitchKeyNoWriter(nodeId, key) -> "SwitchKeyNoWriter", [ "nodeId", nodeId; "key", key ]
+    | PreEmitDefect.TransformSourceInert(nodeId, key) -> "TransformSourceInert", [ "nodeId", nodeId; "key", key ]
     | PreEmitDefect.ConflictingStateSeeds(key, firstNodeId, secondNodeId) ->
-        "FUARAN106",
-        DefectSeverity.Error,
-        sprintf
-            "state key '%s' is seeded twice with DIFFERENT values — '%s' and '%s' each declare a defaultValue for it, and a key has one slot, so only the first declaration ('%s') takes effect and the second is silently discarded; declare the value ONCE and let the other reader carry {\"$type\":\"State\",\"key\":\"%s\"} with no defaultValue, or give the two readers different keys if they are genuinely different data"
-            key
-            firstNodeId
-            secondNodeId
-            firstNodeId
-            key
+        "ConflictingStateSeeds", [ "key", key; "firstNodeId", firstNodeId; "secondNodeId", secondNodeId ]
     | PreEmitDefect.DuplicateInlineTable(firstNodeId, secondNodeId, seedKey) ->
-        "FUARAN107",
-        DefectSeverity.Warning,
-        sprintf
-            "'%s' and '%s' each carry their own inline copy of the SAME table — the two copies can silently diverge, and nothing in the tree says they are meant to be one source; declare the rows once under a state key (%s) and have the other read {\"$type\":\"State\",\"key\":\"<key>\"} with no defaultValue, which resolves to the seeded slot. If the two are genuinely independent data that happen to match, this warning is expected and can be ignored"
-            firstNodeId
-            secondNodeId
-            (match seedKey with
-             | Some k -> sprintf "'%s' already declares one" k
-             | None -> "neither declares one yet")
+        "DuplicateInlineTable",
+        [ "firstNodeId", firstNodeId
+          "secondNodeId", secondNodeId
+          "seedKeyState",
+          (match seedKey with
+           | Some k -> sprintf "'%s' already declares one" k
+           | None -> "neither declares one yet") ]
     | PreEmitDefect.CompareKeyUnreachable(nodeId, fieldId, key) ->
-        "FUARAN099",
-        DefectSeverity.Error,
-        sprintf
-            "form '%s' field '%s' compares against state key '%s', but no field in the form owns that key and nothing in the tree writes it — the predicate can never be met or unmet, only absent, so the field reads as constrained and is not; point 'against' at a sibling field's id (a form field's value lives in State under its own id), or give the key a writer"
-            nodeId
-            fieldId
-            key
+        "CompareKeyUnreachable", [ "nodeId", nodeId; "fieldId", fieldId; "key", key ]
     | PreEmitDefect.RuleSlotUnhonourable(nodeId, fieldId, slot, control) ->
-        "FUARAN100",
-        DefectSeverity.Warning,
-        sprintf
-            "form '%s' field '%s' declares %s on a %s control, which cannot honour it — the constraint is carried and never applied (dead intent); move the rule to a text control, or drop the slot. If a host you target DOES honour it, this warning is expected and can be ignored"
-            nodeId
-            fieldId
-            (match slot with
-             | RuleSlot.Format -> "rule.format"
-             | RuleSlot.Pattern -> "rule.pattern"
-             | RuleSlot.MinLength -> "rule.minLength"
-             | RuleSlot.MaxLength -> "rule.maxLength")
-            control
+        "RuleSlotUnhonourable",
+        [ "nodeId", nodeId
+          "fieldId", fieldId
+          "slot",
+          (match slot with
+           | RuleSlot.Format -> "rule.format"
+           | RuleSlot.Pattern -> "rule.pattern"
+           | RuleSlot.MinLength -> "rule.minLength"
+           | RuleSlot.MaxLength -> "rule.maxLength")
+          "control", control ]
     | PreEmitDefect.CompareDuplicatesBound(nodeId, fieldId, bound) ->
-        "FUARAN101",
-        DefectSeverity.Warning,
-        sprintf
-            "form '%s' field '%s' compares against a LITERAL while its control already declares %s — two sources for one bound, free to disagree, and nothing decides which wins; drop the compare and keep the control's bound, or make the operand read something that changes ({\"$type\":\"State\",\"key\":\"<sibling field id>\"}), which is what the rule slot is for"
-            nodeId
-            fieldId
-            bound
-    | PreEmitDefect.MediaWithoutLabel nodeId ->
-        "FUARAN108",
-        DefectSeverity.Error,
-        sprintf
-            "media node '%s' has an EMPTY label — a media element is a transport, not a picture, so it is never decorative and there is no honest empty case the way there is for an image's alt; without a name it is announced to a screen reader as \"video\" or \"audio\" and nothing more, telling the reader that a player exists and not what it plays. Give 'label' the text a listener needs to decide whether to play it"
-            nodeId
+        "CompareDuplicatesBound", [ "nodeId", nodeId; "fieldId", fieldId; "bound", bound ]
+    | PreEmitDefect.MediaWithoutLabel nodeId -> "MediaWithoutLabel", [ "nodeId", nodeId ]
     | PreEmitDefect.TrackWithoutLabel(nodeId, trackIndex) ->
-        "FUARAN113",
-        DefectSeverity.Error,
-        sprintf
-            "media node '%s' carries a text track at index %d with an EMPTY label - a track's label IS its entry in the user agent's track menu, and it is the only thing that tells one track from another there, so an unlabelled one is offered as its kind alone and a reader choosing between two captions tracks is shown two identical choices. Give the track's 'label' the text a reader needs to pick it"
-            nodeId
-            trackIndex
-    | PreEmitDefect.EmbedWithoutTitle nodeId ->
-        "FUARAN115",
-        DefectSeverity.Error,
-        sprintf
-            "embed node '%s' has an EMPTY title — a frame is a focus container a reader tabs into, not a picture, so it is never decorative; without a name it is announced to a screen reader as \"frame\" and nothing more, telling the reader that something is embedded and not what. Give 'title' the text a reader needs to decide whether to enter it"
-            nodeId
-    | PreEmitDefect.EmbedSandboxWeakened nodeId ->
-        "FUARAN116",
-        DefectSeverity.Warning,
-        sprintf
-            "embed node '%s' declares both AllowScripts and AllowSameOrigin — against a SAME-ORIGIN document that pair is the documented sandbox escape, because the framed document can then reach its own frame element and remove the sandbox attribute. It is also what every real cross-origin embed needs, and nothing in this tree says which this is, so this is a warning rather than a refusal: confirm the source is a third-party origin, or drop AllowSameOrigin if the provider does not need its own storage"
-            nodeId
-    | PreEmitDefect.EmptyTooltipDeclaration nodeId ->
-        "FUARAN118",
-        DefectSeverity.Warning,
-        sprintf
-            "node '%s' declares a tooltip and leaves it EMPTY — a hint that hints nothing. The renderers emit no hint element for an empty one, so the markup you expected is silently absent and so is the aria-describedby that would have carried it to a screen reader; write the sentence the reader needs, or drop the slot"
-            nodeId
-    | PreEmitDefect.TooltipOnHiddenNode nodeId ->
-        "FUARAN119",
-        DefectSeverity.Warning,
-        sprintf
-            "node '%s' carries a tooltip while declaring accessibility.hidden = true — aria-hidden removes the node and its whole subtree from the accessibility tree, taking the hint and its aria-describedby with it, so what is left is a hover affordance for sighted pointer users on a node declared not to be part of the interface. Drop the hint, or drop the hidden declaration if the node was meant to be announced"
-            nodeId
+        "TrackWithoutLabel", [ "nodeId", nodeId; "trackIndex", string trackIndex ]
+    | PreEmitDefect.EmbedWithoutTitle nodeId -> "EmbedWithoutTitle", [ "nodeId", nodeId ]
+    | PreEmitDefect.EmbedSandboxWeakened nodeId -> "EmbedSandboxWeakened", [ "nodeId", nodeId ]
+    | PreEmitDefect.EmptyTooltipDeclaration nodeId -> "EmptyTooltipDeclaration", [ "nodeId", nodeId ]
+    | PreEmitDefect.TooltipOnHiddenNode nodeId -> "TooltipOnHiddenNode", [ "nodeId", nodeId ]
     | PreEmitDefect.ComboboxWithoutOptions(nodeId, fieldId) ->
-        "FUARAN120",
-        DefectSeverity.Warning,
-        sprintf
-            "combobox '%s' on node '%s' declares a STATIC and EMPTY option list — a typeahead with nothing to suggest, and no dynamic source that could supply anything later. It renders, it takes focus, and it opens no listbox: with allowFreeText it is a plain text input you did not ask for, and without it no value is admissible at all. Give the options a Query / State source if the suggestions arrive at runtime, list them if they are known, or use a Text field if free text is what you meant"
-            fieldId
-            nodeId
+        "ComboboxWithoutOptions", [ "fieldId", fieldId; "nodeId", nodeId ]
     | PreEmitDefect.RatingValueOutOfScale(nodeId, fieldId, value, max) ->
-        "FUARAN132",
-        DefectSeverity.Warning,
-        sprintf
-            "rating '%s' on node '%s' declares the static value %g on a scale of 0 to %d — a figure the control cannot show. The renderer clamps into the scale and announces the clamped figure, so the reader is told something the document did not say. Correct the value, or raise max if the larger scale is what you meant"
-            fieldId
-            nodeId
-            value
-            max
+        "RatingValueOutOfScale",
+        [ "fieldId", fieldId
+          "nodeId", nodeId
+          "value", sprintf "%g" value
+          "max", string max ]
     | PreEmitDefect.ColorValueNotHex(nodeId, fieldId, value) ->
-        "FUARAN133",
-        DefectSeverity.Error,
-        sprintf
-            "colour field '%s' on node '%s' declares the static value '%s', which is not the canonical #rrggbb hex form. This is the one shape a native colour input can hold, and it is what the decoder accepts: a tree carrying anything else encodes to a document no conformant host will read back, including this one. Write the six-digit form (#ff8800), or bind the value if it arrives at runtime"
-            fieldId
-            nodeId
-            value
+        "ColorValueNotHex", [ "fieldId", fieldId; "nodeId", nodeId; "value", value ]
     | PreEmitDefect.TokensAdmitsNothing(nodeId, fieldId) ->
-        "FUARAN135",
-        DefectSeverity.Warning,
-        sprintf
-            "token field '%s' on node '%s' admits no free text and declares a STATIC and EMPTY suggestion list — no token can ever be put into it, by any gesture. It renders as an empty chip row beside an entry box that refuses every keystroke. Give the suggestions a Query / State source if they arrive at runtime, list them if they are known, or leave allowFreeText at its default of true if open tokens are what you meant"
-            fieldId
-            nodeId
+        "TokensAdmitsNothing", [ "fieldId", fieldId; "nodeId", nodeId ]
     | PreEmitDefect.TokensStaticDuplicate(nodeId, fieldId, token) ->
-        "FUARAN136",
-        DefectSeverity.Warning,
-        sprintf
-            "token field '%s' on node '%s' declares the static token '%s' more than once. A token list is a set the reader sees as chips, and two identical chips are one fact drawn twice with two remove buttons that do different things. The renderer refuses a duplicate at the moment of adding and the server-side submission floor refuses it on arrival; remove the repeat here"
-            fieldId
-            nodeId
-            token
+        "TokensStaticDuplicate", [ "fieldId", fieldId; "nodeId", nodeId; "token", token ]
     | PreEmitDefect.UploadGestureWithoutHandler(nodeId, gestures) ->
-        "FUARAN121",
-        DefectSeverity.Warning,
-        sprintf
-            "file upload '%s' declares %s and carries no onSelect handler — the gesture is invited and consumes nothing. A picker at least leaves the chosen filename in the user agent's own chrome; a dropped or pasted file disappears on release with no feedback at all, so the reader is told the upload worked and it did not. Wire onSelect, or drop the gesture declaration until it is wired"
-            nodeId
-            gestures
+        "UploadGestureWithoutHandler", [ "nodeId", nodeId; "gestures", gestures ]
     | PreEmitDefect.CaptureAcceptMismatch(nodeId, device, accept) ->
-        "FUARAN134",
-        DefectSeverity.Warning,
-        sprintf
-            "file upload '%s' asks for the %s but its accept list (%s) does not select that device. The capture keyword asks the platform for a recording device; which one it opens is decided by accept, so this document opens whichever the user agent guesses and the reader is handed a device you did not name. Add the device's own media type to accept (image/* or video/* for the camera, audio/* for the microphone), or drop the capture declaration if the ordinary file picker was what you meant"
-            nodeId
-            (device.ToLowerInvariant())
-            (if List.isEmpty accept then
-                 "empty — every file type"
-             else
-                 String.concat ", " accept)
-    | PreEmitDefect.PopoverWithoutAnchor(nodeId, declaredAnchor) ->
-        "FUARAN122",
-        DefectSeverity.Warning,
-        (match declaredAnchor with
-         | None ->
-             sprintf
-                 "popover '%s' declares no anchor — a Popover is positioned against the node it was opened from, and with nothing to position against the renderer leaves it in the document flow wherever the node happens to sit, which is the static floor and not the surface you asked for. Set anchor to the id of the control that opens it, or use modality Modal if a blocking dialog is what you meant"
-                 nodeId
-         | Some target ->
-             sprintf
-                 "popover '%s' declares anchor = '%s', which is not a node in this tree — the anchor resolves to no element, so the popover is left in the document flow exactly as an undeclared one is, and the declaration reads as honoured when it was not. Point it at a node that exists (a dangling anchor is usually a typo or a node that has since moved), or drop the declaration and use modality Modal if a blocking dialog is what you meant"
-                 nodeId
-                 target)
+        "CaptureAcceptMismatch",
+        [ "nodeId", nodeId
+          "device", (device.ToLowerInvariant())
+          "accept",
+          (if List.isEmpty accept then
+               "empty — every file type"
+           else
+               String.concat ", " accept) ]
+    | PreEmitDefect.PopoverWithoutAnchor(nodeId, None) -> "PopoverWithoutAnchor.NoAnchor", [ "nodeId", nodeId ]
+    | PreEmitDefect.PopoverWithoutAnchor(nodeId, Some target) ->
+        "PopoverWithoutAnchor.DanglingAnchor", [ "nodeId", nodeId; "target", target ]
     | PreEmitDefect.AnchorOnBlockingModal(nodeId, anchor) ->
-        "FUARAN123",
-        DefectSeverity.Warning,
-        sprintf
-            "modal '%s' declares anchor = '%s' while its modality is Modal — a dead declaration. A blocking dialog is positioned by its scrim and not by an element, so the id rides the wire, survives every round trip and changes nothing on any host. Set modality to Popover if an anchored surface is what you meant, or drop the anchor"
-            nodeId
-            anchor
+        "AnchorOnBlockingModal", [ "nodeId", nodeId; "anchor", anchor ]
     | PreEmitDefect.DirectionOnTextlessNode(nodeId, kind) ->
-        "FUARAN124",
-        DefectSeverity.Warning,
-        sprintf
-            "node '%s' declares style.direction while its kind is %s — a dead declaration. A direction states which way a run of text reads and isolates it from the bidirectional context around it, and this kind lays out no text and holds no children to inherit it, so the declaration rides the wire, survives every round trip and changes nothing on any host. Move it to the node that carries the text, or drop it"
-            nodeId
-            kind
+        "DirectionOnTextlessNode", [ "nodeId", nodeId; "kind", kind ]
     | PreEmitDefect.DeadPrintBreak(nodeId, PrintBreakDefect.RepeatHeaderNoHeader) ->
-        "FUARAN125",
-        DefectSeverity.Warning,
-        sprintf
-            "grid '%s' declares repeatHeader while it renders no header cells — a dead declaration. Repeating a header at the top of every page needs a header row group with something in it, so this rides the wire, survives every round trip and changes nothing on any host. Give the grid its columns (or, on the static leg, its headers), or drop the declaration"
-            nodeId
+        "DeadPrintBreak.RepeatHeaderNoHeader", [ "nodeId", nodeId ]
     | PreEmitDefect.DeadPrintBreak(nodeId, PrintBreakDefect.NoSubtreeToKeepTogether) ->
-        "FUARAN125",
-        DefectSeverity.Warning,
-        sprintf
-            "node '%s' declares keepTogether while it renders no subtree — a dead declaration. Keeping a subtree whole across a page boundary needs a subtree that could straddle one, and this container has no rendered children, so the declaration rides the wire, survives every round trip and changes nothing on any host. Move it to the container that holds the content, or drop it"
-            nodeId
+        "DeadPrintBreak.NoSubtreeToKeepTogether", [ "nodeId", nodeId ]
     | PreEmitDefect.DeadExportAffordance(nodeId, ExportDefect.NoRowSource) ->
-        "FUARAN131",
-        DefectSeverity.Warning,
-        sprintf
-            "grid '%s' declares exportable while it names no row source — a dead control. The reader is offered a download of the rows this grid holds, and it holds none and can never be given any on this binding, so the file would be a header record and nothing else. Give the grid a source (or staticRows), or drop the declaration"
-            nodeId
+        "DeadExportAffordance.NoRowSource", [ "nodeId", nodeId ]
     | PreEmitDefect.DeadExportAffordance(nodeId, ExportDefect.NoColumns) ->
-        "FUARAN131",
-        DefectSeverity.Warning,
-        sprintf
-            "grid '%s' declares exportable while it declares no columns — a dead control. The columns are the exported file's fields, so with none the header record is empty and so is every row record, whatever the source resolves to. Give the grid its columns, or drop the declaration"
-            nodeId
+        "DeadExportAffordance.NoColumns", [ "nodeId", nodeId ]
     | PreEmitDefect.TreeItemIdDuplicated(nodeId, itemId) ->
-        "FUARAN126",
-        DefectSeverity.Error,
-        sprintf
-            "tree '%s' carries more than one row with the id '%s' — a row id is what the expanded set and the selection NAME, so a repeated one makes both ambiguous: expanding one row opens two, and a restored selection lands on whichever the host reached first. Give every row in this tree its own id"
-            nodeId
-            itemId
+        "TreeItemIdDuplicated", [ "nodeId", nodeId; "itemId", itemId ]
     | PreEmitDefect.DeadTransferPairing(nodeId, key, TransferDefect.NoSource) ->
-        "FUARAN129",
-        DefectSeverity.Warning,
-        sprintf
-            "grid '%s' accepts transfers on the key '%s' and no grid in this tree releases to it — a dead drop zone. The grid draws its place control and its rows accept drops, so a reader is invited to move something into it, and no drag that could satisfy the invitation can ever begin. Declare transferOutKey '%s' on the grid rows should come FROM, or drop transferInKey"
-            nodeId
-            key
-            key
+        "DeadTransferPairing.NoSource", [ "nodeId", nodeId; "key", key ]
     | PreEmitDefect.DeadTransferPairing(nodeId, key, TransferDefect.NoTarget) ->
-        "FUARAN129",
-        DefectSeverity.Warning,
-        sprintf
-            "grid '%s' releases transfers to the key '%s' and no grid in this tree accepts from it — a drag handle with nowhere to go. A reader can lift a row and will find no list that will take it. Declare transferInKey '%s' on the grid rows should go TO, or drop transferOutKey"
-            nodeId
-            key
-            key
-    | PreEmitDefect.TransferWithoutRowIdentity nodeId ->
-        "FUARAN130",
-        DefectSeverity.Warning,
-        sprintf
-            "grid '%s' declares a cross-container transfer with no rowKeyField — the transfer record names the moved row by its identity, and a rowKey closure crosses the wire as the closure placeholder, so a decoded transfer out of this grid would report that nothing moved. Name the column that identifies a row with rowKeyField"
-            nodeId
+        "DeadTransferPairing.NoTarget", [ "nodeId", nodeId; "key", key ]
+    | PreEmitDefect.TransferWithoutRowIdentity nodeId -> "TransferWithoutRowIdentity", [ "nodeId", nodeId ]
     | PreEmitDefect.DeadAutoAdvance(nodeId, AutoAdvanceDefect.NoWritableSelector) ->
-        "FUARAN128",
-        DefectSeverity.Warning,
-        sprintf
-            "switch '%s' declares autoAdvanceMs while it selects on a binding that is not a state key — a dead declaration. Timed advance moves the switch's OWN key, and a switch driven by a selection, a filter or a query has no key of its own to move, so the interval rides the wire, survives every round trip and advances nothing on any host. Select on a state key, or drop the interval"
-            nodeId
+        "DeadAutoAdvance.NoWritableSelector", [ "nodeId", nodeId ]
     | PreEmitDefect.DeadAutoAdvance(nodeId, AutoAdvanceDefect.NotEnoughCases) ->
-        "FUARAN128",
-        DefectSeverity.Warning,
-        sprintf
-            "switch '%s' declares autoAdvanceMs while it carries fewer than two cases — a dead declaration. There is nowhere for a tick to advance to but the case already showing, so the interval would rewrite the key with the value it already holds. Give the switch the cases it cycles through, or drop the interval"
-            nodeId
+        "DeadAutoAdvance.NotEnoughCases", [ "nodeId", nodeId ]
     | PreEmitDefect.TreeItemWithoutLabel(nodeId, itemId) ->
-        "FUARAN127",
-        DefectSeverity.Error,
-        sprintf
-            "tree '%s' carries a row '%s' with an EMPTY label — a row's label is the only thing a reader walking the hierarchy has, so an unnamed one is announced as its level and its position and nothing else. Give the row's 'label' the text a reader needs to decide whether to open it"
-            nodeId
-            itemId
+        "TreeItemWithoutLabel", [ "nodeId", nodeId; "itemId", itemId ]
     | PreEmitDefect.InteractiveWithoutAccessibleName(nodeId, kind, slot) ->
-        "FUARAN109",
-        DefectSeverity.Warning,
-        sprintf
-            "%s '%s' reaches a screen reader with no name — '%s' is empty and the node declares neither accessibility.label nor accessibility.labelledBy, so its accessible name would have to come from its text content and there is none; give '%s' the text a listener needs, or name the element with accessibility.label"
-            kind
-            nodeId
-            slot
-            slot
+        "InteractiveWithoutAccessibleName", [ "kind", kind; "nodeId", nodeId; "slot", slot ]
     | PreEmitDefect.DanglingAccessibilityReference(nodeId, slot, target) ->
-        "FUARAN110",
-        DefectSeverity.Warning,
-        sprintf
-            "node '%s' declares accessibility.%s = '%s', which is not a node in this tree — the emitted %s points at nothing and the browser ignores it, so the element is announced as though the reference had never been written; point it at a node that exists, or drop the slot and name the element with accessibility.label"
-            nodeId
-            slot
-            target
-            // The attribute name, spelled out rather than lower-cased at
-            // runtime: `Fuaran.UI` is ASCII-only and culture-free by policy
-            // (see the FUARAN102 scanner's note), and the pair is closed. The
-            // fallback is not dead code — the generated defect vocabulary
-            // renders every message from a SENTINEL slot value, and a two-arm
-            // `if` would have it claim `aria-describedby` for a slot named
-            // `<slot>`. Echoing the slot renders a shape rather than a wrong
-            // claim, which is what that artefact is for.
-            (match slot with
-             | "labelledBy" -> "aria-labelledby"
-             | "describedBy" -> "aria-describedby"
-             | other -> "aria-" + other)
+        "DanglingAccessibilityReference",
+        [ "nodeId", nodeId
+          "slot", slot
+          "target", target
+          // The attribute name, spelled out rather than lower-cased at
+          // runtime: `Fuaran.UI` is ASCII-only and culture-free by policy
+          // (see the FUARAN102 scanner's note), and the pair is closed. The
+          // fallback is not dead code — the generated defect vocabulary
+          // renders every message from a SENTINEL slot value, and a two-arm
+          // `if` would have it claim `aria-describedby` for a slot named
+          // `<slot>`. Echoing the slot renders a shape rather than a wrong
+          // claim, which is what that artefact is for.
+          "attribute",
+          (match slot with
+           | "labelledBy" -> "aria-labelledby"
+           | "describedBy" -> "aria-describedby"
+           | other -> "aria-" + other) ]
     | PreEmitDefect.EmptyAccessibilityDeclaration(nodeId, slot) ->
-        "FUARAN111",
-        DefectSeverity.Warning,
-        sprintf
-            "node '%s' declares accessibility.%s and leaves it EMPTY — a declared name that names nothing, which the renderer drops rather than emits, and which additionally silences the missing-name check that would otherwise have caught this node; give the slot real text, or remove it so the element's own content supplies the name"
-            nodeId
-            slot
-    | PreEmitDefect.WireLossyActionClosure(nodeId, slot) ->
-        "FUARAN112",
-        DefectSeverity.Warning,
-        sprintf
-            "node '%s' carries a host closure in '%s' — the canonical encoder drops the payload and the decoder rebuilds it as \"<closure>\", so a decoding host receives an affordance that fires and does nothing; replace it with a wire-representable action (Action.Notify, or Action.Call with into:) and bind the typed behaviour host-side to the artifact's declared action hole. Encode with encodeNodeForTransport to have this refused rather than warned. If this tree is rendered IN PROCESS and never serialised, the closure is correct and this warning is expected"
-            nodeId
-            slot
+        "EmptyAccessibilityDeclaration", [ "nodeId", nodeId; "slot", slot ]
+    | PreEmitDefect.WireLossyActionClosure(nodeId, slot) -> "WireLossyActionClosure", [ "nodeId", nodeId; "slot", slot ]
     | PreEmitDefect.GridFieldUngrounded(nodeId, field, schemaColumns) ->
-        "FUARAN114",
-        DefectSeverity.Error,
-        sprintf
-            "grid '%s' names field '%s', absent from the schema its own source PRODUCES [%s] — everything that reads the name resolves it against nothing: a cell whose kind displays the column's field shows an empty value, sort and export read an empty key, and for rowKeyField every row shares one empty key and row identity collapses; fix the name, or change the pipeline so it produces the column (Phase 1149/1486)"
-            nodeId
-            field
-            (String.concat ", " schemaColumns)
+        "GridFieldUngrounded",
+        [ "nodeId", nodeId
+          "field", field
+          "schemaColumns", (String.concat ", " schemaColumns) ]
     | PreEmitDefect.PillFieldUngrounded(nodeId, columnLabel, field, schemaColumns) ->
-        "FUARAN114",
-        DefectSeverity.Error,
-        sprintf
-            "grid '%s' column '%s' has a TonedPill cell naming field '%s', absent from the schema its own source PRODUCES [%s] — the pill's label and its tone key both resolve against nothing, so every row draws an empty pill in the default tone; fix the name, or change the pipeline so it produces the column (Phase 1909)"
-            nodeId
-            columnLabel
-            field
-            (String.concat ", " schemaColumns)
+        "PillFieldUngrounded",
+        [ "nodeId", nodeId
+          "columnLabel", columnLabel
+          "field", field
+          "schemaColumns", (String.concat ", " schemaColumns) ]
     | PreEmitDefect.ActionColumnField(nodeId, columnLabel, field) ->
-        "FUARAN163",
-        DefectSeverity.Warning,
-        sprintf
-            "grid '%s' column '%s' is an action column (Button / ButtonGroup cell) and declares field '%s' — an action cell draws its own label and hands the whole row to its handler, so the field is never displayed, and sort and export ignore it; drop the field: an action column carries none (Phase 1909)"
-            nodeId
-            columnLabel
-            field
+        "ActionColumnField", [ "nodeId", nodeId; "columnLabel", columnLabel; "field", field ]
+
+/// Render a defect as its stable (code, severity, message) triple — the ONE
+/// projection every consumer shares (the .NET validator oracle, certification
+/// counterexamples, and Fable-side hosts surfacing advisories to a model).
+/// Exhaustive by construction: a new defect case cannot compile without its
+/// `describeArgs` arm, and cannot pass the suite without its `DefectCodes.table` row.
+let describe (d: PreEmitDefect) : string * DefectSeverity * string =
+    let variant, args = describeArgs d
+    let row = DefectCodes.rowOf variant
+    row.Code, row.Severity, DefectCodes.render row.Template args
+
+/// The code-table variant a defect renders through — the `Variant` of the
+/// `DefectCodes.table` row `describe` reads its code, severity and template from.
+let describeVariant (d: PreEmitDefect) : string = fst (describeArgs d)
 
 // ── The schema-grounding window FUARAN086 and FUARAN114 share (Phase 1486) ──
 //
@@ -2876,11 +3246,6 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
 
 let private producedSchema (source: DataSource) (pipeline: Transform list) : SchemaKnowledge =
     SchemaWalk.ofPipelineFrom SchemaWalk.noSources (SchemaWalk.ofSource SchemaWalk.noSources source) pipeline
-
-/// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
-/// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
-/// `validate` passes a no-op; `validateWithRegistry` passes the registry's
-/// schema check. One walk, so the two entry points can never drift.
 
 // ── FUARAN102 — a hardcoded date where the host's instant was meant ──
 //
@@ -3386,211 +3751,102 @@ let hostLimitCode (kind: HostLimitKind) : string =
 
     code
 
-let private validateCore
-    (policy: DecodePolicy)
-    // Phase 577 (FUARAN112) — whether this tree is declared bound for the wire.
-    // The closure rule is decidable from the tree alone, but its RELEVANCE is
-    // not: an in-process Fable host renders `Action.Dispatch` perfectly and
-    // forever, so a walk that reported it unconditionally would be accusing the
-    // idiomatic F# shape of a defect it does not have. The caller declares the
-    // intent by choosing `validateForTransport`, exactly as it declares a
-    // deployment by choosing `validateWithPolicy`.
-    (forTransport: bool)
-    // Phase 1817 (FUARAN158-162) — the host's emission budget, as a meter this
-    // walk feeds. `None` for every caller that declares no limits, so the
-    // shipped paths do exactly the work they did before.
-    (meter: HostLimitMeter option)
-    (customCheck: string -> string -> string -> Map<string, JVal> -> PreEmitDefect option)
-    (node: Node<'Msg>)
-    : Result<unit, PreEmitDefect list> =
-    let defects = ResizeArray<PreEmitDefect>()
-    // Phase 596 (FUARAN085) — (stateKey, nodeId, fieldId) per handler-free
-    // form-field write-back; duplicates surface post-walk.
-    let writeBackKeys = ResizeArray<string * string * string>()
-    // Phase 864 (FUARAN099) — (nodeId, fieldId, key) per `FieldRule.compare`
-    // reading a `Binding.State`, paired with the set of keys the ENCLOSING form
-    // itself owns. Both are collected here and judged post-walk, because the
-    // second half of the question ("nothing in the tree writes it") is only
-    // answerable once the whole tree has been seen.
-    let compareStateReads = ResizeArray<string * string * string>()
-    let formOwnedStateKeys = System.Collections.Generic.HashSet<string>()
-    let nodeIdCounts = System.Collections.Generic.Dictionary<string, int>()
-    // Phase 727 (FUARAN110) — (readerNodeId, slot, target) per declared
-    // accessibility reference. Collected here and judged post-walk for the same
-    // reason FUARAN070's dangling `Selection` is: "names a node in this tree"
-    // is only answerable once the whole tree has been seen.
-    let accessibilityRefUses = ResizeArray<string * string * string>()
-    // Phase 1119 (FUARAN122) — (popoverNodeId, declaredAnchor) per `Popover`
-    // whose anchor must be resolved against the whole tree. Collected here and
-    // judged post-walk for the same reason the accessibility references are:
-    // whether an id exists is not a per-node fact.
-    let popoverAnchorUses = ResizeArray<string * string>()
-    // Phase 1123 (FUARAN129) — (gridNodeId, outKey option, inKey option) per
-    // grid declaring either end of the transfer pair. Judged post-walk for the
-    // same reason the two collections above are: whether ANOTHER grid names the
-    // same key is not a per-node fact, and a per-object decoder can never see
-    // it either.
-    let transferDeclarations = ResizeArray<string * string option * string option>()
-    // Phase 1892 (FUARAN075) — (gridNodeId, key) for every grid's own page and
-    // window State key. The page rule (Phase 862) and the window rule (Phase
-    // 1892) both have a host-slicing `Query` name that key in `dependsOn`, so an
-    // entry naming the reading grid's own key is that re-run edge and not a
-    // filter reference; judged post-walk beside the filter declarations.
-    let gridOwnStateKeys = System.Collections.Generic.HashSet<string * string>()
+/// What a pre-emit walk is told about the deployment it checks for. Every field
+/// widens the walk by one rule family and leaves the rest untouched; the shipped
+/// default (`ValidateOptions.defaults`) declares nothing, which is `validate`.
+type ValidateOptions =
+    {
+        /// The decode-time admission policy the tree will meet (FUARAN104). A
+        /// policy that narrows nothing costs one branch per tree.
+        Policy: DecodePolicy
+        /// The tree is declared bound for the wire (FUARAN112). The closure rule
+        /// is decidable from the tree alone, but its RELEVANCE is not: an
+        /// in-process Fable host renders `Action.Dispatch` perfectly and forever,
+        /// so the caller declares the intent rather than the walk assuming it.
+        ForTransport: bool
+        /// The host's emission budget, as a meter the walk feeds (FUARAN158-162).
+        /// `None` does exactly the work an unbudgeted walk always did.
+        Meter: HostLimitMeter option
+        /// Registered custom kinds whose prop bags are checked against their
+        /// declared schemas (FUARAN068). An unregistered custom kind passes.
+        Registry: CustomRegistry option
+    }
 
-    let recordNodeId (raw: string) =
-        if raw = "" then
-            defects.Add PreEmitDefect.EmptyNodeId
-        else
-            match nodeIdCounts.TryGetValue raw with
-            | true, n -> nodeIdCounts[raw] <- n + 1
-            | false, _ -> nodeIdCounts[raw] <- 1
+/// The options every `validate*` entry point is a preset of.
+[<RequireQualifiedAccess>]
+module ValidateOptions =
 
-    // Phase 781 — the depth bound on this walk. `walkBody` below is the
-    // pre-existing recursion; `walk` is the counter around it, so the guard sits
-    // on every recursion site at once rather than on the forty-odd `List.iter
-    // walk` calls individually. Measured, this walk overflows the .NET default
-    // 1 MB stack at 294 levels in Release and 151 in Debug, so an unbounded tree
-    // took the process down with a `StackOverflowException` — uncatchable, hence
-    // no defect list, hence no "structured error, never an exception".
-    //
-    // A local mutable is the right shape here rather than a threaded parameter:
-    // `walk` is a closure created fresh per `validateCore` call, so the counter
-    // is per-invocation and cannot be shared across threads.
-    let mutable depth = 0
-    // One defect, not one per over-deep node — an over-deep subtree would
-    // otherwise emit thousands of identical entries and bury the real report.
-    let mutable depthReported = false
+    /// Nothing declared: the plain `validate` walk.
+    let defaults: ValidateOptions =
+        { Policy = DecodePolicy.admitAll
+          ForTransport = false
+          Meter = None
+          Registry = None }
 
-    // ── Phase 1615 — the ONE enumeration of this tree's Transform sites ──
-    //
-    // `BindingWalk.collect` was already run once per validation, below the
-    // per-node walk, for the cross-tree checks. It is hoisted here — the same
-    // single call over the same tree, moved earlier — so the per-node rules
-    // that need a site can read it instead of re-matching the reader's own
-    // `source` slot for the third time in this file.
-    //
-    // Indexed by READER, restricted to the sites the reading node's own arm
-    // named as its `source` slot. That restriction is what keeps the window
-    // exactly where it was: the rules below matched `spec.Source` DIRECTLY, so
-    // a Transform nested inside a `Format` or a `Local` was never their
-    // subject, and the walk declines to tag one for that reason (see
-    // `BindingWalk.tagSourceSite`).
-    //
-    // First-wins on a repeated id, matching the tree order the rules read in;
-    // a duplicated node id is FUARAN's own defect (`DuplicateNodeId`) and not
-    // this index's to re-report.
-    let treeFacts = BindingWalk.collect node
+/// What the per-node walk gathers for the cross-tree rules, which can only be
+/// judged once the whole tree has been seen.
+type private WalkAccumulators =
+    {
+        /// FUARAN085 — (stateKey, nodeId, fieldId) per handler-free
+        /// form-field write-back; duplicates surface post-walk.
+        WriteBackKeys: ResizeArray<string * string * string>
+        /// FUARAN099 — (nodeId, fieldId, key) per `FieldRule.compare`
+        /// reading a `Binding.State`, paired with the set of keys the ENCLOSING form
+        /// itself owns. Both are collected here and judged post-walk, because the
+        /// second half of the question ("nothing in the tree writes it") is only
+        /// answerable once the whole tree has been seen.
+        CompareStateReads: ResizeArray<string * string * string>
+        /// FUARAN099's other half — every state key a form field owns, tree-wide.
+        FormOwnedStateKeys: System.Collections.Generic.HashSet<string>
+        /// FUARAN-DUP-ID — how often each node id was seen, in first-seen order.
+        NodeIdCounts: System.Collections.Generic.Dictionary<string, int>
+        /// FUARAN110 — (readerNodeId, slot, target) per declared
+        /// accessibility reference. Collected here and judged post-walk for the same
+        /// reason FUARAN070's dangling `Selection` is: "names a node in this tree"
+        /// is only answerable once the whole tree has been seen.
+        AccessibilityRefUses: ResizeArray<string * string * string>
+        /// FUARAN122 — (popoverNodeId, declaredAnchor) per `Popover`
+        /// whose anchor must be resolved against the whole tree. Collected here and
+        /// judged post-walk for the same reason the accessibility references are:
+        /// whether an id exists is not a per-node fact.
+        PopoverAnchorUses: ResizeArray<string * string>
+        /// FUARAN129 — (gridNodeId, outKey option, inKey option) per
+        /// grid declaring either end of the transfer pair. Judged post-walk for the
+        /// same reason the two collections above are: whether ANOTHER grid names the
+        /// same key is not a per-node fact, and a per-object decoder can never see
+        /// it either.
+        TransferDeclarations: ResizeArray<string * string option * string option>
+        /// FUARAN075 — (gridNodeId, key) for every grid's own page and
+        /// window State key. The page rule and the window rule both have a
+        /// host-slicing `Query` name that key in `dependsOn`, so an
+        /// entry naming the reading grid's own key is that re-run edge and not a
+        /// filter reference; judged post-walk beside the filter declarations.
+        GridOwnStateKeys: System.Collections.Generic.HashSet<string * string>
+    }
 
-    let sourceSites =
-        treeFacts.TransformSites
-        |> List.filter (fun (d: BindingWalk.TransformSiteDecl) -> d.Site.Slot = Some "source")
-        |> List.fold
-            (fun acc d ->
-                if Map.containsKey d.Reader acc then
-                    acc
-                else
-                    Map.add d.Reader d.Site acc)
-            Map.empty
+/// Everything a rule family's per-node check reads or writes: the options, the
+/// shared defect list (appended in walk order — the order is part of the
+/// contract), the accumulators, and the two facts computed once per tree.
+type private WalkContext =
+    { Options: ValidateOptions
+      Defects: ResizeArray<PreEmitDefect>
+      CustomCheck: string -> string -> string -> Map<string, JVal> -> PreEmitDefect option
+      ProducedSchemaOf: string -> SchemaKnowledge option
+      Acc: WalkAccumulators }
 
-    /// The schema a reader's `source` slot PRODUCES, when the walk enumerated a
-    /// non-live Transform there. `None` on every other shape — a live source
-    /// (whose `initial` snapshot is a decode-time table, not a statement about
-    /// the rows a later write will put under the key), a plain binding, or a
-    /// reader whose slot the walk does not name.
-    let producedSchemaOf (readerId: string) : SchemaKnowledge option =
-        match Map.tryFind readerId sourceSites with
-        | Some site when not site.IsLive -> Some(producedSchema site.Source site.Pipeline)
-        | _ -> None
 
-    /// FUARAN120 (Phase 1113) — a combobox whose option source is a STATIC and
-    /// EMPTY list. One helper because a filter chip carries the same control as
-    /// a form field since the 0.2.0 unification, and one rule spelt twice is one
-    /// rule that will eventually differ.
-    ///
-    /// Only `Static` is judged: every other binding case names a source resolved
-    /// at render time, and a suggestion feed that is empty at authoring time is
-    /// this control's whole purpose. `Static None` counts as empty for the
-    /// reason `Static (Some [])` does — both say "no options, and none coming".
-    let comboboxWithoutOptions (nodeId: string) (fieldId: string) (kind: FormFieldKind<'Msg>) =
-        match kind with
-        | FormFieldKind.Combobox(_, _, Binding.Static None, _) ->
-            defects.Add(PreEmitDefect.ComboboxWithoutOptions(nodeId, fieldId))
-        | FormFieldKind.Combobox(_, _, Binding.Static(Some []), _) ->
-            defects.Add(PreEmitDefect.ComboboxWithoutOptions(nodeId, fieldId))
-        | _ -> ()
+/// Rules that read the node itself, whatever its kind.
+module private NodeRules =
 
-    /// FUARAN132 / FUARAN133 (Phase 1130) — the two static-value checks the two
-    /// new controls own. One helper, for `comboboxWithoutOptions`'s reason: a
-    /// filter chip carries the same control as a form field since the 0.2.0
-    /// unification, and one rule spelt twice is one rule that will differ.
-    ///
-    /// Only `Static` is judged, on the family's standing restraint — every other
-    /// binding case names a value resolved at render time, and judging one would
-    /// fire on the shape the control exists for. `Static None` is silent: "no
-    /// rating yet" and "no colour chosen" are ordinary states, not defects.
-    let ratingAndColourValue (nodeId: string) (fieldId: string) (kind: FormFieldKind<'Msg>) =
-        match kind with
-        | FormFieldKind.Rating(_, max, _, Some(Binding.Static(Some v))) when v < 0.0 || v > float max ->
-            defects.Add(PreEmitDefect.RatingValueOutOfScale(nodeId, fieldId, v, max))
-        | FormFieldKind.Color(_, Some(Binding.Static(Some text))) when not (Fuaran.UI.HostPrelude.HexColor.isValid text) ->
-            defects.Add(PreEmitDefect.ColorValueNotHex(nodeId, fieldId, text))
-        | _ -> ()
-
-    /// FUARAN135 / FUARAN136 (Phase 1121) — the two static checks `Tokens`
-    /// owns, held together for `ratingAndColourValue`'s reason: they run at both
-    /// call sites, and one rule spelt twice is one rule that will differ.
-    ///
-    /// Only `Static` is judged, on the family's standing restraint. Both rules
-    /// are the AUTHORING half of a division the decoder deliberately does not
-    /// hold — it refuses a closed field with NO suggestion slot, because that is
-    /// a control that cannot exist, and refuses nothing about the token list or
-    /// an empty suggestion source, because both are properties a bound slot
-    /// carries in from outside the document.
-    ///
-    /// The duplicate scan reports the FIRST repeat only. A second finding on the
-    /// same field would say the same thing about the same slot, and the remedy
-    /// is one edit; the value is re-scanned on the next pass.
-    let tokensValue (nodeId: string) (fieldId: string) (kind: FormFieldKind<'Msg>) =
-        match kind with
-        | FormFieldKind.Tokens(allowFreeText, _, suggestions, value) ->
-            match suggestions with
-            | Some(Binding.Static(Some [])) when not allowFreeText ->
-                defects.Add(PreEmitDefect.TokensAdmitsNothing(nodeId, fieldId))
-            | _ -> ()
-
-            match value with
-            | Some(Binding.Static(Some tokens)) ->
-                let seen = System.Collections.Generic.HashSet<string>()
-
-                match tokens |> List.tryFind (fun t -> not (seen.Add t)) with
-                | Some repeated -> defects.Add(PreEmitDefect.TokensStaticDuplicate(nodeId, fieldId, repeated))
-                | None -> ()
-            | _ -> ()
-        | _ -> ()
-
-    let rec walk (n: Node<'Msg>) =
-        depth <- depth + 1
-
-        if depth > WireLimits.MaxDepth then
-            if not depthReported then
-                depthReported <- true
-                defects.Add(PreEmitDefect.MaxDepthExceeded(n.Id, WireLimits.MaxDepth))
-        else
-            walkBody n
-
-        depth <- depth - 1
-
-    and walkBody (n: Node<'Msg>) =
-        recordNodeId n.Id
-
-        // FUARAN158-161 (Phase 1817) — the host emission budget, metered on
-        // THIS walk: one visit per node, however many limits are declared.
-        match meter with
-        | Some m -> m.Visit(n, depth)
-        | None -> ()
-
-        // FUARAN104 (Phase 1020) — the decode-time admission policy, mirrored
+    /// The rules that read the NODE rather than any kind spec — run once per node,
+    /// before the per-kind dispatch, so a kind the language newly adds is reached
+    /// with no arm to remember. `walk` is threaded for the declared `fallback`,
+    /// which is walked like any subtree.
+    let check (ctx: WalkContext) (walk: Node<'Msg> -> unit) (n: Node<'Msg>) : unit =
+        let defects = ctx.Defects
+        let accessibilityRefUses = ctx.Acc.AccessibilityRefUses
+        let policy = ctx.Options.Policy
+        // FUARAN104 — the decode-time admission policy, mirrored
         // at the authoring end. Guarded on `narrows` so the shipped default
         // costs one branch per tree rather than a set lookup per node, and so
         // the defect is unreachable for every caller that declares nothing.
@@ -3600,14 +3856,14 @@ let private validateCore
             if not (DecodePolicy.admits policy wireKind) then
                 defects.Add(PreEmitDefect.KindNotAdmitted(n.Id, wireKind, policy.Identity))
 
-        // FUARAN102 (Phase 765) — a labelled datum that names the current
+        // FUARAN102 — a labelled datum that names the current
         // instant and states a hardcoded date. Per-node and purely lexical; the
         // scope and the deliberate narrowing are on the defect case.
         match staleDateLiteral n.Kind with
         | Some literal -> defects.Add(PreEmitDefect.DateLiteralWhereNowPlausible(n.Id, literal))
         | None -> ()
 
-        // FUARAN153 (Phase 1734) — a Badge that states one severity in words
+        // FUARAN153 — a Badge that states one severity in words
         // and a different one in tone. Sited here beside FUARAN102 because it
         // is the same shape of check: per-node, purely lexical, reading only
         // this node's own two slots. The narrowings are on the defect case.
@@ -3618,14 +3874,14 @@ let private validateCore
             | None -> ()
         | _ -> ()
 
-        // FUARAN109 / FUARAN111 (Phase 727) — the per-node half of the
+        // FUARAN109 / FUARAN111 — the per-node half of the
         // accessibility family. Sited here rather than in the per-kind arms
         // below because the trait it reads lives on the NODE, not in any kind
         // spec: one site covers every kind at once, and a kind the language
         // newly declares interactive is reached with no arm to remember.
         accessibilityDefects n |> List.iter defects.Add
 
-        // Phase 1812 — the author-declared `fallback` (WIRE_FORMAT §3.1 /
+        // The author-declared `fallback` (WIRE_FORMAT §3.1 /
         // §15.3). It is a full node a behind reader renders in place of this
         // one, so it is WALKED like any subtree: NodeId uniqueness (§8.1), the
         // depth bound and every per-node rule reach it. Two rules are its own,
@@ -3680,7 +3936,7 @@ let private validateCore
         for (slot, target) in accessibilityRefs n do
             accessibilityRefUses.Add(n.Id, slot, target)
 
-        // FUARAN142-146 (Phase 1523) — the emission grammar for string-typed
+        // FUARAN142-146 — the emission grammar for string-typed
         // slots, judged ONCE per node here rather than in the per-kind arms
         // below.
         //
@@ -3700,1224 +3956,1323 @@ let private validateCore
         // which is the whole point of the two layers agreeing.
         emissionGrammarDefects n |> List.iter defects.Add
 
-        // Per-kind: check kind-specific invariants + enumerate children.
-        match n.Kind with
-        // -- Layout --
-        | NodeKind.Box spec ->
-            // FUARAN125 (Phase 1473) — `keepTogether` on a container that
-            // renders no subtree. Two shapes reach it and only two: a box whose
-            // children are empty, and the `Separator` role, whose emitted rule
-            // takes no children at all whatever the spec carries.
-            //
-            // `breakBefore` is NOT judged here: an empty box still generates a
-            // box, so a break before it remains a live instruction. Nothing here
-            // judges whether the rendering will be paged or whether a boundary
-            // would have fallen in this subtree either — neither is knowable
-            // pre-emit, and a declaration that turns out not to be needed is
-            // correct authoring, not a defect.
-            if
-                spec.KeepTogether
-                && (List.isEmpty spec.Children || spec.Role = BoxRole.Separator)
-            then
-                defects.Add(PreEmitDefect.DeadPrintBreak(n.Id, PrintBreakDefect.NoSubtreeToKeepTogether))
 
-            spec.Children |> List.iter walk
-        | NodeKind.SplitPanel spec -> spec.Children |> List.iter walk
-        | NodeKind.Tabs spec ->
-            // FUARAN047 / FUARAN048 / FUARAN049
-            // tabs-shape invariants. Length mismatches are construction
-            // defects (the renderer would silently drop headers or tags
-            // past the children boundary); ActiveTag-without-TabTags
-            // is a semantic mistake (the tag binding has nowhere to
-            // resolve to). The `NodeId raw` extraction matches the
-            // existing `recordNodeId` pattern.
-            let nodeIdStr = n.Id
-            let childrenCount = spec.Children.Length
+/// Container kinds: boxes, tabs, disclosures, modals and popovers, skeletons.
+module private LayoutRules =
 
-            match spec.TabHeaders with
-            | Some hs when hs.Length <> childrenCount ->
-                defects.Add(PreEmitDefect.TabHeaderCountMismatch(nodeIdStr, hs.Length, childrenCount))
+    let box (ctx: WalkContext) (walk: Node<'Msg> -> unit) (n: Node<'Msg>) (spec: BoxSpec<'Msg>) : unit =
+        let defects = ctx.Defects
+        // FUARAN125 — `keepTogether` on a container that
+        // renders no subtree. Two shapes reach it and only two: a box whose
+        // children are empty, and the `Separator` role, whose emitted rule
+        // takes no children at all whatever the spec carries.
+        //
+        // `breakBefore` is NOT judged here: an empty box still generates a
+        // box, so a break before it remains a live instruction. Nothing here
+        // judges whether the rendering will be paged or whether a boundary
+        // would have fallen in this subtree either — neither is knowable
+        // pre-emit, and a declaration that turns out not to be needed is
+        // correct authoring, not a defect.
+        if
+            spec.KeepTogether
+            && (List.isEmpty spec.Children || spec.Role = BoxRole.Separator)
+        then
+            defects.Add(PreEmitDefect.DeadPrintBreak(n.Id, PrintBreakDefect.NoSubtreeToKeepTogether))
+
+        spec.Children |> List.iter walk
+
+    let tabs (ctx: WalkContext) (walk: Node<'Msg> -> unit) (n: Node<'Msg>) (spec: TabsSpec<'Msg>) : unit =
+        let defects = ctx.Defects
+        // FUARAN047 / FUARAN048 / FUARAN049
+        // tabs-shape invariants. Length mismatches are construction
+        // defects (the renderer would silently drop headers or tags
+        // past the children boundary); ActiveTag-without-TabTags
+        // is a semantic mistake (the tag binding has nowhere to
+        // resolve to). The `NodeId raw` extraction matches the
+        // existing `recordNodeId` pattern.
+        let nodeIdStr = n.Id
+        let childrenCount = spec.Children.Length
+
+        match spec.TabHeaders with
+        | Some hs when hs.Length <> childrenCount ->
+            defects.Add(PreEmitDefect.TabHeaderCountMismatch(nodeIdStr, hs.Length, childrenCount))
+        | _ -> ()
+
+        match spec.TabTags with
+        | Some ts when ts.Length <> childrenCount ->
+            defects.Add(PreEmitDefect.TabTagCountMismatch(nodeIdStr, ts.Length, childrenCount))
+        | _ -> ()
+
+        match spec.ActiveTag, spec.TabTags with
+        | Some _, None -> defects.Add(PreEmitDefect.TabActiveTagWithoutTags nodeIdStr)
+        | _ -> ()
+
+        // FUARAN069: tabs are live when either channel can
+        // carry a click — a handler, or a writable slot the write-back
+        // default targets (integer: ActiveIndex; tag overlay:
+        // ActiveTag when TabTags is populated).
+        let indexLive = spec.OnSelect.IsSome || isWriteBackTarget spec.ActiveIndex
+
+        let tagLive =
+            match spec.OnSelectTag, spec.TabTags, spec.ActiveTag with
+            | Some _, Some _, _ -> true
+            | None, Some _, Some tagBinding -> isWriteBackTarget tagBinding
+            | _ -> false
+
+        if not (indexLive || tagLive) then
+            defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Tabs"))
+
+        spec.Children |> List.iter walk
+
+    let disclosure (ctx: WalkContext) (walk: Node<'Msg> -> unit) (n: Node<'Msg>) (spec: DisclosureSpec<'Msg>) : unit =
+        let defects = ctx.Defects
+        // FUARAN069: no toggle handler and no writable
+        // `Open` slot — the model never hears the native toggle.
+        let nodeIdStr = n.Id
+
+        if spec.OnToggle.IsNone && not (isWriteBackTarget spec.Open) then
+            defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Disclosure"))
+
+        spec.Children |> List.iter walk
+
+    let modal (ctx: WalkContext) (walk: Node<'Msg> -> unit) (n: Node<'Msg>) (spec: ModalSpec<'Msg>) : unit =
+        let defects = ctx.Defects
+        let popoverAnchorUses = ctx.Acc.PopoverAnchorUses
+        // FUARAN069: a dismissable modal with no dismiss
+        // action and no writable `Open` slot can never close.
+        let nodeIdStr = n.Id
+
+        if spec.Dismissable && spec.OnDismiss.IsNone && not (isWriteBackTarget spec.Open) then
+            defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Modal"))
+
+        // FUARAN122 / FUARAN123 — the anchor declaration read
+        // against the modality. An UNDECLARED anchor on a popover is
+        // answerable here; a DECLARED one is deferred to the post-walk pass,
+        // where the tree's whole id universe is known.
+        (match spec.Modality, spec.Anchor with
+         | ModalityKind.Popover, None -> defects.Add(PreEmitDefect.PopoverWithoutAnchor(nodeIdStr, None))
+         | ModalityKind.Popover, Some target -> popoverAnchorUses.Add(nodeIdStr, target)
+         | ModalityKind.Modal, Some target -> defects.Add(PreEmitDefect.AnchorOnBlockingModal(nodeIdStr, target))
+         | ModalityKind.Modal, None -> ())
+
+        spec.Children |> List.iter walk
+
+    // FUARAN152 — the §21.9 row bound, whole, on the authoring
+    // side. This is the first tenant of the "future kind-specific
+    // invariants land here" note the leaf arm below has carried since 781.
+    let skeleton (ctx: WalkContext) (n: Node<'Msg>) (spec: SkeletonSpec) : unit =
+        let defects = ctx.Defects
+
+        if spec.Rows < 0 || spec.Rows > WireLimits.MaxSkeletonRows then
+            defects.Add(PreEmitDefect.SkeletonRowsOutOfRange(n.Id, spec.Rows))
+
+/// `DataGrid`: the display floor, sorting, editing, export, transfer, paging and the
+/// schema its source produces.
+module private GridRules =
+
+    let check (ctx: WalkContext) (n: Node<'Msg>) (spec: DataGridSpec<'Msg>) : unit =
+        let defects = ctx.Defects
+        let transferDeclarations = ctx.Acc.TransferDeclarations
+        let gridOwnStateKeys = ctx.Acc.GridOwnStateKeys
+        let producedSchemaOf = ctx.ProducedSchemaOf
+        // FUARAN077 / FUARAN078: the declarative grid
+        // display floor — every column needs a Value closure or a Field,
+        // and the grid needs a RowKey closure or a RowKeyField for stable
+        // row identity (the 427 selected-row state keys off it).
+        let nodeIdStr = n.Id
+
+        for col in spec.Columns do
+            // An ACTION column (Button / ButtonGroup) draws its
+            // own label and never displays a field, so a field-less one is
+            // not blank and FUARAN077 stands down; a declared field on one is
+            // the dead weight FUARAN163 reports instead.
+            if GridColumn.isAction col then
+                col.Field
+                |> Option.iter (fun field -> defects.Add(PreEmitDefect.ActionColumnField(nodeIdStr, col.Label, field)))
+            elif col.Value.IsNone && col.Field.IsNone then
+                defects.Add(PreEmitDefect.BlankGridColumn(nodeIdStr, col.Label))
+
+            // FUARAN154 — FUARAN153's class at a column: a
+            // TonedPill entry that paints a severity value in a different
+            // severity's tone. The map's keys are literals in the tree, so
+            // this is decidable here for the same reason the badge is.
+            match col.Kind with
+            | CellKindErased.TonedPill(_, map, _) ->
+                for value, tone in pillToneContradictions map do
+                    defects.Add(PreEmitDefect.PillToneContradictsValue(nodeIdStr, value, tone))
             | _ -> ()
 
-            match spec.TabTags with
-            | Some ts when ts.Length <> childrenCount ->
-                defects.Add(PreEmitDefect.TabTagCountMismatch(nodeIdStr, ts.Length, childrenCount))
+        if spec.RowKey.IsNone && spec.RowKeyField.IsNone then
+            defects.Add(PreEmitDefect.UnstableRowIdentity nodeIdStr)
+
+        // The transfer pair. The PAIRING half is whole-tree and
+        // is recorded here for the post-walk pass (FUARAN129); the IDENTITY
+        // half is a per-node fact and is decided now (FUARAN130).
+        if spec.TransferInKey.IsSome || spec.TransferOutKey.IsSome then
+            transferDeclarations.Add(nodeIdStr, spec.TransferOutKey, spec.TransferInKey)
+
+            // Narrower than FUARAN078 above, which fires when a grid has
+            // NEITHER spelling: this one fires on a grid that HAS the closure
+            // and therefore passes that rule, while still having no identity
+            // any decoded host could put in a transfer record.
+            if spec.RowKeyField.IsNone then
+                defects.Add(PreEmitDefect.TransferWithoutRowIdentity nodeIdStr)
+
+        // FUARAN125 — `repeatHeader` on a grid that renders no
+        // header cells. The two legs have different header sources and the
+        // rule asks the one this grid will actually take: `staticRows`
+        // carries its own `headers`, and the bound path derives the header
+        // row from `columns`.
+        //
+        // `keepRowsTogether` gets no companion rule, deliberately. Whether a
+        // grid has rows is a property of its resolved SOURCE, which is a
+        // runtime fact for every binding shape but the embedded one — so the
+        // rule would fire on a correct grid whose rows simply had not
+        // arrived. That is the false accusation the restraint exists to
+        // avoid, and an empty grid is a legitimate mid-edit tree.
+        if spec.RepeatHeader then
+            let rendersNoHeader =
+                match spec.StaticRows with
+                | Some sr -> List.isEmpty sr.Headers
+                | None -> List.isEmpty spec.Columns
+
+            if rendersNoHeader then
+                defects.Add(PreEmitDefect.DeadPrintBreak(nodeIdStr, PrintBreakDefect.RepeatHeaderNoHeader))
+
+        // FUARAN131 — `exportable` on a grid that could only
+        // ever hand back an empty file. Two statically-certain shapes, and
+        // the restraint is the same one the rule above records: the number
+        // of rows a source YIELDS is a runtime fact, so a grid resolving to
+        // none is not reported here and must not be — an empty export is a
+        // true statement about the data.
+        //
+        // Both conditions are checked only on the bound leg's terms: a
+        // `staticRows` grid carries its rows and its headers in the tree, so
+        // neither shape can arise there without the table already being
+        // empty on its own account.
+        if spec.Exportable && spec.StaticRows.IsNone then
+            match spec.Source with
+            | Binding.Query(name, _, _) when name = Defaults.NotProvidedSentinel ->
+                defects.Add(PreEmitDefect.DeadExportAffordance(nodeIdStr, ExportDefect.NoRowSource))
+            | _ ->
+                if List.isEmpty spec.Columns then
+                    defects.Add(PreEmitDefect.DeadExportAffordance(nodeIdStr, ExportDefect.NoColumns))
+
+        // FUARAN114: a declared field the grid's own source
+        // cannot produce. FUARAN077 above asks whether a column names
+        // ANYTHING; this asks whether what it names is THERE — the read-side
+        // twin of FUARAN086, over the same window and by the same restraint.
+        //
+        // The window is what this tier can DERIVE, and since Phase 1486 that
+        // is the whole pipeline rather than the empty one: `producedSchema`
+        // walks the grid's own source and steps through
+        // `Fuaran.Compute.SchemaWalk`. A CLOSED walk names the produced columns
+        // and no others, so an absence there is a fact and is refused; an
+        // OPEN walk — an unresolvable `Ref`, a pivot whose value columns are
+        // named by the data — is an ignorance and stands down, exactly as the
+        // empty-pipeline pattern did for everything it could not see.
+        // The `(source, pipeline)` pair comes off the shared
+        // walk's site enumeration rather than from a third re-match of
+        // `spec.Source` in this file. Same window, same restraint, one
+        // derivation: `producedSchemaOf` answers only where the walk named
+        // a non-live Transform at this reader's `source` slot, which is
+        // exactly the shape this arm matched itself.
+        (match producedSchemaOf nodeIdStr with
+         | Some produced ->
+             if SchemaWalk.isClosed produced then
+                 let schemaColumns = SchemaWalk.names produced
+
+                 let ground (field: string) =
+                     if not (SchemaWalk.has field produced) then
+                         defects.Add(PreEmitDefect.GridFieldUngrounded(nodeIdStr, field, schemaColumns))
+
+                 // Reported per offending name rather than once per grid: a grid
+                 // pointed at the wrong source names several missing columns, and
+                 // the author repairs each of them.
+                 //
+                 // An action column's field is read by nothing
+                 // (FUARAN163 above says drop it), so it is not grounded: an
+                 // Error about a name no host reads would push an emitter
+                 // into inventing one. A TonedPill cell's OWN field IS a
+                 // column reference — the pill's label and tone key — and is
+                 // grounded here, in the same window, as FUARAN114's sub-case.
+                 for col in spec.Columns do
+                     if not (GridColumn.isAction col) then
+                         col.Field |> Option.iter ground
+
+                     match col.Kind with
+                     | CellKindErased.TonedPill(pillField, _, _) when not (SchemaWalk.has pillField produced) ->
+                         defects.Add(PreEmitDefect.PillFieldUngrounded(nodeIdStr, col.Label, pillField, schemaColumns))
+                     | _ -> ()
+
+                 spec.RowKeyField |> Option.iter ground
+         | _ -> ())
+
+        // FUARAN090: `editable: true` only means anything when the
+        // grid's source is a direct `Binding.State` — the renderer's grid
+        // write-back slot. Any other source (Transform / Static / Query /
+        // staticRows mode) renders read-only, so the flag is dead intent.
+        let editableWritable =
+            match spec.Source with
+            | Binding.State _ -> true
+            | _ -> false
+
+        // Phase 863 widened what "writable" means: a declared
+        // `editStateKey` IS a destination, so a grid carrying one is no
+        // longer inert and FUARAN090 must not fire. Leaving it would report
+        // the very shape 863 added as dead intent.
+        if spec.Editable && not editableWritable && spec.EditStateKey.IsNone then
+            defects.Add(PreEmitDefect.InertEditableGrid nodeIdStr)
+
+        // FUARAN093 / FUARAN096: the two authored shapes that
+        // can still declare paging that does not page. The decorative-pager
+        // shape itself needs no rule — the pager is renderer-owned, so a
+        // control writing state nothing reads is not authorable.
+        // FUARAN094: a sort declaration that cannot be
+        // honoured. The narrowing rule is directional — a column may turn
+        // a behaviour OFF, never on — so `sortable: true` under a grid
+        // with no sort state key is refused rather than silently ignored.
+        for col in spec.Columns do
+            match col.Sortable with
+            | Some true when spec.SortStateKey.IsNone ->
+                defects.Add(PreEmitDefect.UnhonourableSort(nodeIdStr, SortDefect.NoSortStateKey col.Label))
+            | Some true when col.Field.IsNone ->
+                defects.Add(PreEmitDefect.UnhonourableSort(nodeIdStr, SortDefect.ColumnHasNoField col.Label))
             | _ -> ()
 
-            match spec.ActiveTag, spec.TabTags with
-            | Some _, None -> defects.Add(PreEmitDefect.TabActiveTagWithoutTags nodeIdStr)
-            | _ -> ()
-
-            // FUARAN069 (Phase 426): tabs are live when either channel can
-            // carry a click — a handler, or a writable slot the write-back
-            // default targets (integer: ActiveIndex; tag overlay:
-            // ActiveTag when TabTags is populated).
-            let indexLive = spec.OnSelect.IsSome || isWriteBackTarget spec.ActiveIndex
-
-            let tagLive =
-                match spec.OnSelectTag, spec.TabTags, spec.ActiveTag with
-                | Some _, Some _, _ -> true
-                | None, Some _, Some tagBinding -> isWriteBackTarget tagBinding
-                | _ -> false
-
-            if not (indexLive || tagLive) then
-                defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Tabs"))
-
-            spec.Children |> List.iter walk
-        | NodeKind.Stepper spec -> spec.Children |> List.iter walk
-        | NodeKind.SummaryList spec -> spec.Children |> List.iter walk
-        | NodeKind.Disclosure spec ->
-            // FUARAN069 (Phase 426): no toggle handler and no writable
-            // `Open` slot — the model never hears the native toggle.
-            let nodeIdStr = n.Id
-
-            if spec.OnToggle.IsNone && not (isWriteBackTarget spec.Open) then
-                defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Disclosure"))
-
-            spec.Children |> List.iter walk
-        | NodeKind.Modal spec ->
-            // FUARAN069 (Phase 426): a dismissable modal with no dismiss
-            // action and no writable `Open` slot can never close.
-            let nodeIdStr = n.Id
-
-            if spec.Dismissable && spec.OnDismiss.IsNone && not (isWriteBackTarget spec.Open) then
-                defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Modal"))
-
-            // FUARAN122 / FUARAN123 (Phase 1119) — the anchor declaration read
-            // against the modality. An UNDECLARED anchor on a popover is
-            // answerable here; a DECLARED one is deferred to the post-walk pass,
-            // where the tree's whole id universe is known.
-            (match spec.Modality, spec.Anchor with
-             | ModalityKind.Popover, None -> defects.Add(PreEmitDefect.PopoverWithoutAnchor(nodeIdStr, None))
-             | ModalityKind.Popover, Some target -> popoverAnchorUses.Add(nodeIdStr, target)
-             | ModalityKind.Modal, Some target -> defects.Add(PreEmitDefect.AnchorOnBlockingModal(nodeIdStr, target))
-             | ModalityKind.Modal, None -> ())
-
-            spec.Children |> List.iter walk
-        | NodeKind.ScrollArea spec -> spec.Children |> List.iter walk
-        | NodeKind.DataGrid(spec) ->
-            // FUARAN077 / FUARAN078 (Phase 425 follow-up): the declarative grid
-            // display floor — every column needs a Value closure or a Field,
-            // and the grid needs a RowKey closure or a RowKeyField for stable
-            // row identity (the 427 selected-row state keys off it).
-            let nodeIdStr = n.Id
-
-            for col in spec.Columns do
-                // Phase 1909 — an ACTION column (Button / ButtonGroup) draws its
-                // own label and never displays a field, so a field-less one is
-                // not blank and FUARAN077 stands down; a declared field on one is
-                // the dead weight FUARAN163 reports instead.
-                if GridColumn.isAction col then
-                    col.Field
-                    |> Option.iter (fun field ->
-                        defects.Add(PreEmitDefect.ActionColumnField(nodeIdStr, col.Label, field)))
-                elif col.Value.IsNone && col.Field.IsNone then
-                    defects.Add(PreEmitDefect.BlankGridColumn(nodeIdStr, col.Label))
-
-                // FUARAN154 (Phase 1734) — FUARAN153's class at a column: a
-                // TonedPill entry that paints a severity value in a different
-                // severity's tone. The map's keys are literals in the tree, so
-                // this is decidable here for the same reason the badge is.
-                match col.Kind with
-                | CellKindErased.TonedPill(_, map, _) ->
-                    for value, tone in pillToneContradictions map do
-                        defects.Add(PreEmitDefect.PillToneContradictsValue(nodeIdStr, value, tone))
-                | _ -> ()
-
-            if spec.RowKey.IsNone && spec.RowKeyField.IsNone then
-                defects.Add(PreEmitDefect.UnstableRowIdentity nodeIdStr)
-
-            // Phase 1123 — the transfer pair. The PAIRING half is whole-tree and
-            // is recorded here for the post-walk pass (FUARAN129); the IDENTITY
-            // half is a per-node fact and is decided now (FUARAN130).
-            if spec.TransferInKey.IsSome || spec.TransferOutKey.IsSome then
-                transferDeclarations.Add(nodeIdStr, spec.TransferOutKey, spec.TransferInKey)
-
-                // Narrower than FUARAN078 above, which fires when a grid has
-                // NEITHER spelling: this one fires on a grid that HAS the closure
-                // and therefore passes that rule, while still having no identity
-                // any decoded host could put in a transfer record.
-                if spec.RowKeyField.IsNone then
-                    defects.Add(PreEmitDefect.TransferWithoutRowIdentity nodeIdStr)
-
-            // FUARAN125 (Phase 1473) — `repeatHeader` on a grid that renders no
-            // header cells. The two legs have different header sources and the
-            // rule asks the one this grid will actually take: `staticRows`
-            // carries its own `headers`, and the bound path derives the header
-            // row from `columns`.
-            //
-            // `keepRowsTogether` gets no companion rule, deliberately. Whether a
-            // grid has rows is a property of its resolved SOURCE, which is a
-            // runtime fact for every binding shape but the embedded one — so the
-            // rule would fire on a correct grid whose rows simply had not
-            // arrived. That is the false accusation the restraint exists to
-            // avoid, and an empty grid is a legitimate mid-edit tree.
-            if spec.RepeatHeader then
-                let rendersNoHeader =
-                    match spec.StaticRows with
-                    | Some sr -> List.isEmpty sr.Headers
-                    | None -> List.isEmpty spec.Columns
-
-                if rendersNoHeader then
-                    defects.Add(PreEmitDefect.DeadPrintBreak(nodeIdStr, PrintBreakDefect.RepeatHeaderNoHeader))
-
-            // FUARAN131 (Phase 1125) — `exportable` on a grid that could only
-            // ever hand back an empty file. Two statically-certain shapes, and
-            // the restraint is the same one the rule above records: the number
-            // of rows a source YIELDS is a runtime fact, so a grid resolving to
-            // none is not reported here and must not be — an empty export is a
-            // true statement about the data.
-            //
-            // Both conditions are checked only on the bound leg's terms: a
-            // `staticRows` grid carries its rows and its headers in the tree, so
-            // neither shape can arise there without the table already being
-            // empty on its own account.
-            if spec.Exportable && spec.StaticRows.IsNone then
-                match spec.Source with
-                | Binding.Query(name, _, _) when name = Defaults.NotProvidedSentinel ->
-                    defects.Add(PreEmitDefect.DeadExportAffordance(nodeIdStr, ExportDefect.NoRowSource))
-                | _ ->
-                    if List.isEmpty spec.Columns then
-                        defects.Add(PreEmitDefect.DeadExportAffordance(nodeIdStr, ExportDefect.NoColumns))
-
-            // FUARAN114 (Phase 1149): a declared field the grid's own source
-            // cannot produce. FUARAN077 above asks whether a column names
-            // ANYTHING; this asks whether what it names is THERE — the read-side
-            // twin of FUARAN086, over the same window and by the same restraint.
-            //
-            // The window is what this tier can DERIVE, and since Phase 1486 that
-            // is the whole pipeline rather than the empty one: `producedSchema`
-            // walks the grid's own source and steps through
-            // `Fuaran.Compute.SchemaWalk`. A CLOSED walk names the produced columns
-            // and no others, so an absence there is a fact and is refused; an
-            // OPEN walk — an unresolvable `Ref`, a pivot whose value columns are
-            // named by the data — is an ignorance and stands down, exactly as the
-            // empty-pipeline pattern did for everything it could not see.
-            // Phase 1615 — the `(source, pipeline)` pair comes off the shared
-            // walk's site enumeration rather than from a third re-match of
-            // `spec.Source` in this file. Same window, same restraint, one
-            // derivation: `producedSchemaOf` answers only where the walk named
-            // a non-live Transform at this reader's `source` slot, which is
-            // exactly the shape this arm matched itself.
-            (match producedSchemaOf nodeIdStr with
-             | Some produced ->
-                 if SchemaWalk.isClosed produced then
-                     let schemaColumns = SchemaWalk.names produced
-
-                     let ground (field: string) =
-                         if not (SchemaWalk.has field produced) then
-                             defects.Add(PreEmitDefect.GridFieldUngrounded(nodeIdStr, field, schemaColumns))
-
-                     // Reported per offending name rather than once per grid: a grid
-                     // pointed at the wrong source names several missing columns, and
-                     // the author repairs each of them.
-                     //
-                     // Phase 1909 — an action column's field is read by nothing
-                     // (FUARAN163 above says drop it), so it is not grounded: an
-                     // Error about a name no host reads would push an emitter
-                     // into inventing one. A TonedPill cell's OWN field IS a
-                     // column reference — the pill's label and tone key — and is
-                     // grounded here, in the same window, as FUARAN114's sub-case.
-                     for col in spec.Columns do
-                         if not (GridColumn.isAction col) then
-                             col.Field |> Option.iter ground
-
-                         match col.Kind with
-                         | CellKindErased.TonedPill(pillField, _, _) when not (SchemaWalk.has pillField produced) ->
-                             defects.Add(
-                                 PreEmitDefect.PillFieldUngrounded(nodeIdStr, col.Label, pillField, schemaColumns)
-                             )
-                         | _ -> ()
-
-                     spec.RowKeyField |> Option.iter ground
-             | _ -> ())
-
-            // FUARAN090 (Phase 663): `editable: true` only means anything when the
-            // grid's source is a direct `Binding.State` — the renderer's grid
-            // write-back slot. Any other source (Transform / Static / Query /
-            // staticRows mode) renders read-only, so the flag is dead intent.
-            let editableWritable =
-                match spec.Source with
-                | Binding.State _ -> true
-                | _ -> false
-
-            // Phase 863 widened what "writable" means: a declared
-            // `editStateKey` IS a destination, so a grid carrying one is no
-            // longer inert and FUARAN090 must not fire. Leaving it would report
-            // the very shape 863 added as dead intent.
-            if spec.Editable && not editableWritable && spec.EditStateKey.IsNone then
-                defects.Add(PreEmitDefect.InertEditableGrid nodeIdStr)
-
-            // FUARAN093 / FUARAN096 (Phase 862): the two authored shapes that
-            // can still declare paging that does not page. The decorative-pager
-            // shape itself needs no rule — the pager is renderer-owned, so a
-            // control writing state nothing reads is not authorable.
-            // FUARAN094 (Phase 861): a sort declaration that cannot be
-            // honoured. The narrowing rule is directional — a column may turn
-            // a behaviour OFF, never on — so `sortable: true` under a grid
-            // with no sort state key is refused rather than silently ignored.
-            for col in spec.Columns do
-                match col.Sortable with
-                | Some true when spec.SortStateKey.IsNone ->
-                    defects.Add(PreEmitDefect.UnhonourableSort(nodeIdStr, SortDefect.NoSortStateKey col.Label))
-                | Some true when col.Field.IsNone ->
-                    defects.Add(PreEmitDefect.UnhonourableSort(nodeIdStr, SortDefect.ColumnHasNoField col.Label))
-                | _ -> ()
-
-            match spec.DefaultSort with
-            | Some ds when ds.Column >= List.length spec.Columns ->
-                defects.Add(
-                    PreEmitDefect.UnhonourableSort(
-                        nodeIdStr,
-                        SortDefect.DefaultSortColumnOutOfRange(ds.Column, List.length spec.Columns)
-                    )
+        match spec.DefaultSort with
+        | Some ds when ds.Column >= List.length spec.Columns ->
+            defects.Add(
+                PreEmitDefect.UnhonourableSort(
+                    nodeIdStr,
+                    SortDefect.DefaultSortColumnOutOfRange(ds.Column, List.length spec.Columns)
                 )
+            )
+        | _ -> ()
+
+        // FUARAN095: the write side's twin of FUARAN094. The
+        // destination is reachable when `editStateKey` names one, or when
+        // the 663 write-back can land in the grid's own State source.
+        let destinationReachable =
+            spec.EditStateKey.IsSome
+            || (match spec.Source with
+                | Binding.State _ -> true
+                | _ -> false)
+
+        for col in spec.Columns do
+            let columnEditable =
+                match col.Editable with
+                | Some v -> v
+                | None -> spec.Editable
+
+            if col.Editable = Some true && not spec.Editable then
+                defects.Add(PreEmitDefect.UneditableColumnDeclared(nodeIdStr, col.Label, EditDefect.GridNotEditable))
+            elif col.Editable = Some true && columnEditable && not destinationReachable then
+                defects.Add(
+                    PreEmitDefect.UneditableColumnDeclared(nodeIdStr, col.Label, EditDefect.NoReachableDestination)
+                )
+
+        spec.PageStateKey
+        |> Option.iter (fun k -> gridOwnStateKeys.Add((nodeIdStr, k)) |> ignore)
+
+        spec.WindowStateKey
+        |> Option.iter (fun k -> gridOwnStateKeys.Add((nodeIdStr, k)) |> ignore)
+
+        match spec.PageSize, spec.PageStateKey with
+        | Some _, None -> defects.Add(PreEmitDefect.PageSizeWithoutPageKey nodeIdStr)
+        | Some _, Some key ->
+            let hostPages =
+                match spec.Source with
+                | Binding.Query(_, _, Some deps) -> deps |> List.contains key
+                | _ -> false
+
+            if hostPages then
+                defects.Add(PreEmitDefect.DoublePagedGrid(nodeIdStr, key))
+        | None, _ -> ()
+
+/// Forms and the controls they share with filter chips and selects.
+module private FormRules =
+
+    /// FUARAN120 — a combobox whose option source is a STATIC and
+    /// EMPTY list. One helper because a filter chip carries the same control as
+    /// a form field since the 0.2.0 unification, and one rule spelt twice is one
+    /// rule that will eventually differ.
+    ///
+    /// Only `Static` is judged: every other binding case names a source resolved
+    /// at render time, and a suggestion feed that is empty at authoring time is
+    /// this control's whole purpose. `Static None` counts as empty for the
+    /// reason `Static (Some [])` does — both say "no options, and none coming".
+    let comboboxWithoutOptions (ctx: WalkContext) (nodeId: string) (fieldId: string) (kind: FormFieldKind<'Msg>) =
+        let defects = ctx.Defects
+
+        match kind with
+        | FormFieldKind.Combobox(_, _, Binding.Static None, _) ->
+            defects.Add(PreEmitDefect.ComboboxWithoutOptions(nodeId, fieldId))
+        | FormFieldKind.Combobox(_, _, Binding.Static(Some []), _) ->
+            defects.Add(PreEmitDefect.ComboboxWithoutOptions(nodeId, fieldId))
+        | _ -> ()
+
+    /// FUARAN132 / FUARAN133 — the two static-value checks the two
+    /// new controls own. One helper, for `comboboxWithoutOptions`'s reason: a
+    /// filter chip carries the same control as a form field since the 0.2.0
+    /// unification, and one rule spelt twice is one rule that will differ.
+    ///
+    /// Only `Static` is judged, on the family's standing restraint — every other
+    /// binding case names a value resolved at render time, and judging one would
+    /// fire on the shape the control exists for. `Static None` is silent: "no
+    /// rating yet" and "no colour chosen" are ordinary states, not defects.
+    let ratingAndColourValue (ctx: WalkContext) (nodeId: string) (fieldId: string) (kind: FormFieldKind<'Msg>) =
+        let defects = ctx.Defects
+
+        match kind with
+        | FormFieldKind.Rating(_, max, _, Some(Binding.Static(Some v))) when v < 0.0 || v > float max ->
+            defects.Add(PreEmitDefect.RatingValueOutOfScale(nodeId, fieldId, v, max))
+        | FormFieldKind.Color(_, Some(Binding.Static(Some text))) when not (Fuaran.UI.HostPrelude.HexColor.isValid text) ->
+            defects.Add(PreEmitDefect.ColorValueNotHex(nodeId, fieldId, text))
+        | _ -> ()
+
+    /// FUARAN135 / FUARAN136 — the two static checks `Tokens`
+    /// owns, held together for `ratingAndColourValue`'s reason: they run at both
+    /// call sites, and one rule spelt twice is one rule that will differ.
+    ///
+    /// Only `Static` is judged, on the family's standing restraint. Both rules
+    /// are the AUTHORING half of a division the decoder deliberately does not
+    /// hold — it refuses a closed field with NO suggestion slot, because that is
+    /// a control that cannot exist, and refuses nothing about the token list or
+    /// an empty suggestion source, because both are properties a bound slot
+    /// carries in from outside the document.
+    ///
+    /// The duplicate scan reports the FIRST repeat only. A second finding on the
+    /// same field would say the same thing about the same slot, and the remedy
+    /// is one edit; the value is re-scanned on the next pass.
+    let tokensValue (ctx: WalkContext) (nodeId: string) (fieldId: string) (kind: FormFieldKind<'Msg>) =
+        let defects = ctx.Defects
+
+        match kind with
+        | FormFieldKind.Tokens(allowFreeText, _, suggestions, value) ->
+            match suggestions with
+            | Some(Binding.Static(Some [])) when not allowFreeText ->
+                defects.Add(PreEmitDefect.TokensAdmitsNothing(nodeId, fieldId))
             | _ -> ()
 
-            // FUARAN095 (Phase 863): the write side's twin of FUARAN094. The
-            // destination is reachable when `editStateKey` names one, or when
-            // the 663 write-back can land in the grid's own State source.
-            let destinationReachable =
-                spec.EditStateKey.IsSome
-                || (match spec.Source with
-                    | Binding.State _ -> true
-                    | _ -> false)
+            match value with
+            | Some(Binding.Static(Some tokens)) ->
+                let seen = System.Collections.Generic.HashSet<string>()
 
-            for col in spec.Columns do
-                let columnEditable =
-                    match col.Editable with
-                    | Some v -> v
-                    | None -> spec.Editable
-
-                if col.Editable = Some true && not spec.Editable then
-                    defects.Add(
-                        PreEmitDefect.UneditableColumnDeclared(nodeIdStr, col.Label, EditDefect.GridNotEditable)
-                    )
-                elif col.Editable = Some true && columnEditable && not destinationReachable then
-                    defects.Add(
-                        PreEmitDefect.UneditableColumnDeclared(nodeIdStr, col.Label, EditDefect.NoReachableDestination)
-                    )
-
-            spec.PageStateKey
-            |> Option.iter (fun k -> gridOwnStateKeys.Add((nodeIdStr, k)) |> ignore)
-
-            spec.WindowStateKey
-            |> Option.iter (fun k -> gridOwnStateKeys.Add((nodeIdStr, k)) |> ignore)
-
-            match spec.PageSize, spec.PageStateKey with
-            | Some _, None -> defects.Add(PreEmitDefect.PageSizeWithoutPageKey nodeIdStr)
-            | Some _, Some key ->
-                let hostPages =
-                    match spec.Source with
-                    | Binding.Query(_, _, Some deps) -> deps |> List.contains key
-                    | _ -> false
-
-                if hostPages then
-                    defects.Add(PreEmitDefect.DoublePagedGrid(nodeIdStr, key))
-            | None, _ -> ()
-        // FUARAN152 (Phase 1666) — the §21.9 row bound, whole, on the authoring
-        // side. This is the first tenant of the "future kind-specific
-        // invariants land here" note the leaf arm below has carried since 781.
-        | NodeKind.Skeleton spec ->
-            if spec.Rows < 0 || spec.Rows > WireLimits.MaxSkeletonRows then
-                defects.Add(PreEmitDefect.SkeletonRowsOutOfRange(n.Id, spec.Rows))
-        // Display kinds are leaves; future kind-specific invariants (e.g.
-        // HeadingLevel ∈ [1..6]) land here.
-        | NodeKind.Heading _
-        | NodeKind.Markdown _
-        | NodeKind.Metric _
-        | NodeKind.Badge _
-        | NodeKind.Sparkline _
-        | NodeKind.Callout _
-        | NodeKind.Progress _
-        | NodeKind.Icon _
-        | NodeKind.LabelValueRow _
-        | NodeKind.Fact _
-        | NodeKind.Image _
-        | NodeKind.List _
-        | NodeKind.Toast _
-        | NodeKind.CodeBlock _
-        | NodeKind.Math _
-        | NodeKind.Drawing _ -> ()
-        // FUARAN108 (Phase 1076): a media transport with no accessible name.
-        //
-        // Only a LITERAL is judged. A `Bound` or `I18n` label resolves at render
-        // time from data this walk cannot see, so calling it empty would be a
-        // guess — the same restraint FUARAN092 shows for a bound `href` two arms
-        // below. What is left is the case that is decidable and is also the case
-        // that actually happens: `Defaults.media` carries the empty literal so
-        // the record can be constructed, and an author who fills `Src` and
-        // forgets `Label` ships exactly this.
-        //
-        // Whitespace counts as empty. A label of `" "` is not a name a listener
-        // can act on, and admitting it would make the rule trivially evadable by
-        // a space — which is worse than not having the rule, because the
-        // document would then carry a green gate saying it had been checked.
-        | NodeKind.Media spec ->
-            match spec.Label with
-            | TextSource.Literal s when s.Trim() = "" -> defects.Add(PreEmitDefect.MediaWithoutLabel n.Id)
-            | _ -> ()
-
-            // FUARAN113 (Phase 1110): the same judgement, per track. Reported
-            // INDEPENDENTLY of FUARAN108 rather than short-circuiting on it - a
-            // node can carry both defects, and a walk that reported only the
-            // node-level one would send an author back for a second pass after
-            // fixing it.
-            spec.Tracks
-            |> List.iteri (fun i t ->
-                match t.Label with
-                | TextSource.Literal s when s.Trim() = "" -> defects.Add(PreEmitDefect.TrackWithoutLabel(n.Id, i))
-                | _ -> ())
-        // FUARAN115 / FUARAN116 (Phase 1111): the embed's two rules, reported
-        // independently of each other for FUARAN113's reason — a node can carry
-        // both, and a walk that stopped at the first would send an author back
-        // for a second pass. Whitespace counts as empty on FUARAN108's argument:
-        // a title of `" "` is not a name a reader can act on, and admitting it
-        // would make the rule evadable by a space, which is worse than not
-        // having it because the document would then carry a green gate.
-        | NodeKind.Embed spec ->
-            match spec.Title with
-            | TextSource.Literal s when s.Trim() = "" -> defects.Add(PreEmitDefect.EmbedWithoutTitle n.Id)
-            | _ -> ()
-
-            if
-                List.contains EmbedPermission.AllowScripts spec.Permissions
-                && List.contains EmbedPermission.AllowSameOrigin spec.Permissions
-            then
-                defects.Add(PreEmitDefect.EmbedSandboxWeakened n.Id)
-        // FUARAN126 / FUARAN127 (Phase 1120): the tree's two rules, reported
-        // independently of each other for FUARAN113's reason — a tree can carry
-        // both, and a walk that stopped at the first would send an author back
-        // for a second pass.
-        //
-        // Both walk the WHOLE hierarchy, not just the top level. Duplicate ids
-        // are judged across every level rather than per sibling group, because
-        // the State keys they name are flat: the expanded set is a set of ids
-        // with no path in it, so two rows sharing a name at different depths are
-        // exactly as ambiguous as two sharing it side by side.
-        //
-        // Both sets take the DEFAULT comparer, matching every other `seen` /
-        // `reported` pair in this file. Naming `StringComparer.Ordinal`
-        // explicitly says the same thing on .NET and does not compile under
-        // Fable at all — this module is in the Fable-compiled tier, so the
-        // explicit spelling would have made the whole client pipeline
-        // unbuildable to state a default that already holds on both.
-        | NodeKind.Tree spec ->
-            let seen = System.Collections.Generic.HashSet<string>()
-
-            let reported = System.Collections.Generic.HashSet<string>()
-
-            let rec walkItems (items: TreeItem list) =
-                for item in items do
-                    // The first repeat is reported and later ones are not: a row
-                    // id repeated four times is ONE defect with one fix, and
-                    // four findings would bury it.
-                    if not (seen.Add item.Id) && reported.Add item.Id then
-                        defects.Add(PreEmitDefect.TreeItemIdDuplicated(n.Id, item.Id))
-
-                    match item.Label with
-                    | TextSource.Literal s when s.Trim() = "" ->
-                        defects.Add(PreEmitDefect.TreeItemWithoutLabel(n.Id, item.Id))
-                    | _ -> ()
-
-                    walkItems item.Children
-
-            walkItems spec.Items
-        // FUARAN092 (Phase 812): email protection declared over an href that
-        // is statically known not to be a mailto:. Bound hrefs (Query / State
-        // / …) resolve at runtime and are not judged here.
-        | NodeKind.Link spec ->
-            match spec.Protection, spec.Href with
-            | Some LinkProtection.Email, Binding.Static(Some href) when
-                not (href.StartsWith("mailto:", System.StringComparison.Ordinal))
-                ->
-                defects.Add(PreEmitDefect.ProtectedNonMailtoLink n.Id)
-            | Some LinkProtection.Email, Binding.Static None -> defects.Add(PreEmitDefect.ProtectedNonMailtoLink n.Id)
-            | _ -> ()
-        // FUARAN069 (Phase 426): an interactive input whose handler is
-        // omitted needs a writable value binding for the write-back
-        // default to target; anything else is an inert control. Filter
-        // chips are exempt — a handler-free chip always writes its own
-        // `$filters.<name>` (Phase 423), so it can never be inert.
-        | NodeKind.Form spec ->
-            let nodeIdStr = n.Id
-
-            let checkField (field: FormField<'Msg>) =
-                // Phase 596 (FUARAN085): a handler-free field whose value is
-                // directly `State(key, _)` WRITES that key — record it so
-                // post-walk we can flag two writers on one key. An OMITTED
-                // value slot (`None`) is the Phase 596 symmetric auto-bind and
-                // writes `$state.<field id>` — record the field id as the key
-                // (this is the shape a decoded / AI-authored field takes).
-                let recordWriteBack (value: Binding<'v> option) (handlerAbsent: bool) =
-                    if handlerAbsent then
-                        match value with
-                        | Some(Binding.State(key, _)) -> writeBackKeys.Add(key, nodeIdStr, field.Id)
-                        | None -> writeBackKeys.Add(field.Id, nodeIdStr, field.Id)
-                        | Some _ -> ()
-
-                (match field.Kind with
-                 | FormFieldKind.Text(value, oc) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.Number(value, oc) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.Checkbox(value, ot) -> recordWriteBack value ot.IsNone
-                 | FormFieldKind.Toggle(value, ot) -> recordWriteBack value ot.IsNone
-                 | FormFieldKind.Choice(_, value, oc) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.TextArea(value, oc, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.RangedNumber(value, oc, _, _, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.Range(value, oc, _, _, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.SegmentedChoice(_, value, oc, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.DateTime(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.DateTimeRange(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.Combobox(_, oc, _, value) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.Rating(_, _, oc, value) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.Color(oc, value) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.Tokens(_, oc, _, value) -> recordWriteBack value oc.IsNone)
-
-                // ── Phase 864 — the declared-rule family (FUARAN099/100/101) ──
-                //
-                // A field OWNS a state key when the key is its own id (the
-                // auto-bind puts its value there) or its value binding names
-                // one directly. Recorded for every field, rule or no rule,
-                // because a compare on field A is satisfied by field B's
-                // ownership and the two are seen in either order.
-                formOwnedStateKeys.Add field.Id |> ignore
-
-                let recordOwnedKey (value: Binding<'v> option) =
-                    match value with
-                    | Some(Binding.State(key, _)) -> formOwnedStateKeys.Add key |> ignore
-                    | _ -> ()
-
-                (match field.Kind with
-                 | FormFieldKind.Text(value, _) -> recordOwnedKey value
-                 | FormFieldKind.Number(value, _) -> recordOwnedKey value
-                 | FormFieldKind.Checkbox(value, _) -> recordOwnedKey value
-                 | FormFieldKind.Toggle(value, _) -> recordOwnedKey value
-                 | FormFieldKind.Choice(_, value, _) -> recordOwnedKey value
-                 | FormFieldKind.TextArea(value, _, _) -> recordOwnedKey value
-                 | FormFieldKind.RangedNumber(value, _, _, _, _) -> recordOwnedKey value
-                 | FormFieldKind.Range(value, _, _, _, _) -> recordOwnedKey value
-                 | FormFieldKind.SegmentedChoice(_, value, _, _) -> recordOwnedKey value
-                 | FormFieldKind.DateTime(value, _, _, _, _, _) -> recordOwnedKey value
-                 | FormFieldKind.DateTimeRange(value, _, _, _, _, _) -> recordOwnedKey value
-                 | FormFieldKind.Combobox(_, _, _, value) -> recordOwnedKey value
-                 | FormFieldKind.Rating(_, _, _, value) -> recordOwnedKey value
-                 | FormFieldKind.Color(_, value) -> recordOwnedKey value
-                 | FormFieldKind.Tokens(_, _, _, value) -> recordOwnedKey value)
-
-                match field.Rule with
+                match tokens |> List.tryFind (fun t -> not (seen.Add t)) with
+                | Some repeated -> defects.Add(PreEmitDefect.TokensStaticDuplicate(nodeId, fieldId, repeated))
                 | None -> ()
-                | Some rule ->
-                    // What this control can honour. `compare` is absent from the
-                    // table on purpose: it is a comparison of the field's VALUE,
-                    // which every control has. The name is the one a message
-                    // shows the author, so it is the wire discriminator.
-                    let control, honoursFormat, honoursTextBounds =
-                        match field.Kind with
-                        | FormFieldKind.Text _ -> "Text", true, true
-                        | FormFieldKind.TextArea _ -> "TextArea", false, true
-                        | FormFieldKind.Number _ -> "Number", false, false
-                        | FormFieldKind.Checkbox _ -> "Checkbox", false, false
-                        | FormFieldKind.Toggle _ -> "Toggle", false, false
-                        | FormFieldKind.Choice _ -> "Choice", false, false
-                        | FormFieldKind.RangedNumber _ -> "RangedNumber", false, false
-                        | FormFieldKind.Range _ -> "Range", false, false
-                        | FormFieldKind.SegmentedChoice _ -> "SegmentedChoice", false, false
-                        | FormFieldKind.DateTime _ -> "DateTime", false, false
-                        | FormFieldKind.DateTimeRange _ -> "DateTimeRange", false, false
-                        // Phase 1113 — the combobox is a choice-shaped control,
-                        // so it honours neither the text bounds nor `format`,
-                        // exactly as `Choice` does. `allowFreeText` does NOT
-                        // change that: what the reader types is still a
-                        // selection expressed by typing, and a rule asking for
-                        // an email format on a suggestion list is the confusion
-                        // this table exists to name.
-                        | FormFieldKind.Combobox _ -> "Combobox", false, false
-                        // Phase 1130 — neither new control honours a text bound
-                        // or a `format`. A rating is a number on a scale it
-                        // declares itself; a colour's own format is fixed by the
-                        // control and enforced by the decoder, the validator and
-                        // the submission floor, so a `format` slot on it would be
-                        // a second, weaker statement of a rule the control
-                        // already holds absolutely.
-                        | FormFieldKind.Rating _ -> "Rating", false, false
-                        | FormFieldKind.Color _ -> "Color", false, false
-                        // Phase 1121 — a token field's VALUE is a list, and
-                        // every slot in this table constrains a single piece of
-                        // text: `minLength` over a list has two readings (how
-                        // many tokens, or how long each is) and `format` has no
-                        // reading at all. Rather than pick one silently, the
-                        // control honours neither and an author asking for one
-                        // is told. The constraint a token field DOES carry is
-                        // its own — `allowFreeText` over the suggestion set,
-                        // enforced by the renderer, the validator and the
-                        // server-side floor.
-                        | FormFieldKind.Tokens _ -> "Tokens", false, false
-
-                    let unhonourable (slot: RuleSlot) =
-                        defects.Add(PreEmitDefect.RuleSlotUnhonourable(nodeIdStr, field.Id, slot, control))
-
-                    if rule.Format.IsSome && not honoursFormat then
-                        unhonourable RuleSlot.Format
-
-                    if rule.Pattern.IsSome && not honoursTextBounds then
-                        unhonourable RuleSlot.Pattern
-
-                    if rule.MinLength.IsSome && not honoursTextBounds then
-                        unhonourable RuleSlot.MinLength
-
-                    if rule.MaxLength.IsSome && not honoursTextBounds then
-                        unhonourable RuleSlot.MaxLength
-
-                    match rule.Compare with
-                    | None -> ()
-                    | Some cmp ->
-                        match cmp.Against with
-                        | Binding.State(key, _) when key <> "" -> compareStateReads.Add(nodeIdStr, field.Id, key)
-                        | Binding.Static _ ->
-                            // FUARAN101 — the operand is a literal, so the only
-                            // question is whether the control already declares
-                            // the equivalent bound. `gte`/`gt` duplicate a
-                            // lower bound, `lte`/`lt` an upper one; `eq`/`neq`
-                            // duplicate neither and are silent.
-                            let lower, upper =
-                                match field.Kind with
-                                | FormFieldKind.RangedNumber(_, _, mn, mx, _) ->
-                                    (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
-                                | FormFieldKind.Range(_, _, mn, mx, _) ->
-                                    (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
-                                | FormFieldKind.DateTime(_, _, _, mn, mx, _) ->
-                                    (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
-                                | FormFieldKind.DateTimeRange(_, _, _, mn, mx, _) ->
-                                    (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
-                                | _ -> None, None
-
-                            let duplicated =
-                                match cmp.Op with
-                                | CompareOp.Gt
-                                | CompareOp.Gte -> lower
-                                | CompareOp.Lt
-                                | CompareOp.Lte -> upper
-                                | CompareOp.Eq
-                                | CompareOp.Neq -> None
-
-                            match duplicated with
-                            | Some bound ->
-                                defects.Add(
-                                    PreEmitDefect.CompareDuplicatesBound(nodeIdStr, field.Id, control + "." + bound)
-                                )
-                            | None -> ()
-                        | _ -> ()
-
-                // An OMITTED value slot is always live: the Phase 596 auto-bind
-                // gives the write-back default `$state.<field id>` to write to.
-                let valueLive (value: Binding<'v> option) =
-                    match value with
-                    | None -> true
-                    | Some b -> isWriteBackTarget b
-
-                let inert =
-                    match field.Kind with
-                    | FormFieldKind.Text(value, oc) -> oc.IsNone && not (valueLive value)
-                    | FormFieldKind.Number(value, oc) -> oc.IsNone && not (valueLive value)
-                    | FormFieldKind.Checkbox(value, ot) -> ot.IsNone && not (valueLive value)
-                    | FormFieldKind.Toggle(value, ot) -> ot.IsNone && not (valueLive value)
-                    | FormFieldKind.Choice(_, value, oc) -> oc.IsNone && not (valueLive value)
-                    | FormFieldKind.TextArea(value, oc, _) -> oc.IsNone && not (valueLive value)
-                    | FormFieldKind.RangedNumber(value, oc, _, _, _) -> oc.IsNone && not (valueLive value)
-                    | FormFieldKind.Range(value, oc, _, _, _) -> oc.IsNone && not (valueLive value)
-                    | FormFieldKind.SegmentedChoice(_, value, oc, _) -> oc.IsNone && not (valueLive value)
-                    | FormFieldKind.DateTime(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
-                    | FormFieldKind.DateTimeRange(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
-                    | FormFieldKind.Combobox(_, oc, _, value) -> oc.IsNone && not (valueLive value)
-                    // Phase 1648 — RATING IS EXEMPT, and this is a decision
-                    // rather than an omission.
-                    //
-                    // A handler-less rating with a static value was reported
-                    // inert, so a tree that DECODES cleanly failed pre-emit —
-                    // and the question the 1129 findings left open was which of
-                    // the two was right. The tree answers it: BOTH renderers
-                    // implement the read-only rating as a designed rendition
-                    // rather than tolerating it. On exactly this predicate
-                    // (`onChange.IsNone && not (isWriteBackTarget value)`) the
-                    // server emits `fuaran-rating-static` with `role="img"` and
-                    // an `aria-label` carrying the score, and the client hands
-                    // `RatingControl` `interactive = false`, which switches its
-                    // ARIA from `slider` to `img` and drops the keyboard model.
-                    // A rendition with its own class, its own role and its own
-                    // recorded accessibility decision is not an accident the
-                    // validator should be warning about.
-                    //
-                    // And the reading generalises: "4 stars, as scored" is a
-                    // legitimate thing for a form to SHOW beside the fields a
-                    // reader fills in, where "a text box nobody can type into"
-                    // is not. FUARAN069's premise — that an interactive control
-                    // with nowhere to write is a mistake — simply does not hold
-                    // for the one control family that has a non-interactive
-                    // rendition by design.
-                    //
-                    // `Color` deliberately keeps the rule: `<input type="color">`
-                    // IS the control on every host, there is no static rendition
-                    // of it, and a colour input nobody can change is the defect
-                    // FUARAN069 describes.
-                    | FormFieldKind.Rating _ -> false
-                    | FormFieldKind.Color(oc, value) -> oc.IsNone && not (valueLive value)
-                    | FormFieldKind.Tokens(_, oc, _, value) -> oc.IsNone && not (valueLive value)
-
-                comboboxWithoutOptions nodeIdStr field.Id field.Kind
-                ratingAndColourValue nodeIdStr field.Id field.Kind
-                tokensValue nodeIdStr field.Id field.Kind
-
-                if inert then
-                    defects.Add(PreEmitDefect.InertControl(nodeIdStr, sprintf "FormField(%s)" field.Id))
-
-            spec.Fields |> List.iter checkField
-        | NodeKind.Select spec ->
-            let nodeIdStr = n.Id
-
-            if spec.Multiple = Some true then
-                let valuesLive =
-                    match spec.Values with
-                    | Some values -> isWriteBackTarget values
-                    | None -> false
-
-                if spec.OnChangeMulti.IsNone && not valuesLive then
-                    defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select(multiple)"))
-            elif spec.OnChange.IsNone && not (isWriteBackTarget spec.Value) then
-                defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select"))
-        | NodeKind.Filters spec ->
-            // Phase 1113 — a filter chip carries an ordinary `FormFieldKind`
-            // since the 0.2.0 unification, so an empty static combobox is the
-            // same defect here as on a form field and is reported by the same
-            // rule. Split out of the no-op group below for that one check; the
-            // rest of a Filters node is still walked elsewhere.
-            spec.Items
-            |> List.iter (fun item ->
-                comboboxWithoutOptions n.Id item.Name item.Kind
-                // Phase 1130 — the same argument, one control family further:
-                // a chip's rating and colour carry the same value rules a
-                // field's do, and a walk that saw only forms would leave the
-                // chip route unjudged.
-                ratingAndColourValue n.Id item.Name item.Kind
-                tokensValue n.Id item.Name item.Kind)
-        | NodeKind.FileUpload spec ->
-            // FUARAN121 (Phase 1115) — a declared ingress gesture with nothing
-            // to consume it. Split out of the no-op group for this one check.
-            if spec.OnSelect.IsNone && (spec.DropTarget || spec.AcceptPaste) then
-                let gestures =
-                    match spec.DropTarget, spec.AcceptPaste with
-                    | true, true -> "dropTarget and acceptPaste"
-                    | true, false -> "dropTarget"
-                    | _ -> "acceptPaste"
-
-                defects.Add(PreEmitDefect.UploadGestureWithoutHandler(n.Id, gestures))
-
-            // FUARAN134 (Phase 1116) — a capture device the accept list cannot
-            // select. Independent of FUARAN121 above: a handler-less capture
-            // upload is BOTH defects, and each names a different repair.
-            match spec.Capture with
-            | Some source when not (MediaCapture.acceptSelectsDevice source spec.Accept) ->
-                defects.Add(PreEmitDefect.CaptureAcceptMismatch(n.Id, string source, spec.Accept))
             | _ -> ()
-        | NodeKind.Button _ -> ()
-        | NodeKind.Chart(spec) ->
-            // FUARAN086–089 (Phase 640): schema-grounded chart validation. An
-            // ungrounded field reference is the LANGUAGE's defect to catch
-            // before lowering — a wrong field name otherwise lowers to a
-            // silently flat/empty chart.
-            let nodeIdStr = n.Id
+        | _ -> ()
 
-            let kindName =
-                match spec.Kind with
-                | ChartKind.Line -> "Line"
-                | ChartKind.Bar -> "Bar"
-                | ChartKind.Area -> "Area"
-                | ChartKind.Pie -> "Pie"
-                | ChartKind.Scatter -> "Scatter"
-                | ChartKind.Heatmap -> "Heatmap"
+    // FUARAN069: an interactive input whose handler is
+    // omitted needs a writable value binding for the write-back
+    // default to target; anything else is an inert control. Filter
+    // chips are exempt — a handler-free chip always writes its own
+    // `$filters.<name>`, so it can never be inert.
+    let form (ctx: WalkContext) (n: Node<'Msg>) (spec: FormSpec<'Msg>) : unit =
+        let defects = ctx.Defects
+        let writeBackKeys = ctx.Acc.WriteBackKeys
+        let compareStateReads = ctx.Acc.CompareStateReads
+        let formOwnedStateKeys = ctx.Acc.FormOwnedStateKeys
+        let nodeIdStr = n.Id
 
-            // FUARAN088 — pie needs exactly one series (the 638 lowering
-            // refuses multi-series geometry rather than truncating).
-            (match spec.Kind with
-             | ChartKind.Pie when spec.YFields.Length <> 1 ->
-                 defects.Add(PreEmitDefect.ChartPieSeriesShape(nodeIdStr, spec.YFields.Length))
-             | _ -> ())
+        let checkField (field: FormField<'Msg>) =
+            // FUARAN085: a handler-free field whose value is
+            // directly `State(key, _)` WRITES that key — record it so
+            // post-walk we can flag two writers on one key. An OMITTED
+            // value slot (`None`) is the Phase 596 symmetric auto-bind and
+            // writes `$state.<field id>` — record the field id as the key
+            // (this is the shape a decoded / AI-authored field takes).
+            let recordWriteBack (value: Binding<'v> option) (handlerAbsent: bool) =
+                if handlerAbsent then
+                    match value with
+                    | Some(Binding.State(key, _)) -> writeBackKeys.Add(key, nodeIdStr, field.Id)
+                    | None -> writeBackKeys.Add(field.Id, nodeIdStr, field.Id)
+                    | Some _ -> ()
 
-            // FUARAN089 — Stacked is dead intent outside Bar/Area.
-            (match spec.Kind with
-             | ChartKind.Line
-             | ChartKind.Scatter
-             | ChartKind.Pie when spec.Stacked ->
-                 defects.Add(PreEmitDefect.ChartStackedMeaningless(nodeIdStr, kindName))
-             | _ -> ())
+            (match field.Kind with
+             | FormFieldKind.Text(value, oc) -> recordWriteBack value oc.IsNone
+             | FormFieldKind.Number(value, oc) -> recordWriteBack value oc.IsNone
+             | FormFieldKind.Checkbox(value, ot) -> recordWriteBack value ot.IsNone
+             | FormFieldKind.Toggle(value, ot) -> recordWriteBack value ot.IsNone
+             | FormFieldKind.Choice(_, value, oc) -> recordWriteBack value oc.IsNone
+             | FormFieldKind.TextArea(value, oc, _) -> recordWriteBack value oc.IsNone
+             | FormFieldKind.RangedNumber(value, oc, _, _, _) -> recordWriteBack value oc.IsNone
+             | FormFieldKind.Range(value, oc, _, _, _) -> recordWriteBack value oc.IsNone
+             | FormFieldKind.SegmentedChoice(_, value, oc, _) -> recordWriteBack value oc.IsNone
+             | FormFieldKind.DateTime(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
+             | FormFieldKind.DateTimeRange(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
+             | FormFieldKind.Combobox(_, oc, _, value) -> recordWriteBack value oc.IsNone
+             | FormFieldKind.Rating(_, _, oc, value) -> recordWriteBack value oc.IsNone
+             | FormFieldKind.Color(oc, value) -> recordWriteBack value oc.IsNone
+             | FormFieldKind.Tokens(_, oc, _, value) -> recordWriteBack value oc.IsNone)
 
-            // FUARAN137 (Phase 1490, widened by 1492) — a non-finite annotation
-            // value, read off the SPEC's own literal rather than off the data,
-            // which is why it needs no schema window and is total over every
-            // source shape.
+            // ── The declared-rule family (FUARAN099/100/101) ──
             //
-            // The ordinal in each subject is per CASE, matching the `<n>` in the
-            // mark id, so the finding names the mark the picture would have
-            // drawn. It is counted over ALL of the case's annotations rather
-            // than over the surviving ones: a non-finite value is a defect to
-            // repair, not a member to renumber around, and a fix must not
-            // silently move its neighbours' identities.
-            let referenceValues =
-                spec.Annotations
-                |> Option.defaultValue []
-                |> List.choose (fun a ->
-                    match a with
-                    | ChartAnnotation.ReferenceLine(v, _) -> Some v
-                    | _ -> None)
+            // A field OWNS a state key when the key is its own id (the
+            // auto-bind puts its value there) or its value binding names
+            // one directly. Recorded for every field, rule or no rule,
+            // because a compare on field A is satisfied by field B's
+            // ownership and the two are seen in either order.
+            formOwnedStateKeys.Add field.Id |> ignore
 
-            /// The band arm's ENDS, each with its own subject, so a pair with
-            /// one bad end names that end. Phase 1492's argument for prose
-            /// subjects in one line: `range band 0 (to)` is a repair
-            /// instruction where a bare `0` is a riddle.
-            let bandValues =
-                spec.Annotations
-                |> Option.defaultValue []
-                |> List.choose (fun a ->
-                    match a with
-                    | ChartAnnotation.RangeBand(range, _) -> Some range
-                    | _ -> None)
-                |> List.mapi (fun i range ->
-                    match range with
-                    | ChartAnnotationRange.ValueRange(f, t) ->
-                        [ sprintf "range band %d (from)" i, f; sprintf "range band %d (to)" i, t ]
-                    | _ -> [])
-                |> List.concat
+            let recordOwnedKey (value: Binding<'v> option) =
+                match value with
+                | Some(Binding.State(key, _)) -> formOwnedStateKeys.Add key |> ignore
+                | _ -> ()
 
-            let nonFiniteSpelling (v: float) : string option =
-                if System.Double.IsNaN v then
-                    Some "NaN"
-                elif System.Double.IsPositiveInfinity v then
-                    Some "Infinity"
-                elif System.Double.IsNegativeInfinity v then
-                    Some "-Infinity"
-                else
-                    Option.None
+            (match field.Kind with
+             | FormFieldKind.Text(value, _) -> recordOwnedKey value
+             | FormFieldKind.Number(value, _) -> recordOwnedKey value
+             | FormFieldKind.Checkbox(value, _) -> recordOwnedKey value
+             | FormFieldKind.Toggle(value, _) -> recordOwnedKey value
+             | FormFieldKind.Choice(_, value, _) -> recordOwnedKey value
+             | FormFieldKind.TextArea(value, _, _) -> recordOwnedKey value
+             | FormFieldKind.RangedNumber(value, _, _, _, _) -> recordOwnedKey value
+             | FormFieldKind.Range(value, _, _, _, _) -> recordOwnedKey value
+             | FormFieldKind.SegmentedChoice(_, value, _, _) -> recordOwnedKey value
+             | FormFieldKind.DateTime(value, _, _, _, _, _) -> recordOwnedKey value
+             | FormFieldKind.DateTimeRange(value, _, _, _, _, _) -> recordOwnedKey value
+             | FormFieldKind.Combobox(_, _, _, value) -> recordOwnedKey value
+             | FormFieldKind.Rating(_, _, _, value) -> recordOwnedKey value
+             | FormFieldKind.Color(_, value) -> recordOwnedKey value
+             | FormFieldKind.Tokens(_, _, _, value) -> recordOwnedKey value)
 
-            (referenceValues |> List.mapi (fun i v -> sprintf "reference line %d" i, v))
-            @ bandValues
-            |> List.iter (fun (subject, v) ->
-                match nonFiniteSpelling v with
-                | Some spelling -> defects.Add(PreEmitDefect.ChartAnnotationNonFinite(nodeIdStr, subject, spelling))
-                | Option.None -> ())
+            match field.Rule with
+            | None -> ()
+            | Some rule ->
+                // What this control can honour. `compare` is absent from the
+                // table on purpose: it is a comparison of the field's VALUE,
+                // which every control has. The name is the one a message
+                // shows the author, so it is the wire discriminator.
+                let control, honoursFormat, honoursTextBounds =
+                    match field.Kind with
+                    | FormFieldKind.Text _ -> "Text", true, true
+                    | FormFieldKind.TextArea _ -> "TextArea", false, true
+                    | FormFieldKind.Number _ -> "Number", false, false
+                    | FormFieldKind.Checkbox _ -> "Checkbox", false, false
+                    | FormFieldKind.Toggle _ -> "Toggle", false, false
+                    | FormFieldKind.Choice _ -> "Choice", false, false
+                    | FormFieldKind.RangedNumber _ -> "RangedNumber", false, false
+                    | FormFieldKind.Range _ -> "Range", false, false
+                    | FormFieldKind.SegmentedChoice _ -> "SegmentedChoice", false, false
+                    | FormFieldKind.DateTime _ -> "DateTime", false, false
+                    | FormFieldKind.DateTimeRange _ -> "DateTimeRange", false, false
+                    // The combobox is a choice-shaped control,
+                    // so it honours neither the text bounds nor `format`,
+                    // exactly as `Choice` does. `allowFreeText` does NOT
+                    // change that: what the reader types is still a
+                    // selection expressed by typing, and a rule asking for
+                    // an email format on a suggestion list is the confusion
+                    // this table exists to name.
+                    | FormFieldKind.Combobox _ -> "Combobox", false, false
+                    // Neither new control honours a text bound
+                    // or a `format`. A rating is a number on a scale it
+                    // declares itself; a colour's own format is fixed by the
+                    // control and enforced by the decoder, the validator and
+                    // the submission floor, so a `format` slot on it would be
+                    // a second, weaker statement of a rule the control
+                    // already holds absolutely.
+                    | FormFieldKind.Rating _ -> "Rating", false, false
+                    | FormFieldKind.Color _ -> "Color", false, false
+                    // A token field's VALUE is a list, and
+                    // every slot in this table constrains a single piece of
+                    // text: `minLength` over a list has two readings (how
+                    // many tokens, or how long each is) and `format` has no
+                    // reading at all. Rather than pick one silently, the
+                    // control honours neither and an author asking for one
+                    // is told. The constraint a token field DOES carry is
+                    // its own — `allowFreeText` over the suggestion set,
+                    // enforced by the renderer, the validator and the
+                    // server-side floor.
+                    | FormFieldKind.Tokens _ -> "Tokens", false, false
 
-            // FUARAN138/139/140 (Phase 1491) — the event marker's X ADDRESS,
-            // §4l rule 1's declared-not-sniffed posture made a refusal.
-            //
-            // PIE IS SILENT, matching the lowering, which neutralises the whole
-            // annotation family there (Phase 1490's treatment, itself Phase
-            // 882's for `xScale`): the polar arm HAS no x axis, so there is no
-            // axis form for an address to match or mismatch, and a code that
-            // fired on one would be reporting the absence of a space rather than
-            // a defect in the document.
-            (match spec.Kind with
-             | ChartKind.Pie -> ()
-             | _ ->
+                let unhonourable (slot: RuleSlot) =
+                    defects.Add(PreEmitDefect.RuleSlotUnhonourable(nodeIdStr, field.Id, slot, control))
+
+                if rule.Format.IsSome && not honoursFormat then
+                    unhonourable RuleSlot.Format
+
+                if rule.Pattern.IsSome && not honoursTextBounds then
+                    unhonourable RuleSlot.Pattern
+
+                if rule.MinLength.IsSome && not honoursTextBounds then
+                    unhonourable RuleSlot.MinLength
+
+                if rule.MaxLength.IsSome && not honoursTextBounds then
+                    unhonourable RuleSlot.MaxLength
+
+                match rule.Compare with
+                | None -> ()
+                | Some cmp ->
+                    match cmp.Against with
+                    | Binding.State(key, _) when key <> "" -> compareStateReads.Add(nodeIdStr, field.Id, key)
+                    | Binding.Static _ ->
+                        // FUARAN101 — the operand is a literal, so the only
+                        // question is whether the control already declares
+                        // the equivalent bound. `gte`/`gt` duplicate a
+                        // lower bound, `lte`/`lt` an upper one; `eq`/`neq`
+                        // duplicate neither and are silent.
+                        let lower, upper =
+                            match field.Kind with
+                            | FormFieldKind.RangedNumber(_, _, mn, mx, _) ->
+                                (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
+                            | FormFieldKind.Range(_, _, mn, mx, _) ->
+                                (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
+                            | FormFieldKind.DateTime(_, _, _, mn, mx, _) ->
+                                (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
+                            | FormFieldKind.DateTimeRange(_, _, _, mn, mx, _) ->
+                                (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
+                            | _ -> None, None
+
+                        let duplicated =
+                            match cmp.Op with
+                            | CompareOp.Gt
+                            | CompareOp.Gte -> lower
+                            | CompareOp.Lt
+                            | CompareOp.Lte -> upper
+                            | CompareOp.Eq
+                            | CompareOp.Neq -> None
+
+                        match duplicated with
+                        | Some bound ->
+                            defects.Add(
+                                PreEmitDefect.CompareDuplicatesBound(nodeIdStr, field.Id, control + "." + bound)
+                            )
+                        | None -> ()
+                    | _ -> ()
+
+            // An OMITTED value slot is always live: the Phase 596 auto-bind
+            // gives the write-back default `$state.<field id>` to write to.
+            let valueLive (value: Binding<'v> option) =
+                match value with
+                | None -> true
+                | Some b -> isWriteBackTarget b
+
+            let inert =
+                match field.Kind with
+                | FormFieldKind.Text(value, oc) -> oc.IsNone && not (valueLive value)
+                | FormFieldKind.Number(value, oc) -> oc.IsNone && not (valueLive value)
+                | FormFieldKind.Checkbox(value, ot) -> ot.IsNone && not (valueLive value)
+                | FormFieldKind.Toggle(value, ot) -> ot.IsNone && not (valueLive value)
+                | FormFieldKind.Choice(_, value, oc) -> oc.IsNone && not (valueLive value)
+                | FormFieldKind.TextArea(value, oc, _) -> oc.IsNone && not (valueLive value)
+                | FormFieldKind.RangedNumber(value, oc, _, _, _) -> oc.IsNone && not (valueLive value)
+                | FormFieldKind.Range(value, oc, _, _, _) -> oc.IsNone && not (valueLive value)
+                | FormFieldKind.SegmentedChoice(_, value, oc, _) -> oc.IsNone && not (valueLive value)
+                | FormFieldKind.DateTime(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
+                | FormFieldKind.DateTimeRange(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
+                | FormFieldKind.Combobox(_, oc, _, value) -> oc.IsNone && not (valueLive value)
+                // RATING IS EXEMPT, and this is a decision
+                // rather than an omission.
+                //
+                // A handler-less rating with a static value was reported
+                // inert, so a tree that DECODES cleanly failed pre-emit —
+                // and the question the 1129 findings left open was which of
+                // the two was right. The tree answers it: BOTH renderers
+                // implement the read-only rating as a designed rendition
+                // rather than tolerating it. On exactly this predicate
+                // (`onChange.IsNone && not (isWriteBackTarget value)`) the
+                // server emits `fuaran-rating-static` with `role="img"` and
+                // an `aria-label` carrying the score, and the client hands
+                // `RatingControl` `interactive = false`, which switches its
+                // ARIA from `slider` to `img` and drops the keyboard model.
+                // A rendition with its own class, its own role and its own
+                // recorded accessibility decision is not an accident the
+                // validator should be warning about.
+                //
+                // And the reading generalises: "4 stars, as scored" is a
+                // legitimate thing for a form to SHOW beside the fields a
+                // reader fills in, where "a text box nobody can type into"
+                // is not. FUARAN069's premise — that an interactive control
+                // with nowhere to write is a mistake — simply does not hold
+                // for the one control family that has a non-interactive
+                // rendition by design.
+                //
+                // `Color` deliberately keeps the rule: `<input type="color">`
+                // IS the control on every host, there is no static rendition
+                // of it, and a colour input nobody can change is the defect
+                // FUARAN069 describes.
+                | FormFieldKind.Rating _ -> false
+                | FormFieldKind.Color(oc, value) -> oc.IsNone && not (valueLive value)
+                | FormFieldKind.Tokens(_, oc, _, value) -> oc.IsNone && not (valueLive value)
+
+            comboboxWithoutOptions ctx nodeIdStr field.Id field.Kind
+            ratingAndColourValue ctx nodeIdStr field.Id field.Kind
+            tokensValue ctx nodeIdStr field.Id field.Kind
+
+            if inert then
+                defects.Add(PreEmitDefect.InertControl(nodeIdStr, sprintf "FormField(%s)" field.Id))
+
+        spec.Fields |> List.iter checkField
+
+    let select (ctx: WalkContext) (n: Node<'Msg>) (spec: SelectSpec<'Msg>) : unit =
+        let defects = ctx.Defects
+        let nodeIdStr = n.Id
+
+        if spec.Multiple = Some true then
+            let valuesLive =
+                match spec.Values with
+                | Some values -> isWriteBackTarget values
+                | None -> false
+
+            if spec.OnChangeMulti.IsNone && not valuesLive then
+                defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select(multiple)"))
+        elif spec.OnChange.IsNone && not (isWriteBackTarget spec.Value) then
+            defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select"))
+
+    let filters (ctx: WalkContext) (n: Node<'Msg>) (spec: FiltersSpec<'Msg>) : unit =
+        // A filter chip carries an ordinary `FormFieldKind`
+        // since the 0.2.0 unification, so an empty static combobox is the
+        // same defect here as on a form field and is reported by the same
+        // rule. Split out of the no-op group below for that one check; the
+        // rest of a Filters node is still walked elsewhere.
+        spec.Items
+        |> List.iter (fun item ->
+            comboboxWithoutOptions ctx n.Id item.Name item.Kind
+            // The same argument, one control family further:
+            // a chip's rating and colour carry the same value rules a
+            // field's do, and a walk that saw only forms would leave the
+            // chip route unjudged.
+            ratingAndColourValue ctx n.Id item.Name item.Kind
+            tokensValue ctx n.Id item.Name item.Kind)
+
+    let fileUpload (ctx: WalkContext) (n: Node<'Msg>) (spec: FileUploadSpec<'Msg>) : unit =
+        let defects = ctx.Defects
+        // FUARAN121 — a declared ingress gesture with nothing
+        // to consume it. Split out of the no-op group for this one check.
+        if spec.OnSelect.IsNone && (spec.DropTarget || spec.AcceptPaste) then
+            let gestures =
+                match spec.DropTarget, spec.AcceptPaste with
+                | true, true -> "dropTarget and acceptPaste"
+                | true, false -> "dropTarget"
+                | _ -> "acceptPaste"
+
+            defects.Add(PreEmitDefect.UploadGestureWithoutHandler(n.Id, gestures))
+
+        // FUARAN134 — a capture device the accept list cannot
+        // select. Independent of FUARAN121 above: a handler-less capture
+        // upload is BOTH defects, and each names a different repair.
+        match spec.Capture with
+        | Some source when not (MediaCapture.acceptSelectsDevice source spec.Accept) ->
+            defects.Add(PreEmitDefect.CaptureAcceptMismatch(n.Id, string source, spec.Accept))
+        | _ -> ()
+
+/// `Chart`: schema grounding of fields and annotations against the source it lowers.
+module private ChartRules =
+
+    let check (ctx: WalkContext) (n: Node<'Msg>) (spec: ChartSpec<'Msg>) : unit =
+        let defects = ctx.Defects
+        let producedSchemaOf = ctx.ProducedSchemaOf
+        // FUARAN086–089: schema-grounded chart validation. An
+        // ungrounded field reference is the LANGUAGE's defect to catch
+        // before lowering — a wrong field name otherwise lowers to a
+        // silently flat/empty chart.
+        let nodeIdStr = n.Id
+
+        let kindName =
+            match spec.Kind with
+            | ChartKind.Line -> "Line"
+            | ChartKind.Bar -> "Bar"
+            | ChartKind.Area -> "Area"
+            | ChartKind.Pie -> "Pie"
+            | ChartKind.Scatter -> "Scatter"
+            | ChartKind.Heatmap -> "Heatmap"
+
+        // FUARAN088 — pie needs exactly one series (the 638 lowering
+        // refuses multi-series geometry rather than truncating).
+        (match spec.Kind with
+         | ChartKind.Pie when spec.YFields.Length <> 1 ->
+             defects.Add(PreEmitDefect.ChartPieSeriesShape(nodeIdStr, spec.YFields.Length))
+         | _ -> ())
+
+        // FUARAN089 — Stacked is dead intent outside Bar/Area.
+        (match spec.Kind with
+         | ChartKind.Line
+         | ChartKind.Scatter
+         | ChartKind.Pie when spec.Stacked -> defects.Add(PreEmitDefect.ChartStackedMeaningless(nodeIdStr, kindName))
+         | _ -> ())
+
+        // FUARAN137 — a non-finite annotation
+        // value, read off the SPEC's own literal rather than off the data,
+        // which is why it needs no schema window and is total over every
+        // source shape.
+        //
+        // The ordinal in each subject is per CASE, matching the `<n>` in the
+        // mark id, so the finding names the mark the picture would have
+        // drawn. It is counted over ALL of the case's annotations rather
+        // than over the surviving ones: a non-finite value is a defect to
+        // repair, not a member to renumber around, and a fix must not
+        // silently move its neighbours' identities.
+        let referenceValues =
+            spec.Annotations
+            |> Option.defaultValue []
+            |> List.choose (fun a ->
+                match a with
+                | ChartAnnotation.ReferenceLine(v, _) -> Some v
+                | _ -> None)
+
+        /// The band arm's ENDS, each with its own subject, so a pair with
+        /// one bad end names that end. Phase 1492's argument for prose
+        /// subjects in one line: `range band 0 (to)` is a repair
+        /// instruction where a bare `0` is a riddle.
+        let bandValues =
+            spec.Annotations
+            |> Option.defaultValue []
+            |> List.choose (fun a ->
+                match a with
+                | ChartAnnotation.RangeBand(range, _) -> Some range
+                | _ -> None)
+            |> List.mapi (fun i range ->
+                match range with
+                | ChartAnnotationRange.ValueRange(f, t) ->
+                    [ sprintf "range band %d (from)" i, f; sprintf "range band %d (to)" i, t ]
+                | _ -> [])
+            |> List.concat
+
+        let nonFiniteSpelling (v: float) : string option =
+            if System.Double.IsNaN v then
+                Some "NaN"
+            elif System.Double.IsPositiveInfinity v then
+                Some "Infinity"
+            elif System.Double.IsNegativeInfinity v then
+                Some "-Infinity"
+            else
+                Option.None
+
+        (referenceValues |> List.mapi (fun i v -> sprintf "reference line %d" i, v))
+        @ bandValues
+        |> List.iter (fun (subject, v) ->
+            match nonFiniteSpelling v with
+            | Some spelling -> defects.Add(PreEmitDefect.ChartAnnotationNonFinite(nodeIdStr, subject, spelling))
+            | Option.None -> ())
+
+        // FUARAN138/139/140 — the event marker's X ADDRESS,
+        // §4l rule 1's declared-not-sniffed posture made a refusal.
+        //
+        // PIE IS SILENT, matching the lowering, which neutralises the whole
+        // annotation family there (Phase 1490's treatment, itself Phase
+        // 882's for `xScale`): the polar arm HAS no x axis, so there is no
+        // axis form for an address to match or mismatch, and a code that
+        // fired on one would be reporting the absence of a space rather than
+        // a defect in the document.
+        (match spec.Kind with
+         | ChartKind.Pie -> ()
+         | _ ->
+             let temporalX =
+                 match spec.XScale with
+                 | Some ChartXScale.Temporal -> true
+                 | _ -> false
+
+             // The x is a BAND axis on exactly the arms the lowering draws
+             // bands on: not Scatter, whose x is a
+             // continuous numeric measure, and not a temporal declaration,
+             // whose x is a continuous calendar. The two forms are named for
+             // the reader here rather than derived at each use, because the
+             // message quotes them.
+             let bandX =
+                 not temporalX
+                 && (match spec.Kind with
+                     | ChartKind.Scatter -> false
+                     | _ -> true)
+
+             let axisForm =
+                 if temporalX then "temporal"
+                 elif bandX then "band (category)"
+                 else "continuous numeric"
+
+             /// The x labels the lowering will draw, when — and ONLY when —
+             /// the rows are literally in the tree. `Binding.Static(Some …)`
+             /// is the closed window; a `Ref`, a `Query` or a pipeline is an
+             /// open one and the grounding stands down rather than guessing
+             /// (the FUARAN086 posture). The projection is
+             /// `HostPrelude.RowProjection`, which is the SAME function the
+             /// lowering labels bands with — a second one would refuse keys
+             /// the picture goes on to draw.
+             let staticKeys: string list option =
+                 match spec.Source with
+                 | Binding.Static(Some rows) ->
+                     Some(
+                         rows
+                         |> Seq.map (fun r -> HostPrelude.RowProjection.string_ r spec.XField)
+                         |> List.ofSeq
+                     )
+                 | _ -> Option.None
+
+             /// How many rows carry a category key — `None` when the window
+             /// is open, which is the case the rules stand down on.
+             let occurrencesOf (key: string) : int option =
+                 staticKeys
+                 |> Option.map (fun keys -> keys |> List.filter (fun k -> k = key) |> List.length)
+
+             /// One x address, grounded and form-checked. Phase 1492 lifted
+             /// this out of the marker's own loop so the RANGE BAND's two
+             /// ends go through the identical rule: an address is an address,
+             /// and a second copy of three refusals is how two of them end up
+             /// disagreeing about what "grounded" means.
+             let checkAddress (subject: string) (at: ChartAnnotationX) : unit =
+                 match at with
+                 | ChartAnnotationX.Category key ->
+                     if not bandX then
+                         defects.Add(
+                             PreEmitDefect.ChartAnnotationAxisMismatch(nodeIdStr, subject, "category", axisForm)
+                         )
+                     else
+                         match occurrencesOf key with
+                         | Option.None -> ()
+                         | Some hits ->
+                             if hits <> 1 then
+                                 defects.Add(PreEmitDefect.ChartAnnotationKeyUngrounded(nodeIdStr, subject, key, hits))
+                 | ChartAnnotationX.Date iso ->
+                     // Both facts are reported when both hold: a date that
+                     // does not parse AND sits under a band axis has two
+                     // separate repairs, and naming one would leave the
+                     // author fixing it twice.
+                     if not (HostPrelude.IsoDate.isValid iso) then
+                         defects.Add(PreEmitDefect.ChartAnnotationDateUnparseable(nodeIdStr, subject, iso))
+
+                     if not temporalX then
+                         defects.Add(PreEmitDefect.ChartAnnotationAxisMismatch(nodeIdStr, subject, "date", axisForm))
+
+             // FUARAN141 — the band pair's ORDER, decided on the
+             // axis each pair addresses.
+             //
+             // A CATEGORY pair is ordered by the ROWS, so it is decided here
+             // and only under the closed static window; a DATE pair is
+             // ordered by the calendar and a VALUE pair by arithmetic, so
+             // both of those are also decided at the wire boundary and this
+             // is the authoring path's half of the two-populations argument
+             // FUARAN137 makes.
+             //
+             // AN UNGROUNDED END RAISES NO ORDERING FINDING. `checkAddress`
+             // has already said the key names no band, and an interval with
+             // one end nowhere has no order to be wrong about — reporting
+             // both would be two findings for one repair.
+             let outOfOrder (a: ChartAnnotationX) (b: ChartAnnotationX) : bool =
+                 match a, b with
+                 | ChartAnnotationX.Category ka, ChartAnnotationX.Category kb when bandX ->
+                     match staticKeys, occurrencesOf ka, occurrencesOf kb with
+                     | Some keys, Some 1, Some 1 ->
+                         match
+                             keys |> List.tryFindIndex (fun k -> k = ka), keys |> List.tryFindIndex (fun k -> k = kb)
+                         with
+                         | Some x, Some y -> x > y
+                         | _ -> false
+                     | _ -> false
+                 | ChartAnnotationX.Date ia, ChartAnnotationX.Date ib when temporalX ->
+                     // `(y, m, d)` tuples compare exactly as the days they
+                     // name, so the order is decided without a day-number
+                     // conversion the validator would otherwise have to own
+                     // a second copy of.
+                     match HostPrelude.IsoDate.tryParts ia, HostPrelude.IsoDate.tryParts ib with
+                     | Some pa, Some pb -> pa > pb
+                     | _ -> false
+                 | _ -> false
+
+             let addressText (at: ChartAnnotationX) : string =
+                 match at with
+                 | ChartAnnotationX.Category key -> key
+                 | ChartAnnotationX.Date iso -> iso
+
+             spec.Annotations
+             |> Option.defaultValue []
+             |> List.choose (fun a ->
+                 match a with
+                 | ChartAnnotation.RangeBand(range, _) -> Some range
+                 | _ -> Option.None)
+             |> List.iteri (fun i range ->
+                 match range with
+                 | ChartAnnotationRange.ValueRange(f, t) ->
+                     if f > t then
+                         defects.Add(
+                             PreEmitDefect.ChartAnnotationRangeUnordered(
+                                 nodeIdStr,
+                                 sprintf "range band %d" i,
+                                 sprintf "%g" f,
+                                 sprintf "%g" t
+                             )
+                         )
+                 | ChartAnnotationRange.XRange(a, b) ->
+                     checkAddress (sprintf "range band %d (from)" i) a
+                     checkAddress (sprintf "range band %d (to)" i) b
+
+                     if outOfOrder a b then
+                         defects.Add(
+                             PreEmitDefect.ChartAnnotationRangeUnordered(
+                                 nodeIdStr,
+                                 sprintf "range band %d" i,
+                                 addressText a,
+                                 addressText b
+                             )
+                         ))
+
+             spec.Annotations
+             |> Option.defaultValue []
+             |> List.choose (fun a ->
+                 match a with
+                 | ChartAnnotation.EventMarker(at, _) -> Some at
+                 | _ -> Option.None)
+             |> List.iteri (fun i at -> checkAddress (sprintf "event marker %d" i) at))
+
+        // FUARAN086/087 — grounding over the schema the source PRODUCES
+        //, which since `Fuaran.Compute.DataFrame` 0.18.0 shipped
+        // `SchemaWalk` is the whole pipeline rather than the empty one. The
+        // grid rule below shares the window and the helper: refuse under a
+        // CLOSED walk, stand down under an open one.
+        //
+        // The walk separates two facts the hand-derivation could not: whether
+        // a column EXISTS (`has`) and whether its type is DECIDABLE
+        // (`typeOf`). A `Derive`d column the typer cannot decide exists with a
+        // data-dependent type (a decided one is typed, Fuaran.Compute 0.37.0), so
+        // it grounds FUARAN086 and is silent for FUARAN087/097 — reporting a
+        // type mismatch about a type nobody can name would be a guess, and the
+        // walk declines to guess precisely so this rule need not either.
+        // As at the grid rule below: the pair comes off the
+        // shared walk's site enumeration, not a re-match of `spec.Source`.
+        (match producedSchemaOf nodeIdStr with
+         | Some produced ->
+             if SchemaWalk.isClosed produced then
+                 // The produced set, read once and carried on every finding —
+                 // the same shape the grid rule takes, so the two twins say
+                 // the same thing about the same walk.
+                 let schemaColumns = SchemaWalk.names produced
+
+                 let colType (name: string) : ColumnType option = SchemaWalk.typeOf name produced
+
+                 let numeric (t: ColumnType) : bool =
+                     match t with
+                     | ColumnType.IntType
+                     | ColumnType.FloatType
+                     | ColumnType.BoolType -> true
+                     | _ -> false
+
+                 // FUARAN097 — a temporal x-axis is a DECLARATION,
+                 // and this is where the language grounds it. `date` and
+                 // `timestamp` are both honoured (a timestamp's time-of-day is
+                 // discarded by the lowering, which is a documented narrowing,
+                 // not a mismatch); anything else cannot parse as a date, so
+                 // every row's x would read as the epoch.
                  let temporalX =
                      match spec.XScale with
                      | Some ChartXScale.Temporal -> true
                      | _ -> false
 
-                 // The x is a BAND axis on exactly the arms the lowering draws
-                 // bands on (Phase 903's split): not Scatter, whose x is a
-                 // continuous numeric measure, and not a temporal declaration,
-                 // whose x is a continuous calendar. The two forms are named for
-                 // the reader here rather than derived at each use, because the
-                 // message quotes them.
-                 let bandX =
-                     not temporalX
-                     && (match spec.Kind with
-                         | ChartKind.Scatter -> false
-                         | _ -> true)
-
-                 let axisForm =
-                     if temporalX then "temporal"
-                     elif bandX then "band (category)"
-                     else "continuous numeric"
-
-                 /// The x labels the lowering will draw, when — and ONLY when —
-                 /// the rows are literally in the tree. `Binding.Static(Some …)`
-                 /// is the closed window; a `Ref`, a `Query` or a pipeline is an
-                 /// open one and the grounding stands down rather than guessing
-                 /// (the FUARAN086 posture). The projection is
-                 /// `HostPrelude.RowProjection`, which is the SAME function the
-                 /// lowering labels bands with — a second one would refuse keys
-                 /// the picture goes on to draw.
-                 let staticKeys: string list option =
-                     match spec.Source with
-                     | Binding.Static(Some rows) ->
-                         Some(
-                             rows
-                             |> Seq.map (fun r -> HostPrelude.RowProjection.string_ r spec.XField)
-                             |> List.ofSeq
-                         )
-                     | _ -> Option.None
-
-                 /// How many rows carry a category key — `None` when the window
-                 /// is open, which is the case the rules stand down on.
-                 let occurrencesOf (key: string) : int option =
-                     staticKeys
-                     |> Option.map (fun keys -> keys |> List.filter (fun k -> k = key) |> List.length)
-
-                 /// One x address, grounded and form-checked. Phase 1492 lifted
-                 /// this out of the marker's own loop so the RANGE BAND's two
-                 /// ends go through the identical rule: an address is an address,
-                 /// and a second copy of three refusals is how two of them end up
-                 /// disagreeing about what "grounded" means.
-                 let checkAddress (subject: string) (at: ChartAnnotationX) : unit =
-                     match at with
-                     | ChartAnnotationX.Category key ->
-                         if not bandX then
-                             defects.Add(
-                                 PreEmitDefect.ChartAnnotationAxisMismatch(nodeIdStr, subject, "category", axisForm)
-                             )
-                         else
-                             match occurrencesOf key with
-                             | Option.None -> ()
-                             | Some hits ->
-                                 if hits <> 1 then
-                                     defects.Add(
-                                         PreEmitDefect.ChartAnnotationKeyUngrounded(nodeIdStr, subject, key, hits)
-                                     )
-                     | ChartAnnotationX.Date iso ->
-                         // Both facts are reported when both hold: a date that
-                         // does not parse AND sits under a band axis has two
-                         // separate repairs, and naming one would leave the
-                         // author fixing it twice.
-                         if not (HostPrelude.IsoDate.isValid iso) then
-                             defects.Add(PreEmitDefect.ChartAnnotationDateUnparseable(nodeIdStr, subject, iso))
-
-                         if not temporalX then
-                             defects.Add(
-                                 PreEmitDefect.ChartAnnotationAxisMismatch(nodeIdStr, subject, "date", axisForm)
-                             )
-
-                 // FUARAN141 (Phase 1492) — the band pair's ORDER, decided on the
-                 // axis each pair addresses.
-                 //
-                 // A CATEGORY pair is ordered by the ROWS, so it is decided here
-                 // and only under the closed static window; a DATE pair is
-                 // ordered by the calendar and a VALUE pair by arithmetic, so
-                 // both of those are also decided at the wire boundary and this
-                 // is the authoring path's half of the two-populations argument
-                 // FUARAN137 makes.
-                 //
-                 // AN UNGROUNDED END RAISES NO ORDERING FINDING. `checkAddress`
-                 // has already said the key names no band, and an interval with
-                 // one end nowhere has no order to be wrong about — reporting
-                 // both would be two findings for one repair.
-                 let outOfOrder (a: ChartAnnotationX) (b: ChartAnnotationX) : bool =
-                     match a, b with
-                     | ChartAnnotationX.Category ka, ChartAnnotationX.Category kb when bandX ->
-                         match staticKeys, occurrencesOf ka, occurrencesOf kb with
-                         | Some keys, Some 1, Some 1 ->
-                             match
-                                 keys |> List.tryFindIndex (fun k -> k = ka),
-                                 keys |> List.tryFindIndex (fun k -> k = kb)
-                             with
-                             | Some x, Some y -> x > y
-                             | _ -> false
-                         | _ -> false
-                     | ChartAnnotationX.Date ia, ChartAnnotationX.Date ib when temporalX ->
-                         // `(y, m, d)` tuples compare exactly as the days they
-                         // name, so the order is decided without a day-number
-                         // conversion the validator would otherwise have to own
-                         // a second copy of.
-                         match HostPrelude.IsoDate.tryParts ia, HostPrelude.IsoDate.tryParts ib with
-                         | Some pa, Some pb -> pa > pb
-                         | _ -> false
+                 let dated (t: ColumnType) : bool =
+                     match t with
+                     | ColumnType.DateType
+                     | ColumnType.TimestampType -> true
                      | _ -> false
 
-                 let addressText (at: ChartAnnotationX) : string =
-                     match at with
-                     | ChartAnnotationX.Category key -> key
-                     | ChartAnnotationX.Date iso -> iso
+                 if not (SchemaWalk.has spec.XField produced) then
+                     defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, spec.XField, schemaColumns))
+                 else
+                     match colType spec.XField with
+                     // Present, type data-dependent (an undecided `Derive`): the
+                     // field is grounded and nothing typed can be said.
+                     | None -> ()
+                     | Some t ->
+                         if temporalX && not (dated t) then
+                             defects.Add(PreEmitDefect.ChartTemporalXNotDate(nodeIdStr, spec.XField, ColumnType.tag t))
 
-                 spec.Annotations
-                 |> Option.defaultValue []
-                 |> List.choose (fun a ->
-                     match a with
-                     | ChartAnnotation.RangeBand(range, _) -> Some range
-                     | _ -> Option.None)
-                 |> List.iteri (fun i range ->
-                     match range with
-                     | ChartAnnotationRange.ValueRange(f, t) ->
-                         if f > t then
-                             defects.Add(
-                                 PreEmitDefect.ChartAnnotationRangeUnordered(
-                                     nodeIdStr,
-                                     sprintf "range band %d" i,
-                                     sprintf "%g" f,
-                                     sprintf "%g" t
-                                 )
-                             )
-                     | ChartAnnotationRange.XRange(a, b) ->
-                         checkAddress (sprintf "range band %d (from)" i) a
-                         checkAddress (sprintf "range band %d (to)" i) b
+                         // FUARAN087's x arm is NARROWED by a temporal declaration:
+                         // a temporal Scatter reads its x as dates, so a date
+                         // column there is correct rather than "not numeric", and
+                         // FUARAN097 above is the rule that governs it. Without the
+                         // narrowing a correctly-authored time-series scatter would
+                         // raise a mismatch about the very column it declared.
+                         match spec.Kind with
+                         | ChartKind.Scatter when not (numeric t) && not temporalX ->
+                             defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, spec.XField, ColumnType.tag t))
+                         | _ -> ()
 
-                         if outOfOrder a b then
-                             defects.Add(
-                                 PreEmitDefect.ChartAnnotationRangeUnordered(
-                                     nodeIdStr,
-                                     sprintf "range band %d" i,
-                                     addressText a,
-                                     addressText b
-                                 )
-                             ))
-
-                 spec.Annotations
-                 |> Option.defaultValue []
-                 |> List.choose (fun a ->
-                     match a with
-                     | ChartAnnotation.EventMarker(at, _) -> Some at
-                     | _ -> Option.None)
-                 |> List.iteri (fun i at -> checkAddress (sprintf "event marker %d" i) at))
-
-            // FUARAN086/087 — grounding over the schema the source PRODUCES
-            // (Phase 1486), which since `Fuaran.Compute.DataFrame` 0.18.0 shipped
-            // `SchemaWalk` is the whole pipeline rather than the empty one. The
-            // grid rule below shares the window and the helper: refuse under a
-            // CLOSED walk, stand down under an open one.
-            //
-            // The walk separates two facts the hand-derivation could not: whether
-            // a column EXISTS (`has`) and whether its type is DECIDABLE
-            // (`typeOf`). A `Derive`d column the typer cannot decide exists with a
-            // data-dependent type (a decided one is typed, Fuaran.Compute 0.37.0), so
-            // it grounds FUARAN086 and is silent for FUARAN087/097 — reporting a
-            // type mismatch about a type nobody can name would be a guess, and the
-            // walk declines to guess precisely so this rule need not either.
-            // Phase 1615 — as at the grid rule below: the pair comes off the
-            // shared walk's site enumeration, not a re-match of `spec.Source`.
-            (match producedSchemaOf nodeIdStr with
-             | Some produced ->
-                 if SchemaWalk.isClosed produced then
-                     // The produced set, read once and carried on every finding —
-                     // the same shape the grid rule takes, so the two twins say
-                     // the same thing about the same walk.
-                     let schemaColumns = SchemaWalk.names produced
-
-                     let colType (name: string) : ColumnType option = SchemaWalk.typeOf name produced
-
-                     let numeric (t: ColumnType) : bool =
-                         match t with
-                         | ColumnType.IntType
-                         | ColumnType.FloatType
-                         | ColumnType.BoolType -> true
-                         | _ -> false
-
-                     // FUARAN097 (Phase 882) — a temporal x-axis is a DECLARATION,
-                     // and this is where the language grounds it. `date` and
-                     // `timestamp` are both honoured (a timestamp's time-of-day is
-                     // discarded by the lowering, which is a documented narrowing,
-                     // not a mismatch); anything else cannot parse as a date, so
-                     // every row's x would read as the epoch.
-                     let temporalX =
-                         match spec.XScale with
-                         | Some ChartXScale.Temporal -> true
-                         | _ -> false
-
-                     let dated (t: ColumnType) : bool =
-                         match t with
-                         | ColumnType.DateType
-                         | ColumnType.TimestampType -> true
-                         | _ -> false
-
-                     if not (SchemaWalk.has spec.XField produced) then
-                         defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, spec.XField, schemaColumns))
+                 for yf in spec.YFields do
+                     if not (SchemaWalk.has yf produced) then
+                         defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, yf, schemaColumns))
                      else
-                         match colType spec.XField with
-                         // Present, type data-dependent (an undecided `Derive`): the
-                         // field is grounded and nothing typed can be said.
-                         | None -> ()
-                         | Some t ->
-                             if temporalX && not (dated t) then
-                                 defects.Add(
-                                     PreEmitDefect.ChartTemporalXNotDate(nodeIdStr, spec.XField, ColumnType.tag t)
-                                 )
+                         match colType yf with
+                         | Some t when not (numeric t) ->
+                             defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, yf, ColumnType.tag t))
+                         | _ -> ()
+         | _ -> ())
 
-                             // FUARAN087's x arm is NARROWED by a temporal declaration:
-                             // a temporal Scatter reads its x as dates, so a date
-                             // column there is correct rather than "not numeric", and
-                             // FUARAN097 above is the rule that governs it. Without the
-                             // narrowing a correctly-authored time-series scatter would
-                             // raise a mismatch about the very column it declared.
-                             match spec.Kind with
-                             | ChartKind.Scatter when not (numeric t) && not temporalX ->
-                                 defects.Add(
-                                     PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, spec.XField, ColumnType.tag t)
-                                 )
-                             | _ -> ()
+/// Media, embeds, trees and links: the content kinds that carry their own rules.
+module private ContentRules =
 
-                     for yf in spec.YFields do
-                         if not (SchemaWalk.has yf produced) then
-                             defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, yf, schemaColumns))
-                         else
-                             match colType yf with
-                             | Some t when not (numeric t) ->
-                                 defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, yf, ColumnType.tag t))
-                             | _ -> ()
-             | _ -> ())
-        // The other visualisations are leaves with no pre-emit invariants yet.
-        | NodeKind.Chart _
-        | NodeKind.Map _ -> ()
-        | NodeKind.Custom spec ->
-            if spec.ModuleId = "" || spec.ComponentId = "" then
-                defects.Add(PreEmitDefect.EmptyCustomKindIdentifier(spec.ModuleId, spec.ComponentId))
+    // FUARAN108: a media transport with no accessible name.
+    //
+    // Only a LITERAL is judged. A `Bound` or `I18n` label resolves at render
+    // time from data this walk cannot see, so calling it empty would be a
+    // guess — the same restraint FUARAN092 shows for a bound `href` two arms
+    // below. What is left is the case that is decidable and is also the case
+    // that actually happens: `Defaults.media` carries the empty literal so
+    // the record can be constructed, and an author who fills `Src` and
+    // forgets `Label` ships exactly this.
+    //
+    // Whitespace counts as empty. A label of `" "` is not a name a listener
+    // can act on, and admitting it would make the rule trivially evadable by
+    // a space — which is worse than not having the rule, because the
+    // document would then carry a green gate saying it had been checked.
+    let media (ctx: WalkContext) (n: Node<'Msg>) (spec: MediaSpec) : unit =
+        let defects = ctx.Defects
 
-            customCheck n.Id spec.ModuleId spec.ComponentId spec.Props
-            |> Option.iter defects.Add
-        | NodeKind.ErrorBoundary spec ->
-            // The boundary's `Child` + `Fallback`
-            // subtrees both participate in the tree-wide NodeId uniqueness
-            // check + empty-id surface. Nested boundaries are permitted —
-            // each inner boundary's child + fallback walks normally. No
-            // boundary-specific defect at v1 (the AI may legitimately emit
-            // structurally identical child + fallback shapes during
-            // exploratory authoring).
-            walk spec.Child
-            walk spec.Fallback
-        | NodeKind.Switch spec ->
-            let nodeIdStr = n.Id
+        match spec.Label with
+        | TextSource.Literal s when s.Trim() = "" -> defects.Add(PreEmitDefect.MediaWithoutLabel n.Id)
+        | _ -> ()
 
-            // FUARAN083 (Phase 392, widened by Phase 768): an empty-key State
-            // selector is ungrounded — the switch can never resolve a case, so
-            // it is stuck on `default`. Any other Binding is grounded by
-            // construction (a Selection/Filter/Query names its source).
-            match spec.On with
-            | Binding.State("", _) -> defects.Add(PreEmitDefect.UngroundedSwitchStateKey nodeIdStr)
-            | _ -> ()
+        // FUARAN113: the same judgement, per track. Reported
+        // INDEPENDENTLY of FUARAN108 rather than short-circuiting on it - a
+        // node can carry both defects, and a walk that reported only the
+        // node-level one would send an author back for a second pass after
+        // fixing it.
+        spec.Tracks
+        |> List.iteri (fun i t ->
+            match t.Label with
+            | TextSource.Literal s when s.Trim() = "" -> defects.Add(PreEmitDefect.TrackWithoutLabel(n.Id, i))
+            | _ -> ())
 
-            // FUARAN147 (Phase 1535): `match` XOR `when`, per case. The decoder
-            // refuses both shapes on the wire; this is the same rule for a tree
-            // authored in F#, which never meets the decoder.
-            spec.Cases
-            |> List.iteri (fun i c ->
-                match c.Match, c.When with
-                | Some _, Some _ -> defects.Add(PreEmitDefect.SwitchCaseSelectorShape(nodeIdStr, i, true))
-                | None, None -> defects.Add(PreEmitDefect.SwitchCaseSelectorShape(nodeIdStr, i, false))
-                | _ -> ())
+    // FUARAN115 / FUARAN116: the embed's two rules, reported
+    // independently of each other for FUARAN113's reason — a node can carry
+    // both, and a walk that stopped at the first would send an author back
+    // for a second pass. Whitespace counts as empty on FUARAN108's argument:
+    // a title of `" "` is not a name a reader can act on, and admitting it
+    // would make the rule evadable by a space, which is worse than not
+    // having it because the document would then carry a green gate.
+    let embed (ctx: WalkContext) (n: Node<'Msg>) (spec: EmbedSpec) : unit =
+        let defects = ctx.Defects
 
-            // FUARAN082 (Phase 392): duplicate `match` values make the later
-            // case dead (first-match-wins). Report each duplicated value once.
-            //
-            // Phase 1535 — over the MATCH cases only. Two predicate cases are
-            // not duplicates of each other: `when` carries a binding, two
-            // bindings that happen to be equal today may resolve differently
-            // tomorrow, and structural equality of two predicates is not the
-            // question this rule asks. A predicate case is skipped rather than
-            // folded in under a synthetic key.
-            let seen = System.Collections.Generic.HashSet<string>()
-            let reported = System.Collections.Generic.HashSet<string>()
+        match spec.Title with
+        | TextSource.Literal s when s.Trim() = "" -> defects.Add(PreEmitDefect.EmbedWithoutTitle n.Id)
+        | _ -> ()
 
-            for c in spec.Cases do
-                match c.Match with
-                | Some m when not (seen.Add m) && reported.Add m ->
-                    defects.Add(PreEmitDefect.DuplicateSwitchMatch(nodeIdStr, m))
+        if
+            List.contains EmbedPermission.AllowScripts spec.Permissions
+            && List.contains EmbedPermission.AllowSameOrigin spec.Permissions
+        then
+            defects.Add(PreEmitDefect.EmbedSandboxWeakened n.Id)
+
+    // FUARAN126 / FUARAN127: the tree's two rules, reported
+    // independently of each other for FUARAN113's reason — a tree can carry
+    // both, and a walk that stopped at the first would send an author back
+    // for a second pass.
+    //
+    // Both walk the WHOLE hierarchy, not just the top level. Duplicate ids
+    // are judged across every level rather than per sibling group, because
+    // the State keys they name are flat: the expanded set is a set of ids
+    // with no path in it, so two rows sharing a name at different depths are
+    // exactly as ambiguous as two sharing it side by side.
+    //
+    // Both sets take the DEFAULT comparer, matching every other `seen` /
+    // `reported` pair in this file. Naming `StringComparer.Ordinal`
+    // explicitly says the same thing on .NET and does not compile under
+    // Fable at all — this module is in the Fable-compiled tier, so the
+    // explicit spelling would have made the whole client pipeline
+    // unbuildable to state a default that already holds on both.
+    let tree (ctx: WalkContext) (n: Node<'Msg>) (spec: TreeSpec<'Msg>) : unit =
+        let defects = ctx.Defects
+        let seen = System.Collections.Generic.HashSet<string>()
+
+        let reported = System.Collections.Generic.HashSet<string>()
+
+        let rec walkItems (items: TreeItem list) =
+            for item in items do
+                // The first repeat is reported and later ones are not: a row
+                // id repeated four times is ONE defect with one fix, and
+                // four findings would bury it.
+                if not (seen.Add item.Id) && reported.Add item.Id then
+                    defects.Add(PreEmitDefect.TreeItemIdDuplicated(n.Id, item.Id))
+
+                match item.Label with
+                | TextSource.Literal s when s.Trim() = "" ->
+                    defects.Add(PreEmitDefect.TreeItemWithoutLabel(n.Id, item.Id))
                 | _ -> ()
 
-            // FUARAN128 (Phase 1122): a declared interval with nothing for a
-            // tick to do. Two shapes reach it and only two — a selector that is
-            // not a state key, and fewer than two cases. Reported in that
-            // order and only ONE per node, because they are one defect with one
-            // fix and two findings on the same switch would bury it.
-            //
-            // A NON-POSITIVE interval is deliberately absent: the decoder
-            // refuses it, so no decoded tree carries one, and an in-process
-            // author who constructs one gets the same refusal the moment the
-            // tree is encoded.
-            match spec.AutoAdvanceMs with
-            | Some _ ->
-                match spec.On with
-                | Binding.State _ ->
-                    if List.length spec.Cases < 2 then
-                        defects.Add(PreEmitDefect.DeadAutoAdvance(nodeIdStr, AutoAdvanceDefect.NotEnoughCases))
-                | _ -> defects.Add(PreEmitDefect.DeadAutoAdvance(nodeIdStr, AutoAdvanceDefect.NoWritableSelector))
-            | None -> ()
+                walkItems item.Children
 
-            // The case children + default participate in the tree-wide NodeId
-            // uniqueness + empty-id surface, so walk them all.
-            spec.Cases |> List.iter (fun c -> walk c.Child)
-            walk spec.Default
-        | NodeKind.FragmentDecl spec ->
-            // The decl's `Body` participates in the
-            // tree-wide NodeId uniqueness check. Note that uniqueness here
-            // is *pre-expansion* — at render time the renderer namespaces
-            // interior ids by the ref's id, so the same body referenced by
-            // two refs produces DOM-unique ids without an authoring
-            // duplicate. Name-level uniqueness + unresolved/cyclic ref
-            // checks are AST-walk concerns and live in the validator
-            // (FUARAN056 / FUARAN057 / FUARAN058).
-            walk spec.Body
-        | NodeKind.FragmentRef _ -> ()
-        // Mount (§4o) is an opaque isolation boundary — the guest interior is
-        // a separate scope with its own id space, produced host-side by the
-        // guest loader, so it is not walked into the host tree's NodeId
-        // uniqueness check (same posture as FragmentRef). The mount node's own
-        // id was already recorded via `recordNodeId n.Id`.
-        | NodeKind.Mount _ -> ()
+        walkItems spec.Items
 
-    walk node
+    // FUARAN092: email protection declared over an href that
+    // is statically known not to be a mailto:. Bound hrefs (Query / State
+    // / …) resolve at runtime and are not judged here.
+    let link (ctx: WalkContext) (n: Node<'Msg>) (spec: LinkSpec) : unit =
+        let defects = ctx.Defects
 
-    // FUARAN162 (Phase 1817) — the serialized size, measured once, after the
-    // walk, and only over a tree the walk completed (see `HostLimitMeter.Finish`).
-    match meter with
-    | Some m -> m.Finish(node, not depthReported)
-    | None -> ()
+        match spec.Protection, spec.Href with
+        | Some LinkProtection.Email, Binding.Static(Some href) when
+            not (href.StartsWith("mailto:", System.StringComparison.Ordinal))
+            ->
+            defects.Add(PreEmitDefect.ProtectedNonMailtoLink n.Id)
+        | Some LinkProtection.Email, Binding.Static None -> defects.Add(PreEmitDefect.ProtectedNonMailtoLink n.Id)
+        | _ -> ()
+
+/// Custom kinds and `Switch`: the kinds that compose other subtrees.
+module private CompositionRules =
+
+    let custom (ctx: WalkContext) (n: Node<'Msg>) (spec: CustomSpec) : unit =
+        let defects = ctx.Defects
+        let customCheck = ctx.CustomCheck
+
+        if spec.ModuleId = "" || spec.ComponentId = "" then
+            defects.Add(PreEmitDefect.EmptyCustomKindIdentifier(spec.ModuleId, spec.ComponentId))
+
+        customCheck n.Id spec.ModuleId spec.ComponentId spec.Props
+        |> Option.iter defects.Add
+
+    let switch (ctx: WalkContext) (walk: Node<'Msg> -> unit) (n: Node<'Msg>) (spec: SwitchSpec<'Msg>) : unit =
+        let defects = ctx.Defects
+        let nodeIdStr = n.Id
+
+        // FUARAN083: an empty-key State
+        // selector is ungrounded — the switch can never resolve a case, so
+        // it is stuck on `default`. Any other Binding is grounded by
+        // construction (a Selection/Filter/Query names its source).
+        match spec.On with
+        | Binding.State("", _) -> defects.Add(PreEmitDefect.UngroundedSwitchStateKey nodeIdStr)
+        | _ -> ()
+
+        // FUARAN147: `match` XOR `when`, per case. The decoder
+        // refuses both shapes on the wire; this is the same rule for a tree
+        // authored in F#, which never meets the decoder.
+        spec.Cases
+        |> List.iteri (fun i c ->
+            match c.Match, c.When with
+            | Some _, Some _ -> defects.Add(PreEmitDefect.SwitchCaseSelectorShape(nodeIdStr, i, true))
+            | None, None -> defects.Add(PreEmitDefect.SwitchCaseSelectorShape(nodeIdStr, i, false))
+            | _ -> ())
+
+        // FUARAN082: duplicate `match` values make the later
+        // case dead (first-match-wins). Report each duplicated value once.
+        //
+        // Over the MATCH cases only. Two predicate cases are
+        // not duplicates of each other: `when` carries a binding, two
+        // bindings that happen to be equal today may resolve differently
+        // tomorrow, and structural equality of two predicates is not the
+        // question this rule asks. A predicate case is skipped rather than
+        // folded in under a synthetic key.
+        let seen = System.Collections.Generic.HashSet<string>()
+        let reported = System.Collections.Generic.HashSet<string>()
+
+        for c in spec.Cases do
+            match c.Match with
+            | Some m when not (seen.Add m) && reported.Add m ->
+                defects.Add(PreEmitDefect.DuplicateSwitchMatch(nodeIdStr, m))
+            | _ -> ()
+
+        // FUARAN128: a declared interval with nothing for a
+        // tick to do. Two shapes reach it and only two — a selector that is
+        // not a state key, and fewer than two cases. Reported in that
+        // order and only ONE per node, because they are one defect with one
+        // fix and two findings on the same switch would bury it.
+        //
+        // A NON-POSITIVE interval is deliberately absent: the decoder
+        // refuses it, so no decoded tree carries one, and an in-process
+        // author who constructs one gets the same refusal the moment the
+        // tree is encoded.
+        match spec.AutoAdvanceMs with
+        | Some _ ->
+            match spec.On with
+            | Binding.State _ ->
+                if List.length spec.Cases < 2 then
+                    defects.Add(PreEmitDefect.DeadAutoAdvance(nodeIdStr, AutoAdvanceDefect.NotEnoughCases))
+            | _ -> defects.Add(PreEmitDefect.DeadAutoAdvance(nodeIdStr, AutoAdvanceDefect.NoWritableSelector))
+        | None -> ()
+
+        // The case children + default participate in the tree-wide NodeId
+        // uniqueness + empty-id surface, so walk them all.
+        spec.Cases |> List.iter (fun c -> walk c.Child)
+        walk spec.Default
+
+/// The cross-tree rules: each a pure function of the tree's binding facts and the
+/// walk's accumulators, run after the walk in a fixed order (the report order is
+/// part of the contract).
+module private CrossTreeRules =
 
     // Collect every id observed ≥ 2 times.
-    for KeyValue(id, count) in nodeIdCounts do
-        if count >= 2 then
-            defects.Add(PreEmitDefect.DuplicateNodeId(id, count))
+    let duplicateNodeIds
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
+        let nodeIdCounts = acc.NodeIdCounts
 
-    // ── Cross-tree binding checks (Phase 427; the BindingWalk facts) ──
+        for KeyValue(id, count) in nodeIdCounts do
+            if count >= 2 then
+                defects.Add(PreEmitDefect.DuplicateNodeId(id, count))
+
+        List.ofSeq defects
+
+    // ── Cross-tree binding checks ──
     // FUARAN070 / FUARAN071: every `Binding.Selection` read must target an
     // existing node (error), and that node should be a selection-producing
     // kind (warn) — `Binding.Selection` reaches parity with the declared-edge
     // checks the filter channel got in 421/424.
-    // Phase 1615 — the ONE walk, hoisted above so the per-node schema rules
-    // could read it too. It was already a single call; only its position moved.
-    let facts = treeFacts
+    let selectionReads
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
 
-    for u in facts.Uses do
-        match u.Use with
-        | BindingWalk.BindingUse.Selection target ->
-            match Map.tryFind target facts.Nodes with
-            | None -> defects.Add(PreEmitDefect.DanglingSelection(u.Reader, target))
-            | Some isProducer ->
-                if not isProducer then
-                    defects.Add(PreEmitDefect.SelectionOverNonProducer(u.Reader, target))
-        // FUARAN155 (Phase 1810) — a `Format.DateTime` with neither style. The
-        // walk records the fact where it reaches the slot; the verdict is
-        // decided here so the code sits with the rest of the vocabulary.
-        | BindingWalk.BindingUse.UnstyledDateFormat -> defects.Add(PreEmitDefect.UnstyledDateFormat u.Reader)
-        | _ -> ()
+        for u in facts.Uses do
+            match u.Use with
+            | BindingWalk.BindingUse.Selection target ->
+                match Map.tryFind target facts.Nodes with
+                | None -> defects.Add(PreEmitDefect.DanglingSelection(u.Reader, target))
+                | Some isProducer ->
+                    if not isProducer then
+                        defects.Add(PreEmitDefect.SelectionOverNonProducer(u.Reader, target))
+            // FUARAN155 — a `Format.DateTime` with neither style. The
+            // walk records the fact where it reaches the slot; the verdict is
+            // decided here so the code sits with the rest of the vocabulary.
+            | BindingWalk.BindingUse.UnstyledDateFormat -> defects.Add(PreEmitDefect.UnstyledDateFormat u.Reader)
+            | _ -> ()
 
-    // FUARAN110 (Phase 727) — an accessibility reference naming a node the tree
+        List.ofSeq defects
+
+    // FUARAN110 — an accessibility reference naming a node the tree
     // does not carry. Judged against `facts.Nodes`, the SAME node universe the
     // dangling-`Selection` check immediately above uses, so "a node in this
     // tree" means one thing in this module rather than two — notably it agrees
     // about the boundaries a walk does not cross (a `Mount` guest's interior is
     // a separate id space, and a reference into one is genuinely dangling from
     // the host tree's point of view).
-    for (readerId, slot, target) in accessibilityRefUses do
-        if not (Map.containsKey target facts.Nodes) then
-            defects.Add(PreEmitDefect.DanglingAccessibilityReference(readerId, slot, target))
+    let danglingAccessibilityReferences
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
+        let accessibilityRefUses = acc.AccessibilityRefUses
 
-    // FUARAN122 (Phase 1119) — a popover anchored at an id the tree does not
+        for (readerId, slot, target) in accessibilityRefUses do
+            if not (Map.containsKey target facts.Nodes) then
+                defects.Add(PreEmitDefect.DanglingAccessibilityReference(readerId, slot, target))
+
+        List.ofSeq defects
+
+    // FUARAN122 — a popover anchored at an id the tree does not
     // carry. Judged against `facts.Nodes`, the same node universe the two checks
     // above use, so an anchor and an `aria-describedby` agree about what "a node
     // in this tree" means. This is the half a decoder structurally cannot do:
     // `ModalSpec.anchor` admits any string on the wire precisely because
     // resolving it is a whole-tree question, and that split is recorded in the
     // decoder beside the field.
-    for (popoverId, target) in popoverAnchorUses do
-        if not (Map.containsKey target facts.Nodes) then
-            defects.Add(PreEmitDefect.PopoverWithoutAnchor(popoverId, Some target))
+    let danglingPopoverAnchors
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
+        let popoverAnchorUses = acc.PopoverAnchorUses
 
-    // FUARAN129 (Phase 1123) — a transfer end with no counterpart. Judged over
+        for (popoverId, target) in popoverAnchorUses do
+            if not (Map.containsKey target facts.Nodes) then
+                defects.Add(PreEmitDefect.PopoverWithoutAnchor(popoverId, Some target))
+
+        List.ofSeq defects
+
+    // FUARAN129 — a transfer end with no counterpart. Judged over
     // the whole tree, because that is the only place the question has an answer:
     // one grid's declaration is meaningless on its own, and the PAIRING is the
     // capability.
@@ -4932,39 +5287,58 @@ let private validateCore
     // empty board pair with itself and report nothing — while the only gesture
     // it admits is a drop on the grid the drag began in, which is a REORDER and
     // is Phase 934's, not a transfer at all.
-    let releasesTo (key: string) (exceptGrid: string) =
-        transferDeclarations
-        |> Seq.exists (fun (gridId, out, _) -> gridId <> exceptGrid && out = Some key)
+    let deadTransferPairings
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
+        let transferDeclarations = acc.TransferDeclarations
 
-    let acceptsFrom (key: string) (exceptGrid: string) =
-        transferDeclarations
-        |> Seq.exists (fun (gridId, _, inKey) -> gridId <> exceptGrid && inKey = Some key)
+        let releasesTo (key: string) (exceptGrid: string) =
+            transferDeclarations
+            |> Seq.exists (fun (gridId, out, _) -> gridId <> exceptGrid && out = Some key)
 
-    for (gridId, outKey, inKey) in transferDeclarations do
-        match inKey, outKey with
-        | Some k, _ when not (releasesTo k gridId) ->
-            defects.Add(PreEmitDefect.DeadTransferPairing(gridId, k, TransferDefect.NoSource))
-        | _, Some k when not (acceptsFrom k gridId) ->
-            defects.Add(PreEmitDefect.DeadTransferPairing(gridId, k, TransferDefect.NoTarget))
-        | _ -> ()
+        let acceptsFrom (key: string) (exceptGrid: string) =
+            transferDeclarations
+            |> Seq.exists (fun (gridId, _, inKey) -> gridId <> exceptGrid && inKey = Some key)
+
+        for (gridId, outKey, inKey) in transferDeclarations do
+            match inKey, outKey with
+            | Some k, _ when not (releasesTo k gridId) ->
+                defects.Add(PreEmitDefect.DeadTransferPairing(gridId, k, TransferDefect.NoSource))
+            | _, Some k when not (acceptsFrom k gridId) ->
+                defects.Add(PreEmitDefect.DeadTransferPairing(gridId, k, TransferDefect.NoTarget))
+            | _ -> ()
+
+        List.ofSeq defects
 
     // FUARAN072 / FUARAN073: every wire-survivable `Action.Call` either
     // dispatches through a closure, or lands its response where a reader
-    // looks (Phase 428).
-    let readQueryNames =
-        facts.Uses
-        |> List.choose (fun u ->
-            match u.Use with
-            | BindingWalk.BindingUse.Query(name, _) -> Some name
-            | _ -> None)
-        |> Set.ofList
+    // looks.
+    let droppedCallResults
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
 
-    for c in facts.Calls do
-        match c.HasOnResult, c.Into with
-        | false, None -> defects.Add(PreEmitDefect.CallResultDropped(c.Reader, c.Endpoint))
-        | _, Some(CallResultTarget.Query name) when not (Set.contains name readQueryNames) ->
-            defects.Add(PreEmitDefect.OrphanQueryFetch(c.Reader, name))
-        | _ -> ()
+        let readQueryNames =
+            facts.Uses
+            |> List.choose (fun u ->
+                match u.Use with
+                | BindingWalk.BindingUse.Query(name, _) -> Some name
+                | _ -> None)
+            |> Set.ofList
+
+        for c in facts.Calls do
+            match c.HasOnResult, c.Into with
+            | false, None -> defects.Add(PreEmitDefect.CallResultDropped(c.Reader, c.Endpoint))
+            | _, Some(CallResultTarget.Query name) when not (Set.contains name readQueryNames) ->
+                defects.Add(PreEmitDefect.OrphanQueryFetch(c.Reader, name))
+            | _ -> ()
+
+        List.ofSeq defects
 
     // ── The 421/424 filter consumption union (the consolidated deferral) ──
     // FUARAN074: a declared chip nothing consumes (a `Binding.Filter` read
@@ -4972,46 +5346,66 @@ let private validateCore
     // `Transform` param source each count). FUARAN075: a DECLARED edge
     // (`dependsOn` / a param's Filter source) naming a filter no chip
     // declares. FUARAN076: a `params` entry the pipeline never references.
-    let declaredFilterNames = facts.DeclaredFilters |> List.map snd |> Set.ofList
+    let filterConsumption
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
+        let gridOwnStateKeys = acc.GridOwnStateKeys
 
-    for (ownerNodeId, name) in facts.DeclaredFilters do
-        let consumed =
-            facts.Uses
-            |> List.exists (fun u ->
-                match u.Use with
-                | BindingWalk.BindingUse.Filter n -> n = name && u.Reader <> ownerNodeId
-                | BindingWalk.BindingUse.TransformParamFilter n -> n = name
-                | BindingWalk.BindingUse.Query(_, dependsOn) -> List.contains name dependsOn
-                | _ -> false)
+        let declaredFilterNames = facts.DeclaredFilters |> List.map snd |> Set.ofList
 
-        if not consumed then
-            defects.Add(PreEmitDefect.DecorativeFilter(ownerNodeId, name))
+        for (ownerNodeId, name) in facts.DeclaredFilters do
+            let consumed =
+                facts.Uses
+                |> List.exists (fun u ->
+                    match u.Use with
+                    | BindingWalk.BindingUse.Filter n -> n = name && u.Reader <> ownerNodeId
+                    | BindingWalk.BindingUse.TransformParamFilter n -> n = name
+                    | BindingWalk.BindingUse.Query(_, dependsOn) -> List.contains name dependsOn
+                    | _ -> false)
 
-    for u in facts.Uses do
-        match u.Use with
-        | BindingWalk.BindingUse.TransformParamFilter n when not (Set.contains n declaredFilterNames) ->
-            defects.Add(PreEmitDefect.DanglingFilterReference(u.Reader, n))
-        | BindingWalk.BindingUse.Query(_, dependsOn) ->
-            for n in dependsOn do
-                if
-                    not (Set.contains n declaredFilterNames)
-                    && not (gridOwnStateKeys.Contains((u.Reader, n)))
-                then
-                    defects.Add(PreEmitDefect.DanglingFilterReference(u.Reader, n))
-        | BindingWalk.BindingUse.TransformParam(n, false) ->
-            defects.Add(PreEmitDefect.UnreferencedTransformParam(u.Reader, n))
-        | _ -> ()
+            if not consumed then
+                defects.Add(PreEmitDefect.DecorativeFilter(ownerNodeId, name))
+
+        for u in facts.Uses do
+            match u.Use with
+            | BindingWalk.BindingUse.TransformParamFilter n when not (Set.contains n declaredFilterNames) ->
+                defects.Add(PreEmitDefect.DanglingFilterReference(u.Reader, n))
+            | BindingWalk.BindingUse.Query(_, dependsOn) ->
+                for n in dependsOn do
+                    if
+                        not (Set.contains n declaredFilterNames)
+                        && not (gridOwnStateKeys.Contains((u.Reader, n)))
+                    then
+                        defects.Add(PreEmitDefect.DanglingFilterReference(u.Reader, n))
+            | BindingWalk.BindingUse.TransformParam(n, false) ->
+                defects.Add(PreEmitDefect.UnreferencedTransformParam(u.Reader, n))
+            | _ -> ()
+
+        List.ofSeq defects
 
     // FUARAN085 — two handler-free write-back writers on one state key.
-    writeBackKeys
-    |> Seq.groupBy (fun (key, _, _) -> key)
-    |> Seq.iter (fun (key, writers) ->
-        let ws = writers |> Seq.map (fun (_, nid, fid) -> nid, fid) |> List.ofSeq
+    let duplicateWriteBackKeys
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
+        let writeBackKeys = acc.WriteBackKeys
 
-        if ws.Length > 1 then
-            defects.Add(PreEmitDefect.DuplicateWriteBackKey(key, ws)))
+        writeBackKeys
+        |> Seq.groupBy (fun (key, _, _) -> key)
+        |> Seq.iter (fun (key, writers) ->
+            let ws = writers |> Seq.map (fun (_, nid, fid) -> nid, fid) |> List.ofSeq
 
-    // ── FUARAN098 — a `SetState` writing a key nothing reads (Phase 932) ──
+            if ws.Length > 1 then
+                defects.Add(PreEmitDefect.DuplicateWriteBackKey(key, ws)))
+
+        List.ofSeq defects
+
+    // ── FUARAN098 — a `SetState` writing a key nothing reads ──
     // 866's fake-affordance property, middle enforcement tier. The top tier is
     // structural (the renderer owns each admitted affordance, so its two ends
     // cannot be mis-paired) and the bottom is unenforceable and named as such
@@ -5024,29 +5418,38 @@ let private validateCore
     // anything. Under either, "nothing reads this key" is unprovable rather than
     // false, and the fuaran-core#90 rule applies — refuse only what is PROVABLY
     // wrong.
-    if not facts.StateKeys.OpaqueReader then
-        let reported = System.Collections.Generic.HashSet<string>()
+    let unreadStateWrites
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
 
-        for (writerNodeId, key) in facts.StateKeys.Writes do
-            // Host-reserved keys are exempt through the Phase 782/1550 guard's
-            // own rule rather than a second list beside it: a write there is
-            // REFUSED at dispatch on every path, so its defect is that it is
-            // unaddressable, not that it is unread — FUARAN149 below is the
-            // finding that says so. `isReserved` rather than `isHostReserved`
-            // since Phase 1550: a key the host declared BY NAME is refused
-            // exactly as a prefixed one is, so it earns the same exemption for
-            // the same reason.
-            let unread = not (Set.contains key facts.StateKeys.Reads)
+        if not facts.StateKeys.OpaqueReader then
+            let reported = System.Collections.Generic.HashSet<string>()
 
-            if
-                unread
-                && not (StateKeyPolicy.isReserved key)
-                && reported.Add(writerNodeId + "\u0000" + key)
-            then
-                defects.Add(PreEmitDefect.SetStateNoReader(writerNodeId, key))
+            for (writerNodeId, key) in facts.StateKeys.Writes do
+                // Host-reserved keys are exempt through the Phase 782/1550 guard's
+                // own rule rather than a second list beside it: a write there is
+                // REFUSED at dispatch on every path, so its defect is that it is
+                // unaddressable, not that it is unread — FUARAN149 below is the
+                // finding that says so. `isReserved` rather than `isHostReserved`
+                // since Phase 1550: a key the host declared BY NAME is refused
+                // exactly as a prefixed one is, so it earns the same exemption for
+                // the same reason.
+                let unread = not (Set.contains key facts.StateKeys.Reads)
+
+                if
+                    unread
+                    && not (StateKeyPolicy.isReserved key)
+                    && reported.Add(writerNodeId + "\u0000" + key)
+                then
+                    defects.Add(PreEmitDefect.SetStateNoReader(writerNodeId, key))
+
+        List.ofSeq defects
 
     // ── FUARAN149 — the host-reserved namespace from the authoring side ──
-    // (Phase 1550). Two shapes, one code; `PreEmitDefect.ReservedStateKeyWrite`
+    //. Two shapes, one code; `PreEmitDefect.ReservedStateKeyWrite`
     // carries why they are one rule and what each is worth.
     //
     // Shape 1 needs no stand-down clause: a write to a reserved key is refused
@@ -5061,54 +5464,72 @@ let private validateCore
     // applies — report only what is PROVABLY worth reporting. Every tree that
     // passes today therefore passes unchanged: the declaration is empty in
     // every process that has not opted in.
-    let reportedReserved = System.Collections.Generic.HashSet<string>()
+    let reservedStateKeyWrites
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
 
-    for (writerNodeId, key) in facts.StateKeys.Writes do
-        if
-            StateKeyPolicy.isReserved key
-            && reportedReserved.Add(writerNodeId + dedupKeySep + key)
-        then
-            defects.Add(PreEmitDefect.ReservedStateKeyWrite(writerNodeId, key, true))
+        let reportedReserved = System.Collections.Generic.HashSet<string>()
 
-    if
-        not facts.StateKeys.OpaqueReader
-        && not (Set.isEmpty (StateKeyPolicy.preConventionReservedKeys ()))
-    then
         for (writerNodeId, key) in facts.StateKeys.Writes do
             if
-                not (StateKeyPolicy.isReserved key)
-                && not (Set.contains key facts.StateKeys.Reads)
+                StateKeyPolicy.isReserved key
                 && reportedReserved.Add(writerNodeId + dedupKeySep + key)
             then
-                defects.Add(PreEmitDefect.ReservedStateKeyWrite(writerNodeId, key, false))
+                defects.Add(PreEmitDefect.ReservedStateKeyWrite(writerNodeId, key, true))
 
-    // ── FUARAN103 — a `Switch` selecting on a key nothing can write (Phase 768) ──
+        if
+            not facts.StateKeys.OpaqueReader
+            && not (Set.isEmpty (StateKeyPolicy.preConventionReservedKeys ()))
+        then
+            for (writerNodeId, key) in facts.StateKeys.Writes do
+                if
+                    not (StateKeyPolicy.isReserved key)
+                    && not (Set.contains key facts.StateKeys.Reads)
+                    && reportedReserved.Add(writerNodeId + dedupKeySep + key)
+                then
+                    defects.Add(PreEmitDefect.ReservedStateKeyWrite(writerNodeId, key, false))
+
+        List.ofSeq defects
+
+    // ── FUARAN103 — a `Switch` selecting on a key nothing can write ──
     // The read-side twin of the rule above, and the shape every emission in its
     // source cluster had. It reasons from the ABSENCE of a write, so it stands
     // down wherever absence is not evidence: any closure in the tree produces an
     // arbitrary action at dispatch time, a registered `Custom` renderer is host
     // code, and a `Mount` guest is a tree this walk never sees. Under any of
     // them the fuaran-core#90 rule applies — refuse only what is PROVABLY wrong.
-    if not facts.StateKeys.OpaqueWriter then
-        let reportedSwitch = System.Collections.Generic.HashSet<string>()
+    let switchKeysWithoutWriter
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
 
-        for (switchNodeId, key) in facts.StateKeys.SwitchSelectors do
-            // A host-reserved key (Phase 782, widened to the declared list by
-            // Phase 1550 — the whole `isReserved` family below reads the same
-            // widening) is the host's to write by definition, so its absence
-            // from the tree's writers is expected rather than a defect — the
-            // same exemption FUARAN098 takes, for the mirror-image reason. An
-            // EMPTY key is FUARAN083's case, not this one; reporting both would
-            // say the same thing twice.
-            if
-                key <> ""
-                && not (Set.contains key facts.StateKeys.WriteKeys)
-                && not (StateKeyPolicy.isReserved key)
-                && reportedSwitch.Add(switchNodeId + dedupKeySep + key)
-            then
-                defects.Add(PreEmitDefect.SwitchKeyNoWriter(switchNodeId, key))
+        if not facts.StateKeys.OpaqueWriter then
+            let reportedSwitch = System.Collections.Generic.HashSet<string>()
 
-    // ── FUARAN148 — a visibility predicate nothing can make true (Phase 1535) ──
+            for (switchNodeId, key) in facts.StateKeys.SwitchSelectors do
+                // A host-reserved key (Phase 782, widened to the declared list by
+                // The whole `isReserved` family below reads the same
+                // widening) is the host's to write by definition, so its absence
+                // from the tree's writers is expected rather than a defect — the
+                // same exemption FUARAN098 takes, for the mirror-image reason. An
+                // EMPTY key is FUARAN083's case, not this one; reporting both would
+                // say the same thing twice.
+                if
+                    key <> ""
+                    && not (Set.contains key facts.StateKeys.WriteKeys)
+                    && not (StateKeyPolicy.isReserved key)
+                    && reportedSwitch.Add(switchNodeId + dedupKeySep + key)
+                then
+                    defects.Add(PreEmitDefect.SwitchKeyNoWriter(switchNodeId, key))
+
+        List.ofSeq defects
+
+    // ── FUARAN148 — a visibility predicate nothing can make true ──
     //
     // The silent HIDE. Same mechanism as FUARAN105 below and the same standing
     // down: it reasons from the ABSENCE of a write, so any opacity in the tree
@@ -5119,7 +5540,7 @@ let private validateCore
     //
     // **This code is REFERENCE-ONLY, and the other four hosts' abstention is
     // recorded in ONE named place: each host's own `validator-coverage.json`
-    // `abstained` entry (Phase 1665).** Not here, and not in a comment on any
+    // `abstained` entry.** Not here, and not in a comment on any
     // host — the corpus's `validator/README.md` fixes the rule ("an abstention
     // with a stated reason is a decision; an unlisted code is drift"), the
     // declaration is what `node validator/check-coverage.mjs` reads, and a
@@ -5130,19 +5551,28 @@ let private validateCore
     // from the ABSENCE of a write anywhere in the tree, and no other host has a
     // tree-wide write projection to reason from). Do not re-derive that here;
     // read the four entries.
-    if not facts.StateKeys.OpaqueWriter then
-        let reportedVisible = System.Collections.Generic.HashSet<string>()
+    let visibilityWithoutWriter
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
 
-        for (nodeId, key) in facts.StateKeys.VisibleStateSources do
-            if
-                key <> ""
-                && not (Set.contains key facts.StateKeys.WriteKeys)
-                && not (StateKeyPolicy.isReserved key)
-                && reportedVisible.Add(nodeId + dedupKeySep + key)
-            then
-                defects.Add(PreEmitDefect.VisibleStateNoWriter(nodeId, key))
+        if not facts.StateKeys.OpaqueWriter then
+            let reportedVisible = System.Collections.Generic.HashSet<string>()
 
-    // ── FUARAN105 — a Transform over an unfillable State source (Phase 865) ──
+            for (nodeId, key) in facts.StateKeys.VisibleStateSources do
+                if
+                    key <> ""
+                    && not (Set.contains key facts.StateKeys.WriteKeys)
+                    && not (StateKeyPolicy.isReserved key)
+                    && reportedVisible.Add(nodeId + dedupKeySep + key)
+                then
+                    defects.Add(PreEmitDefect.VisibleStateNoWriter(nodeId, key))
+
+        List.ofSeq defects
+
+    // ── FUARAN105 — a Transform over an unfillable State source ──
     //
     // The silent zero. `Binding.State`'s `defaultValue` is a per-reader
     // FALLBACK, not a slot seed (`BindingResolver.fs`), so a Transform whose own
@@ -5164,31 +5594,40 @@ let private validateCore
     // per-reader fallback a sibling's default never reached the Transform and
     // standing down on one would have silenced the rule on exactly the pair the
     // charter was written about.
-    if not facts.StateKeys.OpaqueWriter then
-        let reportedTransform = System.Collections.Generic.HashSet<string>()
+    let inertTransformSources
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
 
-        // An EMPTY declaration is not a rescuer: `defaultValue: []` leaves the
-        // slot exactly as unseeded, which is the silent zero this rule names.
-        let seededKeys =
-            facts.StateKeys.Seeds
-            |> List.filter (fun (d: BindingWalk.StateSeedDecl) -> not (BindingWalk.isEmptySeed d.Fingerprint))
-            |> List.map (fun d -> d.Key)
-            |> Set.ofList
+        if not facts.StateKeys.OpaqueWriter then
+            let reportedTransform = System.Collections.Generic.HashSet<string>()
 
-        for (readerNodeId, key) in facts.StateKeys.TransformInertSources do
-            // An EMPTY key names no slot at all; it is a malformed source rather
-            // than an unfillable one, and reporting it here would say nothing
-            // the author can act on.
-            if
-                key <> ""
-                && not (Set.contains key seededKeys)
-                && not (Set.contains key facts.StateKeys.WriteKeys)
-                && not (StateKeyPolicy.isReserved key)
-                && reportedTransform.Add(readerNodeId + " " + key)
-            then
-                defects.Add(PreEmitDefect.TransformSourceInert(readerNodeId, key))
+            // An EMPTY declaration is not a rescuer: `defaultValue: []` leaves the
+            // slot exactly as unseeded, which is the silent zero this rule names.
+            let seededKeys =
+                facts.StateKeys.Seeds
+                |> List.filter (fun (d: BindingWalk.StateSeedDecl) -> not (BindingWalk.isEmptySeed d.Fingerprint))
+                |> List.map (fun d -> d.Key)
+                |> Set.ofList
 
-    // ── FUARAN106 — two declarations of one seeded slot (Phase 1075) ──
+            for (readerNodeId, key) in facts.StateKeys.TransformInertSources do
+                // An EMPTY key names no slot at all; it is a malformed source rather
+                // than an unfillable one, and reporting it here would say nothing
+                // the author can act on.
+                if
+                    key <> ""
+                    && not (Set.contains key seededKeys)
+                    && not (Set.contains key facts.StateKeys.WriteKeys)
+                    && not (StateKeyPolicy.isReserved key)
+                    && reportedTransform.Add(readerNodeId + " " + key)
+                then
+                    defects.Add(PreEmitDefect.TransformSourceInert(readerNodeId, key))
+
+        List.ofSeq defects
+
+    // ── FUARAN106 — two declarations of one seeded slot ──
     //
     // Decidable from the tree ALONE: both declarations are in hand, and a key
     // has one slot. Runs unconditionally — no opaque-writer stand-down, because
@@ -5197,65 +5636,83 @@ let private validateCore
     // stop being one.
     //
     // A host-reserved key is exempt for the same reason it is everywhere else:
-    // the seeding pass refuses to seed one (Phase 782), so two declarations
+    // the seeding pass refuses to seed one, so two declarations
     // there conflict over a slot neither can fill, which is a different defect
     // and not this one.
-    let seedsByKey =
-        facts.StateKeys.Seeds
-        |> List.filter (fun (d: BindingWalk.StateSeedDecl) ->
-            d.Key <> ""
-            && not (StateKeyPolicy.isReserved d.Key)
-            // `defaultValue: []` declares nothing — it is the value an unseeded
-            // slot already has, and today it is also the only way a Transform's
-            // source slot can spell "I read this key and carry no data of my
-            // own". Reporting it as a disagreement would raise an Error on
-            // exactly the document the seeding rule exists to make work.
-            && not (BindingWalk.isEmptySeed d.Fingerprint))
-        |> List.groupBy (fun d -> d.Key)
+    let conflictingStateSeeds
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
 
-    for (key, decls) in seedsByKey do
-        match decls with
-        | first :: rest ->
-            // Only the FIRST disagreement is reported per key: the remedy is to
-            // declare the value once, so listing every later reader would repeat
-            // one instruction n times.
-            match rest |> List.tryFind (fun d -> d.Fingerprint <> first.Fingerprint) with
-            | Some conflicting ->
-                defects.Add(PreEmitDefect.ConflictingStateSeeds(key, first.Reader, conflicting.Reader))
-            | None -> ()
-        | [] -> ()
+        let seedsByKey =
+            facts.StateKeys.Seeds
+            |> List.filter (fun (d: BindingWalk.StateSeedDecl) ->
+                d.Key <> ""
+                && not (StateKeyPolicy.isReserved d.Key)
+                // `defaultValue: []` declares nothing — it is the value an unseeded
+                // slot already has, and today it is also the only way a Transform's
+                // source slot can spell "I read this key and carry no data of my
+                // own". Reporting it as a disagreement would raise an Error on
+                // exactly the document the seeding rule exists to make work.
+                && not (BindingWalk.isEmptySeed d.Fingerprint))
+            |> List.groupBy (fun d -> d.Key)
 
-    // ── FUARAN107 — two inline copies of one table (Phase 1075) ──
+        for (key, decls) in seedsByKey do
+            match decls with
+            | first :: rest ->
+                // Only the FIRST disagreement is reported per key: the remedy is to
+                // declare the value once, so listing every later reader would repeat
+                // one instruction n times.
+                match rest |> List.tryFind (fun d -> d.Fingerprint <> first.Fingerprint) with
+                | Some conflicting ->
+                    defects.Add(PreEmitDefect.ConflictingStateSeeds(key, first.Reader, conflicting.Reader))
+                | None -> ()
+            | [] -> ()
+
+        List.ofSeq defects
+
+    // ── FUARAN107 — two inline copies of one table ──
     //
     // The charter's two-copies lint. Pairs are reported once per (earlier,
     // later) node pair, and two entries that share a state key are the SHARING
     // this phase exists to make possible rather than a duplication.
-    let inlineTables = facts.StateKeys.InlineTables
+    let duplicateInlineTables
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
 
-    if not (List.isEmpty inlineTables) then
-        let reportedPair = System.Collections.Generic.HashSet<string>()
-        let indexed = inlineTables |> List.indexed
+        let inlineTables = facts.StateKeys.InlineTables
 
-        for (i, a) in indexed do
-            for (j, b) in indexed do
-                if
-                    j > i
-                    && a.Reader <> b.Reader
-                    && a.Table = b.Table
-                    // One shared key is one source, however many readers point
-                    // at it — the shape the seeding rule creates.
-                    && not (a.SeedKey.IsSome && a.SeedKey = b.SeedKey)
-                    && reportedPair.Add(a.Reader + dedupKeySep + b.Reader)
-                then
-                    let seedKey =
-                        match a.SeedKey, b.SeedKey with
-                        | Some k, _ -> Some k
-                        | _, Some k -> Some k
-                        | None, None -> None
+        if not (List.isEmpty inlineTables) then
+            let reportedPair = System.Collections.Generic.HashSet<string>()
+            let indexed = inlineTables |> List.indexed
 
-                    defects.Add(PreEmitDefect.DuplicateInlineTable(a.Reader, b.Reader, seedKey))
+            for (i, a) in indexed do
+                for (j, b) in indexed do
+                    if
+                        j > i
+                        && a.Reader <> b.Reader
+                        && a.Table = b.Table
+                        // One shared key is one source, however many readers point
+                        // at it — the shape the seeding rule creates.
+                        && not (a.SeedKey.IsSome && a.SeedKey = b.SeedKey)
+                        && reportedPair.Add(a.Reader + dedupKeySep + b.Reader)
+                    then
+                        let seedKey =
+                            match a.SeedKey, b.SeedKey with
+                            | Some k, _ -> Some k
+                            | _, Some k -> Some k
+                            | None, None -> None
 
-    // ── FUARAN099 — a cross-field compare naming a key nothing can reach (Phase 864) ──
+                        defects.Add(PreEmitDefect.DuplicateInlineTable(a.Reader, b.Reader, seedKey))
+
+        List.ofSeq defects
+
+    // ── FUARAN099 — a cross-field compare naming a key nothing can reach ──
     //
     // The predicate's operand is a read, and a read of a key that no form field
     // owns and no writer in the tree sets is not a comparison that fails — it is
@@ -5269,17 +5726,28 @@ let private validateCore
     // deliberately tree-wide rather than per-form: a compare that reads a key
     // owned by a DIFFERENT form is unusual, not wrong, and refusing it here
     // would be the walk deciding a layout question.
-    if not facts.StateKeys.OpaqueWriter then
-        let reportedCompare = System.Collections.Generic.HashSet<string>()
+    let unreachableCompareKeys
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
+        let compareStateReads = acc.CompareStateReads
+        let formOwnedStateKeys = acc.FormOwnedStateKeys
 
-        for (formNodeId, fieldId, key) in compareStateReads do
-            if
-                not (formOwnedStateKeys.Contains key)
-                && not (Set.contains key facts.StateKeys.WriteKeys)
-                && not (StateKeyPolicy.isReserved key)
-                && reportedCompare.Add(formNodeId + dedupKeySep + fieldId + dedupKeySep + key)
-            then
-                defects.Add(PreEmitDefect.CompareKeyUnreachable(formNodeId, fieldId, key))
+        if not facts.StateKeys.OpaqueWriter then
+            let reportedCompare = System.Collections.Generic.HashSet<string>()
+
+            for (formNodeId, fieldId, key) in compareStateReads do
+                if
+                    not (formOwnedStateKeys.Contains key)
+                    && not (Set.contains key facts.StateKeys.WriteKeys)
+                    && not (StateKeyPolicy.isReserved key)
+                    && reportedCompare.Add(formNodeId + dedupKeySep + fieldId + dedupKeySep + key)
+                then
+                    defects.Add(PreEmitDefect.CompareKeyUnreachable(formNodeId, fieldId, key))
+
+        List.ofSeq defects
 
     // ── FUARAN112 — a closure-carrying action on a tree bound for the wire ──
     //
@@ -5291,14 +5759,253 @@ let private validateCore
     // Deduplicated on (node, slot): a `Chain` holding two `Dispatch`es is one
     // repair on one node, and reporting it twice would tell the author there
     // are two things wrong with it.
-    if forTransport then
-        let reportedClosure = System.Collections.Generic.HashSet<string>()
+    let wireLossyClosures
+        (facts: BindingWalk.TreeBindingFacts)
+        (acc: WalkAccumulators)
+        (options: ValidateOptions)
+        : PreEmitDefect list =
+        let defects = ResizeArray<PreEmitDefect>()
+        let forTransport = options.ForTransport
 
-        for (c: BindingWalk.ClosureUse) in facts.Closures do
-            if reportedClosure.Add(c.Reader + " " + c.Slot) then
-                defects.Add(PreEmitDefect.WireLossyActionClosure(c.Reader, c.Slot))
+        if forTransport then
+            let reportedClosure = System.Collections.Generic.HashSet<string>()
 
-    // FUARAN158-162 (Phase 1817) — appended last, so every finding a tree
+            for (c: BindingWalk.ClosureUse) in facts.Closures do
+                if reportedClosure.Add(c.Reader + " " + c.Slot) then
+                    defects.Add(PreEmitDefect.WireLossyActionClosure(c.Reader, c.Slot))
+
+        List.ofSeq defects
+
+    /// Every cross-tree rule, in report order.
+    let all: (BindingWalk.TreeBindingFacts -> WalkAccumulators -> ValidateOptions -> PreEmitDefect list) list =
+        [ duplicateNodeIds
+          selectionReads
+          danglingAccessibilityReferences
+          danglingPopoverAnchors
+          deadTransferPairings
+          droppedCallResults
+          filterConsumption
+          duplicateWriteBackKeys
+          unreadStateWrites
+          reservedStateKeyWrites
+          switchKeysWithoutWriter
+          visibilityWithoutWriter
+          inertTransformSources
+          conflictingStateSeeds
+          duplicateInlineTables
+          unreachableCompareKeys
+          wireLossyClosures ]
+
+/// The ONE walk behind every `validate*` entry point: per node, the shared node
+/// rules then the kind's rule family; after the walk, the cross-tree rules; last,
+/// the emission-budget breaches. Every entry point is an options preset, so no two
+/// can drift.
+let private validateCore (options: ValidateOptions) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
+    let meter = options.Meter
+
+    let customCheck: string -> string -> string -> Map<string, JVal> -> PreEmitDefect option =
+        match options.Registry with
+        | Some registry ->
+            fun nodeId moduleId componentId props ->
+                match registry.ValidateProps(moduleId, componentId, props) with
+                | [] -> None
+                | propDefects ->
+                    Some(PreEmitDefect.CustomPropSchemaViolation(nodeId, moduleId, componentId, propDefects))
+        | None -> fun _ _ _ _ -> None
+
+    let defects = ResizeArray<PreEmitDefect>()
+
+    let acc =
+        { WriteBackKeys = ResizeArray()
+          CompareStateReads = ResizeArray()
+          FormOwnedStateKeys = System.Collections.Generic.HashSet<string>()
+          NodeIdCounts = System.Collections.Generic.Dictionary<string, int>()
+          AccessibilityRefUses = ResizeArray()
+          PopoverAnchorUses = ResizeArray()
+          TransferDeclarations = ResizeArray()
+          GridOwnStateKeys = System.Collections.Generic.HashSet<string * string>() }
+
+    let nodeIdCounts = acc.NodeIdCounts
+
+
+    let recordNodeId (raw: string) =
+        if raw = "" then
+            defects.Add PreEmitDefect.EmptyNodeId
+        else
+            match nodeIdCounts.TryGetValue raw with
+            | true, n -> nodeIdCounts[raw] <- n + 1
+            | false, _ -> nodeIdCounts[raw] <- 1
+
+    // The depth bound on this walk. `walkBody` below is the
+    // recursion; `walk` is the counter around it, so the guard sits
+    // on every recursion site at once rather than on the forty-odd `List.iter
+    // walk` calls individually. Measured, this walk overflows the .NET default
+    // 1 MB stack at 294 levels in Release and 151 in Debug, so an unbounded tree
+    // took the process down with a `StackOverflowException` — uncatchable, hence
+    // no defect list, hence no "structured error, never an exception".
+    //
+    // A local mutable is the right shape here rather than a threaded parameter:
+    // `walk` is a closure created fresh per `validateCore` call, so the counter
+    // is per-invocation and cannot be shared across threads.
+    let mutable depth = 0
+    // One defect, not one per over-deep node — an over-deep subtree would
+    // otherwise emit thousands of identical entries and bury the real report.
+    let mutable depthReported = false
+
+    // ── The ONE enumeration of this tree's Transform sites ──
+    //
+    // `BindingWalk.collect` runs ONCE per validation, before the per-node walk,
+    // so the per-node rules that need a Transform site read it here and the
+    // cross-tree rules read the same facts after the walk.
+    //
+    // Indexed by READER, restricted to the sites the reading node's own arm
+    // named as its `source` slot. That restriction is the window: the rules
+    // judge the reader's own `source` DIRECTLY, so a Transform nested inside a
+    // `Format` or a `Local` is never their subject, and the walk declines to
+    // tag one for that reason (see
+    // `BindingWalk.tagSourceSite`).
+    //
+    // First-wins on a repeated id, matching the tree order the rules read in;
+    // a duplicated node id is FUARAN's own defect (`DuplicateNodeId`) and not
+    // this index's to re-report.
+    let treeFacts = BindingWalk.collect node
+
+    let sourceSites =
+        treeFacts.TransformSites
+        |> List.filter (fun (d: BindingWalk.TransformSiteDecl) -> d.Site.Slot = Some "source")
+        |> List.fold
+            (fun acc d ->
+                if Map.containsKey d.Reader acc then
+                    acc
+                else
+                    Map.add d.Reader d.Site acc)
+            Map.empty
+
+    /// The schema a reader's `source` slot PRODUCES, when the walk enumerated a
+    /// non-live Transform there. `None` on every other shape — a live source
+    /// (whose `initial` snapshot is a decode-time table, not a statement about
+    /// the rows a later write will put under the key), a plain binding, or a
+    /// reader whose slot the walk does not name.
+    let producedSchemaOf (readerId: string) : SchemaKnowledge option =
+        match Map.tryFind readerId sourceSites with
+        | Some site when not site.IsLive -> Some(producedSchema site.Source site.Pipeline)
+        | _ -> None
+
+    let ctx =
+        { Options = options
+          Defects = defects
+          CustomCheck = customCheck
+          ProducedSchemaOf = producedSchemaOf
+          Acc = acc }
+
+
+    let rec walk (n: Node<'Msg>) =
+        depth <- depth + 1
+
+        if depth > WireLimits.MaxDepth then
+            if not depthReported then
+                depthReported <- true
+                defects.Add(PreEmitDefect.MaxDepthExceeded(n.Id, WireLimits.MaxDepth))
+        else
+            walkBody n
+
+        depth <- depth - 1
+
+    and walkBody (n: Node<'Msg>) =
+        recordNodeId n.Id
+
+        // FUARAN158-161 — the host emission budget, metered on
+        // THIS walk: one visit per node, however many limits are declared.
+        match meter with
+        | Some m -> m.Visit(n, depth)
+        | None -> ()
+
+        NodeRules.check ctx walk n
+
+        // Per-kind: the kind's rule family, then its children.
+        match n.Kind with
+        | NodeKind.Box spec -> LayoutRules.box ctx walk n spec
+        | NodeKind.SplitPanel spec -> spec.Children |> List.iter walk
+        | NodeKind.Tabs spec -> LayoutRules.tabs ctx walk n spec
+        | NodeKind.Stepper spec -> spec.Children |> List.iter walk
+        | NodeKind.SummaryList spec -> spec.Children |> List.iter walk
+        | NodeKind.Disclosure spec -> LayoutRules.disclosure ctx walk n spec
+        | NodeKind.Modal spec -> LayoutRules.modal ctx walk n spec
+        | NodeKind.ScrollArea spec -> spec.Children |> List.iter walk
+        | NodeKind.DataGrid spec -> GridRules.check ctx n spec
+        | NodeKind.Skeleton spec -> LayoutRules.skeleton ctx n spec
+        // Display kinds are leaves; future kind-specific invariants (e.g.
+        // HeadingLevel ∈ [1..6]) land here.
+        | NodeKind.Heading _
+        | NodeKind.Markdown _
+        | NodeKind.Metric _
+        | NodeKind.Badge _
+        | NodeKind.Sparkline _
+        | NodeKind.Callout _
+        | NodeKind.Progress _
+        | NodeKind.Icon _
+        | NodeKind.LabelValueRow _
+        | NodeKind.Fact _
+        | NodeKind.Image _
+        | NodeKind.List _
+        | NodeKind.Toast _
+        | NodeKind.CodeBlock _
+        | NodeKind.Math _
+        | NodeKind.Drawing _ -> ()
+        | NodeKind.Media spec -> ContentRules.media ctx n spec
+        | NodeKind.Embed spec -> ContentRules.embed ctx n spec
+        | NodeKind.Tree spec -> ContentRules.tree ctx n spec
+        | NodeKind.Link spec -> ContentRules.link ctx n spec
+        | NodeKind.Form spec -> FormRules.form ctx n spec
+        | NodeKind.Select spec -> FormRules.select ctx n spec
+        | NodeKind.Filters spec -> FormRules.filters ctx n spec
+        | NodeKind.FileUpload spec -> FormRules.fileUpload ctx n spec
+        | NodeKind.Button _ -> ()
+        | NodeKind.Chart spec -> ChartRules.check ctx n spec
+        // The other visualisations are leaves with no pre-emit invariants yet.
+        | NodeKind.Map _ -> ()
+        | NodeKind.Custom spec -> CompositionRules.custom ctx n spec
+        | NodeKind.ErrorBoundary spec ->
+            // The boundary's `Child` + `Fallback`
+            // subtrees both participate in the tree-wide NodeId uniqueness
+            // check + empty-id surface. Nested boundaries are permitted —
+            // each inner boundary's child + fallback walks normally. No
+            // boundary-specific defect at v1 (the AI may legitimately emit
+            // structurally identical child + fallback shapes during
+            // exploratory authoring).
+            walk spec.Child
+            walk spec.Fallback
+        | NodeKind.Switch spec -> CompositionRules.switch ctx walk n spec
+        | NodeKind.FragmentDecl spec ->
+            // The decl's `Body` participates in the
+            // tree-wide NodeId uniqueness check. Note that uniqueness here
+            // is *pre-expansion* — at render time the renderer namespaces
+            // interior ids by the ref's id, so the same body referenced by
+            // two refs produces DOM-unique ids without an authoring
+            // duplicate. Name-level uniqueness + unresolved/cyclic ref
+            // checks are AST-walk concerns and live in the validator
+            // (FUARAN056 / FUARAN057 / FUARAN058).
+            walk spec.Body
+        | NodeKind.FragmentRef _ -> ()
+        // Mount (§4o) is an opaque isolation boundary — the guest interior is
+        // a separate scope with its own id space, produced host-side by the
+        // guest loader, so it is not walked into the host tree's NodeId
+        // uniqueness check (same posture as FragmentRef). The mount node's own
+        // id was already recorded via `recordNodeId n.Id`.
+        | NodeKind.Mount _ -> ()
+
+    walk node
+    // FUARAN162 — the serialized size, measured once, after the
+    // walk, and only over a tree the walk completed (see `HostLimitMeter.Finish`).
+    match meter with
+    | Some m -> m.Finish(node, not depthReported)
+    | None -> ()
+
+    // The cross-tree rules, in report order.
+    for rule in CrossTreeRules.all do
+        defects.AddRange(rule treeFacts acc options)
+
+    // FUARAN158-162 — appended last, so every finding a tree
     // produced before the host declared a budget keeps its position.
     match meter with
     | Some m ->
@@ -5311,12 +6018,20 @@ let private validateCore
     else
         Error(List.ofSeq defects)
 
+/// Walk `node` under `options` and surface every pre-emit defect — the one entry
+/// point every other `validate*` name is a preset of. Combine freely: a transport
+/// walk under a narrowed policy with a registry is one record, not a missing
+/// overload.
+let validateWith (options: ValidateOptions) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
+    validateCore options node
+
+
 /// Walk `node` (depth-first, pre-order) and surface every pre-emit defect.
 /// Returns `Ok ()` on a clean tree; `Error defects` carries every defect
 /// found (NOT short-circuited on the first one) so the AI can repair the
 /// tree in a single turn rather than discovering defects one at a time.
 let validate (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
-    validateCore DecodePolicy.admitAll false None (fun _ _ _ _ -> None) node
+    validateWith ValidateOptions.defaults node
 
 /// `validate` + custom-prop schema enforcement (**FUARAN068**): every
 /// `NodeKind.Custom` whose `(moduleId, componentId)` is registered has its
@@ -5327,14 +6042,9 @@ let validate (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
 /// (the registry only speaks for what it knows); a host with no registry
 /// keeps calling the plain `validate`.
 let validateWithRegistry (registry: CustomRegistry) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
-    validateCore
-        DecodePolicy.admitAll
-        false
-        None
-        (fun nodeId moduleId componentId props ->
-            match registry.ValidateProps(moduleId, componentId, props) with
-            | [] -> None
-            | propDefects -> Some(PreEmitDefect.CustomPropSchemaViolation(nodeId, moduleId, componentId, propDefects)))
+    validateWith
+        { ValidateOptions.defaults with
+            Registry = Some registry }
         node
 
 /// `validate` + the **FUARAN104** kind-admission lint (Phase 1020): every node
@@ -5348,7 +6058,10 @@ let validateWithRegistry (registry: CustomRegistry) (node: Node<'Msg>) : Result<
 /// `JsonDecode.decodeNodeWithPolicy`, on the receiving side, over bytes rather
 /// than over a tree the same process built.
 let validateWithPolicy (policy: DecodePolicy) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
-    validateCore policy false None (fun _ _ _ _ -> None) node
+    validateWith
+        { ValidateOptions.defaults with
+            Policy = policy }
+        node
 
 /// `validateWithRegistry` + the kind-admission lint — the both-declared form.
 /// A profile that excludes only part of the guest boundary (`Mount` but not
@@ -5360,14 +6073,10 @@ let validateWithRegistryAndPolicy
     (policy: DecodePolicy)
     (node: Node<'Msg>)
     : Result<unit, PreEmitDefect list> =
-    validateCore
-        policy
-        false
-        None
-        (fun nodeId moduleId componentId props ->
-            match registry.ValidateProps(moduleId, componentId, props) with
-            | [] -> None
-            | propDefects -> Some(PreEmitDefect.CustomPropSchemaViolation(nodeId, moduleId, componentId, propDefects)))
+    validateWith
+        { ValidateOptions.defaults with
+            Registry = Some registry
+            Policy = policy }
         node
 
 /// `validate` + the **FUARAN112** wire-lossy-closure lint (Phase 577): every
@@ -5387,7 +6096,10 @@ let validateWithRegistryAndPolicy
 /// tree that passes this has not been proved wire-faithful — it has merely not
 /// been refused by a walk the author chose to run.
 let validateForTransport (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
-    validateCore DecodePolicy.admitAll true None (fun _ _ _ _ -> None) node
+    validateWith
+        { ValidateOptions.defaults with
+            ForTransport = true }
+        node
 
 /// `validate` + the host emission budget (**FUARAN158-162**, Phase 1817): every
 /// limit `meter` declares is measured on the SAME walk that finds every other
@@ -5404,7 +6116,10 @@ let validateForTransport (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
 /// host renders well; they neither replace nor loosen the decode-side
 /// `WireLimits`, which protect it from a hostile one (see `HostLimits.fs`).
 let validateWithMeter (meter: HostLimitMeter) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
-    validateCore DecodePolicy.admitAll false (Some meter) (fun _ _ _ _ -> None) node
+    validateWith
+        { ValidateOptions.defaults with
+            Meter = Some meter }
+        node
 
 /// `validateWithMeter` over a fresh meter for `limits`. Under
 /// `HostLimits.unbounded` the result is byte-for-byte `validate`'s.

@@ -4,6 +4,7 @@ open Expecto
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.PreEmitValidate
+open FSharp.Reflection
 
 // ============================================================================
 //  Tests for the pre-emit tree-invariant walker.
@@ -6027,4 +6028,280 @@ let fallbackTests =
                   (fallbackDefects tree)
                   (PreEmitDefect.DuplicateNodeId("root", 2))
                   "the walk counts the fallback's ids"
+          } ]
+
+// ─── The code table: one source for `describe` and `docs/ERROR_CODES.md` ───
+//
+// `DefectCodes.table` is the only place a code, a severity or a message shape is
+// written. These tests hold the three claims that make it the only place: every
+// defect renders through a row of its OWN case, every row is reachable, and the
+// published document is the table's own rendering, byte for byte.
+
+/// Several representative values per field type, so a case whose message varies
+/// with a flag, an option or a nested sub-case reaches every row it can render
+/// through. Reflection stays in this test project, never in the shipped package.
+let rec private sampleValues (fieldName: string) (t: System.Type) (depth: int) : objnull list =
+    let first (ty: System.Type) (name: string) : objnull =
+        List.head (sampleValues name ty (depth + 1))
+
+    if t = typeof<string> then
+        [ box ("<" + fieldName + ">") ]
+    elif t = typeof<int> then
+        [ box 0; box 2 ]
+    elif t = typeof<bool> then
+        [ box false; box true ]
+    elif t = typeof<float> then
+        [ box 0.0 ]
+    elif t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<_ list> then
+        let listT = typedefof<_ list>.MakeGenericType(t.GetGenericArguments())
+
+        let empty: objnull =
+            match listT.GetProperty "Empty" with
+            | null -> failwith "list type without Empty"
+            | p -> p.GetValue null
+
+        let one: objnull =
+            match listT.GetMethod "Cons" with
+            | null -> failwith "list type without Cons"
+            | m -> m.Invoke(null, [| first (t.GetGenericArguments()[0]) fieldName; empty |])
+
+        [ empty; one ]
+    elif t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<_ option> then
+        let cases = FSharpType.GetUnionCases(t, true)
+
+        [ FSharpValue.MakeUnion(cases[0], [||], true)
+          FSharpValue.MakeUnion(cases[1], [| first (t.GetGenericArguments()[0]) fieldName |], true) ]
+    elif FSharpType.IsTuple t then
+        let parts = FSharpType.GetTupleElements t |> Array.map (fun e -> first e fieldName)
+        [ FSharpValue.MakeTuple(parts, t) ]
+    elif FSharpType.IsRecord(t, true) then
+        let parts =
+            FSharpType.GetRecordFields(t, true)
+            |> Array.map (fun f -> first f.PropertyType f.Name)
+
+        [ FSharpValue.MakeRecord(t, parts, true) ]
+    elif FSharpType.IsUnion(t, true) && depth < 4 then
+        FSharpType.GetUnionCases(t, true)
+        |> Array.toList
+        |> List.map (fun c ->
+            let args = c.GetFields() |> Array.map (fun f -> first f.PropertyType f.Name)
+            FSharpValue.MakeUnion(c, args, true))
+    else
+        failwithf "sampleValues: no sample for field '%s' of type %s — add one" fieldName t.FullName
+
+/// Every defect case, instantiated over the cartesian product of its fields' samples.
+let private sampleDefects () : (string * PreEmitDefect) list =
+    let rec product (xs: objnull list list) : objnull list list =
+        match xs with
+        | [] -> [ [] ]
+        | h :: rest ->
+            let tail = product rest
+
+            [ for v in h do
+                  for r in tail do
+                      yield v :: r ]
+
+    FSharpType.GetUnionCases(typeof<PreEmitDefect>, true)
+    |> Array.toList
+    |> List.collect (fun case ->
+        case.GetFields()
+        |> Array.toList
+        |> List.map (fun f -> sampleValues f.Name f.PropertyType 0)
+        |> product
+        |> List.map (fun args ->
+            match FSharpValue.MakeUnion(case, Array.ofList args, true) with
+            | :? PreEmitDefect as d -> case.Name, d
+            | other -> failwithf "MakeUnion over %s returned %A" case.Name other))
+
+[<Literal>]
+let private GeneratedBegin =
+    "<!-- BEGIN GENERATED: PreEmitValidate.DefectCodes.toMarkdown — do not edit by hand -->"
+
+[<Literal>]
+let private GeneratedEnd =
+    "<!-- END GENERATED: PreEmitValidate.DefectCodes.toMarkdown -->"
+
+/// Set to `1` to rewrite the generated section of `docs/ERROR_CODES.md` from the table.
+[<Literal>]
+let private RegenVar = "FUARAN_REGEN_ERROR_CODES"
+
+let private errorCodesPath () : string =
+    match Fuaran.Tests.CorpusRoot.tryRepoRoot () with
+    | Some root -> System.IO.Path.Combine(root, "docs", "ERROR_CODES.md")
+    | None ->
+        // Never skip: a check that cannot read the document would report agreement it never measured.
+        failwithf "the repo root (Fuaran.sln) was not found walking up from %s" System.AppContext.BaseDirectory
+
+[<Tests>]
+let codeTableTests =
+    testList
+        "PreEmitValidate - the code table"
+        [ test "every row names a distinct variant" {
+              let dupes =
+                  DefectCodes.table
+                  |> List.countBy (fun r -> r.Variant)
+                  |> List.filter (fun (_, n) -> n > 1)
+
+              Expect.isEmpty dupes "a variant is the row key, so it names one row"
+          }
+
+          test "every row of one code carries one severity" {
+              let split =
+                  DefectCodes.table
+                  |> List.groupBy (fun r -> r.Code)
+                  |> List.filter (fun (_, rows) ->
+                      rows |> List.map (fun r -> r.Severity) |> List.distinct |> List.length > 1)
+                  |> List.map fst
+
+              Expect.isEmpty split "a code states one severity, whichever of its messages is rendered"
+          }
+
+          test "every defect renders through a row of its own case, and every row is reached" {
+              let samples = sampleDefects ()
+              Expect.isGreaterThan samples.Length 100 "the sampler reached the defect union"
+
+              let reached = System.Collections.Generic.HashSet<string>()
+
+              for caseName, d in samples do
+                  let variant = PreEmitValidate.describeVariant d
+
+                  Expect.isTrue
+                      (variant = caseName || variant.StartsWith(caseName + "."))
+                      (sprintf "case %s renders through variant %s, which names another case" caseName variant)
+
+                  let row = DefectCodes.rowOf variant
+                  let code, severity, _ = PreEmitValidate.describe d
+                  Expect.equal code row.Code (sprintf "%s: describe's code is the row's" variant)
+                  Expect.equal severity row.Severity (sprintf "%s: describe's severity is the row's" variant)
+                  reached.Add variant |> ignore
+
+              let unreached =
+                  DefectCodes.table
+                  |> List.map (fun r -> r.Variant)
+                  |> List.filter (fun v -> not (reached.Contains v))
+
+              Expect.isEmpty unreached "a row no defect renders through is a message nothing can say"
+          }
+
+          test "every hole in a rendered message is filled" {
+              let hole = System.Text.RegularExpressions.Regex(@"\{[A-Za-z][A-Za-z0-9]*\}")
+
+              for _, d in sampleDefects () do
+                  let code, _, message = PreEmitValidate.describe d
+
+                  Expect.isFalse
+                      (hole.IsMatch message)
+                      (sprintf "%s (%s) left a hole unfilled: %s" code (PreEmitValidate.describeVariant d) message)
+          }
+
+          test "render fills holes once, leaves other braces as text, and copies values verbatim" {
+              Expect.equal
+                  (DefectCodes.render "a {x} b {\"$type\":1} {y}" [ "x", "{y}"; "y", "Y" ])
+                  "a {y} b {\"$type\":1} Y"
+                  "a value is never re-read as a hole; a JSON brace is text"
+
+              Expect.equal
+                  (DefectCodes.render "{missing} {x2}" [ "x2", "v" ])
+                  "{missing} v"
+                  "an unknown hole stays as written"
+          }
+
+          test "docs/ERROR_CODES.md carries the table's own rendering, byte for byte" {
+              let path = errorCodesPath ()
+              let doc = System.IO.File.ReadAllText(path).Replace("\r\n", "\n")
+              let b = doc.IndexOf GeneratedBegin
+              let e = doc.IndexOf GeneratedEnd
+              Expect.isTrue (b >= 0 && e > b) "the document carries both generated-section markers"
+              let start = b + GeneratedBegin.Length + 1
+              let current = doc.Substring(start, e - start)
+              let expected = "\n" + DefectCodes.toMarkdown ()
+
+              if current <> expected && System.Environment.GetEnvironmentVariable RegenVar = "1" then
+                  System.IO.File.WriteAllText(path, doc.Substring(0, start) + expected + doc.Substring e)
+              else
+                  Expect.equal
+                      current
+                      expected
+                      (sprintf
+                          "docs/ERROR_CODES.md disagrees with DefectCodes.table; regenerate with %s=1 and run this suite"
+                          RegenVar)
+          }
+
+          test "docs/ERROR_CODES.md lists every code describe can mint" {
+              let doc = System.IO.File.ReadAllText(errorCodesPath ())
+
+              let missing =
+                  sampleDefects ()
+                  |> List.map (fun (_, d) ->
+                      let code, _, _ = PreEmitValidate.describe d
+                      code)
+                  |> List.distinct
+                  |> List.filter (fun code -> not (doc.Contains(sprintf "#### `%s`" code)))
+
+              Expect.isEmpty missing "every code describe can mint has its heading in the document"
+          } ]
+
+[<Tests>]
+let validateOptionsTests =
+    let tree = dashboard "root" [ actionButton "go" (Action.dispatch NoOp) ]
+
+    let policy =
+        Fuaran.UI.KindPolicy.DecodePolicy.admitting "only-markdown" [ "Markdown" ]
+
+    let codes (r: Result<unit, PreEmitDefect list>) =
+        match r with
+        | Ok() -> []
+        | Error ds ->
+            ds
+            |> List.map (fun d ->
+                let code, _, _ = PreEmitValidate.describe d
+                code)
+
+    testList
+        "PreEmitValidate - ValidateOptions"
+        [ test "validateWith over the defaults is validate" {
+              Expect.equal
+                  (PreEmitValidate.validateWith ValidateOptions.defaults tree)
+                  (PreEmitValidate.validate tree)
+                  "the defaults declare nothing"
+          }
+
+          test "every preset is validateWith over its options" {
+              Expect.equal
+                  (PreEmitValidate.validateForTransport tree)
+                  (PreEmitValidate.validateWith
+                      { ValidateOptions.defaults with
+                          ForTransport = true }
+                      tree)
+                  "transport"
+
+              Expect.equal
+                  (PreEmitValidate.validateWithPolicy policy tree)
+                  (PreEmitValidate.validateWith
+                      { ValidateOptions.defaults with
+                          Policy = policy }
+                      tree)
+                  "policy"
+          }
+
+          test "transport and a narrowed policy combine in one walk" {
+              let both =
+                  codes (
+                      PreEmitValidate.validateWith
+                          { ValidateOptions.defaults with
+                              ForTransport = true
+                              Policy = policy }
+                          tree
+                  )
+
+              Expect.contains both "FUARAN104" "the policy's admission lint ran"
+              Expect.contains both "FUARAN112" "the transport closure lint ran"
+
+              Expect.isFalse
+                  (List.contains "FUARAN104" (codes (PreEmitValidate.validateForTransport tree)))
+                  "transport alone narrows nothing"
+
+              Expect.isFalse
+                  (List.contains "FUARAN112" (codes (PreEmitValidate.validateWithPolicy policy tree)))
+                  "a policy alone is not bound for the wire"
           } ]
