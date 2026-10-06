@@ -204,6 +204,10 @@ try {
 }
 finally {
     foreach ($name in $touchedEnv) { [Environment]::SetEnvironmentVariable($name, $savedEnv[$name]) }
+    # The consumer's restore names throwaway packages from a scratch feed deleted below. Left in the
+    # tree, its `obj/project.assets.json` reads to anything inventorying the repository's restores as
+    # an input that no feed can serve again, so it goes with the feed, whatever the verdict.
+    Remove-Item -Recurse -Force -LiteralPath (Join-Path $PSScriptRoot 'obj') -ErrorAction SilentlyContinue
     if (-not $KeepOutput) {
         Remove-Item -Recurse -Force -LiteralPath $outDir -ErrorAction SilentlyContinue
         Remove-Item -Recurse -Force -LiteralPath $feed -ErrorAction SilentlyContinue
