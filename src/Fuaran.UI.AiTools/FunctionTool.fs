@@ -111,8 +111,8 @@ let private declEffect (node: Node<'Msg>) : Fuaran.Core.EffectClass =
     | NodeKind.FragmentDecl spec -> toCoreEffect spec.Effect
     | _ -> Fuaran.Core.Effect.pureDeterministic
 
-// ── the hygienic slot substitution (the renderer's FragmentApply logic,
-//    re-expressed over the Ops.Introspect container lens) ──
+// ── the hygienic slot substitution (the renderer's FragmentApply logic, over
+//    the same lens: the tier's one enumeration at the `fragmentScope` reach) ──
 
 /// The slot name a node is an unbound marker for (a bare `FragmentRef`), when it
 /// is one.
@@ -121,30 +121,24 @@ let private slotMarker (node: Node<'Msg>) : string option =
     | NodeKind.FragmentRef spec -> Some spec.Name
     | _ -> None
 
+/// The positions substitution and renaming descend through — the renderer's
+/// `FragmentApply` reach, so a slot marker a rendered fragment would bind is one
+/// a cross-witness bind finds, and the reverse.
+let private fragmentLens (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg> list -> Node<'Msg>) =
+    Fuaran.UI.NodeChildren.lens Fuaran.UI.NodeChildren.Reach.fragmentScope node
+
 /// Rewrite every interior NodeId by `prefix` — hygienic namespacing of an
 /// inserted slot subtree (`<slotAddr>.<innerId>`), so two cross-witness
 /// compositions into distinct slots cannot capture one another (Fork 2).
 let rec private namespaceIds (prefix: string) (node: Node<'Msg>) : Node<'Msg> =
     let renamed = { node with Id = prefix + node.Id }
-
-    match Introspect.getChildren renamed.Kind with
-    | Some kids ->
-        match Introspect.withChildren renamed.Kind (kids |> List.map (namespaceIds prefix)) with
-        | Some k -> { renamed with Kind = k }
-        | None -> renamed
-    | None ->
-        match renamed.Kind with
-        | NodeKind.ErrorBoundary spec ->
-            { renamed with
-                Kind =
-                    NodeKind.ErrorBoundary
-                        { Child = namespaceIds prefix spec.Child
-                          Fallback = namespaceIds prefix spec.Fallback } }
-        | _ -> renamed
+    let kids, put = fragmentLens renamed
+    put (kids |> List.map (namespaceIds prefix))
 
 /// Substitute the `FragmentRef`-marked slot named `slotName` inside `body` with
-/// `arg`, namespaced by `slotPrefix`. Recurses into containers + error
-/// boundaries. Returns the rewritten body + whether a marker was found.
+/// `arg`, namespaced by `slotPrefix`. Recurses through every position
+/// `fragmentLens` reaches. Returns the rewritten body + whether a marker was
+/// found.
 let rec private substituteSlot
     (slotPrefix: string)
     (slotName: string)
@@ -154,30 +148,9 @@ let rec private substituteSlot
     match slotMarker body with
     | Some s when s = slotName -> namespaceIds (slotPrefix + ".") arg, true
     | _ ->
-        match Introspect.getChildren body.Kind with
-        | Some kids ->
-            let mutable found = false
-
-            let newKids =
-                kids
-                |> List.map (fun c ->
-                    let c', f = substituteSlot slotPrefix slotName arg c
-                    found <- found || f
-                    c')
-
-            match Introspect.withChildren body.Kind newKids with
-            | Some k -> { body with Kind = k }, found
-            | None -> body, found
-        | None ->
-            match body.Kind with
-            | NodeKind.ErrorBoundary spec ->
-                let child, f1 = substituteSlot slotPrefix slotName arg spec.Child
-                let fallback, f2 = substituteSlot slotPrefix slotName arg spec.Fallback
-
-                { body with
-                    Kind = NodeKind.ErrorBoundary { Child = child; Fallback = fallback } },
-                (f1 || f2)
-            | _ -> body, false
+        let kids, put = fragmentLens body
+        let rewritten = kids |> List.map (substituteSlot slotPrefix slotName arg)
+        put (rewritten |> List.map fst), rewritten |> List.exists snd
 
 /// Bind a hole@`addr` on a fragment-decl node. Only a slot binding
 /// (`SlotArg`) is lowered by this witness — a UI slot hole binds a subtree; the
@@ -231,15 +204,7 @@ let private declBind (addr: string) (arg: Fuaran.Core.Arg<Node<'Msg>>) (node: No
 /// `FragmentDecl` surface, `Bind` performs the renderer's slot substitution over
 /// the `Ops.Introspect` container lens.
 let uiWitness<'Msg> : Fuaran.Core.ArtifactWitness<Node<'Msg>, NodeId> =
-    { Tree =
-        { Id = fun n -> NodeId n.Id
-          KindTag = fun n -> Introspect.kindName n.Kind
-          Children = fun n -> Introspect.getChildren n.Kind |> Option.defaultValue []
-          ReplaceChildren =
-            fun n cs ->
-                match Introspect.withChildren n.Kind cs with
-                | Some k -> { n with Kind = k }
-                | None -> n }
+    { Tree = Introspect.nodeWitness
       IdW =
         { ToString = rawId
           OfString = NodeId
@@ -317,6 +282,15 @@ let private fromCoreEffect (e: Fuaran.Core.EffectClass) : EffectClass =
 /// nothing wider than pure"). Closes the declared-vs-observed gap the build-time AST
 /// validator cannot reach (it has no typed effect surface — see `FragmentCheck.fs`).
 let auditFragmentEffect<'Msg> (node: Node<'Msg>) : Result<unit, EffectClass * EffectClass> =
-    match Fuaran.Core.Function.auditEffect uiWitness node with
+    // Over the KEYED traversal: an effect a `FragmentDecl` nests in an
+    // error-boundary arm, a switch case, a state alternative or a slot argument
+    // is an effect the fragment composes, so the audit walks every position
+    // `Introspect.keyedWitness` declares — not only the structural spine
+    // `uiWitness.Tree` rebuilds through.
+    let audited =
+        { uiWitness with
+            Tree = Fuaran.Core.Tree.traversal uiWitness.Tree Introspect.keyedWitness }
+
+    match Fuaran.Core.Function.auditEffect audited node with
     | Ok() -> Ok()
     | Error(declared, observed) -> Error(fromCoreEffect declared, fromCoreEffect observed)

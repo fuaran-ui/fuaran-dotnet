@@ -258,20 +258,13 @@ let private buttonVariantClass (variant: ButtonVariant) : string =
 
 // ─── Fragment registry (mirrors the client `collectFragments`) ──────────────
 
+/// The children the registry walk descends through — the tier's one
+/// enumeration at the kind-held reach, which is the relation the client
+/// `collectFragments` walks. (A private copy here read only an error
+/// boundary's `Child`, so a `FragmentDecl` in its `Fallback` resolved on the
+/// client and not on the server.)
 let private fragmentChildren (node: Node<obj>) : Node<obj> list =
-    match node.Kind with
-    | NodeKind.Box(s) -> s.Children
-    | NodeKind.SplitPanel(s) -> s.Children
-    | NodeKind.Tabs(s) -> s.Children
-    | NodeKind.Stepper(s) -> s.Children
-    | NodeKind.SummaryList(s) -> s.Children
-    | NodeKind.Disclosure(s) -> s.Children
-    | NodeKind.Modal(s) -> s.Children
-    | NodeKind.ScrollArea(s) -> s.Children
-    | NodeKind.ErrorBoundary s -> [ s.Child ]
-    | NodeKind.Switch s -> (s.Cases |> List.map _.Child) @ [ s.Default ]
-    | NodeKind.FragmentDecl s -> [ s.Body ]
-    | _ -> []
+    Fuaran.UI.NodeChildren.children Fuaran.UI.NodeChildren.Reach.kindHeld node
 
 /// Collect the tree's `FragmentDecl` bodies by name.
 ///

@@ -206,54 +206,11 @@ module Result =
 /// same terms. (A `TreeOp` still reaches into it, exactly as it reaches into a
 /// State arm — the apply lens is `Introspect.nonStructuralSlots`, not this walk.)
 ///
-/// FORWARD-COUPLING: the match is exhaustive on purpose. A new `NodeKind` case
-/// must declare its children here in the same change that adds the case, or the
-/// build fails rather than the search silently missing a subtree.
+/// The relation itself is `NodeChildren.children NodeChildren.Reach.kindHeld`:
+/// the one enumeration every walker in the tier reads, so this module and the
+/// renderers' fragment, island and console walks cannot disagree about it.
 let children (node: Node<'Msg>) : Node<'Msg> list =
-    match node.Kind with
-    | NodeKind.Box s -> s.Children
-    | NodeKind.SplitPanel s -> s.Children
-    | NodeKind.Tabs s -> s.Children
-    | NodeKind.Stepper s -> s.Children
-    | NodeKind.SummaryList s -> s.Children
-    | NodeKind.Disclosure s -> s.Children
-    | NodeKind.Modal s -> s.Children
-    | NodeKind.ScrollArea s -> s.Children
-    | NodeKind.ErrorBoundary s -> [ s.Child; s.Fallback ]
-    | NodeKind.Switch s -> (s.Cases |> List.map _.Child) @ [ s.Default ]
-    | NodeKind.FragmentDecl s -> [ s.Body ]
-    | NodeKind.Heading _
-    | NodeKind.Markdown _
-    | NodeKind.Metric _
-    | NodeKind.Badge _
-    | NodeKind.Sparkline _
-    | NodeKind.Callout _
-    | NodeKind.Progress _
-    | NodeKind.Skeleton _
-    | NodeKind.Icon _
-    | NodeKind.LabelValueRow _
-    | NodeKind.Fact _
-    | NodeKind.Link _
-    | NodeKind.Image _
-    | NodeKind.Media _
-    | NodeKind.Embed _
-    | NodeKind.List _
-    | NodeKind.Tree _
-    | NodeKind.Toast _
-    | NodeKind.CodeBlock _
-    | NodeKind.Math _
-    | NodeKind.Drawing _
-    | NodeKind.Form _
-    | NodeKind.Filters _
-    | NodeKind.Button _
-    | NodeKind.FileUpload _
-    | NodeKind.Select _
-    | NodeKind.DataGrid _
-    | NodeKind.Chart _
-    | NodeKind.Map _
-    | NodeKind.Custom _
-    | NodeKind.FragmentRef _
-    | NodeKind.Mount _ -> []
+    NodeChildren.children NodeChildren.Reach.kindHeld node
 
 // ── per-node fact extraction ────────────────────────────────────────────────
 

@@ -7818,6 +7818,54 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.92.0 — the slot Phase 2038 opens: one answer to what a node's children are (DRAFT — untagged)
+
+_Class: **BREAKING (API)** — one public function is removed (below). `v0.91.0` is released, so
+nothing may ride it and this slot opens the next number. A change of this class or lower that
+follows rides this slot._
+
+### What rides this slot
+
+- **`Fuaran.UI.NodeChildren` ARRIVES (fuaran#2038) — additive.** The one enumeration of the
+  parent/child relation. Every position a node holds another node in has a class
+  (`Position.Ordered` / `Arm` / `StateArm` / `Fallback` / `Argument`), and a walk names the classes it
+  means as a `Reach` (`Reach.structural`, `Reach.kindHeld`, `Reach.fragmentScope`, `Reach.keyed`,
+  `Reach.nonStructural`). `ordered` / `withOrdered` are the structural read and write; `slots`,
+  `slotsIn`, `children`, `lens` and `replace` are the reach-scoped reads and the arity-preserving
+  lens. The match that takes a `NodeKind` apart to find its children lives there and nowhere else
+  in the cross-section this phase owns; a census test (`CoreAdoptionTests`, "Phase 2038") fails when
+  a new hand-written child enumeration appears in shipped source, and names the eight files outside
+  that cross-section still carrying one.
+- **`Fuaran.UI.Ops.Introspect` gains the tier's Fuaran.Core witnesses — additive.**
+  `nodeWitness` (the structural `NodeWitness` the apply path edits through), `idWitness`, and
+  `keyedWitness` — the tier's `KeyedWitness`, derived from the same lens `descendantNodes` reads rather
+  than a second list of keyed positions. `findParentWithin reach` is the parent search at a stated
+  reach; `findParent` keeps its signature and answer as the structural-reach form.
+- **REMOVED: `Introspect.firstSharedId`.** The structural apply now runs Core's keyed engine
+  (`Ops.applyContainedKeyed` under `keyedWitness`), whose duplicate-id refusal sees keyed positions on
+  both sides of a graft, so the tier's own pre-pass is gone. A caller that probed a graft with it
+  calls `Fuaran.Core.Tree.graftWellFormedKeyed Introspect.nodeWitness Introspect.keyedWitness
+  Introspect.idWitness incoming root` — `RepeatedId id` where it answered `Some id`. **Migration is
+  that one call.**
+- **Three behaviour fixes, each pinned by a test that failed before it:**
+  1. **An island under a `Modal`, a `ScrollArea` or a `Switch` case now emits its hydrate payload**
+     (`Hydration.renderWithIslands`). The island walk listed eight kinds and fell through to `[]`, so
+     those islands got their boundary wrapper and no payload script. The resume envelope's action
+     collection (`Resume`) read the same copy and now reaches the same positions.
+  2. **`InsertChild` of a subtree carrying a duplicate id in a keyed position is refused**
+     (`DuplicateNodeId`) — a `Switch` whose case or default reuses an id the tree holds was grafted,
+     because the pre-pass probed the incoming subtree through the container lists alone.
+     `Placement.placeOp` refuses the same graft.
+  3. **A `FragmentDecl` held in an `ErrorBoundary`'s `fallback` resolves on the server**, as it always
+     did on the client: the server registry read only the boundary's `child`.
+- **Two narrower consequences of reading one enumeration, named so neither is a surprise.** The
+  cross-witness slot bind (`FunctionTool.composeIntoSlot`) substitutes and renames through the
+  renderer's `FragmentApply` reach, so a slot marker inside a `Switch` case or a `state` alternative of
+  a fragment body is now found there as it is at render. And `FunctionTool.auditFragmentEffect` walks
+  the keyed traversal, so a wider effect nested in an error-boundary arm, a switch case, a `state`
+  alternative or a slot argument is now reported rather than missed.
+- **Unchanged:** corpus bytes, every other apply result, and every other rendered output.
+
 ## 0.91.0 — the slot Phase 2005 opens: the compute 0.37.0 adoption completes (DRAFT — untagged)
 
 _Class: **BREAKING (behaviour)**, with **no public surface change** on any shipped package by the

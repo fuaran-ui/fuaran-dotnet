@@ -37,6 +37,9 @@
     <Compile Include="StateKeyPolicy.fs" />
     <Compile Include="Generated.fs" />
     <Compile Include="Types.fs" />
+    <!-- Phase 2038: the ONE enumeration of what a node's children are, by reach.
+         Reads Types.fs alone, so every walker compiled after it can read it. -->
+    <Compile Include="NodeChildren.fs" />
     <!-- Phase 213: the canonical, data-only `BindingSources` record — the one
          shape a host furnishes for binding resolution. Promoted here from the
          renderer so `Fuaran.UI.AiTools` (which must stay renderer-free) and the

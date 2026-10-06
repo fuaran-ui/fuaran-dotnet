@@ -30,6 +30,8 @@
 open System.Collections.Generic
 open Fuaran.UI.Types
 
+module NodeChildren = Fuaran.UI.NodeChildren
+
 // ─── Kind name ─────────────────────────────────────────────────────────────
 //
 // The kind-tag vocabulary now lives in the base package as `Kind.name` (over
@@ -305,40 +307,20 @@ let interactiveStateSlots (kind: NodeKind<'Msg>) : string list =
 
 // ─── Children getter / setter ─────────────────────────────────────────────
 
-let getChildren (kind: NodeKind<'Msg>) : Node<'Msg> list option =
-    match kind with
-    // -- Layout --
-    | NodeKind.Box spec -> Some spec.Children
-    | NodeKind.SplitPanel spec -> Some spec.Children
-    | NodeKind.Tabs spec -> Some spec.Children
-    | NodeKind.Stepper spec -> Some spec.Children
-    | NodeKind.SummaryList spec -> Some spec.Children
-    | NodeKind.Disclosure spec -> Some spec.Children
-    | NodeKind.Modal spec -> Some spec.Children
-    | NodeKind.ScrollArea spec -> Some spec.Children
-    | NodeKind.FragmentDecl spec -> Some [ spec.Body ]
-    // FragmentRef is a pure leaf — the renderer expands it at render
-    // time via a separate resolver walk; the apply engine treats it as
-    // opaque. Address a referenced body by its bare interior NodeId
-    // (which mapNode reaches via the decl, above), not via the ref.
-    | _ -> None
+/// The ordered child list of a container kind — the surface the structural
+/// ops edit — or `None` for a kind that holds none. Read from the tier's one
+/// enumeration (`Fuaran.UI.NodeChildren`) rather than a copy of it.
+///
+/// FragmentRef is a pure leaf here — the renderer expands it at render time
+/// via a separate resolver walk; the apply engine treats it as opaque. Address
+/// a referenced body by its bare interior NodeId (which `mapNode` reaches via
+/// the decl), not via the ref.
+let getChildren (kind: NodeKind<'Msg>) : Node<'Msg> list option = NodeChildren.ordered kind
 
+/// The kind with exactly this ordered child list, or `None` where it holds no
+/// ordered list. The write half of `getChildren`.
 let withChildren (kind: NodeKind<'Msg>) (children: Node<'Msg> list) : NodeKind<'Msg> option =
-    match kind with
-    // -- Layout --
-    | NodeKind.Box spec -> Some(NodeKind.Box({ spec with Children = children }))
-    | NodeKind.SplitPanel spec -> Some(NodeKind.SplitPanel({ spec with Children = children }))
-    | NodeKind.Tabs spec -> Some(NodeKind.Tabs({ spec with Children = children }))
-    | NodeKind.Stepper spec -> Some(NodeKind.Stepper({ spec with Children = children }))
-    | NodeKind.SummaryList spec -> Some(NodeKind.SummaryList({ spec with Children = children }))
-    | NodeKind.Disclosure spec -> Some(NodeKind.Disclosure({ spec with Children = children }))
-    | NodeKind.Modal spec -> Some(NodeKind.Modal({ spec with Children = children }))
-    | NodeKind.ScrollArea spec -> Some(NodeKind.ScrollArea({ spec with Children = children }))
-    | NodeKind.FragmentDecl spec ->
-        match children with
-        | [ single ] -> Some(NodeKind.FragmentDecl { spec with Body = single })
-        | _ -> None
-    | _ -> None
+    NodeChildren.withOrdered kind children
 
 // ─── Tree traversal ────────────────────────────────────────────────────────
 
@@ -351,193 +333,43 @@ let withChildren (kind: NodeKind<'Msg>) (children: Node<'Msg> list) : NodeKind<'
 // invisible to `allNodeIds` / `findNode` / `collectNodeIdsInto` — and, because
 // `applyStructural` hands Fuaran.Core a `NodeWitness` whose `Children` IS
 // `getChildren`, invisible to the duplicate-id rejection too. §4g promises ids
-// are unique per tree; before this, an insert colliding with an id inside a
-// Switch case was accepted.
+// are unique per tree; the positions below are what `keyedWitness` declares to
+// Core, so its keyed engine refuses a collision inside a Switch case.
 //
 // Returned as a LENS — the nodes plus a function putting a same-length list
 // back in the same positions — so the read and the write cannot drift apart.
-// Two parallel matches would be a standing invitation to fix one and not the
-// other, which is the shape of the defect this closes.
+// Since Phase 2038 the lens is `NodeChildren`'s, at its non-structural reach:
+// the match that enumerates the positions lives there, once, for the whole
+// tier, rather than here beside two renderer copies that disagreed with it.
 //
 // `StateBehaviour.OnError` is deliberately absent: it is `ErrorPayload -> Node`,
 // so there is no node to enumerate until it is applied.
 //
-// Phase 1666 — each position now carries its own LABEL, in the §3.3 spelling an
+// Phase 1666 — each position carries its own LABEL, in the §3.3 spelling an
 // author would recognise (`state.onLoading`, `Switch.cases[0].child`,
-// `Mount.inputs["header"]`). The labels ride the existing match rather than a
-// second one, for the reason the paragraph above gives about the read and the
-// write: a parallel table of names would be a third thing to keep in step, and
-// the whole point of the lens is that there is one.
+// `Mount.inputs[header]`).
 
 let private nonStructuralSlots (node: Node<'Msg>) : (string * Node<'Msg>) list * (Node<'Msg> list -> Node<'Msg>) =
-    // `Node.State` is an option since the swap — an absent envelope has no
-    // slots to enumerate, and the rebuild writes back through the same option.
-    let onLoading = node.State |> Option.bind _.OnLoading
-    let onEmpty = node.State |> Option.bind _.OnEmpty
-
-    let stateSlots =
-        [ match onLoading with
-          | Some n -> "state.onLoading", n
-          | None -> ()
-          match onEmpty with
-          | Some n -> "state.onEmpty", n
-          | None -> ()
-          // Phase 1812 — the author-declared `fallback` is a node-valued
-          // envelope slot like the two State arms: reached by the same lens,
-          // rebuilt through the same put.
-          match node.Fallback with
-          | Some n -> "fallback", n
-          | None -> () ]
-
-    let hasLoading = onLoading.IsSome
-    let hasEmpty = onEmpty.IsSome
-
-    let putState (replacements: Node<'Msg> list) (rest: Node<'Msg> list) =
-        let loading, afterLoading =
-            if hasLoading then
-                Some(List.head replacements), List.tail replacements
-            else
-                None, replacements
-
-        let empty, afterEmpty =
-            if hasEmpty then
-                Some(List.head afterLoading), List.tail afterLoading
-            else
-                None, afterLoading
-
-        let fallback =
-            if node.Fallback.IsSome then
-                Some(List.head afterEmpty)
-            else
-                None
-
-        { node with
-            State =
-                node.State
-                |> Option.map (fun s ->
-                    { s with
-                        OnLoading = loading
-                        OnEmpty = empty })
-            Fallback = fallback },
-        rest
-
-    // Kind-held nodes, in a fixed order the rebuild mirrors exactly.
-    let kindSlots, putKind =
-        match node.Kind with
-        | NodeKind.Switch spec ->
-            let caseNodes =
-                spec.Cases |> List.mapi (fun i c -> sprintf "Switch.cases[%d].child" i, c.Child)
-
-            caseNodes @ [ "Switch.default", spec.Default ],
-            fun (rs: Node<'Msg> list) ->
-                let cases =
-                    List.zip spec.Cases (List.truncate spec.Cases.Length rs)
-                    |> List.map (fun (c, replaced) -> { c with Child = replaced })
-
-                NodeKind.Switch
-                    { spec with
-                        Cases = cases
-                        Default = List.last rs }
-        | NodeKind.ErrorBoundary spec ->
-            [ "ErrorBoundary.child", spec.Child; "ErrorBoundary.fallback", spec.Fallback ],
-            fun (rs: Node<'Msg> list) ->
-                NodeKind.ErrorBoundary
-                    { spec with
-                        Child = rs[0]
-                        Fallback = rs[1] }
-        | NodeKind.FragmentRef spec ->
-            let argMap = spec.Args |> Option.defaultValue Map.empty
-
-            let keyed =
-                argMap
-                |> Map.toList
-                |> List.choose (fun (k, v) ->
-                    match v with
-                    | FragmentArg.SlotArg n -> Some(k, n)
-                    | _ -> None)
-
-            keyed |> List.map (fun (k, n) -> sprintf "FragmentRef.args[%s]" k, n),
-            fun (rs: Node<'Msg> list) ->
-                let args =
-                    List.zip keyed rs
-                    |> List.fold (fun acc ((k, _), replaced) -> Map.add k (FragmentArg.SlotArg replaced) acc) argMap
-
-                // An absent/empty arg bag stays `None` (omitted on the wire).
-                NodeKind.FragmentRef
-                    { spec with
-                        Args = (if Map.isEmpty args then None else Some args) }
-        | NodeKind.Mount spec ->
-            let inputMap = spec.Inputs |> Option.defaultValue Map.empty
-
-            let keyed =
-                inputMap
-                |> Map.toList
-                |> List.choose (fun (k, v) ->
-                    match v with
-                    | FragmentArg.SlotArg n -> Some(k, n)
-                    | _ -> None)
-
-            keyed |> List.map (fun (k, n) -> sprintf "Mount.inputs[%s]" k, n),
-            fun (rs: Node<'Msg> list) ->
-                let inputs =
-                    List.zip keyed rs
-                    |> List.fold (fun acc ((k, _), replaced) -> Map.add k (FragmentArg.SlotArg replaced) acc) inputMap
-
-                // An absent/empty input bag stays `None` (omitted on the wire).
-                NodeKind.Mount
-                    { spec with
-                        Inputs = (if Map.isEmpty inputs then None else Some inputs) }
-        | _ -> [], (fun _ -> node.Kind)
-
-    let all = stateSlots @ kindSlots
-
-    let put (replacements: Node<'Msg> list) : Node<'Msg> =
-        let stateCount = List.length stateSlots
-        let stateReplacements = List.truncate stateCount replacements
-        let kindReplacements = List.skip stateCount replacements
-        let withState, _ = putState stateReplacements []
-
-        if List.isEmpty kindSlots then
-            withState
-        else
-            { withState with
-                Kind = putKind kindReplacements }
-
-    all, put
+    let slots = NodeChildren.slotsIn NodeChildren.Reach.nonStructural node
+    slots |> List.map (fun s -> s.Label, s.Node), NodeChildren.replace NodeChildren.Reach.nonStructural node
 
 /// Every node held one step below `node` — structural children AND the
 /// non-list positions. The traversal surface, as distinct from the
 /// structural-op surface `getChildren` describes.
 let descendantNodes (node: Node<'Msg>) : Node<'Msg> list =
-    let structural = getChildren node.Kind |> Option.defaultValue []
-    let nonStructural, _ = nonStructuralSlots node
-    structural @ (nonStructural |> List.map snd)
+    NodeChildren.children NodeChildren.Reach.keyed node
 
 /// Rebuild `node` with `replacements` in exactly the positions `descendantNodes`
 /// enumerates (structural children first, then the non-structural slots). The
 /// write companion to `descendantNodes`, making the pair a lens over the whole
 /// traversal surface the way `getChildren` / `withChildren` are over the
 /// structural one. Positional only: the replacement list must have the same
-/// length as `descendantNodes node` — callers rebuild in place (an id-remap, a
-/// whole-tree map), never structurally (insert / remove stay with the
-/// structural surface, where the apply engine gates them).
+/// length as `descendantNodes node` (any other length answers `node`
+/// unchanged) — callers rebuild in place (an id-remap, a whole-tree map), never
+/// structurally (insert / remove stay with the structural surface, where the
+/// apply engine gates them).
 let replaceDescendantNodes (node: Node<'Msg>) (replacements: Node<'Msg> list) : Node<'Msg> =
-    let structuralCount =
-        getChildren node.Kind |> Option.map List.length |> Option.defaultValue 0
-
-    let structural = replacements |> List.truncate structuralCount
-    let nonStructural = replacements |> List.skip structuralCount
-
-    let rebuilt =
-        match withChildren node.Kind structural with
-        | Some kind -> { node with Kind = kind }
-        | None -> node
-
-    if List.isEmpty nonStructural then
-        rebuilt
-    else
-        let _, put = nonStructuralSlots rebuilt
-        put nonStructural
+    NodeChildren.replace NodeChildren.Reach.keyed node replacements
 
 // ─── Non-structural positions, by name (Phase 1666) ────────────────────────
 //
@@ -623,56 +455,105 @@ let nonStructuralAncestor (target: NodeId) (root: Node<'Msg>) : (NodeId * string
 
     walk root
 
-/// Returns `Some (parent, indexOfTarget)` if `target` is a child of some node
-/// reachable from `root`. Returns `None` for the root itself, or for a target
-/// not present in the tree.
-let findParent (target: NodeId) (root: Node<'Msg>) : (Node<'Msg> * int) option =
+/// The node whose STRUCTURAL child list holds `target`, and `target`'s index in
+/// it — searched through every node `reach` descends to. `None` for the root, for
+/// a target not present, and for a target held directly in a keyed position
+/// (it has no structural parent).
+///
+/// The reach decides only how far the SEARCH goes; the parent found is always a
+/// structural container, so an index names a place in its own child list.
+/// `NodeChildren.Reach.structural` walks the structural spine alone;
+/// `NodeChildren.Reach.keyed` also finds a container held below a keyed
+/// position — a `Box` in a `Switch` case, say — which the structural ops reach
+/// by descending into the position.
+let findParentWithin (reach: NodeChildren.Reach) (target: NodeId) (root: Node<'Msg>) : (Node<'Msg> * int) option =
     let (NodeId targetRaw) = target
 
     let rec walk (node: Node<'Msg>) =
-        match getChildren node.Kind with
-        | None -> None
-        | Some children ->
-            match children |> List.tryFindIndex (fun c -> c.Id = targetRaw) with
-            | Some idx -> Some(node, idx)
-            | None -> children |> List.tryPick walk
+        let here =
+            getChildren node.Kind
+            |> Option.bind (fun children ->
+                children
+                |> List.tryFindIndex (fun c -> c.Id = targetRaw)
+                |> Option.map (fun i -> node, i))
+
+        match here with
+        | Some hit -> Some hit
+        | None -> NodeChildren.children reach node |> List.tryPick walk
 
     walk root
+
+/// `findParentWithin` over the structural spine alone: `Some (parent,
+/// indexOfTarget)` when `target` is a structural child of a node reachable from
+/// `root` through structural children.
+let findParent (target: NodeId) (root: Node<'Msg>) : (Node<'Msg> * int) option =
+    findParentWithin NodeChildren.Reach.structural target root
 
 let rec allNodeIds (node: Node<'Msg>) : NodeId list =
     // `descendantNodes`, not `getChildren`: id enumeration must see the WHOLE
     // tree, including nodes held in positions the structural ops cannot edit.
     NodeId node.Id :: (descendantNodes node |> List.collect allNodeIds)
 
-/// DFS-add every NodeId in `node`'s subtree to `acc`. No intermediate list —
-/// the membership-probe path (firstSharedId) wants a HashSet, not a list it
-/// would immediately fold into a Set.
+/// DFS-add every NodeId in `node`'s subtree to `acc`, over the whole
+/// traversal surface (`descendantNodes`). No intermediate list.
 let rec collectNodeIdsInto (acc: HashSet<NodeId>) (node: Node<'Msg>) : unit =
     acc.Add(NodeId node.Id) |> ignore
 
     for c in descendantNodes node do
         collectNodeIdsInto acc c
 
-/// The first NodeId (DFS pre-order over `incoming`) that already exists in
-/// `root`, or None when the two subtrees share no id. This is the named
-/// duplicate-id check the structural ops use before grafting a subtree: it is
-/// O(|root| + |incoming|) via HashSet membership, replacing the per-op
-/// `allNodeIds root |> Set.ofList` build-then-probe (O(n log n) + a balanced
-/// tree allocation on every InsertChild / MoveNode). Reach for THIS rather than
-/// re-deriving `allNodeIds |> Set.ofList` — the slow shape is what it replaces.
-let firstSharedId (root: Node<'Msg>) (incoming: Node<'Msg>) : NodeId option =
-    let existing = HashSet<NodeId>()
-    collectNodeIdsInto existing root
+// ─── The tier's Fuaran.Core witnesses (Phase 2038) ────────────────────────
+//
+// The structural apply delegates to Fuaran.Core.Ops, which reads the tree
+// through these. `nodeWitness` is the STRUCTURAL witness — what Core edits and
+// rebuilds through, so its `Children` is the ordered list (`getChildren`) and
+// nothing more. `keyedWitness` declares every other position this tier holds a
+// node in, DERIVED from the same lens `descendantNodes` reads, so the keyed walk
+// Core runs (`Tree.traversal`, `Ops.applyContainedKeyed`,
+// `Tree.graftWellFormedKeyed`) and the tier's own id walk cannot disagree about
+// which nodes the tree holds. A second hand-written list of keyed positions is
+// exactly the drift this replaces.
 
-    let rec findIn (node: Node<'Msg>) : NodeId option =
-        if existing.Contains(NodeId node.Id) then
-            Some(NodeId node.Id)
-        else
-            match getChildren node.Kind with
-            | None -> None
-            | Some children -> children |> List.tryPick findIn
+/// The tier's structural `NodeWitness` — what Fuaran.Core edits through.
+let nodeWitness<'Msg> : Fuaran.Core.NodeWitness<Node<'Msg>, NodeId> =
+    // `Node.Id` is a bare string since the swap; the op layer's addressing
+    // stays `NodeId`-typed, wrapped at this witness boundary.
+    { Id = fun n -> NodeId n.Id
+      KindTag = fun n -> kindName n.Kind
+      Children = fun n -> getChildren n.Kind |> Option.defaultValue []
+      ReplaceChildren =
+        fun n cs ->
+            match withChildren n.Kind cs with
+            | Some k -> { n with Kind = k }
+            | None -> n }
 
-    findIn incoming
+/// The tier's `IdWitness` over `NodeId`.
+let idWitness: Fuaran.Core.IdWitness<NodeId> =
+    { ToString = fun (NodeId s) -> s
+      OfString = NodeId
+      Equals = (=) }
+
+/// The tier's `KeyedWitness`: every position `nodeWitness.Children` does not
+/// report — the `state` alternatives, the envelope `fallback`, the
+/// error-boundary and switch arms, slot arguments — read and written through
+/// `NodeChildren.Reach.nonStructural`, the lens `nonStructuralPositions` exposes.
+let keyedWitness<'Msg> : Fuaran.Core.KeyedWitness<Node<'Msg>, NodeId> =
+    { Surface = "Fuaran.UI.Ops.Introspect.allNodeIds — the tier's whole-tree id walk"
+      KeyedChildren = fun n -> NodeChildren.children NodeChildren.Reach.nonStructural n
+      ReplaceKeyedChildren = fun n rs -> NodeChildren.replace NodeChildren.Reach.nonStructural n rs
+      // Place by re-identifying the node in the node's FIRST keyed position:
+      // arity-preserving, so it never invents a position the node does not
+      // hold, and `None` where it holds none.
+      PlaceKeyedChild =
+        fun n (NodeId id) ->
+            match NodeChildren.children NodeChildren.Reach.nonStructural n with
+            | [] -> None
+            | first :: rest ->
+                Some(NodeChildren.replace NodeChildren.Reach.nonStructural n ({ first with Id = id } :: rest))
+      IdsUnique =
+        fun n ->
+            let ids = allNodeIds n
+            List.length (List.distinct ids) = List.length ids }
 
 /// DFS collect every NodeId whose kind reports `field` in its
 /// `availableFields` list. Used to populate the §4d

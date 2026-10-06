@@ -316,19 +316,11 @@ let rec encodeAction (action: Action<'Msg>) : string =
 // cases §2 emphasises). The function-shaped handlers — `Select.OnChange : _ ->
 // Action`, choice `OnSelect : int -> Action` — can't be read without applying
 // them, so the spike leaves them to the per-subtree hydration fallback. The
-// walk mirrors the renderer's container child map (Hydration's `childrenOf`).
+// walk reads the tier's one enumeration at the kind-held reach — the relation
+// island collection reads too.
 
 let private childrenOf (node: Node<obj>) : Node<obj> list =
-    match node.Kind with
-    | NodeKind.Box(s) -> s.Children
-    | NodeKind.SplitPanel(s) -> s.Children
-    | NodeKind.Tabs(s) -> s.Children
-    | NodeKind.Stepper(s) -> s.Children
-    | NodeKind.SummaryList(s) -> s.Children
-    | NodeKind.Disclosure(s) -> s.Children
-    | NodeKind.ErrorBoundary s -> [ s.Child ]
-    | NodeKind.FragmentDecl s -> [ s.Body ]
-    | _ -> []
+    Fuaran.UI.NodeChildren.children Fuaran.UI.NodeChildren.Reach.kindHeld node
 
 /// The node's own directly-readable `Action`, if it is an event-bearing leaf.
 let private actionOf (node: Node<obj>) : Action<obj> option =

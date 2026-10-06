@@ -332,58 +332,16 @@ let extractBindingSlots (kind: NodeKind<'Msg>) : BindingSlotInfo list =
 
 // ─── Structural traversal (mirror of TS childNodes / walkNodes / findNode) ──
 //
-// Console-traversal shape: Layout children, ErrorBoundary [child; fallback],
-// FragmentDecl [body]. This includes ErrorBoundary arms (unlike the
-// apply-engine's `Ops.Introspect.getChildren`, which intentionally omits them)
-// so `inspectTree` surfaces every addressable node a developer can query.
+// Console-traversal shape: the tier's one enumeration at the kind-held reach —
+// Layout children, ErrorBoundary [child; fallback], every Switch case and its
+// default, FragmentDecl [body]. This includes the arms (unlike the
+// apply-engine's structural `Ops.Introspect.getChildren`, which intentionally
+// omits them) so `inspectTree` surfaces every addressable node a developer can
+// query. A `Mount` guest is a separate scope; its interior nodes are
+// addressable in the guest's own tree, not the host console traversal.
 
 let childNodes (node: Node<'Msg>) : Node<'Msg> list =
-    match node.Kind with
-    | NodeKind.Box s -> s.Children
-    | NodeKind.SplitPanel s -> s.Children
-    | NodeKind.Tabs s -> s.Children
-    | NodeKind.Stepper s -> s.Children
-    | NodeKind.SummaryList s -> s.Children
-    | NodeKind.Disclosure s -> s.Children
-    | NodeKind.Modal s -> s.Children
-    | NodeKind.ScrollArea s -> s.Children
-    | NodeKind.ErrorBoundary spec -> [ spec.Child; spec.Fallback ]
-    | NodeKind.Switch spec -> (spec.Cases |> List.map _.Child) @ [ spec.Default ]
-    | NodeKind.FragmentDecl spec -> [ spec.Body ]
-    | NodeKind.Heading _
-    | NodeKind.Markdown _
-    | NodeKind.Metric _
-    | NodeKind.Badge _
-    | NodeKind.Sparkline _
-    | NodeKind.Callout _
-    | NodeKind.Progress _
-    | NodeKind.Skeleton _
-    | NodeKind.Icon _
-    | NodeKind.LabelValueRow _
-    | NodeKind.Fact _
-    | NodeKind.Link _
-    | NodeKind.Image _
-    | NodeKind.Media _
-    | NodeKind.Embed _
-    | NodeKind.Tree _
-    | NodeKind.List _
-    | NodeKind.Toast _
-    | NodeKind.CodeBlock _
-    | NodeKind.Math _
-    | NodeKind.Drawing _
-    | NodeKind.Form _
-    | NodeKind.Filters _
-    | NodeKind.Button _
-    | NodeKind.FileUpload _
-    | NodeKind.Select _
-    | NodeKind.DataGrid _
-    | NodeKind.Chart _
-    | NodeKind.Map _
-    | NodeKind.Custom _
-    | NodeKind.FragmentRef _
-    // Mount (§4o) — the guest is a separate scope; its interior nodes are
-    // addressable in the guest's own tree, not the host console traversal.
-    | NodeKind.Mount _ -> []
+    Fuaran.UI.NodeChildren.children Fuaran.UI.NodeChildren.Reach.kindHeld node
 
 /// Depth-first walk of every node in the tree, root first.
 let rec walkNodes (tree: Node<'Msg>) : Node<'Msg> list =

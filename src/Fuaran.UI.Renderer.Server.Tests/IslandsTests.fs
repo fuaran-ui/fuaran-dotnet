@@ -108,3 +108,88 @@ let tests =
 
               Expect.stringContains html staticHeading "the non-island remainder is untouched"
           } ]
+
+// ── Phase 2038 — the island, resume and fragment walks read the one enumeration ──
+//
+// Each walk used to carry a private copy of "what a node's children are", and
+// the copies disagreed. These fail on the copies and pass on
+// `NodeChildren.Reach.kindHeld`.
+
+let private islandUnder (wrap: Node<obj> -> Node<obj>) (islandId: string) : string =
+    let island = Fuaran.markdown ("n-" + islandId) "inside" |> Node.asIsland islandId
+
+    Hydration.renderWithIslands
+        sources
+        (Fuaran.dashboard
+            "page3"
+            { Defaults.dashboard<obj> with
+                Children = [ wrap island ] })
+
+[<Tests>]
+let keyedReachTests =
+    testList
+        "Islands and fragments under every kind-held position (Phase 2038)"
+        [ test "an island under a Modal emits its hydrate script" {
+              let html =
+                  islandUnder
+                      (fun island ->
+                          Fuaran.modal
+                              "m"
+                              { Defaults.modal<obj> with
+                                  Children = [ island ] })
+                      "in-modal"
+
+              Expect.stringContains html "id=\"fuaran-hydrate-island-in-modal\"" "the Modal's island payload"
+          }
+
+          test "an island under a ScrollArea emits its hydrate script" {
+              let html =
+                  islandUnder
+                      (fun island ->
+                          Fuaran.scrollArea
+                              "s"
+                              { Defaults.scrollArea<obj> with
+                                  Children = [ island ] })
+                      "in-scroll"
+
+              Expect.stringContains html "id=\"fuaran-hydrate-island-in-scroll\"" "the ScrollArea's island payload"
+          }
+
+          test "an island in a Switch case emits its hydrate script" {
+              let html =
+                  islandUnder
+                      (fun island ->
+                          Fuaran.switch
+                              "sw"
+                              { Defaults.switch<obj> with
+                                  Cases =
+                                      [ { Child = island
+                                          Match = Some "a"
+                                          When = None } ]
+                                  Default = Fuaran.markdown "sw-default" "default" })
+                      "in-switch"
+
+              Expect.stringContains html "id=\"fuaran-hydrate-island-in-switch\"" "the Switch case's island payload"
+          }
+
+          test "a FragmentDecl under ErrorBoundary.fallback resolves on the server as on the client" {
+              // The client `collectFragments` walks both error-boundary arms; the
+              // server registry read only `Child`, so a ref in the child to a decl
+              // in the fallback rendered unresolved on the server alone.
+              let tree: Node<obj> =
+                  Fuaran.dashboard
+                      "page4"
+                      { Defaults.dashboard<obj> with
+                          Children =
+                              [ Fuaran.errorBoundary
+                                    "eb"
+                                    { Child = Fuaran.fragmentRef "ref" "inFallback"
+                                      Fallback =
+                                        Fuaran.fragmentDecl
+                                            "decl"
+                                            { Defaults.fragmentDecl<obj> with
+                                                Name = "inFallback"
+                                                Body = Fuaran.markdown "frag-body" "FRAGMENT-BODY-TEXT" } } ] }
+
+              Expect.stringContains (Render.render sources tree) "FRAGMENT-BODY-TEXT" "the server resolves the ref"
+          } ]
