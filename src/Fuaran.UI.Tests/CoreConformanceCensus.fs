@@ -690,6 +690,51 @@ let census: (string * Adoption) list =
       "WireNullTolerance.laws",
       NotUsed
           "the kit's null-tolerance vectors over Core's own Wire decoders — a fixed Core corpus with no host implementation to hand it; the tier's null handling is certified by the wire-format conformance corpus"
+      // ---- the families the 0.35.1 pin raise brings (Core 0.35.0, released as 0.35.1) ----
+      // Classified at the raise, not adopted in it, on the 0.34.0 raise's rule: where the family's
+      // subject exists here the row is `CarriedBy` and names the witness an adoption would supply;
+      // where it does not, the row names the mechanism the tier does not use.
+      "Conformance.digestLaws",
+      NotUsed
+          "Fuaran.Core.Ops.Diff's subtree digests and change partition — no project here diffs a tree through Core (WireProfile's Diff is Fuaran.Core.Idl's IDL diff, a different module)"
+      "Conformance.changeLaws",
+      NotUsed
+          "Fuaran.Core.Ops.Diff.changes over an op script — no project here classifies a tree change through Core (see digestLaws)"
+      "Conformance.introducedLaws",
+      NotUsed
+          "Fuaran.Core.Validator's introduced-findings gate (introduced / verdict / gate under a GatePolicy) — RecipeCertification uses a Core Validator.Registry only as a validity oracle, and DagMerge.mergeGated gates through the tier's own validator, so nothing here calls the Core gate"
+      "Conformance.writeGateLaws",
+      NotUsed "Fuaran.Core.Ops.WriteGate — no project here gates an op through a Core WriteGate or calls applyGated"
+      "Conformance.policyLaws",
+      CarriedBy
+          "unfiled — self-contained over the kit's registries, as capabilityLaws (adopted above) is; its subject, a policy gate between validation and the body on a Core CapabilityRegistry, sits on the registry Fuaran.UI.AiTools.Capabilities dispatches over, so adoption is one test beside the capabilityLaws test running the family"
+      "Conformance.policyLawsAt",
+      NotUsed
+          "Fuaran.Core.AiSurface's guarded submit at a domain's GuardedSurfaceWitness — no project in this tier references Fuaran.Core.AiSurface (see aiSurfaceLaws)"
+      "Conformance.keyedCaptureLaws",
+      NotUsed
+          "CapabilityRegistry.dispatchCaptured / dispatchReplayed and the keyed capture journal — no project here dispatches a capability through the capture seam"
+      "Conformance.sanitizeLaws",
+      CarriedBy
+          "unfiled — Fuaran.UI.Renderer's Sanitize is this host's copy of the sanitisation floor the family holds every host to (Fuaran.Core.Idl.Sanitize is the reference witness); adoption is one SanitizeWitness over the tier's sanitiser"
+      "Conformance.streamConfigLaws",
+      CarriedBy
+          "unfiled — certify's stream laws run at the tier's StreamWitness under the kit's default chain parameters; this form runs them under a caller's genesis and hash (StreamConfig), and the tier pins SHA-256 (see reconcileLawsWith)"
+      "StringEscapeVectors.laws",
+      NotUsed
+          "the kit's pinned escape table over Core's own three escapers (Wire.Json.escape, Actor.encode, Dag.toJsonl) — a fixed Core corpus with no host implementation to hand it; the tier's canonical-JSON escaping is certified by the wire-format conformance corpus"
+      "EncodingProfileVectors.laws",
+      NotUsed
+          "the kit's pinned bytes for each EncodingProfile over Core's own renderer and pre-images — a fixed Core corpus with no host implementation to hand it; no project here declares an EncodingProfile"
+      "StoredIdentity.linearLaws",
+      NotUsed
+          "a stored Fuaran.Core.OpStream chain under a declared EncodingProfile — the tier's chain is its own HashChain (SHA-256 over CanonicalJson) and it persists no Core-computed record id"
+      "StoredIdentity.dagLaws",
+      NotUsed
+          "a stored Fuaran.Core.OpStream.Dag node-id store under a declared EncodingProfile — no project here persists a Core DAG node id"
+      "StoredIdentity.captureLaws",
+      NotUsed
+          "a stored Core effect-capture journal under a declared EncodingProfile — no project here journals a capture (see keyedCaptureLaws)"
       // ---- the compute kit's families from its own ids (Fuaran.Compute 0.36.0 / 0.37.0) ----
       "Conformance.plannerLaws",
       NotUsed
@@ -732,6 +777,9 @@ let private lawModules =
       "FoldConfluence"
       "IncrementalDelta"
       "WireNullTolerance"
+      "StringEscapeVectors"
+      "EncodingProfileVectors"
+      "StoredIdentity"
       "PipelineQueryConformance"
       "DeriveTypingConformance" ]
 

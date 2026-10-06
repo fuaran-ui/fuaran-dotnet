@@ -29,7 +29,11 @@ module FastPathTests =
             [ test "every seed pattern registers (no duplicate ids dropped)" {
                   let count = List.length SeedCatalogue.all
                   Expect.equal banked.Patterns.Count count "id→pattern map holds every pattern"
-                  Expect.equal banked.Registry.Entries.Count count "registry holds one entry per pattern"
+
+                  Expect.equal
+                      (Fuaran.Core.FunctionRegistry.ids banked.Registry |> List.length)
+                      count
+                      "registry holds one entry per pattern"
 
                   let distinct =
                       SeedCatalogue.all |> List.map (fun p -> p.Id) |> List.distinct |> List.length

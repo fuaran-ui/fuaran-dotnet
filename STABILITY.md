@@ -7904,6 +7904,37 @@ ride it and this slot opens the next number. A change of this class or lower tha
   Core-law suite's `replayFromSink`) are now thin calls to `DagReplay.replay`, so the oracle is the
   production fold rather than a second implementation of it.
 
+### What rides this slot — the Fuaran.Core 0.35.1 raise
+
+- **Every `Fuaran.Core.*` pin moves 0.34.0 -> 0.35.1 together (0.35.0 was never released) — a
+  dependency floor, no `Fuaran.UI.*` signature change.** The compute packages stay on
+  `FuaranCoreComputeVersion` 0.37.0, their own producer; the central Core pins lift their transitive
+  Core floor. The shipped projects compile against 0.35.1 unmodified. **Consumer cost:** a consumer
+  restoring this slot resolves `Fuaran.Core.*` 0.35.1, whose own release notes carry its source
+  breaks (`FunctionRegistry` is opaque — read it through `FunctionRegistry.enumerate` / `ids` /
+  `tryFind`; the registration, pack-load, invoke, apply and query error unions are widened) and its
+  behavioural ones (`QueryRegistry.register` refuses a repeated parameter; a stricter wire reader).
+  The class is at most this slot's, so the raise rides it.
+- **BREAKING (behaviour): `Fuaran.UI.Generated` regenerates under Core 0.35.1's IDL generator, whose
+  reader is stricter.** `src/Fuaran.UI/Generated.fs` is regenerated from the unchanged
+  `idl.json` / `support.json`; no type or signature moves. Two read rules change in the generated
+  decoders (`Generated.decodeNode` and the rest): a closure / opaque slot is read BY VALUE — it must
+  hold the `"<closure>"` sentinel, so a REQUIRED closure slot that is absent, or that holds another
+  string, is refused (`OutOfRange` / `WrongKind`) where it was previously filled with the default
+  body, and an optional one is `None` only when absent; and a map whose object repeats a key keeps
+  the FIRST value, as every member read does, where it kept the last. A document this tier encodes
+  carries every sentinel and no repeated key, so a round-trip through the tier's own encoder is
+  unaffected. **Consumer cost:** a caller decoding hand-authored JSON that omits a required closure
+  slot now receives a decode error; it supplies the sentinel.
+- **Test-side only:** one FastPath test read `FunctionRegistry.Entries` and now reads
+  `FunctionRegistry.ids`, and the Core Fable gate builds its `QueryRegistry` from `QueryRegistry.empty` (the
+  record gained a `Policy` field). The Core-conformance census classifies the families the 0.35.1 kit adds
+  (including its three new law modules, `StringEscapeVectors`, `EncodingProfileVectors` and
+  `StoredIdentity`), and `docs/core-conformance.md` is regenerated from it.
+- **Corpus:** no byte moves. `laws/capability-laws.json` is Core's file, already re-stamped at the
+  0.35.1 kit by Core's own emit; this tier reads it and now certifies the pinned kit against it.
+  A re-emit of the wire corpus at this pin is byte-identical.
+
 ---
 
 ## 0.91.0 — the slot Phase 2005 opens: the compute 0.37.0 adoption completes (DRAFT — untagged)

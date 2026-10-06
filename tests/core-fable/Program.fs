@@ -220,7 +220,14 @@ let private queryTouch =
     let pending = QueryCodec.encodeDeferredResult Pending
 
     let dispatched =
-        match QueryRegistry.dispatch { Queries = Map.ofList [ q.Id, q ] } q.Id [] (fun _ -> Pending) with
+        match
+            QueryRegistry.dispatch
+                { QueryRegistry.empty with
+                    Queries = Map.ofList [ q.Id, q ] }
+                q.Id
+                []
+                (fun _ -> Pending)
+        with
         | Ok Pending -> "pending"
         | Ok other -> sprintf "%A" other
         | Error e -> sprintf "%A" e
