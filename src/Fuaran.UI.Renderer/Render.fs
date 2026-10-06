@@ -86,45 +86,9 @@ let private correlationId (seed: string) : string = Ids.deterministicCorrelation
 // projection without driving Feliz's React-substrate. The renderer's
 // internal call sites still consume it through the module namespace.
 let nodeKindName<'Msg> (kind: NodeKind<'Msg>) : string =
-    // Phase 692 — the "Category.Kind" projection survives the flattening (the
-    // .NET-side tests pin these strings), but the category is now DERIVED
-    // (`Kind.category`) and the kind name comes from `Kind.name`, so a new kind
-    // extends those rather than a third enumeration here.
-    match kind with
-    // Box renders under a role-dependent display name — the retired Card /
-    // Dashboard / Separator / Grid / Stack vocabulary the catalog pins.
-    | NodeKind.Box spec ->
-        let inner =
-            match spec.Role, spec.Layout with
-            | BoxRole.Card, _ -> "Card"
-            | (BoxRole.Dashboard, _)
-            | (BoxRole.Group, BoxLayout.Auto) -> "Dashboard"
-            | BoxRole.Separator, _ -> "Separator"
-            | BoxRole.Group, BoxLayout.Grid _ -> "Grid"
-            // `Masonry` postdates the retired vocabulary this projection
-            // preserves, so it names itself rather than borrowing `Grid`'s
-            // label — a diagnostic that said "Layout.Grid" for a masonry
-            // failure would send a reader to the wrong renderer arm.
-            | BoxRole.Group, BoxLayout.Masonry _ -> "Masonry"
-            | BoxRole.Group, BoxLayout.Flex _ -> "Stack"
-
-        "Layout." + inner
-    | NodeKind.Custom spec -> sprintf "Custom.%s.%s" spec.ModuleId spec.ComponentId
-    | NodeKind.ErrorBoundary _ -> "ErrorBoundary"
-    | NodeKind.Switch _ -> "Switch"
-    | NodeKind.FragmentDecl _ -> "FragmentDecl"
-    | NodeKind.FragmentRef _ -> "FragmentRef"
-    | NodeKind.Mount spec -> sprintf "Mount.%s" spec.ScopeId
-    | k ->
-        let category =
-            match Kind.category k with
-            | NodeCategory.Layout -> "Layout"
-            | NodeCategory.Display -> "Display"
-            | NodeCategory.Input -> "Input"
-            | NodeCategory.Visualisation -> "Visualisation"
-            | NodeCategory.Structural -> "Structural"
-
-        category + "." + Kind.name k
+    // Phase 2041 — the projection moved to `RenderParity` so the server
+    // renderer names a failing node exactly as this one does.
+    RenderParity.nodeKindName kind
 
 // ─── The opaque session-context keys (Phase 330) ───────────────────────────
 //
@@ -171,7 +135,7 @@ let emitRenderFailureWithContext
     (errorMessage: string)
     (source: RenderFailureSource)
     : string =
-    let corrId = correlationId (nodeId + "|" + kindName)
+    let corrId = RenderParity.renderFailureCorrelationId nodeId kindName
 
     match sink with
     | Some s ->
@@ -225,7 +189,7 @@ let private renderNodeFallback
         [ prop.className "fuaran-node-fallback"
           prop.custom ("data-fuaran-render-failed", "true")
           prop.custom ("data-fuaran-render-correlation", corrId)
-          prop.text (sprintf "[fuaran: render failed for '%s' (%s) — %s]" nodeId kindName errorMessage) ]
+          prop.text (RenderParity.renderFailureText nodeId kindName errorMessage) ]
 
 // ─── Render context — bundles renderer-wide dependencies ───────────────────
 //
@@ -1574,11 +1538,12 @@ let private ensureTooltipDismissal () : unit = ()
 // (Layout children, ErrorBoundary.Child/Fallback, FragmentDecl.Body). Refs
 // don't carry bodies, so they're not visited by collection.
 //
-// `namespaceNode` rewrites every interior `NodeId` of a fragment body by
-// prepending the ref's `NodeId` (plus ".") to it — that's how multiple
+// `FragmentExpansion.namespaceIds` (Phase 2041: shared with the server
+// renderer, so the two tiers emit the same ids) rewrites every interior
+// `NodeId` of a fragment body by prepending the ref's `NodeId` (plus ".") to it — that's how multiple
 // refs to the same fragment produce DOM-unique addressable ids:
 // `ref1.btn` / `ref2.btn` rather than the bare `btn`. The rewrite is
-// structural — every `NodeKind` arm that carries Node children is
+// structural — every position `NodeChildren.Reach.kindHeld` names is
 // recursed into; `NodeKind.Custom` props / accessibility / styles /
 // bindings are NOT id-bearing and stay untouched. Nested FragmentRef
 // expansions get the prefix concatenated by the recursive render call,
@@ -2253,128 +2218,6 @@ let queryKeysOfBinding<'T> (binding: Binding<'T>) : string list = keysOfBinding 
 /// twin, so the reactive host subscribes a surface to its query slots alongside the other channels.
 let collectQueryKeys<'Msg> (node: Node<'Msg>) : Set<string> = collectKeys QueryChannel node
 
-/// Rewrite every interior `NodeId` of a fragment
-/// body by prepending the supplied `prefix` (e.g. `"ref1."`). Recurses
-/// through every NodeKind arm that carries Node children so nested
-/// declarations / refs / layouts get their ids rewritten consistently.
-/// `NodeKind.Custom` props + `Accessibility.LabelledBy` /
-/// `DescribedBy` references are NOT id-rewritten because the renderer
-/// doesn't currently expose a portable way to know which prop / which
-/// referenced id corresponds to a fragment-interior id — the
-/// conservative behaviour is to leave them alone, surfacing as a
-/// build-time validator follow-up if cross-prop id references become a
-/// real authoring pattern inside fragment bodies.
-let rec private namespaceNode<'Msg> (prefix: string) (node: Node<'Msg>) : Node<'Msg> =
-    // `Node.Id` is a bare string in the generated envelope (the `NodeId`
-    // wrapper erased) — prefix it directly.
-    let newId = prefix + node.Id
-    let newKind = namespaceKind prefix node.Kind
-    { node with Id = newId; Kind = newKind }
-
-and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKind<'Msg> =
-    match kind with
-    | NodeKind.Box s ->
-        NodeKind.Box(
-            { s with
-                Children = List.map (namespaceNode prefix) s.Children }
-        )
-    | NodeKind.SplitPanel s ->
-        NodeKind.SplitPanel(
-            { s with
-                Children = List.map (namespaceNode prefix) s.Children }
-        )
-    | NodeKind.Tabs s ->
-        NodeKind.Tabs(
-            { s with
-                Children = List.map (namespaceNode prefix) s.Children }
-        )
-    | NodeKind.Stepper s ->
-        NodeKind.Stepper(
-            { s with
-                Children = List.map (namespaceNode prefix) s.Children }
-        )
-    | NodeKind.SummaryList s ->
-        NodeKind.SummaryList(
-            { s with
-                Children = List.map (namespaceNode prefix) s.Children }
-        )
-    | NodeKind.Disclosure s ->
-        NodeKind.Disclosure(
-            { s with
-                Children = List.map (namespaceNode prefix) s.Children }
-        )
-    | NodeKind.Modal s ->
-        NodeKind.Modal(
-            { s with
-                Children = List.map (namespaceNode prefix) s.Children }
-        )
-    // Phase 1120 — nothing under a `Tree` is a `Node`, so there is no interior
-    // id to namespace. The State keys are deliberately NOT prefixed either: a
-    // fragment body reading `$state.openRows` is naming the HOST's slot, on the
-    // same reading every other binding inside a fragment takes.
-    | NodeKind.Tree _ -> kind
-    | NodeKind.ScrollArea s ->
-        NodeKind.ScrollArea(
-            { s with
-                Children = List.map (namespaceNode prefix) s.Children }
-        )
-    | NodeKind.ErrorBoundary spec ->
-        NodeKind.ErrorBoundary
-            { Child = namespaceNode prefix spec.Child
-              Fallback = namespaceNode prefix spec.Fallback }
-    | NodeKind.Switch spec ->
-        // Rewrite interior ids in every case child + the default so a Switch
-        // inside an expanded fragment gets DOM-unique namespaced ids (Phase 392).
-        NodeKind.Switch
-            { spec with
-                Cases =
-                    spec.Cases
-                    |> List.map (fun c ->
-                        { c with
-                            Child = namespaceNode prefix c.Child })
-                Default = namespaceNode prefix spec.Default }
-    | NodeKind.FragmentDecl spec ->
-        // Nested declaration: rewrite the body's ids by the outer prefix.
-        // The decl's Name is not prefixed — fragment names live in their
-        // own namespace, distinct from NodeIds.
-        NodeKind.FragmentDecl
-            { spec with
-                Body = namespaceNode prefix spec.Body }
-    | NodeKind.FragmentRef _
-    | NodeKind.Heading _
-    | NodeKind.Markdown _
-    | NodeKind.Metric _
-    | NodeKind.Badge _
-    | NodeKind.Sparkline _
-    | NodeKind.Callout _
-    | NodeKind.Progress _
-    | NodeKind.Skeleton _
-    | NodeKind.Icon _
-    | NodeKind.LabelValueRow _
-    | NodeKind.Fact _
-    | NodeKind.Link _
-    | NodeKind.Image _
-    | NodeKind.Media _
-    | NodeKind.Embed _
-    | NodeKind.List _
-    | NodeKind.Toast _
-    | NodeKind.CodeBlock _
-    | NodeKind.Math _
-    | NodeKind.Drawing _
-    | NodeKind.Form _
-    | NodeKind.Filters _
-    | NodeKind.Button _
-    | NodeKind.FileUpload _
-    | NodeKind.Select _
-    | NodeKind.DataGrid _
-    | NodeKind.Chart _
-    | NodeKind.Map _
-    | NodeKind.Custom _
-    // Mount (§4o) — the guest interior is a separate scope namespaced by its
-    // own loader; the host fragment prefix does not rewrite guest ids. Leave
-    // the mount unchanged (same posture as FragmentRef / Custom).
-    | NodeKind.Mount _ -> kind
-
 /// The named fragment-expansion primitive (Phase 1151): the fragment `body`
 /// with its interior ids namespaced under `prefix`, served from the
 /// process-global `FragmentExpansion` cache when that pair has been expanded
@@ -2392,7 +2235,7 @@ and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKi
 /// pass reads as intent rather than as noise to tidy away, and it is what the
 /// soundness suite and the render-allocation micro-case measure.
 let expandFragment (prefix: string) (body: Node<'Msg>) : Node<'Msg> =
-    FragmentExpansion.expand body prefix (namespaceNode prefix)
+    FragmentExpansion.expandNamespaced prefix body
 
 /// The same expansion with NO memo — the id-rewriting walk itself.
 ///
@@ -2402,7 +2245,8 @@ let expandFragment (prefix: string) (body: Node<'Msg>) : Node<'Msg> =
 /// cached path in reach), and the render-allocation micro-case, which measures
 /// the cost the memo removes. The renderer itself always goes through
 /// `expandFragment`, and the source-shape guard in the soundness suite pins that.
-let expandFragmentUncached (prefix: string) (body: Node<'Msg>) : Node<'Msg> = namespaceNode prefix body
+let expandFragmentUncached (prefix: string) (body: Node<'Msg>) : Node<'Msg> =
+    FragmentExpansion.namespaceIds prefix body
 
 // ─── Declared field rules (`FormField.Rule`, Phase 864) ────────────────────
 //
@@ -2687,6 +2531,46 @@ module private FieldRules =
 #endif
 
 // ─── Per-Kind body renderers ───────────────────────────────────────────────
+
+// ─── The render walk's depth bound (Phase 2041) ────────────────────────────
+//
+// The server renderer has bounded its walk at `WireLimits.MaxDepth` since
+// Phase 781; this renderer had no bound, so a tree the server truncated was
+// rendered in full here, and a hydrating client disagreed with the markup it
+// was handed. The bound lives on `render` (the one function every nested node
+// passes through) as a per-walk counter rather than a `RenderContext` field:
+// widening that public record is a breaking change for every host that
+// constructs one, and the depth is a property of the walk, not of the host's
+// configuration. A walk is synchronous and runs on one thread, so the counter
+// is thread-local on .NET (two hosts rendering on two threads never see each
+// other's depth) and a plain cell under Fable (one event loop). `render`
+// restores it in a `finally`, so a throw caught by a guard or a boundary
+// leaves it exactly where the catching frame expects.
+
+/// The element emitted in place of a subtree nested past `WireLimits.MaxDepth`
+/// — the server renderer's `depthExceededElement`, attribute for attribute,
+/// with its text from `RenderParity` so the two cannot disagree.
+let private depthExceededElement (id: string) : ReactElement =
+    Html.div
+        [ prop.id id
+          prop.custom ("data-fuaran-node-id", id)
+          prop.custom ("data-fuaran-depth-exceeded", string Fuaran.UI.WireLimits.MaxDepth)
+          prop.className "fuaran-depth-exceeded"
+          prop.custom ("role", "note")
+          prop.children [ Html.text RenderParity.depthExceededText ] ]
+
+[<RequireQualifiedAccess>]
+module private RenderDepth =
+#if FABLE_COMPILER
+    let mutable private cell = 0
+    let current () : int = cell
+    let set (depth: int) : unit = cell <- depth
+#else
+    let private cell = new System.Threading.ThreadLocal<int>(fun () -> 0)
+    let current () : int = cell.Value
+    let set (depth: int) : unit = cell.Value <- depth
+#endif
+
 
 // State-slot dispatch is inlined at each data-bound per-Kind renderer
 // below (Metric / Progress / Grid). The shape is uniform:
@@ -4677,7 +4561,7 @@ let rec private renderKind
                 renderNodeFallback
                     parentNodeId
                     (nodeKindName kind + ".Fallback")
-                    (sprintf "child failed (%s); fallback also failed (%s)" ex.Message ex2.Message)
+                    (RenderParity.boundaryDoubleFailureMessage ex.Message ex2.Message)
                     corrId
     | NodeKind.Switch spec ->
         // State-bound conditional child (Phase 392). Read the reactive state
@@ -4923,7 +4807,7 @@ let rec private renderKind
             Html.div
                 [ prop.className "fuaran-fragment-cycle-placeholder"
                   prop.custom ("data-fuaran-fragment-cycle", rawName)
-                  prop.text (sprintf "[fuaran:fragment cycle '%s']" rawName) ]
+                  prop.text (RenderParity.fragmentCycleText rawName) ]
         else
             match Map.tryFind fragmentKey ctx.Fragments with
             | None ->
@@ -4946,7 +4830,7 @@ let rec private renderKind
                 // render call), so nested expansion naturally produces
                 // `outerRef.innerRef.btn` without re-concatenating an
                 // ambient prefix.
-                let prefix = parentNodeId + "."
+                let prefix = FragmentExpansion.refPrefix parentNodeId
 
                 // Phase 207 examined memoising this expansion per
                 // `(fragment, prefix)`, found the specified shape both unsound
@@ -8408,14 +8292,34 @@ and private buttonVariantClass (variant: ButtonVariant) : string =
 /// additionally warns: a document asked a question the renderer could not
 /// answer, and the node is on screen when its author may have meant it not to
 /// be, which is exactly the state somebody should be told about.
+///
+/// **Depth-bounded** (Phase 2041), with the server renderer's limit, marker and
+/// order: the depth is checked BEFORE visibility, as the server checks it, so a
+/// hidden node past the limit renders the marker on both tiers. The root renders
+/// at depth 1 and every nested `render` one deeper; past
+/// `WireLimits.MaxDepth` the subtree is replaced by `depthExceededElement` and
+/// the omission is reported through `Warn`.
 and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
-    match BindingResolver.nodeVisibility ctx.Sources node with
-    | Some(BindingResolver.Resolved false) -> Html.none
-    | Some(BindingResolver.Errored m) ->
-        ctx.Runtime.Warn(sprintf "[Fuaran] node '%s' visible predicate errored (%s) — rendering the node" node.Id m)
+    let depth = RenderDepth.current () + 1
 
-        renderPresent ctx node
-    | _ -> renderPresent ctx node
+    if depth > Fuaran.UI.WireLimits.MaxDepth then
+        ctx.Runtime.Warn(sprintf "[Fuaran] node '%s' %s" node.Id RenderParity.depthExceededText)
+        depthExceededElement node.Id
+    else
+        RenderDepth.set depth
+
+        try
+            match BindingResolver.nodeVisibility ctx.Sources node with
+            | Some(BindingResolver.Resolved false) -> Html.none
+            | Some(BindingResolver.Errored m) ->
+                ctx.Runtime.Warn(
+                    sprintf "[Fuaran] node '%s' visible predicate errored (%s) — rendering the node" node.Id m
+                )
+
+                renderPresent ctx node
+            | _ -> renderPresent ctx node
+        finally
+            RenderDepth.set (depth - 1)
 
 and private renderPresent (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     // `Node.Id` is a bare string in the generated envelope (the `NodeId`

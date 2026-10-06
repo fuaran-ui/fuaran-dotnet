@@ -78,10 +78,12 @@ follows the shared `Fuaran.UI.Renderer.BindingResolver`:
 
 The **resolved / loaded branch renders by default**. The server only falls back
 to `OnLoading` when a primary binding genuinely does not resolve server-side
-(e.g. a `Query` with no server data). `OnError` / `OnEmpty` are not synthesised
-server-side (there is no failing async to surface); a data-bound component whose
-binding resolves renders its body, and one that does not renders `OnLoading`
-when present.
+(e.g. a `Query` with no server data). `OnEmpty` is not synthesised server-side,
+and `OnError` is not synthesised for an async that has not failed; a data-bound
+component whose binding resolves renders its body, and one that does not renders
+`OnLoading` when present. A **Chart** whose source resolves to an error renders
+its `OnError` node when one is wired, built from the same `BindingResolution`
+payload (and the same correlation id) the client passes (Phase 2041).
 
 ## Per-kind server behaviour
 
@@ -122,9 +124,9 @@ when present.
 | **Input.FileUpload** – `destination` (Phase 1117) | **The declared streaming destination degrades to the PLAIN PICKER, and unlike `capture` one row up this floor genuinely does degrade.** A transfer needs a change listener and a host upload sink; there is no attribute a user agent reads off static markup that streams a file to a named destination, so there is nothing inert for this tier to emit and no honest way to pretend otherwise. What the floor renders is the fully working `<input type="file">` and its label — the control every pre-1117 document already had — and the declaration is recorded as `data-fuaran-upload-destination="declared"` on the label, on the `data-fuaran-upload-drop` precedent above: **not claimed as coverage**, since nothing in this tier acts on it. The marker deliberately records only THAT a destination was declared and never WHICH: the id is the host's registry key and a static document is readable by anyone, so publishing it would disclose the registry to every reader for a benefit nothing on this path could collect. A host that hydrates has the decoded tree and reads the destination from there. The client tier owns the whole transfer — the two refusals in front of it, the announced status line, and the host write-back of the reference — and none of it is reachable without script. |
 | **Visualisation.Table** | Full HTML `<table>`. |
 | **Visualisation** – Chart / Map / DataGrid | A **deterministic placeholder** carrying `data-fuaran-ssr-placeholder` + a row/marker count (never a blank); the client library renders into it on hydration. |
-| **ErrorBoundary** | Renders the protected child subtree (the `Fallback` is a client-runtime degradation path; the server has no throws to catch). |
+| **ErrorBoundary** | Renders the protected child subtree. A host-supplied closure that throws inside it (a `ServerCustomRenderer`, a `CellFormat.Custom`) reaches the boundary and its `Fallback` renders instead, as on the client. Outside any boundary the per-node guard degrades the one failing node to the client's `fuaran-node-fallback` element and the rest of the request renders (Phase 2041). |
 | **FragmentDecl** | Zero-paint (the decl is a template). |
-| **FragmentRef** | Expanded against the one-shot fragment registry collected from the tree; an unresolved ref renders a labelled placeholder. |
+| **FragmentRef** | Expanded against the one-shot fragment registry collected from the tree, with interior ids namespaced under the ref's id exactly as the client does (`ref1.btn` / `ref2.btn`, one shared walk), so two refs to one fragment emit unique ids. An unresolved ref renders a labelled placeholder; a reference cycle renders the client's cycle placeholder (Phase 2041). |
 | **Custom** | Consults the host-supplied server Custom-renderer registry (Phase 141); an unregistered node renders the same labelled placeholder as the client. |
 
 ### The node-level tooltip trait, server-side (Phase 1112)

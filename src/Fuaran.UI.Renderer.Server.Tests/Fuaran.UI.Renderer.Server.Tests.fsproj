@@ -77,6 +77,8 @@
          fixtures — with a go-red twin that reintroduces one site, because an
          absence assertion is worth exactly what its detector is worth. -->
     <Compile Include="StrictCspTests.fs" />
+    <!-- Phase 2041 — the server half of the renderer-agreement fixtures. -->
+    <Compile Include="RendererAgreementTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

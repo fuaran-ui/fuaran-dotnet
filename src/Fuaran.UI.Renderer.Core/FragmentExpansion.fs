@@ -191,3 +191,45 @@ let stats () : int * int = defaultCache.Hits, defaultCache.Misses
 
 /// Distinct fragment body instances the process-global cache currently retains.
 let count () : int = defaultCache.Count
+
+// ─── The id-namespacing walk (Phase 2041) ──────────────────────────────────
+
+/// The prefix a `FragmentRef` namespaces its expansion under: the ref's own
+/// (already fully-prefixed) node id plus `"."`, so two refs to one fragment
+/// produce `ref1.btn` / `ref2.btn` and a nested expansion produces
+/// `outerRef.innerRef.btn` without re-concatenating an ambient prefix.
+let refPrefix (refNodeId: string) : string = refNodeId + "."
+
+/// Rewrite every interior `NodeId` of a fragment body by prepending `prefix`.
+///
+/// THE walk, shared by the client and the server renderer (Phase 2041): before
+/// it moved here the client namespaced and the server did not, so a doubly
+/// referenced fragment emitted duplicate DOM ids under SSR and different ids
+/// from the client, which a hydrating client then disagreed with.
+///
+/// It descends `NodeChildren.Reach.kindHeld` — the ordered child lists, a
+/// `FragmentDecl` body, the `ErrorBoundary` arms and every `Switch` case and
+/// default — and nothing else: an envelope alternative (`state.onLoading`,
+/// `state.onEmpty`, `fallback`) and a slot argument keep their ids, a `Mount`
+/// guest is its own scope, and nothing under a `Tree` is a `Node`. Bindings,
+/// `Custom` props and accessibility references are not id-bearing here and are
+/// left alone.
+///
+/// Uncached; the renderers reach it through `expandNamespaced`.
+let rec namespaceIds<'Msg> (prefix: string) (node: Node<'Msg>) : Node<'Msg> =
+    let held, put =
+        Fuaran.UI.NodeChildren.lens Fuaran.UI.NodeChildren.Reach.kindHeld node
+
+    let rebuilt =
+        match held with
+        | [] -> node
+        | children -> put (List.map (namespaceIds prefix) children)
+
+    { rebuilt with Id = prefix + node.Id }
+
+/// The fragment `body` namespaced under `prefix` by `namespaceIds`, served from
+/// the process-global cache. The one expansion both renderers call, so the
+/// cache — keyed on `(body instance, prefix)` and not on the walk — can never
+/// hold one renderer's expansion under a key the other reads.
+let expandNamespaced<'Msg> (prefix: string) (body: Node<'Msg>) : Node<'Msg> =
+    expand body prefix (namespaceIds prefix)

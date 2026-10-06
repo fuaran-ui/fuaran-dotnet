@@ -569,11 +569,13 @@ let private nonKindRoles: (string * string) list =
     [ "tooltip",
       "the per-node tooltip hint is emitted for ANY kind whose `Accessibility` trait declares one - trait-DRIVEN, which is the exact opposite of intrinsic"
       "note",
-      "the depth-exceeded marker replaces the subtree of ANY kind that breaches `WireLimits.MaxDepth` - a wire-limit refusal, not a kind's own announcement (server arm only; the client arm carries no depth guard)" ]
+      "the depth-exceeded marker replaces the subtree of ANY kind that breaches `WireLimits.MaxDepth` - a wire-limit refusal, not a kind's own announcement (both arms since Phase 2041 gave the client the server's depth guard and marker)" ]
 
-/// The one recorded difference between the two arms' role sets: the server
-/// emits the depth-exceeded marker and the client does not.
-let private serverOnlyRoles: Set<string> = Set.ofList [ "note" ]
+/// The recorded differences between the two arms' role sets. Empty since Phase
+/// 2041: the one difference it held (`note`, the depth-exceeded marker the
+/// server emitted and the client did not) closed when the client gained the
+/// server's depth guard and marker element. The two arms now emit the same roles.
+let private serverOnlyRoles: Set<string> = Set.empty
 
 let private clientLines = emittingLines (rendererArm "client")
 let private serverLines = emittingLines (rendererArm "server")

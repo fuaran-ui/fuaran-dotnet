@@ -43,6 +43,10 @@
     <Compile Include="CodeHighlight.fs" />
     <Compile Include="Accessibility.fs" />
     <Compile Include="Ids.fs" />
+    <!-- Phase 2041 — the names, text and ids BOTH renderers emit when a node
+         cannot render (render-failure fallback, fragment cycle, depth marker).
+         After Ids.fs: the failure correlation id is that module's hash. -->
+    <Compile Include="RenderParity.fs" />
     <!-- Phase 1545 — the strict-CSP render mode. After Sanitize.fs (it reuses
          the shared emission grammar's CSS-value gate) and after Ids.fs (the
          generated class name is that module's deterministic hash). -->

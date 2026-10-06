@@ -348,15 +348,47 @@ let private depthExceededElement (id: string) : ReactElement =
           prop.custom ("data-fuaran-depth-exceeded", string Fuaran.UI.WireLimits.MaxDepth)
           prop.className "fuaran-depth-exceeded"
           prop.custom ("role", "note")
-          prop.children
-              [ Html.text (
-                    "[subtree omitted: nesting exceeds the wire limit MaxDepth = "
-                    + string Fuaran.UI.WireLimits.MaxDepth
-                    + "]"
-                ) ] ]
+          prop.children [ Html.text RenderParity.depthExceededText ] ]
 
-let rec private renderNode (depth: int) (ctx: ServerRenderContext) (node: Node<obj>) : ReactElement =
-    if depth > Fuaran.UI.WireLimits.MaxDepth then
+/// The per-node render guard's fallback element (Phase 2041) — the client
+/// renderer's `renderNodeFallback`, attribute for attribute, with its text and
+/// correlation id from `RenderParity`, so a node that fails on both tiers emits
+/// the same markup on both and hydration has nothing to discard.
+let private renderNodeFallback (nodeId: string) (kindName: string) (errorMessage: string) : ReactElement =
+    Html.div
+        [ prop.className "fuaran-node-fallback"
+          prop.custom ("data-fuaran-render-failed", "true")
+          prop.custom ("data-fuaran-render-correlation", RenderParity.renderFailureCorrelationId nodeId kindName)
+          prop.text (RenderParity.renderFailureText nodeId kindName errorMessage) ]
+
+/// What the walk carries that the PUBLIC `ServerRenderContext` does not
+/// (Phase 2041). Private, so adding to it is free; on the record it would be a
+/// breaking change for every host that constructs a context.
+///
+/// - `Depth` — the node's nesting level; the root is 1 (Phase 781).
+/// - `InErrorBoundary` — true under an `ErrorBoundary`'s child. The per-node
+///   guard then SUSPENDS, so a throw reaches the boundary and its `Fallback`
+///   renders — the client's `RenderContext.InErrorBoundary`, same semantics.
+/// - `Expanding` — the fragments being expanded on the path to this node; a ref
+///   that re-enters one renders the cycle placeholder — the client's
+///   `RenderContext.ExpandingFragments`.
+type private Walk =
+    { Depth: int
+      InErrorBoundary: bool
+      Expanding: Set<string> }
+
+[<RequireQualifiedAccess>]
+module private Walk =
+    let root: Walk =
+        { Depth = 1
+          InErrorBoundary = false
+          Expanding = Set.empty }
+
+    /// The same walk one level down.
+    let deeper (walk: Walk) : Walk = { walk with Depth = walk.Depth + 1 }
+
+let rec private renderNode (walk: Walk) (ctx: ServerRenderContext) (node: Node<obj>) : ReactElement =
+    if walk.Depth > Fuaran.UI.WireLimits.MaxDepth then
         depthExceededElement node.Id
     // Fuaran-UI Phase 1535 — CONDITIONAL PRESENCE. A resolved `false` on
     // `node.Visible` emits NOTHING: no element, no placeholder, no comment
@@ -373,12 +405,12 @@ let rec private renderNode (depth: int) (ctx: ServerRenderContext) (node: Node<o
     elif not (BindingResolver.isNodeVisible ctx.Sources node) then
         Html.none
     else
-        renderNodeCore depth ctx node
+        renderNodeCore walk ctx node
 
 /// The node render proper. Reached only through `renderNode`, which is what
 /// enforces `MaxDepth` — split out so the guard is two lines rather than a
 /// wrapper around fifty indented ones.
-and private renderNodeCore (depth: int) (ctx: ServerRenderContext) (node: Node<obj>) : ReactElement =
+and private renderNodeCore (walk: Walk) (ctx: ServerRenderContext) (node: Node<obj>) : ReactElement =
     let id = node.Id
 
     let baseClassName =
@@ -447,7 +479,19 @@ and private renderNodeCore (depth: int) (ctx: ServerRenderContext) (node: Node<o
                 @ [ "tabindex", "0" ],
                 semanticAttrs0
 
-    let kindBody = renderKind depth ctx id node.State node.Kind semanticAttrs
+    // Per-node render guard (Phase 2041) — the client renderer's, same
+    // semantics. A node body that throws (a host `ServerCustomRenderer`, a
+    // `CellFormat.Custom` closure, a malformed spec) degrades to the fallback
+    // element inside this node's wrapper, so its siblings and the rest of the
+    // request still render; the wrapper keeps `data-fuaran-node-id`. Under an
+    // `ErrorBoundary`'s child the guard suspends and the throw reaches the
+    // boundary, which renders its `Fallback` — the subtree the author asked for
+    // in place of a placeholder where the bad leaf was.
+    let kindBody =
+        try
+            renderKind walk ctx id node.State node.Kind semanticAttrs
+        with ex when not walk.InErrorBoundary ->
+            renderNodeFallback id (RenderParity.nodeKindName node.Kind) ex.Message
 
     // The hint element itself — a sibling of the body inside the wrapper, which
     // is what makes it HOVERABLE: the pointer moving from the node onto the hint
@@ -502,7 +546,7 @@ and private renderNodeCore (depth: int) (ctx: ServerRenderContext) (node: Node<o
     | None -> element
 
 and private renderKind
-    (depth: int)
+    (walk: Walk)
     (ctx: ServerRenderContext)
     (parentNodeId: string)
     (state: StateBehaviour<obj> option)
@@ -536,12 +580,12 @@ and private renderKind
                         | None -> Html.none
                         Html.div
                             [ prop.className "fuaran-card-body"
-                              prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ] ] ]
+                              prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ] ] ]
         | BoxRole.Dashboard, _
         | BoxRole.Group, BoxLayout.Auto ->
             Html.div
                 [ prop.className ("fuaran-layout-dashboard" + brk)
-                  prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
+                  prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
         | BoxRole.Separator, _ -> Html.hr [ prop.className ("fuaran-layout-separator" + brk) ]
         | BoxRole.Group, BoxLayout.Grid(cols, gridTemplateColumns, gridGap) ->
             // Phase 1523 — `templateColumns` is a free string on the wire that
@@ -580,7 +624,7 @@ and private renderKind
             Html.div (
                 [ prop.className ("fuaran-layout-grid" + brk + gridClass) ]
                 @ gridStyleProps
-                @ [ prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
+                @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
                 @ (cssRefusalAttrs |> List.map (fun (k, v) -> prop.custom (k, v)))
             )
         | BoxRole.Group, BoxLayout.Masonry(cols, masonryGap) ->
@@ -603,7 +647,7 @@ and private renderKind
             Html.div (
                 [ prop.className ("fuaran-layout-masonry" + brk + masonryClass) ]
                 @ masonryStyleProps
-                @ [ prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
+                @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
             )
         | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
             let dir =
@@ -619,12 +663,12 @@ and private renderKind
             Html.div (
                 [ prop.className (Css.layoutStack dir wrap + brk + flexClass) ]
                 @ flexStyleProps
-                @ [ prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
+                @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
             )
     | NodeKind.SplitPanel spec ->
         let weightLeft = max 0.0 (min 1.0 spec.Weight)
         let weightRight = 1.0 - weightLeft
-        let renderedChildren = spec.Children |> List.map (renderNode (depth + 1) ctx)
+        let renderedChildren = spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)
 
         let leftChildren, rightChildren =
             match renderedChildren with
@@ -768,7 +812,7 @@ and private renderKind
                                           prop.custom ("aria-labelledby", tabId activeIndex)
                                           prop.tabIndex 0
                                           prop.className "fuaran-tabs-panel"
-                                          prop.children [ renderNode (depth + 1) ctx childNode ] ] ]
+                                          prop.children [ renderNode (Walk.deeper walk) ctx childNode ] ] ]
                               | None -> []
                           ) ] ] ]
     | NodeKind.SummaryList spec ->
@@ -783,7 +827,7 @@ and private renderKind
                     | None -> Html.none
                     Html.div
                         [ prop.className "fuaran-summary-list-body"
-                          prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ] ] ]
+                          prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ] ] ]
     | NodeKind.Disclosure spec ->
         let resolvedOpen =
             BindingResolver.tryResolve ctx.Sources spec.Open
@@ -798,7 +842,7 @@ and private renderKind
                             prop.text (renderText ctx spec.Heading) ]
                       Html.div
                           [ prop.className "fuaran-disclosure-body"
-                            prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ] ] ]
+                            prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ] ] ]
         )
     | NodeKind.Stepper spec ->
         let activeIndex =
@@ -830,7 +874,7 @@ and private renderKind
                         [ prop.className "fuaran-stepper-body"
                           prop.children (
                               match List.tryItem activeIndex spec.Children with
-                              | Some node -> [ renderNode (depth + 1) ctx node ]
+                              | Some node -> [ renderNode (Walk.deeper walk) ctx node ]
                               | None -> []
                           ) ] ] ]
     | NodeKind.Modal spec ->
@@ -877,7 +921,7 @@ and private renderKind
             @ dismissEls
             @ [ Html.div
                     [ prop.className bodyClass
-                      prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ] ]
+                      prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ] ]
 
         if spec.Modality = ModalityKind.Popover then
             Html.div (
@@ -937,7 +981,7 @@ and private renderKind
             // camelCase `tabIndex`, diverging from React's DOM `tabindex`).
             [ prop.className (axisClass + scrollClass); prop.custom ("tabindex", "0") ]
             @ scrollStyleProps
-            @ [ prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
+            @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
         )
     // -- Display --
     | NodeKind.Heading spec ->
@@ -975,7 +1019,7 @@ and private renderKind
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
 
         match resolution, (state |> Option.bind _.OnLoading) with
-        | BindingResolver.NotResolved, Some loadingNode -> renderNode (depth + 1) ctx loadingNode
+        | BindingResolver.NotResolved, Some loadingNode -> renderNode (Walk.deeper walk) ctx loadingNode
         | _ ->
             Html.div
                 [ prop.className (Css.metric (Theme.toneVar spec.Tone))
@@ -1059,7 +1103,7 @@ and private renderKind
         let resolution = BindingResolver.resolve ctx.Sources spec.Fraction
 
         match resolution, (state |> Option.bind _.OnLoading) with
-        | BindingResolver.NotResolved, Some loadingNode -> renderNode (depth + 1) ctx loadingNode
+        | BindingResolver.NotResolved, Some loadingNode -> renderNode (Walk.deeper walk) ctx loadingNode
         | _ ->
             let fraction =
                 match resolution with
@@ -1124,7 +1168,7 @@ and private renderKind
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
 
         match resolution, (state |> Option.bind _.OnLoading) with
-        | BindingResolver.NotResolved, Some loadingNode -> renderNode (depth + 1) ctx loadingNode
+        | BindingResolver.NotResolved, Some loadingNode -> renderNode (Walk.deeper walk) ctx loadingNode
         | _ ->
             let emphasisSuffix =
                 if spec.Emphasis then
@@ -2134,41 +2178,59 @@ and private renderKind
                   prop.custom ("data-fuaran-row-count", string rowCount)
                   prop.text (sprintf "[Grid: %d rows — hydrates client-side]" rowCount) ]
     | NodeKind.Chart spec ->
-        match BindingResolver.resolve<Row seq> ctx.Sources spec.Source, spec.Kind with
-        | BindingResolver.Resolved rows, kind when Fuaran.UI.Charts.isLowered kind ->
-            // Phase 526 — the SSR renders the SAME first-party lowered Drawing
-            // SVG the client does (static geometry ⇒ no client-hydration
-            // placeholder for a lowered kind; SSR ↔ CSR byte-parity via the
-            // shared lowering + Drawing builder). The lowered-kind set is
-            // `Charts.isLowered` — one source of truth with the client branch.
-            //
-            // Phase 643 — the emission goes through `Charts.renderSvg`, the
-            // single entry point the CLIENT arm also calls, so the provenance
-            // scope threads through both tiers identically by construction
-            // rather than by two call sites kept in step. The host-installed
-            // scope ships `Off`, so these SSR bytes are unchanged.
-            Html.div
-                [ prop.dangerouslySetInnerHTML (Fuaran.UI.Charts.renderSvg ctx.Sources (renderText ctx) spec rows) ]
-        | resolution, _ ->
-            // Unresolved data, or a not-yet-lowered kind (Heatmap): the
-            // client-hydration placeholder.
-            let rowCount =
-                match resolution with
-                | BindingResolver.Resolved seq -> Seq.length seq
-                | _ -> 0
+        let resolution = BindingResolver.resolve<Row seq> ctx.Sources spec.Source
 
-            Html.div
-                [ prop.className "fuaran-chart fuaran-chart-ssr-placeholder"
-                  prop.custom ("data-fuaran-ssr-placeholder", "Chart")
-                  prop.custom ("data-fuaran-row-count", string rowCount)
-                  prop.children
-                      [ match spec.Title with
-                        | Some title ->
-                            Html.div [ prop.className "fuaran-chart-title"; prop.text (renderText ctx title) ]
-                        | None -> Html.none
-                        Html.div
-                            [ prop.className "fuaran-chart-placeholder"
-                              prop.text (sprintf "[Chart: %d rows — hydrates client-side]" rowCount) ] ] ]
+        // Phase 2041 — the state slots, as the client's chart arm reads them:
+        // an unresolved source with `OnLoading` wired renders the loading node,
+        // an errored source with `OnError` wired renders the node it builds
+        // from a `BindingResolution` payload whose correlation id is the
+        // client's (a hash of the chart's node id). Otherwise the chart body.
+        match resolution, (state |> Option.bind _.OnLoading), (state |> Option.bind _.OnError) with
+        | BindingResolver.NotResolved, Some loadingNode, _ -> renderNode (Walk.deeper walk) ctx loadingNode
+        | BindingResolver.Errored msg, _, Some errorFn ->
+            renderNode
+                (Walk.deeper walk)
+                ctx
+                (errorFn
+                    { Kind = ErrorKind.BindingResolution
+                      Message = msg
+                      CorrelationId = Ids.deterministicCorrelationId parentNodeId })
+        | _ ->
+            match resolution, spec.Kind with
+            | BindingResolver.Resolved rows, kind when Fuaran.UI.Charts.isLowered kind ->
+                // Phase 526 — the SSR renders the SAME first-party lowered Drawing
+                // SVG the client does (static geometry ⇒ no client-hydration
+                // placeholder for a lowered kind; SSR ↔ CSR byte-parity via the
+                // shared lowering + Drawing builder). The lowered-kind set is
+                // `Charts.isLowered` — one source of truth with the client branch.
+                //
+                // Phase 643 — the emission goes through `Charts.renderSvg`, the
+                // single entry point the CLIENT arm also calls, so the provenance
+                // scope threads through both tiers identically by construction
+                // rather than by two call sites kept in step. The host-installed
+                // scope ships `Off`, so these SSR bytes are unchanged.
+                Html.div
+                    [ prop.dangerouslySetInnerHTML (Fuaran.UI.Charts.renderSvg ctx.Sources (renderText ctx) spec rows) ]
+            | resolution, _ ->
+                // Unresolved data, or a not-yet-lowered kind (Heatmap): the
+                // client-hydration placeholder.
+                let rowCount =
+                    match resolution with
+                    | BindingResolver.Resolved seq -> Seq.length seq
+                    | _ -> 0
+
+                Html.div
+                    [ prop.className "fuaran-chart fuaran-chart-ssr-placeholder"
+                      prop.custom ("data-fuaran-ssr-placeholder", "Chart")
+                      prop.custom ("data-fuaran-row-count", string rowCount)
+                      prop.children
+                          [ match spec.Title with
+                            | Some title ->
+                                Html.div [ prop.className "fuaran-chart-title"; prop.text (renderText ctx title) ]
+                            | None -> Html.none
+                            Html.div
+                                [ prop.className "fuaran-chart-placeholder"
+                                  prop.text (sprintf "[Chart: %d rows — hydrates client-side]" rowCount) ] ] ]
     | NodeKind.Map spec ->
         let markerCount =
             BindingResolver.tryResolve ctx.Sources spec.Source
@@ -2181,9 +2243,25 @@ and private renderKind
               prop.custom ("data-fuaran-marker-count", string markerCount)
               prop.text (sprintf "[Map: %d markers — hydrates client-side]" markerCount) ]
     | NodeKind.ErrorBoundary spec ->
-        // Server has no throws to catch — render the protected child subtree
-        // directly. The Fallback is the client-runtime degradation path.
-        renderNode (depth + 1) ctx spec.Child
+        // Phase 2041 — the client's boundary, same semantics. The child renders
+        // with the per-node guard suspended, so a throw anywhere in it (a host
+        // closure, typically) lands here and the typed `Fallback` renders in its
+        // place. The fallback renders with the guard back on, so a flaky
+        // fallback degrades node by node rather than escalating; if it throws
+        // outside any guard as well, the boundary reports both failures in the
+        // per-node fallback element, exactly as the client does.
+        let child = Walk.deeper walk
+
+        try
+            renderNode { child with InErrorBoundary = true } ctx spec.Child
+        with ex ->
+            try
+                renderNode { child with InErrorBoundary = false } ctx spec.Fallback
+            with ex2 ->
+                renderNodeFallback
+                    parentNodeId
+                    (RenderParity.nodeKindName kind + ".Fallback")
+                    (RenderParity.boundaryDoubleFailureMessage ex.Message ex2.Message)
     | NodeKind.Switch spec ->
         // State-bound conditional child (Phase 392). SSR resolves the initial
         // state value from `ctx.Sources.State` (host pre-populated) and renders
@@ -2226,21 +2304,41 @@ and private renderKind
             BindingResolver.selectSwitchCase ctx.Sources selector spec.Cases
 
         match matched with
-        | Some child -> renderNode (depth + 1) ctx child
-        | None -> renderNode (depth + 1) ctx spec.Default
+        | Some child -> renderNode (Walk.deeper walk) ctx child
+        | None -> renderNode (Walk.deeper walk) ctx spec.Default
     | NodeKind.FragmentDecl _ ->
         // Zero-paint: the decl is a template, not visible output.
         Html.none
     | NodeKind.FragmentRef spec ->
-        match Map.tryFind spec.Name ctx.Fragments with
-        | Some body -> renderNode (depth + 1) ctx body
-        | None ->
-            let raw = spec.Name
+        // Phase 2041 — the client's expansion, through the SAME shared walk: the
+        // body's interior ids are namespaced under the ref's own id
+        // (`ref1.btn` / `ref2.btn`), so two refs to one fragment emit unique DOM
+        // ids and the ids the client hydrates against. A ref that re-enters a
+        // fragment already being expanded on this path renders the client's
+        // cycle placeholder rather than recursing to the depth limit.
+        let raw = spec.Name
 
+        if Set.contains raw walk.Expanding then
             Html.div
-                [ prop.className "fuaran-fragment-unresolved-placeholder"
-                  prop.custom ("data-fuaran-fragment-unresolved", raw)
-                  prop.text (sprintf "[fuaran:fragment unresolved '%s']" raw) ]
+                [ prop.className "fuaran-fragment-cycle-placeholder"
+                  prop.custom ("data-fuaran-fragment-cycle", raw)
+                  prop.text (RenderParity.fragmentCycleText raw) ]
+        else
+            match Map.tryFind raw ctx.Fragments with
+            | Some body ->
+                let namespaced =
+                    FragmentExpansion.expandNamespaced (FragmentExpansion.refPrefix parentNodeId) body
+
+                renderNode
+                    { Walk.deeper walk with
+                        Expanding = Set.add raw walk.Expanding }
+                    ctx
+                    namespaced
+            | None ->
+                Html.div
+                    [ prop.className "fuaran-fragment-unresolved-placeholder"
+                      prop.custom ("data-fuaran-fragment-unresolved", raw)
+                      prop.text (sprintf "[fuaran:fragment unresolved '%s']" raw) ]
     | NodeKind.Custom spec ->
         renderCustom
             ctx
@@ -3577,7 +3675,7 @@ let mkContext (sources: BindingResolver.BindingSources) (node: Node<obj>) : Serv
 /// embedding inside a host's own ViewEngine document layout). The host calls
 /// `Feliz.ViewEngine.Render.htmlView` (or `htmlDocument`) when ready.
 let renderToElement (sources: BindingResolver.BindingSources) (node: Node<obj>) : ReactElement =
-    renderNode 1 (mkContext sources node) node
+    renderNode Walk.root (mkContext sources node) node
 
 /// Render a `Node<obj>` tree to an HTML string on plain .NET. The body-fragment
 /// HTML only — the host owns `<html>` / `<head>` / meta / the reference CSS.
@@ -3622,7 +3720,7 @@ let renderWith
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : string =
-    Render.htmlView (renderNode 1 (mkContextWith customs sources node) node)
+    Render.htmlView (renderNode Walk.root (mkContextWith customs sources node) node)
 
 /// `renderWith` under an EXPLICIT destination policy (Phase 1026) — the named
 /// opt-out for a host composing this tier without going through the Giraffe
@@ -3633,7 +3731,7 @@ let renderWithEgress
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : string =
-    Render.htmlView (renderNode 1 (mkContextWithEgress egressPolicy customs sources node) node)
+    Render.htmlView (renderNode Walk.root (mkContextWithEgress egressPolicy customs sources node) node)
 
 /// Render under a named render SCOPE with a host-supplied registry (Phase 783).
 /// Only renderers registered for `scope` are reachable from the tree.
@@ -3643,7 +3741,7 @@ let renderWithInScope
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : string =
-    Render.htmlView (renderNode 1 (mkContextInScope scope customs sources node) node)
+    Render.htmlView (renderNode Walk.root (mkContextInScope scope customs sources node) node)
 
 /// `renderWith` plus a host-supplied CONTRACT-CARD store (Phase 1108) — an
 /// unregistered `Custom` node whose identity the store knows renders the
@@ -3654,7 +3752,7 @@ let renderWithCards
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : string =
-    Render.htmlView (renderNode 1 (mkContextWithCards cards customs sources node) node)
+    Render.htmlView (renderNode Walk.root (mkContextWithCards cards customs sources node) node)
 
 /// A `<style>` element carrying the Phase 12.K `Theme` → CSS-variable `:root`
 /// projection — parity with the client `themeStyleElement`. The host mounts
@@ -3728,7 +3826,7 @@ let renderWithCsp
     (node: Node<obj>)
     : string =
     let ctx = mkContextWithCsp csp customs sources node
-    let body = Render.htmlView (renderNode 1 ctx node)
+    let body = Render.htmlView (renderNode Walk.root ctx node)
     collectedStyleHtml ctx + body
 
 /// `renderWithCsp` with no host Custom-renderer registry — the strict-mode twin
