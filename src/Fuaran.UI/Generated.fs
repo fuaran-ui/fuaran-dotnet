@@ -1,4 +1,4 @@
-// AUTO-GENERATED from the IDL by Fuaran.Core.Idl.Gen 0.34.0. Do not edit by hand.
+// AUTO-GENERATED from the IDL by Fuaran.Core.Idl.Gen 0.35.1. Do not edit by hand.
 module Fuaran.UI.Generated
 #nowarn "44" // this layer implements every declared member, including deprecated ones
 
@@ -2569,7 +2569,14 @@ let private dFloat (j: JVal) : Result<float, DecodeError> =
     | JStr "-Infinity" -> Ok System.Double.NegativeInfinity
     | _ -> dFail DecodeCode.WrongKind "number" "expected a number"
 
-let private dUnit (_: JVal) : Result<unit, DecodeError> = Ok()
+// Phase 347 — a closure / opaque slot holds one fixed sentinel string, read BY VALUE as the
+// interpreter reads it: another string is `OutOfRange` (a string, but not the one value the slot
+// takes), any other kind `WrongKind`. The sentinel carries nothing, so it decodes to `()`.
+let private dSentinel (sentinel: string) (j: JVal) : Result<unit, DecodeError> =
+    match j with
+    | JStr s when s = sentinel -> Ok()
+    | JStr _ -> dFail DecodeCode.OutOfRange "string" ("expected the sentinel " + sentinel)
+    | _ -> dFail DecodeCode.WrongKind "string" "expected a string"
 
 // Phase 676 — arbitrary JSON, kept verbatim. No shape check: the field's
 // contract is that its content is not the schema's business.
@@ -2589,15 +2596,19 @@ let private dList (dec: JVal -> Result<'T, DecodeError>) (j: JVal) : Result<'T l
         go 0 [] xs
     | _ -> dFail DecodeCode.WrongKind "array" "expected an array"
 
+// Every entry is checked, in document order; a repeated key keeps its FIRST value, as every
+// member read does (Phase 347 — `Map.ofList` kept the last, as `JSON.parse` does).
 let private dMap (dec: JVal -> Result<'T, DecodeError>) (j: JVal) : Result<Map<string, 'T>, DecodeError> =
     match j with
     | JObj fs ->
-        (Ok [], fs)
+        (Ok Map.empty, fs)
         ||> List.fold (fun acc (k, v) ->
             match acc with
             | Error e -> Error e
-            | Ok items -> dec v |> dUnder (PathSegment.Key k) |> Result.map (fun d -> (k, d) :: items))
-        |> Result.map (List.rev >> Map.ofList)
+            | Ok items ->
+                dec v
+                |> dUnder (PathSegment.Key k)
+                |> Result.map (fun d -> if Map.containsKey k items then items else Map.add k d items))
     | _ -> dFail DecodeCode.WrongKind "object" "expected an object"
 
 let private dReq (name: string) (fs: (string * JVal) list) (dec: JVal -> Result<'T, DecodeError>) : Result<'T, DecodeError> =
@@ -2617,11 +2628,6 @@ let private dDef (name: string) (fs: (string * JVal) list) (dec: JVal -> Result<
     match fs |> List.tryFind (fun (k, _) -> k = name) with
     | Some(_, v) -> dec v |> dUnder (PathSegment.Key name)
     | None -> Ok dflt
-
-// An optional closure / opaque field: the value is a sentinel carrying nothing,
-// but its PRESENCE distinguishes `Some ()` from `None` and must be read back.
-let private dPresent (name: string) (fs: (string * JVal) list) : Result<unit option, DecodeError> =
-    Ok(fs |> List.tryFind (fun (k, _) -> k = name) |> Option.map (fun _ -> ()))
 
 // A hosted slot's codec answers a SENTENCE (`JVal -> Result<'host, string>`): its refusal is
 // `OutOfRange` at the slot — any declared wire form has already been checked, so the value is
@@ -3130,11 +3136,11 @@ and private decAction (j: JVal) : Result<Action<obj>, DecodeError> =
             dReq "fileRef" __fs dStr |> Result.bind (fun fileRef ->
             Ok (None) |> Result.bind (fun fileHandle ->
             dReq "encoding" __fs decFileReadEncoding |> Result.bind (fun encoding ->
-            (dPresent "onRead" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> ("<closure>" :> obj))))) |> Result.bind (fun onRead ->
+            dOpt "onRead" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string) -> ("<closure>" :> obj)))) |> Result.bind (fun onRead ->
             Ok(Action.ReadFileBody(fileRef, fileHandle, encoding, onRead))))))
         | "Call" ->
             dReq "endpoint" __fs dStr |> Result.bind (fun endpoint ->
-            (dPresent "onResult" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> ("<closure>" :> obj))))) |> Result.bind (fun onResult ->
+            dOpt "onResult" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: obj) -> ("<closure>" :> obj)))) |> Result.bind (fun onResult ->
             dOpt "into" __fs decCallResultTarget |> Result.bind (fun into ->
             Ok(Action.Call(endpoint, onResult, into)))))
         | "Navigate" ->
@@ -3210,14 +3216,14 @@ and private decBinding<'T> (decT: JVal -> Result<'T, DecodeError>) (j: JVal) : R
             dOpt "grain" __fs decTimeGrain |> Result.bind (fun grain ->
             Ok(Binding.Now(accessor, grain))))
         | "Computed" ->
-            Ok (Fuaran.UI.HostPrelude.decodedComputed) |> Result.bind (fun fn ->
+            dReq "fn" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> Fuaran.UI.HostPrelude.decodedComputed)) |> Result.bind (fun fn ->
             Ok(Binding.Computed(fn)))
         | "Local" ->
             dReq "flushOn" __fs decLocalFlushTrigger |> Result.bind (fun flushOn ->
-            Ok ((fun (v: 'T) -> Fuaran.UI.HostPrelude.LocalCodec.identityFormat (box v))) |> Result.bind (fun format ->
+            dReq "format" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (v: 'T) -> Fuaran.UI.HostPrelude.LocalCodec.identityFormat (box v)))) |> Result.bind (fun format ->
             dReq "initialFrom" __fs (decBinding decT) |> Result.bind (fun initialFrom ->
-            (dPresent "onCommit" __fs |> Result.map (Option.map (fun () -> (fun _ -> ("<closure>" :> obj))))) |> Result.bind (fun onCommit ->
-            Ok ((Fuaran.UI.HostPrelude.LocalCodec.identityParse (decT >> Result.mapError DecodeError.describe))) |> Result.bind (fun parse ->
+            dOpt "onCommit" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> ("<closure>" :> obj)))) |> Result.bind (fun onCommit ->
+            dReq "parse" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (Fuaran.UI.HostPrelude.LocalCodec.identityParse (decT >> Result.mapError DecodeError.describe)))) |> Result.bind (fun parse ->
             dOpt "codec" __fs decFormat |> Result.bind (fun codec ->
             dOpt "commitTo" __fs dStr |> Result.bind (fun commitTo ->
             Ok(Binding.Local(flushOn, format, initialFrom, onCommit, parse, codec, commitTo)))))))))
@@ -3319,7 +3325,7 @@ and private decCellFormat (j: JVal) : Result<CellFormat, DecodeError> =
             dReq "unit" __fs decRelativeTimeUnit |> Result.bind (fun unit ->
             Ok(CellFormat.RelativeTime(unit)))
         | "Custom" ->
-            Ok ((fun _ -> "")) |> Result.bind (fun fn ->
+            dReq "fn" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> ""))) |> Result.bind (fun fn ->
             Ok(CellFormat.Custom(fn)))
         | __other -> dUnknown "one of 'None', 'Number', 'Currency', 'Percent', 'SignificantDigits', 'DateTime', 'Duration', 'RelativeTime', 'Custom'" ("unknown CellFormat case: " + __other))
     | _ -> dFail DecodeCode.WrongKind "object" "expected a CellFormat object"
@@ -3333,26 +3339,26 @@ and private decCellKindErased (j: JVal) : Result<CellKindErased<obj>, DecodeErro
         | "Numeric" -> Ok CellKindErased.Numeric
         | "Date" -> Ok CellKindErased.Date
         | "Editable" ->
-            (dPresent "onEdit" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row * Fuaran.UI.HostPrelude.CellValue) -> Action.Chain [])))) |> Result.bind (fun onEdit ->
+            dOpt "onEdit" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.Core.Row * Fuaran.UI.HostPrelude.CellValue) -> Action.Chain []))) |> Result.bind (fun onEdit ->
             Ok(CellKindErased.Editable(onEdit)))
         | "Checkbox" ->
-            Ok ((fun _ -> false)) |> Result.bind (fun get ->
-            (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row * bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
+            dReq "get" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> false))) |> Result.bind (fun get ->
+            dOpt "onToggle" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.Core.Row * bool) -> Action.Chain []))) |> Result.bind (fun onToggle ->
             Ok(CellKindErased.Checkbox(get, onToggle))))
         | "Button" ->
             dReq "label" __fs decTextSource |> Result.bind (fun label ->
-            (dPresent "onClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onClick ->
+            dOpt "onClick" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain []))) |> Result.bind (fun onClick ->
             Ok(CellKindErased.Button(label, onClick))))
         | "ButtonGroup" ->
             dReq "buttons" __fs (dList decButtonGroupItem) |> Result.bind (fun buttons ->
             Ok(CellKindErased.ButtonGroup(buttons)))
         | "Link" ->
-            Ok ((fun _ -> "")) |> Result.bind (fun hrefFn ->
-            Ok ((fun _ -> TextSource.Literal "")) |> Result.bind (fun labelFn ->
+            dReq "hrefFn" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> ""))) |> Result.bind (fun hrefFn ->
+            dReq "labelFn" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> TextSource.Literal ""))) |> Result.bind (fun labelFn ->
             Ok(CellKindErased.Link(hrefFn, labelFn))))
         | "Pill" ->
-            Ok ((fun _ -> TextSource.Literal "")) |> Result.bind (fun labelFn ->
-            Ok ((fun _ -> ToneVariant.Default)) |> Result.bind (fun toneFn ->
+            dReq "labelFn" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> TextSource.Literal ""))) |> Result.bind (fun labelFn ->
+            dReq "toneFn" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> ToneVariant.Default))) |> Result.bind (fun toneFn ->
             Ok(CellKindErased.Pill(labelFn, toneFn))))
         | "TonedPill" ->
             dReq "field" __fs dStr |> Result.bind (fun field ->
@@ -3360,11 +3366,11 @@ and private decCellKindErased (j: JVal) : Result<CellKindErased<obj>, DecodeErro
             dDef "default" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun ``default`` ->
             Ok(CellKindErased.TonedPill(field, map, ``default``)))))
         | "Progress" ->
-            Ok ((fun _ -> 0.0)) |> Result.bind (fun fractionFn ->
-            (dPresent "labelFn" __fs |> Result.map (Option.map (fun () -> (fun _ -> TextSource.Literal "")))) |> Result.bind (fun labelFn ->
+            dReq "fractionFn" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> 0.0))) |> Result.bind (fun fractionFn ->
+            dOpt "labelFn" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> TextSource.Literal ""))) |> Result.bind (fun labelFn ->
             Ok(CellKindErased.Progress(fractionFn, labelFn))))
         | "Custom" ->
-            Ok ((fun _ -> Unchecked.defaultof<Node<obj>>)) |> Result.bind (fun fn ->
+            dReq "fn" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> Unchecked.defaultof<Node<obj>>))) |> Result.bind (fun fn ->
             Ok(CellKindErased.Custom(fn)))
         | __other -> dUnknown "one of 'Text', 'Numeric', 'Date', 'Editable', 'Checkbox', 'Button', 'ButtonGroup', 'Link', 'Pill', 'TonedPill', 'Progress', 'Custom'" ("unknown CellKindErased case: " + __other))
     | _ -> dFail DecodeCode.WrongKind "object" "expected a CellKindErased object"
@@ -3465,40 +3471,40 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, DecodeError>
         match __t with
         | "Text" ->
             dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string) -> Action.Chain []))) |> Result.bind (fun onChange ->
             Ok(FormFieldKind.Text(value, onChange))))
         | "Number" ->
             dOpt "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: float) -> Action.Chain []))) |> Result.bind (fun onChange ->
             Ok(FormFieldKind.Number(value, onChange))))
         | "Checkbox" ->
             dOpt "value" __fs (decBinding dBool) |> Result.bind (fun value ->
-            (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
+            dOpt "onToggle" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: bool) -> Action.Chain []))) |> Result.bind (fun onToggle ->
             Ok(FormFieldKind.Checkbox(value, onToggle))))
         | "Toggle" ->
             dOpt "value" __fs (decBinding dBool) |> Result.bind (fun value ->
-            (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
+            dOpt "onToggle" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: bool) -> Action.Chain []))) |> Result.bind (fun onToggle ->
             Ok(FormFieldKind.Toggle(value, onToggle))))
         | "Choice" ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string option) -> Action.Chain []))) |> Result.bind (fun onChange ->
             Ok(FormFieldKind.Choice(options, value, onChange)))))
         | "TextArea" ->
             dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dReq "rows" __fs dInt |> Result.bind (fun rows ->
             Ok(FormFieldKind.TextArea(value, onChange, rows)))))
         | "RangedNumber" ->
             dOpt "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: float) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dOpt "min" __fs dFloat |> Result.bind (fun min ->
             dOpt "max" __fs dFloat |> Result.bind (fun max ->
             dOpt "step" __fs dFloat |> Result.bind (fun step ->
             Ok(FormFieldKind.RangedNumber(value, onChange, min, max, step)))))))
         | "Range" ->
             dOpt "value" __fs (fun (__j: JVal) -> dHosted (((fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = "$type")) -> decRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decRangePair __other) |> Result.mapError DecodeError.describe)) __j)) |> Result.bind (fun value ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float * float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: float * float) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dOpt "min" __fs dFloat |> Result.bind (fun min ->
             dOpt "max" __fs dFloat |> Result.bind (fun max ->
             dOpt "step" __fs dFloat |> Result.bind (fun step ->
@@ -3506,12 +3512,12 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, DecodeError>
         | "SegmentedChoice" ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string option) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dReq "orientation" __fs decOrientation |> Result.bind (fun orientation ->
             Ok(FormFieldKind.SegmentedChoice(options, value, onChange, orientation))))))
         | "DateTime" ->
             dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string option) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dReq "variant" __fs decDateTimeVariant |> Result.bind (fun variant ->
             dOpt "min" __fs dStr |> Result.bind (fun min ->
             dOpt "max" __fs dStr |> Result.bind (fun max ->
@@ -3519,7 +3525,7 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, DecodeError>
             Ok(FormFieldKind.DateTime(value, onChange, variant, min, max, step))))))))
         | "DateTimeRange" ->
             dOpt "value" __fs (fun (__j: JVal) -> dHosted (((fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = "$type")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateTimeRangePair __other) |> Result.mapError DecodeError.describe)) __j)) |> Result.bind (fun value ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string * string) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string * string) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dReq "variant" __fs decDateTimeVariant |> Result.bind (fun variant ->
             dOpt "min" __fs dStr |> Result.bind (fun min ->
             dOpt "max" __fs dStr |> Result.bind (fun max ->
@@ -3527,21 +3533,21 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, DecodeError>
             Ok(FormFieldKind.DateTimeRange(value, onChange, variant, min, max, step))))))))
         | "Combobox" ->
             dDef "allowFreeText" __fs dBool (false) |> Result.bind (fun allowFreeText ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string option) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FormFieldKind.Combobox(allowFreeText, onChange, options, value))))))
         | "Rating" ->
             dDef "allowHalf" __fs dBool (false) |> Result.bind (fun allowHalf ->
             dReq "max" __fs dInt |> Result.bind (fun max ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: float) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dOpt "value" __fs (decBinding dFloat) |> dRefine (fun value ->
             if max < 1 then
                 Error (sprintf "Rating 'max' must be at least 1 — a scale with %d positions cannot be rendered or announced" max)
             else
                 Ok(FormFieldKind.Rating(allowHalf, max, onChange, value))))))
         | "Color" ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dOpt "value" __fs (decBinding dStr) |> dRefine (fun value ->
             match value with
             | Some(Binding.Static(Some __text)) when not (Fuaran.UI.HostPrelude.HexColor.isValid __text) ->
@@ -3549,7 +3555,7 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, DecodeError>
             | _ -> Ok(FormFieldKind.Color(onChange, value))))
         | "Tokens" ->
             dDef "allowFreeText" __fs dBool (true) |> Result.bind (fun allowFreeText ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string list) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string list) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dOpt "suggestions" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun suggestions ->
             dOpt "value" __fs (decBinding (dList dStr)) |> dRefine (fun value ->
             if not allowFreeText && Option.isNone suggestions then
@@ -3808,7 +3814,7 @@ and private decAccessibility (j: JVal) : Result<Accessibility, DecodeError> =
 and private decButtonGroupItem (j: JVal) : Result<ButtonGroupItem<obj>, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    (dPresent "onClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onClick ->
+    dOpt "onClick" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain []))) |> Result.bind (fun onClick ->
     Ok { Label = label; OnClick = onClick })))
 
 and private decColumnErased (j: JVal) : Result<ColumnErased<obj>, DecodeError> =
@@ -3819,7 +3825,7 @@ and private decColumnErased (j: JVal) : Result<ColumnErased<obj>, DecodeError> =
     dDef "format" __fs decCellFormat (CellFormat.None) |> Result.bind (fun format ->
     dReq "kind" __fs decCellKindErased |> Result.bind (fun kind ->
     dReq "label" __fs dStr |> Result.bind (fun label ->
-    (dPresent "value" __fs |> Result.map (Option.map (fun () -> (fun _ -> Fuaran.UI.HostPrelude.CellValue.Empty)))) |> Result.bind (fun value ->
+    dOpt "value" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> Fuaran.UI.HostPrelude.CellValue.Empty))) |> Result.bind (fun value ->
     dDef "width" __fs decColumnWidth (ColumnWidth.Auto) |> Result.bind (fun width ->
     Ok { Field = field; Sortable = sortable; Editable = editable; Format = format; Kind = kind; Label = label; Value = value; Width = width })))))))))
 
@@ -3952,7 +3958,7 @@ and private decSrcSetEntry (j: JVal) : Result<SrcSetEntry, DecodeError> =
 and private decStateBehaviour (j: JVal) : Result<StateBehaviour<obj>, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dOpt "onEmpty" __fs decNode |> Result.bind (fun onEmpty ->
-    (dPresent "onError" __fs |> Result.map (Option.map (fun () -> (fun _ -> Unchecked.defaultof<Node<obj>>)))) |> Result.bind (fun onError ->
+    dOpt "onError" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> Unchecked.defaultof<Node<obj>>))) |> Result.bind (fun onError ->
     dOpt "onLoading" __fs decNode |> Result.bind (fun onLoading ->
     Ok { OnEmpty = onEmpty; OnError = onError; OnLoading = onLoading }))))
 
@@ -4060,7 +4066,7 @@ and private decChartSpec (j: JVal) : Result<ChartSpec<obj>, DecodeError> =
     dOpt "dataLabels" __fs decChartDataLabels |> Result.bind (fun dataLabels ->
     dOpt "xScale" __fs decChartXScale |> Result.bind (fun xScale ->
     dOpt "annotations" __fs (dList decChartAnnotation) |> Result.bind (fun annotations ->
-    (dPresent "onPointClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onPointClick ->
+    dOpt "onPointClick" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain []))) |> Result.bind (fun onPointClick ->
     Ok { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = title; ValueFormat = valueFormat; XTitle = xTitle; YTitle = yTitle; Subtitle = subtitle; LegendPosition = legendPosition; DataLabels = dataLabels; XScale = xScale; Annotations = annotations; OnPointClick = onPointClick }))))))))))))))))
 
 and private decCodeBlockSpec (j: JVal) : Result<CodeBlockSpec, DecodeError> =
@@ -4085,7 +4091,7 @@ and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dReq "columns" __fs (dList decColumnErased) |> Result.bind (fun columns ->
     dDef "editable" __fs dBool (false) |> Result.bind (fun editable ->
-    (dPresent "rowKey" __fs |> Result.map (Option.map (fun () -> (fun _ -> "")))) |> Result.bind (fun rowKey ->
+    dOpt "rowKey" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> ""))) |> Result.bind (fun rowKey ->
     dOpt "rowKeyField" __fs dStr |> Result.bind (fun rowKeyField ->
     dOpt "sortStateKey" __fs dStr |> Result.bind (fun sortStateKey ->
     dOpt "pageSize" __fs dInt |> Result.bind (fun pageSize ->
@@ -4102,7 +4108,7 @@ and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, DecodeError> =
     dOpt "rowTotal" __fs (decBinding dInt) |> Result.bind (fun rowTotal ->
     dReq "source" __fs (decBinding (fun (__j: JVal) -> dHosted ((Fuaran.Core.RowCodec.decodeRows) __j))) |> Result.bind (fun source ->
     dOpt "staticRows" __fs decStaticRows |> Result.bind (fun staticRows ->
-    (dPresent "onRowClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onRowClick ->
+    dOpt "onRowClick" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain []))) |> Result.bind (fun onRowClick ->
     Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; SortStateKey = sortStateKey; PageSize = pageSize; PageStateKey = pageStateKey; DefaultSort = defaultSort; EditStateKey = editStateKey; Reorderable = reorderable; TransferInKey = transferInKey; TransferOutKey = transferOutKey; KeepRowsTogether = keepRowsTogether; RepeatHeader = repeatHeader; Exportable = exportable; WindowStateKey = windowStateKey; RowTotal = rowTotal; Source = source; StaticRows = staticRows; OnRowClick = onRowClick })))))))))))))))))))))
 
 and private decDisclosureSpec (j: JVal) : Result<DisclosureSpec<obj>, DecodeError> =
@@ -4110,7 +4116,7 @@ and private decDisclosureSpec (j: JVal) : Result<DisclosureSpec<obj>, DecodeErro
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
     dReq "defaultOpen" __fs dBool |> Result.bind (fun defaultOpen ->
     dReq "heading" __fs decTextSource |> Result.bind (fun heading ->
-    (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
+    dOpt "onToggle" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: bool) -> Action.Chain []))) |> Result.bind (fun onToggle ->
     dReq "open" __fs (decBinding dBool) |> Result.bind (fun ``open`` ->
     Ok { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = onToggle; Open = ``open`` }))))))
 
@@ -4152,7 +4158,7 @@ and private decFileUploadSpec (j: JVal) : Result<FileUploadSpec<obj>, DecodeErro
     dReq "accept" __fs (dList dStr) |> Result.bind (fun accept ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
     dReq "multiple" __fs dBool |> Result.bind (fun multiple ->
-    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.UI.HostPrelude.FileSelection list) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
+    dOpt "onSelect" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.UI.HostPrelude.FileSelection list) -> Action.Chain []))) |> Result.bind (fun onSelect ->
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     dDef "acceptPaste" __fs dBool (false) |> Result.bind (fun acceptPaste ->
     dDef "dropTarget" __fs dBool (false) |> Result.bind (fun dropTarget ->
@@ -4249,7 +4255,7 @@ and private decMapSpec (j: JVal) : Result<MapSpec<obj>, DecodeError> =
     dReq "centreLongitude" __fs dFloat |> Result.bind (fun centreLongitude ->
     dReq "source" __fs (decBinding (dList decMapMarker)) |> Result.bind (fun source ->
     dReq "zoom" __fs dInt |> Result.bind (fun zoom ->
-    (dPresent "onMarkerClick" __fs |> Result.map (Option.map (fun () -> (fun (_: MapMarker) -> Action.Chain [])))) |> Result.bind (fun onMarkerClick ->
+    dOpt "onMarkerClick" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: MapMarker) -> Action.Chain []))) |> Result.bind (fun onMarkerClick ->
     Ok { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = onMarkerClick }))))))
 
 and private decMarkdownSpec (j: JVal) : Result<MarkdownSpec, DecodeError> =
@@ -4305,7 +4311,7 @@ and private decMountSpec (j: JVal) : Result<MountSpec<obj>, DecodeError> =
     dReq "capabilities" __fs (dList dStr) |> Result.bind (fun capabilities ->
     dReq "channel" __fs decGuestChannel |> Result.bind (fun channel ->
     dOpt "inputs" __fs (dMap decFragmentArg) |> Result.bind (fun inputs ->
-    (dPresent "onBubble" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onBubble ->
+    dOpt "onBubble" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: obj) -> Action.Chain []))) |> Result.bind (fun onBubble ->
     dReq "scopeId" __fs dStr |> Result.bind (fun scopeId ->
     Ok { Capabilities = capabilities; Channel = channel; Inputs = inputs; OnBubble = onBubble; ScopeId = scopeId }))))))
 
@@ -4329,8 +4335,8 @@ and private decScrollAreaSpec (j: JVal) : Result<ScrollAreaSpec<obj>, DecodeErro
 and private decSelectSpec (j: JVal) : Result<SelectSpec<obj>, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
-    (dPresent "onChangeMulti" __fs |> Result.map (Option.map (fun () -> (fun (_: string list) -> Action.Chain [])))) |> Result.bind (fun onChangeMulti ->
+    dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string option) -> Action.Chain []))) |> Result.bind (fun onChange ->
+    dOpt "onChangeMulti" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string list) -> Action.Chain []))) |> Result.bind (fun onChangeMulti ->
     dReq "source" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun source ->
     dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
     dOpt "placeholder" __fs decTextSource |> Result.bind (fun placeholder ->
@@ -4359,7 +4365,7 @@ and private decStepperSpec (j: JVal) : Result<StepperSpec<obj>, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dReq "activeStep" __fs (decBinding dInt) |> Result.bind (fun activeStep ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: int) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
+    dOpt "onSelect" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: int) -> Action.Chain []))) |> Result.bind (fun onSelect ->
     Ok { ActiveStep = activeStep; Children = children; OnSelect = onSelect }))))
 
 and private decSummaryListSpec (j: JVal) : Result<SummaryListSpec<obj>, DecodeError> =
@@ -4396,8 +4402,8 @@ and private decTabsSpec (j: JVal) : Result<TabsSpec<obj>, DecodeError> =
     dDef "activeIndex" __fs (decBinding dInt) (Binding.Static(Some(0))) |> Result.bind (fun activeIndex ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
     dDef "orientation" __fs decOrientation (Orientation.Horizontal) |> Result.bind (fun orientation ->
-    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: int) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
-    (dPresent "onSelectTag" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onSelectTag ->
+    dOpt "onSelect" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: int) -> Action.Chain []))) |> Result.bind (fun onSelect ->
+    dOpt "onSelectTag" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string) -> Action.Chain []))) |> Result.bind (fun onSelectTag ->
     dOpt "tabHeaders" __fs (dList decTabHeader) |> Result.bind (fun tabHeaders ->
     dOpt "tabTags" __fs (dList dStr) |> Result.bind (fun tabTags ->
     dOpt "activeTag" __fs (decBinding dStr) |> Result.bind (fun activeTag ->
@@ -4415,7 +4421,7 @@ and private decTreeSpec (j: JVal) : Result<TreeSpec<obj>, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dOpt "expandedStateKey" __fs dStr |> Result.bind (fun expandedStateKey ->
     dReq "items" __fs (dList decTreeItem) |> Result.bind (fun items ->
-    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
+    dOpt "onSelect" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string) -> Action.Chain []))) |> Result.bind (fun onSelect ->
     dOpt "selectionStateKey" __fs dStr |> Result.bind (fun selectionStateKey ->
     Ok { ExpandedStateKey = expandedStateKey; Items = items; OnSelect = onSelect; SelectionStateKey = selectionStateKey })))))
 
