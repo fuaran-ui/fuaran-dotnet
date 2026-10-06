@@ -7818,7 +7818,39 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.92.0 — the slot Phases 2038 and 2043 open: one answer to what a node's children are, and one spine walk for the DAG tier (DRAFT — untagged)
+## 0.93.0 — the slot opened after v0.92.0 was released (DRAFT — untagged)
+
+_Class: **additive**, until a later entry raises it. `v0.92.0` was tagged and published at `9b53dfa` while
+commits numbered 0.92.0 were still landing after it: the embedded-renderer re-syncs for Phases 2077 and 2046
+(`6a2fcd5`, `09cdb97`; `Fuaran.UI.Renderer.Web` content only) and Phase 2044 (`bf13d1f`, moved here from the
+0.92.0 entry, where it was recorded before the tag was seen). A released version names one contract, so
+everything after the tag rides this number (version cut recorded on the ledger, 2026-10-07)._
+
+### What rides this slot — the embedded-renderer re-syncs
+
+- **`Fuaran.UI.Renderer.Web` re-embeds the `@fuaran-ui/renderer` standalone bundle** for fuaran-ts Phases 2077
+  and 2046 (renderer 0.27.0). Content only; no .NET surface changes.
+
+### What rides this slot — Phase 2044
+
+- **`Fuaran.UI.Ops.TreeOp` gains `kindName`, `targets` and `footprint` (fuaran#2044) — additive.** A new
+  module in `Fuaran.UI.Ops.Abstractions` (namespace `Fuaran.UI.Ops`, beside the `TreeOp` type): the op's
+  case name, the ids it addresses (in order, each once), and every id it touches — its targets, every id
+  of a subtree it puts into the tree (an inserted child, a replacement root, the nodes a new kind or a new
+  `state` block holds, read through `NodeChildren` at its `keyed` reach), and a reorder's `newOrder`.
+- **Behaviour fix, pinned by a test that failed before it:** `BatchAccept.dependencyClosure` keys on the
+  footprint, so an op on a node INSIDE an inserted subtree now pulls the insert into the closure. Before,
+  `[InsertChild(root, Stack a [b]); UpdateStyle(b, …)]` with only the second selected kept the second
+  alone, and the kept batch failed to apply. The closure is now one reverse pass over the list rather
+  than a fixpoint over pairwise intersections; an index outside the list is returned as given rather
+  than raising.
+- **Unchanged, each pinned per case:** `ErrorRender`'s `kind` token, `Audit.opKindName`,
+  `Audit.referencedIds` and `OpApplyTelemetry.topLevelNodeId` now project from the three and answer
+  exactly what their own matches did.
+
+---
+
+## 0.92.0 — the slot Phases 2038 and 2043 open: one answer to what a node's children are, and one spine walk for the DAG tier (RELEASED — tagged v0.92.0 at 9b53dfa, 2026-10-06)
 
 _Class: **BREAKING (API + source + behaviour)** — Phase 2038 removes one public function and Phase 2043 changes
 three public signatures on `Fuaran.UI.OpStream.Dag.Merge` / `.Dag.Inspect`. `v0.91.0` is tagged, so nothing may
@@ -8013,23 +8045,6 @@ below this slot's class, so it rides the draft. No public record gains a field: 
   and the walk's accumulators (`CrossTreeRules`, run in report order). The `(Phase NNN)` provenance
   tags the moved rule comments carried are now the code table's `Notes`; the comments keep their
   rationale.
-
-### What rides this slot — Phase 2044
-
-- **`Fuaran.UI.Ops.TreeOp` gains `kindName`, `targets` and `footprint` (fuaran#2044) — additive.** A new
-  module in `Fuaran.UI.Ops.Abstractions` (namespace `Fuaran.UI.Ops`, beside the `TreeOp` type): the op's
-  case name, the ids it addresses (in order, each once), and every id it touches — its targets, every id
-  of a subtree it puts into the tree (an inserted child, a replacement root, the nodes a new kind or a new
-  `state` block holds, read through `NodeChildren` at its `keyed` reach), and a reorder's `newOrder`.
-- **Behaviour fix, pinned by a test that failed before it:** `BatchAccept.dependencyClosure` keys on the
-  footprint, so an op on a node INSIDE an inserted subtree now pulls the insert into the closure. Before,
-  `[InsertChild(root, Stack a [b]); UpdateStyle(b, …)]` with only the second selected kept the second
-  alone, and the kept batch failed to apply. The closure is now one reverse pass over the list rather
-  than a fixpoint over pairwise intersections; an index outside the list is returned as given rather
-  than raising.
-- **Unchanged, each pinned per case:** `ErrorRender`'s `kind` token, `Audit.opKindName`,
-  `Audit.referencedIds` and `OpApplyTelemetry.topLevelNodeId` now project from the three and answer
-  exactly what their own matches did.
 
 ---
 

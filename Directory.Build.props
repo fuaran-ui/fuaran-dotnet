@@ -807,7 +807,7 @@
          replay checks a merge node's outcome hash (2043). Class BREAKING (API +
          source + behaviour). An UNTAGGED DRAFT: changes of this class or lower
          ride it. See STABILITY.md "0.92.0". -->
-    <Version>0.92.0</Version>
+    <Version>0.93.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
