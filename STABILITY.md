@@ -7988,6 +7988,32 @@ below this slot's class, so it rides the draft. No public record gains a field: 
   packages carry that declaration, metadata only. The Fable stage's packed-consumer leg
   (`tests/fable-pack-consumer/`) Fable-compiles a consumer against the PACKED telemetry packages.
 
+### What rides this slot — Phase 2051
+
+- **`PreEmitValidate` is one options record, one code table and a rule family per kind
+  (fuaran#2051) — additive.** No existing entry point changes signature, and no defect changes code,
+  severity, message or report order: a differential run over every defect case (2,155 payload
+  variants through `describe`) and over every corpus tree (563 trees under five entry points) is
+  byte-identical to 0.91.0, and the regenerated `defect-vocabulary.json` is unchanged.
+- **New: `ValidateOptions` + `ValidateOptions.defaults` + `validateWith`.** `{ Policy; ForTransport;
+  Meter; Registry }` — every field independent, so a transport walk under a narrowed policy with a
+  registry is one record where it used to be impossible. The seven `validate*` names are one-line
+  presets of it.
+- **New: `DefectCodeRow` + `DefectCodes` (`table`, `rowOf`, `render`, `toMarkdown`) +
+  `describeVariant`.** The table holds one row per message shape — a defect case, qualified by the
+  sub-case or flag that selects a different message (`UnhonourableSort.NoSortStateKey`,
+  `PopoverWithoutAnchor.NoAnchor`) — carrying the code, the severity and the message as a `{name}`
+  template. `describe` renders the row, and `docs/ERROR_CODES.md` §5 is the table's generated
+  rendering, held byte for byte by a test (regenerate with `FUARAN_REGEN_ERROR_CODES=1`). A code may
+  span several rows (FUARAN114's grid and pill halves, the ten sub-cased or flag-worded defects);
+  a test holds every row of one code to one severity and every row to a reachable defect.
+- **Internal, recorded for a reader of the history:** the per-node walk dispatches to private rule
+  modules (`NodeRules`, `LayoutRules`, `GridRules`, `FormRules`, `ChartRules`, `ContentRules`,
+  `CompositionRules`) and the post-walk checks are seventeen pure functions over the binding facts
+  and the walk's accumulators (`CrossTreeRules`, run in report order). The `(Phase NNN)` provenance
+  tags the moved rule comments carried are now the code table's `Notes`; the comments keep their
+  rationale.
+
 ---
 
 ## 0.91.0 — the slot Phase 2005 opens: the compute 0.37.0 adoption completes (DRAFT — untagged)
