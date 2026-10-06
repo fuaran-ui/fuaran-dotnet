@@ -84,4 +84,41 @@ let tests =
 
               Audit.enforceAudited sink (Broker.StructuralOpBroker.create ()) sk (TreeOp.RemoveNode(NodeId "recital"))
               |> ignore
+          }
+
+          // Phase 2044 — `opKindName` and `referencedIds` project from
+          // `TreeOp.kindName` / `TreeOp.targets`. The expected columns are what
+          // their own per-case matches answered before, so the audit record is
+          // pinned as unchanged for every case.
+          test "opKindName and referencedIds are unchanged by projecting, for every case" {
+              let nn (v: 'T) : obj = box v |> Unchecked.nonNull
+              let child = realTree
+
+              let cases: (TreeOp<Msg> * string * NodeId list) list =
+                  [ TreeOp.EditNode(NodeId "k", realTree.Kind), "EditNode", [ NodeId "k" ]
+                    TreeOp.UpdateProp(NodeId "k", "Label", PropValue.Native(nn "y")), "UpdateProp", [ NodeId "k" ]
+                    TreeOp.ReplaceBinding(NodeId "k", "Source", Binding.Static(Some(nn 2.0))),
+                    "ReplaceBinding",
+                    [ NodeId "k" ]
+                    TreeOp.UpdateStyle(NodeId "k", Fuaran.UI.Defaults.style), "UpdateStyle", [ NodeId "k" ]
+                    TreeOp.UpdateState(NodeId "k", Fuaran.UI.Defaults.stateBehaviour<Msg>),
+                    "UpdateState",
+                    [ NodeId "k" ]
+                    TreeOp.InsertChild(NodeId "p", child), "InsertChild", [ NodeId "p" ]
+                    TreeOp.RemoveNode(NodeId "k"), "RemoveNode", [ NodeId "k" ]
+                    TreeOp.MoveNode(NodeId "k", NodeId "p"), "MoveNode", [ NodeId "k"; NodeId "p" ]
+                    TreeOp.ReorderChildren(NodeId "p", [ NodeId "b"; NodeId "a" ]),
+                    "ReorderChildren",
+                    [ NodeId "p"; NodeId "b"; NodeId "a" ]
+                    TreeOp.ReplaceRoot child, "ReplaceRoot", [ NodeId child.Id ]
+                    TreeOp.Batch
+                        [ TreeOp.RemoveNode(NodeId "k")
+                          TreeOp.MoveNode(NodeId "k", NodeId "p")
+                          TreeOp.ReorderChildren(NodeId "p", [ NodeId "k" ]) ],
+                    "Batch",
+                    [ NodeId "k"; NodeId "k"; NodeId "p"; NodeId "p"; NodeId "k" ] ]
+
+              for (op, kind, ids) in cases do
+                  Expect.equal (Audit.opKindName op) kind (sprintf "opKindName %A" op)
+                  Expect.equal (Audit.referencedIds op) ids (sprintf "referencedIds %A" op)
           } ]

@@ -2232,14 +2232,9 @@ let private positionNotStructural (slot: string) (message: string) : ApplyError 
                 ) } }
 
 /// The op's addressed node ids, in the order the op names them. Only the
-/// structural five reach here, so the list is one or two ids.
-let private structuralOpTargets (op: TreeOp<'Msg>) : NodeId list =
-    match op with
-    | TreeOp.InsertChild(parentId, _) -> [ parentId ]
-    | TreeOp.RemoveNode target -> [ target ]
-    | TreeOp.ReorderChildren(parentId, _) -> [ parentId ]
-    | TreeOp.MoveNode(target, newParentId) -> [ target; newParentId ]
-    | _ -> []
+/// structural five reach here, so the list is one or two ids — the op's
+/// `TreeOp.targets` (Phase 2044: projected, not matched here).
+let private structuralOpTargets (op: TreeOp<'Msg>) : NodeId list = Fuaran.UI.Ops.TreeOp.targets op
 
 let rec private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
     // ── Phase 1666 — descend through a non-structural position, or refuse ──

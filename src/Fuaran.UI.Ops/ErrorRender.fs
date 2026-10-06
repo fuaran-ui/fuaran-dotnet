@@ -57,19 +57,9 @@ let private codeToken (code: ApplyErrorCode) : string =
     | ApplyErrorCode.LimitExceeded -> "LimitExceeded"
     | ApplyErrorCode.PositionNotStructural _ -> "PositionNotStructural"
 
-let private opKindToken (op: TreeOp<'Msg>) : string =
-    match op with
-    | TreeOp.EditNode _ -> "EditNode"
-    | TreeOp.UpdateProp _ -> "UpdateProp"
-    | TreeOp.ReplaceBinding _ -> "ReplaceBinding"
-    | TreeOp.UpdateStyle _ -> "UpdateStyle"
-    | TreeOp.UpdateState _ -> "UpdateState"
-    | TreeOp.InsertChild _ -> "InsertChild"
-    | TreeOp.RemoveNode _ -> "RemoveNode"
-    | TreeOp.MoveNode _ -> "MoveNode"
-    | TreeOp.ReorderChildren _ -> "ReorderChildren"
-    | TreeOp.ReplaceRoot _ -> "ReplaceRoot"
-    | TreeOp.Batch _ -> "Batch"
+/// The envelope's `kind` token — the op's case name (Phase 2044: projected,
+/// not matched here).
+let private opKindToken (op: TreeOp<'Msg>) : string = Fuaran.UI.Ops.TreeOp.kindName op
 
 #if !FABLE_COMPILER
 

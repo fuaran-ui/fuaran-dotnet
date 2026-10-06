@@ -43,6 +43,53 @@ let tests =
               Expect.equal closure2 (Set.ofList [ 2 ]) "op2 is independent"
           }
 
+          test "an op on a node INSIDE an inserted subtree pulls the insert in (Phase 2044)" {
+              // op0 inserts Stack "a" holding Markdown "b"; op1 restyles "b".
+              // "b" is not the inserted child's own id, so a closure keyed on the
+              // addressed ids alone drops op0 — and the kept batch then fails to
+              // apply, because "b" does not exist without it.
+              let ops =
+                  [ TreeOp.InsertChild(
+                        dashboardId,
+                        Fuaran.stack
+                            "a"
+                            { Defaults.stack<TestMsg> with
+                                Children = [ Fuaran.markdown "b" "B" ] }
+                    )
+                    TreeOp.UpdateStyle(
+                        NodeId "b",
+                        { Defaults.style with
+                            Tone = ToneVariant.Brand }
+                    ) ]
+
+              let kept, evt = BatchAccept.partialAccept ops (Set.ofList [ 1 ]) false
+              Expect.equal evt.Kept [ 0; 1 ] "the insert that introduces b is kept with the op on b"
+              Expect.equal evt.Dropped [] "nothing is dropped"
+
+              let applied = kept |> List.fold (fun tree op -> applyOk op tree) (buildDashboard ())
+              Expect.isSome (Fuaran.UI.Ops.Introspect.findNode (NodeId "b") applied) "the kept batch applies"
+          }
+
+          test "the closure is transitive across a chain, in one reverse pass (Phase 2044)" {
+              // op2 needs op1 (both address "x"); op1 needs op0 (op0 inserts "x").
+              // op3 is independent.
+              let ops =
+                  [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "x" "X")
+                    TreeOp.UpdateStyle(NodeId "x", Defaults.style)
+                    TreeOp.MoveNode(NodeId "x", leftChildId)
+                    TreeOp.UpdateStyle(rightChildId, Defaults.style) ]
+
+              Expect.equal
+                  (BatchAccept.dependencyClosure ops (Set.ofList [ 2 ]))
+                  (Set.ofList [ 0; 1; 2 ])
+                  "the chain closes"
+
+              Expect.equal
+                  (BatchAccept.dependencyClosure ops (Set.ofList [ 3 ]))
+                  (Set.ofList [ 3 ])
+                  "an independent op stays alone"
+          }
+
           test "partial accept keeps a dependency-closed subset; emits Kept/Dropped" {
               let ops =
                   [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "x" "X")

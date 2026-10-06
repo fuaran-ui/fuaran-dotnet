@@ -1,6 +1,7 @@
 namespace Fuaran.UI.OpStream.Dag.Merge
 
 open Fuaran.UI.Types
+open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
 
 // ============================================================================
@@ -29,47 +30,32 @@ type BatchPartiallyAccepted =
 
 module BatchAccept =
 
-    let private rawId (NodeId s) : string = s
-
-    /// All NodeIds an op references (targets + parents + reordered children).
-    let rec private opNodeIds<'Msg> (op: TreeOp<'Msg>) : Set<string> =
-        match op with
-        | TreeOp.EditNode(t, _) -> Set.singleton (rawId t)
-        | TreeOp.UpdateProp(t, _, _) -> Set.singleton (rawId t)
-        | TreeOp.ReplaceBinding(t, _, _) -> Set.singleton (rawId t)
-        | TreeOp.UpdateStyle(t, _) -> Set.singleton (rawId t)
-        | TreeOp.UpdateState(t, _) -> Set.singleton (rawId t)
-        | TreeOp.InsertChild(p, child) -> Set.ofList [ rawId p; child.Id ]
-        | TreeOp.RemoveNode t -> Set.singleton (rawId t)
-        | TreeOp.MoveNode(t, np) -> Set.ofList [ rawId t; rawId np ]
-        | TreeOp.ReorderChildren(p, order) -> Set.ofList (rawId p :: (order |> List.map rawId))
-        | TreeOp.ReplaceRoot node -> Set.singleton node.Id
-        | TreeOp.Batch ops -> ops |> List.map opNodeIds |> Set.unionMany
-
     /// The dependency-closed superset of `selected` indices: an op depends on an
-    /// EARLIER op when they share a referenced node. Iterated to a fixpoint so
-    /// transitive chains (op C needs B needs A) are fully closed.
+    /// EARLIER op when their footprints share a node — they address one, or the
+    /// later op addresses a node anywhere in a subtree the earlier op put into
+    /// the tree (`TreeOp.footprint`, Phase 2044).
+    ///
+    /// One pass over the list in REVERSE. Every dependency points backwards, so
+    /// by the time op `i` is reached every op that could need it has already
+    /// been decided; `i` is kept iff it was selected or its footprint meets the
+    /// union of the kept later ops' footprints. That union is the whole state —
+    /// no pairwise intersection is recomputed, and no fixpoint is iterated.
     let dependencyClosure<'Msg> (ops: TreeOp<'Msg> list) (selected: Set<int>) : Set<int> =
-        let arr = List.toArray ops
-        let ids = arr |> Array.map opNodeIds
+        let footprints = ops |> List.map TreeOp.footprint |> List.toArray
 
-        let rec fix (acc: Set<int>) =
-            let next =
-                acc
-                |> Set.fold
-                    (fun (a: Set<int>) (j: int) ->
-                        // pull in every earlier op j shares a node with
-                        let deps =
-                            [ for i in 0 .. j - 1 do
-                                  if not (Set.isEmpty (Set.intersect ids[i] ids[j])) then
-                                      yield i ]
+        let _, closed =
+            Array.foldBack
+                (fun (i, footprint: Set<NodeId>) (needed: Set<NodeId>, kept: Set<int>) ->
+                    if Set.contains i selected || not (Set.isEmpty (Set.intersect footprint needed)) then
+                        Set.union needed footprint, Set.add i kept
+                    else
+                        needed, kept)
+                (Array.indexed footprints)
+                (Set.empty, Set.empty)
 
-                        Set.union a (Set.ofList deps))
-                    acc
+        // An index outside the list depends on nothing and is returned as given.
+        Set.union closed selected
 
-            if next = acc then acc else fix next
-
-        fix selected
 
     /// Partially accept a `Batch`'s inner ops, keeping a dependency-closed subset
     /// of `selected`. `indivisible = true` forces all-or-nothing (the batch

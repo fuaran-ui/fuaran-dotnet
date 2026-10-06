@@ -71,4 +71,47 @@ let tests =
 
               for (kind, expected) in pairs do
                   Expect.equal (OpKind.name kind) expected (sprintf "OpKind.name %A" kind)
+          }
+
+          // Phase 2044 — `topLevelNodeId` projects from `TreeOp.targets`. The
+          // expected column is what its own per-case match answered before, so
+          // the projection is pinned as unchanged for every case.
+          test "topLevelNodeId is unchanged by projecting from TreeOp.targets, for every case" {
+              let cases: (TreeOp<Msg> * string option) list =
+                  [ TreeOp.EditNode(NodeId "k", metric.Kind), Some "k"
+                    TreeOp.UpdateProp(NodeId "k", "Label", PropValue.Native(nn "y")), Some "k"
+                    TreeOp.ReplaceBinding(NodeId "k", "Source", Binding.Static(Some(nn 2.0))), Some "k"
+                    TreeOp.UpdateStyle(NodeId "k", Defaults.style), Some "k"
+                    TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>), Some "k"
+                    TreeOp.InsertChild(NodeId "p", leafChild), Some "p"
+                    TreeOp.RemoveNode(NodeId "k"), Some "k"
+                    TreeOp.MoveNode(NodeId "k", NodeId "p"), Some "k"
+                    TreeOp.ReorderChildren(NodeId "p", [ NodeId "k" ]), Some "p"
+                    TreeOp.ReplaceRoot leafChild, Some "k"
+                    TreeOp.Batch [ TreeOp.RemoveNode(NodeId "k") ], None
+                    TreeOp.Batch [], None ]
+
+              for (op, expected) in cases do
+                  Expect.equal (OpApplyTelemetry.topLevelNodeId op) expected (sprintf "topLevelNodeId %A" op)
+          }
+
+          test "TreeOp.kindName agrees with the telemetry discriminator for every case" {
+              let ops: TreeOp<Msg> list =
+                  [ TreeOp.EditNode(NodeId "k", metric.Kind)
+                    TreeOp.UpdateProp(NodeId "k", "Label", PropValue.Native(nn "y"))
+                    TreeOp.ReplaceBinding(NodeId "k", "Source", Binding.Static(Some(nn 2.0)))
+                    TreeOp.UpdateStyle(NodeId "k", Defaults.style)
+                    TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>)
+                    TreeOp.InsertChild(NodeId "p", leafChild)
+                    TreeOp.RemoveNode(NodeId "k")
+                    TreeOp.MoveNode(NodeId "k", NodeId "p")
+                    TreeOp.ReorderChildren(NodeId "p", [ NodeId "k" ])
+                    TreeOp.ReplaceRoot leafChild
+                    TreeOp.Batch [] ]
+
+              for op in ops do
+                  Expect.equal
+                      (Fuaran.UI.Ops.TreeOp.kindName op)
+                      (OpKind.name (OpKind.ofTreeOp op))
+                      (sprintf "kindName %A" op)
           } ]
