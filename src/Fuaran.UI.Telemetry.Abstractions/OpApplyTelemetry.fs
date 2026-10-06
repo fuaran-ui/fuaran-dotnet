@@ -133,17 +133,12 @@ module OpApplyTelemetry =
     /// The primary `NodeId` a `TreeOp` targets — the edited/updated node, or
     /// the parent for child-positioned ops; `None` for `Batch` (no single
     /// target). Shared by the apply wrappers so the `NodeId` projection stays
-    /// identical across them (Phase 124).
+    /// identical across them (Phase 124). The first of the op's
+    /// `TreeOp.targets` (Phase 2044: projected, not matched here).
     let topLevelNodeId (op: TreeOp<'Msg>) : string option =
         match op with
-        | TreeOp.EditNode(NodeId id, _) -> Some id
-        | TreeOp.UpdateProp(NodeId id, _, _) -> Some id
-        | TreeOp.ReplaceBinding(NodeId id, _, _) -> Some id
-        | TreeOp.UpdateStyle(NodeId id, _) -> Some id
-        | TreeOp.UpdateState(NodeId id, _) -> Some id
-        | TreeOp.InsertChild(NodeId parentId, _) -> Some parentId
-        | TreeOp.RemoveNode(NodeId id) -> Some id
-        | TreeOp.MoveNode(NodeId id, _) -> Some id
-        | TreeOp.ReorderChildren(NodeId parentId, _) -> Some parentId
-        | TreeOp.ReplaceRoot node -> Some node.Id
         | TreeOp.Batch _ -> None
+        | single ->
+            Fuaran.UI.Ops.TreeOp.targets single
+            |> List.tryHead
+            |> Option.map (fun (NodeId id) -> id)

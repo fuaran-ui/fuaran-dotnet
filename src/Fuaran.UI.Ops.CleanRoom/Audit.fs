@@ -85,37 +85,22 @@ type InMemoryCleanRoomAuditSink() =
 // ─── Op metadata extraction (structural, content-free) ──────────────────────
 
 /// The structural discriminator of a `TreeOp` (for the audit record).
-let opKindName (op: TreeOp<'Msg>) : string =
-    match op with
-    | TreeOp.EditNode _ -> "EditNode"
-    | TreeOp.UpdateProp _ -> "UpdateProp"
-    | TreeOp.ReplaceBinding _ -> "ReplaceBinding"
-    | TreeOp.UpdateStyle _ -> "UpdateStyle"
-    | TreeOp.UpdateState _ -> "UpdateState"
-    | TreeOp.InsertChild _ -> "InsertChild"
-    | TreeOp.RemoveNode _ -> "RemoveNode"
-    | TreeOp.MoveNode _ -> "MoveNode"
-    | TreeOp.ReorderChildren _ -> "ReorderChildren"
-    | TreeOp.ReplaceRoot _ -> "ReplaceRoot"
-    | TreeOp.Batch _ -> "Batch"
+let opKindName (op: TreeOp<'Msg>) : string = Fuaran.UI.Ops.TreeOp.kindName op
 
 /// The structural `NodeId`s an op references — never its content. Used for the
 /// audit record so the divide is traceable by id without exposing prose. An
 /// `InsertChild`'s new child contributes only its parent target (the inserted
 /// subtree's content is never read).
+///
+/// Projected from `TreeOp.targets` (Phase 2044). The two cases kept here are
+/// where this record deliberately differs from it: a reorder's `newOrder` is
+/// recorded beside its parent, and a `Batch` keeps every member's ids in
+/// order, repeats included — `targets` lists each id once.
 let rec referencedIds (op: TreeOp<'Msg>) : NodeId list =
     match op with
-    | TreeOp.EditNode(id, _) -> [ id ]
-    | TreeOp.UpdateProp(id, _, _) -> [ id ]
-    | TreeOp.ReplaceBinding(id, _, _) -> [ id ]
-    | TreeOp.UpdateStyle(id, _) -> [ id ]
-    | TreeOp.UpdateState(id, _) -> [ id ]
-    | TreeOp.InsertChild(parentId, _) -> [ parentId ]
-    | TreeOp.RemoveNode id -> [ id ]
-    | TreeOp.MoveNode(id, newParentId) -> [ id; newParentId ]
     | TreeOp.ReorderChildren(parentId, newOrder) -> parentId :: newOrder
-    | TreeOp.ReplaceRoot node -> [ NodeId node.Id ]
     | TreeOp.Batch inner -> inner |> List.collect referencedIds
+    | single -> Fuaran.UI.Ops.TreeOp.targets single
 
 // ─── Audited orchestration ──────────────────────────────────────────────────
 

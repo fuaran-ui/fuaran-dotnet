@@ -17,6 +17,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Types.fs" />
+    <!-- Phase 2044: TreeOp.kindName / targets / footprint — the op's name, the
+         ids it addresses and the ids it touches, answered once so a module that
+         needs only one of them projects rather than matching. -->
+    <Compile Include="TreeOpProjection.fs" />
     <!-- Phase 1587: TreeOp.mapMsg — the decoded `TreeOp<obj>` retyped onto a
          host's own `'Msg`, refusing by name a payload the host's mapper cannot
          type. Here rather than in Fuaran.UI.Ops because it is a combinator over
