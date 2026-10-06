@@ -351,6 +351,8 @@
          guest passes the host's capability policy, not just an
          orchestration-driven one). -->
     <Compile Include="RenderEntrySeamTests.fs" />
+    <!-- Phase 2041 — the client half of the renderer-agreement fixtures. -->
+    <Compile Include="RendererAgreementTests.fs" />
     <!-- Phase 1146 — the pure tier's algebra laws, defined ONCE and consumed by
          two executors. This suite asserts them through Expecto; the probe at
          tests/pure-tier-laws/ folds the same claims into counts on .NET and on

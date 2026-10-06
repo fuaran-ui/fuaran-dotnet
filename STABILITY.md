@@ -7904,6 +7904,42 @@ ride it and this slot opens the next number. A change of this class or lower tha
   Core-law suite's `replayFromSink`) are now thin calls to `DagReplay.replay`, so the oracle is the
   production fold rather than a second implementation of it.
 
+### What rides this slot — Phase 2041
+
+The client and server renderers stop disagreeing (fuaran#2041). Additive API and behaviour fixes,
+below this slot's class, so it rides the draft. No public record gains a field: `RenderContext` and
+`ServerRenderContext` are unchanged.
+
+- **`Fuaran.UI.Renderer.RenderParity` ARRIVES in `Fuaran.UI.Renderer.Core` — additive.** It holds the
+  names, text and ids both renderers emit when a node cannot render: `nodeKindName` (moved here; the
+  client's public `Render.nodeKindName` forwards to it unchanged), `renderFailureCorrelationId`,
+  `renderFailureText`, `boundaryDoubleFailureMessage`, `fragmentCycleText` and `depthExceededText`.
+- **`FragmentExpansion` gains `namespaceIds`, `expandNamespaced` and `refPrefix` — additive.** The
+  fragment id-namespacing walk moved here from the client renderer and now reads
+  `NodeChildren.Reach.kindHeld`, the positions the client's private walk already covered. Both
+  renderers call it, so the process-global expansion memo never holds one renderer's expansion under
+  a key the other reads. `Render.expandFragment` and `Render.expandFragmentUncached` keep their
+  signatures and their output.
+- **Five behaviour fixes, each pinned by a test that failed before it** (the renderer-agreement
+  suites in both test projects):
+  1. **SSR namespaces fragment interior ids as the client does.** Two refs to one fragment emitted
+     duplicate DOM ids, neither matching the client's. **Server output changes** for any tree with a
+     `FragmentRef` whose body carries ids: they are now `<refId>.<id>`. The client's ids are
+     unchanged.
+  2. **SSR refuses a fragment reference cycle** with the client's cycle placeholder. Before, only the
+     depth limit stopped it.
+  3. **SSR guards each node.** A throwing host closure (`ServerCustomRenderer`, `CellFormat.Custom`)
+     failed the whole request. It now degrades its own node to the client's `fuaran-node-fallback`
+     element, with the same correlation id. Under an `ErrorBoundary` the boundary's `Fallback`
+     renders instead, as on the client.
+  4. **The SSR chart arm honours `OnLoading` and `OnError`**, with the client's error payload and
+     correlation id.
+  5. **The client renderer bounds its walk at `WireLimits.MaxDepth`** with the server's marker element
+     and text, and reports the omission through `IFuaranRuntime.Warn`. Before, a tree the server
+     truncated was rendered in full on the client.
+- **Unchanged:** corpus bytes, every existing parity fixture, and every output for trees that use
+  none of the above.
+
 ---
 
 ## 0.91.0 — the slot Phase 2005 opens: the compute 0.37.0 adoption completes (DRAFT — untagged)

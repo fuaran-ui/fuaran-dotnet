@@ -75,7 +75,8 @@ let private body (marker: string) : Node<Msg> =
 /// identical" the acceptance criterion asks about.
 let private bytes (node: Node<Msg>) : string = CanonicalJson.encodeNode node
 
-/// The renderer's own namespacing walk is private to `Render.fs`; this mirrors
+/// The namespacing walk (`FragmentExpansion.namespaceIds` since Phase 2041,
+/// shared by both renderers) is not what this mirrors: it mirrors
 /// only what the assertions need to know INDEPENDENTLY of it — that an
 /// expansion under `prefix` prefixes every interior id. Deliberately not a
 /// re-implementation of `namespaceNode`: it reads ids off the result rather
@@ -322,6 +323,13 @@ let tests =
               Expect.isFalse
                   (code.Contains "let namespaced = namespaceNode prefix body")
                   "and not through the bare uncached walk"
+
+              // Phase 2041 moved the bare walk to `FragmentExpansion.namespaceIds`
+              // (shared with the server renderer); calling it from the arm would
+              // bypass the memo just as the old private walk did.
+              Expect.isFalse
+                  (code.Contains "let namespaced = FragmentExpansion.namespaceIds")
+                  "nor through the shared walk's uncached form"
 
               // Go-red proof of the detector itself: the same scan over a
               // perturbed copy — the pre-1151 call site restored — must fail
