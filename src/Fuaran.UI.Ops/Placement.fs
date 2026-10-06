@@ -225,32 +225,6 @@ module Placement =
     let private positionKey (position: (NodeId * string * bool) option) : (NodeId * string) option =
         position |> Option.map (fun (holder, slot, _) -> holder, slot)
 
-    /// The node whose STRUCTURAL children contain `target`, searched over the
-    /// whole tree rather than the structural spine alone (Phase 1666).
-    ///
-    /// `Introspect.findParent` walks `getChildren` from the root, so it cannot
-    /// see a container held inside a keyed position — and since the engine now
-    /// DESCENDS into such a position, a nudge below one is legal and this helper
-    /// has to be able to express it. Everything else about the answer is
-    /// unchanged: the parent found is always a structural container, so the
-    /// reorder it produces names that container's own children.
-    let private findStructuralParent (target: NodeId) (root: Node<'Msg>) : (Node<'Msg> * int) option =
-        let (NodeId targetRaw) = target
-
-        let rec walk (node: Node<'Msg>) =
-            let here =
-                Introspect.getChildren node.Kind
-                |> Option.bind (fun children ->
-                    children
-                    |> List.tryFindIndex (fun c -> c.Id = targetRaw)
-                    |> Option.map (fun i -> node, i))
-
-            match here with
-            | Some hit -> Some hit
-            | None -> Introspect.descendantNodes node |> List.tryPick walk
-
-        walk root
-
     /// Whether `moved` may legally take up residence at `target` — the
     /// pre-check an editor uses to grey out an illegal drop without a dry-run
     /// apply. Mirrors the apply engine's rejections: absent node, move into
@@ -298,9 +272,19 @@ module Placement =
     let placeOp (root: Node<'Msg>) (child: Node<'Msg>) (target: Target) : Result<TreeOp<'Msg>, PlaceError> =
         containerChildren root target.ParentId
         |> Result.bind (fun siblings ->
-            match Introspect.firstSharedId root child with
-            | Some dup -> Error(PlaceError.DuplicateId dup)
-            | None ->
+            // Core's keyed graft check — the one the apply path refuses with —
+            // so a collision held in a keyed position on either side is caught
+            // here exactly as `apply` would catch it.
+            match
+                Fuaran.Core.Tree.graftWellFormedKeyed
+                    Introspect.nodeWitness
+                    Introspect.keyedWitness
+                    Introspect.idWitness
+                    child
+                    root
+            with
+            | Fuaran.Core.Tree.RepeatedId dup -> Error(PlaceError.DuplicateId dup)
+            | Fuaran.Core.Tree.Structural ->
                 let childId = NodeId child.Id
                 let appended = siblings @ [ childId ]
 
@@ -342,12 +326,13 @@ module Placement =
         if NodeId root.Id = nodeId then
             Error(PlaceError.CannotNudgeRoot nodeId)
         else
-            // Phase 1666 — `findStructuralParent`, not `Introspect.findParent`:
-            // a container held inside a keyed position is a legal nudge target
+            // Phase 1666 — the parent search runs at the KEYED reach, not the
+            // structural spine `Introspect.findParent` walks: a container held
+            // inside a keyed position is a legal nudge target
             // now that the engine descends into one, and a node that IS a
             // position's own node has no sibling list to nudge among, which is
             // a different answer from absence.
-            match findStructuralParent nodeId root with
+            match Introspect.findParentWithin Fuaran.UI.NodeChildren.Reach.keyed nodeId root with
             | None ->
                 match keyedPosition nodeId root with
                 | Some(_, slot, true) -> Error(PlaceError.PositionNotStructural(nodeId, slot))

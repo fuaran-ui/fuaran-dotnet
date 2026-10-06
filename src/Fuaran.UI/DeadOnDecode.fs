@@ -98,202 +98,183 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
         let nodeId = n.Id
 
         // Phase 692 — one flat match, where this was three nested under the
-        // category envelope. Every arm yields the children to descend into.
-        let children =
-            match n.Kind with
-            // -- Layout --
-            | NodeKind.Box s -> s.Children
-            | NodeKind.SplitPanel s -> s.Children
-            | NodeKind.Stepper s -> s.Children
-            | NodeKind.SummaryList s -> s.Children
-            | NodeKind.ScrollArea s -> s.Children
-            | NodeKind.Modal s ->
-                // `onDismiss` is a wire-survivable Action, never a
-                // sentinel — only its interior Calls are lintable.
-                s.OnDismiss |> Option.iter (fun a -> findings.AddRange(callFindings nodeId a))
-                s.Children
-            | NodeKind.Tabs s ->
-                handler nodeId "TabsSpec.onSelect" s.OnSelect.IsSome (isWritable s.ActiveIndex) "$state (activeIndex)"
+        // category envelope. Every arm lints the node's OWN slots; the descent
+        // reads the tier's one enumeration (`NodeChildren`) rather than a copy of it.
+        match n.Kind with
+        // -- Layout --
+        | NodeKind.Box _ -> ()
+        | NodeKind.SplitPanel _ -> ()
+        | NodeKind.Stepper _ -> ()
+        | NodeKind.SummaryList _ -> ()
+        | NodeKind.ScrollArea _ -> ()
+        | NodeKind.Modal s ->
+            // `onDismiss` is a wire-survivable Action, never a
+            // sentinel — only its interior Calls are lintable.
+            s.OnDismiss |> Option.iter (fun a -> findings.AddRange(callFindings nodeId a))
+        | NodeKind.Tabs s ->
+            handler nodeId "TabsSpec.onSelect" s.OnSelect.IsSome (isWritable s.ActiveIndex) "$state (activeIndex)"
 
-                handler
-                    nodeId
-                    "TabsSpec.onSelectTag"
-                    s.OnSelectTag.IsSome
-                    (s.ActiveTag |> Option.map isWritable |> Option.defaultValue false)
-                    "$state (activeTag)"
+            handler
+                nodeId
+                "TabsSpec.onSelectTag"
+                s.OnSelectTag.IsSome
+                (s.ActiveTag |> Option.map isWritable |> Option.defaultValue false)
+                "$state (activeTag)"
 
-                s.Children
-            | NodeKind.Disclosure s ->
-                handler nodeId "DisclosureSpec.onToggle" s.OnToggle.IsSome (isWritable s.Open) "$state (open)"
-                s.Children
-            // -- Input --
-            | NodeKind.Button b ->
-                findings.AddRange(callFindings nodeId b.OnClick)
-                []
-            | NodeKind.Form f ->
-                findings.AddRange(callFindings nodeId f.OnSubmit)
+        | NodeKind.Disclosure s ->
+            handler nodeId "DisclosureSpec.onToggle" s.OnToggle.IsSome (isWritable s.Open) "$state (open)"
+        // -- Input --
+        | NodeKind.Button b -> findings.AddRange(callFindings nodeId b.OnClick)
+        | NodeKind.Form f ->
+            findings.AddRange(callFindings nodeId f.OnSubmit)
 
-                for field in f.Fields do
-                    let slot kind = sprintf "FormFieldKind.%s" kind
+            for field in f.Fields do
+                let slot kind = sprintf "FormFieldKind.%s" kind
 
-                    match field.Kind with
-                    | FormFieldKind.Text(v, oc) -> handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.Number(v, oc) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.Range(v, oc, _, _, _) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.Checkbox(v, ot) ->
-                        handler nodeId (slot "onToggle") ot.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.Toggle(v, ot) ->
-                        handler nodeId (slot "onToggle") ot.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.Choice(_, v, oc) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.TextArea(v, oc, _) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.RangedNumber(v, oc, _, _, _) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.SegmentedChoice(_, v, oc, _) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.DateTime(v, oc, _, _, _, _) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.DateTimeRange(v, oc, _, _, _, _) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.Combobox(_, oc, _, v) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.Rating(_, _, oc, v) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.Color(oc, v) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                    | FormFieldKind.Tokens(_, oc, _, v) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                match field.Kind with
+                | FormFieldKind.Text(v, oc) -> handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.Number(v, oc) -> handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.Range(v, oc, _, _, _) ->
+                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.Checkbox(v, ot) -> handler nodeId (slot "onToggle") ot.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.Toggle(v, ot) -> handler nodeId (slot "onToggle") ot.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.Choice(_, v, oc) ->
+                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.TextArea(v, oc, _) ->
+                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.RangedNumber(v, oc, _, _, _) ->
+                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.SegmentedChoice(_, v, oc, _) ->
+                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.DateTime(v, oc, _, _, _, _) ->
+                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.DateTimeRange(v, oc, _, _, _, _) ->
+                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.Combobox(_, oc, _, v) ->
+                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.Rating(_, _, oc, v) ->
+                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.Color(oc, v) -> handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                | FormFieldKind.Tokens(_, oc, _, v) ->
+                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
 
-                []
-            | NodeKind.Select s ->
-                handler nodeId "SelectSpec.onChange" s.OnChange.IsSome (isWritable s.Value) "$state (value)"
+        | NodeKind.Select s ->
+            handler nodeId "SelectSpec.onChange" s.OnChange.IsSome (isWritable s.Value) "$state (value)"
 
-                handler
-                    nodeId
-                    "SelectSpec.onChangeMulti"
-                    s.OnChangeMulti.IsSome
-                    (s.Values |> Option.map isWritable |> Option.defaultValue false)
-                    "$state (values)"
+            handler
+                nodeId
+                "SelectSpec.onChangeMulti"
+                s.OnChangeMulti.IsSome
+                (s.Values |> Option.map isWritable |> Option.defaultValue false)
+                "$state (values)"
 
-                []
-            | NodeKind.Filters spec ->
-                for fs in spec.Items do
-                    // A chip's write-back needs no writable value binding —
-                    // it writes its own `$filters.<name>` (423); a present
-                    // sentinel still suppresses that, so it is always dead.
-                    // 0.2.0 filters-unification: the chip's control is a
-                    // FormFieldKind; the same handler-presence probe applies.
-                    let present =
-                        match fs.Kind with
-                        | FormFieldKind.Text(_, oc) -> oc.IsSome
-                        | FormFieldKind.Number(_, oc) -> oc.IsSome
-                        | FormFieldKind.Checkbox(_, ot) -> ot.IsSome
-                        | FormFieldKind.Toggle(_, ot) -> ot.IsSome
-                        | FormFieldKind.Choice(_, _, oc) -> oc.IsSome
-                        | FormFieldKind.TextArea(_, oc, _) -> oc.IsSome
-                        | FormFieldKind.RangedNumber(_, oc, _, _, _) -> oc.IsSome
-                        | FormFieldKind.Range(_, oc, _, _, _) -> oc.IsSome
-                        | FormFieldKind.SegmentedChoice(_, _, oc, _) -> oc.IsSome
-                        | FormFieldKind.DateTime(_, oc, _, _, _, _) -> oc.IsSome
-                        | FormFieldKind.DateTimeRange(_, oc, _, _, _, _) -> oc.IsSome
-                        | FormFieldKind.Combobox(_, oc, _, _) -> oc.IsSome
-                        | FormFieldKind.Rating(_, _, oc, _) -> oc.IsSome
-                        | FormFieldKind.Color(oc, _) -> oc.IsSome
-                        | FormFieldKind.Tokens(_, oc, _, _) -> oc.IsSome
+        | NodeKind.Filters spec ->
+            for fs in spec.Items do
+                // A chip's write-back needs no writable value binding —
+                // it writes its own `$filters.<name>` (423); a present
+                // sentinel still suppresses that, so it is always dead.
+                // 0.2.0 filters-unification: the chip's control is a
+                // FormFieldKind; the same handler-presence probe applies.
+                let present =
+                    match fs.Kind with
+                    | FormFieldKind.Text(_, oc) -> oc.IsSome
+                    | FormFieldKind.Number(_, oc) -> oc.IsSome
+                    | FormFieldKind.Checkbox(_, ot) -> ot.IsSome
+                    | FormFieldKind.Toggle(_, ot) -> ot.IsSome
+                    | FormFieldKind.Choice(_, _, oc) -> oc.IsSome
+                    | FormFieldKind.TextArea(_, oc, _) -> oc.IsSome
+                    | FormFieldKind.RangedNumber(_, oc, _, _, _) -> oc.IsSome
+                    | FormFieldKind.Range(_, oc, _, _, _) -> oc.IsSome
+                    | FormFieldKind.SegmentedChoice(_, _, oc, _) -> oc.IsSome
+                    | FormFieldKind.DateTime(_, oc, _, _, _, _) -> oc.IsSome
+                    | FormFieldKind.DateTimeRange(_, oc, _, _, _, _) -> oc.IsSome
+                    | FormFieldKind.Combobox(_, oc, _, _) -> oc.IsSome
+                    | FormFieldKind.Rating(_, _, oc, _) -> oc.IsSome
+                    | FormFieldKind.Color(oc, _) -> oc.IsSome
+                    | FormFieldKind.Tokens(_, oc, _, _) -> oc.IsSome
 
-                    if present then
-                        findings.Add(
-                            { Node = nodeId
-                              Slot = "FilterKind.onChange"
-                              Code = "FUARAN080"
-                              Remedy =
-                                sprintf
-                                    "omit onChange on chip '%s' — a handler-free chip writes $filters.%s itself"
-                                    fs.Name
-                                    fs.Name }
-                        )
+                if present then
+                    findings.Add(
+                        { Node = nodeId
+                          Slot = "FilterKind.onChange"
+                          Code = "FUARAN080"
+                          Remedy =
+                            sprintf
+                                "omit onChange on chip '%s' — a handler-free chip writes $filters.%s itself"
+                                fs.Name
+                                fs.Name }
+                    )
 
-                []
-            | NodeKind.FileUpload _ ->
-                () // HostOnlyByDesign (see SlotCapability)
-                []
-            // -- Visualisation --
-            | NodeKind.DataGrid g ->
-                handler nodeId "GridSpec.onRowClick" g.OnRowClick.IsSome true "$selection (its own NodeId)"
+        | NodeKind.FileUpload _ -> () // HostOnlyByDesign (see SlotCapability)
+        // -- Visualisation --
+        | NodeKind.DataGrid g ->
+            handler nodeId "GridSpec.onRowClick" g.OnRowClick.IsSome true "$selection (its own NodeId)"
 
-                if g.RowKey.IsSome then
+            if g.RowKey.IsSome then
+                findings.Add(
+                    blankDisplay
+                        nodeId
+                        "GridSpec.rowKey"
+                        "replace the rowKey closure with rowKeyField: \"<row property>\" — the decoded closure yields a constant key (no stable identity)"
+                )
+
+            for col in g.Columns do
+                if col.Value.IsSome then
                     findings.Add(
                         blankDisplay
                             nodeId
-                            "GridSpec.rowKey"
-                            "replace the rowKey closure with rowKeyField: \"<row property>\" — the decoded closure yields a constant key (no stable identity)"
+                            "ColumnErased.value"
+                            (sprintf
+                                "replace column '%s''s value closure with field: \"<row property>\" — the decoded closure renders blank and shadows the field form"
+                                col.Label)
                     )
 
-                for col in g.Columns do
-                    if col.Value.IsSome then
-                        findings.Add(
-                            blankDisplay
-                                nodeId
-                                "ColumnErased.value"
-                                (sprintf
-                                    "replace column '%s''s value closure with field: \"<row property>\" — the decoded closure renders blank and shadows the field form"
-                                    col.Label)
-                        )
+        | NodeKind.Chart c ->
+            // Phase 933 gave `onPointClick` a write-back default (publish
+            // the clicked datum under the chart's own NodeId), so the slot
+            // became an override rather than a host escape — see the
+            // capability row. A present sentinel is therefore dead AND
+            // suppresses that default, which is precisely FUARAN080's
+            // subject. The write-back needs no writable value binding, for
+            // the same reason `GridSpec.onRowClick` does not: the node
+            // writes its OWN id.
+            handler nodeId "ChartSpec.onPointClick" c.OnPointClick.IsSome true "$selection (its own NodeId)"
+        | NodeKind.Map _ -> () // marker clicks are still a HostOnlyByDesign row
+        // -- Structural --
+        | NodeKind.ErrorBoundary _ -> ()
+        // Switch has no closure-bearing slots (StateKey is a string; the
+        // cases/default are Nodes) — nothing dead-on-decode of its own; the
+        // descent below reaches its cases and default.
+        | NodeKind.Switch _
+        | NodeKind.FragmentDecl _ -> ()
+        // -- Display --
+        // Leaves, with no closure-bearing slot this check can call dead.
+        | NodeKind.Heading _
+        | NodeKind.Markdown _
+        | NodeKind.Metric _
+        | NodeKind.Badge _
+        | NodeKind.Sparkline _
+        | NodeKind.Callout _
+        | NodeKind.Progress _
+        | NodeKind.Skeleton _
+        | NodeKind.Icon _
+        | NodeKind.LabelValueRow _
+        | NodeKind.Fact _
+        | NodeKind.Link _
+        | NodeKind.Image _
+        | NodeKind.Media _
+        | NodeKind.Embed _
+        | NodeKind.List _
+        | NodeKind.Tree _
+        | NodeKind.Toast _
+        | NodeKind.CodeBlock _
+        | NodeKind.Math _
+        | NodeKind.Drawing _
+        | NodeKind.Custom _
+        | NodeKind.FragmentRef _
+        | NodeKind.Mount _ -> ()
 
-                []
-            | NodeKind.Chart c ->
-                // Phase 933 gave `onPointClick` a write-back default (publish
-                // the clicked datum under the chart's own NodeId), so the slot
-                // became an override rather than a host escape — see the
-                // capability row. A present sentinel is therefore dead AND
-                // suppresses that default, which is precisely FUARAN080's
-                // subject. The write-back needs no writable value binding, for
-                // the same reason `GridSpec.onRowClick` does not: the node
-                // writes its OWN id.
-                handler nodeId "ChartSpec.onPointClick" c.OnPointClick.IsSome true "$selection (its own NodeId)"
-                []
-            | NodeKind.Map _ ->
-                () // marker clicks are still a HostOnlyByDesign row
-                []
-            // -- Structural --
-            | NodeKind.ErrorBoundary spec -> [ spec.Child; spec.Fallback ]
-            | NodeKind.Switch spec ->
-                // Switch has no closure-bearing slots (StateKey is a string; the
-                // cases/default are Nodes) — nothing dead-on-decode of its own, so
-                // just descend into the case children + default.
-                (spec.Cases |> List.map _.Child) @ [ spec.Default ]
-            | NodeKind.FragmentDecl spec -> [ spec.Body ]
-            // -- Display --
-            // Leaves, with no closure-bearing slot this check can call dead.
-            | NodeKind.Heading _
-            | NodeKind.Markdown _
-            | NodeKind.Metric _
-            | NodeKind.Badge _
-            | NodeKind.Sparkline _
-            | NodeKind.Callout _
-            | NodeKind.Progress _
-            | NodeKind.Skeleton _
-            | NodeKind.Icon _
-            | NodeKind.LabelValueRow _
-            | NodeKind.Fact _
-            | NodeKind.Link _
-            | NodeKind.Image _
-            | NodeKind.Media _
-            | NodeKind.Embed _
-            | NodeKind.List _
-            | NodeKind.Tree _
-            | NodeKind.Toast _
-            | NodeKind.CodeBlock _
-            | NodeKind.Math _
-            | NodeKind.Drawing _
-            | NodeKind.Custom _
-            | NodeKind.FragmentRef _
-            | NodeKind.Mount _ -> []
-
-        children |> List.iter walk
+        NodeChildren.children NodeChildren.Reach.kindHeld n |> List.iter walk
 
     walk root
     List.ofSeq findings

@@ -982,3 +982,172 @@ let bindingVocabularyTests =
                       []
                       (sprintf "these tags are accepted but absent from the advertised vocabulary '%s'" advertised)
           } ]
+
+// ============================================================================
+//  Phase 2040 — the generated decoder as a STRUCTURAL SUBSTRATE.
+//
+//  The plan was for `JsonDecode` to become a policy layer over the generated
+//  `dec*` set: structure from the IDL, judgement (aliases, the §3.6 static
+//  unwrap, near-miss sets, limits, didactic sentences) by hand above it. The
+//  Phase 672 tests above prove the ACCEPT half of that seam — every `nodes/`
+//  fixture and every `lenient/*.expected` fixture round-trips through
+//  `Generated.decodeNode` byte-identically. These tests measure the REFUSE
+//  half, and it does not hold yet, for two reasons that are facts about the
+//  generated layer rather than about the hand-written one:
+//
+//    1. The generated decoders are `Result.bind` chains — the first defect ends
+//       the decode. WIRE_FORMAT §29 asks the node decoder for EVERY independent
+//       defect in canonical order, and the corpus pins that list on the
+//       `expectedDefects` fixtures below. A substrate that stops at the first
+//       defect cannot feed a layer that must report the fifth; the layer above
+//       never sees the rest of the document's structure.
+//    2. The generated module exposes ONE decode entry, `decodeNode`, over the
+//       whole node; every per-spec decoder is `private`, and the file is
+//       generated ("do not edit by hand"). Layering family by family needs
+//       per-spec entries, which is a generator change, not a change here.
+//
+//  Both are therefore pinned, so that the moment the generator starts emitting
+//  defect-collecting or per-spec decoders these tests go RED and the layering
+//  is re-opened on evidence rather than rediscovered.
+// ============================================================================
+
+/// The hand-written decoder's spelling of a Core path — `$.kind.fields[0].kind.value`,
+/// the corpus's `expectedPath` form — so the two decoders' refusals compare on one axis.
+let private dottedPath (path: Fuaran.Core.PathSegment list) : string =
+    path
+    |> List.fold
+        (fun acc segment ->
+            match segment with
+            | Fuaran.Core.PathSegment.Key key -> acc + "." + key
+            | Fuaran.Core.PathSegment.Index i -> acc + "[" + string i + "]")
+        "$"
+
+/// Every reject fixture whose manifest entry lists MORE THAN ONE §29 defect —
+/// the documents that tell a defect-collecting decoder from a fail-fast one.
+/// `(id, input document, expected (code, path) list)`.
+let private multiDefectRejectFixtures () : (string * string * (string * string) list) list =
+    match corpusRoot () with
+    | None -> failtest "wire-format-fixtures/manifest.json not found — the corpus clone is missing"
+    | Some root ->
+        use manifest =
+            JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "manifest.json")))
+
+        manifest.RootElement.GetProperty("fixtures").EnumerateArray()
+        |> Seq.choose (fun entry ->
+            match entry.TryGetProperty "expectedDefects" with
+            | true, defects when defects.GetArrayLength() > 1 ->
+                let expected =
+                    defects.EnumerateArray()
+                    |> Seq.map (fun d -> d.GetProperty("code").GetString(), d.GetProperty("path").GetString())
+                    |> Seq.toList
+
+                let input = Path.Combine(root, entry.GetProperty("inputFile").GetString())
+                Some(entry.GetProperty("id").GetString(), (File.ReadAllText input).Trim(), expected)
+            | _ -> None)
+        |> Seq.toList
+
+[<Tests>]
+let decoderSubstrateTests =
+    testList
+        "the generated decoder as a structural substrate (Phase 2040)"
+        [ test "the generated module exposes one decode entry point, over the whole node" {
+              // Precondition 2. F# `private` module bindings compile to non-public
+              // methods, so the public static surface of the module is exactly the
+              // set a policy layer in another assembly could compose over. Today
+              // that is `decodeNode` alone: a layer cannot delegate ONE family's
+              // structure and keep the rest by hand, because there is nothing to
+              // delegate to below the whole-node entry.
+              let generatedModule = typeof<Generated.Binding<obj>>.DeclaringType
+
+              Expect.isNotNull generatedModule "the generated types are declared inside the Fuaran.UI.Generated module"
+
+              let publicDecoders =
+                  generatedModule.GetMethods(
+                      System.Reflection.BindingFlags.Public ||| System.Reflection.BindingFlags.Static
+                  )
+                  |> Array.map _.Name
+                  |> Array.filter (fun name -> name.StartsWith "dec")
+                  |> Array.distinct
+                  |> Array.sort
+                  |> Array.toList
+
+              Expect.equal
+                  publicDecoders
+                  [ "decodeNode" ]
+                  "the generated layer now exposes per-spec decoders — re-open the Phase 2040 layering on that evidence"
+          }
+
+          test "the generated decoder stops at the first defect where §29 asks for every one" {
+              // Precondition 1. The hand-written decoder reports the whole canonical
+              // list (the control leg — `Corpus.fs` asserts the same list, so a
+              // disagreement here is a corpus or manifest problem, not a seam one);
+              // the generated decoder's refusal is a single `DecodeError` by type,
+              // so on every one of these documents it can name at most one of the
+              // defects the corpus requires. The fixture set is read from the
+              // manifest, not listed here, so a new multi-defect fixture joins the
+              // measurement without an edit.
+              let fixtures = multiDefectRejectFixtures ()
+
+              Expect.isGreaterThan
+                  fixtures.Length
+                  1
+                  "the corpus carries multi-defect reject fixtures — the §29 contract has teeth only through them"
+
+              let handShortfalls =
+                  fixtures
+                  |> List.choose (fun (id, json, expected) ->
+                      match JsonDecode.decodeNodeObjWithDefects Fuaran.UI.KindPolicy.DecodePolicy.admitAll json with
+                      | Ok _ -> Some(id, "hand-written decoder ACCEPTED a reject fixture")
+                      | Error defects ->
+                          let reported = defects |> List.map (fun d -> d.Code, d.Path)
+
+                          if reported = expected then
+                              None
+                          else
+                              Some(
+                                  id,
+                                  sprintf "hand-written defects %A differ from the manifest's %A" reported expected
+                              ))
+
+              Expect.isEmpty
+                  handShortfalls
+                  "the hand-written decoder reports the §29 list on every multi-defect fixture"
+
+              let generatedAccepted =
+                  fixtures
+                  |> List.choose (fun (id, json, _) ->
+                      match Generated.decodeNode json with
+                      | Ok _ -> Some id
+                      | Error _ -> None)
+
+              Expect.isEmpty generatedAccepted "the generated decoder refuses every multi-defect reject fixture"
+
+              // What the single defect IS matters for the layering too: were the
+              // generated refusal always the §29 HEAD, a layer could at least keep
+              // `expectedPath` (the first entry) while losing the tail. Measured,
+              // it is not, on four of the eleven: three are VALUE judgements the
+              // hand decoder makes one member deeper than any structural decoder
+              // can (a colour literal that is not `#rrggbb`, a rating `max` of zero,
+              // a closed token set with no suggestions — refused at the member,
+              // where the generated decoder refuses the whole field kind), and one
+              // is ORDER (`map` keys visited in document order where §29 sorts them
+              // ordinally). The residue is NAMED, not counted, so a fixture moving
+              // between buckets — or the generated head starting to agree — is
+              // visible rather than absorbed.
+              let headDiffers =
+                  fixtures
+                  |> List.choose (fun (id, json, expected) ->
+                      match Generated.decodeNode json with
+                      | Error e when dottedPath e.Path <> snd (List.head expected) ->
+                          Some(id, dottedPath e.Path, snd (List.head expected))
+                      | _ -> None)
+                  |> List.sortBy (fun (id, _, _) -> id)
+
+              Expect.equal
+                  (headDiffers |> List.map (fun (id, _, _) -> id))
+                  [ "reject-color-value-not-hex"
+                    "reject-multi-map-key-order"
+                    "reject-rating-max-zero"
+                    "reject-tokens-closed-without-suggestions" ]
+                  (sprintf "generated first defect vs §29 head moved (id, generated, expected): %A" headDiffers)
+          } ]

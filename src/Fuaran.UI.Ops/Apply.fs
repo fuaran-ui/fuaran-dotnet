@@ -2173,10 +2173,17 @@ let private dispatchReplaceBinding
 // childless leaf — are preserved by cheap pre-checks (containment legality stays
 // domain-side, exactly as CanHold does).
 
-let private coreIdw: Fuaran.Core.IdWitness<NodeId> =
-    { ToString = fun (NodeId s) -> s
-      OfString = NodeId
-      Equals = (=) }
+let private coreIdw: Fuaran.Core.IdWitness<NodeId> = idWitness
+
+/// The first id `incoming` would duplicate if grafted into `root` — one `root`
+/// already holds or one `incoming` repeats within itself — over the KEYED walk
+/// on both sides (Core's `Tree.graftWellFormedKeyed` under the tier's
+/// `keyedWitness`), so an id held in a switch case, an error-boundary arm, a
+/// state alternative or a slot argument is seen wherever it sits.
+let private graftCollision (root: Node<'Msg>) (incoming: Node<'Msg>) : NodeId option =
+    match Fuaran.Core.Tree.graftWellFormedKeyed nodeWitness keyedWitness coreIdw incoming root with
+    | Fuaran.Core.Tree.RepeatedId dup -> Some dup
+    | Fuaran.Core.Tree.Structural -> None
 
 // ─── Non-structural addressing (Phase 1666) ────────────────────────────────
 //
@@ -2193,10 +2200,11 @@ let private coreIdw: Fuaran.Core.IdWitness<NodeId> =
 //    against the subtree and write the rewritten subtree back through the lens.
 //    The position's arity never changes, which is exactly the case the
 //    positional lens supports, so this is a reuse rather than a widening — and
-//    notably NOT a widening of the `NodeWitness` handed to Core, which the
-//    comment above records as unsafe (Core rebuilds through the same function,
-//    and `ReorderChildren`'s permutation check would start demanding
-//    non-structural ids).
+//    notably NOT a widening of the structural `NodeWitness` handed to Core,
+//    which would be unsafe (Core rebuilds through the same function, and
+//    `ReorderChildren`'s permutation check would start demanding
+//    non-structural ids). Core reaches keyed positions through the separate
+//    `keyedWitness` instead.
 //
 //  * AT a position, or ACROSS two of them — the arity would have to change, or
 //    a subtree would have to cross a boundary the lens cannot express in one
@@ -2249,15 +2257,14 @@ let rec private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<N
         located
         |> List.choose (fun (id, loc) -> loc |> Option.map (fun (h, label, sub, isAt) -> id, h, label, sub, isAt))
 
-    // §4g, before anything descends. `applyStructuralHere` runs its own
-    // duplicate-id pre-check against whatever root it is given, so on a descent
-    // that root is the POSITION'S SUBTREE and an incoming id colliding
-    // elsewhere in the whole tree would be accepted. The check belongs here,
-    // where the whole tree is still in hand. `firstSharedId` walks
-    // `descendantNodes`, so it already sees every keyed position.
+    // §4g, before anything descends. `applyStructuralHere` hands Core whatever
+    // root it is given, so on a descent that root is the POSITION'S SUBTREE and
+    // an incoming id colliding elsewhere in the whole tree would be accepted.
+    // The check belongs here, where the whole tree is still in hand, and it is
+    // Core's own keyed graft check rather than a second walk.
     let incomingCollision =
         match op with
-        | TreeOp.InsertChild(_, child) when not (List.isEmpty insidePositions) -> firstSharedId root child
+        | TreeOp.InsertChild(_, child) when not (List.isEmpty insidePositions) -> graftCollision root child
         | _ -> None
 
     match incomingCollision, insidePositions with
@@ -2327,17 +2334,7 @@ let rec private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<N
 /// position's subtree on a descent; it cannot tell the difference, which is what
 /// makes the descent a reuse rather than a second engine.
 and private applyStructuralHere (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
-    let nodew: Fuaran.Core.NodeWitness<Node<'Msg>, NodeId> =
-        // `Node.Id` is a bare string since the swap; the op layer's addressing
-        // stays `NodeId`-typed, wrapped at this witness boundary.
-        { Id = fun n -> NodeId n.Id
-          KindTag = fun n -> kindName n.Kind
-          Children = fun n -> getChildren n.Kind |> Option.defaultValue []
-          ReplaceChildren =
-            fun n cs ->
-                match withChildren n.Kind cs with
-                | Some k -> { n with Kind = k }
-                | None -> n }
+    let nodew = nodeWitness<'Msg>
 
     // A Layout holds children; every Display / Input / Visualisation leaf does not.
     let canHold (n: Node<'Msg>) = getChildren n.Kind |> Option.isSome
@@ -2352,34 +2349,23 @@ and private applyStructuralHere (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<N
         kindMismatch (sprintf "Structural op rejected: %A" rej) ApplyHint.empty
 
     let run (coreOp: Fuaran.Core.SkeletonOp<Node<'Msg>, NodeId>) (mapRej: Fuaran.Core.Rejection<NodeId> -> ApplyError) =
-        match Fuaran.Core.Ops.applyContained canHold nodew coreIdw coreOp root with
+        // The KEYED engine (fuaran-core Phase 286): it locates through every
+        // position `keyedWitness` declares and edits through `nodew.Children`,
+        // so its duplicate-id refusal sees a switch case, an error-boundary
+        // arm, a state alternative and a slot argument on BOTH sides of a
+        // graft — the check the tier used to run as its own pre-pass.
+        match Fuaran.Core.Ops.applyContainedKeyed keyedWitness canHold nodew coreIdw coreOp root with
         | Ok updated -> Ok updated
         | Error rej -> Error(mapRej rej)
 
     match op with
     | TreeOp.InsertChild(parentId, child) ->
-        // Duplicate-id pre-check, ahead of Core.
-        //
-        // Core does its own, but through `nodew.Children` — which IS
-        // `getChildren`, the STRUCTURAL surface. So Core's check cannot see a
-        // node held in a Switch case, an ErrorBoundary slot, a `State`
-        // alternative or a fragment `Slot` arg, and an insert colliding with one
-        // of those ids was accepted. §4g promises ids are unique per tree, and
-        // that promise is what `firstSharedId` was written to keep; it walks
-        // `descendantNodes`, so it sees positions the structural surface omits.
-        // Checking here rather than widening the witness is deliberate: the
-        // witness's `Children` is also what Core REBUILDS through, so widening
-        // it would have Core try to restructure keyed cases as an ordered list.
-        match firstSharedId root child with
-        | Some dup -> Error(duplicateNodeId dup)
-        | None ->
-
-            run (Fuaran.Core.SkeletonOp.InsertChild(parentId, child)) (fun rej ->
-                match rej with
-                | Fuaran.Core.Rejection.DuplicateId id -> duplicateNodeId id
-                | Fuaran.Core.Rejection.NotAContainer _ -> childlessOrParent parentId
-                | Fuaran.Core.Rejection.UnknownNode _ -> parentNotFound parentId
-                | other -> unmapped other)
+        run (Fuaran.Core.SkeletonOp.InsertChild(parentId, child)) (fun rej ->
+            match rej with
+            | Fuaran.Core.Rejection.DuplicateId id -> duplicateNodeId id
+            | Fuaran.Core.Rejection.NotAContainer _ -> childlessOrParent parentId
+            | Fuaran.Core.Rejection.UnknownNode _ -> parentNotFound parentId
+            | other -> unmapped other)
 
     | TreeOp.RemoveNode target ->
         run (Fuaran.Core.SkeletonOp.RemoveNode target) (fun rej ->
@@ -2612,8 +2598,8 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
 /// Over `Introspect.descendantNodes`, deliberately, rather than the structural
 /// `getChildren`: a node held in a `Switch` case, an `ErrorBoundary` slot or a
 /// `State` alternative is a node the decoder counts and this bound must too.
-/// `descendantNodes` is the same surface the §4g duplicate-id pre-check walks,
-/// for the same reason.
+/// `descendantNodes` is the same surface the §4g duplicate-id refusal walks
+/// (Core's keyed engine, through `Introspect.keyedWitness`), for the same reason.
 let rec private treeMetrics (node: Node<'Msg>) : int * int =
     Introspect.descendantNodes node
     |> List.fold

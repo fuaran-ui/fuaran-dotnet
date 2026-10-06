@@ -80,19 +80,13 @@ let renderHydratable (sources: BindingResolver.BindingSources) (node: Node<obj>)
 let islandScriptId (islandId: string) : string =
     sprintf "fuaran-hydrate-island-%s" islandId
 
-/// The container children of a node kind (mirrors the renderer's
-/// `collectFragments` child map) — the walk basis for island collection.
+/// The children island collection descends through — the tier's one
+/// enumeration at the kind-held reach, the relation the renderer's
+/// `collectFragments` walks. (A private copy of it here listed eight kinds and
+/// fell through to `[]`, so an island under a `Modal`, a `ScrollArea` or a
+/// `Switch` got its boundary wrapper and never its payload script.)
 let private childrenOf (node: Node<obj>) : Node<obj> list =
-    match node.Kind with
-    | NodeKind.Box(s) -> s.Children
-    | NodeKind.SplitPanel(s) -> s.Children
-    | NodeKind.Tabs(s) -> s.Children
-    | NodeKind.Stepper(s) -> s.Children
-    | NodeKind.SummaryList(s) -> s.Children
-    | NodeKind.Disclosure(s) -> s.Children
-    | NodeKind.ErrorBoundary s -> [ s.Child ]
-    | NodeKind.FragmentDecl s -> [ s.Body ]
-    | _ -> []
+    Fuaran.UI.NodeChildren.children Fuaran.UI.NodeChildren.Reach.kindHeld node
 
 /// DFS collect every island `(islandId, node)` in document order.
 let rec private collectIslands (node: Node<obj>) : (string * Node<obj>) list =

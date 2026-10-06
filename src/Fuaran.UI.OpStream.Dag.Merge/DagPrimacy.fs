@@ -97,51 +97,53 @@ module DagPrimacy =
         | TreeOp.Batch ops -> ops |> List.collect cellsOf
 
     /// Walk back from `head` along the PRIMARY-parent spine, stopping at `stopAt`
-    /// (the base hash, exclusive) or genesis, recording for each cell the FIRST
-    /// writer encountered — which, walking newest→oldest, is the MOST RECENT
-    /// writer. Maps each cell to that record's `MergeAuthor`, as classified by
-    /// the host-supplied `recordAuthor` (the merge layer reads no record field).
+    /// (the base hash, exclusive) or genesis, and map each cell to its MOST
+    /// RECENT writer's `MergeAuthor`, as classified by the host-supplied
+    /// `recordAuthor` (the merge layer reads no record field).
+    ///
+    /// The walk is `DagReplay`'s own spine walk (Phase 2043), so a hole in the
+    /// spine is the error it is in replay: a hash `getRec` does not hold is
+    /// `UnknownHash`, a tombstoned record `TombstonedOnSpine`. Before, a missing
+    /// record silently ended the walk, and every cell written below the hole
+    /// fell back to the branch-tip author — a `Primary` pin dropped with no
+    /// signal, on a spine replay would have refused.
     let cellAuthors<'Msg>
         (recordAuthor: DagOpRecord<'Msg> -> MergeAuthor)
         (getRec: string -> DagOpRecord<'Msg> option)
         (stopAt: string option)
         (head: string)
-        : Map<string * string, MergeAuthor> =
-        let rec walk (hash: string) (acc: Map<string * string, MergeAuthor>) =
+        : Result<Map<string * string, MergeAuthor>, DagReplayError> =
+        let bound =
             match stopAt with
-            | Some s when s = hash -> acc
-            | _ ->
-                match getRec hash with
-                | None -> acc
-                | Some r ->
+            | Some s -> SpineBound.ExclusiveOrGenesis s
+            | None -> SpineBound.Genesis
+
+        // The spine comes back oldest first, so a later writer of a cell
+        // overwrites an earlier one and the map ends holding the most recent.
+        DagReplay.collectSpine bound getRec head
+        |> Result.map (
+            List.fold
+                (fun (m: Map<string * string, MergeAuthor>) (r: DagOpRecord<'Msg>) ->
                     let author = recordAuthor r
-
-                    let acc' =
-                        cellsOf r.Op
-                        |> List.fold
-                            (fun (m: Map<_, _>) cell -> if Map.containsKey cell m then m else Map.add cell author m)
-                            acc
-
-                    match r.Parents with
-                    | [] -> acc'
-                    | primary :: _ -> walk primary acc'
-
-        walk head Map.empty
+                    cellsOf r.Op |> List.fold (fun m' cell -> Map.add cell author m') m)
+                Map.empty
+        )
 
     /// A per-cell author lookup for a branch: the most-recent writer of
     /// `(nodeId, facet)` since the base, or `tipAuthor` when the walk did not
     /// attribute the cell (an under-attributed structural op, or a cell the
     /// branch did not touch). The fallback is what makes this a strict refinement.
+    /// A hole in the spine is the walk's error, never a fallback (Phase 2043).
     let cellAuthorFn<'Msg>
         (recordAuthor: DagOpRecord<'Msg> -> MergeAuthor)
         (getRec: string -> DagOpRecord<'Msg> option)
         (stopAt: string option)
         (head: string)
         (tipAuthor: MergeAuthor)
-        : string -> string -> MergeAuthor =
-        let map = cellAuthors recordAuthor getRec stopAt head
-
-        fun nodeId facet ->
-            match Map.tryFind (nodeId, facet) map with
-            | Some a -> a
-            | None -> tipAuthor
+        : Result<string -> string -> MergeAuthor, DagReplayError> =
+        cellAuthors recordAuthor getRec stopAt head
+        |> Result.map (fun map ->
+            fun nodeId facet ->
+                match Map.tryFind (nodeId, facet) map with
+                | Some a -> a
+                | None -> tipAuthor)

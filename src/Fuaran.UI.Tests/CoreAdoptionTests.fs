@@ -1093,3 +1093,234 @@ module Columnar =
                       closedNonEmpty
                       0
                       "at least one non-empty pipeline has a closed walk — the widening's whole subject" ]
+
+// ─── Phase 2038 — one answer to what a node's children are ──────────────────
+//
+// The tier supplies its `KeyedWitness` in production (`Introspect.keyedWitness`,
+// derived from the `NodeChildren` lens rather than a second list) and the apply
+// path calls Core's keyed forms. The go-red fixtures below failed on the private
+// child walks they replace; the census keeps those walks from coming back.
+
+module KeyedEnumeration =
+
+    open System
+    open System.IO
+    open System.Text.RegularExpressions
+    open Fuaran.UI.Ops
+
+    let private md (id: string) : Node<obj> = Fuaran.markdown id "x"
+
+    /// A dashboard holding `existing`.
+    let private host: Node<obj> =
+        Fuaran.dashboard
+            "root"
+            { Defaults.dashboard<obj> with
+                Children = [ md "existing" ] }
+
+    /// A Switch holding `caseChild` in its one case and `defaultChild` as its
+    /// default — both KEYED positions, invisible to the structural walk.
+    let private switchOf (caseChild: Node<obj>) (defaultChild: Node<obj>) : Node<obj> =
+        Fuaran.switch
+            "incoming"
+            { Defaults.switch<obj> with
+                Cases =
+                    [ { Child = caseChild
+                        Match = Some "a"
+                        When = None } ]
+                Default = defaultChild }
+
+    /// The source files outside the enumeration's home that still carry a
+    /// child-enumerating `NodeKind` match. FROZEN: none of them is in Phase
+    /// 2038's cross-section, so adopting the enumeration there is its own change
+    /// (and removes the file from this list, which the census then requires). A
+    /// file may leave this list; none may join it.
+    let private grandfathered =
+        set
+            [ "Fuaran.UI/BindingWalk.fs"
+              "Fuaran.UI/Generated.fs"
+              "Fuaran.UI/HostLimits.fs"
+              "Fuaran.UI/PreEmitValidate.fs"
+              "Fuaran.UI.Renderer/Render.fs"
+              "Fuaran.UI.Renderer.Server/Email.fs"
+              "Fuaran.UI.Renderer.Server/Speech.fs"
+              "Fuaran.UI.Validator/RecipeCertification.fs" ]
+
+    /// The enumeration's home — the one module allowed to take a `NodeKind`
+    /// apart to find its children.
+    let private home = "Fuaran.UI/NodeChildren.fs"
+
+    /// The shapes a hand-written child enumeration takes, one line each: a
+    /// container arm yielding its `.Children`, an error-boundary arm yielding an
+    /// arm, a fragment declaration yielding `[ body ]`, a switch's cases mapped
+    /// to their children and joined to the default.
+    let private enumerating =
+        Regex(
+            @"\|\s*NodeKind\.(Box|SplitPanel|Tabs|Stepper|SummaryList|Disclosure|Modal|ScrollArea)\b.*->.*\.Children\b"
+            + @"|\|\s*NodeKind\.ErrorBoundary\b.*->.*\.(Child|Fallback)\b"
+            + @"|\|\s*NodeKind\.FragmentDecl\b.*->\s*\[\s*\w+\.Body\s*\]"
+            + @"|_\.Child\)\s*@\s*\[",
+            RegexOptions.Compiled
+        )
+
+    let private srcRoot =
+        lazy
+            (let rec climb (dir: DirectoryInfo option) =
+                match dir with
+                | None -> failwith "Phase 2038 census: no checkout root (run.ps1 + Fuaran.sln) above the test binary"
+                | Some d ->
+                    if
+                        File.Exists(Path.Combine(d.FullName, "run.ps1"))
+                        && File.Exists(Path.Combine(d.FullName, "Fuaran.sln"))
+                    then
+                        Path.Combine(d.FullName, "src")
+                    else
+                        climb (Option.ofObj d.Parent)
+
+             climb (Some(DirectoryInfo(AppContext.BaseDirectory))))
+
+    /// Every shipped source file (test projects, `bin` and `obj` excluded) that
+    /// carries an enumerating line, as a `/`-separated path under `src/`.
+    let private enumeratingFiles () : Set<string> =
+        let root = srcRoot.Value
+
+        Directory.GetFiles(root, "*.fs", SearchOption.AllDirectories)
+        |> Array.map (fun p -> Path.GetRelativePath(root, p).Replace('\\', '/'))
+        |> Array.filter (fun rel ->
+            let project = rel.Split('/').[0]
+
+            not (project.EndsWith(".Tests", StringComparison.Ordinal))
+            && not (rel.Contains("/obj/", StringComparison.Ordinal))
+            && not (rel.Contains("/bin/", StringComparison.Ordinal)))
+        |> Array.filter (fun rel -> File.ReadLines(Path.Combine(root, rel)) |> Seq.exists enumerating.IsMatch)
+        |> Set.ofArray
+
+    let private insert (child: Node<obj>) =
+        UiApply.apply (TreeOp.InsertChild(NodeId "root", child)) host
+
+    [<Tests>]
+    let tests =
+        testList
+            "Phase 2038 — the keyed enumeration"
+            [ test "InsertChild of a Switch whose case child duplicates an existing id is refused" {
+                  match insert (switchOf (md "existing") (md "d")) with
+                  | Error e -> Expect.equal e.Code ApplyErrorCode.DuplicateNodeId "the case child's id is already held"
+                  | Ok _ -> failtest "a Switch carrying a duplicate id in a case was grafted"
+              }
+
+              test "InsertChild of a Switch whose default duplicates an existing id is refused" {
+                  match insert (switchOf (md "c") (md "existing")) with
+                  | Error e -> Expect.equal e.Code ApplyErrorCode.DuplicateNodeId "the default's id is already held"
+                  | Ok _ -> failtest "a Switch carrying a duplicate id in its default was grafted"
+              }
+
+              test "a clean Switch still inserts, and the result is well formed over the keyed walk" {
+                  match insert (switchOf (md "c") (md "d")) with
+                  | Ok updated ->
+                      Expect.equal
+                          (Fuaran.Core.Tree.wellFormedKeyed
+                              Introspect.nodeWitness
+                              Introspect.keyedWitness
+                              Introspect.idWitness
+                              updated)
+                          Fuaran.Core.Tree.Structural
+                          "every id unique over the keyed walk"
+                  | Error e -> failtestf "a clean Switch was refused: %A" e.Code
+              }
+
+              test "placeOp refuses the graft the apply path refuses" {
+                  match
+                      Placement.placeOp
+                          host
+                          (switchOf (md "existing") (md "d"))
+                          { ParentId = NodeId "root"
+                            Placement = Placement.Last }
+                  with
+                  | Error(PlaceError.DuplicateId(NodeId "existing")) -> ()
+                  | other -> failtestf "expected DuplicateId existing, got %A" other
+              }
+
+              test "the KeyedWitness is the lens descendantNodes reads, not a second list" {
+                  let eb =
+                      Fuaran.errorBoundary
+                          "eb"
+                          { Child = md "child"
+                            Fallback = md "fb" }
+
+                  Expect.equal
+                      (Introspect.nodeWitness.Children eb @ Introspect.keyedWitness.KeyedChildren eb
+                       |> List.map _.Id)
+                      (Introspect.descendantNodes eb |> List.map _.Id)
+                      "structural children then keyed children are exactly the traversal surface"
+
+                  let rebuilt =
+                      Introspect.keyedWitness.ReplaceKeyedChildren eb [ md "child2"; md "fb2" ]
+
+                  Expect.equal
+                      (Introspect.keyedWitness.KeyedChildren rebuilt |> List.map _.Id)
+                      [ "child2"; "fb2" ]
+                      "ReplaceKeyedChildren writes back position for position"
+              }
+
+              test "findParentWithin differs from the structural spine only below a keyed position" {
+                  let inner =
+                      Fuaran.dashboard
+                          "inner"
+                          { Defaults.dashboard<obj> with
+                              Children = [ md "leaf" ] }
+
+                  let tree =
+                      Fuaran.dashboard
+                          "top"
+                          { Defaults.dashboard<obj> with
+                              Children = [ switchOf inner (md "d") ] }
+
+                  let ids (found: (Node<obj> * int) option) =
+                      found |> Option.map (fun (p, i) -> p.Id, i)
+
+                  Expect.isNone (Introspect.findParent (NodeId "leaf") tree) "the structural spine stops at the Switch"
+
+                  Expect.equal
+                      (ids (Introspect.findParentWithin NodeChildren.Reach.keyed (NodeId "leaf") tree))
+                      (Some("inner", 0))
+                      "the keyed reach finds the Box held in the case"
+
+                  Expect.equal
+                      (ids (Introspect.findParentWithin NodeChildren.Reach.keyed (NodeId "incoming") tree))
+                      (ids (Introspect.findParent (NodeId "incoming") tree))
+                      "on the spine the two reaches answer alike"
+              }
+
+              test "the client fragment registry walks ErrorBoundary.fallback (the server's go-red pins the same)" {
+                  let tree: Node<obj> =
+                      Fuaran.errorBoundary
+                          "eb"
+                          { Child = Fuaran.fragmentRef "ref" "inFallback"
+                            Fallback =
+                              Fuaran.fragmentDecl
+                                  "decl"
+                                  { Defaults.fragmentDecl<obj> with
+                                      Name = "inFallback"
+                                      Body = md "frag-body" } }
+
+                  let registry = Fuaran.UI.Renderer.Render.collectFragments Map.empty tree
+                  Expect.isTrue (Map.containsKey (FragmentId "inFallback") registry) "the client registers the decl"
+              }
+
+              test "census: no child-enumerating NodeKind match outside the enumeration's home" {
+                  let found = enumeratingFiles ()
+
+                  // The probe must see SOMETHING, or an empty answer below is vacuous.
+                  Expect.isTrue (Set.contains home found) "the census pattern recognises the home's own match"
+
+                  let strays = found - grandfathered - set [ home ]
+
+                  Expect.isEmpty
+                      strays
+                      "a new hand-written child enumeration — read `Fuaran.UI.NodeChildren` at the reach you mean instead"
+
+                  let adopted = grandfathered - found
+
+                  Expect.isEmpty
+                      adopted
+                      "a grandfathered file no longer enumerates children by hand — remove it from the frozen list"
+              } ]

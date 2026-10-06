@@ -403,8 +403,9 @@ let tests =
                       "the node commits to the merged tree"
 
                   // The whole point of the mint check: replaying the spine must
-                  // reach the same tree. `replaySpine` is the suite's own fold,
-                  // independent of `DagReplay`'s.
+                  // reach the same tree. `replaySpine` is `DagReplay.replay`
+                  // since Phase 2043, which also re-checks the node's committed
+                  // outcome hash on the way.
                   add sink record
 
                   Expect.equal
@@ -466,6 +467,64 @@ let tests =
                   Expect.equal expected claimed "…the hash it committed to"
                   Expect.notEqual actual claimed "…and the one its delta actually reaches"
               | other -> failtestf "expected MergeOutcomeMismatch, got %A" other
+          }
+
+          test "a hole in the spine is the same error in primacy attribution as in replay" {
+              // Phase 2043 — the primacy walk ended silently at a missing record,
+              // so every cell written below the hole fell back to the branch-tip
+              // author: a Primary pin dropped with no signal, on a spine replay
+              // refuses. Both now share one spine walk, and so one error.
+              let initial = buildDashboard ()
+
+              let genesis =
+                  stepRecord
+                      "s"
+                      None
+                      (TreeOp.UpdateStyle(
+                          leftChildId,
+                          { Defaults.style with
+                              Tone = ToneVariant.Brand }
+                      ))
+                      1L
+
+              let middle =
+                  stepRecord
+                      "s"
+                      (Some genesis)
+                      (TreeOp.UpdateStyle(
+                          rightChildId,
+                          { Defaults.style with
+                              Tone = ToneVariant.Critical }
+                      ))
+                      2L
+
+              let head =
+                  stepRecord
+                      "s"
+                      (Some middle)
+                      (TreeOp.UpdateStyle(
+                          rightChildId,
+                          { Defaults.style with
+                              Tone = ToneVariant.Success }
+                      ))
+                      3L
+
+              // `middle` is absent from the lookup — a hole in head's spine.
+              let byHash = [ genesis.Hash, genesis; head.Hash, head ] |> Map.ofList
+              let getRec h = Map.tryFind h byHash
+
+              match DagReplay.replay getRec initial head.Hash with
+              | Error(DagReplayError.UnknownHash h) -> Expect.equal h middle.Hash "replay names the hole"
+              | other -> failtestf "expected replay to report UnknownHash, got %A" other
+
+              match DagPrimacy.cellAuthors recordAuthor getRec None head.Hash with
+              | Error(DagReplayError.UnknownHash h) -> Expect.equal h middle.Hash "primacy names the same hole"
+              | other -> failtestf "expected primacy to report UnknownHash, got %A" other
+
+              match DagPrimacy.cellAuthors recordAuthor getRec (Some genesis.Hash) head.Hash with
+              | Error(DagReplayError.UnknownHash h) ->
+                  Expect.equal h middle.Hash "…and so does a walk bounded by a base below the hole"
+              | other -> failtestf "expected bounded primacy to report UnknownHash, got %A" other
           }
 
           // ── facet roster (M-C3) ─────────────────────────────────────────

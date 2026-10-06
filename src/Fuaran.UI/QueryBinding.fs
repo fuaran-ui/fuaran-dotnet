@@ -259,67 +259,21 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
     List.ofSeq acc
 
 /// Walk `node` (depth-first, pre-order) and surface every query-bound column
-/// reference, each tagged with the sink class its slot fixes. Mirrors
-/// `PreEmitValidate`'s child enumeration so coverage tracks the tree shape.
+/// reference, each tagged with the sink class its slot fixes. Descends through
+/// `NodeChildren.Reach.kindHeld`, so coverage tracks the tree shape.
 let queryBoundRefs (node: Node<'Msg>) : QueryBoundRef list =
     let acc = ResizeArray<QueryBoundRef>()
 
     let rec walk (n: Node<'Msg>) =
         acc.AddRange(queryBoundRefsOfNode n)
 
-        match n.Kind with
-        // -- Layout --
-        | NodeKind.Box spec -> spec.Children |> List.iter walk
-        | NodeKind.SplitPanel spec -> spec.Children |> List.iter walk
-        | NodeKind.Tabs spec -> spec.Children |> List.iter walk
-        | NodeKind.Stepper spec -> spec.Children |> List.iter walk
-        | NodeKind.SummaryList spec -> spec.Children |> List.iter walk
-        | NodeKind.Disclosure spec -> spec.Children |> List.iter walk
-        | NodeKind.Modal spec -> spec.Children |> List.iter walk
-        | NodeKind.ScrollArea spec -> spec.Children |> List.iter walk
-        | NodeKind.ErrorBoundary spec ->
-            walk spec.Child
-            walk spec.Fallback
-        | NodeKind.Switch spec ->
-            spec.Cases |> List.iter (fun c -> walk c.Child)
-            walk spec.Default
-        | NodeKind.FragmentDecl spec -> walk spec.Body
-        // Every childless kind — Display / Input / Visualisation leaves.
-        | NodeKind.Heading _
-        | NodeKind.Markdown _
-        | NodeKind.Metric _
-        | NodeKind.Badge _
-        | NodeKind.Sparkline _
-        | NodeKind.Callout _
-        | NodeKind.Progress _
-        | NodeKind.Skeleton _
-        | NodeKind.Icon _
-        | NodeKind.LabelValueRow _
-        | NodeKind.Fact _
-        | NodeKind.Link _
-        | NodeKind.Image _
-        | NodeKind.Media _
-        | NodeKind.Embed _
-        | NodeKind.List _
-        | NodeKind.Tree _
-        | NodeKind.Toast _
-        | NodeKind.CodeBlock _
-        | NodeKind.Math _
-        | NodeKind.Drawing _
-        | NodeKind.Form _
-        | NodeKind.Filters _
-        | NodeKind.Button _
-        | NodeKind.FileUpload _
-        | NodeKind.Select _
-        | NodeKind.DataGrid _
-        | NodeKind.Chart _
-        | NodeKind.Map _
-        | NodeKind.Custom _
-        | NodeKind.FragmentRef _
-        // Mount (§4o) is an opaque isolation boundary — the guest carries its
-        // own scoped query-coverage in its own scope; host-level query-bound
-        // ref collection stops at the boundary (same posture as FragmentRef).
-        | NodeKind.Mount _ -> ()
+        // The tier's one enumeration, at the kind-held reach: container
+        // children, both error-boundary arms, every switch case and its
+        // default, a fragment declaration's body. `Mount` (§4o) is an opaque
+        // isolation boundary — the guest carries its own scoped query coverage
+        // in its own scope, so host-level collection stops there, as it does at
+        // a `FragmentRef`: the kind-held reach includes no slot argument.
+        NodeChildren.children NodeChildren.Reach.kindHeld n |> List.iter walk
 
     walk node
     List.ofSeq acc

@@ -1,7 +1,6 @@
 namespace Fuaran.UI.OpStream.Dag.Merge
 
 open Fuaran.UI.Types
-open Fuaran.UI.Ops
 open Fuaran.UI.OpStream.Dag.Abstractions
 
 // ============================================================================
@@ -38,41 +37,22 @@ module GuestReplay =
     ///
     /// `initialGuestTree` is the guest's seed tree at instantiation (the tree the
     /// guest loader produced), so the fold reconstructs the guest interior from
-    /// its own stream alone — the host stream is never consulted. A genuinely
-    /// unknown hash mid-spine (not the anchor: a hash the guest stream should
-    /// contain but does not) still surfaces as `UnknownHash`; a tombstoned spine
-    /// node as `TombstonedOnSpine`; an apply failure as `ApplyFailed`.
+    /// its own stream alone — the host stream is never consulted. An unknown
+    /// `guestHead` surfaces as `UnknownHash`; a tombstoned spine node as
+    /// `TombstonedOnSpine`; an apply failure as `ApplyFailed`. Because the
+    /// lookup holds the guest stream alone, a guest record missing from the
+    /// middle of the spine is indistinguishable from the anchor and bounds the
+    /// walk there: the anchor rule cannot tell the two apart without the host
+    /// stream, which this function deliberately never reads.
+    ///
+    /// The walk and the record fold are `DagReplay`'s own (Phase 2043), so a
+    /// guest MERGE node is checked against its `OutcomeHash` exactly as on the
+    /// host — `MergeOutcomeMismatch` when its delta does not reach the tree it
+    /// committed to. Before, this path folded bare `Apply.apply` and replayed
+    /// such a node cleanly.
     let replayInterior<'Msg>
         (getGuestRecord: string -> DagOpRecord<'Msg> option)
         (initialGuestTree: Node<'Msg>)
         (guestHead: string)
         : Result<Node<'Msg>, DagReplayError> =
-        // Collect the guest spine head→genesis. The genesis is the deepest node
-        // still resolvable in the guest lookup whose primary parent is NOT a
-        // guest record (the anchor) — or a true 0-parent root, the degenerate
-        // case. Either way the walk stops without following the anchor.
-        let rec collect (hash: string) (acc: DagOpRecord<'Msg> list) : Result<DagOpRecord<'Msg> list, DagReplayError> =
-            match getGuestRecord hash with
-            | None -> Error(DagReplayError.UnknownHash hash)
-            | Some r when r.Tombstoned -> Error(DagReplayError.TombstonedOnSpine hash)
-            | Some r ->
-                match r.Parents with
-                | [] -> Ok(r :: acc) // a true genesis (no anchor) — degenerate
-                | primary :: _ ->
-                    match getGuestRecord primary with
-                    | Some _ -> collect primary (r :: acc) // still inside the guest stream
-                    | None -> Ok(r :: acc) // primary is the host-side Mount anchor — stop here
-
-        match collect guestHead [] with
-        | Error e -> Error e
-        | Ok spine ->
-            spine
-            |> List.fold
-                (fun (acc: Result<Node<'Msg>, DagReplayError>) (r: DagOpRecord<'Msg>) ->
-                    match acc with
-                    | Error _ -> acc
-                    | Ok tree ->
-                        match Apply.apply r.Op tree with
-                        | Ok tree' -> Ok tree'
-                        | Error e -> Error(DagReplayError.ApplyFailed(r.Hash, e)))
-                (Ok initialGuestTree)
+        DagReplay.replayBounded SpineBound.Anchor getGuestRecord initialGuestTree guestHead
