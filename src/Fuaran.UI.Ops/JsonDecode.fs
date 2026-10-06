@@ -171,6 +171,15 @@ type DecodeError =
 /// must never land in another document's list. Null when no collecting decode is
 /// in flight, which is every call outside the node entry points — constructing
 /// an error then costs nothing extra.
+///
+/// This sink is also why this module is not (yet) a policy layer over the
+/// generated `Fuaran.UI.Generated.dec*` decoders, which was the plan (Phase 672's
+/// seam; Phase 2040 measured it). The generated decoders are `Result.bind`
+/// chains that stop at the first defect and expose one whole-node entry, so a
+/// layer above them could keep the sentences and the aliases but not the §29
+/// list, nor the first entry of it on every document. The layering waits on the
+/// generator emitting defect-collecting, per-spec decoders; the tests pinning
+/// that precondition are in `GeneratedLayerTests` ("structural substrate").
 #if FABLE_COMPILER
 type private DefectSink() =
     static let mutable current: ResizeArray<DecodeError> = null
