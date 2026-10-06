@@ -72,29 +72,25 @@ let recordAuthor (r: DagOpRecord<TestMsg>) : MergeAuthor =
     else
         MergeAuthor.Secondary r.PromptId
 
-/// Replay a sink head to its tree by folding ops along the PRIMARY-parent
-/// spine (`Parents[0]`). A merge node's op is the replay delta from its
-/// primary parent, so this reconstructs the merged tree. Tombstoned nodes on
-/// the spine are a defect (they should never be a live head's ancestor) — fail
-/// loudly if encountered.
+/// Replay a sink head to its tree through the production fold,
+/// `DagReplay.replay` — the PRIMARY-parent spine (`Parents[0]`), each merge
+/// node checked against the outcome hash it committed to — failing loudly on
+/// any replay error (a test spine is always well-formed). The suite kept its
+/// own copy of the spine walk until Phase 2043; a test oracle that is a second
+/// implementation of the code under test drifts from it silently, and this
+/// one already had: it never checked a merge node's `OutcomeHash`.
 let replaySpine
     (sink: IDagOpStreamSink<TestMsg>)
     (streamId: string)
     (initial: Node<TestMsg>)
     (head: string)
     : Node<TestMsg> =
-    let rec collect (hash: string) (acc: DagOpRecord<TestMsg> list) : DagOpRecord<TestMsg> list =
-        match sink.TryGet(streamId, hash) |> Async.RunSynchronously with
-        | None -> failwithf "replaySpine: unknown hash %s" hash
-        | Some r ->
-            if r.Tombstoned then
-                failwithf "replaySpine: tombstoned node %s on a live spine" hash
+    let getRecord (hash: string) =
+        sink.TryGet(streamId, hash) |> Async.RunSynchronously
 
-            match r.Parents with
-            | [] -> r :: acc
-            | primary :: _ -> collect primary (r :: acc)
-
-    collect head [] |> List.fold (fun t r -> applyOk r.Op t) initial
+    match DagReplay.replay getRecord initial head with
+    | Ok tree -> tree
+    | Error e -> failwithf "replaySpine: %A" e
 
 // ─── Minimal op codec for the Sqlite DAG sink tests ───────────────────────
 //

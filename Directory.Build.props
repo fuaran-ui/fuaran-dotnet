@@ -798,11 +798,15 @@
 
          0.91.0 IS NOW RELEASED - tagged v0.91.0 - so nothing may ride it.
 
-         0.92.0 (2026-10-06) is opened by Phase 2038: one exported enumeration
-         of a node's children (Fuaran.UI.NodeChildren), the tier's KeyedWitness
-         supplied to the keyed apply path, and Introspect.firstSharedId removed.
-         A removal is BREAKING (API). An UNTAGGED DRAFT: changes of this class or
-         lower ride it. See STABILITY.md "0.92.0". -->
+         0.92.0 (2026-10-06) is opened by Phases 2038 and 2043: one exported
+         enumeration of a node's children (Fuaran.UI.NodeChildren), the tier's
+         KeyedWitness supplied to the keyed apply path and Introspect.firstSharedId
+         removed (2038); the DAG tier's spine walks share one walk and one record
+         fold, so primacy attribution reports a hole in the spine (cellAuthors /
+         cellAuthorFn / primaryPinnedCells return a Result) and guest interior
+         replay checks a merge node's outcome hash (2043). Class BREAKING (API +
+         source + behaviour). An UNTAGGED DRAFT: changes of this class or lower
+         ride it. See STABILITY.md "0.92.0". -->
     <Version>0.92.0</Version>
   </PropertyGroup>
 

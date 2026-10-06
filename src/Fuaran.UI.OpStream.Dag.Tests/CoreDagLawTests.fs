@@ -94,23 +94,14 @@ let private applyableScript (n: int) =
 
     ops, state
 
-/// Replay a sink head along its PRIMARY-parent spine, exactly as `TestSupport.replaySpine`
-/// does for the `TestMsg` suite (which cannot be reused: it is typed to that message).
+/// Replay a sink head through the production fold, `DagReplay.replay` (Phase 2043 retired the
+/// suite's own copy of the spine walk), with the error rendered for the law's message.
 let private replayFromSink (sink: IDagOpStreamSink<obj>) (streamId: string) (head: string) =
-    let rec collect (hash: string) acc =
-        match sink.TryGet(streamId, hash) |> Async.RunSynchronously with
-        | None -> failtestf "replayFromSink: unknown hash %s" hash
-        | Some r ->
-            match r.Parents with
-            | [] -> r :: acc
-            | primary :: _ -> collect primary (r :: acc)
-
-    collect head []
-    |> List.fold
-        (fun acc (r: DagOpRecord<obj>) ->
-            acc
-            |> Result.bind (fun t -> UiApply.apply r.Op t |> Result.mapError (sprintf "%A")))
-        (Ok baseTree.Node)
+    Fuaran.UI.OpStream.Dag.Merge.DagReplay.replay
+        (fun hash -> sink.TryGet(streamId, hash) |> Async.RunSynchronously)
+        baseTree.Node
+        head
+    |> Result.mapError (sprintf "%A")
 
 /// Write `ops` into `sink` as a fork+merge DAG — genesis, two branches off it, and a merge
 /// node whose primary parent is branch A — then replay the merge head back out of the sink.

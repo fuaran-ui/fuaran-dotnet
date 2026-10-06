@@ -293,6 +293,58 @@ let tests =
               | Error e -> failtestf "replayInterior failed: %A" e
           }
 
+          test "guest interior replay refuses a merge node whose delta does not reproduce its outcome hash" {
+              // Phase 2043 — the guest fold is the DAG fold, so the merge-node
+              // check `DagReplay` performs holds on a guest stream too. Before,
+              // the guest path folded bare `Apply.apply` and replayed this node
+              // cleanly into a tree the merge never produced.
+              let sink = InMemoryDagSink.create<TestMsg> ()
+              let mountOp = stepRecord "host" None insMount 1L
+              add sink mountOp
+
+              let g0 =
+                  GuestFork.genesis
+                      "g1"
+                      mountOp.Hash
+                      (styleLeft ToneVariant.Critical)
+                      None
+                      (Actor.Human "guest")
+                      (ts 2L)
+                      OpResultEnvelope.Success
+
+              let g1 =
+                  GuestFork.step
+                      "g1"
+                      g0.Hash
+                      (styleRight ToneVariant.Success)
+                      None
+                      (Actor.Human "guest")
+                      (ts 3L)
+                      OpResultEnvelope.Success
+
+              let claimed = String.replicate 64 "0"
+
+              let bogus =
+                  DagOpRecord.createMerge
+                      g0.StreamId
+                      [ g0.Hash; g1.Hash ]
+                      (TreeOp.Batch [])
+                      claimed
+                      None
+                      (Actor.Human "guest")
+                      (ts 4L)
+                      OpResultEnvelope.Success
+
+              let getGuest = lookupOf [ g0; g1; bogus ]
+
+              match GuestReplay.replayInterior getGuest (buildDashboard ()) bogus.Hash with
+              | Error(DagReplayError.MergeOutcomeMismatch(hash, expected, actual)) ->
+                  Expect.equal hash bogus.Hash "the report names the offending node"
+                  Expect.equal expected claimed "…the hash it committed to"
+                  Expect.notEqual actual claimed "…and the one its delta actually reaches"
+              | other -> failtestf "expected MergeOutcomeMismatch, got %A" other
+          }
+
           test "a guest op resolves its (scope, prompt) provenance; a host op carries no guest scope" {
               let sink = InMemoryDagSink.create<TestMsg> ()
               let mountOp = stepRecord "host" None insMount 1L

@@ -7818,13 +7818,14 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.92.0 — the slot Phase 2038 opens: one answer to what a node's children are (DRAFT — untagged)
+## 0.92.0 — the slot Phases 2038 and 2043 open: one answer to what a node's children are, and one spine walk for the DAG tier (DRAFT — untagged)
 
-_Class: **BREAKING (API)** — one public function is removed (below). `v0.91.0` is released, so
-nothing may ride it and this slot opens the next number. A change of this class or lower that
-follows rides this slot._
+_Class: **BREAKING (API + source + behaviour)** — Phase 2038 removes one public function and Phase 2043 changes
+three public signatures on `Fuaran.UI.OpStream.Dag.Merge` / `.Dag.Inspect`. `v0.91.0` is tagged, so nothing may
+ride it and this slot opens the next number. A change of this class or lower that follows rides this slot._
 
-### What rides this slot
+### What rides this slot — Phase 2038
+
 
 - **`Fuaran.UI.NodeChildren` ARRIVES (fuaran#2038) — additive.** The one enumeration of the
   parent/child relation. Every position a node holds another node in has a class
@@ -7865,6 +7866,45 @@ follows rides this slot._
   the keyed traversal, so a wider effect nested in an error-boundary arm, a switch case, a `state`
   alternative or a slot argument is now reported rather than missed.
 - **Unchanged:** corpus bytes, every other apply result, and every other rendered output.
+
+### What rides this slot — Phase 2043
+
+- **One spine walk and one record fold (fuaran#2043).** Every reconstruction in the DAG tier — genesis
+  replay, checkpoint replay, guest interior replay and per-cell primacy attribution — walked the
+  primary-parent spine with its own copy of the loop, and the copies disagreed about what a defect in
+  the stream means. They now share one internal walk, parameterised only by where it stops, and one
+  record fold. No new public member; the effects below are the copies' disagreements resolved in
+  favour of the strictest.
+- **BREAKING (source): primacy attribution reports a hole in the spine.** `DagPrimacy.cellAuthors`
+  now returns `Result<Map<string * string, MergeAuthor>, DagReplayError>`, `DagPrimacy.cellAuthorFn`
+  returns `Result<string -> string -> MergeAuthor, DagReplayError>`, and
+  `DagOverlay.primaryPinnedCells` returns `Result<Set<string * string>, DagReplayError>`. A hash the
+  lookup does not hold is `UnknownHash`, and a tombstoned record `TombstonedOnSpine`, exactly as in
+  `DagReplay.replay`. Before, a missing record silently ended the walk, so every cell written below
+  the hole fell back to the branch-tip author: a `Primary` pin was dropped with no signal on a spine
+  that replay refused. **Consumer cost:** a caller matches the `Result`; the `Ok` payload is the value
+  it received before.
+- **BREAKING (behaviour): a merge over a spine with a hole is refused.** `DagMerge` surfaces the
+  attribution error as `MergeResult.ReplayFailed`, the outcome it already returns when a branch fails
+  to replay. On a well-formed store this cannot fire: retention keeps every ancestor of a live head
+  live, and each head's own replay walks the same records. It can fire where a checkpoint-bounded
+  replay skipped the stretch between the merge base and the checkpoint, which is the stretch the
+  silent stop hid. No caller in this repository relied on the stop; every existing suite passes
+  unmodified.
+- **BREAKING (behaviour): guest interior replay checks a merge node's outcome hash.**
+  `GuestReplay.replayInterior` folded bare `Apply.apply`, so a guest merge node whose delta does not
+  reach the tree it committed to replayed cleanly there while `DagReplay` refused the same node. It
+  now returns `DagReplayError.MergeOutcomeMismatch`, as `DagReplay` has since Phase 1526. A guest
+  stream minted by this engine is unaffected — the mint refuses that shape.
+- **Corrected doc, no behaviour change:** `GuestReplay.replayInterior` claimed a guest record missing
+  mid-spine surfaces as `UnknownHash`. It never did: the lookup holds the guest stream alone, so a
+  missing guest record is indistinguishable from the host-side anchor and bounds the walk there. The
+  comment now says so.
+- **Test-side only:** the DAG suite's own copies of the spine walk (`TestSupport.replaySpine`, the
+  Core-law suite's `replayFromSink`) are now thin calls to `DagReplay.replay`, so the oracle is the
+  production fold rather than a second implementation of it.
+
+---
 
 ## 0.91.0 — the slot Phase 2005 opens: the compute 0.37.0 adoption completes (DRAFT — untagged)
 

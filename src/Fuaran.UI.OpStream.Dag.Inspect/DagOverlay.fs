@@ -96,17 +96,21 @@ module DagOverlay =
     /// spine (walking back to `stopAt`, exclusive, or genesis) was classified
     /// `Primary` by `recordAuthor` — the primacy-pinned cells the overlay
     /// highlights. Wraps `DagPrimacy.cellAuthors` and keeps only the
-    /// `Primary`-classified cells.
+    /// `Primary`-classified cells. A hole in the spine is the walk's
+    /// `DagReplayError` (Phase 2043): an overlay drawn from a partial walk
+    /// would omit every pin below the hole and look complete.
     let primaryPinnedCells<'Msg>
         (recordAuthor: DagOpRecord<'Msg> -> MergeAuthor)
         (getRecord: string -> DagOpRecord<'Msg> option)
         (stopAt: string option)
         (head: string)
-        : Set<string * string> =
+        : Result<Set<string * string>, DagReplayError> =
         DagPrimacy.cellAuthors recordAuthor getRecord stopAt head
-        |> Map.toSeq
-        |> Seq.choose (fun (cell, author) ->
-            match author with
-            | MergeAuthor.Primary -> Some cell
-            | MergeAuthor.Secondary _ -> None)
-        |> Set.ofSeq
+        |> Result.map (fun authors ->
+            authors
+            |> Map.toSeq
+            |> Seq.choose (fun (cell, author) ->
+                match author with
+                | MergeAuthor.Primary -> Some cell
+                | MergeAuthor.Secondary _ -> None)
+            |> Set.ofSeq)

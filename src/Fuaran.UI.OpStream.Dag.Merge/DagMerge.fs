@@ -455,11 +455,29 @@ module DagMerge =
                     | _, Error e, _
                     | _, _, Error e -> plain (MergeResult.ReplayFailed e)
                     | Ok baseTree, Ok treeA, Ok treeB ->
-                        let authA = DagPrimacy.cellAuthorFn recordAuthor getRec stopAt headA tipA
-                        let authB = DagPrimacy.cellAuthorFn recordAuthor getRec stopAt headB tipB
-                        let cellAuthor (nodeId: string) (facet: string) = authA nodeId facet, authB nodeId facet
+                        // A hole in either branch's spine is the replay error it
+                        // is everywhere else (Phase 2043) — never a silent
+                        // fallback to the tip author.
+                        match
+                            DagPrimacy.cellAuthorFn recordAuthor getRec stopAt headA tipA,
+                            DagPrimacy.cellAuthorFn recordAuthor getRec stopAt headB tipB
+                        with
+                        | Error e, _
+                        | _, Error e -> plain (MergeResult.ReplayFailed e)
+                        | Ok authA, Ok authB ->
+                            let cellAuthor (nodeId: string) (facet: string) = authA nodeId facet, authB nodeId facet
 
-                        mergeOver streamId headA headB cellAuthor policy baseTree treeA treeB now context.Attribution
+                            mergeOver
+                                streamId
+                                headA
+                                headB
+                                cellAuthor
+                                policy
+                                baseTree
+                                treeA
+                                treeB
+                                now
+                                context.Attribution
 
                 match lca with
                 | LcaResult.None -> return plain MergeResult.NoCommonBase

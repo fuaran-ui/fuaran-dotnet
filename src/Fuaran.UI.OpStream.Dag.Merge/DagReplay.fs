@@ -45,17 +45,83 @@ type DagReplayError =
     /// cover: the stream outlives the process that wrote it.
     | MergeOutcomeMismatch of hash: string * expected: string * actual: string
 
+/// Where a primary-parent spine walk stops (Phase 2043). Every reconstruction
+/// in this tier walks the SAME spine — `Parents[0]`, head back towards genesis —
+/// and differs only in where the walk ends, so the stop rule is the one thing a
+/// caller chooses; the walk itself, and what it calls an error, is shared.
+[<RequireQualifiedAccess>]
+type internal SpineBound =
+    /// Walk to a parentless genesis record, inclusive (`DagReplay.replay`).
+    | Genesis
+    /// Stop AT this hash, exclusive — its effect is already accounted for. A
+    /// genesis reached first means the bound is not on this head's spine, and
+    /// is `UnknownHash` of the bound (`DagReplay.replayFromCheckpoint`).
+    | Exclusive of bound: string
+    /// Stop AT this hash, exclusive, or at a genesis, inclusive — whichever
+    /// comes first. A merge base need not lie on a head's PRIMARY spine, so
+    /// reaching genesis is not an error here (`DagPrimacy.cellAuthors`).
+    | ExclusiveOrGenesis of bound: string
+    /// Stop at the first record whose primary parent the lookup does not hold,
+    /// inclusive — for a guest stream that parent is the host-side Mount
+    /// anchor, a boundary rather than a step (`GuestReplay.replayInterior`).
+    | Anchor
+
 module DagReplay =
 
+    /// Collect `head`'s primary-parent spine, oldest first, ending where
+    /// `bound` says. The ONE spine walk of the tier (Phase 2043): replay,
+    /// checkpoint replay, guest replay and primacy attribution all call it, so
+    /// a hole in the spine is the same error on every path. Before, primacy
+    /// treated a missing record as "stop walking" while replay treated it as
+    /// `UnknownHash`, so one hole was an error in replay and a silent fallback
+    /// authorship in a merge.
+    ///
+    /// A hash the lookup does not hold is `UnknownHash`; a tombstoned record is
+    /// `TombstonedOnSpine` — retention keeps every ancestor of a live head live
+    /// (`DagRetention`), so a tombstone on a live spine is a defect wherever it
+    /// is met.
+    let internal collectSpine<'Msg>
+        (bound: SpineBound)
+        (getRecord: string -> DagOpRecord<'Msg> option)
+        (head: string)
+        : Result<DagOpRecord<'Msg> list, DagReplayError> =
+        let stopsAt (hash: string) =
+            match bound with
+            | SpineBound.Exclusive b
+            | SpineBound.ExclusiveOrGenesis b -> hash = b
+            | SpineBound.Genesis
+            | SpineBound.Anchor -> false
+
+        let rec walk (hash: string) (acc: DagOpRecord<'Msg> list) : Result<DagOpRecord<'Msg> list, DagReplayError> =
+            if stopsAt hash then
+                Ok acc
+            else
+                match getRecord hash with
+                | None -> Error(DagReplayError.UnknownHash hash)
+                | Some r when r.Tombstoned -> Error(DagReplayError.TombstonedOnSpine hash)
+                | Some r ->
+                    match r.Parents, bound with
+                    // Reached a genesis without meeting the bound — it does
+                    // not bound this head.
+                    | [], SpineBound.Exclusive b -> Error(DagReplayError.UnknownHash b)
+                    | [], _ -> Ok(r :: acc)
+                    | primary :: _, SpineBound.Anchor when Option.isNone (getRecord primary) -> Ok(r :: acc)
+                    | primary :: _, _ -> walk primary (r :: acc)
+
+        walk head []
+
     /// Fold one spine record's op over the tree, then — for a MERGE node —
-    /// check that the result is the tree the node committed to.
+    /// check that the result is the tree the node committed to. The ONE record
+    /// fold of the tier (Phase 2043): the guest path folded bare `Apply.apply`
+    /// before, so a guest merge node with a wrong `OutcomeHash` replayed cleanly
+    /// there and was refused here.
     ///
     /// `OutcomeHash` is populated exactly for a merge node (`Parents.Length ≥
     /// 2`; see `DagOpRecord`), so an ordinary single-parent step costs nothing:
     /// no encode, no hash. That is the reason the check lives here rather than
     /// hashing every folded tree — the invariant is only claimed at merge
     /// nodes, and only there is there a committed value to compare against.
-    let private foldRecord<'Msg> (tree: Node<'Msg>) (r: DagOpRecord<'Msg>) : Result<Node<'Msg>, DagReplayError> =
+    let internal foldRecord<'Msg> (tree: Node<'Msg>) (r: DagOpRecord<'Msg>) : Result<Node<'Msg>, DagReplayError> =
         match Apply.apply r.Op tree with
         | Error e -> Error(DagReplayError.ApplyFailed(r.Hash, e))
         | Ok tree' ->
@@ -69,17 +135,23 @@ module DagReplay =
                 else
                     Error(DagReplayError.MergeOutcomeMismatch(r.Hash, expected, actual))
 
-    let private foldSpine<'Msg>
+    /// Collect `head`'s spine under `bound`, then fold it over `initial`
+    /// record by record, stopping at the first error.
+    let internal replayBounded<'Msg>
+        (bound: SpineBound)
+        (getRecord: string -> DagOpRecord<'Msg> option)
         (initial: Node<'Msg>)
-        (spine: DagOpRecord<'Msg> list)
+        (head: string)
         : Result<Node<'Msg>, DagReplayError> =
-        spine
-        |> List.fold
-            (fun (acc: Result<Node<'Msg>, DagReplayError>) (r: DagOpRecord<'Msg>) ->
-                match acc with
-                | Error _ -> acc
-                | Ok tree -> foldRecord tree r)
-            (Ok initial)
+        collectSpine bound getRecord head
+        |> Result.bind (fun spine ->
+            spine
+            |> List.fold
+                (fun (acc: Result<Node<'Msg>, DagReplayError>) (r: DagOpRecord<'Msg>) ->
+                    match acc with
+                    | Error _ -> acc
+                    | Ok tree -> foldRecord tree r)
+                (Ok initial))
 
     /// Replay `head` to its tree by folding ops along the primary-parent spine.
     /// `getRecord` resolves a hash to its record (typically a pre-loaded map of
@@ -89,19 +161,7 @@ module DagReplay =
         (initial: Node<'Msg>)
         (head: string)
         : Result<Node<'Msg>, DagReplayError> =
-        // Collect the spine head→genesis, then fold genesis→head.
-        let rec collect (hash: string) (acc: DagOpRecord<'Msg> list) : Result<DagOpRecord<'Msg> list, DagReplayError> =
-            match getRecord hash with
-            | None -> Error(DagReplayError.UnknownHash hash)
-            | Some r when r.Tombstoned -> Error(DagReplayError.TombstonedOnSpine hash)
-            | Some r ->
-                match r.Parents with
-                | [] -> Ok(r :: acc)
-                | primary :: _ -> collect primary (r :: acc)
-
-        match collect head [] with
-        | Error e -> Error e
-        | Ok spine -> foldSpine initial spine
+        replayBounded SpineBound.Genesis getRecord initial head
 
     /// Checkpoint-bounded replay: reconstruct `head`'s tree starting from a
     /// `DagCheckpoint`'s snapshot rather than from genesis. The snapshot IS the
@@ -126,30 +186,8 @@ module DagReplay =
         (checkpoint: DagCheckpoint<'Msg>)
         (head: string)
         : Result<Node<'Msg>, DagReplayError> =
-        // Collect the spine tail head→…→(child of AtHash), stopping AT AtHash
-        // (exclusive — its effect is already in the snapshot).
-        let rec collect (hash: string) (acc: DagOpRecord<'Msg> list) : Result<DagOpRecord<'Msg> list, DagReplayError> =
-            if hash = checkpoint.AtHash then
-                Ok acc
-            else
-                match getRecord hash with
-                | None -> Error(DagReplayError.UnknownHash hash)
-                | Some r when r.Tombstoned -> Error(DagReplayError.TombstonedOnSpine hash)
-                | Some r ->
-                    match r.Parents with
-                    | [] ->
-                        // Reached a genesis without hitting AtHash — the
-                        // checkpoint does not bound this head.
-                        Error(DagReplayError.UnknownHash checkpoint.AtHash)
-                    | primary :: _ -> collect primary (r :: acc)
-
-        let foldTail () =
-            match collect head [] with
-            | Error e -> Error e
-            | Ok tail -> foldSpine checkpoint.Snapshot tail
-
         // Verify the snapshot BEFORE folding anything over it — an unverified
         // base makes every op applied on top of it meaningless.
         match DagCheckpoint.verifySnapshotHash checkpoint with
         | Error(recomputed, stored) -> Error(DagReplayError.SnapshotHashMismatch(checkpoint.AtHash, stored, recomputed))
-        | Ok() -> foldTail ()
+        | Ok() -> replayBounded (SpineBound.Exclusive checkpoint.AtHash) getRecord checkpoint.Snapshot head
