@@ -54,7 +54,7 @@ let private emit (projectPath: string) (overridesPath: string option) =
 //
 // Declares the three facets at their DECLARATION sites: a `Msg` DU, a
 // `QueryResults` registration reached through a `let`-bound map (the idiomatic
-// shape — see samples/demo/Main.fs), and a grid whose row lambda is annotated.
+// shape — see samples/demo/Main.fs), and a grid whose `toRow` projection is annotated.
 
 let private appSource =
     """module Sample.App
@@ -83,9 +83,9 @@ let build () : Node<Msg> =
         { Defaults.dashboard<Msg> with
             Children =
                 [ Fuaran.grid "sales"
+                    (fun (row: SaleRow) -> (Map.empty: Row))
                     { Defaults.grid with
-                        Source = binding.query "salesRows" (fun r -> r)
-                        RowKey = fun (row: SaleRow) -> row.Region }
+                        Source = binding.query "salesRows" (fun r -> r) }
                   Fuaran.button "reload"
                     { Defaults.button<Msg> with
                         OnClick = Action.dispatch LoadData } ] }
@@ -171,7 +171,7 @@ let tests =
               Expect.equal
                   outcome.Merged.QueryRowTypes
                   (Map.ofList [ "salesRows", "SaleRow" ])
-                  "row type from the grid's annotated lambda"
+                  "row type from the grid's annotated toRow"
 
               let selectRow =
                   outcome.Derivation.MsgCases |> List.find (fun c -> c.Case = "SelectRow")
@@ -345,15 +345,13 @@ let buildSources () =
 
 let a () =
     Fuaran.grid "one"
-        { Defaults.grid with
-            Source = binding.query "rows" (fun r -> r)
-            RowKey = fun (row: SaleRow) -> row.Region }
+        (fun (row: SaleRow) -> (Map.empty: Row))
+        { Defaults.grid with Source = binding.query "rows" (fun r -> r) }
 
 let b () =
     Fuaran.grid "two"
-        { Defaults.grid with
-            Source = binding.query "rows" (fun r -> r)
-            RowKey = fun (row: AuditRow) -> row.Id }
+        (fun (row: AuditRow) -> (Map.empty: Row))
+        { Defaults.grid with Source = binding.query "rows" (fun r -> r) }
 """
               |> ignore
 

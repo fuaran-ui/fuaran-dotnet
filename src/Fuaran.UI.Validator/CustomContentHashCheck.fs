@@ -44,18 +44,17 @@ module Fuaran.UI.Validator.CustomContentHashCheck
 //  unverifiable and skipped (no false positives). A `SHA256` algorithm is
 //  required to verify; other algorithms are left for a future phase.
 //
-//  Detection lives in a narrow AST walker following the CustomHealthCheck /
-//  LocalBindingCheck precedent — independent lexical scope from the main
-//  Fuaran.X smart-ctor walker.
+//  Detection is a visitor over the shared parse (`Syntax`), recognising both
+//  construction shapes: `Fuaran.custom` and the `NodeKind.Custom { ... }`
+//  record the generated case carries.
 // ============================================================================
 
-open System.IO
+
 open System.Security.Cryptography
 open System.Text
-open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.Syntax
-open FSharp.Compiler.Text
 open Fuaran.UI.Validator.Findings
+open Fuaran.UI.Validator.Syntax
 
 let codeFUARAN062 = "FUARAN062"
 
@@ -114,75 +113,6 @@ type private CustomSite =
         Location: Location
     }
 
-let private mkLocation (file: string) (range: range) : Location =
-    { File = file
-      Line = range.StartLine
-      Column = range.StartColumn + 1 }
-
-let private constStringValue (c: SynConst) =
-    match c with
-    | SynConst.String(text = s) -> Some s
-    | _ -> None
-
-let rec private unwrap (e: SynExpr) =
-    match e with
-    | SynExpr.Paren(expr = e') -> unwrap e'
-    | SynExpr.Typed(expr = e') -> unwrap e'
-    | _ -> e
-
-let private literalString (expr: SynExpr) : string option =
-    match unwrap expr with
-    | SynExpr.Const(constant = c) -> constStringValue c
-    | _ -> None
-
-let private leafIdent (expr: SynExpr) : (string list * string) option =
-    match expr with
-    | SynExpr.LongIdent(longDotId = SynLongIdent(id = ids)) when not ids.IsEmpty ->
-        let names = AstWalker.identNames ids
-        Some(names |> List.take (names.Length - 1), List.last names)
-    | SynExpr.Ident i -> Some([], i.idText)
-    | _ -> None
-
-let private (|FuaranCustomCtor|_|) (expr: SynExpr) =
-    match leafIdent expr with
-    | Some(prefix, "custom") when not prefix.IsEmpty && List.last prefix = "Fuaran" -> Some()
-    | _ -> None
-
-let private (|NodeKindCustomCtor|_|) (expr: SynExpr) =
-    match leafIdent expr with
-    | Some(prefix, "Custom") when not prefix.IsEmpty && List.last prefix = "NodeKind" -> Some()
-    | _ -> None
-
-/// Curry-decompose an application chain into (head, args).
-let private flattenApp (expr: SynExpr) : SynExpr * SynExpr list =
-    let rec loop acc =
-        function
-        | SynExpr.App(funcExpr = f; argExpr = a) -> loop (a :: acc) f
-        | head -> head, acc
-
-    loop [] expr
-
-/// Items of a `[ … ]` / `[| … |]` literal, or `None` when the expression is
-/// not a literal list (a variable, a comprehension with generators, etc.).
-let private listItems (expr: SynExpr) : SynExpr list option =
-    match unwrap expr with
-    | SynExpr.ArrayOrList(exprs = items) -> Some items
-    | SynExpr.ArrayOrListComputed(expr = inner) ->
-        // Only a bare sequential/single-element computed list is literal
-        // enough; anything with a generator (`for`/`yield`) is not.
-        let rec flatten e =
-            match e with
-            | SynExpr.Sequential(expr1 = a; expr2 = b) ->
-                match flatten a, flatten b with
-                | Some xs, Some ys -> Some(xs @ ys)
-                | _ -> None
-            | SynExpr.ArrayOrList(exprs = items) -> Some items
-            | other -> Some [ other ]
-
-        match unwrap inner with
-        | SynExpr.Sequential _ as s -> flatten s
-        | single -> Some [ single ]
-    | _ -> None
 
 /// Props key-set extraction. `Map.empty` → `Some []`; `Map.ofList […]` /
 /// `Map.ofSeq […]` / `dict […]` / `readOnlyDict […]` over a literal list of
@@ -192,14 +122,14 @@ let private propKeys (expr: SynExpr) : string list option =
     let e = unwrap expr
 
     match leafIdent e with
-    | Some(prefix, "empty") when not prefix.IsEmpty && List.last prefix = "Map" -> Some []
+    | Some(prefix, "empty", _) when not prefix.IsEmpty && List.last prefix = "Map" -> Some []
     | _ ->
         let head, args = flattenApp e
 
         let isMapCtor =
             match leafIdent head with
-            | Some(prefix, ("ofList" | "ofSeq")) when not prefix.IsEmpty && List.last prefix = "Map" -> true
-            | Some(_, ("dict" | "readOnlyDict")) -> true
+            | Some(prefix, ("ofList" | "ofSeq"), _) when not prefix.IsEmpty && List.last prefix = "Map" -> true
+            | Some(_, ("dict" | "readOnlyDict"), _) -> true
             | _ -> false
 
         if not isMapCtor then
@@ -235,7 +165,8 @@ let private exposedIds (expr: SynExpr) : string list option =
                 let head, args = flattenApp (unwrap item)
 
                 match leafIdent head, args with
-                | Some(_, "NodeId"), [ arg ] -> literalString arg
+                | Some(_, "NodeId", _), [ arg ] -> literalString arg
+                | _ when args.IsEmpty -> literalString item
                 | _ -> None)
 
         if ids |> List.forall Option.isSome then
@@ -251,7 +182,7 @@ let private parseContentHash (expr: SynExpr) : HashLiteral option =
     let head, args = flattenApp e
 
     match leafIdent head, args with
-    | Some(_, "Some"), [ recordArg ] ->
+    | Some(_, "Some", _), [ recordArg ] ->
         match unwrap recordArg with
         | SynExpr.Record(recordFields = fields) ->
             let mutable algorithm = "SHA256"
@@ -264,7 +195,7 @@ let private parseContentHash (expr: SynExpr) : HashLiteral option =
                 match name, fieldExpr with
                 | "Algorithm", Some fe -> literalString fe |> Option.iter (fun s -> algorithm <- s)
                 | "Hash", Some fe -> hash <- literalString fe
-                | "Strictness", Some fe -> strictness <- leafIdent fe |> Option.map snd
+                | "Strictness", Some fe -> strictness <- leafIdent (unwrap fe) |> Option.map (fun (_, leaf, _) -> leaf)
                 | _ -> ()
 
             match hash, strictness with
@@ -277,192 +208,106 @@ let private parseContentHash (expr: SynExpr) : HashLiteral option =
         | _ -> None
     | _ -> None
 
-let private classifyFuaranCustom (file: string) (loc: range) (args: SynExpr list) : CustomSite option =
-    match args with
-    | _ :: moduleArg :: componentArg :: propsArg :: hashArg :: exposedArg :: _ ->
-        Some
-            { ModuleId = literalString moduleArg
-              ComponentId = literalString componentArg
-              PropKeys = propKeys propsArg
-              ExposedIds = exposedIds exposedArg
-              Hash = parseContentHash hashArg
-              Location = mkLocation file loc }
-    | _ -> None
+/// The record form's `ExposedNodeIds: string list option` — `None` is the
+/// empty declaration.
+let private exposedIdsOption (expr: SynExpr) : string list option =
+    if isExplicitNone expr then
+        Some []
+    else
+        applied "Some" expr |> Option.bind exposedIds
 
-let private classifyNodeKindCustom (file: string) (loc: range) (args: SynExpr list) : CustomSite option =
-    match args with
-    | [ SynExpr.Paren(expr = SynExpr.Tuple(exprs = items)) ]
-    | [ SynExpr.Tuple(exprs = items) ] ->
-        match items with
-        | moduleArg :: componentArg :: propsArg :: hashArg :: exposedArg :: _ ->
+/// A Custom construction carrying its body shape: `Fuaran.custom id moduleId
+/// componentId props hash exposed`, or `NodeKind.Custom { ModuleId = ...;
+/// ComponentId = ...; Props = ...; ContentHash = ...; ExposedNodeIds = ... }`.
+let private customSite (file: string) (head: SynExpr) (args: SynExpr list) : CustomSite option =
+    let location = mkLocation file head.Range
+
+    if isQualified "Fuaran" "custom" head then
+        match args with
+        | _ :: moduleArg :: componentArg :: propsArg :: hashArg :: exposedArg :: _ ->
             Some
                 { ModuleId = literalString moduleArg
                   ComponentId = literalString componentArg
                   PropKeys = propKeys propsArg
                   ExposedIds = exposedIds exposedArg
                   Hash = parseContentHash hashArg
-                  Location = mkLocation file loc }
+                  Location = location }
         | _ -> None
-    | _ -> None
+    elif isQualified "NodeKind" "Custom" head then
+        match args with
+        | [ spec ] when
+            (match unwrap spec with
+             | SynExpr.Record _ -> true
+             | _ -> false)
+            ->
+            let field name = fieldValue name spec
 
-type private WalkState =
-    { File: string
-      mutable Sites: CustomSite list }
+            Some
+                { ModuleId = field "ModuleId" |> Option.bind literalString
+                  ComponentId = field "ComponentId" |> Option.bind literalString
+                  PropKeys = field "Props" |> Option.bind propKeys
+                  ExposedIds = field "ExposedNodeIds" |> Option.bind exposedIdsOption
+                  Hash = field "ContentHash" |> Option.bind parseContentHash
+                  Location = location }
+        | _ -> None
+    else
+        None
 
-let rec private walkExpr (state: WalkState) (expr: SynExpr) =
-    let head, args = flattenApp expr
-
-    match head with
-    | FuaranCustomCtor ->
-        match classifyFuaranCustom state.File head.Range args with
-        | Some site -> state.Sites <- site :: state.Sites
-        | None -> ()
-
-        args |> List.iter (walkExpr state)
-    | NodeKindCustomCtor ->
-        match classifyNodeKindCustom state.File head.Range args with
-        | Some site -> state.Sites <- site :: state.Sites
-        | None -> ()
-
-        args |> List.iter (walkExpr state)
-    | _ -> descend state expr
-
-and private descend (state: WalkState) (expr: SynExpr) =
-    match expr with
-    | SynExpr.App(funcExpr = f; argExpr = a) ->
-        walkExpr state f
-        walkExpr state a
-    | SynExpr.Paren(expr = e) -> walkExpr state e
-    | SynExpr.Tuple(exprs = es) -> es |> List.iter (walkExpr state)
-    | SynExpr.Record(recordFields = fields) ->
-        for SynExprRecordField(expr = fieldExpr) in fields do
-            fieldExpr |> Option.iter (walkExpr state)
-    | SynExpr.LetOrUse synLet ->
-        for SynBinding(expr = e) in synLet.Bindings do
-            walkExpr state e
-
-        walkExpr state synLet.Body
-    | SynExpr.Sequential(expr1 = a; expr2 = b) ->
-        walkExpr state a
-        walkExpr state b
-    | SynExpr.IfThenElse(ifExpr = c; thenExpr = t; elseExpr = e) ->
-        walkExpr state c
-        walkExpr state t
-        e |> Option.iter (walkExpr state)
-    | SynExpr.Match(expr = scrut; clauses = clauses) ->
-        walkExpr state scrut
-
-        for SynMatchClause(resultExpr = r) in clauses do
-            walkExpr state r
-    | SynExpr.Lambda(body = b) -> walkExpr state b
-    | SynExpr.ArrayOrList(exprs = es) -> es |> List.iter (walkExpr state)
-    | SynExpr.ArrayOrListComputed(expr = e) -> walkExpr state e
-    | SynExpr.ComputationExpr(expr = e) -> walkExpr state e
-    | SynExpr.TypeApp(expr = e) -> walkExpr state e
-    | SynExpr.Typed(expr = e) -> walkExpr state e
-    | SynExpr.Do(expr = e) -> walkExpr state e
-    | SynExpr.DotGet(expr = e) -> walkExpr state e
-    | SynExpr.DotSet(targetExpr = t; rhsExpr = r) ->
-        walkExpr state t
-        walkExpr state r
-    | SynExpr.LongIdentSet(expr = e) -> walkExpr state e
-    | SynExpr.New(expr = e) -> walkExpr state e
-    | SynExpr.AddressOf(expr = e) -> walkExpr state e
-    | _ -> ()
-
-let private walkBinding (state: WalkState) (SynBinding(expr = e)) = walkExpr state e
-
-let rec private walkDecl (state: WalkState) (decl: SynModuleDecl) =
-    match decl with
-    | SynModuleDecl.Let(bindings = bs) -> bs |> List.iter (walkBinding state)
-    | SynModuleDecl.NestedModule(decls = ds) -> ds |> List.iter (walkDecl state)
-    | SynModuleDecl.Expr(expr = e) -> walkExpr state e
-    | _ -> ()
-
-let private walkModule (state: WalkState) (SynModuleOrNamespace(decls = decls)) = decls |> List.iter (walkDecl state)
-
-let private parseFile (checker: FSharpChecker) (file: string) (source: string) =
-    async {
-        let sourceText = SourceText.ofString source
-        let! projectOptions, _ = checker.GetProjectOptionsFromScript(file, sourceText)
-        let parsingOptions, _ = checker.GetParsingOptionsFromProjectOptions projectOptions
-        let! parseResult = checker.ParseFile(file, sourceText, parsingOptions)
-        return parseResult
-    }
-
-let private walkFile (checker: FSharpChecker) (file: string) =
-    async {
-        let source = File.ReadAllText file
-        let! parseResult = parseFile checker file source
-        let state = { File = file; Sites = [] }
-
-        match parseResult.ParseTree with
-        | ParsedInput.ImplFile(ParsedImplFileInput(contents = modules)) -> modules |> List.iter (walkModule state)
-        | ParsedInput.SigFile _ -> ()
-
-        return state.Sites |> List.rev
-    }
-
-/// True when `hash` is a canonical 64-char lower/upper-case hex string —
-/// i.e. it at least *looks* like a SHA-256 digest rather than a hand-set
-/// sentinel (e.g. `"Individual.HeatmapTab.v1"`).
 let private looksLikeHexDigest (hash: string) =
     hash.Length = 64 && hash |> Seq.forall System.Uri.IsHexDigit
 
 /// Public entry — walks the supplied source files and returns findings.
-let checkSources (checker: FSharpChecker) (files: string list) : Async<Finding list> =
-    async {
-        let! perFile = files |> List.map (walkFile checker) |> Async.Parallel
-        let allSites = perFile |> Array.collect List.toArray |> Array.toList
+let check (sources: ParsedSource list) : Finding list =
+    let allSites = sources |> collectApps customSite
 
-        let findings =
-            allSites
-            |> List.choose (fun site ->
-                match site.ModuleId, site.ComponentId, site.PropKeys, site.ExposedIds, site.Hash with
-                | Some moduleId, Some componentId, Some keys, Some ids, Some hl when
-                    hl.Algorithm.ToUpperInvariant() = "SHA256"
-                    ->
-                    let computed = computeBodyShapeHash moduleId componentId keys ids
+    let findings =
+        allSites
+        |> List.choose (fun site ->
+            match site.ModuleId, site.ComponentId, site.PropKeys, site.ExposedIds, site.Hash with
+            | Some moduleId, Some componentId, Some keys, Some ids, Some hl when
+                hl.Algorithm.ToUpperInvariant() = "SHA256"
+                ->
+                let computed = computeBodyShapeHash moduleId componentId keys ids
 
-                    if System.String.Equals(computed, hl.Hash, System.StringComparison.OrdinalIgnoreCase) then
-                        None
-                    else
-                        let severity = if hl.Strictness = "Enforced" then Error else Warning
+                if System.String.Equals(computed, hl.Hash, System.StringComparison.OrdinalIgnoreCase) then
+                    None
+                else
+                    let severity = if hl.Strictness = "Enforced" then Error else Warning
 
-                        let sentinelNote =
-                            if looksLikeHexDigest hl.Hash then
-                                ""
-                            else
-                                " The current value is not a 64-char hex digest, so it looks like a hand-set sentinel rather than a computed hash."
+                    let sentinelNote =
+                        if looksLikeHexDigest hl.Hash then
+                            ""
+                        else
+                            " The current value is not a 64-char hex digest, so it looks like a hand-set sentinel rather than a computed hash."
 
-                        let enforcement =
-                            if severity = Error then
-                                "build-failing (Strictness = Enforced)"
-                            else
-                                sprintf
-                                    "advisory (Strictness = %s — flip to Enforced to fail the build on drift)"
-                                    hl.Strictness
-
-                        let message =
+                    let enforcement =
+                        if severity = Error then
+                            "build-failing (Strictness = Enforced)"
+                        else
                             sprintf
-                                "Custom node %s.%s has a stale contentHash: the declared Hash '%s' disagrees with the build-time SHA-256 over the body's declared shape (props schema + exposedNodeIds + moduleId/componentId).%s This check is %s. Expected computed hash: %s"
-                                moduleId
-                                componentId
-                                hl.Hash
-                                sentinelNote
-                                enforcement
+                                "advisory (Strictness = %s — flip to Enforced to fail the build on drift)"
+                                hl.Strictness
+
+                    let message =
+                        sprintf
+                            "Custom node %s.%s has a stale contentHash: the declared Hash '%s' disagrees with the build-time SHA-256 over the body's declared shape (props schema + exposedNodeIds + moduleId/componentId).%s This check is %s. Expected computed hash: %s"
+                            moduleId
+                            componentId
+                            hl.Hash
+                            sentinelNote
+                            enforcement
+                            computed
+
+                    create severity codeFUARAN062 site.Location message
+                    |> withRecovery
+                        [ "Hash" ]
+                        (Some(
+                            sprintf
+                                "Set contentHash.Hash = \"%s\" (or regenerate after the body shape stabilises)."
                                 computed
+                        ))
+                    |> Some
+            | _ -> None)
 
-                        create severity codeFUARAN062 site.Location message
-                        |> withRecovery
-                            [ "Hash" ]
-                            (Some(
-                                sprintf
-                                    "Set contentHash.Hash = \"%s\" (or regenerate after the body shape stabilises)."
-                                    computed
-                            ))
-                        |> Some
-                | _ -> None)
 
-        return findings
-    }
+    findings

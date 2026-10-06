@@ -9,6 +9,9 @@
     <NoWarn>$(NoWarn);NU1608</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Phase 2053: every source the validator tests run over is a compile item,
+         so a snippet that does not type-check against Fuaran.UI breaks this build. -->
+    <Compile Include="Snippets/*.fs" />
     <Compile Include="ManifestTests.fs" />
     <Compile Include="ManifestEmitterTests.fs" />
     <Compile Include="ValidatorTests.fs" />

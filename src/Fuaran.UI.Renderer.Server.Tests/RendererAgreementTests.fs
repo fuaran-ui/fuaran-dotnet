@@ -78,6 +78,7 @@ let private fragmentBody: Node<obj> =
 
 let private twoRefs: Node<obj> =
     page
+        // fuaran-validator: disable-next-line FUARAN056 — each fixture declares its own 'shared' fragment in a separate tree
         [ Fuaran.fragmentDecl
               "decl"
               { Defaults.fragmentDecl<obj> with
@@ -88,6 +89,7 @@ let private twoRefs: Node<obj> =
 
 let private cyclic: Node<obj> =
     page
+        // fuaran-validator: disable-next-line FUARAN058 — negative fixture: the cycle is the defect under test
         [ Fuaran.fragmentDecl
               "decl"
               { Defaults.fragmentDecl<obj> with
@@ -133,6 +135,7 @@ let private switchTo (id: string) (held: Node<obj> list) (child: Node<obj>) : No
 let private refToThrowingFragment (refId: string) : Node<obj> =
     switchTo
         "root"
+        // fuaran-validator: disable-next-line FUARAN056 — each fixture declares its own 'shared' fragment in a separate tree
         [ Fuaran.fragmentDecl
               "decl"
               { Defaults.fragmentDecl<obj> with

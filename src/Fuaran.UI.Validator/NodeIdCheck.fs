@@ -8,8 +8,10 @@ module Fuaran.UI.Validator.NodeIdCheck
 //  modules independently use the same id, but worth flagging when it might
 //  surprise the AI's reasoning).
 //
-//  A "tree" is the call sub-graph rooted at a `Fuaran.dashboard` INVOCATION
-//  (see AstWalker.treeRoots) — identified by `TreeRootKey`, the call site,
+//  A "tree" is the call sub-graph under an OUTERMOST container call — a
+//  `Fuaran.<ctor>` that takes a child node (`box`, `stack`, `card`, ...; the
+//  set is derived, see `AstWalker.SmartCtors.containers`) with no enclosing
+//  smart-ctor call. It is identified by `TreeRootKey`, the call site,
 //  not by the root's NodeId. Two invocations rooting `"doc"` are two trees:
 //  a template and its stand-in, or two independent fixtures, legitimately
 //  share every id, and grouping on the id string would report each of those
@@ -58,7 +60,7 @@ let check (calls: FuaranCall list) : Finding list =
                                 "FUARAN001"
                                 w.Call.Location
                                 (sprintf
-                                    "Duplicate NodeId \"%s\" within tree \"%s\" — every NodeId inside one Fuaran.dashboard subtree must be unique (§4g op-target stability)."
+                                    "Duplicate NodeId \"%s\" within tree \"%s\" — every NodeId inside one tree must be unique (§4g op-target stability)."
                                     id
                                     w.TreeName))))
 

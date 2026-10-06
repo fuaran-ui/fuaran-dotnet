@@ -3,18 +3,25 @@ module Fuaran.UI.Validator.Tests.ValidatorTests
 // ============================================================================
 //  End-to-end validator tests.
 //
-//  Each test materialises a tiny .fsproj + .fs source under a fresh temp
-//  directory, optionally writes a manifest sibling, runs the validator, and
-//  asserts the expected Finding set. The .fsproj exists for path discipline
-//  only — the validator reads sources from the project directory (per
-//  AstWalker.discoverSourceFiles); no MSBuild evaluation needed.
+//  Every source a test validates is a COMPILED snippet: `Snippets/*.fs` are
+//  compile items of this project, so a snippet that does not type-check
+//  against the current `Fuaran.UI` breaks this build rather than quietly
+//  testing a shape no author can write (Phase 2053 — the walker's rules had
+//  drifted from the types precisely because their tests parsed snippets that
+//  would not build). A test copies the snippets it needs into a fresh temp
+//  project directory, optionally writes a manifest beside them, and runs the
+//  validator over it.
 // ============================================================================
 
 open System
 open System.IO
+open System.Text.RegularExpressions
+open FSharp.Compiler.CodeAnalysis
 open Expecto
 open Fuaran.UI.Validator
 open Fuaran.UI.Validator.Findings
+
+// ─── Harness ────────────────────────────────────────────────────────────────
 
 let private freshDir (name: string) =
     let path =
@@ -28,10 +35,10 @@ let private writeFile (dir: string) (name: string) (contents: string) =
     File.WriteAllText(path, contents)
     path
 
-let private writeFsproj (dir: string) (name: string) =
+let private writeFsproj (dir: string) =
     writeFile
         dir
-        name
+        "Snippet.fsproj"
         """<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -40,225 +47,10 @@ let private writeFsproj (dir: string) (name: string) =
 </Project>
 """
 
-let private runValidator (projectPath: string) (manifestPath: string option) =
-    Validator.run
-        { ProjectPath = projectPath
-          ModulePattern = None
-          ManifestPath = manifestPath
-          Orchestrated = false }
-    |> Async.RunSynchronously
+let private snippetSource (name: string) =
+    File.ReadAllText(Path.Combine(__SOURCE_DIRECTORY__, "Snippets", name + ".fs"))
 
-let private runValidatorOrch (orchestrated: bool) (projectPath: string) =
-    Validator.run
-        { ProjectPath = projectPath
-          ModulePattern = None
-          ManifestPath = None
-          Orchestrated = orchestrated }
-    |> Async.RunSynchronously
-
-/// A tree whose Metric source is a `Binding.Computed` closure — the host-only
-/// escape FUARAN084 (wire-survivability) flags.
-let private computedBindingSource =
-    """module Sample
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let tree =
-    Fuaran.metric "m1"
-        { Defaults.metric with
-            Source = Binding.Computed(fun _ -> 42.0) }
-"""
-
-let private codesOnly (findings: Finding list) =
-    findings |> List.map _.Code |> List.sort
-
-let private severityCount (severity: Severity) (findings: Finding list) =
-    findings |> List.filter (fun f -> f.Severity = severity) |> List.length
-
-let private hasCode (code: string) (findings: Finding list) =
-    findings |> List.exists (fun f -> f.Code = code)
-
-// ─── Test fixtures ─────────────────────────────────────────────────────────
-
-let private validTreeSource =
-    """module Sample.Valid
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg =
-    | LoadData
-    | SelectRow of int
-
-let build () : Node<Msg> =
-    Fuaran.dashboard "valid-dashboard"
-        { Defaults.dashboard<Msg> with
-            Children =
-                [ Fuaran.metric "metric-revenue"
-                    { Defaults.metric with
-                        Label = TextSource.Literal "Revenue"
-                        Source = binding.query "totalRevenue" (fun (r: {| amount: float |}) -> r.amount) }
-                  Fuaran.button "btn-reload"
-                    { Defaults.button<Msg> with
-                        Label = TextSource.Literal "Reload"
-                        OnClick = Action.dispatch LoadData } ] }
-"""
-
-let private duplicateNodeIdSource =
-    """module Sample.Dup
-
-open Fuaran.UI
-
-let build () =
-    Fuaran.dashboard "dup-dashboard"
-        { Defaults.dashboard with
-            Children =
-                [ Fuaran.metric "shared-id" Defaults.metric
-                  Fuaran.metric "shared-id" Defaults.metric ] }
-"""
-
-let private crossTreeDuplicateSource =
-    """module Sample.CrossTree
-
-open Fuaran.UI
-
-let build1 () = Fuaran.dashboard "tree-a" { Defaults.dashboard with Children = [ Fuaran.metric "shared" Defaults.metric ] }
-let build2 () = Fuaran.dashboard "tree-b" { Defaults.dashboard with Children = [ Fuaran.metric "shared" Defaults.metric ] }
-"""
-
-let private unresolvedQuerySource =
-    """module Sample.UnresolvedQuery
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = LoadData
-
-let build () : Node<Msg> =
-    Fuaran.dashboard "uq-dashboard"
-        { Defaults.dashboard<Msg> with
-            Children =
-                [ Fuaran.metric "metric"
-                    { Defaults.metric with
-                        Source = binding.query "totalRevneu" (fun (r: {| amount: float |}) -> r.amount) } ] }
-"""
-
-let private blankHrefLinkSource =
-    """module Sample.BlankHrefLink
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = NoOp
-
-let build () : Node<Msg> =
-    Fuaran.dashboard "bhl-dashboard"
-        { Defaults.dashboard<Msg> with
-            Children = [ Fuaran.link "lnk" "" "About" ] }
-"""
-
-let private validLinkSource =
-    """module Sample.ValidLink
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = NoOp
-
-let build () : Node<Msg> =
-    Fuaran.dashboard "vl-dashboard"
-        { Defaults.dashboard<Msg> with
-            Children = [ Fuaran.link "lnk" "/about" "About" ] }
-"""
-
-let private mistypedMsgCaseSource =
-    """module Sample.MistypedMsg
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg =
-    | LoadData
-    | Reset
-
-let build () : Node<Msg> =
-    Fuaran.dashboard "mm-dashboard"
-        { Defaults.dashboard<Msg> with
-            Children =
-                [ Fuaran.button "btn"
-                    { Defaults.button<Msg> with
-                        Label = TextSource.Literal "Go"
-                        OnClick = Action.dispatch LoadDate } ] }
-"""
-
-let private rowTypeMismatchSource =
-    """module Sample.RowTypeMismatch
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type SaleRow = { Id: int; Amount: float }
-type WrongRow = { Other: string }
-type Msg = SelectRow of int
-
-let build () : Node<Msg> =
-    Fuaran.dashboard "rt-dashboard"
-        { Defaults.dashboard<Msg> with
-            Children =
-                [ Fuaran.grid "grid"
-                    { Defaults.grid<SaleRow, Msg> with
-                        Source = binding.query "salesRows" id
-                        RowKey = (fun (r: WrongRow) -> r.Other)
-                        OnRowClick = Some (fun (r: WrongRow) -> Action.dispatch (SelectRow 0)) } ] }
-"""
-
-let private rowTypeMissingManifestEntrySource =
-    """module Sample.RowTypeMissing
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type SaleRow = { Id: int; Amount: float }
-type Msg = SelectRow of int
-
-let build () : Node<Msg> =
-    Fuaran.dashboard "rtm-dashboard"
-        { Defaults.dashboard<Msg> with
-            Children =
-                [ Fuaran.grid "grid"
-                    { Defaults.grid<SaleRow, Msg> with
-                        Source = binding.query "unknownRows" id
-                        RowKey = (fun (r: SaleRow) -> string r.Id) } ] }
-"""
-
-let private outOfRangeProgressSource =
-    """module Sample.OutOfRangeProgress
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let build () =
-    Fuaran.dashboard "orp-dashboard"
-        { Defaults.dashboard with
-            Children =
-                [ Fuaran.progress "load-bar"
-                    { Defaults.progress with Fraction = Binding.Static 75.0 } ] }
-"""
-
-let private inRangeProgressSource =
-    """module Sample.InRangeProgress
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let build () =
-    Fuaran.dashboard "irp-dashboard"
-        { Defaults.dashboard with
-            Children =
-                [ Fuaran.progress "load-bar"
-                    { Defaults.progress with Fraction = Binding.Static 0.75 } ] }
-"""
-
+/// The manifest most tests run against.
 let private validManifest =
     """{
   "queries": ["totalRevenue", "salesRows"],
@@ -266,895 +58,463 @@ let private validManifest =
   "queryRowTypes": { "salesRows": "SaleRow" }
 }"""
 
-let private validManifestNoRowType =
+/// Queries registered, but no row types — the FUARAN030 shape.
+let private manifestNoRowType =
     """{
   "queries": ["totalRevenue", "salesRows", "unknownRows"],
   "msgCases": ["LoadData", "SelectRow", "Reset"]
 }"""
 
-// ─── Tests ──────────────────────────────────────────────────────────────────
+type private Setup =
+    {
+        Snippets: string list
+        Manifest: string option
+        Orchestrated: bool
+        /// Text prepended to the first snippet (a suppression pragma).
+        Prefix: string
+    }
 
-[<Tests>]
-let tests =
+let private setup snippets =
+    { Snippets = snippets
+      Manifest = Some validManifest
+      Orchestrated = false
+      Prefix = "" }
+
+let private materialise (s: Setup) =
+    let dir = freshDir "snippet"
+    let projectPath = writeFsproj dir
+
+    s.Snippets
+    |> List.iteri (fun i name ->
+        let text = snippetSource name
+        writeFile dir (name + ".fs") (if i = 0 then s.Prefix + text else text) |> ignore)
+
+    let manifestPath =
+        s.Manifest |> Option.map (writeFile dir "fuaran-validator.manifest.json")
+
+    dir, projectPath, manifestPath
+
+let private runWithParser (parse: Syntax.Parser) (s: Setup) : Validator.RunResult =
+    let _, projectPath, manifestPath = materialise s
+
+    Validator.runWith
+        parse
+        { ProjectPath = projectPath
+          ModulePattern = None
+          ManifestPath = manifestPath
+          Orchestrated = s.Orchestrated }
+    |> Async.RunSynchronously
+
+let private run (s: Setup) : Validator.RunResult =
+    let _, projectPath, manifestPath = materialise s
+
+    Validator.run
+        { ProjectPath = projectPath
+          ModulePattern = None
+          ManifestPath = manifestPath
+          Orchestrated = s.Orchestrated }
+    |> Async.RunSynchronously
+
+let private findings (s: Setup) = (run s).Findings
+
+let private codes (code: string) (fs: Finding list) =
+    fs |> List.filter (fun f -> f.Code = code)
+
+let private hasCode (code: string) (fs: Finding list) = not (List.isEmpty (codes code fs))
+
+let private errorCount (fs: Finding list) =
+    fs |> List.filter (fun f -> f.Severity = Error) |> List.length
+
+let private single (code: string) (fs: Finding list) =
+    match codes code fs with
+    | [ f ] -> f
+    | other -> failtestf "expected exactly one %s, got %d: %A" code other.Length (fs |> List.map _.Code)
+
+// ─── The census: every code the walker can emit fires on a compiled snippet ──
+
+/// (code, setup) — the snippet that makes the code fire. One row per code the
+/// walker's sources can emit; the census test below fails when a code appears
+/// in the sources without a row here.
+let private firing: (string * Setup) list =
+    [ "FUARAN001", setup [ "DuplicateInBox" ]
+      "FUARAN002", setup [ "CrossTree" ]
+      "FUARAN010", setup [ "UnresolvedQuery" ]
+      "FUARAN020", setup [ "MistypedMsg" ]
+      "FUARAN030",
+      { setup [ "RowTypeMissing" ] with
+          Manifest = Some manifestNoRowType }
+      "FUARAN031", setup [ "RowTypeMismatch" ]
+      "FUARAN042", setup [ "LocalNoFormat" ]
+      "FUARAN043", setup [ "LocalNoCommitRef" ]
+      "FUARAN044", setup [ "LocalOutsideField" ]
+      "FUARAN045", setup [ "SegmentedTooMany" ]
+      "FUARAN046", setup [ "GridTemplateRepeat" ]
+      "FUARAN050", setup [ "ProgressOutOfRange" ]
+      "FUARAN051", setup [ "RangedBelowMin" ]
+      "FUARAN053", setup [ "CustomRecordForm" ]
+      "FUARAN054", setup [ "CustomRatio" ]
+      "FUARAN055", setup [ "CustomNoHash" ]
+      "FUARAN056", setup [ "FragmentDuplicateName" ]
+      "FUARAN057", setup [ "FragmentUnresolved" ]
+      "FUARAN058", setup [ "FragmentCycle" ]
+      "FUARAN059", setup [ "RepeatUnbounded" ]
+      "FUARAN060", setup [ "ExtraAttributeOnClick" ]
+      "FUARAN061", setup [ "CurrencyBlankCase" ]
+      "FUARAN062", setup [ "CustomStaleEnforced" ]
+      "FUARAN063", setup [ "BlankHrefLink" ]
+      "FUARAN064", setup [ "DisabledNoOp" ]
+      "FUARAN065", setup [ "DefaultOutOfRange" ]
+      "FUARAN084", setup [ "Computed" ]
+      "FUARAN900",
+      { setup [ "ValidTree" ] with
+          Manifest = None } ]
+
+/// Codes the walker's sources name without emitting: a documentation constant.
+let private notEmitted = set [ "FUARAN052" ]
+
+/// The codes the walker's own sources emit, read the way the repository's
+/// code-allocation script reads them: a quoted `FUARAN###` literal.
+let private walkerCodes () =
+    let dir = Path.Combine(__SOURCE_DIRECTORY__, "..", "Fuaran.UI.Validator")
+
+    Directory.GetFiles(dir, "*.fs")
+    |> Seq.collect (fun f ->
+        Regex.Matches(File.ReadAllText f, "\"(FUARAN\\d{3})\"")
+        |> Seq.map _.Groups[1].Value)
+    |> Set.ofSeq
+    |> fun all -> Set.difference all notEmitted
+
+let private census =
     testList
-        "Fuaran.UI.Validator end-to-end"
-        [ test "Valid tree against full manifest produces no findings" {
-              let dir = freshDir "valid"
-              let projectPath = writeFsproj dir "Valid.fsproj"
-              writeFile dir "Source.fs" validTreeSource |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
+        "census"
+        [ test "every code the walker emits has a firing snippet" {
+              let emitted = walkerCodes ()
+              let covered = firing |> List.map fst |> Set.ofList
 
-              let result = runValidator projectPath (Some manifestPath)
+              Expect.isGreaterThan emitted.Count 20 "the source scan found the walker's codes (probe sanity)"
 
-              Expect.isEmpty result.Findings "expected zero findings on a clean tree"
+              Expect.isEmpty (Set.difference emitted covered) "a code with no compiled snippet that makes it fire"
+
+              Expect.isEmpty (Set.difference covered emitted) "a census row for a code the walker no longer emits"
+          }
+
+          yield!
+              firing
+              |> List.map (fun (code, s) ->
+                  test (sprintf "%s fires on %s" code (String.concat ", " s.Snippets)) {
+                      Expect.isTrue (hasCode code (findings s)) (sprintf "%s raised" code)
+                  }) ]
+
+// ─── Retired codes ──────────────────────────────────────────────────────────
+
+let private retired =
+    testList
+        "retired build-time rules"
+        [ test "the Tabs shapes are left to the runtime validator (no FUARAN047 / 048 / 049)" {
+              let fs = findings (setup [ "RetiredTabsMismatch" ])
+
+              for code in [ "FUARAN047"; "FUARAN048"; "FUARAN049" ] do
+                  Expect.isFalse (hasCode code fs) (sprintf "%s is a runtime code now" code)
+          }
+
+          test "the accessibility shapes raise no FUARAN040 / 041" {
+              let fs = findings (setup [ "RetiredAccessibility" ])
+              Expect.isFalse (hasCode "FUARAN040" fs) "FUARAN040 retired (runtime FUARAN109)"
+              Expect.isFalse (hasCode "FUARAN041" fs) "FUARAN041 withdrawn"
+          } ]
+
+// ─── Parse once ─────────────────────────────────────────────────────────────
+
+let private parseOnce =
+    testList
+        "parse once"
+        [ test "each source file is parsed exactly once per run, whatever the number of checks" {
+              let checker = FSharpChecker.Create()
+              let inner = Syntax.parser checker
+              let counts = Collections.Concurrent.ConcurrentDictionary<string, int>()
+
+              let counting: Syntax.Parser =
+                  fun file ->
+                      counts.AddOrUpdate(file, 1, (fun _ n -> n + 1)) |> ignore
+                      inner file
+
+              let snippets = [ "ValidTree"; "CustomRatio"; "FragmentCycle"; "LocalNoFormat" ]
+              let result = runWithParser counting (setup snippets)
+
+              Expect.equal result.FilesWalked 4 "four sources walked"
+              Expect.equal counts.Count 4 "every source parsed"
+              Expect.allEqual counts.Values 1 "no source parsed twice"
+          } ]
+
+// ─── Behaviour ──────────────────────────────────────────────────────────────
+
+let private behaviour =
+    testList
+        "behaviour"
+        [ test "a valid tree against the full manifest produces no findings" {
+              Expect.isEmpty (findings (setup [ "ValidTree" ])) "zero findings on a clean tree"
           }
 
           test "Binding.Computed is an advisory Warning by default (FUARAN084)" {
-              let dir = freshDir "computed-advisory"
-              let projectPath = writeFsproj dir "Computed.fsproj"
-              writeFile dir "Source.fs" computedBindingSource |> ignore
-
-              let result = runValidatorOrch false projectPath
-              let f = result.Findings |> List.find (fun f -> f.Code = "FUARAN084")
+              let f = single "FUARAN084" (findings (setup [ "Computed" ]))
               Expect.equal f.Severity Warning "hand-authored Binding.Computed is advisory"
               Expect.isSome f.Suggestion "the finding names a recoverable alternative"
           }
 
           test "Binding.Computed escalates to Error in an orchestrated context (FUARAN084)" {
-              let dir = freshDir "computed-orch"
-              let projectPath = writeFsproj dir "Computed.fsproj"
-              writeFile dir "Source.fs" computedBindingSource |> ignore
+              let f =
+                  single
+                      "FUARAN084"
+                      (findings
+                          { setup [ "Computed" ] with
+                              Orchestrated = true })
 
-              let result = runValidatorOrch true projectPath
-              let f = result.Findings |> List.find (fun f -> f.Code = "FUARAN084")
               Expect.equal f.Severity Error "orchestrated Binding.Computed is an error"
           }
 
-          test "Duplicate NodeId within one tree is an Error (FUARAN001)" {
-              let dir = freshDir "dup"
-              let projectPath = writeFsproj dir "Dup.fsproj"
-              writeFile dir "Source.fs" duplicateNodeIdSource |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN001" result.Findings) "FUARAN001 raised"
-              Expect.isGreaterThan (severityCount Error result.Findings) 0 "at least one Error"
+          test "a state-bound metric raises no FUARAN084" {
+              Expect.isFalse (hasCode "FUARAN084" (findings (setup [ "ComputedNone" ]))) "no closure, no finding"
           }
 
-          test "Cross-tree duplicate NodeId is a Warning (FUARAN002), not an Error" {
-              let dir = freshDir "cross"
-              let projectPath = writeFsproj dir "Cross.fsproj"
-              writeFile dir "Source.fs" crossTreeDuplicateSource |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
+          // ── NodeId uniqueness ─────────────────────────────────────────────
 
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN002" result.Findings) "FUARAN002 raised"
-              Expect.equal (severityCount Error result.Findings) 0 "no Errors"
+          test "a duplicate id under Fuaran.box is an Error (FUARAN001)" {
+              let fs = findings (setup [ "DuplicateInBox" ])
+              Expect.equal (codes "FUARAN001" fs).Length 2 "both duplicate sites reported"
+              Expect.stringContains (codes "FUARAN001" fs).Head.Message "\"box-root\"" "named by the root's id"
           }
 
-          test "Unresolved binding.query is an Error (FUARAN010) with a suggestion" {
-              let dir = freshDir "uq"
-              let projectPath = writeFsproj dir "Uq.fsproj"
-              writeFile dir "Source.fs" unresolvedQuerySource |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              let unresolved = result.Findings |> List.tryFind (fun f -> f.Code = "FUARAN010")
-
-              Expect.isSome unresolved "FUARAN010 raised"
-
-              match unresolved with
-              | Some f ->
-                  Expect.isSome f.AvailableFields "available_fields populated"
-                  Expect.isSome f.Suggestion "best-guess suggestion populated"
-
-                  match f.Suggestion with
-                  | Some s -> Expect.equal s "totalRevenue" "suggestion is the closest registered name"
-                  | None -> ()
-              | None -> ()
+          test "a duplicate id under Fuaran.dashboard is an Error (FUARAN001)" {
+              let fs = findings (setup [ "DuplicateInDashboard" ])
+              Expect.isTrue (hasCode "FUARAN001" fs) "FUARAN001 raised"
+              Expect.isGreaterThan (errorCount fs) 0 "at least one Error"
           }
 
-          test "Mistyped Msg case in Action.Dispatch is an Error (FUARAN020)" {
-              let dir = freshDir "mm"
-              let projectPath = writeFsproj dir "Mm.fsproj"
-              writeFile dir "Source.fs" mistypedMsgCaseSource |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              let mistyped = result.Findings |> List.tryFind (fun f -> f.Code = "FUARAN020")
-
-              Expect.isSome mistyped "FUARAN020 raised"
-
-              match mistyped with
-              | Some f ->
-                  match f.Suggestion with
-                  | Some s -> Expect.equal s "LoadData" "suggestion fixes the typo"
-                  | None -> failtest "expected a suggestion for the typo'd case"
-              | None -> ()
+          test "a cross-tree duplicate id is a Warning (FUARAN002), not an Error" {
+              let fs = findings (setup [ "CrossTree" ])
+              Expect.isTrue (hasCode "FUARAN002" fs) "FUARAN002 raised"
+              Expect.equal (errorCount fs) 0 "no Errors"
           }
 
-          test "Blank Href on Fuaran.link is a Warning (FUARAN063)" {
-              let dir = freshDir "blank-href"
-              let projectPath = writeFsproj dir "BlankHref.fsproj"
-              writeFile dir "Source.fs" blankHrefLinkSource |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isTrue (hasCode "FUARAN063" result.Findings) "FUARAN063 raised for blank href"
-              Expect.equal (severityCount Error result.Findings) 0 "advisory only — no Errors"
+          test "two trees sharing a root id are two trees (FUARAN002), not one with duplicates (FUARAN001)" {
+              let fs = findings (setup [ "SameRootId" ])
+              Expect.isFalse (hasCode "FUARAN001" fs) "the two dashboards are distinct trees"
+              Expect.isTrue (hasCode "FUARAN002" fs) "the shared ids surface as the cross-tree warning"
+              Expect.equal (errorCount fs) 0 "no Errors"
           }
 
-          test "Non-blank Href on Fuaran.link raises no FUARAN063" {
-              let dir = freshDir "valid-link"
-              let projectPath = writeFsproj dir "ValidLink.fsproj"
-              writeFile dir "Source.fs" validLinkSource |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isFalse (hasCode "FUARAN063" result.Findings) "a real href is not flagged"
+          test "a duplicate inside ONE tree is still an Error when a same-id sibling tree exists" {
+              Expect.isTrue (hasCode "FUARAN001" (findings (setup [ "DupWithTwin" ]))) "the intra-tree duplicate errors"
           }
 
-          test "Annotated row-type mismatch in Fuaran.grid is an Error (FUARAN031)" {
-              let dir = freshDir "rt"
-              let projectPath = writeFsproj dir "Rt.fsproj"
-              writeFile dir "Source.fs" rowTypeMismatchSource |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN031" result.Findings) "FUARAN031 raised"
-              Expect.isGreaterThan (severityCount Error result.Findings) 0 "Errors present"
+          test "a one-argument root call closes its tree (no FUARAN001 on later loose calls)" {
+              // The old walker pushed the root of a one-argument call and never
+              // popped it, so every later call in the file joined that tree.
+              let fs = findings (setup [ "UnpoppedRoot" ])
+              Expect.isFalse (hasCode "FUARAN001" fs) "loose helpers are in no tree"
           }
 
-          test "Missing queryRowTypes entry downgrades the row-type check to a Warning (FUARAN030)" {
-              let dir = freshDir "rt-missing-rowtype"
-              let projectPath = writeFsproj dir "RtMissing.fsproj"
-              writeFile dir "Source.fs" rowTypeMissingManifestEntrySource |> ignore
+          // ── Schema-coupled checks ─────────────────────────────────────────
 
-              let manifestPath =
-                  writeFile dir "fuaran-validator.manifest.json" validManifestNoRowType
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN030" result.Findings) "FUARAN030 raised"
-              Expect.equal (severityCount Error result.Findings) 0 "no Errors"
+          test "an unresolved binding.query is an Error (FUARAN010) with a suggestion" {
+              let f = single "FUARAN010" (findings (setup [ "UnresolvedQuery" ]))
+              Expect.isSome f.AvailableFields "available_fields populated"
+              Expect.equal f.Suggestion (Some "totalRevenue") "the closest registered name"
           }
 
-          test "Missing manifest entirely raises FUARAN900 Warning + silences schema checks" {
-              let dir = freshDir "no-manifest"
-              let projectPath = writeFsproj dir "NoManifest.fsproj"
-              writeFile dir "Source.fs" unresolvedQuerySource |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isTrue (hasCode "FUARAN900" result.Findings) "FUARAN900 raised (manifest missing)"
-              Expect.isFalse (hasCode "FUARAN010" result.Findings) "FUARAN010 silenced (no manifest)"
-              Expect.equal (severityCount Error result.Findings) 0 "no Errors when manifest is absent"
+          test "an unresolved query nested four calls deep is reported once (FUARAN010)" {
+              // The old walker filed a query under every enclosing call, so the
+              // one defect was reported once per nesting depth.
+              let fs = findings (setup [ "NestedUnresolvedQuery" ])
+              Expect.equal (codes "FUARAN010" fs).Length 1 "one finding for one reference"
           }
 
-          test "AI-recovery shape: FUARAN010 finding carries available_fields + suggestion" {
-              let dir = freshDir "ai-shape"
-              let projectPath = writeFsproj dir "AiShape.fsproj"
-              writeFile dir "Source.fs" unresolvedQuerySource |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              let f = result.Findings |> List.find (fun f -> f.Code = "FUARAN010")
-
-              let json = ErrorRender.renderJson f
-
-              Expect.stringContains json "\"available_fields\":" "rendered JSON has available_fields"
-              Expect.stringContains json "\"suggestion\":" "rendered JSON has suggestion"
-              Expect.stringContains json "\"code\":\"FUARAN010\"" "code field present"
+          test "a mistyped Msg case in Action.dispatch is an Error (FUARAN020)" {
+              let f = single "FUARAN020" (findings (setup [ "MistypedMsg" ]))
+              Expect.equal f.Suggestion (Some "LoadData") "the suggestion fixes the typo"
           }
 
-          test "Plain-format rendering of an Error includes severity + code + message" {
-              let dir = freshDir "plain-fmt"
-              let projectPath = writeFsproj dir "Plain.fsproj"
-              writeFile dir "Source.fs" duplicateNodeIdSource |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              let f = result.Findings |> List.find (fun f -> f.Code = "FUARAN001")
-
-              let plain = ErrorRender.renderPlain f
-
-              Expect.stringContains plain "error" "severity rendered"
-              Expect.stringContains plain "FUARAN001" "code rendered"
-              Expect.stringContains plain "shared-id" "duplicate id surfaces in the message"
+          test "a toRow row-type mismatch in Fuaran.grid is an Error (FUARAN031)" {
+              let fs = findings (setup [ "RowTypeMismatch" ])
+              Expect.stringContains (single "FUARAN031" fs).Message "WrongRow" "names the annotated type"
           }
 
-          test "FilesWalked counts only the .fs sources under the project dir (ignores bin/obj)" {
-              let dir = freshDir "files-counted"
-              let projectPath = writeFsproj dir "Files.fsproj"
-              writeFile dir "A.fs" validTreeSource |> ignore
+          test "a missing queryRowTypes entry downgrades the row-type check to a Warning (FUARAN030)" {
+              let fs =
+                  findings
+                      { setup [ "RowTypeMissing" ] with
+                          Manifest = Some manifestNoRowType }
+
+              Expect.isTrue (hasCode "FUARAN030" fs) "FUARAN030 raised"
+              Expect.equal (errorCount fs) 0 "no Errors"
+          }
+
+          test "a missing manifest raises FUARAN900 and silences the schema checks" {
+              let fs =
+                  findings
+                      { setup [ "UnresolvedQuery"; "RowTypeMissing" ] with
+                          Manifest = None }
+
+              Expect.isTrue (hasCode "FUARAN900" fs) "FUARAN900 raised"
+              Expect.isFalse (hasCode "FUARAN010" fs) "FUARAN010 silenced"
+              Expect.isFalse (hasCode "FUARAN030" fs) "FUARAN030 silenced"
+              Expect.equal (errorCount fs) 0 "no Errors"
+          }
+
+          test "AI-recovery shape: a FUARAN010 finding renders available_fields + suggestion" {
+              let json =
+                  ErrorRender.renderJson (single "FUARAN010" (findings (setup [ "UnresolvedQuery" ])))
+
+              Expect.stringContains json "\"available_fields\":" "available_fields"
+              Expect.stringContains json "\"suggestion\":" "suggestion"
+              Expect.stringContains json "\"code\":\"FUARAN010\"" "code"
+          }
+
+          test "plain rendering of an Error carries severity, code and message" {
+              let plain =
+                  ErrorRender.renderPlain (codes "FUARAN001" (findings (setup [ "DuplicateInDashboard" ]))).Head
+
+              Expect.stringContains plain "error" "severity"
+              Expect.stringContains plain "FUARAN001" "code"
+              Expect.stringContains plain "shared-id" "the duplicate id"
+          }
+
+          // ── File discovery ────────────────────────────────────────────────
+
+          test "FilesWalked counts the .fs sources under the project dir, ignoring bin/obj" {
+              let dir, projectPath, manifestPath = materialise (setup [ "ValidTree" ])
               writeFile dir "B.fs" "module Sample.B" |> ignore
               Directory.CreateDirectory(Path.Combine(dir, "obj")) |> ignore
               writeFile (Path.Combine(dir, "obj")) "Generated.fs" "module Generated" |> ignore
 
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
+              let result =
+                  Validator.run
+                      { ProjectPath = projectPath
+                        ModulePattern = None
+                        ManifestPath = manifestPath
+                        Orchestrated = false }
+                  |> Async.RunSynchronously
 
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.equal result.FilesWalked 2 "B.fs + A.fs, obj/Generated.fs ignored"
+              Expect.equal result.FilesWalked 2 "ValidTree.fs + B.fs, obj/Generated.fs ignored"
           }
 
-          test "Empty Fuaran.UI tree (zero smart-ctor calls) yields no findings" {
-              let dir = freshDir "empty-tree"
-              let projectPath = writeFsproj dir "Empty.fsproj"
-
-              writeFile dir "Source.fs" "module Sample.Empty\nlet x = 1" |> ignore
-
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isEmpty result.Findings "no findings when the project has no Fuaran calls"
-          }
-
-          test "Out-of-[0,1] progress Fraction literal is an advisory Warning (FUARAN050)" {
-              let dir = freshDir "progress-out-of-range"
-              let projectPath = writeFsproj dir "Progress.fsproj"
-              writeFile dir "Source.fs" outOfRangeProgressSource |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN050" result.Findings) "FUARAN050 raised"
-              Expect.equal (severityCount Error result.Findings) 0 "advisory only — no Errors"
-
-              let f = result.Findings |> List.find (fun f -> f.Code = "FUARAN050")
-              Expect.stringContains f.Message "supportedRange=" "carries supportedRange"
-              Expect.isSome f.Suggestion "carries a recovery suggestion"
-          }
-
-          test "In-range progress Fraction literal raises no FUARAN050" {
-              let dir = freshDir "progress-in-range"
-              let projectPath = writeFsproj dir "ProgressOk.fsproj"
-              writeFile dir "Source.fs" inRangeProgressSource |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isFalse (hasCode "FUARAN050" result.Findings) "no advisory for an in-range fraction"
-          }
-
-          test "button with Disabled = Some (Binding.Static false) is a no-op Warning (FUARAN064)" {
-              let source =
-                  """module Sample.DisabledNoOp
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = Reload
-
-let build () =
-    Fuaran.button "btn-reload"
-        { Defaults.button<Msg> with
-            Label = TextSource.Literal "Reload"
-            OnClick = Action.dispatch Reload
-            Disabled = Some (Binding.Static false) }
-"""
-
-              let dir = freshDir "button-disabled-noop"
-              let projectPath = writeFsproj dir "DisabledNoOp.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isTrue (hasCode "FUARAN064" result.Findings) "FUARAN064 raised for constant-false Disabled"
-              Expect.equal (severityCount Error result.Findings) 0 "advisory only — no Errors"
-
-              let f = result.Findings |> List.find (fun f -> f.Code = "FUARAN064")
-              Expect.isSome f.Suggestion "carries a recovery suggestion"
-          }
-
-          test "button with Disabled = Some (Binding.Static true) is a legitimate placeholder (no FUARAN064)" {
-              // A permanently-disabled placeholder button is a real use; only
-              // the constant-FALSE no-op is flagged.
-              let source =
-                  """module Sample.DisabledPlaceholder
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = Reload
-
-let build () =
-    Fuaran.button "btn-reload"
-        { Defaults.button<Msg> with
-            Label = TextSource.Literal "Reload"
-            OnClick = Action.dispatch Reload
-            Disabled = Some (Binding.Static true) }
-"""
-
-              let dir = freshDir "button-disabled-placeholder"
-              let projectPath = writeFsproj dir "DisabledPlaceholder.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isFalse
-                  (hasCode "FUARAN064" result.Findings)
-                  "Static true is a legitimate permanent-disable, not flagged"
-          }
-
-          test "button with Disabled bound to state is the intended shape (no FUARAN064)" {
-              let source =
-                  """module Sample.DisabledBound
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = Reload
-
-let build () =
-    Fuaran.button "btn-reload"
-        { Defaults.button<Msg> with
-            Label = TextSource.Literal "Reload"
-            OnClick = Action.dispatch Reload
-            Disabled = Some (binding.state "loading" false) }
-"""
-
-              let dir = freshDir "button-disabled-bound"
-              let projectPath = writeFsproj dir "DisabledBound.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isFalse
-                  (hasCode "FUARAN064" result.Findings)
-                  "a live state binding is the intended shape, not flagged"
-          }
-
-          test "binding.local with format = None inside a Text field raises FUARAN042" {
-              let source =
-                  """module Sample.LocalNoFormat
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = SetSalary of decimal
-
-let build () =
-    Fuaran.form "f"
-        { Defaults.form<Msg> with
-            Fields =
-                [ { Defaults.formField<Msg> with
-                      Id = "salary"
-                      Kind =
-                          FormFieldKind.Text(
-                              binding.local
-                                  (binding.state "salary" "0")
-                                  LocalFlushTrigger.OnBlur
-                                  (fun s -> Action.dispatch (SetSalary 0m))
-                                  None
-                                  (fun s -> Ok s),
-                              (fun _ -> Action.Chain [])) } ] }
-"""
-
-              let dir = freshDir "local-noformat"
-              let projectPath = writeFsproj dir "LocalNoFormat.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue
-                  (hasCode "FUARAN042" result.Findings)
-                  "FUARAN042 raised for binding.local with format = None"
-          }
-
-          test "binding.local with OnCommitAction and no Action.CommitLocal raises FUARAN043" {
-              let source =
-                  """module Sample.LocalNoCommitRef
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = SetSalary of decimal
-
-let build () =
-    Fuaran.form "f"
-        { Defaults.form<Msg> with
-            Fields =
-                [ { Defaults.formField<Msg> with
-                      Id = "salary"
-                      Kind =
-                          FormFieldKind.Text(
-                              binding.local
-                                  (binding.state "salary" "0")
-                                  LocalFlushTrigger.OnCommitAction
-                                  (fun s -> Action.dispatch (SetSalary 0m))
-                                  (Some id)
-                                  (fun s -> Ok s),
-                              (fun _ -> Action.Chain [])) } ] }
-"""
-
-              let dir = freshDir "local-no-commit-ref"
-              let projectPath = writeFsproj dir "LocalNoCommitRef.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue
-                  (hasCode "FUARAN043" result.Findings)
-                  "FUARAN043 raised when no Action.CommitLocal partner exists in the project"
-          }
-
-          test "binding.local outside a FormFieldKind enclosing context raises FUARAN044" {
-              // Force the binding into a bare let-binding so the walker sees
-              // no enclosing FormFieldKind.Text / .Number — exactly the
-              // misplaced-binding shape FUARAN044 guards against.
-              let source =
-                  """module Sample.LocalOnNonInput
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = NoOp
-
-let misplacedLocal: Binding<string> =
-    binding.local
-        (binding.state "salary" "0")
-        LocalFlushTrigger.OnBlur
-        (fun s -> Action.dispatch NoOp)
-        (Some id)
-        (fun s -> Ok s)
-"""
-
-              let dir = freshDir "local-on-noninput"
-              let projectPath = writeFsproj dir "LocalOnNonInput.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue
-                  (hasCode "FUARAN044" result.Findings)
-                  "FUARAN044 raised for binding.local outside FormFieldKind.Text / .Number"
-          }
-
-          test "FormFieldKind.rangedNumber with value below min raises FUARAN051" {
-              let source =
-                  """module Sample.NumberBelowMin
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = SetYear of float
-
-let build () =
-    Fuaran.form "f"
-        { Defaults.form<Msg> with
-            Fields =
-                [ { Defaults.formField<Msg> with
-                      Id = "year"
-                      Kind =
-                          FormFieldKind.rangedNumber
-                              (binding.``static`` 1900.0)
-                              (fun v -> Action.dispatch (SetYear v))
-                              (min = 1979.0)
-                              (max = 2028.0) } ] }
-"""
-
-              let dir = freshDir "rangednumber-below-min"
-              let projectPath = writeFsproj dir "NumberBelowMin.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN051" result.Findings) "FUARAN051 raised for value below declared min"
-              Expect.equal (severityCount Error result.Findings) 0 "advisory only — no Errors"
-
-              let f = result.Findings |> List.find (fun f -> f.Code = "FUARAN051")
-              Expect.stringContains f.Message "supportedRange=" "carries supportedRange"
-              Expect.isSome f.Suggestion "carries a recovery suggestion"
-          }
-
-          test "FormFieldKind.rangedNumber with value above max raises FUARAN051" {
-              let source =
-                  """module Sample.NumberAboveMax
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = SetYear of float
-
-let build () =
-    Fuaran.form "f"
-        { Defaults.form<Msg> with
-            Fields =
-                [ { Defaults.formField<Msg> with
-                      Id = "year"
-                      Kind =
-                          FormFieldKind.rangedNumber
-                              (binding.``static`` 2050.0)
-                              (fun v -> Action.dispatch (SetYear v))
-                              (min = 1979.0)
-                              (max = 2028.0) } ] }
-"""
-
-              let dir = freshDir "rangednumber-above-max"
-              let projectPath = writeFsproj dir "NumberAboveMax.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN051" result.Findings) "FUARAN051 raised for value above declared max"
-          }
-
-          test "FormFieldKind.rangedNumber with in-range value raises no FUARAN051" {
-              let source =
-                  """module Sample.NumberInRange
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = SetYear of float
-
-let build () =
-    Fuaran.form "f"
-        { Defaults.form<Msg> with
-            Fields =
-                [ { Defaults.formField<Msg> with
-                      Id = "year"
-                      Kind =
-                          FormFieldKind.rangedNumber
-                              (binding.``static`` 2024.0)
-                              (fun v -> Action.dispatch (SetYear v))
-                              (min = 1979.0)
-                              (max = 2028.0) } ] }
-"""
-
-              let dir = freshDir "rangednumber-in-range"
-              let projectPath = writeFsproj dir "NumberInRange.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isFalse (hasCode "FUARAN051" result.Findings) "no advisory for an in-range rangedNumber value"
-          }
-
-          // ── SegmentedChoice option-count advisory (FUARAN045) ──
-
-          test "FormFieldKind.segmentedChoice with >7 static options raises FUARAN045" {
-              let source =
-                  """module Sample.SegmentedTooMany
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = SetTier of string option
-
-let opts: SelectOption list =
-    [ { Value = "a"; Label = TextSource.Literal "A" }
-      { Value = "b"; Label = TextSource.Literal "B" }
-      { Value = "c"; Label = TextSource.Literal "C" }
-      { Value = "d"; Label = TextSource.Literal "D" }
-      { Value = "e"; Label = TextSource.Literal "E" }
-      { Value = "f"; Label = TextSource.Literal "F" }
-      { Value = "g"; Label = TextSource.Literal "G" }
-      { Value = "h"; Label = TextSource.Literal "H" } ]
-
-let build () =
-    Fuaran.form "f"
-        { Defaults.form<Msg> with
-            Fields =
-                [ { Defaults.formField<Msg> with
-                      Id = "tier"
-                      Kind =
-                          FormFieldKind.segmentedChoice
-                              (binding.``static``
-                                  [ { Value = "a"; Label = TextSource.Literal "A" }
-                                    { Value = "b"; Label = TextSource.Literal "B" }
-                                    { Value = "c"; Label = TextSource.Literal "C" }
-                                    { Value = "d"; Label = TextSource.Literal "D" }
-                                    { Value = "e"; Label = TextSource.Literal "E" }
-                                    { Value = "f"; Label = TextSource.Literal "F" }
-                                    { Value = "g"; Label = TextSource.Literal "G" }
-                                    { Value = "h"; Label = TextSource.Literal "H" } ])
-                              (binding.``static`` None)
-                              (fun v -> Action.dispatch (SetTier v))
-                              Orientation.Horizontal } ] }
-"""
-
-              let dir = freshDir "segmented-too-many"
-              let projectPath = writeFsproj dir "SegmentedTooMany.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN045" result.Findings) "FUARAN045 raised for SegmentedChoice with 8 options"
-
-              Expect.equal (severityCount Error result.Findings) 0 "advisory only — no Errors"
-
-              let f = result.Findings |> List.find (fun f -> f.Code = "FUARAN045")
-              Expect.stringContains f.Message "8 options" "carries the offending count"
-              Expect.isSome f.Suggestion "carries a recovery suggestion"
-          }
-
-          test "FormFieldKind.segmentedChoice with 5 static options raises no FUARAN045" {
-              let source =
-                  """module Sample.SegmentedFive
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = SetTier of string option
-
-let build () =
-    Fuaran.form "f"
-        { Defaults.form<Msg> with
-            Fields =
-                [ { Defaults.formField<Msg> with
-                      Id = "tier"
-                      Kind =
-                          FormFieldKind.segmentedChoice
-                              (binding.``static``
-                                  [ { Value = "a"; Label = TextSource.Literal "A" }
-                                    { Value = "b"; Label = TextSource.Literal "B" }
-                                    { Value = "c"; Label = TextSource.Literal "C" }
-                                    { Value = "d"; Label = TextSource.Literal "D" }
-                                    { Value = "e"; Label = TextSource.Literal "E" } ])
-                              (binding.``static`` None)
-                              (fun v -> Action.dispatch (SetTier v))
-                              Orientation.Horizontal } ] }
-"""
-
-              let dir = freshDir "segmented-five"
-              let projectPath = writeFsproj dir "SegmentedFive.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isFalse
-                  (hasCode "FUARAN045" result.Findings)
-                  "no advisory for a SegmentedChoice within the recommended threshold"
-          }
-
-          // ── Tabs-shape rules (FUARAN047 / FUARAN048 / FUARAN049) ──
-
-          test "Fuaran.tabs with TabHeaders.Length < Children.Length raises FUARAN047" {
-              let source =
-                  """module Sample.TabsHeaderMismatch
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = NoOp
-
-let build () =
-    Fuaran.dashboard "tabs-dash"
-        { Defaults.dashboard<Msg> with
-            Children =
-                [ Fuaran.tabs "results-tabs"
-                    { Defaults.tabs<Msg> with
-                        Children =
-                            [ Fuaran.markdown "overview" "Overview"
-                              Fuaran.markdown "detail" "Detail" ]
-                        TabHeaders =
-                            Some
-                                [ { Defaults.tabHeader with
-                                      Label = TextSource.Literal "Overview" } ] } ] }
-"""
-
-              let dir = freshDir "tabs-header-mismatch"
-              let projectPath = writeFsproj dir "TabsHeader.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN047" result.Findings) "FUARAN047 raised"
-              Expect.isGreaterThan (severityCount Error result.Findings) 0 "at least one Error"
-
-              let f = result.Findings |> List.find (fun f -> f.Code = "FUARAN047")
-              Expect.stringContains f.Message "TabHeaders with 1 entries but 2 Children" "carries the offending counts"
-          }
-
-          test "Fuaran.tabs with TabTags.Length < Children.Length raises FUARAN048" {
-              let source =
-                  """module Sample.TabsTagMismatch
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = NoOp
-
-let build () =
-    Fuaran.dashboard "tabs-dash"
-        { Defaults.dashboard<Msg> with
-            Children =
-                [ Fuaran.tabs "results-tabs"
-                    { Defaults.tabs<Msg> with
-                        Children =
-                            [ Fuaran.markdown "overview" "Overview"
-                              Fuaran.markdown "detail" "Detail" ]
-                        TabTags = Some [ "overview" ] } ] }
-"""
-
-              let dir = freshDir "tabs-tag-mismatch"
-              let projectPath = writeFsproj dir "TabsTag.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN048" result.Findings) "FUARAN048 raised"
-
-              let f = result.Findings |> List.find (fun f -> f.Code = "FUARAN048")
-              Expect.stringContains f.Message "TabTags with 1 entries but 2 Children" "carries the offending counts"
-          }
-
-          test "Fuaran.tabs with ActiveTag = Some _ but TabTags = None raises FUARAN049 (Warning)" {
-              let source =
-                  """module Sample.TabsActiveTagOrphan
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = NoOp
-
-let build () =
-    Fuaran.dashboard "tabs-dash"
-        { Defaults.dashboard<Msg> with
-            Children =
-                [ Fuaran.tabs "results-tabs"
-                    { Defaults.tabs<Msg> with
-                        Children = [ Fuaran.markdown "overview" "Overview" ]
-                        ActiveTag = Some (Binding.Static "overview") } ] }
-"""
-
-              let dir = freshDir "tabs-active-tag-orphan"
-              let projectPath = writeFsproj dir "TabsActiveTag.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN049" result.Findings) "FUARAN049 raised"
-              Expect.equal (severityCount Error result.Findings) 0 "FUARAN049 is Warning, not Error"
-          }
-
-          test "Aligned Fuaran.tabs spec (headers + tags + active-tag all parallel to children) raises no Tabs findings" {
-              let source =
-                  """module Sample.TabsAligned
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = NoOp
-
-let build () =
-    Fuaran.dashboard "tabs-dash"
-        { Defaults.dashboard<Msg> with
-            Children =
-                [ Fuaran.tabs "results-tabs"
-                    { Defaults.tabs<Msg> with
-                        Children =
-                            [ Fuaran.markdown "overview" "Overview"
-                              Fuaran.markdown "detail" "Detail" ]
-                        TabHeaders =
-                            Some
-                                [ { Defaults.tabHeader with
-                                      Label = TextSource.Literal "Overview" }
-                                  { Defaults.tabHeader with
-                                      Label = TextSource.Literal "Detail" } ]
-                        TabTags = Some [ "overview"; "detail" ]
-                        ActiveTag = Some (Binding.Static "overview") } ] }
-"""
-
-              let dir = freshDir "tabs-aligned"
-              let projectPath = writeFsproj dir "TabsAligned.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isFalse (hasCode "FUARAN047" result.Findings) "no header-count finding on aligned spec"
-              Expect.isFalse (hasCode "FUARAN048" result.Findings) "no tag-count finding on aligned spec"
-              Expect.isFalse (hasCode "FUARAN049" result.Findings) "no active-tag-orphan finding on aligned spec"
-          }
-
-          test "Module-pattern filter restricts the walked file set" {
-              let dir = freshDir "module-pattern"
-              let projectPath = writeFsproj dir "Pattern.fsproj"
-              writeFile dir "Kept.fs" duplicateNodeIdSource |> ignore
-              writeFile dir "Skipped.fs" duplicateNodeIdSource |> ignore
-
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
+          test "the module-pattern filter restricts the walked file set" {
+              let _, projectPath, manifestPath =
+                  materialise (setup [ "DuplicateInDashboard"; "CrossTree" ])
 
               let result =
                   Validator.run
                       { ProjectPath = projectPath
-                        ModulePattern = Some "Kept"
-                        ManifestPath = Some manifestPath
+                        ModulePattern = Some "CrossTree"
+                        ManifestPath = manifestPath
                         Orchestrated = false }
                   |> Async.RunSynchronously
 
-              Expect.equal result.FilesWalked 1 "only Kept.fs walked"
+              Expect.equal result.FilesWalked 1 "only CrossTree.fs walked"
+              Expect.isFalse (hasCode "FUARAN001" result.Findings) "the filtered-out file is not checked"
           }
 
-          test "Format.Currency with a blank ISO code raises FUARAN061 (Error)" {
-              let source =
-                  """module Sample.BlankCurrency
+          // ── Scalar / link / button ────────────────────────────────────────
 
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let build () =
-    binding.format (binding.``static`` 1234.5) (Format.Currency "") locale.ambient
-"""
-
-              let dir = freshDir "format-blank-currency"
-              let projectPath = writeFsproj dir "BlankCurrency.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN061" result.Findings) "FUARAN061 raised for blank ISO code"
-
-              let f = result.Findings |> List.find (fun f -> f.Code = "FUARAN061")
-              Expect.equal f.Severity Error "blank currency code is an Error"
+          test "an out-of-[0,1] progress Fraction is an advisory Warning (FUARAN050)" {
+              let fs = findings (setup [ "ProgressOutOfRange" ])
+              let f = single "FUARAN050" fs
+              Expect.equal (errorCount fs) 0 "advisory only"
+              Expect.stringContains f.Message "supportedRange=" "carries supportedRange"
               Expect.isSome f.Suggestion "carries a recovery suggestion"
           }
 
-          test "localeFormat.currency with a blank ISO code raises FUARAN061" {
-              let source =
-                  """module Sample.BlankCurrencySmartCtor
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let build () = localeFormat.currency "   "
-"""
-
-              let dir = freshDir "format-blank-currency-ctor"
-              let projectPath = writeFsproj dir "BlankCurrencyCtor.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN061" result.Findings) "FUARAN061 raised for whitespace ISO code"
+          test "an in-range progress Fraction raises no FUARAN050" {
+              Expect.isFalse (hasCode "FUARAN050" (findings (setup [ "ProgressInRange" ]))) "in range"
           }
 
-          test "Format.Currency with a valid ISO code raises no FUARAN061" {
-              let source =
-                  """module Sample.ValidCurrency
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let build () =
-    binding.format (binding.``static`` 1234.5) (Format.Currency "GBP") (locale.explicit "en-GB")
-"""
-
-              let dir = freshDir "format-valid-currency"
-              let projectPath = writeFsproj dir "ValidCurrency.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isFalse (hasCode "FUARAN061" result.Findings) "no finding for a valid ISO code"
+          test "a blank href is a Warning on Fuaran.link and on Fuaran.linkSpec (FUARAN063)" {
+              let fs = findings (setup [ "BlankHrefLink"; "BlankHrefLinkSpec" ])
+              Expect.equal (codes "FUARAN063" fs).Length 2 "positional and record forms"
+              Expect.equal (errorCount fs) 0 "advisory only"
           }
 
-          // ─── FUARAN062 — build-time Custom content-hash (Phase 134) ──────
+          test "a real href raises no FUARAN063" {
+              Expect.isFalse (hasCode "FUARAN063" (findings (setup [ "ValidLink" ]))) "not flagged"
+          }
+
+          test "Disabled = Some (Binding.Static (Some false)) is a no-op Warning (FUARAN064)" {
+              let fs = findings (setup [ "DisabledNoOp"; "DisabledNoOpSmartCtor" ])
+              Expect.equal (codes "FUARAN064" fs).Length 2 "the case and the smart constructor"
+              Expect.isSome (codes "FUARAN064" fs).Head.Suggestion "carries a recovery suggestion"
+          }
+
+          test "a constant-true or state-bound Disabled raises no FUARAN064" {
+              let fs = findings (setup [ "DisabledPlaceholder"; "DisabledBound" ])
+              Expect.isFalse (hasCode "FUARAN064" fs) "placeholder and live binding are legitimate"
+          }
+
+          // ── Local bindings ────────────────────────────────────────────────
+
+          test "binding.local with format = None inside a Text field raises FUARAN042 only" {
+              let fs = findings (setup [ "LocalNoFormat" ])
+              Expect.isTrue (hasCode "FUARAN042" fs) "FUARAN042 raised"
+              Expect.isFalse (hasCode "FUARAN044" fs) "a Text field hosts the buffer"
+          }
+
+          test "binding.local with OnCommitAction and no Action.CommitLocal raises FUARAN043" {
+              Expect.isTrue (hasCode "FUARAN043" (findings (setup [ "LocalNoCommitRef" ]))) "FUARAN043 raised"
+          }
+
+          test "binding.local inside RangedNumber, case or smart constructor, raises no FUARAN044" {
+              Expect.isFalse (hasCode "FUARAN044" (findings (setup [ "LocalInRangedNumber" ]))) "hosted"
+          }
+
+          // ── Ranged number / segmented choice ──────────────────────────────
+
+          test "a static value outside [min, max] raises FUARAN051 in every constructor shape" {
+              let fs =
+                  findings (setup [ "RangedBelowMin"; "RangedAboveMaxDeclarative"; "RangedAboveMaxCase" ])
+
+              let found = codes "FUARAN051" fs
+              Expect.equal found.Length 3 "rangedNumber, rangedNumberDeclarative and the case"
+              Expect.equal (errorCount fs) 0 "advisory only"
+              Expect.stringContains found.Head.Message "supportedRange=" "carries supportedRange"
+          }
+
+          test "an in-range static value raises no FUARAN051" {
+              Expect.isFalse (hasCode "FUARAN051" (findings (setup [ "RangedInRange" ]))) "in range"
+          }
+
+          test "more than 7 static segmented options raises FUARAN045, smart constructor and case" {
+              let fs = findings (setup [ "SegmentedTooMany"; "SegmentedTooManyCase" ])
+              let found = codes "FUARAN045" fs
+              Expect.equal found.Length 2 "both shapes"
+              Expect.stringContains found.Head.Message "8 options" "carries the count"
+          }
+
+          test "five segmented options raise no FUARAN045" {
+              Expect.isFalse (hasCode "FUARAN045" (findings (setup [ "SegmentedFive" ]))) "within threshold"
+          }
+
+          // ── Format / grid template / extra attributes ─────────────────────
+
+          test "a blank currency code is an Error (FUARAN061), case and smart constructor" {
+              let fs = findings (setup [ "CurrencyBlankCase"; "CurrencyBlankSmartCtor" ])
+              let found = codes "FUARAN061" fs
+              Expect.equal found.Length 2 "both shapes"
+              Expect.equal found.Head.Severity Error "an Error"
+          }
+
+          test "a valid currency code raises no FUARAN061" {
+              Expect.isFalse (hasCode "FUARAN061" (findings (setup [ "CurrencyValid" ]))) "valid"
+          }
+
+          test "an irregular template raises no FUARAN046" {
+              Expect.isFalse (hasCode "FUARAN046" (findings (setup [ "GridTemplateIrregular" ]))) "irregular"
+          }
+
+          test "only the disallowed extra-attribute key is flagged (FUARAN060)" {
+              let f = single "FUARAN060" (findings (setup [ "ExtraAttributeOnClick" ]))
+              Expect.stringContains f.Message "\"onclick\"" "the on* key, not the data-* one"
+          }
+
+          // ── Custom ────────────────────────────────────────────────────────
 
           test "computeBodyShapeHash is deterministic and shape-sensitive" {
               let baseHash =
@@ -1164,7 +524,6 @@ let build () =
                       [ "scale"; "palette" ]
                       [ "cell-grid" ]
 
-              // Same shape (keys re-ordered) → same hash: order-insensitive.
               let reordered =
                   CustomContentHashCheck.computeBodyShapeHash
                       "reporting"
@@ -1172,392 +531,114 @@ let build () =
                       [ "palette"; "scale" ]
                       [ "cell-grid" ]
 
-              Expect.equal reordered baseHash "prop-key order does not change the hash"
-
-              // Added prop key → different hash: a changed body changes the hash.
-              let bodyChanged =
+              let changed =
                   CustomContentHashCheck.computeBodyShapeHash
                       "reporting"
                       "HeatmapTab"
                       [ "scale"; "palette"; "legend" ]
                       [ "cell-grid" ]
 
-              Expect.notEqual bodyChanged baseHash "an added prop key changes the hash"
+              Expect.equal reordered baseHash "prop-key order does not change the hash"
+              Expect.notEqual changed baseHash "an added prop key changes the hash"
               Expect.equal baseHash.Length 64 "SHA-256 renders as 64 hex chars"
           }
 
-          test "Stale Custom contentHash under Enforced raises FUARAN062 (Error)" {
-              let source =
-                  """module Sample.StaleEnforced
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let build () =
-    Fuaran.custom "heatmap" "reporting" "HeatmapTab"
-        (Map.ofList [ "scale", JsonValue 1; "palette", JsonValue 2 ])
-        (Some { Algorithm = "SHA256"; Hash = "reporting.HeatmapTab.v1"; Strictness = HashStrictness.Enforced })
-        [ NodeId "cell-grid" ]
-"""
-
-              let dir = freshDir "custom-hash-stale-enforced"
-              let projectPath = writeFsproj dir "StaleEnforced.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN062" result.Findings) "FUARAN062 raised for stale hash"
-
-              let f = result.Findings |> List.find (fun f -> f.Code = "FUARAN062")
-              Expect.equal f.Severity Error "Enforced strictness escalates the stale hash to Error"
-              Expect.isSome f.Suggestion "carries the computed hash as a recovery suggestion"
+          test "a stale contentHash is an Error under Enforced and a Warning under AdvisoryWarning (FUARAN062)" {
+              let enforced = single "FUARAN062" (findings (setup [ "CustomStaleEnforced" ]))
+              let advisory = single "FUARAN062" (findings (setup [ "CustomStaleAdvisory" ]))
+              Expect.equal enforced.Severity Error "Enforced"
+              Expect.isSome enforced.Suggestion "carries the computed hash"
+              Expect.equal advisory.Severity Warning "AdvisoryWarning"
           }
 
-          test "Stale Custom contentHash under AdvisoryWarning raises FUARAN062 (Warning)" {
-              let source =
-                  """module Sample.StaleAdvisory
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let build () =
-    Fuaran.custom "heatmap" "reporting" "HeatmapTab"
-        (Map.ofList [ "scale", JsonValue 1 ])
-        (Some { Algorithm = "SHA256"; Hash = "0000000000000000000000000000000000000000000000000000000000000000"; Strictness = HashStrictness.AdvisoryWarning })
-        []
-"""
-
-              let dir = freshDir "custom-hash-stale-advisory"
-              let projectPath = writeFsproj dir "StaleAdvisory.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isTrue (hasCode "FUARAN062" result.Findings) "FUARAN062 raised for stale hash"
-
-              let f = result.Findings |> List.find (fun f -> f.Code = "FUARAN062")
-              Expect.equal f.Severity Warning "AdvisoryWarning strictness keeps the stale hash a Warning"
+          test "the NodeKind.Custom record form is checked too (FUARAN062, FUARAN053, FUARAN055)" {
+              let fs = findings (setup [ "CustomRecordStaleHash"; "CustomRecordForm" ])
+              Expect.isTrue (hasCode "FUARAN062" fs) "stale hash on the record form"
+              Expect.isTrue (hasCode "FUARAN053" fs) "exposed ids with no registered renderer"
+              Expect.isTrue (hasCode "FUARAN055" fs) "no contentHash"
           }
 
-          test "Matching computed Custom contentHash raises no FUARAN062" {
-              let computed =
+          test "a matching computed contentHash raises no FUARAN062" {
+              let expected =
                   CustomContentHashCheck.computeBodyShapeHash
                       "reporting"
                       "HeatmapTab"
                       [ "scale"; "palette" ]
                       [ "cell-grid" ]
 
-              let source =
-                  sprintf
-                      """module Sample.MatchingHash
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let build () =
-    Fuaran.custom "heatmap" "reporting" "HeatmapTab"
-        (Map.ofList [ "scale", JsonValue 1; "palette", JsonValue 2 ])
-        (Some { Algorithm = "SHA256"; Hash = "%s"; Strictness = HashStrictness.Enforced })
-        [ NodeId "cell-grid" ]
-"""
-                      computed
-
-              let dir = freshDir "custom-hash-match"
-              let projectPath = writeFsproj dir "MatchingHash.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              Expect.isFalse (hasCode "FUARAN062" result.Findings) "a matching computed hash produces no drift finding"
+              Expect.stringContains (snippetSource "CustomMatchingHash") expected "the snippet pins the computed hash"
+              Expect.isFalse (hasCode "FUARAN062" (findings (setup [ "CustomMatchingHash" ]))) "no drift"
           }
 
-          test "Custom node with no contentHash raises no FUARAN062" {
-              let source =
-                  """module Sample.NoHash
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let build () =
-    Fuaran.custom "heatmap" "reporting" "HeatmapTab" Map.empty None []
-"""
-
-              let dir = freshDir "custom-hash-none"
-              let projectPath = writeFsproj dir "NoHash.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              // No hash → FUARAN062 stays silent (that absence is FUARAN055's job).
-              Expect.isFalse (hasCode "FUARAN062" result.Findings) "no hash means no content-hash drift finding"
+          test "no contentHash or non-literal props raise no FUARAN062" {
+              let fs = findings (setup [ "CustomNoHash"; "CustomDynamicProps" ])
+              Expect.isFalse (hasCode "FUARAN062" fs) "nothing to verify"
           }
 
-          test "Custom node with non-literal props is skipped by FUARAN062" {
-              let source =
-                  """module Sample.DynamicProps
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let build (dynamicProps: Map<string, JsonValue>) =
-    Fuaran.custom "heatmap" "reporting" "HeatmapTab"
-        dynamicProps
-        (Some { Algorithm = "SHA256"; Hash = "reporting.HeatmapTab.v1"; Strictness = HashStrictness.Enforced })
-        [ NodeId "cell-grid" ]
-"""
-
-              let dir = freshDir "custom-hash-dynamic"
-              let projectPath = writeFsproj dir "DynamicProps.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-              let manifestPath = writeFile dir "fuaran-validator.manifest.json" validManifest
-
-              let result = runValidator projectPath (Some manifestPath)
-
-              // The props shape isn't statically resolvable → conservative skip.
-              Expect.isFalse (hasCode "FUARAN062" result.Findings) "unresolvable body shape is not flagged"
+          test "the Custom ratio is reported once for the project (FUARAN054)" {
+              let f = single "FUARAN054" (findings (setup [ "CustomRatio" ]))
+              Expect.stringContains f.Message "4 Custom" "counts the Custom sites"
           }
 
-          test "Parameterised fragment with an unbounded Repeat count raises FUARAN059 (totality)" {
-              let source =
-                  """module Sample.RepeatUnbounded
+          // ── Fragments ─────────────────────────────────────────────────────
 
-open Fuaran.UI
-open Fuaran.UI.Types
+          test "fragment names resolve: a duplicate name errors, a resolved reference does not (FUARAN056 / 057)" {
+              let dup = findings (setup [ "FragmentDuplicateName" ])
+              Expect.equal (codes "FUARAN056" dup).Length 2 "both declarations"
+              Expect.isFalse (hasCode "FUARAN057" dup) "the reference resolves"
 
-let build () =
-    Fuaran.fragmentDecl "decl"
-        { Defaults.fragmentDecl with
-            Name = FragmentId "rep"
-            Body = Fuaran.markdown "b" "x"
-            Holes = [ HoleDecl.Repeat("rows", HoleValueSpace.AnyString) ] }
-"""
-
-              let dir = freshDir "frag-repeat-unbounded"
-              let projectPath = writeFsproj dir "RepeatUnbounded.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isTrue (hasCode "FUARAN059" result.Findings) "FUARAN059 raised for an unbounded Repeat count"
+              let unresolved = findings (setup [ "FragmentUnresolved" ])
+              Expect.stringContains (single "FUARAN057" unresolved).Message "'headr'" "only the typo"
           }
 
-          test "Parameterised fragment with a bounded IntRange Repeat count raises no FUARAN059" {
-              let source =
-                  """module Sample.RepeatBounded
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let build () =
-    Fuaran.fragmentDecl "decl"
-        { Defaults.fragmentDecl with
-            Name = FragmentId "rep"
-            Body = Fuaran.markdown "b" "x"
-            Holes = [ HoleDecl.Repeat("rows", HoleValueSpace.IntRange(1, 12)) ] }
-"""
-
-              let dir = freshDir "frag-repeat-bounded"
-              let projectPath = writeFsproj dir "RepeatBounded.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isFalse (hasCode "FUARAN059" result.Findings) "no totality finding for a bounded IntRange count"
+          test "a fragment cycle errors (FUARAN058)" {
+              Expect.isTrue (hasCode "FUARAN058" (findings (setup [ "FragmentCycle" ]))) "cycle"
           }
 
-          test "Value hole whose default is outside its value-space raises FUARAN065" {
-              let source =
-                  """module Sample.DefaultOutOfRange
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let build () =
-    Fuaran.fragmentDecl "decl"
-        { Defaults.fragmentDecl with
-            Name = FragmentId "card"
-            Body = Fuaran.markdown "b" "x"
-            Holes = [ HoleDecl.Value("count", HoleValueSpace.IntRange(0, 10), Some(box 50)) ] }
-"""
-
-              let dir = freshDir "frag-default-oor"
-              let projectPath = writeFsproj dir "DefaultOutOfRange.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isTrue (hasCode "FUARAN065" result.Findings) "FUARAN065 raised for an out-of-range default"
+          test "a bounded Repeat count raises no FUARAN059" {
+              Expect.isFalse (hasCode "FUARAN059" (findings (setup [ "RepeatBounded" ]))) "bounded"
           }
 
-          test "Value hole whose default is inside its value-space raises no FUARAN065" {
-              let source =
-                  """module Sample.DefaultInRange
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-let build () =
-    Fuaran.fragmentDecl "decl"
-        { Defaults.fragmentDecl with
-            Name = FragmentId "card"
-            Body = Fuaran.markdown "b" "x"
-            Holes =
-                [ HoleDecl.Value("count", HoleValueSpace.IntRange(0, 100), Some(box 7))
-                  HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), Some(box "ok")) ] }
-"""
-
-              let dir = freshDir "frag-default-inrange"
-              let projectPath = writeFsproj dir "DefaultInRange.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isFalse (hasCode "FUARAN065" result.Findings) "no value-space finding for an in-range default"
+          test "an in-range Scalar default raises no FUARAN065" {
+              Expect.isFalse (hasCode "FUARAN065" (findings (setup [ "DefaultInRange" ]))) "in range"
           }
 
-          // ── Tree identity: a tree is a ROOT CALL SITE, not a root id ──────
-          //
-          // Two independent trees may legitimately share every NodeId — a
-          // template and its content-free stand-in, or two fixtures. Grouping
-          // per-tree uniqueness on the root's id string conflates them and
-          // reports each shared id as an intra-tree duplicate.
-
-          test "two trees sharing a root id are two trees (FUARAN002), not one with duplicates (FUARAN001)" {
-              let source =
-                  """module Sample.SameRootId
-
-open Fuaran.UI
-
-let real () =
-    Fuaran.dashboard "doc-root"
-        { Defaults.dashboard with Children = [ Fuaran.metric "clause-1" Defaults.metric ] }
-
-let standIn () =
-    Fuaran.dashboard "doc-root"
-        { Defaults.dashboard with Children = [ Fuaran.metric "clause-1" Defaults.metric ] }
-"""
-
-              let dir = freshDir "same-root-id"
-              let projectPath = writeFsproj dir "SameRootId.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isFalse
-                  (hasCode "FUARAN001" result.Findings)
-                  "no intra-tree duplicate — the two dashboards are distinct trees"
-
-              Expect.isTrue (hasCode "FUARAN002" result.Findings) "the shared ids surface as the cross-tree warning"
-              Expect.equal (severityCount Error result.Findings) 0 "no Errors"
-          }
-
-          test "a duplicate inside ONE tree is still an Error when a same-id sibling tree exists" {
-              let source =
-                  """module Sample.DupWithTwin
-
-open Fuaran.UI
-
-let withDup () =
-    Fuaran.dashboard "root"
-        { Defaults.dashboard with
-            Children = [ Fuaran.metric "same" Defaults.metric; Fuaran.metric "same" Defaults.metric ] }
-
-let clean () =
-    Fuaran.dashboard "root"
-        { Defaults.dashboard with Children = [ Fuaran.metric "other" Defaults.metric ] }
-"""
-
-              let dir = freshDir "dup-with-twin"
-              let projectPath = writeFsproj dir "DupWithTwin.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isTrue (hasCode "FUARAN001" result.Findings) "the genuine intra-tree duplicate still errors"
-          }
-
-          // ── FUARAN044's local-hosting kind set tracks the renderer ────────
-
-          test "binding.local inside FormFieldKind.RangedNumber is not flagged (FUARAN044)" {
-              let source =
-                  """module Sample.RangedLocal
-
-open Fuaran.UI
-open Fuaran.UI.Types
-
-type Msg = SetAge of float
-
-let field =
-    FormFieldKind.RangedNumber(
-        binding.local
-            (Binding.Static 0.0)
-            LocalFlushTrigger.OnSubmit
-            (fun a -> Action.Dispatch(SetAge a))
-            (Some string)
-            (fun s -> Ok 0.0),
-        None,
-        Defaults.numberConstraints
-    )
-"""
-
-              let dir = freshDir "ranged-local"
-              let projectPath = writeFsproj dir "RangedLocal.fsproj"
-              writeFile dir "Source.fs" source |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isFalse
-                  (hasCode "FUARAN044" result.Findings)
-                  "RangedNumber mounts the Local useState slot, same as Number"
-          }
-
-          // ── Suppression pragmas ──────────────────────────────────────────
+          // ── Suppression pragmas ───────────────────────────────────────────
 
           test "a file-scoped disable pragma suppresses the named code and is counted" {
-              let dir = freshDir "suppress-file"
-              let projectPath = writeFsproj dir "SuppressFile.fsproj"
+              let result =
+                  run
+                      { setup [ "DuplicateInDashboard" ] with
+                          Prefix = "// fuaran-validator: disable FUARAN001 — negative-test fixture\n" }
 
-              let source =
-                  "// fuaran-validator: disable FUARAN001 — negative-test fixture\n"
-                  + duplicateNodeIdSource
-
-              writeFile dir "Source.fs" source |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isFalse (hasCode "FUARAN001" result.Findings) "the suppressed code is gone from the findings"
-              Expect.equal (severityCount Error result.Findings) 0 "no Errors survive"
+              Expect.isFalse (hasCode "FUARAN001" result.Findings) "suppressed"
+              Expect.equal (errorCount result.Findings) 0 "no Errors survive"
               Expect.isGreaterThan result.Suppressed 0 "the run reports what it suppressed"
           }
 
           test "a disable pragma naming a different code suppresses nothing" {
-              let dir = freshDir "suppress-other"
-              let projectPath = writeFsproj dir "SuppressOther.fsproj"
+              let result =
+                  run
+                      { setup [ "DuplicateInDashboard" ] with
+                          Prefix = "// fuaran-validator: disable FUARAN057\n" }
 
-              let source = "// fuaran-validator: disable FUARAN057\n" + duplicateNodeIdSource
-
-              writeFile dir "Source.fs" source |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isTrue (hasCode "FUARAN001" result.Findings) "an unrelated code is untouched"
-              Expect.equal result.Suppressed 0 "nothing was suppressed"
+              Expect.isTrue (hasCode "FUARAN001" result.Findings) "untouched"
+              Expect.equal result.Suppressed 0 "nothing suppressed"
           }
 
           test "disable-next-line suppresses only the line that follows it" {
-              // Two duplicate-id call sites; the pragma covers the first only,
-              // so exactly one FUARAN001 survives.
-              let source =
+              let dir, projectPath, _ = materialise { setup [] with Manifest = None }
+
+              writeFile
+                  dir
+                  "NextLine.fs"
                   """module Sample.NextLine
 
 open Fuaran.UI
 
-let build () =
-    Fuaran.dashboard "nl-dashboard"
+let build () : Node<unit> =
+    Fuaran.dashboard
+        "nl-dashboard"
         { Defaults.dashboard with
             Children =
                 [
@@ -1565,28 +646,63 @@ let build () =
                   Fuaran.metric "shared-id" Defaults.metric
                   Fuaran.metric "shared-id" Defaults.metric ] }
 """
+              |> ignore
 
-              let dir = freshDir "suppress-line"
-              let projectPath = writeFsproj dir "SuppressLine.fsproj"
-              writeFile dir "Source.fs" source |> ignore
+              let result =
+                  Validator.run
+                      { ProjectPath = projectPath
+                        ModulePattern = None
+                        ManifestPath = None
+                        Orchestrated = false }
+                  |> Async.RunSynchronously
 
-              let result = runValidator projectPath None
-
-              let dupes = result.Findings |> List.filter (fun f -> f.Code = "FUARAN001")
-
-              Expect.equal (List.length dupes) 1 "only the un-pragma'd call site still reports"
-              Expect.equal result.Suppressed 1 "exactly one finding suppressed"
+              Expect.equal (codes "FUARAN001" result.Findings).Length 1 "only the un-pragma'd site"
+              Expect.equal result.Suppressed 1 "exactly one suppressed"
           }
 
           test "a bare disable with no code suppresses nothing" {
-              let dir = freshDir "suppress-bare"
-              let projectPath = writeFsproj dir "SuppressBare.fsproj"
+              let result =
+                  run
+                      { setup [ "DuplicateInDashboard" ] with
+                          Prefix = "// fuaran-validator: disable\n" }
 
-              let source = "// fuaran-validator: disable\n" + duplicateNodeIdSource
-              writeFile dir "Source.fs" source |> ignore
-
-              let result = runValidator projectPath None
-
-              Expect.isTrue (hasCode "FUARAN001" result.Findings) "a codeless pragma is not a blanket disable"
-              Expect.equal result.Suppressed 0 "nothing was suppressed"
+              Expect.isTrue (hasCode "FUARAN001" result.Findings) "not a blanket disable"
+              Expect.equal result.Suppressed 0 "nothing suppressed"
           } ]
+
+// ─── The derived constructor surface ────────────────────────────────────────
+
+let private surface =
+    testList
+        "derived constructor surface"
+        [ test "the smart-constructor set is the Fuaran module's Node-returning functions" {
+              let names = AstWalker.SmartCtors.names
+
+              for ctor in
+                  [ "box"
+                    "stack"
+                    "dashboard"
+                    "metric"
+                    "button"
+                    "grid"
+                    "custom"
+                    "fragmentRef" ] do
+                  Expect.contains names ctor (sprintf "%s is recognised" ctor)
+
+              // Values of the module that are not constructors are not in it.
+              Expect.isFalse (names.Contains "buildNode") "private helpers are not constructors"
+          }
+
+          test "the tree-root set is the constructors that take a child node" {
+              let containers = AstWalker.SmartCtors.containers
+
+              for ctor in [ "box"; "stack"; "dashboard"; "card"; "tabs"; "errorBoundary" ] do
+                  Expect.contains containers ctor (sprintf "%s holds children" ctor)
+
+              for leaf in [ "metric"; "button"; "markdown"; "link"; "grid" ] do
+                  Expect.isFalse (containers.Contains leaf) (sprintf "%s is a leaf" leaf)
+          } ]
+
+[<Tests>]
+let tests =
+    testList "Fuaran.UI.Validator end-to-end" [ census; retired; parseOnce; behaviour; surface ]
