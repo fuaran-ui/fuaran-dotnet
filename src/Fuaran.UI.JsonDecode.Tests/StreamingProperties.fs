@@ -126,8 +126,9 @@ let private streamingChecks (tree: Node<obj>) : Result<unit, string> =
 
 // ─── Id uniquification ───────────────────────────────────────────────────────
 //
-// Re-label every structurally-reachable NodeId in pre-order so the §4g
-// id-uniqueness contract holds for the tree under test. Two purposes:
+// Re-label EVERY NodeId in the tree, in pre-order over the whole traversal
+// surface (`descendantNodes`), so the §4g id-uniqueness contract holds for the
+// tree under test. Two purposes:
 //   - the FsCheck generators fuzz value-spaces, not id-uniqueness;
 //   - a couple of curated corpus fixtures (e.g. `step-1.json`) reuse an id
 //     across subtrees — legal for a round-trip example (round-trip never
@@ -135,44 +136,32 @@ let private streamingChecks (tree: Node<obj>) : Result<unit, string> =
 //     correctly rejects the duplicate. Uniquifying first exercises the
 //     streaming *invariant* on the real corpus *structure* regardless of
 //     fixture id-hygiene.
-// The relabel walks `getChildren` — the structural-op surface — so nodes held
-// in NON-structural positions (State alternatives, ErrorBoundary slots, Switch
-// cases, fragment bodies, Custom interiors) keep their generated ids. That is
-// fine for THEM (`Apply`'s duplicate-id pre-check walks the *incoming* subtree
-// structurally, so a retained interior id never enters the probe as an
-// insert), but the EXISTING-id set the pre-check probes against is built over
-// the full traversal surface (`collectNodeIdsInto` / `descendantNodes`), which
-// DOES see those interiors. A fresh structural label that happens to equal a
-// retained interior id — FsCheck once minted a Chart id literally "n6" inside
-// an ErrorBoundary fallback's FragmentDecl body — therefore fails the replay
-// with DuplicateNodeId on a tree this relabel was meant to make legal. Fresh
-// ids must dodge every id already anywhere in the tree.
+//
+// The whole surface, not the structural spine (Phase 2038). This relabel once
+// walked `getChildren` only and left the ids held in non-structural positions
+// (State alternatives, the envelope fallback, ErrorBoundary arms, Switch cases,
+// fragment bodies, slot arguments) as generated. That was tolerated only while
+// the apply path probed an INCOMING subtree structurally: a generated tree
+// carrying the same id twice inside keyed positions — FsCheck minted "/" for an
+// `OnEmpty` FragmentDecl and again deeper in the tree — replayed "green" while
+// being an illegal §4g tree. The apply path now refuses an id repeated in a
+// keyed position on either side of a graft (Core's keyed engine), which is the
+// contract, so the property must hand it a legal tree: every position, every id.
 
 let private uniquifyIds (root: Node<obj>) : Node<obj> =
-    let retained = Introspect.allNodeIds root |> Set.ofList
     let mutable counter = 0
 
     let freshId () =
-        let mutable id = sprintf "n%d" counter
+        let id = sprintf "n%d" counter
         counter <- counter + 1
-
-        while Set.contains (NodeId id) retained do
-            id <- sprintf "n%d" counter
-            counter <- counter + 1
-
         id
 
     let rec go (node: Node<obj>) =
-        let id = freshId ()
+        let relabelled = { node with Id = freshId () }
 
-        match Introspect.getChildren node.Kind with
-        | Some children ->
-            let relabelled = children |> List.map go
-
-            match Introspect.withChildren node.Kind relabelled with
-            | Some newKind -> { node with Id = id; Kind = newKind }
-            | None -> { node with Id = id }
-        | None -> { node with Id = id }
+        Introspect.descendantNodes relabelled
+        |> List.map go
+        |> Introspect.replaceDescendantNodes relabelled
 
     go root
 
