@@ -71,7 +71,9 @@ let tests =
               // branchA's primary spine is branchA (AI, right pane) → a (human,
               // left pane): the left cells are human-pinned, the right are not.
               let pinned =
-                  DagOverlay.primaryPinnedCells recordAuthor getRecord None c.BranchA.Hash
+                  match DagOverlay.primaryPinnedCells recordAuthor getRecord None c.BranchA.Hash with
+                  | Ok cells -> cells
+                  | Error e -> failtestf "the spine walk failed: %A" e
 
               Expect.isTrue (pinned.Contains("left", "style.tone")) "left restyled by the human genesis"
               Expect.isFalse (pinned.Contains("right", "style.tone")) "right restyled by the AI branch"

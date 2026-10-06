@@ -794,8 +794,19 @@
          decided type is pinned at the chart checks. The surface guard reports
          NO public surface change on Fuaran.UI.Ops or Fuaran.UI against the
          v0.90.0 source. An UNTAGGED DRAFT: additive changes ride it, a breaking
-         change advances it. See STABILITY.md "0.91.0". -->
-    <Version>0.91.0</Version>
+         change advances it. See STABILITY.md "0.91.0".
+
+         0.91.0 IS NOW TAGGED - v0.91.0 - so nothing may ride it.
+
+         0.92.0 (2026-10-06) is opened by Phase 2043: the DAG tier's spine
+         walks share one walk and one record fold, so primacy attribution
+         reports a hole in the spine (DagPrimacy.cellAuthors / cellAuthorFn and
+         DagOverlay.primaryPinnedCells now return a Result) and guest interior
+         replay checks a merge node's outcome hash. Class BREAKING (source +
+         behaviour), and it ADVANCES because v0.91.0 is TAGGED. An UNTAGGED
+         DRAFT: a change of this class or lower rides it, a higher one advances
+         it. See STABILITY.md "0.92.0". -->
+    <Version>0.92.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
