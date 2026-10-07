@@ -7822,7 +7822,8 @@ document that declares no ceiling is exactly the control it was.
 
 _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,
 which reshapes the build-time walker's public modules (`AstWalker`, the per-check `check` entry points, the new
-`Syntax` module; `AccessibilityCheck` and `TabsCheck` removed); the CLI and `Validator.run` keep their contract.
+`Syntax` module; `AccessibilityCheck` and `TabsCheck` removed); the CLI and `Validator.run` keep their contract. Phase 2141 adds a BREAKING (behaviour) change to `Apply.apply`:
+three more ops are refused past the tree limits.
 `v0.92.0` was tagged and published at `9b53dfa` while
 commits numbered 0.92.0 were still landing after it: the embedded-renderer re-syncs for Phases 2077 and 2046
 (`6a2fcd5`, `09cdb97`; `Fuaran.UI.Renderer.Web` content only) and Phase 2044 (`bf13d1f`, moved here from the
@@ -7917,6 +7918,40 @@ defect vocabulary re-emits byte-identical, and `validator-coverage.json` is unto
   it fire. Four negative fixtures elsewhere in the repository carry `disable-next-line` pragmas for
   the repaired rules: the duplicate ids, a cycle, and a fragment name declared twice. The one dead
   pragma for the retired Tabs codes was removed.
+
+### What rides this slot — Phase 2141
+
+**Class: BREAKING (behaviour) + additive API.** No wire-format change; the corpus gains the
+`apply/limits-apply.json` family. The slot is already breaking; the class line names the behaviour change beside the Validator one.
+
+- **Behaviour: `Apply.apply` refuses, with `LimitExceeded`, an `EditNode`, `UpdateState` or `MoveNode`
+  whose result is past `WireLimits.MaxDepth` / `MaxNodes`.** Each was accepted before. A tree within
+  the limits is unaffected, and an op landing exactly at a limit still applies (pinned per op).
+  - `EditNode` can give a node a kind that holds children, and `UpdateState` can attach `onLoading` /
+    `onEmpty` subtrees. Both put nodes into the tree. The 0.76.0 entry above said they "rewrite in
+    place"; that was wrong.
+  - `MoveNode` adds no node, so the count cannot change, but depth can. A root over two branches each
+    `MaxDepth / 2` deep is legal; moving one branch under the other's leaf nests `MaxDepth + 1`
+    levels. The 0.76.0 entry's "to a depth the tree already passed" was wrong too, and `MoveNode` is
+    now checked for both figures.
+- **Which ops are checked is DERIVED, not listed.** An op is checked when `TreeOp.inserted` (below) is
+  non-empty, when it is a `MoveNode`, or when it is a `Batch` containing either. The derivation reads
+  NODES, not ids: a 30-deep chain whose every id is the same has one id and thirty levels, and an
+  id-set test (`footprint` less `targets`) would have waved it through. Pinned through `ReplaceRoot`
+  and through `EditNode`.
+- **Still exempt, with the reason in `Apply.opCanGrow`'s doc comment:** `UpdateProp`,
+  `ReplaceBinding` and `UpdateStyle` carry no node (`UpdateProp` refuses every node-valued field),
+  `RemoveNode` shrinks and `ReorderChildren` permutes. Each still applies to a tree already over a
+  limit.
+- **Additive API: `TreeOp.inserted : TreeOp<'Msg> -> Node<'Msg> list`** in `Fuaran.UI.Ops.Abstractions`,
+  beside `footprint`. It returns the subtree roots an op puts into the tree, in order: an inserted
+  child, a replacement root, the nodes a new kind holds, a new `state` block's alternatives, and a
+  `Batch`'s members' insertions. `footprint` now reads it, so the two cannot disagree about what an op
+  puts in. Its answers are unchanged for every case (pinned by the 2044 tests).
+- **Cross-host:** `fuaran-go`'s and `fuaran-rs`'s `ops` make the same refusals on the same inputs, and
+  all three certify against `apply/limits-apply.json`. The TypeScript and Python apply engines enforce
+  no apply-time limit; the corpus manifest records their adoption as `proposed`, and `SANITIZATION.md`
+  says so under "What is not claimed".
 
 ---
 

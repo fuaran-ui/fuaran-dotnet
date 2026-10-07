@@ -2606,19 +2606,30 @@ let rec private treeMetrics (node: Node<'Msg>) : int * int =
 /// True when an op can increase the tree's depth or node count, and therefore
 /// when its result needs checking.
 ///
-/// ONLY THE THREE GROWING OPS. `UpdateProp` / `ReplaceBinding` / `UpdateStyle` /
-/// `UpdateState` / `EditNode` rewrite a node in place and `RemoveNode` /
-/// `ReorderChildren` shrink or permute, so charging them a whole-tree walk would
-/// establish what their own semantics already guarantee. `MoveNode` is the one
-/// worth naming: it relocates a subtree and so CAN deepen the tree — but within
-/// a total count that cannot change, and to a depth bounded by the tree that
-/// already passed. A tree over the limit got there through an insert.
+/// DERIVED FROM WHAT THE OP PUTS IN (Phase 2141), not from a hand list. An op
+/// whose `TreeOp.inserted` is non-empty carries nodes into the tree and is
+/// checked: `InsertChild`, `ReplaceRoot`, an `EditNode` whose new kind holds
+/// children, an `UpdateState` attaching `onLoading` / `onEmpty`. The hand list
+/// this replaces named only the first two, and said the last two "rewrite a
+/// node in place" - they put whole subtrees in, and a stream of them grew a
+/// tree past both limits unchecked. The derivation reads NODES rather than
+/// ids, because a payload whose ids repeat has fewer ids than nodes.
+///
+/// `MoveNode` puts nothing in, so the count cannot change - but it IS checked,
+/// for depth. Relocating a subtree under a deep leaf stacks two depths that
+/// each passed: a root over two branches each half the limit deep is legal,
+/// and moving one branch under the other's leaf nests past `MaxDepth`. Depth is
+/// a property of placement, not of how many nodes there are.
+///
+/// Everything else is exempt, because it cannot grow the tree: `UpdateProp`,
+/// `ReplaceBinding` and `UpdateStyle` carry no node (`UpdateProp` refuses every
+/// node-valued field - children, an `ErrorBoundary`'s arms, a `Switch`'s cases),
+/// `RemoveNode` shrinks, and `ReorderChildren` permutes children in place.
 let rec private opCanGrow (op: TreeOp<'Msg>) : bool =
     match op with
-    | TreeOp.InsertChild _
-    | TreeOp.ReplaceRoot _ -> true
+    | TreeOp.MoveNode _ -> true
     | TreeOp.Batch inner -> inner |> List.exists opCanGrow
-    | _ -> false
+    | _ -> not (List.isEmpty (Fuaran.UI.Ops.TreeOp.inserted op))
 
 let private limitExceeded (message: string) : ApplyError =
     { Code = ApplyErrorCode.LimitExceeded

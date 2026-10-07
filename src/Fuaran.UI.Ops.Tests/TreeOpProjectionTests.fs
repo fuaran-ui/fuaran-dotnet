@@ -22,6 +22,8 @@ let private nn (value: 'T) : obj = box value |> Unchecked.nonNull
 
 let private leaf (id: string) : Node<Msg> = Fuaran.markdown id $"body of {id}"
 
+let private rootIds (nodes: Node<Msg> list) : string list = nodes |> List.map _.Id
+
 let private ids (raw: string list) : Set<NodeId> = raw |> List.map NodeId |> Set.ofList
 
 /// A subtree holding a node in an ordered list, a `Switch` case, a `Switch`
@@ -159,4 +161,62 @@ let tests =
                   ))
                   (ids [ "p"; "c"; "k" ])
                   "members unioned"
+          }
+
+          // Phase 2141 — `inserted`, the nodes an op puts in.
+          test "inserted names the subtree roots each op puts into the tree" {
+              let state: StateBehaviour<Msg> =
+                  { OnLoading = Some(leaf "loading")
+                    OnEmpty = Some(leaf "empty")
+                    OnError = None }
+
+              Expect.equal (rootIds (TreeOp.inserted (TreeOp.InsertChild(NodeId "p", leaf "c")))) [ "c" ] "the child"
+              Expect.equal (rootIds (TreeOp.inserted (TreeOp.ReplaceRoot(leaf "r")))) [ "r" ] "the new root"
+
+              Expect.equal
+                  (rootIds (TreeOp.inserted (TreeOp.UpdateState(NodeId "k", state))))
+                  [ "loading"; "empty" ]
+                  "both alternatives, in order"
+
+              Expect.equal
+                  (rootIds (TreeOp.inserted (TreeOp.EditNode(NodeId "k", deepSubtree.Kind))))
+                  (rootIds (NodeChildren.children NodeChildren.Reach.keyed deepSubtree))
+                  "the nodes the new kind holds"
+
+              let batch =
+                  TreeOp.Batch [ TreeOp.InsertChild(NodeId "p", leaf "a"); TreeOp.ReplaceRoot(leaf "b") ]
+
+              Expect.equal (rootIds (TreeOp.inserted batch)) [ "a"; "b" ] "members, in order"
+          }
+
+          test "inserted is empty for every op that carries no node" {
+              let ops: TreeOp<Msg> list =
+                  [ TreeOp.EditNode(NodeId "k", (leaf "x").Kind)
+                    TreeOp.UpdateProp(NodeId "k", "Label", PropValue.Native(nn "y"))
+                    TreeOp.ReplaceBinding(NodeId "k", "Source", Binding.Static(Some(nn 2.0)))
+                    TreeOp.UpdateStyle(NodeId "k", Defaults.style)
+                    TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>)
+                    TreeOp.RemoveNode(NodeId "k")
+                    TreeOp.MoveNode(NodeId "k", NodeId "p")
+                    TreeOp.ReorderChildren(NodeId "p", [ NodeId "b"; NodeId "a" ]) ]
+
+              for op in ops do
+                  Expect.isEmpty (TreeOp.inserted op) (sprintf "%A" op)
+          }
+
+          test "inserted counts nodes where repeated ids would collapse the footprint" {
+              let twice =
+                  Fuaran.stack
+                      "x"
+                      { Defaults.stack<Msg> with
+                          Children = [ leaf "x" ] }
+
+              let op = TreeOp.ReplaceRoot twice
+              Expect.equal (TreeOp.footprint op) (ids [ "x" ]) "the id set collapses to the target"
+              Expect.equal (rootIds (TreeOp.inserted op)) [ "x" ] "the node list keeps its one root"
+
+              Expect.equal
+                  (List.length (NodeChildren.children NodeChildren.Reach.keyed twice))
+                  1
+                  "and that root holds a second node"
           } ]
