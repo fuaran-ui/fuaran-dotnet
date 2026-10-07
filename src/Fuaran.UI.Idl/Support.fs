@@ -1022,3 +1022,22 @@ let rec canonicaliseVector (v: IdlValue) : IdlValue =
     // Every remaining case is a leaf (scalars, closures, raw JSON, opaque
     // markers): nothing to recurse into, nothing cross-field to rewrite.
     | _ -> v
+
+/// Phase 2039 — the structural derivations the generated layer carries
+/// (`Gen.fsharpModuleDerived`, fuaran-core#374): the members that follow
+/// mechanically from the vocabulary and that the tier's consumers would
+/// otherwise write by hand. Each request names what it replaces.
+///
+/// Two requests are deliberately ABSENT, because the generator refuses them for
+/// this vocabulary rather than because nothing wants them: `MapMsg` (the
+/// `Switch` kind is a host projection whose record the generator cannot
+/// construct, and a projection carries no map member — `NodeMap.mapMsg` stays
+/// hand-written until it can), and a `Projections` over `FormFieldKind` (its
+/// cases declare `value` and their handler at different types and names, so no
+/// single accessor type exists).
+let derivations: Gen.Derivation list =
+    [
+      // `wireTag` / `allWireTags` / `children` / `withChildren`, with
+      // `nodeWitness` built on them — the wire-tag enumeration and the
+      // DataGrid tag adaptation read these instead of a hand list.
+      Gen.Derivation.StructuralAccess ]

@@ -143,7 +143,17 @@ let private reportProfileStep (committed: string) (rendered: string) =
 let private generatedModule = "Fuaran.UI.Generated"
 
 let private emit (support: Gen.GenSupport) (idl: Idl) =
-    match Gen.fsharpModuleWith support generatedModule idl (idl.Kinds |> List.map _.Tag) with
+    // Phase 2039 — with the declared structural derivations appended
+    // (`VocabularySupport.derivations`); an empty list is `fsharpModuleWith`
+    // byte for byte.
+    match
+        Gen.fsharpModuleDerived
+            support
+            Fuaran.UI.VocabularySupport.derivations
+            generatedModule
+            idl
+            (idl.Kinds |> List.map _.Tag)
+    with
     | Ok s -> s
     | Error e -> failtestf "codegen rejected the UI vocabulary: %A" e
 

@@ -1198,74 +1198,21 @@ let all: FidelityRow list =
 /// The canonical wire-kind enumeration this table declares a posture for — the
 /// `kind.$type` vocabulary of WIRE_FORMAT.md 3.2, Ordinal-sorted.
 ///
-/// This is the completeness seam, and it is deliberately a pinned list rather
-/// than a derivation: `NodeKind` cannot be enumerated without reflection, which
-/// Fable does not support (the same constraint that makes `SchemaGen` and
-/// `JsonDecode` hand-written mirrors). It does not drift silently, because the
-/// completeness test measures it against the GENERATED `manifest.json` `kinds`
-/// array — which is itself derived from the encoded corpus fixtures. So a new
-/// `NodeKind` that follows the WIRE_FORMAT 11 forward-coupling rule (encoder,
-/// decoder, corpus, schema in one change) lands in the manifest, and the test
-/// then fails until this list and a row above are added.
-let wireKindNames: string list =
-    [ "Badge"
-      "Box"
-      "Button"
-      "Callout"
-      "Chart"
-      "CodeBlock"
-      "Custom"
-      "DataGrid"
-      "Disclosure"
-      "Drawing"
-      "Embed"
-      "ErrorBoundary"
-      "Fact"
-      "FileUpload"
-      "Filters"
-      "Form"
-      "FragmentDecl"
-      "FragmentRef"
-      "Heading"
-      "Icon"
-      "Image"
-      "LabelValueRow"
-      "Link"
-      "List"
-      "Map"
-      "Markdown"
-      "Math"
-      "Media"
-      "Metric"
-      "Modal"
-      "Mount"
-      "Progress"
-      "ScrollArea"
-      "Select"
-      "Skeleton"
-      "Sparkline"
-      "SplitPanel"
-      "Stepper"
-      "SummaryList"
-      "Switch"
-      "Tabs"
-      "Toast"
-      "Tree" ]
+/// Phase 2039 — GENERATED, not pinned: `Generated.allWireTags` is emitted from
+/// the same IDL the encoder and decoder are, so a new `NodeKind` reaches this
+/// list in the regeneration that admits it. The completeness test still measures
+/// it against the corpus's `manifest.json` `kinds` array and fails until the new
+/// kind has a row above.
+let wireKindNames: string list = Generated.allWireTags
 
 /// The wire discriminator of a node's kind — the token this table is keyed by.
 ///
 /// `Kind.name` is the KIND-CONSTRAINT vocabulary, which coincides with the wire
 /// token for every kind but one: `NodeKind.DataGrid` tags as `"Grid"` there and
-/// `"DataGrid"` on the wire. This is the same adaptation
-/// `Fuaran.UI.Renderer.Relay.wireKindName` performs at the relay boundary, for
-/// the same reason (moving `Kind.name` would break every published
-/// `kindConstraint`), and `RelayTests.fs` pins the mapping against the canonical
-/// encoder so a SECOND divergence fails the build rather than silently
-/// mis-keying this table.
-let wireNameOf (kind: NodeKind<'Msg>) : string =
-    match kind with
-    | NodeKind.DataGrid _ -> "DataGrid"
-    | other -> Kind.name other
+/// `"DataGrid"` on the wire (moving `Kind.name` would break every published
+/// `kindConstraint`). Phase 2039 — this is `KindPolicy.wireKindName`, which reads
+/// the generated tag the encoder writes.
+let wireNameOf (kind: NodeKind<'Msg>) : string = KindPolicy.wireKindName kind
 
 /// The declared posture of a wire kind, or `None` for a kind with no row (which
 /// the completeness test makes impossible for a canonical kind, and which is the

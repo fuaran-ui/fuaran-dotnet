@@ -488,11 +488,11 @@ let private knownEvents = [ "tree" ]
 // vocabulary that is not the relay's to move — and a test pins the mapping
 // against the canonical encoder, so a SECOND divergence is a failing build
 // rather than a silently mis-reported kind.
+//
+// Phase 2039 — the adaptation is no longer written here: it is
+// `KindPolicy.wireKindName`, which reads the generated tag the encoder writes.
 
-let wireKindName (kind: NodeKind<'Msg>) : string =
-    match kind with
-    | NodeKind.DataGrid _ -> "DataGrid"
-    | other -> DebugGlobal.kindName other
+let wireKindName (kind: NodeKind<'Msg>) : string = Fuaran.UI.KindPolicy.wireKindName kind
 
 /// `DebugGlobal.introspectNode` with the wire discriminator. The traversal is
 /// DebugGlobal's — only the kind projection differs.

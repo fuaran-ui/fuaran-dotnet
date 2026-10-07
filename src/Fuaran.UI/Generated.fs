@@ -4498,7 +4498,8 @@ and private decI18nArg (j: JVal) : Result<Binding<JVal>, string> =
 let decodeNode (s: string) : Result<Node<obj>, DecodeError> =
     Decoder.parse s |> Result.bind decNode
 
-let private witnessKindTag (n: Node<'Msg>) : string =
+/// The kind's wire tag — the discriminator it is encoded under.
+let wireTag (n: Node<'Msg>) : string =
     match n.Kind with
     | NodeKind.Badge _ -> "Badge"
     | NodeKind.Box _ -> "Box"
@@ -4544,7 +4545,11 @@ let private witnessKindTag (n: Node<'Msg>) : string =
     | NodeKind.Toast _ -> "Toast"
     | NodeKind.Tree _ -> "Tree"
 
-let private witnessChildren (n: Node<'Msg>) : Node<'Msg> list =
+/// Every wire tag this module's kinds are encoded under, in declaration order.
+let allWireTags: string list = [ "Badge"; "Box"; "Button"; "Callout"; "Chart"; "CodeBlock"; "Custom"; "DataGrid"; "Disclosure"; "Drawing"; "Embed"; "ErrorBoundary"; "Fact"; "FileUpload"; "Filters"; "Form"; "FragmentDecl"; "FragmentRef"; "Heading"; "Icon"; "Image"; "LabelValueRow"; "Link"; "List"; "Map"; "Markdown"; "Math"; "Media"; "Metric"; "Modal"; "Mount"; "Progress"; "ScrollArea"; "Select"; "Skeleton"; "Sparkline"; "SplitPanel"; "Stepper"; "SummaryList"; "Switch"; "Tabs"; "Toast"; "Tree" ]
+
+/// The node's ordered structural children, in field order.
+let children (n: Node<'Msg>) : Node<'Msg> list =
     match n.Kind with
     | NodeKind.Box s -> s.Children
     | NodeKind.Disclosure s -> s.Children
@@ -4559,7 +4564,8 @@ let private witnessChildren (n: Node<'Msg>) : Node<'Msg> list =
     | NodeKind.Tabs s -> s.Children
     | _ -> []
 
-let private witnessReplaceChildren (n: Node<'Msg>) (kids: Node<'Msg> list) : Node<'Msg> =
+/// The node with exactly this structural child list, its id and kind kept.
+let withChildren (kids: Node<'Msg> list) (n: Node<'Msg>) : Node<'Msg> =
     match n.Kind with
     | NodeKind.Box s -> { n with Kind = NodeKind.Box { s with Children = kids } }
     | NodeKind.Disclosure s -> { n with Kind = NodeKind.Disclosure { s with Children = kids } }
@@ -4576,9 +4582,9 @@ let private witnessReplaceChildren (n: Node<'Msg>) (kids: Node<'Msg> list) : Nod
 
 let nodeWitness: NodeWitness<Node<'Msg>, string> =
     { Id = fun n -> n.Id
-      KindTag = witnessKindTag
-      Children = witnessChildren
-      ReplaceChildren = witnessReplaceChildren }
+      KindTag = wireTag
+      Children = children
+      ReplaceChildren = fun n kids -> withChildren kids n }
 
 // Validator scaffold — register domain RuleFamilies into `reg`; rule content stays domain-side.
 let runValidator (reg: Validator.Registry<Node<'Msg>, string>) (root: Node<'Msg>) : Defect<string> list =
