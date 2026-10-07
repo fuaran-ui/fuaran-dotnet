@@ -165,6 +165,8 @@
     <PackageVersion Include="Fuaran.Core.Query" Version="0.35.2" />
     <PackageVersion Include="Fuaran.Core.Projection" Version="0.35.2" />
     <PackageVersion Include="Fuaran.Core.AiSurface" Version="0.35.2" />
+    <!-- Fuaran.Core.ContentAddress - first shipped at 0.35.2 (fuaran-core Phase 382); test-only, for tests/core-fable, pinned with the rest of the cohort from Phase 2039's raise. -->
+    <PackageVersion Include="Fuaran.Core.ContentAddress" Version="0.35.2" />
     <PackageVersion Include="Fuaran.Compute.ColumnOps" Version="$(FuaranCoreComputeVersion)" />
     <!-- Test-only, for tests/core-fable: the fourth package the compute producer ships (from 0.36.0),
          which Fuaran.Compute.Conformance references. No shipped Fuaran.UI.* package references it. -->
