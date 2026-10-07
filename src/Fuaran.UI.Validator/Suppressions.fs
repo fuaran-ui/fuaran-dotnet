@@ -21,7 +21,7 @@ module Fuaran.UI.Validator.Suppressions
 //      wherever the comment appears (convention: near the top, beside the
 //      module's doc comment, so a reader meets it before the fixtures).
 //
-//    // fuaran-validator: disable-next-line FUARAN047
+//    // fuaran-validator: disable-next-line FUARAN001
 //
 //      Suppresses the listed codes on the FOLLOWING source line only — the
 //      precise form, for a single exceptional call site in a file that should

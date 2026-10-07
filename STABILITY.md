@@ -7818,7 +7818,109 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.92.0 — the slot Phases 2038 and 2043 open: one answer to what a node's children are, and one spine walk for the DAG tier (DRAFT — untagged)
+## 0.93.0 — the slot opened after v0.92.0 was released (DRAFT — untagged)
+
+_Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,
+which reshapes the build-time walker's public modules (`AstWalker`, the per-check `check` entry points, the new
+`Syntax` module; `AccessibilityCheck` and `TabsCheck` removed); the CLI and `Validator.run` keep their contract.
+`v0.92.0` was tagged and published at `9b53dfa` while
+commits numbered 0.92.0 were still landing after it: the embedded-renderer re-syncs for Phases 2077 and 2046
+(`6a2fcd5`, `09cdb97`; `Fuaran.UI.Renderer.Web` content only) and Phase 2044 (`bf13d1f`, moved here from the
+0.92.0 entry, where it was recorded before the tag was seen). A released version names one contract, so
+everything after the tag rides this number (version cut recorded on the ledger, 2026-10-07)._
+
+### What rides this slot — the embedded-renderer re-syncs
+
+- **`Fuaran.UI.Renderer.Web` re-embeds the `@fuaran-ui/renderer` standalone bundle** for fuaran-ts Phases 2077
+  and 2046 (renderer 0.27.0). Content only; no .NET surface changes.
+
+### What rides this slot — Phase 2044
+
+- **`Fuaran.UI.Ops.TreeOp` gains `kindName`, `targets` and `footprint` (fuaran#2044) — additive.** A new
+  module in `Fuaran.UI.Ops.Abstractions` (namespace `Fuaran.UI.Ops`, beside the `TreeOp` type): the op's
+  case name, the ids it addresses (in order, each once), and every id it touches — its targets, every id
+  of a subtree it puts into the tree (an inserted child, a replacement root, the nodes a new kind or a new
+  `state` block holds, read through `NodeChildren` at its `keyed` reach), and a reorder's `newOrder`.
+- **Behaviour fix, pinned by a test that failed before it:** `BatchAccept.dependencyClosure` keys on the
+  footprint, so an op on a node INSIDE an inserted subtree now pulls the insert into the closure. Before,
+  `[InsertChild(root, Stack a [b]); UpdateStyle(b, …)]` with only the second selected kept the second
+  alone, and the kept batch failed to apply. The closure is now one reverse pass over the list rather
+  than a fixpoint over pairwise intersections; an index outside the list is returned as given rather
+  than raising.
+- **Unchanged, each pinned per case:** `ErrorRender`'s `kind` token, `Audit.opKindName`,
+  `Audit.referencedIds` and `OpApplyTelemetry.topLevelNodeId` now project from the three and answer
+  exactly what their own matches did.
+
+### What rides this slot — Phase 2053
+
+`Fuaran.UI.Validator`, the build-time source walker. **Class: BREAKING (API + behaviour)**. It raises
+this slot from additive (see the class line above). No wire-format, corpus or tree-time change. The
+defect vocabulary re-emits byte-identical, and `validator-coverage.json` is untouched.
+
+- **Each source is parsed once.** `Validator.run` used to parse every file eleven times, once per
+  check. Each parse also re-derived a script project's options. It now parses each file once, and
+  every check is a visitor over that one list. On this repository, running the validator in-process
+  over the 76 projects `Validate` walks (705 files) took 110–131 s before and 12–17 s after.
+  Running one process per project, as the `Validate` target does, took 280 s before and 200 s after;
+  process start-up is most of what remains.
+- **BREAKING (API).** `AstWalker` keeps `FuaranCall` and the call-site model, plus
+  `AstWalker.calls : ParsedSource list -> FuaranCall list` and the derived `AstWalker.SmartCtors`
+  sets. Everything else changed shape:
+  - `walkFile`, `parseTree` and `discoverSourceFiles` move to the new `Syntax` module as
+    `Syntax.parser`, `Syntax.parseSources` and `Syntax.discoverSourceFiles`.
+  - `FuaranCall.A11yDetail` and `TabsDetail` are removed. `ButtonDetail` replaces the one field
+    of `A11yDetail` a live rule still read.
+  - Each check's `checkSources (checker) (files) : Async<Finding list>` becomes a synchronous
+    `check (sources)`.
+  - `AccessibilityCheck` and `TabsCheck` are deleted.
+  - `Validator.runWith (parse) (options)` is added, so a caller can supply, and count, the parser.
+  - `ManifestEmitter.derive` keeps its signature.
+
+  The CLI and `Validator.run` keep their signatures and contract.
+- **Constructor and tree-root sets are derived, not listed.** They are read from the `Fuaran`
+  module by reflection: 68 constructors, of which 18 take a child node. The hand lists named 19
+  constructors (CustomHealthCheck kept a second list of 29), and the only tree root was
+  `dashboard`.
+- **Code meanings, old → new.** A consumer that matches on a code in the "behaviour" rows below
+  does not break, because the code and its meaning are unchanged; it may see the code where it saw
+  nothing before. A consumer that matches on a retired code stops seeing it from the walker.
+  - `FUARAN001` (behaviour). A tree is now the subtree under any outermost constructor that takes
+    a child node (`box`, `stack`, `card`, `dashboard`, …), not only `dashboard`, so duplicates
+    under `Fuaran.box` are reported. A nested container no longer opens a scope of its own. A
+    one-argument root call no longer leaves its tree open for the rest of the file.
+  - `FUARAN002` (behaviour). It fires more often, for the same reason as `FUARAN001`.
+  - `FUARAN010` and `FUARAN020` (behaviour). A reference is reported once. Before, it was reported
+    once per enclosing `Fuaran.X` call.
+  - Repaired to the current types. These rules could not fire on source that compiles, and now
+    they can:
+    - `FUARAN030` / `031`: the row type is read from `Fuaran.grid`'s `toRow` parameter.
+    - `FUARAN044`: the smart constructors that lower to Text, Number and RangedNumber now host
+      a local binding.
+    - `FUARAN045`, `FUARAN051`, `FUARAN063` (`linkSpec`) and `FUARAN064`: static values are read
+      as `Binding.Static (Some x)` or `binding.``static`` x`, and `FUARAN051`'s bounds as
+      positional `float option` arguments.
+    - `FUARAN053`, `FUARAN055` and `FUARAN062`: the `NodeKind.Custom { … }` record form is read.
+    - `FUARAN056` / `057` / `058`: fragment names are read as plain strings. Before, every
+      reference was reported unresolved and duplicates and cycles were never found.
+    - `FUARAN065`: defaults are read as `Scalar` values.
+  - `FUARAN030` without a manifest (behaviour). It is now silent, matching the `FUARAN900`
+    message's promise.
+  - `FUARAN040` → retired. It is an alias of the tree-time `FUARAN109`.
+  - `FUARAN041` → withdrawn, with no replacement. No validator checks a Warning / Critical
+    callout that opts out of its live region. The gap is open.
+  - `FUARAN047` / `048` / `049` → no longer emitted by the walker. The tree-time rules under the
+    same codes are unchanged.
+
+  `docs/ERROR_CODES.md` §4 now enumerates the walker's codes and the retired ones.
+- **Tests run on compiled snippets.** Every source the validator's suite checks is a compile item
+  of the test project. A census test fails when the walker emits a code with no snippet that makes
+  it fire. Four negative fixtures elsewhere in the repository carry `disable-next-line` pragmas for
+  the repaired rules: the duplicate ids, a cycle, and a fragment name declared twice. The one dead
+  pragma for the retired Tabs codes was removed.
+
+---
+
+## 0.92.0 — the slot Phases 2038 and 2043 open: one answer to what a node's children are, and one spine walk for the DAG tier (RELEASED — tagged v0.92.0 at 9b53dfa, 2026-10-06)
 
 _Class: **BREAKING (API + source + behaviour)** — Phase 2038 removes one public function and Phase 2043 changes
 three public signatures on `Fuaran.UI.OpStream.Dag.Merge` / `.Dag.Inspect`. `v0.91.0` is tagged, so nothing may
@@ -8013,23 +8115,6 @@ below this slot's class, so it rides the draft. No public record gains a field: 
   and the walk's accumulators (`CrossTreeRules`, run in report order). The `(Phase NNN)` provenance
   tags the moved rule comments carried are now the code table's `Notes`; the comments keep their
   rationale.
-
-### What rides this slot — Phase 2044
-
-- **`Fuaran.UI.Ops.TreeOp` gains `kindName`, `targets` and `footprint` (fuaran#2044) — additive.** A new
-  module in `Fuaran.UI.Ops.Abstractions` (namespace `Fuaran.UI.Ops`, beside the `TreeOp` type): the op's
-  case name, the ids it addresses (in order, each once), and every id it touches — its targets, every id
-  of a subtree it puts into the tree (an inserted child, a replacement root, the nodes a new kind or a new
-  `state` block holds, read through `NodeChildren` at its `keyed` reach), and a reorder's `newOrder`.
-- **Behaviour fix, pinned by a test that failed before it:** `BatchAccept.dependencyClosure` keys on the
-  footprint, so an op on a node INSIDE an inserted subtree now pulls the insert into the closure. Before,
-  `[InsertChild(root, Stack a [b]); UpdateStyle(b, …)]` with only the second selected kept the second
-  alone, and the kept batch failed to apply. The closure is now one reverse pass over the list rather
-  than a fixpoint over pairwise intersections; an index outside the list is returned as given rather
-  than raising.
-- **Unchanged, each pinned per case:** `ErrorRender`'s `kind` token, `Audit.opKindName`,
-  `Audit.referencedIds` and `OpApplyTelemetry.topLevelNodeId` now project from the three and answer
-  exactly what their own matches did.
 
 ---
 

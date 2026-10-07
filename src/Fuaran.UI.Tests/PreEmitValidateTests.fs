@@ -16,11 +16,8 @@ open FSharp.Reflection
 //
 //  Every tree below is a NEGATIVE fixture: the malformed tabs shape IS the
 //  test input, constructed so `validate` can be asserted to report it. The
-//  build-time validator sees the same defect at the same source and is
-//  correct to — so the two tab-shape codes are suppressed for this file.
-//  Narrowing this to the individual call sites would need a pragma per
-//  fixture and would rot as tests are added; the whole file is fixtures.
-// fuaran-validator: disable FUARAN047, FUARAN048 — negative-test fixtures
+//  tab-shape rules live here alone: the build-time walker stopped restating
+//  them (Phase 2053), so this file carries no suppression pragma.
 // ============================================================================
 
 type private Msg = NoOp

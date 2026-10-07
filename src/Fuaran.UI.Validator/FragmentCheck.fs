@@ -36,70 +36,10 @@ module Fuaran.UI.Validator.FragmentCheck
 //  the corresponding rule silently skips that call site.
 // ============================================================================
 
-open System.IO
-open FSharp.Compiler.CodeAnalysis
+
 open FSharp.Compiler.Syntax
-open FSharp.Compiler.Text
 open Fuaran.UI.Validator.Findings
-
-let private mkLocation (file: string) (range: range) : Location =
-    { File = file
-      Line = range.StartLine
-      Column = range.StartColumn + 1 }
-
-let private constStringValue (c: SynConst) =
-    match c with
-    | SynConst.String(text = s) -> Some s
-    | _ -> None
-
-let private literalStringExpr (expr: SynExpr) : string option =
-    let rec inner (e: SynExpr) =
-        match e with
-        | SynExpr.Const(constant = c) -> constStringValue c
-        | SynExpr.Paren(expr = e') -> inner e'
-        | SynExpr.Typed(expr = e') -> inner e'
-        | _ -> None
-
-    inner expr
-
-let private leafIdent (expr: SynExpr) : (string list * string) option =
-    match expr with
-    | SynExpr.LongIdent(longDotId = SynLongIdent(id = ids)) when not ids.IsEmpty ->
-        let names = AstWalker.identNames ids
-        let leaf = List.last names
-        let prefix = names |> List.take (names.Length - 1)
-        Some(prefix, leaf)
-    | SynExpr.Ident i -> Some([], i.idText)
-    | _ -> None
-
-let private (|FuaranCall|_|) (expectedLeaf: string) (expr: SynExpr) : unit option =
-    match leafIdent expr with
-    | Some(prefix, leaf) when leaf = expectedLeaf && not prefix.IsEmpty && List.last prefix = "Fuaran" -> Some()
-    | _ -> None
-
-let private flattenApp (expr: SynExpr) : SynExpr * SynExpr list =
-    let rec loop acc =
-        function
-        | SynExpr.App(funcExpr = f; argExpr = a) -> loop (a :: acc) f
-        | head -> head, acc
-
-    loop [] expr
-
-/// Extract the literal `name` from a `FragmentId "name"` expression in a
-/// record body (the `Name = FragmentId "..."` shape). Returns `None` for
-/// any non-literal shape (computed name, bound variable, etc.).
-let private fragmentIdLiteral (expr: SynExpr) : string option =
-    let rec inner (e: SynExpr) =
-        match e with
-        | SynExpr.Paren(expr = e') -> inner e'
-        | SynExpr.Typed(expr = e') -> inner e'
-        | SynExpr.App(funcExpr = head; argExpr = arg) ->
-            match leafIdent head with
-            | Some(_, "FragmentId") -> literalStringExpr arg
-            | _ -> None
-        | _ -> None
-
-    inner expr
+open Fuaran.UI.Validator.Syntax
 
 // ─── Parameterised-fragment hole parsing (Phase 180) ──────────────────────
 //
@@ -154,7 +94,7 @@ let private (|HoleDeclCase|_|) (expr: SynExpr) : (string * SynExpr list) option 
     let head, args = flattenApp expr
 
     match leafIdent head, args with
-    | Some(prefix, leaf), [ singleArg ] when
+    | Some(prefix, leaf, _), [ singleArg ] when
         (leaf = "Value" || leaf = "Slot" || leaf = "Repeat")
         && not prefix.IsEmpty
         && List.last prefix = "HoleDecl"
@@ -196,7 +136,7 @@ let private parseSpace (expr: SynExpr) : SpaceInfo =
     let head, args = flattenApp expr
 
     match leafIdent head with
-    | Some(prefix, leaf) when not prefix.IsEmpty && List.last prefix = "HoleValueSpace" ->
+    | Some(prefix, leaf, _) when not prefix.IsEmpty && List.last prefix = "HoleValueSpace" ->
         let elems =
             match args with
             | [ single ] ->
@@ -237,7 +177,7 @@ let private parseSpace (expr: SynExpr) : SpaceInfo =
 
             match listElems listExpr with
             | Some es ->
-                let lits = es |> List.choose literalStringExpr
+                let lits = es |> List.choose literalString
 
                 if lits.Length = es.Length then
                     EnumSpace lits
@@ -252,23 +192,20 @@ let private parseSpace (expr: SynExpr) : SpaceInfo =
 /// or `None`. Returns `None` for no-default; `Some UnknownLit` when a default is
 /// present but its literal can't be read.
 let private parseDefault (expr: SynExpr) : DefaultLit option =
-    let rec unwrap (e: SynExpr) =
-        match e with
-        | SynExpr.Paren(expr = e') -> unwrap e'
-        | SynExpr.Typed(expr = e') -> unwrap e'
-        | _ -> e
-
     match unwrap expr with
     | SynExpr.Ident i when i.idText = "None" -> None
     | SynExpr.App(funcExpr = head; argExpr = arg) ->
         match leafIdent head with
-        | Some(_, "Some") ->
-            // Dig through an optional `box`.
+        | Some(_, "Some", _) ->
+            // The default is a `Scalar`: dig through its case constructor.
             let rec lit (e: SynExpr) =
                 match unwrap e with
                 | SynExpr.App(funcExpr = h; argExpr = a) ->
                     match leafIdent h with
-                    | Some(_, "box") -> lit a
+                    | Some(prefix, ("Int" | "Float" | "Bool" | "Str"), _) when
+                        not prefix.IsEmpty && List.last prefix = "Scalar"
+                        ->
+                        lit a
                     | _ -> UnknownLit
                 | SynExpr.Const(constant = SynConst.Int32 n) -> IntLit n
                 | SynExpr.Const(constant = SynConst.Double f) -> FloatLit f
@@ -288,7 +225,7 @@ let private parseHole (file: string) (expr: SynExpr) : HoleInfo option =
         match leaf, elems with
         | "Value", (nameE :: spaceE :: rest) ->
             { Case = "Value"
-              Name = literalStringExpr nameE
+              Name = literalString nameE
               Space = Some(parseSpace spaceE)
               Default =
                 (match rest with
@@ -298,14 +235,14 @@ let private parseHole (file: string) (expr: SynExpr) : HoleInfo option =
             |> Some
         | "Slot", (nameE :: _) ->
             { Case = "Slot"
-              Name = literalStringExpr nameE
+              Name = literalString nameE
               Space = None
               Default = None
               Location = loc }
             |> Some
         | "Repeat", (nameE :: spaceE :: _) ->
             { Case = "Repeat"
-              Name = literalStringExpr nameE
+              Name = literalString nameE
               Space = Some(parseSpace spaceE)
               Default = None
               Location = loc }
@@ -327,13 +264,8 @@ type private RefCall =
     { Name: string option
       RefLocation: Location }
 
-type private WalkState =
-    { File: string
-      mutable Decls: DeclCall list
-      mutable Refs: RefCall list }
-
 let private extractDeclSpec (file: string) (specExpr: SynExpr) : string option * SynExpr option * HoleInfo list =
-    // Recognise `{ Name = FragmentId "..."; Body = <expr>; Holes = [...]; ... }`
+    // Recognise `{ Name = "..."; Body = <expr>; Holes = [...]; ... }`
     // record shape. Returns (literal-name, body-expr, parsed-holes). Authors
     // using `{ Defaults.fragmentDecl with Name = ... }` are handled — record
     // copy syntax `{ original with Field = value; ... }` parses as
@@ -351,7 +283,7 @@ let private extractDeclSpec (file: string) (specExpr: SynExpr) : string option *
                 let leaf = if List.isEmpty ids then "" else (List.last ids).idText
 
                 match leaf, valueExpr with
-                | "Name", Some v -> nameLit <- fragmentIdLiteral v
+                | "Name", Some v -> nameLit <- literalString v
                 | "Body", Some v -> bodyExpr <- Some v
                 | "Holes", Some v ->
                     let rec listElems (le: SynExpr) =
@@ -376,165 +308,56 @@ let private extractDeclSpec (file: string) (specExpr: SynExpr) : string option *
 
     inner specExpr
 
-let rec private walkExpr (state: WalkState) (expr: SynExpr) =
-    let head, args = flattenApp expr
 
-    match head, args with
-    | FuaranCall "fragmentDecl", [ _idArg; specArg ] ->
-        let nameLit, bodyExpr, holes = extractDeclSpec state.File specArg
+/// `Fuaran.fragmentDecl "id" spec` sites (walking on into the decl's body) and
+/// `Fuaran.fragmentRef "id" "name"` sites.
+let private scan (sources: ParsedSource list) : DeclCall list * RefCall list =
+    let decls = ResizeArray<DeclCall>()
+    let refs = ResizeArray<RefCall>()
 
-        state.Decls <-
-            { Name = nameLit
-              DeclLocation = mkLocation state.File head.Range
-              BodyExpr = bodyExpr
-              Holes = holes }
-            :: state.Decls
+    for source in sources do
+        let rec visit (expr: SynExpr) =
+            let head, args = flattenApp expr
 
-        bodyExpr |> Option.iter (walkExpr state)
-    | FuaranCall "fragmentRef", [ _idArg; nameArg ] ->
-        let nameLit = literalStringExpr nameArg
+            match args with
+            | [ _; specArg ] when isQualified "Fuaran" "fragmentDecl" head ->
+                let nameLit, bodyExpr, holes = extractDeclSpec source.File specArg
 
-        state.Refs <-
-            { Name = nameLit
-              RefLocation = mkLocation state.File head.Range }
-            :: state.Refs
-    | _ -> descend state expr
+                decls.Add
+                    { Name = nameLit
+                      DeclLocation = mkLocation source.File head.Range
+                      BodyExpr = bodyExpr
+                      Holes = holes }
 
-and private descend (state: WalkState) (expr: SynExpr) =
-    match expr with
-    | SynExpr.App(funcExpr = f; argExpr = a) ->
-        walkExpr state f
-        walkExpr state a
-    | SynExpr.Paren(expr = e) -> walkExpr state e
-    | SynExpr.Tuple(exprs = es) -> es |> List.iter (walkExpr state)
-    | SynExpr.Record(recordFields = fields) ->
-        for SynExprRecordField(expr = fieldExpr) in fields do
-            fieldExpr |> Option.iter (walkExpr state)
-    | SynExpr.LetOrUse synLet ->
-        for SynBinding(expr = e) in synLet.Bindings do
-            walkExpr state e
+                bodyExpr |> Option.iter (iterExpr visit)
+                false
+            | [ _; nameArg ] when isQualified "Fuaran" "fragmentRef" head ->
+                refs.Add
+                    { Name = literalString nameArg
+                      RefLocation = mkLocation source.File head.Range }
 
-        walkExpr state synLet.Body
-    | SynExpr.Sequential(expr1 = a; expr2 = b) ->
-        walkExpr state a
-        walkExpr state b
-    | SynExpr.IfThenElse(ifExpr = c; thenExpr = t; elseExpr = e) ->
-        walkExpr state c
-        walkExpr state t
-        e |> Option.iter (walkExpr state)
-    | SynExpr.Match(expr = scrut; clauses = clauses) ->
-        walkExpr state scrut
+                false
+            | _ -> true
 
-        for SynMatchClause(resultExpr = r) in clauses do
-            walkExpr state r
-    | SynExpr.Lambda(body = b) -> walkExpr state b
-    | SynExpr.ArrayOrList(exprs = es) -> es |> List.iter (walkExpr state)
-    | SynExpr.ArrayOrListComputed(expr = e) -> walkExpr state e
-    | SynExpr.ComputationExpr(expr = e) -> walkExpr state e
-    | SynExpr.TypeApp(expr = e) -> walkExpr state e
-    | SynExpr.Typed(expr = e) -> walkExpr state e
-    | SynExpr.Do(expr = e) -> walkExpr state e
-    | SynExpr.DotGet(expr = e) -> walkExpr state e
-    | SynExpr.DotSet(targetExpr = t; rhsExpr = r) ->
-        walkExpr state t
-        walkExpr state r
-    | SynExpr.LongIdentSet(expr = e) -> walkExpr state e
-    | SynExpr.New(expr = e) -> walkExpr state e
-    | SynExpr.AddressOf(expr = e) -> walkExpr state e
-    | _ -> ()
+        for expr in topLevelExprs source do
+            iterExpr visit expr
 
-let private walkBinding (state: WalkState) (SynBinding(expr = e)) = walkExpr state e
+    List.ofSeq decls, List.ofSeq refs
 
-let rec private walkDecl (state: WalkState) (decl: SynModuleDecl) =
-    match decl with
-    | SynModuleDecl.Let(bindings = bs) -> bs |> List.iter (walkBinding state)
-    | SynModuleDecl.NestedModule(decls = ds) -> ds |> List.iter (walkDecl state)
-    | SynModuleDecl.Expr(expr = e) -> walkExpr state e
-    | _ -> ()
-
-let private walkModule (state: WalkState) (SynModuleOrNamespace(decls = decls)) = decls |> List.iter (walkDecl state)
-
-let private parseFile (checker: FSharpChecker) (file: string) (source: string) =
-    async {
-        let sourceText = SourceText.ofString source
-        let! projectOptions, _ = checker.GetProjectOptionsFromScript(file, sourceText)
-        let parsingOptions, _ = checker.GetParsingOptionsFromProjectOptions projectOptions
-
-        let! parseResult = checker.ParseFile(file, sourceText, parsingOptions)
-        return parseResult
-    }
-
-let private walkFile (checker: FSharpChecker) (file: string) : Async<DeclCall list * RefCall list> =
-    async {
-        let source = File.ReadAllText file
-        let! parseResult = parseFile checker file source
-
-        let state = { File = file; Decls = []; Refs = [] }
-
-        match parseResult.ParseTree with
-        | ParsedInput.ImplFile(ParsedImplFileInput(contents = modules)) -> modules |> List.iter (walkModule state)
-        | ParsedInput.SigFile _ -> ()
-
-        return state.Decls |> List.rev, state.Refs |> List.rev
-    }
-
-/// Scan an arbitrary expression for the names referenced by enclosed
-/// `Fuaran.fragmentRef "..." "name"` calls. Used by FUARAN058's cycle
-/// detection to build the "decl name → set of ref names" graph from each
-/// decl's body without re-walking the whole file.
+/// The fragment names referenced anywhere inside a decl body.
 let private refNamesInExpr (root: SynExpr) : Set<string> =
     let mutable acc = Set.empty
 
-    let rec walk (expr: SynExpr) =
-        let head, args = flattenApp expr
+    root
+    |> iterExpr (fun expr ->
+        match flattenApp expr with
+        | head, [ _; nameArg ] when isQualified "Fuaran" "fragmentRef" head ->
+            literalString nameArg |> Option.iter (fun n -> acc <- Set.add n acc)
+            false
+        | _ -> true)
 
-        match head, args with
-        | FuaranCall "fragmentRef", [ _; nameArg ] ->
-            match literalStringExpr nameArg with
-            | Some n -> acc <- Set.add n acc
-            | None -> ()
-        | _ ->
-            match expr with
-            | SynExpr.App(funcExpr = f; argExpr = a) ->
-                walk f
-                walk a
-            | SynExpr.Paren(expr = e) -> walk e
-            | SynExpr.Tuple(exprs = es) -> es |> List.iter walk
-            | SynExpr.Record(recordFields = fields) ->
-                for SynExprRecordField(expr = fieldExpr) in fields do
-                    fieldExpr |> Option.iter walk
-            | SynExpr.LetOrUse synLet ->
-                for SynBinding(expr = e) in synLet.Bindings do
-                    walk e
-
-                walk synLet.Body
-            | SynExpr.Sequential(expr1 = a; expr2 = b) ->
-                walk a
-                walk b
-            | SynExpr.IfThenElse(ifExpr = c; thenExpr = t; elseExpr = e) ->
-                walk c
-                walk t
-                e |> Option.iter walk
-            | SynExpr.Match(expr = scrut; clauses = clauses) ->
-                walk scrut
-
-                for SynMatchClause(resultExpr = r) in clauses do
-                    walk r
-            | SynExpr.Lambda(body = b) -> walk b
-            | SynExpr.ArrayOrList(exprs = es) -> es |> List.iter walk
-            | SynExpr.ArrayOrListComputed(expr = e) -> walk e
-            | SynExpr.ComputationExpr(expr = e) -> walk e
-            | SynExpr.TypeApp(expr = e) -> walk e
-            | SynExpr.Typed(expr = e) -> walk e
-            | SynExpr.Do(expr = e) -> walk e
-            | SynExpr.DotGet(expr = e) -> walk e
-            | _ -> ()
-
-    walk root
     acc
 
-/// Detect a cycle starting from `startName` over the supplied adjacency map.
-/// Returns true iff a path leads back to `startName`.
 let private hasCycle (adjacency: Map<string, Set<string>>) (startName: string) : bool =
     let rec walk (visited: Set<string>) (current: string) =
         match Map.tryFind current adjacency with
@@ -549,172 +372,166 @@ let private hasCycle (adjacency: Map<string, Set<string>>) (startName: string) :
     walk Set.empty startName
 
 /// Public entry — walks the supplied source files and returns findings.
-let checkSources (checker: FSharpChecker) (files: string list) : Async<Finding list> =
-    async {
-        let! perFile = files |> List.map (walkFile checker) |> Async.Parallel
 
-        let allDecls = perFile |> Array.collect (fst >> List.toArray) |> Array.toList
+let check (sources: ParsedSource list) : Finding list =
+    let allDecls, allRefs = scan sources
 
-        let allRefs = perFile |> Array.collect (snd >> List.toArray) |> Array.toList
+    let declNames =
+        allDecls
+        |> List.choose (fun d -> d.Name |> Option.map (fun n -> n, d))
+        |> List.groupBy fst
 
-        let declNames =
-            allDecls
-            |> List.choose (fun d -> d.Name |> Option.map (fun n -> n, d))
-            |> List.groupBy fst
+    // FUARAN056: duplicate fragment names.
+    let duplicateFindings =
+        declNames
+        |> List.collect (fun (name, occurrences) ->
+            match occurrences with
+            | _ :: _ :: _ ->
+                occurrences
+                |> List.map (fun (_, decl) ->
+                    create
+                        Error
+                        "FUARAN056"
+                        decl.DeclLocation
+                        (sprintf
+                            "Fragment name '%s' is declared %d times in this project. Fragment names must be unique per project — the renderer's runtime resolver picks one decl per name, the other(s) become unreachable. Rename the colliding decls or merge their bodies."
+                            name
+                            occurrences.Length))
+            | _ -> [])
 
-        // FUARAN056: duplicate fragment names.
-        let duplicateFindings =
-            declNames
-            |> List.collect (fun (name, occurrences) ->
-                match occurrences with
-                | _ :: _ :: _ ->
-                    occurrences
-                    |> List.map (fun (_, decl) ->
-                        create
-                            Error
-                            "FUARAN056"
-                            decl.DeclLocation
-                            (sprintf
-                                "Fragment name '%s' is declared %d times in this project. Fragment names must be unique per project — the renderer's runtime resolver picks one decl per name, the other(s) become unreachable. Rename the colliding decls or merge their bodies."
-                                name
-                                occurrences.Length))
-                | _ -> [])
+    let knownNames = declNames |> List.map fst |> Set.ofList
 
-        let knownNames = declNames |> List.map fst |> Set.ofList
+    // FUARAN057: unresolved references.
+    let unresolvedFindings =
+        allRefs
+        |> List.choose (fun r ->
+            match r.Name with
+            | Some name when not (Set.contains name knownNames) ->
+                Some(
+                    create
+                        Error
+                        "FUARAN057"
+                        r.RefLocation
+                        (sprintf
+                            "Fragment reference '%s' has no matching Fuaran.fragmentDecl in this project. The renderer will substitute a labelled placeholder at runtime. Declare a `Fuaran.fragmentDecl _ { Name = \"%s\"; Body = ... }` somewhere in the tree, or fix the typo on this reference."
+                            name
+                            name)
+                )
+            | _ -> None)
 
-        // FUARAN057: unresolved references.
-        let unresolvedFindings =
-            allRefs
-            |> List.choose (fun r ->
-                match r.Name with
-                | Some name when not (Set.contains name knownNames) ->
+    // FUARAN058: cyclic fragment references. Build the directed graph
+    // "decl name → set of fragment names referenced inside its body",
+    // then run a per-name reachability search back to itself.
+    let adjacency: Map<string, Set<string>> =
+        allDecls
+        |> List.choose (fun d ->
+            match d.Name, d.BodyExpr with
+            | Some name, Some body -> Some(name, refNamesInExpr body)
+            | _ -> None)
+        // Multiple decls sharing the same name (already a FUARAN056
+        // defect) collapse their out-edges via Set.union — keep the
+        // graph defensive.
+        |> List.fold
+            (fun acc (name, refs) ->
+                let merged =
+                    match Map.tryFind name acc with
+                    | Some existing -> Set.union existing refs
+                    | None -> refs
+
+                Map.add name merged acc)
+            Map.empty
+
+    let cyclicFindings =
+        allDecls
+        |> List.choose (fun d ->
+            match d.Name with
+            | Some name when hasCycle adjacency name ->
+                Some(
+                    create
+                        Error
+                        "FUARAN058"
+                        d.DeclLocation
+                        (sprintf
+                            "Fragment '%s' transitively references itself via Fuaran.fragmentRef. The renderer's runtime cycle-guard renders a labelled placeholder rather than recursing forever, but this defect should be fixed at the source — break the cycle by inlining one of the bodies or restructuring the reuse pattern."
+                            name)
+                )
+            | _ -> None)
+
+    // FUARAN059 / FUARAN065: parameterised-hole defects (Phase 180), lifted
+    // from the runtime `HoleDecl.isTotal` / `HoleValueSpace.validate`
+    // predicates. Decl-derivable only — see the parsing-section note.
+    let allHoles = allDecls |> List.collect _.Holes
+
+    let totalityFindings =
+        allHoles
+        |> List.choose (fun h ->
+            match h.Case, h.Space with
+            | "Repeat", Some(IntRangeSpace _) -> None
+            | "Repeat", Some UnknownSpace -> None // computed count-space — skip
+            | "Repeat", Some _ ->
+                Some(
+                    create
+                        Error
+                        "FUARAN059"
+                        h.Location
+                        (sprintf
+                            "Repeat hole '%s' has an unbounded count value-space. A repeat/iteration count must be a bounded HoleValueSpace.IntRange (totality, invariant 1) — an unbounded count diverges at apply time. Change the count-space to IntRange(min, max)."
+                            (defaultArg h.Name "<unnamed>"))
+                )
+            | _ -> None)
+
+    let defaultViolation (space: SpaceInfo) (def: DefaultLit) : string option =
+        match space, def with
+        | IntRangeSpace(lo, hi), IntLit n ->
+            if n >= lo && n <= hi then
+                None
+            else
+                Some(sprintf "value %d outside [%d, %d]" n lo hi)
+        | FloatRangeSpace(lo, hi), FloatLit f ->
+            if f >= lo && f <= hi then
+                None
+            else
+                Some(sprintf "value %g outside [%g, %g]" f lo hi)
+        | StringLenSpace(lo, hi), StrLit s ->
+            if s.Length >= lo && s.Length <= hi then
+                None
+            else
+                Some(sprintf "string length %d outside [%d, %d]" s.Length lo hi)
+        | EnumSpace choices, StrLit s ->
+            if List.contains s choices then
+                None
+            else
+                Some(sprintf "'%s' not in {%s}" s (String.concat ", " choices))
+        | AnyStringSpace, StrLit _ -> None
+        // Default literal kind disagrees with the value-space domain.
+        | IntRangeSpace _, _ -> Some "default is not an int matching the IntRange value-space"
+        | FloatRangeSpace _, _ -> Some "default is not a float matching the FloatRange value-space"
+        | (StringLenSpace _ | EnumSpace _ | AnyStringSpace), _ ->
+            Some "default is not a string matching the value-space"
+        | UnknownSpace, _ -> None // computed space — skip
+
+    let defaultRangeFindings =
+        allHoles
+        |> List.choose (fun h ->
+            match h.Case, h.Space, h.Default with
+            | "Value", Some space, Some def when def <> UnknownLit ->
+                match defaultViolation space def with
+                | Some why ->
                     Some(
                         create
                             Error
-                            "FUARAN057"
-                            r.RefLocation
-                            (sprintf
-                                "Fragment reference '%s' has no matching Fuaran.fragmentDecl in this project. The renderer will substitute a labelled placeholder at runtime. Declare a `Fuaran.fragmentDecl _ { Name = FragmentId \"%s\"; Body = ... }` somewhere in the tree, or fix the typo on this reference."
-                                name
-                                name)
-                    )
-                | _ -> None)
-
-        // FUARAN058: cyclic fragment references. Build the directed graph
-        // "decl name → set of fragment names referenced inside its body",
-        // then run a per-name reachability search back to itself.
-        let adjacency: Map<string, Set<string>> =
-            allDecls
-            |> List.choose (fun d ->
-                match d.Name, d.BodyExpr with
-                | Some name, Some body -> Some(name, refNamesInExpr body)
-                | _ -> None)
-            // Multiple decls sharing the same name (already a FUARAN056
-            // defect) collapse their out-edges via Set.union — keep the
-            // graph defensive.
-            |> List.fold
-                (fun acc (name, refs) ->
-                    let merged =
-                        match Map.tryFind name acc with
-                        | Some existing -> Set.union existing refs
-                        | None -> refs
-
-                    Map.add name merged acc)
-                Map.empty
-
-        let cyclicFindings =
-            allDecls
-            |> List.choose (fun d ->
-                match d.Name with
-                | Some name when hasCycle adjacency name ->
-                    Some(
-                        create
-                            Error
-                            "FUARAN058"
-                            d.DeclLocation
-                            (sprintf
-                                "Fragment '%s' transitively references itself via Fuaran.fragmentRef. The renderer's runtime cycle-guard renders a labelled placeholder rather than recursing forever, but this defect should be fixed at the source — break the cycle by inlining one of the bodies or restructuring the reuse pattern."
-                                name)
-                    )
-                | _ -> None)
-
-        // FUARAN059 / FUARAN065: parameterised-hole defects (Phase 180), lifted
-        // from the runtime `HoleDecl.isTotal` / `HoleValueSpace.validate`
-        // predicates. Decl-derivable only — see the parsing-section note.
-        let allHoles = allDecls |> List.collect _.Holes
-
-        let totalityFindings =
-            allHoles
-            |> List.choose (fun h ->
-                match h.Case, h.Space with
-                | "Repeat", Some(IntRangeSpace _) -> None
-                | "Repeat", Some UnknownSpace -> None // computed count-space — skip
-                | "Repeat", Some _ ->
-                    Some(
-                        create
-                            Error
-                            "FUARAN059"
+                            "FUARAN065"
                             h.Location
                             (sprintf
-                                "Repeat hole '%s' has an unbounded count value-space. A repeat/iteration count must be a bounded HoleValueSpace.IntRange (totality, invariant 1) — an unbounded count diverges at apply time. Change the count-space to IntRange(min, max)."
-                                (defaultArg h.Name "<unnamed>"))
+                                "Value hole '%s' has a default that violates its value-space: %s. The default is validated against the hole's space at apply time, so this binding can never succeed. Fix the default or widen the value-space."
+                                (defaultArg h.Name "<unnamed>")
+                                why)
                     )
-                | _ -> None)
+                | None -> None
+            | _ -> None)
 
-        let defaultViolation (space: SpaceInfo) (def: DefaultLit) : string option =
-            match space, def with
-            | IntRangeSpace(lo, hi), IntLit n ->
-                if n >= lo && n <= hi then
-                    None
-                else
-                    Some(sprintf "value %d outside [%d, %d]" n lo hi)
-            | FloatRangeSpace(lo, hi), FloatLit f ->
-                if f >= lo && f <= hi then
-                    None
-                else
-                    Some(sprintf "value %g outside [%g, %g]" f lo hi)
-            | StringLenSpace(lo, hi), StrLit s ->
-                if s.Length >= lo && s.Length <= hi then
-                    None
-                else
-                    Some(sprintf "string length %d outside [%d, %d]" s.Length lo hi)
-            | EnumSpace choices, StrLit s ->
-                if List.contains s choices then
-                    None
-                else
-                    Some(sprintf "'%s' not in {%s}" s (String.concat ", " choices))
-            | AnyStringSpace, StrLit _ -> None
-            // Default literal kind disagrees with the value-space domain.
-            | IntRangeSpace _, _ -> Some "default is not an int matching the IntRange value-space"
-            | FloatRangeSpace _, _ -> Some "default is not a float matching the FloatRange value-space"
-            | (StringLenSpace _ | EnumSpace _ | AnyStringSpace), _ ->
-                Some "default is not a string matching the value-space"
-            | UnknownSpace, _ -> None // computed space — skip
-
-        let defaultRangeFindings =
-            allHoles
-            |> List.choose (fun h ->
-                match h.Case, h.Space, h.Default with
-                | "Value", Some space, Some def when def <> UnknownLit ->
-                    match defaultViolation space def with
-                    | Some why ->
-                        Some(
-                            create
-                                Error
-                                "FUARAN065"
-                                h.Location
-                                (sprintf
-                                    "Value hole '%s' has a default that violates its value-space: %s. The default is validated against the hole's space at apply time, so this binding can never succeed. Fix the default or widen the value-space."
-                                    (defaultArg h.Name "<unnamed>")
-                                    why)
-                        )
-                    | None -> None
-                | _ -> None)
-
-        return
-            duplicateFindings
-            @ unresolvedFindings
-            @ cyclicFindings
-            @ totalityFindings
-            @ defaultRangeFindings
-    }
+    duplicateFindings
+    @ unresolvedFindings
+    @ cyclicFindings
+    @ totalityFindings
+    @ defaultRangeFindings

@@ -295,6 +295,7 @@ let tests =
                     let tree =
                         switchTo
                             "root"
+                            // fuaran-validator: disable-next-line FUARAN058 — negative fixture: the cycle is the defect under test
                             [ Fuaran.fragmentDecl
                                   "decl"
                                   { Defaults.fragmentDecl<obj> with

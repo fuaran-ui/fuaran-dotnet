@@ -85,9 +85,6 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $Mirrors = [ordered]@{
     "FUARAN001" = "walker+analyzer — NodeId uniqueness, the same rule read off F# source and off C#/VB source"
     "FUARAN010" = "walker+analyzer — Binding.Query name resolution against the module manifest, likewise"
-    "FUARAN047" = "walker+preemit — the Tabs header/children parity rule, stated at source-AST time and at tree time"
-    "FUARAN048" = "walker+preemit — the Tabs tag/children parity rule, likewise"
-    "FUARAN049" = "walker+preemit — the Tabs activeTag-without-tags rule, likewise"
 }
 
 function Get-CodesFromTree {

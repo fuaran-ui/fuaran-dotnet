@@ -12,12 +12,16 @@ Fuaran.UI.Validator <project.fsproj> [--module-pattern SUBSTR]
 
 Exit codes: `0` on no Error-severity findings, `1` on at least one Error, `2` on malformed CLI arguments or missing project file. Warnings do not affect the exit code; an absent manifest emits `FUARAN900` (warning) and silences the schema-coupled checks. See `Fuaran/docs/VALIDATOR-MANIFEST.md` for the manifest schema; see `Fuaran/docs/TECHNICAL_GUIDE.md` for how the validator integrates with the wider Phase 12 pipeline.
 
+## How it runs
+
+Each source file under the project is parsed **once**, and every check is a visitor over that one parsed-input list. The set of smart constructors it recognises, and which of them root a tree for NodeId uniqueness (an outermost constructor that takes a child node — `Fuaran.box`, `stack`, `card`, `dashboard`, …), is derived from the `Fuaran` module by reflection rather than listed by hand, so a new constructor is checked from the release that adds it. The codes it emits, and the build-time codes it has retired in favour of the tree-time validator, are enumerated in [`docs/ERROR_CODES.md`](../../docs/ERROR_CODES.md) §4.
+
 ## Suppressing a finding
 
 Some source deliberately holds a shape the validator is right to reject in application code — most often a **negative test**, whose whole purpose is to construct the defect and assert the runtime reports it. There the finding is correct about the code and wrong about the intent, and no edit fixes it without destroying the test. Two comment pragmas opt a source out:
 
 ```fsharp
-// fuaran-validator: disable FUARAN047, FUARAN048 — negative-test fixtures
+// fuaran-validator: disable FUARAN001, FUARAN058 — negative-test fixtures
 ```
 
 File-scoped: suppresses the listed codes anywhere in the file, wherever the comment sits (convention: beside the module's doc comment, so a reader meets it before the fixtures).

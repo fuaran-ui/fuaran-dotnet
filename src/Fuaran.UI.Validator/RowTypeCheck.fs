@@ -1,15 +1,20 @@
 module Fuaran.UI.Validator.RowTypeCheck
 
 // ============================================================================
-//  OnRowClick / RowKey row-type match.
+//  Grid row-type match.
 //
 //  For each `Fuaran.grid` call whose `Source = binding.query "name" ...`, look
 //  up the row type the manifest declares for `name` under `queryRowTypes`.
 //  Three outcomes:
 //
 //    1. No manifest queryRowTypes entry for "name"        → Warning (FUARAN030)
-//    2. Entry present + lambda parameter type annotation differs → Error (FUARAN031)
-//    3. Entry present + no lambda annotation (or matches) → silent
+//    2. Entry present + the toRow parameter annotation differs → Error (FUARAN031)
+//    3. Entry present + no toRow annotation (or matches) → silent
+//
+//  The row type is read off `toRow` (`Fuaran.grid "id" (fun (r: SaleRow) -> ...)
+//  spec`), the one closure typed by the source row: `OnRowClick`, `RowKey` and
+//  the column accessors all take the projected `Row`, so an annotation there
+//  never names the source row type.
 //
 //  Case 3 is the "best we can do without typed AST" boundary — typed
 //  FCS resolution would let us verify against the actual inferred row
@@ -57,7 +62,7 @@ let private checkGrid (manifest: Manifest) (call: FuaranCall) (detail: GridDetai
                             "FUARAN031"
                             annotation.Location
                             (sprintf
-                                "Row type mismatch in Fuaran.grid: lambda parameter annotated `%s` but manifest declares query \"%s\" returns rows of type `%s`."
+                                "Row type mismatch in Fuaran.grid: toRow parameter annotated `%s` but manifest declares query \"%s\" returns rows of type `%s`."
                                 annotation.Annotation
                                 queryName
                                 expectedRowType)
@@ -65,11 +70,14 @@ let private checkGrid (manifest: Manifest) (call: FuaranCall) (detail: GridDetai
                     Some(withRecovery [ expectedRowType ] (Some expectedRowType) base'))
 
 let check (manifest: Manifest) (calls: FuaranCall list) : Finding list =
-    calls
-    |> List.collect (fun c ->
-        if c.Ctor <> "grid" then
-            []
-        else
-            match c.GridDetail with
-            | Some d -> checkGrid manifest c d
-            | None -> [])
+    // No schema in the manifest — no contract to check against, the same
+    // posture as BindingResolution / MsgPayloadCheck (the run's FUARAN900
+    // preamble already says these checks are silenced).
+    if manifest.Queries.IsEmpty && manifest.QueryRowTypes.IsEmpty then
+        []
+    else
+        calls
+        |> List.collect (fun c ->
+            match c.Ctor, c.GridDetail with
+            | "grid", Some d -> checkGrid manifest c d
+            | _ -> [])
