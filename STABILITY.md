@@ -7823,7 +7823,8 @@ document that declares no ceiling is exactly the control it was.
 _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,
 which reshapes the build-time walker's public modules (`AstWalker`, the per-check `check` entry points, the new
 `Syntax` module; `AccessibilityCheck` and `TabsCheck` removed); the CLI and `Validator.run` keep their contract. Phase 2141 adds a BREAKING (behaviour) change to `Apply.apply`:
-three more ops are refused past the tree limits.
+three more ops are refused past the tree limits. Phase 2039 adds a BEHAVIOUR change: `DeadOnDecode.lint` and
+`AffordanceInertness.report` now follow `Confirm` continuations.
 `v0.92.0` was tagged and published at `9b53dfa` while
 commits numbered 0.92.0 were still landing after it: the embedded-renderer re-syncs for Phases 2077 and 2046
 (`6a2fcd5`, `09cdb97`; `Fuaran.UI.Renderer.Web` content only) and Phase 2044 (`bf13d1f`, moved here from the
@@ -7953,6 +7954,35 @@ defect vocabulary re-emits byte-identical, and `validator-coverage.json` is unto
   no apply-time limit; the corpus manifest records their adoption as `proposed`, and `SANITIZATION.md`
   says so under "What is not claimed".
 
+### What rides this slot — Phase 2039
+
+The generated structural layer now emits the per-kind helpers the tier wrote by hand, through
+`Gen.fsharpModuleDerived` with the requests declared in `VocabularySupport.derivations`, and the hand copies
+are gone. Class: **additive (API)** plus one **BEHAVIOUR** change, below. Every public name and signature the
+tier already had is kept.
+
+- **`Fuaran.Core.*` raised 0.35.1 → 0.35.2**, every package together (the generator release; its `Idl`
+  package floors `Fuaran.Core.Wire` at 0.35.2). The generated layer otherwise regenerates byte-identically.
+- **New in `Fuaran.UI.Generated` (additive):** `wireTag`, `allWireTags`, `children`, `withChildren`
+  (`nodeWitness` is built on them; they were its private helpers), `Action.fold`, `defaultAccessibility`,
+  `defaultDrawStyle`, `defaultFieldRule`, `defaultSemanticStyle`, `defaultStateBehaviour`, and the `Set`
+  constants `kindCategories`, `kindFieldNames`, `envelopeFieldNames`, `opFieldNames`.
+- **New in `Fuaran.UI` (additive):** `Kind.wireTag`, the kind-level wire discriminator.
+- **Re-derived, same answers:** `Kind.name` is `Kind.wireTag` with its one documented `DataGrid` → `"Grid"`
+  divergence (it was a 43-arm copy of the generated tag); `KindPolicy.wireKindName`,
+  `RenderFidelity.wireNameOf` and `Fuaran.UI.Renderer.Relay.wireKindName` all read `Kind.wireTag`;
+  `RenderFidelity.wireKindNames` is `Generated.allWireTags`; `Defaults.style`, `.stateBehaviour`,
+  `.drawStyle` and `.Accessibility.empty` are the generated default records. The action walks in
+  `BindingWalk` (`callsOfAction`, `closuresOfAction`, `usesOfAction`), `StructuralQuery` and the renderer
+  fold through `Action.fold`.
+- **BEHAVIOUR change — two walks now follow `Confirm`.** `DeadOnDecode.lint` and
+  `AffordanceInertness.report` recursed `Chain` and stopped at a confirmation, so a closure-continued
+  `Call` (FUARAN080) or an inert `Dispatch` on a `Confirm` branch went unreported. Both fold through
+  `Action.fold` now and report it. A tree with no `Confirm` reports exactly as before.
+- **Not generated, deliberately:** `NodeMap.mapMsg` (the generator refuses a message map over the `Switch`
+  host projection), `FormFieldKind`'s handler/value projections (its cases declare those fields at different
+  types), a binding-slot enumerator (its emission does not compile against the `Switch` projection), and the
+  decoder's ordered kind groups and `opWireFields` (their order is the cross-host error hint).
 ---
 
 ## 0.92.0 — the slot Phases 2038 and 2043 open: one answer to what a node's children are, and one spine walk for the DAG tier (RELEASED — tagged v0.92.0 at 9b53dfa, 2026-10-06)
