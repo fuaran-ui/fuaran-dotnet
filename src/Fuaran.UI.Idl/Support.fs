@@ -1034,7 +1034,11 @@ let rec canonicaliseVector (v: IdlValue) : IdlValue =
 /// construct, and a projection carries no map member — `NodeMap.mapMsg` stays
 /// hand-written until it can), and a `Projections` over `FormFieldKind` (its
 /// cases declare `value` and their handler at different types and names, so no
-/// single accessor type exists).
+/// single accessor type exists). A third, `SlotsOf "Binding"`, is absent because
+/// its emission does not compile here: it reads the `Switch` projection's fields
+/// from the IDL (an optional `on`) rather than from the projected record (a
+/// required `On`), so the enumerator waits on the generator honouring a host
+/// projection.
 let derivations: Gen.Derivation list =
     [
       // `wireTag` / `allWireTags` / `children` / `withChildren`, with
@@ -1048,4 +1052,9 @@ let derivations: Gen.Derivation list =
       // `default<Record>` for every record whose fields all have a value
       // without the caller — `Defaults.style`, `.stateBehaviour`,
       // `.drawStyle` and `.Accessibility.empty` read these.
-      Gen.Derivation.DefaultRecords ]
+      Gen.Derivation.DefaultRecords
+      // `kindCategories`, `kindFieldNames`, `envelopeFieldNames` and
+      // `opFieldNames` as `Set`s. The decoder's ORDERED kind groups and
+      // `opWireFields` stay hand-declared: their order is the cross-host error
+      // hint, and the op fields carry a required flag these sets do not.
+      Gen.Derivation.VocabularyConstants ]
