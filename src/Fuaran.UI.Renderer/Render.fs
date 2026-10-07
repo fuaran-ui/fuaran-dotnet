@@ -568,10 +568,13 @@ let private iconHook (kindClass: string) (name: string) : ReactElement =
 // renderer is the in-process host where the case is CORRECT.
 #nowarn "44"
 
-let rec private containsUnwiredAction (action: Action<'Msg>) : bool =
+// ONE action, not counting the actions nested in it; `containsUnwiredAction`
+// below adds those.
+let private unwiredAt (action: Action<'Msg>) : bool =
     match action with
     | Action.Dispatch _ -> false
-    | Action.Chain actions -> actions |> List.exists containsUnwiredAction
+    // A chain reaches no substrate itself; its members are reached by the fold.
+    | Action.Chain _ -> false
     | Action.Call _
     | Action.Notify _
     | Action.Navigate _
@@ -608,12 +611,16 @@ let rec private containsUnwiredAction (action: Action<'Msg>) : bool =
     // CONTINUATIONS are: the dialogue always works, so what the reader would be
     // asking for is whatever the yes branch would do. `onCancel` counts too —
     // a cancel branch that reaches no substrate is as inert as a confirm one.
-    | Action.Confirm(_, onConfirm, onCancel) ->
-        containsUnwiredAction onConfirm
-        || (onCancel |> Option.map containsUnwiredAction |> Option.defaultValue false)
+    | Action.Confirm _ -> false
     | Action.Focus _ -> false
 
 #warnon "44"
+
+/// Whether `action`, or any action nested in it, reaches no substrate. Phase
+/// 2039 — the nesting (`Chain`'s members, a `Confirm`'s continuations) is the
+/// generated `Action.fold`.
+let private containsUnwiredAction (action: Action<'Msg>) : bool =
+    Fuaran.UI.Generated.Action.fold (fun found a -> found || unwiredAt a) false action
 
 // ─── Action interpretation ─────────────────────────────────────────────────
 //

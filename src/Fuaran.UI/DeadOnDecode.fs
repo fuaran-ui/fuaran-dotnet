@@ -70,19 +70,27 @@ let private isWritableOpt (binding: Binding<'T> option) : bool =
     | None -> true
     | Some b -> isWritable b
 
-let rec private callFindings (node: string) (action: Action<'Msg>) : LintFinding list =
-    match action with
-    | Action.Call(_, Some _, into) ->
-        [ { Node = node
-            Slot = "Action.Call.onResult"
-            Code = "FUARAN080"
-            Remedy =
-              match into with
-              | Some _ -> "omit onResult — the into target already lands the response where readers look"
-              | None ->
-                  "omit onResult and add into: {\"$type\":\"State\",\"key\":…} or {\"$type\":\"Query\",\"name\":…} so the response lands where a reader binds" } ]
-    | Action.Chain actions -> actions |> List.collect (callFindings node)
-    | _ -> []
+/// Every `Action.Call` with an `onResult` closure in `action` and every action
+/// nested in it. Phase 2039 — the recursion is the generated `Action.fold`, so a
+/// `Call` inside a `Confirm`'s continuation is reported exactly as one inside a
+/// `Chain` always was; before, the confirmation hid it.
+let private callFindings (node: string) (action: Action<'Msg>) : LintFinding list =
+    Generated.Action.fold
+        (fun found a ->
+            found
+            @ (match a with
+               | Action.Call(_, Some _, into) ->
+                   [ { Node = node
+                       Slot = "Action.Call.onResult"
+                       Code = "FUARAN080"
+                       Remedy =
+                         match into with
+                         | Some _ -> "omit onResult — the into target already lands the response where readers look"
+                         | None ->
+                             "omit onResult and add into: {\"$type\":\"State\",\"key\":…} or {\"$type\":\"Query\",\"name\":…} so the response lands where a reader binds" } ]
+               | _ -> []))
+        []
+        action
 
 /// Lint a decoded tree for dead-on-decode slots. See the header for when to
 /// run this (decoded / AI-ingested trees only — NOT F#-authored ones).

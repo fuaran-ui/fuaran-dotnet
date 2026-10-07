@@ -4721,3 +4721,14 @@ let mkToast (id: string) (message: TextSource) (``open``: Binding<bool>) : Node<
 
 let mkTree (id: string) (items: TreeItem list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Tree { ExpandedStateKey = None; Items = items; OnSelect = None; SelectionStateKey = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+
+/// Derived members of `Action`.
+module Action =
+    /// Fold `folder` over this value and every nested `Action` it holds, in preorder.
+    let rec fold (folder: 'S -> Action<'Msg> -> 'S) (state: 'S) (v: Action<'Msg>) : 'S =
+        let state = folder state v
+
+        match v with
+        | Action.Chain(__f0) -> List.fold (fun __s0 __x0 -> fold folder __s0 __x0) state __f0
+        | Action.Confirm(__f0, __f1, __f2) -> (let __c0_0 = fold folder state __f1 in let __c0_1 = (match __f2 with Some __o1 -> fold folder __c0_0 __o1 | None -> __c0_0) in __c0_1)
+        | _ -> state

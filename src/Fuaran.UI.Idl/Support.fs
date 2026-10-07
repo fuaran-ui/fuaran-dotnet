@@ -1040,4 +1040,8 @@ let derivations: Gen.Derivation list =
       // `wireTag` / `allWireTags` / `children` / `withChildren`, with
       // `nodeWitness` built on them — the wire-tag enumeration and the
       // DataGrid tag adaptation read these instead of a hand list.
-      Gen.Derivation.StructuralAccess ]
+      Gen.Derivation.StructuralAccess
+      // `Action.fold` — the walks over the action union (`Chain` and
+      // `Confirm` both nest actions) fold through it, so none can forget a
+      // recursive case.
+      Gen.Derivation.Fold "Action" ]
