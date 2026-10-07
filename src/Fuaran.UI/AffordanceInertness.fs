@@ -293,15 +293,24 @@ let private finding (nodeId: string) (subject: string) (verdictOverride: Decoded
 // immediately below.
 #nowarn "44"
 
-/// The wire-survivable action slots, recursing `Chain` — the same slot set the
-/// shared binding walk uses for `Action.Call` collection. A closure-held action
-/// is invisible by construction: the walk sees what the wire sees.
-let rec private actionFindings (nodeId: string) (action: Action<'Msg>) : InertAffordance list =
-    match action with
-    | Action.Chain actions -> actions |> List.collect (actionFindings nodeId)
-    | Action.Dispatch _ -> finding nodeId "Action.Dispatch" None
-    | Action.ReadFileBody(_, _, _, Some _) -> finding nodeId "Action.ReadFileBody.onRead" None
-    | _ -> []
+/// The wire-survivable action slots, recursing every nested action — the same
+/// slot set the shared binding walk uses for `Action.Call` collection. A
+/// closure-held action is invisible by construction: the walk sees what the
+/// wire sees.
+///
+/// Phase 2039 — the recursion is the generated `Action.fold`, so a `Confirm`'s
+/// continuations are walked as `Chain`'s members always were. They were not
+/// before: an inert `Dispatch` inside a confirmation's yes was unreported.
+let private actionFindings (nodeId: string) (action: Action<'Msg>) : InertAffordance list =
+    Generated.Action.fold
+        (fun found a ->
+            found
+            @ (match a with
+               | Action.Dispatch _ -> finding nodeId "Action.Dispatch" None
+               | Action.ReadFileBody(_, _, _, Some _) -> finding nodeId "Action.ReadFileBody.onRead" None
+               | _ -> []))
+        []
+        action
 
 #warnon "44"
 

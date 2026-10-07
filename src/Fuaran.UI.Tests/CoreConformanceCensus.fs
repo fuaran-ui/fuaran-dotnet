@@ -735,6 +735,10 @@ let census: (string * Adoption) list =
       "StoredIdentity.captureLaws",
       NotUsed
           "a stored Core effect-capture journal under a declared EncodingProfile — no project here journals a capture (see keyedCaptureLaws)"
+      // ---- arriving with the Core 0.35.2 raise (Phase 2039) ----
+      "EncodingProfileVectors.storedCodecLaws",
+      NotUsed
+          "a persisted corpus of canonical texts written through a Core Codec<'T> under a declared EncodingProfile — no project here declares an EncodingProfile or keys a store on a Core codec's canonical text (see EncodingProfileVectors.laws)"
       // ---- the compute kit's families from its own ids (Fuaran.Compute 0.36.0 / 0.37.0) ----
       "Conformance.plannerLaws",
       NotUsed

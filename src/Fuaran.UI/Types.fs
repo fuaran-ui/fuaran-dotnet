@@ -2585,72 +2585,51 @@ type NodeCategory =
 /// dependency: `Fuaran.UI.Ops.Introspect.kindName` delegates here, the renderer's
 /// fragment applier enforces `HoleDecl.Slot` kind-constraints with it, and the AI
 /// tool surface reads it. The tag vocabulary is a contract — `HoleDecl.Slot`'s
-/// `kindConstraint` string is matched against exactly these names, so a new
-/// `NodeKind` case adds its arm here in the same change that adds the case.
+/// `kindConstraint` string is matched against exactly these names.
 ///
 /// **It is the KIND-CONSTRAINT vocabulary, not the wire discriminator** — a
-/// separate vocabulary that coincides with `kind.$type` for 38 of the 39 kinds and
-/// deliberately diverges for the 39th (`DataGrid` → `"Grid"`, where the wire says
-/// `"DataGrid"`). The coincidence is convenient, not definitional: nothing here is
-/// derived from the encoder, and a caller that needs the wire token must read the
-/// encoded `kind.$type` (or `Fuaran.UI.Renderer.Relay.wireKindName`, which adapts
-/// at the relay boundary per the relay contract §1.4) rather than this. Moving
-/// `"Grid"` to match the wire would be a BREAKING change to every published
-/// `kindConstraint`, which is why the divergence is adapted at the boundary rather
-/// than resolved here; `Fuaran.UI.Tests/RelayTests.fs` pins the mapping against the
-/// canonical encoder, so a SECOND divergence fails the build.
+/// separate vocabulary that coincides with `kind.$type` for every kind but one
+/// (`DataGrid` → `"Grid"`, where the wire says `"DataGrid"`). Since Phase 2039 the
+/// coincidence is by construction: `Kind.name` is the generated wire tag
+/// (`Kind.wireTag`, read from `Generated.wireTag`) with that single documented
+/// divergence, so a new `NodeKind` takes its wire tag as its constraint name in
+/// the regeneration that admits it, and no second divergence can arise silently.
+/// A caller that needs the wire token reads `Kind.wireTag` (or
+/// `Fuaran.UI.Renderer.Relay.wireKindName`, the relay boundary's name for it per
+/// the relay contract §1.4) rather than this. Moving `"Grid"` to match the wire
+/// would be a BREAKING change to every published `kindConstraint`, which is why
+/// the divergence is kept here rather than resolved.
 /// RequireQualifiedAccess: `Kind` is a very generic module name whose bare
 /// `name` would otherwise leak into scope on `open Fuaran.UI.Types`.
 [<RequireQualifiedAccess>]
 module Kind =
+    /// The WIRE discriminator of a kind — `kind.$type`, exactly as the encoder
+    /// writes it. Phase 2039: read from the generated `Generated.wireTag` (which
+    /// takes a node, so the kind is carried in an otherwise empty envelope; only
+    /// `Kind` is read), so no hand enumeration of the kinds remains here.
+    let wireTag (kind: NodeKind<'Msg>) : string =
+        Generated.wireTag
+            { Id = ""
+              Kind = kind
+              Accessibility = None
+              ExtraAttributes = None
+              Fallback = None
+              Motion = None
+              State = None
+              Style = None
+              Tooltip = None
+              Visible = None }
+
     /// The canonical kind-tag string of a node's kind. Total over `NodeKind`;
     /// `DataGrid` intentionally tags as `"Grid"`, which is NOT its wire name
-    /// (`kind.$type` is `"DataGrid"`) — see the module note above.
+    /// (`kind.$type` is `"DataGrid"`) — see the module note above. Every other
+    /// kind's tag IS its wire discriminator, so this is `wireTag` with that one
+    /// documented divergence (Phase 2039 — previously a 43-arm hand copy of the
+    /// generated tag).
     let name (kind: NodeKind<'Msg>) : string =
         match kind with
-        | NodeKind.Box _ -> "Box"
-        | NodeKind.SplitPanel _ -> "SplitPanel"
-        | NodeKind.Tabs _ -> "Tabs"
-        | NodeKind.Stepper _ -> "Stepper"
-        | NodeKind.SummaryList _ -> "SummaryList"
-        | NodeKind.Disclosure _ -> "Disclosure"
-        | NodeKind.Modal _ -> "Modal"
-        | NodeKind.ScrollArea _ -> "ScrollArea"
-        | NodeKind.Heading _ -> "Heading"
-        | NodeKind.Markdown _ -> "Markdown"
-        | NodeKind.Metric _ -> "Metric"
-        | NodeKind.Badge _ -> "Badge"
-        | NodeKind.Sparkline _ -> "Sparkline"
-        | NodeKind.Callout _ -> "Callout"
-        | NodeKind.Progress _ -> "Progress"
-        | NodeKind.Skeleton _ -> "Skeleton"
-        | NodeKind.Icon _ -> "Icon"
-        | NodeKind.LabelValueRow _ -> "LabelValueRow"
-        | NodeKind.Fact _ -> "Fact"
-        | NodeKind.Link _ -> "Link"
-        | NodeKind.Image _ -> "Image"
-        | NodeKind.Media _ -> "Media"
-        | NodeKind.Embed _ -> "Embed"
-        | NodeKind.List _ -> "List"
-        | NodeKind.Tree _ -> "Tree"
-        | NodeKind.Toast _ -> "Toast"
-        | NodeKind.CodeBlock _ -> "CodeBlock"
-        | NodeKind.Math _ -> "Math"
-        | NodeKind.Drawing _ -> "Drawing"
-        | NodeKind.Form _ -> "Form"
-        | NodeKind.Filters _ -> "Filters"
-        | NodeKind.Button _ -> "Button"
-        | NodeKind.FileUpload _ -> "FileUpload"
-        | NodeKind.Select _ -> "Select"
         | NodeKind.DataGrid _ -> "Grid"
-        | NodeKind.Chart _ -> "Chart"
-        | NodeKind.Map _ -> "Map"
-        | NodeKind.Custom _ -> "Custom"
-        | NodeKind.ErrorBoundary _ -> "ErrorBoundary"
-        | NodeKind.Switch _ -> "Switch"
-        | NodeKind.FragmentDecl _ -> "FragmentDecl"
-        | NodeKind.FragmentRef _ -> "FragmentRef"
-        | NodeKind.Mount _ -> "Mount"
+        | other -> wireTag other
 
     /// The behavioural category of a kind — derived, not stored (Phase 692).
     let category (kind: NodeKind<'Msg>) : NodeCategory =

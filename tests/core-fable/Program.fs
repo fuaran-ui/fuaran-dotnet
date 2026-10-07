@@ -571,17 +571,11 @@ let private observerTouch =
     sprintf "%A/%d" (seam.Observe "n0" |> Option.map (fun o -> o.Flags)) (seam.ObserveTree "n0" |> List.length)
 
 // ContentAddress (Phase 382) — the content address of a wire value under a named encoding profile,
-// the renderer and the hash in one package. Reached only when the candidate carries the package:
-// `CORE_CONTENT_ADDRESS` is set by the project for a 0.35.2-or-later candidate, and the ordinary run
-// against this repository's own pin compiles the fallback string instead.
-#if CORE_CONTENT_ADDRESS
+// the renderer and the hash in one package. Unconditional since Phase 2039 raised the pin to 0.35.2.
 let private contentAddressTouch =
     match ContentAddress.ofValue EncodingProfile.current (JStr "smoke") with
     | Ok d -> "content-address:" + d.Hex
     | Error e -> "content-address:error:" + e
-#else
-let private contentAddressTouch = "content-address:not-in-candidate"
-#endif
 
 /// The value leg. Defined only when the restored `Fuaran.Core.Conformance` ships the table — the
 /// runner reads that off the restore rather than off a version number, and says so either way.

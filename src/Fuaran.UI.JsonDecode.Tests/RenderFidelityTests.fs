@@ -10,7 +10,8 @@
 //       one row, and a probe kind with no row FAILS — proven here rather than
 //       asserted, so the rule is known to be able to go red.
 //
-//    2. THE PINNED LIST IS NOT ITSELF A SECOND SOURCE OF TRUTH. `wireKindNames`
+//    2. THE KIND LIST AGREES WITH THE CORPUS. `wireKindNames` (generated from
+//       the IDL since Phase 2039, so it is no longer a hand list)
 //       is measured against the GENERATED `manifest.json` `kinds` array, which
 //       is derived from the encoded corpus fixtures rather than from any hand
 //       list. A new `NodeKind` that follows the WIRE_FORMAT §11 forward-coupling
@@ -88,7 +89,7 @@ let completeness =
 
               Expect.isEmpty dupes "a kind carries two fidelity rows; a consumer would read whichever came first")
 
-          testCase "the pinned kind list matches the generated manifest enumeration" (fun () ->
+          testCase "the generated kind list matches the corpus manifest enumeration" (fun () ->
               // The seam that keeps `wireKindNames` honest. Both directions are
               // named, because a kind the manifest has and the table lacks and a
               // kind the table has and the manifest lacks are different defects
@@ -97,7 +98,7 @@ let completeness =
 
               Expect.isEmpty
                   (Set.difference manifestKinds pinned |> Set.toList)
-                  "canonical wire kinds the fidelity manifest does not declare — add them to RenderFidelity.wireKindNames AND give each a row"
+                  "canonical wire kinds the fidelity manifest does not declare — regenerate the structural layer from the IDL AND give each a row"
 
               Expect.isEmpty
                   (Set.difference pinned manifestKinds |> Set.toList)

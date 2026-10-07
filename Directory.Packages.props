@@ -110,10 +110,11 @@
     <!-- Fuaran.Core raised 0.31.0 -> 0.32.0 for Phase 1874, every package together: Idl.Codegen rejoins the cohort (fuaran-core#256 fixed the F* omit-at-default wrapper that held it at 0.30.0), SkeletonOp gains UpdateNode, and the dataframe law families move to Fuaran.Core.DataFrame.Conformance (fuaran-core#257). -->
     <!-- Fuaran.Core raised 0.32.0 -> 0.34.0 in the 0.34.0 cohort raise, every package together (0.33.0 was skipped here): the IDL-generated layer regenerates with typed decode errors, Registry is CapabilityRegistry, determinism is a factor set, and Footprint carries slot reads and writes. The compute packages stay on FuaranCoreComputeVersion, their own producer. -->
     <!-- Fuaran.Core raised 0.34.0 -> 0.35.1 in the 0.35.1 cohort raise, every package together (0.35.0 was skipped here): the invoke / apply / query error families widen, Query.validateParams refuses a duplicate parameter, and the wire reader is stricter. The compute packages stay on FuaranCoreComputeVersion (0.37.0), their own producer; the central Core pins lift their transitive Core floor. -->
-    <PackageVersion Include="Fuaran.Core.Tree" Version="0.35.1" />
-    <PackageVersion Include="Fuaran.Core.Ops" Version="0.35.1" />
-    <PackageVersion Include="Fuaran.Core.OpStream" Version="0.35.1" />
-    <PackageVersion Include="Fuaran.Core.Conformance" Version="0.35.1" />
+    <!-- Fuaran.Core raised 0.35.1 -> 0.35.2 for Phase 2039, every package together: the generator emits the structural derivations (fuaran-core#374, Gen.fsharpModuleDerived) the generated layer now carries in place of the tier's hand copies, and Idl 0.35.2 floors Fuaran.Core.Wire at 0.35.2, so the cohort moves as one. The compute packages stay on FuaranCoreComputeVersion. -->
+    <PackageVersion Include="Fuaran.Core.Tree" Version="0.35.2" />
+    <PackageVersion Include="Fuaran.Core.Ops" Version="0.35.2" />
+    <PackageVersion Include="Fuaran.Core.OpStream" Version="0.35.2" />
+    <PackageVersion Include="Fuaran.Core.Conformance" Version="0.35.2" />
     <!-- Fuaran.Core.DataFrame.Conformance - the dataframe law families (transformLaws, aggregateParityLaws,
          columnarOpLaws*, incrementalLaws*, paramLaws, schemaWalkLaws, nowLaws, slotParamLaws and
          IncrementalDelta) that left Fuaran.Core.Conformance at 0.32.0 (fuaran-core#257). Test-only, like
@@ -126,44 +127,46 @@
          (Fuaran.UI.OpStream.Abstractions encode + Fuaran.UI.Ops decode), and the evaluator
          (Fuaran.UI.Ops, delegating to Fuaran.Core.DataFrame). Fable-distributed (source-packed) so
          the Fable client compiles them; the wire serialises in the shared Canon `$type` discipline. -->
-    <PackageVersion Include="Fuaran.Core.Column" Version="0.35.1" />
+    <PackageVersion Include="Fuaran.Core.Column" Version="0.35.2" />
     <PackageVersion Include="Fuaran.Compute.DataFrame" Version="$(FuaranCoreComputeVersion)" />
     <!-- Fuaran.Core.Wire — the canonical JVal JSON AST. Surfaced directly in the
          Fuaran.UI type contract (Custom props / action payloads / I18n args) and in
          TreeOp.UpdateProp's PropValue.Wire case. Already transitive via Column's
          codec; referenced explicitly because it is now part of the public surface. -->
-    <PackageVersion Include="Fuaran.Core.Wire" Version="0.35.1" />
+    <PackageVersion Include="Fuaran.Core.Wire" Version="0.35.2" />
     <!-- Fuaran.Core.Function — the invocable `Capability` + registry surface, consumed by
          Fuaran.UI.AiTools (Phase 283, the capability discovery + dispatch glue). Fable-distributed. -->
-    <PackageVersion Include="Fuaran.Core.Function" Version="0.35.1" />
+    <PackageVersion Include="Fuaran.Core.Function" Version="0.35.2" />
     <!-- Fuaran.Core.Observer — the generic runtime-verification seam (Phase 322). Consumed by
          Fuaran.UI.LayoutObserver, which becomes a domain instance of it. Dependency-free
          (FSharp.Core only). Fable-distributed (source-packed) so the Fable client compiles it. -->
-    <PackageVersion Include="Fuaran.Core.Observer" Version="0.35.1" />
+    <PackageVersion Include="Fuaran.Core.Observer" Version="0.35.2" />
     <!-- Fuaran.Core.Validator — consumed by the IDL-generated structural layer's
          plumbing (Phase 671): the generated `runValidator` scaffold projects Core
          `Defect`s. Pinned alongside the rest of the Core substrate. -->
-    <PackageVersion Include="Fuaran.Core.Validator" Version="0.35.1" />
+    <PackageVersion Include="Fuaran.Core.Validator" Version="0.35.2" />
     <!-- Fuaran.Core.Propagation - the dependency map + reverse-reachability dirty closure, consumed
          by Fuaran.UI.Renderer.Core's BindingGraph (Phase 1760: which binding sites a write makes
          stale). It was pinned below for the Core Fable gate alone until then; it now ships. -->
-    <PackageVersion Include="Fuaran.Core.Propagation" Version="0.35.1" />
+    <PackageVersion Include="Fuaran.Core.Propagation" Version="0.35.2" />
     <!-- Fuaran.Core.Idl + .Idl.Codegen - the IDL engine, consumed BUILD-TIME ONLY by
          src/Fuaran.UI.Idl (this repo's own wire vocabulary) and the suite that regenerates
          src/Fuaran.UI/Generated.fs from it (Phase 1181). Neither reaches a shipped
          Fuaran.UI.* package: the generated structural layer is committed SOURCE, so a
          consumer of the language tier needs the emission and never the emitter. -->
-    <PackageVersion Include="Fuaran.Core.Idl" Version="0.35.1" />
-    <PackageVersion Include="Fuaran.Core.Idl.Codegen" Version="0.35.1" />
+    <PackageVersion Include="Fuaran.Core.Idl" Version="0.35.2" />
+    <PackageVersion Include="Fuaran.Core.Idl.Codegen" Version="0.35.2" />
     <!-- The rest of the Fuaran.Core public surface, pinned for tests/core-fable (Phase 217) — the
          Core Fable gate this repository runs on Core's behalf, which references every package on
          that surface. Test-only: no shipped Fuaran.UI.* package references these. Raised WITH the
          pins above, never apart from them — they are one version of one substrate. Column.Ops is
          the exception: it moves with the compute layer on FuaranCoreComputeVersion (top of file). -->
-    <PackageVersion Include="Fuaran.Core.OpStream.Dag" Version="0.35.1" />
-    <PackageVersion Include="Fuaran.Core.Query" Version="0.35.1" />
-    <PackageVersion Include="Fuaran.Core.Projection" Version="0.35.1" />
-    <PackageVersion Include="Fuaran.Core.AiSurface" Version="0.35.1" />
+    <PackageVersion Include="Fuaran.Core.OpStream.Dag" Version="0.35.2" />
+    <PackageVersion Include="Fuaran.Core.Query" Version="0.35.2" />
+    <PackageVersion Include="Fuaran.Core.Projection" Version="0.35.2" />
+    <PackageVersion Include="Fuaran.Core.AiSurface" Version="0.35.2" />
+    <!-- Fuaran.Core.ContentAddress - first shipped at 0.35.2 (fuaran-core Phase 382); test-only, for tests/core-fable, pinned with the rest of the cohort from Phase 2039's raise. -->
+    <PackageVersion Include="Fuaran.Core.ContentAddress" Version="0.35.2" />
     <PackageVersion Include="Fuaran.Compute.ColumnOps" Version="$(FuaranCoreComputeVersion)" />
     <!-- Test-only, for tests/core-fable: the fourth package the compute producer ships (from 0.36.0),
          which Fuaran.Compute.Conformance references. No shipped Fuaran.UI.* package references it. -->

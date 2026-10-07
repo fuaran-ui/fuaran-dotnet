@@ -157,6 +157,33 @@ let tests =
                   Expect.isTrue (f.Remedy.Length > 0) "every finding names a remedy"
           }
 
+          // Phase 2039 — the lint folds every nested action (the generated
+          // `Action.fold`), so a closure-continued `Call` behind a confirmation
+          // is flagged exactly as one inside a `Chain` is. Before, the
+          // confirmation hid it.
+          test "a sentinel Call continuation inside a Confirm is flagged" {
+              let confirmed =
+                  node
+                      "ask"
+                      (NodeKind.Button(
+                          { Defaults.button<Msg> with
+                              Label = TextSource.Literal "Fetch"
+                              OnClick =
+                                  Action.Confirm(
+                                      TextSource.Literal "Fetch now?",
+                                      Action.Call("/api/x", Some(fun (_: obj) -> NoOp), None),
+                                      None
+                                  ) }
+                      ))
+
+              let findings = DeadOnDecode.lint (stack "root" [ confirmed ])
+
+              Expect.isTrue
+                  (findings
+                   |> List.exists (fun f -> f.Code = "FUARAN080" && f.Node = "ask" && f.Slot = "Action.Call.onResult"))
+                  "the confirmation's yes branch is walked"
+          }
+
           test "a fully-declarative tree (423–428 idioms) lints clean; HostOnly escapes stay silent" {
               let declarativeForm =
                   node

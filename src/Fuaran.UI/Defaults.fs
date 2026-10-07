@@ -18,21 +18,14 @@ open Fuaran.UI.Types
 
 // ─── Cross-cutting defaults (referenced from every component) ───────────────
 
-let style: SemanticStyle =
-    { Tone = ToneVariant.Default
-      Weight = StyleWeight.Standard
-      Emphasis = Emphasis.Normal
-      Role = StyleRole.None
-      Voice = FontVoice.Default
-      // Phase 1472 — the identity: this value declares no direction of its own,
-      // so the bidirectional algorithm resolves it from its own characters
-      // exactly as it did before the slot existed. Omitted on the wire.
-      Direction = TextDirection.Auto }
+/// The identity style. Phase 2039 — the generated `Generated.defaultSemanticStyle`,
+/// whose `Direction` is `Auto` (Phase 1472 — this value declares no direction of
+/// its own, so the bidirectional algorithm resolves it from its own characters
+/// exactly as it did before the slot existed; omitted on the wire).
+let style: SemanticStyle = Generated.defaultSemanticStyle
 
 let stateBehaviour<'Msg> : StateBehaviour<'Msg> =
-    { OnLoading = Option.None
-      OnEmpty = Option.None
-      OnError = Option.None }
+    Generated.defaultStateBehaviour<'Msg>
 
 let private emptyLiteral: TextSource = TextSource.Literal ""
 
@@ -339,18 +332,8 @@ let sparkline: SparklineSpec = { Source = noBinding<float list> }
 
 /// An all-inherited draw style — every field `None`, so a shape emits `{}` and
 /// inherits the renderer's defaults (Phase 524).
-let drawStyle: DrawStyle =
-    { Fill = Option.None
-      Stroke = Option.None
-      StrokeWidth = Option.None
-      Opacity = Option.None
-      TextAnchor = Option.None
-      FontSize = Option.None
-      Emphasis = Option.None
-      FontFamily = Option.None
-      MarkId = Option.None
-      Rotation = Option.None
-      Tip = Option.None }
+/// Phase 2039 — the generated `Generated.defaultDrawStyle`.
+let drawStyle: DrawStyle = Generated.defaultDrawStyle
 
 /// An empty drawing over a unit-square viewBox (Phase 524). Authors set
 /// `ViewBox` + `Shapes`; a chart lowering (Phase 526) produces both.
@@ -716,14 +699,9 @@ let fragmentRef<'Msg> : FragmentRefSpec<'Msg> =
 module Accessibility =
     /// Empty Accessibility trait — useful for tests and for Nodes whose Kind
     /// has a `None` default but the author wants to set the field explicitly.
-    let empty: Accessibility =
-        { Label = Option.None
-          LabelledBy = Option.None
-          DescribedBy = Option.None
-          Speak = Option.None
-          Role = Option.None
-          LiveRegion = Option.None
-          Hidden = Option.None }
+    /// Phase 2039 — the generated `Generated.defaultAccessibility`, every field
+    /// absent.
+    let empty: Accessibility = Generated.defaultAccessibility
 
     /// Most Nodes don't need ARIA metadata (decorative / structural shapes).
     /// The smart constructor passes this for layouts other than Dashboard,

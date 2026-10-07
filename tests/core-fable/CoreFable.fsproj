@@ -41,19 +41,6 @@
   <PropertyGroup Condition="'$(CoreFableSkipCompute)' != 'true'">
     <DefineConstants>$(DefineConstants);CORE_FABLE_COMPUTE</DefineConstants>
   </PropertyGroup>
-  <!--
-    `Fuaran.Core.ContentAddress` ships from Core 0.35.2 (Phase 382), and this repository pins an
-    earlier Core, so the package has no pin here yet. It is referenced, and its touch compiled, only
-    in a cut-time run whose candidate carries it; the pin raise that reaches 0.35.2 makes the
-    reference unconditional and moves the pin into the root Directory.Packages.props.
-  -->
-  <PropertyGroup Condition="'$(FuaranCoreVersion)' != '' And $([MSBuild]::VersionGreaterThanOrEquals('$(FuaranCoreVersion)', '0.35.2'))">
-    <CoreFableContentAddress>true</CoreFableContentAddress>
-    <DefineConstants>$(DefineConstants);CORE_CONTENT_ADDRESS</DefineConstants>
-  </PropertyGroup>
-  <ItemGroup Condition="'$(CoreFableContentAddress)' == 'true'">
-    <PackageReference Include="Fuaran.Core.ContentAddress" CandidateFrom="0.35.2" />
-  </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.fs" />
   </ItemGroup>
@@ -84,5 +71,7 @@
     <PackageReference Include="Fuaran.Core.Propagation" />
     <PackageReference Include="Fuaran.Core.Idl" />
     <PackageReference Include="Fuaran.Core.Observer" />
+    <!-- From Core 0.35.2 (Phase 382); unconditional since Phase 2039 raised this repository's pin to carry it. -->
+    <PackageReference Include="Fuaran.Core.ContentAddress" />
   </ItemGroup>
 </Project>

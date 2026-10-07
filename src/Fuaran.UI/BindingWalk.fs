@@ -1069,23 +1069,21 @@ let private usesOfFormFieldKind<'Msg> (implicitUse: BindingUse option) (kind: Fo
 // transport encoder's refusal find it.
 #nowarn "44"
 
-/// The `Action.Call`s reachable from a wire-survivable action value,
-/// recursing `Chain` (Phase 428). Non-Call arms carry no fetch.
-let rec callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse list =
+/// The `Action.Call` ONE action value carries, not counting the actions nested
+/// in it (Phase 428). Non-Call arms carry no fetch. Exhaustive, so a new arm is
+/// classified here; the nesting is `callsOfAction`'s.
+let private callsAt<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse list =
     match action with
     | Action.Call(endpoint, onResult, into) ->
         [ { Reader = readerId
             Endpoint = endpoint
             HasOnResult = onResult.IsSome
             Into = into } ]
-    | Action.Chain actions -> actions |> List.collect (callsOfAction readerId)
-    // Phase 1537 — a `Confirm` is the SECOND recursive arm on this union, so it
-    // recurses here exactly as `Chain` does. A `Call` inside a continuation is
-    // a fetch this tree can reach; a walk that stopped at the dialogue would
-    // report a reader as fetch-free while it fetches on the reader's yes.
-    | Action.Confirm(_, onConfirm, onCancel) ->
-        callsOfAction readerId onConfirm
-        @ (onCancel |> Option.map (callsOfAction readerId) |> Option.defaultValue [])
+    // The two recursive arms carry no endpoint of their own; their nested
+    // actions are reached by `callsOfAction`'s fold. A `Call` inside a
+    // confirmation's continuation is a fetch this tree can reach (Phase 1537).
+    | Action.Chain _
+    | Action.Confirm _
     | Action.Dispatch _
     | Action.Notify _
     | Action.Navigate _
@@ -1100,11 +1098,17 @@ let rec callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse 
     | Action.Focus _
     | Action.Invoke _ -> []
 
-/// Closure-carrying slots held by an ACTION value, recursing `Chain` — the
-/// sibling of `callsOfAction` (Phase 577). Exhaustive by construction: no
-/// wildcard, so a new `Action` case must be classified here rather than
-/// silently escaping the transport refusal and FUARAN112.
-let rec closuresOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : ClosureUse list =
+/// The `Action.Call`s reachable from a wire-survivable action value and every
+/// action nested in it (Phase 428). Phase 2039 — the nesting is the generated
+/// `Action.fold`, in preorder, so no recursive arm can be forgotten.
+let callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse list =
+    Generated.Action.fold (fun found a -> found @ callsAt readerId a) [] action
+
+/// Closure-carrying slots held by ONE action value, not counting the actions
+/// nested in it — the sibling of `callsAt` (Phase 577). Exhaustive by
+/// construction: no wildcard, so a new `Action` case must be classified here
+/// rather than silently escaping the transport refusal and FUARAN112.
+let private closuresAt<'Msg> (readerId: string) (action: Action<'Msg>) : ClosureUse list =
     match action with
     | Action.Dispatch _ ->
         [ { Reader = readerId
@@ -1121,16 +1125,12 @@ let rec closuresOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : Closu
                 Slot = "Action.ReadFileBody.onRead" } ]
         else
             []
-    | Action.Chain actions -> actions |> List.collect (closuresOfAction readerId)
-    // Phase 1537 — the second recursive arm, and the one where recursing is
-    // load-bearing rather than tidy: `Dispatch` inside a continuation is the
-    // FUARAN112 case, and a walk that stopped at the dialogue would let a
-    // closure-bearing action cross the transport refusal by hiding one level
-    // down. The `Confirm` itself holds no closure — its prompt is a
-    // `TextSource` and its branches are values.
-    | Action.Confirm(_, onConfirm, onCancel) ->
-        closuresOfAction readerId onConfirm
-        @ (onCancel |> Option.map (closuresOfAction readerId) |> Option.defaultValue [])
+    // The two recursive arms hold no closure themselves — a `Confirm`'s prompt
+    // is a `TextSource` and its branches are values. Their nested actions are
+    // reached by `closuresOfAction`'s fold, which is load-bearing: `Dispatch`
+    // inside a continuation is the FUARAN112 case (Phase 1537).
+    | Action.Chain _
+    | Action.Confirm _ -> []
     // The closure-free arms. `Invoke` reaches a host capability by ID with
     // wire-encoded args, and `AiTool` by tool name — neither holds host code.
     | Action.Notify _
@@ -1145,8 +1145,15 @@ let rec closuresOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : Closu
     | Action.Focus _
     | Action.Invoke _ -> []
 
-/// Binding usages carried by an ACTION value, recursing `Chain` — the sibling
-/// of `callsOfAction`, and the arm of the walk that was missing.
+/// Closure-carrying slots held by an ACTION value and every action nested in
+/// it — the sibling of `callsOfAction` (Phase 577). Phase 2039 — the nesting is
+/// the generated `Action.fold`.
+let closuresOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : ClosureUse list =
+    Generated.Action.fold (fun found a -> found @ closuresAt readerId a) [] action
+
+/// Binding usages carried by ONE action value, not counting the actions nested
+/// in it — the sibling of `callsAt`, and the arm of the walk that was missing.
+/// `usesOfAction` below adds the nesting.
 ///
 /// FOUR action slots are binding-bearing: `SetState`'s `valueFrom` (Phase
 /// 818), `WriteToClipboard`'s `text`, `Navigate`'s `route` and `Confirm`'s
@@ -1172,11 +1179,12 @@ let rec closuresOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : Closu
 /// counts it regardless — the tree does read that key/filter/query, and a
 /// consumption rule reasoning from its absence would be reasoning from a
 /// surface it simply never looked at.
-let rec usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
+let private usesAt<'Msg> (action: Action<'Msg>) : BindingUse list =
     match action with
     | Action.SetState(_, _, Some valueFrom) -> usesOfBinding valueFrom
     | Action.SetState(_, _, None) -> []
-    | Action.Chain actions -> actions |> List.collect usesOfAction
+    // Its members are reached by `usesOfAction`'s fold.
+    | Action.Chain _ -> []
     // Phases 1126 / 1536 — a `TextSource` payload may be `Bound`, and both of
     // these resolve at DISPATCH time exactly as `valueFrom` does. The same
     // asymmetry the doc block above records therefore applies: the reactive
@@ -1186,13 +1194,10 @@ let rec usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
     | Action.Navigate(route, _) -> usesOfText route
     // Phase 1537 — a FOURTH binding-bearing slot (the prompt's `TextSource`,
     // which may be `Bound`, so the question can name what the reader selected),
-    // plus the two continuations, which recurse exactly as `Chain` does. Both
-    // resolve at DISPATCH time, so the recorded asymmetry above applies to them
-    // unchanged.
-    | Action.Confirm(prompt, onConfirm, onCancel) ->
-        usesOfText prompt
-        @ usesOfAction onConfirm
-        @ (onCancel |> Option.map usesOfAction |> Option.defaultValue [])
+    // plus the two continuations, which `usesOfAction`'s fold reaches exactly
+    // as it reaches `Chain`'s members. Both resolve at DISPATCH time, so the
+    // recorded asymmetry above applies to them unchanged.
+    | Action.Confirm(prompt, _, _) -> usesOfText prompt
     | Action.Call _
     | Action.Dispatch _
     | Action.Notify _
@@ -1204,6 +1209,11 @@ let rec usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
     // Phase 1537 — a node id the author wrote, never a binding.
     | Action.Focus _
     | Action.Invoke _ -> []
+
+/// Binding usages carried by an ACTION value and every action nested in it.
+/// Phase 2039 — the nesting is the generated `Action.fold`, in preorder.
+let usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
+    Generated.Action.fold (fun found a -> found @ usesAt a) [] action
 
 #warnon "44"
 
@@ -1620,19 +1630,19 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
     /// state projection — and must NOT be folded a second time here: `seeds`,
     /// `inlineTables` and `transformInertSources` are lists, so a doubled fold
     /// would report FUARAN105/106/107 twice on one slot.
-    let rec recordStateAction (readerId: string) (action: Action<'Msg>) =
+    // ONE action's own write, not counting the actions nested in it;
+    // `recordStateAction` below adds the nesting.
+    let recordStateAt (readerId: string) (action: Action<'Msg>) =
         match action with
         | Action.SetState(key, _, _) ->
             stateWrites.Add(readerId, key)
             stateWriteKeys.Add key |> ignore
-        | Action.Chain actions -> actions |> List.iter (recordStateAction readerId)
-        // Phase 1537 — the second recursive arm. A `SetState` inside a
-        // continuation is a write this slot performs on the reader's yes, and a
-        // walk that stopped at the dialogue would report the key as unwritten —
-        // which is what FUARAN105/106/107 reason from.
-        | Action.Confirm(_, onConfirm, onCancel) ->
-            recordStateAction readerId onConfirm
-            onCancel |> Option.iter (recordStateAction readerId)
+        // The two recursive arms write nothing themselves. A `SetState` inside
+        // a continuation is a write this slot performs on the reader's yes
+        // (Phase 1537), which is why the fold must reach it: FUARAN105/106/107
+        // reason from the keys written.
+        | Action.Chain _
+        | Action.Confirm _ -> ()
         // A declared result target names its destination; an `onResult` closure
         // does not, and may write anything at all.
         | Action.Call(_, onResult, into) ->
@@ -1657,6 +1667,11 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
         // reaches no host code and writes no state.
         | Action.Focus _
         | Action.WriteToClipboard _ -> ()
+
+    // Phase 2039 — every action nested in `action`, through the generated
+    // `Action.fold`, in preorder.
+    let recordStateAction (readerId: string) (action: Action<'Msg>) =
+        Generated.Action.fold (fun () a -> recordStateAt readerId a) () action
 
     let recordCalls (inUses: bool) (readerId: string) (action: Action<'Msg>) =
         recordStateAction readerId action

@@ -1022,3 +1022,39 @@ let rec canonicaliseVector (v: IdlValue) : IdlValue =
     // Every remaining case is a leaf (scalars, closures, raw JSON, opaque
     // markers): nothing to recurse into, nothing cross-field to rewrite.
     | _ -> v
+
+/// Phase 2039 — the structural derivations the generated layer carries
+/// (`Gen.fsharpModuleDerived`, fuaran-core#374): the members that follow
+/// mechanically from the vocabulary and that the tier's consumers would
+/// otherwise write by hand. Each request names what it replaces.
+///
+/// Two requests are deliberately ABSENT, because the generator refuses them for
+/// this vocabulary rather than because nothing wants them: `MapMsg` (the
+/// `Switch` kind is a host projection whose record the generator cannot
+/// construct, and a projection carries no map member — `NodeMap.mapMsg` stays
+/// hand-written until it can), and a `Projections` over `FormFieldKind` (its
+/// cases declare `value` and their handler at different types and names, so no
+/// single accessor type exists). A third, `SlotsOf "Binding"`, is absent because
+/// its emission does not compile here: it reads the `Switch` projection's fields
+/// from the IDL (an optional `on`) rather than from the projected record (a
+/// required `On`), so the enumerator waits on the generator honouring a host
+/// projection.
+let derivations: Gen.Derivation list =
+    [
+      // `wireTag` / `allWireTags` / `children` / `withChildren`, with
+      // `nodeWitness` built on them — the wire-tag enumeration and the
+      // DataGrid tag adaptation read these instead of a hand list.
+      Gen.Derivation.StructuralAccess
+      // `Action.fold` — the walks over the action union (`Chain` and
+      // `Confirm` both nest actions) fold through it, so none can forget a
+      // recursive case.
+      Gen.Derivation.Fold "Action"
+      // `default<Record>` for every record whose fields all have a value
+      // without the caller — `Defaults.style`, `.stateBehaviour`,
+      // `.drawStyle` and `.Accessibility.empty` read these.
+      Gen.Derivation.DefaultRecords
+      // `kindCategories`, `kindFieldNames`, `envelopeFieldNames` and
+      // `opFieldNames` as `Set`s. The decoder's ORDERED kind groups and
+      // `opWireFields` stay hand-declared: their order is the cross-host error
+      // hint, and the op fields carry a required flag these sets do not.
+      Gen.Derivation.VocabularyConstants ]

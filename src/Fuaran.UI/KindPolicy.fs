@@ -189,12 +189,11 @@ module DecodePolicy =
 ///
 /// `Kind.name` is the DISPLAY / kind-constraint tag, and the two vocabularies
 /// coincide for every kind but one: `NodeKind.DataGrid` tags as `"Grid"` there
-/// and is `"DataGrid"` on the wire. So this adapts that single case and defers
-/// to `Kind.name` for the rest, rather than re-enumerating thirty-nine arms that
-/// would then drift. `Fuaran.UI.Renderer.Relay.wireKindName` is the same
-/// two-line adaptation made at the relay boundary for the same reason; both are
-/// pinned against the corpus, which is the authority for the vocabulary.
-let wireKindName (kind: NodeKind<'Msg>) : string =
-    match kind with
-    | NodeKind.DataGrid _ -> "DataGrid"
-    | other -> Kind.name other
+/// and is `"DataGrid"` on the wire.
+///
+/// Phase 2039 — this is `Kind.wireTag`, the generated discriminator the encoder
+/// itself writes, rather than a hand adaptation of `Kind.name`. It is the one
+/// kind-level projection of that tag the tier's policy and fidelity surfaces
+/// name: `RenderFidelity.wireNameOf` and `Fuaran.UI.Renderer.Relay.wireKindName`
+/// delegate here.
+let wireKindName (kind: NodeKind<'Msg>) : string = Kind.wireTag kind

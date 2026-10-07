@@ -1,4 +1,4 @@
-// AUTO-GENERATED from the IDL by Fuaran.Core.Idl.Gen 0.35.1. Do not edit by hand.
+// AUTO-GENERATED from the IDL by Fuaran.Core.Idl.Gen 0.35.2. Do not edit by hand.
 module Fuaran.UI.Generated
 #nowarn "44" // this layer implements every declared member, including deprecated ones
 
@@ -4498,7 +4498,8 @@ and private decI18nArg (j: JVal) : Result<Binding<JVal>, string> =
 let decodeNode (s: string) : Result<Node<obj>, DecodeError> =
     Decoder.parse s |> Result.bind decNode
 
-let private witnessKindTag (n: Node<'Msg>) : string =
+/// The kind's wire tag — the discriminator it is encoded under.
+let wireTag (n: Node<'Msg>) : string =
     match n.Kind with
     | NodeKind.Badge _ -> "Badge"
     | NodeKind.Box _ -> "Box"
@@ -4544,7 +4545,11 @@ let private witnessKindTag (n: Node<'Msg>) : string =
     | NodeKind.Toast _ -> "Toast"
     | NodeKind.Tree _ -> "Tree"
 
-let private witnessChildren (n: Node<'Msg>) : Node<'Msg> list =
+/// Every wire tag this module's kinds are encoded under, in declaration order.
+let allWireTags: string list = [ "Badge"; "Box"; "Button"; "Callout"; "Chart"; "CodeBlock"; "Custom"; "DataGrid"; "Disclosure"; "Drawing"; "Embed"; "ErrorBoundary"; "Fact"; "FileUpload"; "Filters"; "Form"; "FragmentDecl"; "FragmentRef"; "Heading"; "Icon"; "Image"; "LabelValueRow"; "Link"; "List"; "Map"; "Markdown"; "Math"; "Media"; "Metric"; "Modal"; "Mount"; "Progress"; "ScrollArea"; "Select"; "Skeleton"; "Sparkline"; "SplitPanel"; "Stepper"; "SummaryList"; "Switch"; "Tabs"; "Toast"; "Tree" ]
+
+/// The node's ordered structural children, in field order.
+let children (n: Node<'Msg>) : Node<'Msg> list =
     match n.Kind with
     | NodeKind.Box s -> s.Children
     | NodeKind.Disclosure s -> s.Children
@@ -4559,7 +4564,8 @@ let private witnessChildren (n: Node<'Msg>) : Node<'Msg> list =
     | NodeKind.Tabs s -> s.Children
     | _ -> []
 
-let private witnessReplaceChildren (n: Node<'Msg>) (kids: Node<'Msg> list) : Node<'Msg> =
+/// The node with exactly this structural child list, its id and kind kept.
+let withChildren (kids: Node<'Msg> list) (n: Node<'Msg>) : Node<'Msg> =
     match n.Kind with
     | NodeKind.Box s -> { n with Kind = NodeKind.Box { s with Children = kids } }
     | NodeKind.Disclosure s -> { n with Kind = NodeKind.Disclosure { s with Children = kids } }
@@ -4576,9 +4582,9 @@ let private witnessReplaceChildren (n: Node<'Msg>) (kids: Node<'Msg> list) : Nod
 
 let nodeWitness: NodeWitness<Node<'Msg>, string> =
     { Id = fun n -> n.Id
-      KindTag = witnessKindTag
-      Children = witnessChildren
-      ReplaceChildren = witnessReplaceChildren }
+      KindTag = wireTag
+      Children = children
+      ReplaceChildren = fun n kids -> withChildren kids n }
 
 // Validator scaffold — register domain RuleFamilies into `reg`; rule content stays domain-side.
 let runValidator (reg: Validator.Registry<Node<'Msg>, string>) (root: Node<'Msg>) : Defect<string> list =
@@ -4715,3 +4721,50 @@ let mkToast (id: string) (message: TextSource) (``open``: Binding<bool>) : Node<
 
 let mkTree (id: string) (items: TreeItem list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Tree { ExpandedStateKey = None; Items = items; OnSelect = None; SelectionStateKey = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+
+/// `Accessibility` with every field at the value a caller need not pass.
+let defaultAccessibility: Accessibility =
+    { DescribedBy = None; Hidden = None; Label = None; LabelledBy = None; LiveRegion = None; Role = None; Speak = None }
+
+/// `DrawStyle` with every field at the value a caller need not pass.
+let defaultDrawStyle: DrawStyle =
+    { Emphasis = None; Fill = None; FontFamily = None; FontSize = None; MarkId = None; Opacity = None; Rotation = None; Stroke = None; StrokeWidth = None; TextAnchor = None; Tip = None }
+
+/// `FieldRule` with every field at the value a caller need not pass.
+let defaultFieldRule: FieldRule =
+    { Compare = None; Format = None; MaxLength = None; Message = None; MinLength = None; Pattern = None }
+
+/// `SemanticStyle` with every field at the value a caller need not pass.
+let defaultSemanticStyle: SemanticStyle =
+    { Direction = TextDirection.Auto; Emphasis = Emphasis.Normal; Role = StyleRole.None; Tone = ToneVariant.Default; Voice = FontVoice.Default; Weight = StyleWeight.Standard }
+
+/// `StateBehaviour` with every field at the value a caller need not pass.
+let defaultStateBehaviour<'Msg>: StateBehaviour<'Msg> =
+    { OnEmpty = None; OnError = None; OnLoading = None }
+
+/// The kind tags of each declared category.
+let kindCategories: Map<string, Set<string>> =
+    Map.ofList [ "Display", set [ "Badge"; "Callout"; "CodeBlock"; "Drawing"; "Embed"; "Fact"; "Heading"; "Icon"; "Image"; "LabelValueRow"; "Link"; "List"; "Markdown"; "Math"; "Media"; "Metric"; "Progress"; "Skeleton"; "Sparkline"; "Toast"; "Tree" ]; "Layout", set [ "Box"; "Disclosure"; "Modal"; "ScrollArea"; "SplitPanel"; "Stepper"; "SummaryList"; "Tabs" ]; "Input", set [ "Button"; "FileUpload"; "Filters"; "Form"; "Select" ]; "Visualisation", set [ "Chart"; "DataGrid"; "Map" ]; "Meta", set [ "Custom"; "ErrorBoundary"; "FragmentDecl"; "FragmentRef"; "Mount"; "Switch" ] ]
+
+/// The wire field names of each kind.
+let kindFieldNames: Map<string, Set<string>> =
+    Map.ofList [ "Badge", set [ "label"; "variant" ]; "Box", set [ "children"; "heading"; "layout"; "role"; "keepTogether"; "breakBefore" ]; "Button", set [ "label"; "onClick"; "variant"; "icon"; "tooltip"; "disabled" ]; "Callout", set [ "body"; "dismissable"; "tone"; "heading"; "icon" ]; "Chart", set [ "kind"; "source"; "stacked"; "xField"; "yFields"; "title"; "valueFormat"; "xTitle"; "yTitle"; "subtitle"; "legendPosition"; "dataLabels"; "xScale"; "annotations"; "onPointClick" ]; "CodeBlock", set [ "code"; "copyable"; "highlightLines"; "language"; "lineNumbers" ]; "Custom", set [ "moduleId"; "componentId"; "props"; "contentHash"; "exposedNodeIds" ]; "DataGrid", set [ "columns"; "editable"; "rowKey"; "rowKeyField"; "sortStateKey"; "pageSize"; "pageStateKey"; "defaultSort"; "editStateKey"; "reorderable"; "transferInKey"; "transferOutKey"; "keepRowsTogether"; "repeatHeader"; "exportable"; "windowStateKey"; "rowTotal"; "source"; "staticRows"; "onRowClick" ]; "Disclosure", set [ "children"; "defaultOpen"; "heading"; "onToggle"; "open" ]; "Drawing", set [ "description"; "shapes"; "style"; "title"; "viewBox" ]; "Embed", set [ "aspectRatio"; "permissions"; "src"; "title" ]; "ErrorBoundary", set [ "child"; "fallback" ]; "Fact", set [ "emphasis"; "help"; "icon"; "label"; "tone"; "value" ]; "FileUpload", set [ "accept"; "label"; "multiple"; "onSelect"; "disabled"; "acceptPaste"; "dropTarget"; "capture"; "destination"; "maxBytes"; "maxFiles" ]; "Filters", set [ "items" ]; "Form", set [ "fields"; "onSubmit"; "submitLabel"; "disabled" ]; "FragmentDecl", set [ "body"; "name"; "holes"; "effect" ]; "FragmentRef", set [ "name"; "args" ]; "Heading", set [ "level"; "text"; "variant" ]; "Icon", set [ "icon"; "size"; "tone"; "label" ]; "Image", set [ "alt"; "src"; "variant"; "fit"; "aspectRatio"; "loading"; "srcSet"; "expandable"; "caption" ]; "LabelValueRow", set [ "emphasis"; "format"; "label"; "value"; "help" ]; "Link", set [ "href"; "label"; "download"; "rel"; "target"; "protection" ]; "List", set [ "items"; "ordered" ]; "Map", set [ "centreLatitude"; "centreLongitude"; "source"; "zoom"; "onMarkerClick" ]; "Markdown", set [ "text" ]; "Math", set [ "source"; "display" ]; "Media", set [ "controls"; "kind"; "label"; "loop"; "src"; "tracks"; "transcript" ]; "Metric", set [ "label"; "value"; "format"; "tone"; "weight"; "emphasis"; "trend"; "trendFormat"; "trendPolarity"; "icon"; "subtext" ]; "Modal", set [ "children"; "dismissable"; "onDismiss"; "open"; "heading"; "modality"; "anchor" ]; "Mount", set [ "capabilities"; "channel"; "inputs"; "onBubble"; "scopeId" ]; "Progress", set [ "fraction"; "indeterminate"; "tone"; "label"; "caveat" ]; "ScrollArea", set [ "children"; "orientation"; "maxHeight"; "maxWidth" ]; "Select", set [ "label"; "onChange"; "onChangeMulti"; "source"; "value"; "placeholder"; "disabled"; "multiple"; "values" ]; "Skeleton", set [ "rows" ]; "Sparkline", set [ "source" ]; "SplitPanel", set [ "children"; "weight" ]; "Stepper", set [ "activeStep"; "children"; "onSelect" ]; "SummaryList", set [ "children"; "heading" ]; "Switch", set [ "autoAdvanceMs"; "cases"; "default"; "on"; "stateKey" ]; "Tabs", set [ "activeIndex"; "children"; "orientation"; "onSelect"; "onSelectTag"; "tabHeaders"; "tabTags"; "activeTag" ]; "Toast", set [ "dismissable"; "message"; "open"; "tone" ]; "Tree", set [ "expandedStateKey"; "items"; "onSelect"; "selectionStateKey" ] ]
+
+/// The wire field names of the node envelope.
+let envelopeFieldNames: Set<string> =
+    set [ "accessibility"; "extraAttributes"; "fallback"; "motion"; "state"; "style"; "tooltip"; "visible" ]
+
+/// The wire field names of each tree op.
+let opFieldNames: Map<string, Set<string>> =
+    Map.ofList [ "Batch", set [ "ops" ]; "EditNode", set [ "newKind"; "target" ]; "InsertChild", set [ "child"; "parentId" ]; "MoveNode", set [ "newParentId"; "target" ]; "RemoveNode", set [ "target" ]; "ReorderChildren", set [ "newOrder"; "parentId" ]; "ReplaceBinding", set [ "binding"; "slot"; "target" ]; "ReplaceRoot", set [ "node" ]; "UpdateProp", set [ "path"; "target"; "value" ]; "UpdateState", set [ "state"; "target" ]; "UpdateStyle", set [ "style"; "target" ] ]
+
+/// Derived members of `Action`.
+module Action =
+    /// Fold `folder` over this value and every nested `Action` it holds, in preorder.
+    let rec fold (folder: 'S -> Action<'Msg> -> 'S) (state: 'S) (v: Action<'Msg>) : 'S =
+        let state = folder state v
+
+        match v with
+        | Action.Chain(__f0) -> List.fold (fun __s0 __x0 -> fold folder __s0 __x0) state __f0
+        | Action.Confirm(__f0, __f1, __f2) -> (let __c0_0 = fold folder state __f1 in let __c0_1 = (match __f2 with Some __o1 -> fold folder __c0_0 __o1 | None -> __c0_0) in __c0_1)
+        | _ -> state

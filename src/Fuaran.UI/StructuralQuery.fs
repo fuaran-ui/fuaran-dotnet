@@ -318,13 +318,15 @@ type private Carried = { Tag: string; Disc: string option }
 // a tree nor serialises it. `#warnon` immediately below.
 #nowarn "44"
 
-/// The actions reachable from one action value, recursing `Chain`.
+/// ONE action value reduced to what it carries itself, not counting the actions
+/// nested in it — `carriedOf` below adds those.
 ///
 /// FORWARD-COUPLING: exhaustive on purpose — a new `Action` case declares its
 /// query surface here.
-let rec private carriedOf (label: 'Msg -> string option) (action: Action<'Msg>) : Carried list =
+let private carriedAt (label: 'Msg -> string option) (action: Action<'Msg>) : Carried list =
     match action with
-    | Action.Chain ops -> ops |> List.collect (carriedOf label)
+    // A chain carries nothing of its own; its members are reached by the fold.
+    | Action.Chain _ -> []
     | Action.Dispatch msg -> [ { Tag = "Dispatch"; Disc = label msg } ]
     | Action.Call(endpoint, _, _) -> [ { Tag = "Call"; Disc = Some endpoint } ]
     // Phase 1536 — the route is a `TextSource`, so only a LITERAL one carries a
@@ -365,17 +367,21 @@ let rec private carriedOf (label: 'Msg -> string option) (action: Action<'Msg>) 
     // The discriminator is the LITERAL prompt only, on the `Navigate` reasoning
     // one arm up: a bound prompt has no text until dispatch, and answering with
     // the template would be a guess.
-    | Action.Confirm(prompt, onConfirm, onCancel) ->
-        { Tag = "Confirm"
-          Disc =
-            match prompt with
-            | TextSource.Literal s -> Some s
-            | _ -> None }
-        :: (carriedOf label onConfirm
-            @ (onCancel |> Option.map (carriedOf label) |> Option.defaultValue []))
+    | Action.Confirm(prompt, _, _) ->
+        [ { Tag = "Confirm"
+            Disc =
+              match prompt with
+              | TextSource.Literal s -> Some s
+              | _ -> None } ]
     | Action.Focus nodeId -> [ { Tag = "Focus"; Disc = Some nodeId } ]
 
 #warnon "44"
+
+/// The actions reachable from one action value: it and every action nested in
+/// it, in preorder. Phase 2039 — the nesting (`Chain`'s members, a `Confirm`'s
+/// continuations) is the generated `Action.fold`.
+let private carriedOf (label: 'Msg -> string option) (action: Action<'Msg>) : Carried list =
+    Generated.Action.fold (fun found a -> found @ carriedAt label a) [] action
 
 /// The actions `node` carries in a WIRE-SURVIVABLE action slot — `Button.OnClick`,
 /// `Form.OnSubmit`, `Modal.OnDismiss`, the same three the tier's shared binding

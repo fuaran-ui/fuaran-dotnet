@@ -225,6 +225,33 @@ let tests =
               Expect.isSome dispatch.Value.Alternative "and the table does name one"
           }
 
+          // Phase 2039 — the walk folds every nested action, so a `Confirm`'s
+          // continuations are reached exactly as a `Chain`'s members are. Before
+          // the generated `Action.fold` this walk stopped at the dialogue and an
+          // inert `Dispatch` behind the reader's yes (or cancel) went unreported.
+          test "an Action.Dispatch inside a Confirm continuation reports inert" {
+              let button =
+                  node
+                      "btn"
+                      (NodeKind.Button(
+                          { Defaults.button<Msg> with
+                              Label = TextSource.Literal "Go"
+                              OnClick =
+                                  Action.Confirm(
+                                      TextSource.Literal "Sure?",
+                                      Action.Chain [],
+                                      Some(Action.Chain [ Action.Dispatch NoOp ])
+                                  ) }
+                      ))
+
+              let findings = AffordanceInertness.report button
+
+              Expect.isTrue
+                  (findings
+                   |> List.exists (fun f -> f.Subject = "Action.Dispatch" && f.Node = "btn"))
+                  "a Dispatch on the cancel branch of a confirmation is as inert as one in a chain"
+          }
+
           // ── the whole-case grid-cell erasures ───────────────────────────
           test "the host-only grid cell kinds and the custom cell format report" {
               let tree =
