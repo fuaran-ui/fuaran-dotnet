@@ -4722,6 +4722,26 @@ let mkToast (id: string) (message: TextSource) (``open``: Binding<bool>) : Node<
 let mkTree (id: string) (items: TreeItem list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Tree { ExpandedStateKey = None; Items = items; OnSelect = None; SelectionStateKey = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
+/// `Accessibility` with every field at the value a caller need not pass.
+let defaultAccessibility: Accessibility =
+    { DescribedBy = None; Hidden = None; Label = None; LabelledBy = None; LiveRegion = None; Role = None; Speak = None }
+
+/// `DrawStyle` with every field at the value a caller need not pass.
+let defaultDrawStyle: DrawStyle =
+    { Emphasis = None; Fill = None; FontFamily = None; FontSize = None; MarkId = None; Opacity = None; Rotation = None; Stroke = None; StrokeWidth = None; TextAnchor = None; Tip = None }
+
+/// `FieldRule` with every field at the value a caller need not pass.
+let defaultFieldRule: FieldRule =
+    { Compare = None; Format = None; MaxLength = None; Message = None; MinLength = None; Pattern = None }
+
+/// `SemanticStyle` with every field at the value a caller need not pass.
+let defaultSemanticStyle: SemanticStyle =
+    { Direction = TextDirection.Auto; Emphasis = Emphasis.Normal; Role = StyleRole.None; Tone = ToneVariant.Default; Voice = FontVoice.Default; Weight = StyleWeight.Standard }
+
+/// `StateBehaviour` with every field at the value a caller need not pass.
+let defaultStateBehaviour<'Msg>: StateBehaviour<'Msg> =
+    { OnEmpty = None; OnError = None; OnLoading = None }
+
 /// Derived members of `Action`.
 module Action =
     /// Fold `folder` over this value and every nested `Action` it holds, in preorder.

@@ -1044,4 +1044,8 @@ let derivations: Gen.Derivation list =
       // `Action.fold` — the walks over the action union (`Chain` and
       // `Confirm` both nest actions) fold through it, so none can forget a
       // recursive case.
-      Gen.Derivation.Fold "Action" ]
+      Gen.Derivation.Fold "Action"
+      // `default<Record>` for every record whose fields all have a value
+      // without the caller — `Defaults.style`, `.stateBehaviour`,
+      // `.drawStyle` and `.Accessibility.empty` read these.
+      Gen.Derivation.DefaultRecords ]
