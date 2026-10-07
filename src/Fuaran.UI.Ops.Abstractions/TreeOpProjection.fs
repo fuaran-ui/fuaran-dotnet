@@ -97,26 +97,42 @@ module TreeOp =
 
         NodeChildren.children NodeChildren.Reach.keyed carrier
 
-    /// Every id the op TOUCHES: its `targets`, every id in a subtree it puts
-    /// into the tree (an inserted child, a replacement root, the nodes a new
-    /// kind or a new `state` block holds), and a reorder's `newOrder`. Two ops
-    /// whose footprints are disjoint do not depend on each other; an op on a
-    /// node INSIDE an inserted subtree shares an id with the insert.
-    let rec footprint (op: TreeOp<'Msg>) : Set<NodeId> =
-        let addressed = Set.ofList (targets op)
-
+    /// The subtree roots the op puts INTO the tree, in the order it names them:
+    /// an inserted child, a replacement root, the nodes a new kind holds (an
+    /// `EditNode`), a new `state` block's `onLoading` / `onEmpty` alternatives
+    /// (an `UpdateState`). A `Batch` is its members' insertions in order. Every
+    /// other op puts no node in, and answers `[]`.
+    ///
+    /// NODES, not ids (Phase 2141). The question "does this op add to the
+    /// tree" is about what it carries, and an id set cannot answer it: a
+    /// payload whose ids repeat collapses to fewer ids than it has nodes, down
+    /// to none beyond the op's own target. `footprint` is this list's ids.
+    let rec inserted (op: TreeOp<'Msg>) : Node<'Msg> list =
         match op with
         | TreeOp.UpdateProp _
         | TreeOp.ReplaceBinding _
         | TreeOp.UpdateStyle _
         | TreeOp.RemoveNode _
-        | TreeOp.MoveNode _ -> addressed
-        | TreeOp.EditNode(id, kind) -> heldBy id kind |> List.fold (fun a n -> subtreeIds n a) addressed
-        | TreeOp.UpdateState(_, state) ->
-            [ state.OnLoading; state.OnEmpty ]
-            |> List.choose id
-            |> List.fold (fun a n -> subtreeIds n a) addressed
-        | TreeOp.InsertChild(_, child) -> subtreeIds child addressed
-        | TreeOp.ReorderChildren(_, newOrder) -> Set.union addressed (Set.ofList newOrder)
-        | TreeOp.ReplaceRoot node -> subtreeIds node addressed
+        | TreeOp.MoveNode _
+        | TreeOp.ReorderChildren _ -> []
+        | TreeOp.EditNode(id, kind) -> heldBy id kind
+        | TreeOp.UpdateState(_, state) -> [ state.OnLoading; state.OnEmpty ] |> List.choose id
+        | TreeOp.InsertChild(_, child) -> [ child ]
+        | TreeOp.ReplaceRoot node -> [ node ]
+        | TreeOp.Batch ops -> ops |> List.collect inserted
+
+    /// Every id the op TOUCHES: its `targets`, every id in a subtree it puts
+    /// into the tree (`inserted`, through every keyed position), and a
+    /// reorder's `newOrder`. Two ops whose footprints are disjoint do not
+    /// depend on each other; an op on a node INSIDE an inserted subtree shares
+    /// an id with the insert.
+    let rec footprint (op: TreeOp<'Msg>) : Set<NodeId> =
+        match op with
         | TreeOp.Batch ops -> ops |> List.map footprint |> Set.unionMany
+        | _ ->
+            let touched =
+                inserted op |> List.fold (fun a n -> subtreeIds n a) (Set.ofList (targets op))
+
+            match op with
+            | TreeOp.ReorderChildren(_, newOrder) -> Set.union touched (Set.ofList newOrder)
+            | _ -> touched

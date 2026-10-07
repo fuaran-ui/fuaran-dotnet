@@ -577,6 +577,38 @@ attribute bags are HOST-authored rather than tree-authored, so a host that write
 own `<body>` has written the script it wanted. The TREE-authored bag is a different seam with a
 stricter rule (`isAllowedExtraAttributeKey`: `data-*` and `aria-*` only).
 
+## Apply-time tree limits (Phase 1527, corrected by Phase 2141)
+
+Not a string-to-DOM seam, but the same threat model one step earlier: an AI emits OPS as well as
+trees, and an op stream is untrusted input to the apply engine. The decoder refuses a document past
+`WireLimits.MaxDepth` or `MaxNodes` (WIRE_FORMAT §21); `Apply.apply` refuses an op whose RESULT would
+be past either, with `ApplyErrorCode.LimitExceeded`, so a stream of individually small ops cannot
+assemble a tree that no host — this one included — could decode or render.
+
+**What is checked.** Every op that puts a node into the tree — read from what the op carries
+(`TreeOp.inserted`), not from its ids, so a payload whose ids repeat is counted node by node:
+`InsertChild`, `ReplaceRoot`, an `EditNode` whose new kind holds children, and an `UpdateState` that
+attaches `onLoading` / `onEmpty`. And `MoveNode`, for depth: it adds no node, but moving one legal
+branch under the leaf of another stacks two depths that each passed. A `Batch` is checked when any
+member is. The check runs on the result of the whole op, so a `Batch` that crosses the line is refused
+entire and leaves the tree as it was.
+
+**What is not claimed.**
+
+- **Ops that cannot grow the tree are not walked.** `UpdateProp`, `ReplaceBinding` and `UpdateStyle`
+  carry no node (`UpdateProp` refuses every node-valued field), `RemoveNode` shrinks and
+  `ReorderChildren` permutes. They apply to a tree that is already over a limit, deliberately:
+  refusing them would strand a tree they did not create, and they are the ops that can bring it back.
+- **Only the two node-tree limits are re-checked at apply time.** The string, expression, row and
+  document-byte limits bound what the op decoder accepts; apply does not re-measure them.
+- **Duplicate ids are not this guard's concern.** It counts nodes whatever their ids are, so a
+  repeated id neither hides a node from it nor is refused by it.
+- **This is the .NET engine's guarantee, and the Go and Rust engines' (`LimitExceeded` on the same
+  inputs, certified by the shared `apply/limits-apply.json` corpus family).** It is not a property of
+  every host that applies ops: the TypeScript and Python apply engines enforce no apply-time limit
+  today, and the corpus manifest records their adoption as `proposed`. A host that applies an
+  untrusted op stream on one of those engines must bound the result itself, or re-decode it.
+
 ## Reference
 
 - [`src/Fuaran.UI/EmissionGrammar.fs`](src/Fuaran.UI/EmissionGrammar.fs) — the emission grammar for string-typed slots (Phase 1523): the rule every host's copy agrees with, consulted pre-emit and re-exported at every emission site.
@@ -590,6 +622,7 @@ stricter rule (`isAllowedExtraAttributeKey`: `data-*` and `aria-*` only).
 - [`src/Fuaran.UI.Renderer.Server.Tests/ServerRenderTests.fs`](src/Fuaran.UI.Renderer.Server.Tests/ServerRenderTests.fs) — SSR attribute-name-injection assertions on the emitted HTML string.
 - [`src/Fuaran.UI.Renderer.Server.Tests/EmissionGrammarRenderTests.fs`](src/Fuaran.UI.Renderer.Server.Tests/EmissionGrammarRenderTests.fs) — the emission grammar in emitted bytes, each refusal with its allow twin.
 - [`docs/proposals/link-target-rel-narrowing.md`](docs/proposals/link-target-rel-narrowing.md) — the §4b amendment proposal for narrowing `Link.target` / `Link.rel` on the WIRE.
+- [`src/Fuaran.UI.Ops.Tests/ApplyLimitTests.fs`](src/Fuaran.UI.Ops.Tests/ApplyLimitTests.fs) and [`LimitsApplyCorpusTests.fs`](src/Fuaran.UI.Ops.Tests/LimitsApplyCorpusTests.fs) — the apply-time limit refusals per op, each with its at-the-limit twin, and the shared corpus family.
 - [`STABILITY.md`](STABILITY.md) — language-tier stability policy (which surfaces are stable).
 - [`docs/VALIDATOR-MANIFEST.md`](docs/VALIDATOR-MANIFEST.md) — validator codes including FUARAN060.
 - [`CLAUDE.md`](CLAUDE.md) — repo conventions.
