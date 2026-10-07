@@ -82,8 +82,55 @@ the two are enumerated in different places: the pre-emit family's codes, severit
 shapes are published as data in the conformance corpus's `validator/defect-vocabulary.json`
 (generated from the reference host, never hand-maintained) and as the table in
 [§5](#5-pre-emit-validator-codes--the-full-table) below, generated from the same source; each host
-declares which of them it implements in its own `validator-coverage.json`. The walker's family is not yet enumerated
-anywhere; that is open work, and it is why a lookup for an unfamiliar code may need both places.
+declares which of them it implements in its own `validator-coverage.json`. The walker's family is
+enumerated by hand in the table below; a test in the validator's own suite fails when the walker's
+sources emit a code that has no compiled snippet making it fire.
+
+**The build-time walker's codes (Phase 2053).** Every code here fires on source that compiles
+against the current types. The column on the right says whether the tree-time validator covers
+the same defect; where it does, the build-time rule has been retired in its favour.
+
+| Code | Severity | Fires on | Tree-time coverage |
+|---|---|---|---|
+| `FUARAN001` | Error | Two calls in one tree with the same NodeId literal. A tree is the subtree under an outermost constructor that takes a child node (`Fuaran.box`, `stack`, `card`, `dashboard`, …) | `FUARAN-DUP-ID`, one emitted tree at a time; the build-time rule stays because it sees every tree a source can build |
+| `FUARAN002` | Warning | The same NodeId literal in two different trees | None: the tree-time validator sees one tree |
+| `FUARAN010` | Error | `binding.query "name"` naming a query the manifest does not declare | None |
+| `FUARAN020` | Error | `Action.dispatch` of a Msg case the manifest does not declare | None |
+| `FUARAN030` | Warning | A grid whose source query has no `queryRowTypes` entry | None |
+| `FUARAN031` | Error | A grid whose `toRow` parameter is annotated with a type other than the manifest's row type | None |
+| `FUARAN042` | Error | `binding.local` with `format = None` | None |
+| `FUARAN043` | Warning | `binding.local` flushing `OnCommitAction` in a project with no `Action.CommitLocal` | None |
+| `FUARAN044` | Error | `binding.local` outside a Text / Number / RangedNumber field (case or smart constructor) | None |
+| `FUARAN045` | Warning | A segmented choice with more than 7 static options | None |
+| `FUARAN046` | Warning | `Fuaran.gridLayoutTemplated` with a `repeat(N, 1fr)` template | None (`FUARAN144` is a different defect: a malformed track list) |
+| `FUARAN050` | Warning | A static progress `Fraction` outside `[0, 1]` | None |
+| `FUARAN051` | Warning | A static ranged-number value outside its `min` / `max` | None |
+| `FUARAN053` | Warning | A Custom node declaring interior ids with no matching `RegisterCustomRenderer` | None |
+| `FUARAN054` | Warning | The project's Custom-node ratio above `customNodeRatio` | None |
+| `FUARAN055` | Warning | A Custom node with no `contentHash` | None |
+| `FUARAN056` | Error | Two fragment declarations with one name | None |
+| `FUARAN057` | Error | A fragment reference no declaration names | None (the renderer substitutes a placeholder) |
+| `FUARAN058` | Error | A fragment reference cycle | None (the renderer's cycle guard substitutes a placeholder) |
+| `FUARAN059` | Error | A `Repeat` hole with an unbounded count space | None |
+| `FUARAN060` | Warning | `Node.withExtraAttribute` with a key outside `data-*` / `aria-*` | None (the renderer drops the entry) |
+| `FUARAN061` | Error | A blank ISO-4217 currency code | None |
+| `FUARAN062` | Error / Warning | A Custom `contentHash` that disagrees with the body-shape hash | None |
+| `FUARAN063` | Warning | A blank static href on `Fuaran.link` or `Fuaran.linkSpec` | None |
+| `FUARAN064` | Warning | A button whose `Disabled` is a constant-false static binding | None |
+| `FUARAN065` | Error | A `Value` hole whose default lies outside its value space | None |
+| `FUARAN084` | Warning (Error with `--orchestrated`) | `Binding.Computed` | None |
+| `FUARAN900` | Warning | No manifest beside the project; the schema-coupled rules are silent | — |
+
+**Retired build-time codes.** These are no longer emitted by the walker. Each is listed here for one
+release so that a consumer matching on it can find where the defect is now reported.
+
+| Code | Was | Now |
+|---|---|---|
+| `FUARAN040` | A button with `Accessibility = None` and no label | Alias of the tree-time **`FUARAN109`** (an interactive node with no accessible name). The build-time rule matched a field `ButtonSpec` does not have, so it never fired on compiling code |
+| `FUARAN041` | A Warning / Critical callout with `Accessibility = None` | **Withdrawn, with no replacement.** It matched a field `CalloutSpec` does not have, so it never fired on compiling code, and no tree-time rule checks the callout live-region opt-out. The gap is open |
+| `FUARAN047` | Tab headers and children of different lengths | The tree-time rule of the same code. Only the duplicate build-time emitter is gone |
+| `FUARAN048` | Tab tags and children of different lengths | The tree-time rule of the same code |
+| `FUARAN049` | `ActiveTag` set with no `TabTags` | The tree-time rule of the same code |
 
 Because the band is shared, a new code is **allocated rather than chosen**:
 `pwsh ./scripts/fuaran-codes.ps1 -Next`. The gate runs the same script with `-Check` and fails when

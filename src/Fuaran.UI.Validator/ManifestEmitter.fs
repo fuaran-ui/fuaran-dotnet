@@ -27,7 +27,7 @@ module Fuaran.UI.Validator.ManifestEmitter
 //  Both checks therefore stay fully live over a generated manifest.
 //
 //  `queryRowTypes` is the honest exception: its only in-source evidence IS the
-//  grid lambda annotation FUARAN031 compares against, so under a generated
+//  grid `toRow` annotation FUARAN031 compares against, so under a generated
 //  manifest FUARAN031 cannot fire. The defect it detects does not vanish — it
 //  moves EARLIER. Two grids reading one query but annotating different row
 //  types is a generation-time conflict (`RowTypeConflicts`); the emitter omits
@@ -59,6 +59,7 @@ open System.Text.Json
 open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.Syntax
 open Fuaran.UI.Validator.AstWalker
+open Fuaran.UI.Validator.Syntax
 open Fuaran.UI.Validator.Manifest
 
 // ─── Derived model ──────────────────────────────────────────────────────────
@@ -232,69 +233,28 @@ let private bindingName (SynBinding(headPat = pat)) =
     | SynPat.LongIdent(longDotId = SynLongIdent(id = ids)) when not ids.IsEmpty -> Some (List.last ids).idText
     | _ -> None
 
-/// Recursive descent recording `let` bindings and `QueryResults = …` field
-/// assignments. Mirrors the shape list every other narrow walker in this
-/// package uses (LocalBindingCheck, NumberFieldRangeCheck, …) — each rule owns
-/// its own traversal so its lexical scope stays independent of the Fuaran.X
-/// smart-ctor walker.
-let rec private scanExpr (scan: FileScan) (expr: SynExpr) =
-    let recur e = scanExpr scan e
-
-    match expr with
-    | SynExpr.Record(recordFields = fields) ->
-        for SynExprRecordField(fieldName = (SynLongIdent(id = ids), _); expr = fieldExpr) in fields do
-            match fieldExpr with
-            | Some fieldExpr ->
-                match ids with
-                | [] -> ()
-                | _ when (List.last ids).idText = queryResultsField -> scan.QueryResultExprs.Add fieldExpr
+/// Record `let` bindings and `QueryResults = …` field assignments — a visitor
+/// over the shared traversal (`Syntax.iterExpr`).
+let private scanExpr (scan: FileScan) (expr: SynExpr) =
+    expr
+    |> iterExpr (fun e ->
+        match e with
+        | SynExpr.Record(recordFields = fields) ->
+            for SynExprRecordField(fieldName = (SynLongIdent(id = ids), _); expr = fieldExpr) in fields do
+                match ids, fieldExpr with
+                | _ :: _, Some assigned when (List.last ids).idText = queryResultsField ->
+                    scan.QueryResultExprs.Add assigned
                 | _ -> ()
+        | SynExpr.LetOrUse synLet ->
+            for binding in synLet.Bindings do
+                let (SynBinding(expr = boundExpr)) = binding
 
-                recur fieldExpr
-            | None -> ()
-    | SynExpr.LetOrUse synLet ->
-        for binding in synLet.Bindings do
-            let (SynBinding(expr = boundExpr)) = binding
+                match bindingName binding with
+                | Some name -> scan.Bindings[name] <- boundExpr
+                | None -> ()
+        | _ -> ()
 
-            match bindingName binding with
-            | Some name -> scan.Bindings[name] <- boundExpr
-            | None -> ()
-
-            recur boundExpr
-
-        recur synLet.Body
-    | SynExpr.App(funcExpr = f; argExpr = a) ->
-        recur f
-        recur a
-    | SynExpr.Paren(expr = e) -> recur e
-    | SynExpr.Tuple(exprs = es) -> es |> List.iter recur
-    | SynExpr.Sequential(expr1 = a; expr2 = b) ->
-        recur a
-        recur b
-    | SynExpr.IfThenElse(ifExpr = c; thenExpr = t; elseExpr = e) ->
-        recur c
-        recur t
-        e |> Option.iter recur
-    | SynExpr.Match(expr = scrutinee; clauses = clauses) ->
-        recur scrutinee
-
-        for SynMatchClause(resultExpr = r) in clauses do
-            recur r
-    | SynExpr.Lambda(body = b) -> recur b
-    | SynExpr.ArrayOrList(exprs = es) -> es |> List.iter recur
-    | SynExpr.ArrayOrListComputed(expr = e) -> recur e
-    | SynExpr.ComputationExpr(expr = e) -> recur e
-    | SynExpr.TypeApp(expr = e) -> recur e
-    | SynExpr.Typed(expr = e) -> recur e
-    | SynExpr.Do(expr = e) -> recur e
-    | SynExpr.DotGet(expr = e) -> recur e
-    | SynExpr.DotSet(targetExpr = t; rhsExpr = r) ->
-        recur t
-        recur r
-    | SynExpr.LongIdentSet(expr = e) -> recur e
-    | SynExpr.New(expr = e) -> recur e
-    | SynExpr.AddressOf(expr = e) -> recur e
-    | _ -> ()
+        true)
 
 let rec private scanDecl (scan: FileScan) (decl: SynModuleDecl) =
     match decl with
@@ -311,11 +271,6 @@ let rec private scanDecl (scan: FileScan) (decl: SynModuleDecl) =
     | SynModuleDecl.Expr(expr = e) -> scanExpr scan e
     | _ -> ()
 
-let private stringConst (expr: SynExpr) =
-    match expr with
-    | SynExpr.Const(constant = SynConst.String(text = s)) -> Some s
-    | _ -> None
-
 /// Harvest query names from an expression assigned to `QueryResults`.
 ///
 /// One rule, applied to whatever collection idiom the author reached for
@@ -330,63 +285,30 @@ let private stringConst (expr: SynExpr) =
 /// `depth` bounds the one-hop-per-level identifier resolution so a pair of
 /// mutually-referencing bindings cannot loop.
 let rec private harvestQueryNames (scan: FileScan) (depth: int) (expr: SynExpr) (acc: HashSet<string>) =
-    if depth > 3 then
-        ()
-    else
-        let recur e = harvestQueryNames scan depth e acc
+    if depth <= 3 then
+        expr
+        |> iterExpr (fun e ->
+            match e with
+            | SynExpr.Ident ident ->
+                match scan.Bindings.TryGetValue ident.idText with
+                | true, bound -> harvestQueryNames scan (depth + 1) bound acc
+                | _ -> ()
 
-        match expr with
-        | SynExpr.Ident ident ->
-            match scan.Bindings.TryGetValue ident.idText with
-            | true, bound -> harvestQueryNames scan (depth + 1) bound acc
-            | _ -> ()
-        | SynExpr.Tuple(exprs = head :: _ :: _) ->
-            match stringConst head with
-            | Some name -> acc.Add name |> ignore
-            | None -> ()
-        | SynExpr.App(funcExpr = SynExpr.App(funcExpr = mapAdd; argExpr = keyArg); argExpr = valueArg) ->
-            match leafIdentName mapAdd, stringConst keyArg with
-            | Some "add", Some name -> acc.Add name |> ignore
-            | _ -> ()
+                false
+            | SynExpr.Tuple(exprs = head :: _ :: _) ->
+                literalString head |> Option.iter (acc.Add >> ignore)
+                false
+            | SynExpr.App(funcExpr = SynExpr.App(funcExpr = mapAdd; argExpr = keyArg)) ->
+                match leafIdent mapAdd, literalString keyArg with
+                | Some(_, "add", _), Some name -> acc.Add name |> ignore
+                | _ -> ()
 
-            recur mapAdd
-            recur keyArg
-            recur valueArg
-        | SynExpr.App(funcExpr = f; argExpr = a) ->
-            recur f
-            recur a
-        | SynExpr.Paren(expr = e) -> recur e
-        | SynExpr.Typed(expr = e) -> recur e
-        | SynExpr.ArrayOrList(exprs = es) -> es |> List.iter recur
-        | SynExpr.ArrayOrListComputed(expr = e) -> recur e
-        | SynExpr.ComputationExpr(expr = e) -> recur e
-        | SynExpr.Sequential(expr1 = a; expr2 = b) ->
-            recur a
-            recur b
-        | SynExpr.LetOrUse synLet ->
-            for SynBinding(expr = e) in synLet.Bindings do
-                recur e
-
-            recur synLet.Body
-        | SynExpr.IfThenElse(ifExpr = c; thenExpr = t; elseExpr = e) ->
-            recur c
-            recur t
-            e |> Option.iter recur
-        | SynExpr.Lambda(body = b) -> recur b
-        | _ -> ()
-
-/// Leaf identifier of a (possibly long) identifier expression — `Map.add`
-/// yields `"add"`. Local to the harvest rule; `AstWalker.identNames` is the
-/// shared segment projection underneath.
-and private leafIdentName (expr: SynExpr) : string option =
-    match expr with
-    | SynExpr.LongIdent(longDotId = SynLongIdent(id = ids)) when not ids.IsEmpty -> Some(List.last (identNames ids))
-    | SynExpr.Ident i -> Some i.idText
-    | _ -> None
+                true
+            | _ -> true)
 
 // ─── Facet 3: per-query row types ───────────────────────────────────────────
 
-/// Pair each grid's query source with the row-type annotations on its lambdas.
+/// Pair each grid's query source with the row type annotated on its `toRow` projection.
 /// A query all of whose annotated grids agree yields an entry; a query whose
 /// grids disagree yields a conflict and NO entry (see the module header).
 let private deriveRowTypes (calls: FuaranCall list) =
@@ -423,19 +345,20 @@ let private deriveRowTypes (calls: FuaranCall list) =
 
 // ─── Derivation driver ──────────────────────────────────────────────────────
 
-/// Walk every source under `projectDir` and derive the manifest facets.
+/// Walk every source under `projectDir` and derive the manifest facets. Each
+/// file is parsed once, and both the declaration facets and the grid row
+/// types are read off that one parse.
 let derive (checker: FSharpChecker) (projectDir: string) : Async<Derivation> =
     async {
         let sourceFiles = discoverSourceFiles projectDir
+        let! sources = parseSources (parser checker) sourceFiles
 
         let msgCases = ResizeArray<MsgCase>()
         let queryNames = HashSet<string>()
 
-        for file in sourceFiles do
-            let! tree = parseTree checker file
-
-            match tree with
-            | Some(ParsedInput.ImplFile(ParsedImplFileInput(contents = modules))) ->
+        for source in sources do
+            match source.Input with
+            | ParsedInput.ImplFile(ParsedImplFileInput(contents = modules)) ->
                 let scan =
                     { Bindings = Dictionary()
                       QueryResultExprs = ResizeArray() }
@@ -449,13 +372,11 @@ let derive (checker: FSharpChecker) (projectDir: string) : Async<Derivation> =
                 // assignment can follow a binding declared anywhere in it.
                 for expr in scan.QueryResultExprs do
                     harvestQueryNames scan 0 expr queryNames
-            | _ -> ()
+            | ParsedInput.SigFile _ -> ()
 
-        // Grid row-type annotations come from the existing Fuaran.X walker —
-        // the one facet needing no new walking.
-        let! allCalls = sourceFiles |> List.map (walkFile checker) |> Async.Parallel
-
-        let rowTypes, conflicts = allCalls |> Array.toList |> List.concat |> deriveRowTypes
+        // Grid row-type annotations come from the Fuaran.X call-site model —
+        // the one facet needing no walking of its own.
+        let rowTypes, conflicts = AstWalker.calls sources |> deriveRowTypes
 
         let dedupedMsgCases =
             msgCases |> Seq.distinctBy _.Case |> Seq.sortBy _.Case |> List.ofSeq

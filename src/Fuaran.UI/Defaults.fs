@@ -730,7 +730,7 @@ module Accessibility =
     /// for Heading, Markdown, Spacer, Skeleton, Sparkline.
     let none: Accessibility option = Option.None
 
-    // ─── Interactive defaults (validator-enforced via FUARAN040) ────────────
+    // ─── Interactive defaults (checked at tree time: FUARAN109) ────────────
 
     /// Button: `Role = Button`. When `Accessibility.Label` is `None` no
     /// `aria-label` is emitted — `ButtonSpec.Label` renders as the button's
@@ -763,9 +763,10 @@ module Accessibility =
 
     // ─── Notification / status defaults ───────────────────────────────────
 
-    /// Callout: `Role = Alert; LiveRegion = Assertive`. Validator FUARAN041
-    /// warns if a `Warning` / `Critical` tone callout overrides this with
-    /// `Accessibility = None` (loses the screen-reader announcement).
+    /// Callout: `Role = Alert; LiveRegion = Assertive`. No validator checks a
+    /// `Warning` / `Critical` tone callout that overrides this with
+    /// `Accessibility = None` (losing the screen-reader announcement): the
+    /// build-time FUARAN041 that claimed to could never fire and was withdrawn.
     let callout: Accessibility option =
         Some
             { empty with
