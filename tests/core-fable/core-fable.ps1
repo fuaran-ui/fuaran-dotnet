@@ -338,8 +338,19 @@ if ($skipCompute) {
 try {
     # ── Membership ──────────────────────────────────────────────────────────
 
-    $referenced = @([regex]::Matches((Get-Content -Raw $project), '<PackageReference\s+Include="(Fuaran\.(?:Core|Compute)\.[^"]+)"') |
-        ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+    # A package that first ships at a Core version this repository does not pin yet is referenced
+    # with `CandidateFrom="<version>"` (the project restores it only for a candidate at or past that
+    # version, since no pin exists for it): it is a MEMBER here only when the Core this run compiles
+    # against — the candidate, or the pin — is at or past that version. A reference without the
+    # marker counts unconditionally, as before. Without this, the first package Core adds after a
+    # pin raise fails the pinned run as "referenced but not pinned" and the cut-time run as "neither
+    # referenced nor excluded" — one of the two, whichever way the project is written.
+    $effectiveCore = if ($coreOverride) { [version]$CoreVersion } else { [version]$pins['Fuaran.Core.Conformance'] }
+    [xml]$projectXml = Get-Content -Raw $project
+    $referenced = @($projectXml.SelectNodes('//PackageReference') |
+        Where-Object { $_.Include -match '^Fuaran\.(Core|Compute)\.' } |
+        Where-Object { -not $_.CandidateFrom -or [version]$_.CandidateFrom -le $effectiveCore } |
+        ForEach-Object { $_.Include } | Sort-Object -Unique)
 
     $exclusions = @(Get-Content -Raw (Join-Path $PSScriptRoot 'exclusions.json') | ConvertFrom-Json)
     $malformed = @($exclusions | Where-Object { -not $_.package -or -not $_.reason -or -not $_.phase })
