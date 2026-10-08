@@ -247,9 +247,9 @@ type ApplyErrorCode =
     /// operation long since finished. As an apply outcome the refusal is
     /// attributed to the op that crossed the line, at the moment it crossed it,
     /// and it reaches the op-stream and telemetry sinks through the same path
-    /// as every other apply failure (FGP 5). The sibling Go and Rust engines
-    /// emit the same `LimitExceeded` name, so a client recovering from it need
-    /// not know which engine refused.
+    /// as every other apply failure (FGP 5). The sibling Go, Rust, TypeScript
+    /// and Python engines emit the same `LimitExceeded` name, so a client
+    /// recovering from it need not know which engine refused.
     | LimitExceeded
     /// The addressed node sits AT a non-structural position — a `Switch` case's
     /// child, an `ErrorBoundary` arm, a `state.onLoading` alternative, a

@@ -603,11 +603,11 @@ entire and leaves the tree as it was.
   document-byte limits bound what the op decoder accepts; apply does not re-measure them.
 - **Duplicate ids are not this guard's concern.** It counts nodes whatever their ids are, so a
   repeated id neither hides a node from it nor is refused by it.
-- **This is the .NET engine's guarantee, and the Go and Rust engines' (`LimitExceeded` on the same
-  inputs, certified by the shared `apply/limits-apply.json` corpus family).** It is not a property of
-  every host that applies ops: the TypeScript and Python apply engines enforce no apply-time limit
-  today, and the corpus manifest records their adoption as `proposed`. A host that applies an
-  untrusted op stream on one of those engines must bound the result itself, or re-decode it.
+- **This is the guarantee of the .NET, Go, Rust, TypeScript and Python engines** (`LimitExceeded` on
+  the same inputs, certified by the shared `apply/limits-apply.json` corpus family; the TypeScript
+  engine since Phase 2161, `@fuaran-ui/ops` 0.30.0, and the Python engine since Phase 2171, 0.9.0).
+  A host on an earlier release of either of those two engines enforces no apply-time limit and must
+  bound the result itself, or re-decode it.
 
 ## Reference
 
