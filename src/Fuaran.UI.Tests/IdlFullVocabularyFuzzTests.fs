@@ -46,7 +46,7 @@ module G = Fuaran.UI.Generated
 //  redundant.
 //
 //  Reproducibility: every vector is a pure function of (seed, index) —
-//  `Sample.sampleNodes` draws from a seeded LCG in index order — so a failure
+//  `Sample.trySampleNodes` draws from a seeded LCG in index order — so a failure
 //  report naming an index is enough to reproduce it, with no captured payload.
 //
 //  WHAT CHANGED IN THE PORT.
@@ -222,8 +222,9 @@ let private render (d: Divergence) =
 /// its narrowing.
 let private vectors =
     lazy
-        (Sample.sampleNodes vocabulary allKindTags seed vectorBudget
-         |> List.map Fuaran.UI.VocabularySupport.canonicaliseVector)
+        (match Sample.trySampleNodes vocabulary allKindTags seed vectorBudget with
+         | Ok sampled -> sampled |> List.map Fuaran.UI.VocabularySupport.canonicaliseVector
+         | Error refusal -> failtestf "the sampler refused the vocabulary at %s: %s" refusal.At refusal.Reason)
 
 /// The reference bytes — leg 1.
 let private interpreter =

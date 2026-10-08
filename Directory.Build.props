@@ -806,7 +806,13 @@
          cellAuthorFn / primaryPinnedCells return a Result) and guest interior
          replay checks a merge node's outcome hash (2043). Class BREAKING (API +
          source + behaviour). An UNTAGGED DRAFT: changes of this class or lower
-         ride it. See STABILITY.md "0.92.0". -->
+         ride it. See STABILITY.md "0.92.0".
+
+         0.93.0 (2026-10-07) is opened after v0.92.0 was released; Phase 2053
+         raises it to BREAKING. An UNTAGGED DRAFT that no public-path consumer
+         pins, so the Fuaran.Core 0.35.2 -> 0.36.0 cohort raise RIDES it: no
+         Fuaran.UI.* surface moves, and the transitive Core break is of the
+         class the slot already carries. See STABILITY.md "0.93.0". -->
     <Version>0.93.0</Version>
   </PropertyGroup>
 

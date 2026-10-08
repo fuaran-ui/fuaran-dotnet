@@ -18,6 +18,10 @@
        succeeds on exactly the well-formed documents, `wf`.
      - `decode_encode_roundtrip` — `decode_node (encode n) == Ok n` for every `rnode`.
      - `lenient_agrees_off_policy` / `strict_unchanged_on_null_free` — the Phase 102 promise.
+     - `no_null_ever` / `no_invokable` / `sentinel_inert` — Phase 153, section 9: no `jval` contains
+       a null, no value a combinator returns can carry a function, and no combinator inspects a
+       string value, so the closure sentinel is inert. The three facts "no code-execution surface"
+       rests on, with names.
 
    WHAT IS NOT MODELLED, AND WHY — the theorem's boundary.
 
@@ -35,10 +39,18 @@
        Section 7 models it there — `read : null_policy -> jvaln -> outcome jval`, from a document
        model that HAS a null into the wire model that does not, which is the type-level form of
        "tolerance is a read normalisation, never a new emission" (Wire.fs, `NullPolicy`'s doc).
-       What section 7 therefore assumes, and states rather than hides, is that the parser's
+       What section 7 ASSUMED until Phase 190, and stated rather than hid, is that the parser's
        member-null absorption is equivalent to erasing member nulls from the document tree the
-       strict grammar would otherwise produce. The near-miss tokens that make that an assumption
-       rather than a theorem (`nul`, `nullish`) are grammar, and stay with `Json.parse`.
+       strict grammar would otherwise produce. It is a THEOREM now — `null_absorption_is_erasure`,
+       `JsonParse.fst` section 11 — and the shape it took is worth knowing here, because it is not
+       the shape this paragraph predicted. It is not stated over THIS section's tree: `jval` has no
+       null constructor, so "the strict tree with its member nulls erased" names nothing, the
+       strict parser refusing at the token rather than building one. It is stated over the
+       DOCUMENT, as: absorbing a member null is exactly not having written it, at every depth and
+       any position in any object, and the two policies differ nowhere else. The near-miss tokens
+       that made it an assumption rather than a theorem (`nul`, `nullish`) are grammar and still
+       stay with `Json.parse`; an adopter copying this model inherits the bridge as a theorem
+       rather than as a gap.
 
      - `Versioning.decodeTolerant` — the shipped GENERIC instance of the kind-dispatch pattern —
        is named here and not modelled: its `requiredProfile` read goes through
@@ -1310,3 +1322,426 @@ let duplicate_keys_break_order_invariance (#num #flt: eqtype) (x y: num)
              (* … and so the relation must not, and does not, relate them. *)
              not (member_perm a b))) =
   ()
+
+(* ======================================================================================
+   9. NO NULL, NO INVOKABLE TERM, AN INERT SENTINEL (Phase 153) — the three grammar facts the
+      "no code-execution surface" sentence rests on, as lemmas with names.
+
+      Each is true BY THE SHAPE OF THE TYPES, which is why each is cheap, and why each was prose
+      until now: WIRE_FORMAT §2 rule 4 says the wire has no null, rule 10 / §4 say a closure crosses
+      the wire only as the string `"<closure>"`, and nothing in `Decode` evaluates anything. A
+      sentence an assessor can only read is weaker than a lemma an assessor can run, so:
+
+        - `no_null_ever`   — no `jval` contains a null. Stated over section 7's `jvaln`, the one
+                             model here that HAS a null: every `jval`, viewed as a document, is
+                             null-free, reads back as itself under either policy, the strict reader
+                             accepts EXACTLY the null-free documents, and whatever either reader
+                             returns is null-free. (The encoder's half — `Canon.render` never emits
+                             the token — is `WireCanon.no_null_ever`, over Phase 149's renderer.)
+        - `no_invokable`   — every type a combinator or `decode_node` can return has DECIDABLE
+                             EQUALITY. F* grants `hasEq` to an inductive only when every
+                             constructor argument has it, and to no arrow type, so this is the
+                             prover's own certificate that no value here carries a function at any
+                             depth. The closure sentinel is a `JStr` like any other.
+        - `sentinel_inert` — no combinator inspects a string VALUE. Replacing one string by another
+                             throughout a document COMMUTES with every combinator and with
+                             `decode_node`; the sentinel is the instance, not a special case.
+
+      TWO THINGS THE PHASE'S OWN WORDING GOT WRONG, recorded because the corrected statement is
+      the theorem. It asked for decoding to be "INVARIANT under replacing the sentinel with any
+      other string". (1) It is EQUIVARIANT, not invariant: a decoded `RText` carries the string it
+      read, so the decoded tree changes exactly as the document did and in no other way — which is
+      the stronger and the true statement. (2) "ANY other string" is false in ONE position, and
+      `tag_position_is_the_exception` proves it rather than conceding it: a domain's kind dispatch
+      compares the `"kind"` member against its own tags, so rewriting a string INTO a tag can turn
+      `unknown kind` into a node. That is the vocabulary reading its own discriminator, not a
+      combinator inspecting a payload; the theorem's premise is exactly "neither string is a kind
+      tag", which the sentinel satisfies (`closure_sentinel_is_not_a_tag`). The combinator-level
+      statement carries NO premise at all.
+
+      WHAT IS NOT CLAIMED. Nothing here is about a HOST: a `Custom` renderer, a guest seam, a
+      host-call endpoint or any registered function is host code the wire merely NAMES, and the
+      UI wire specification's escape-hatch inventory is where those are enumerated. Nor is a
+      decoder `d` handed to `map_list` a wire value — it is the domain's own function. These
+      lemmas are about VALUES: what a document can contain and what decoding one can produce.
+
+      Every definition below is PROOF-ONLY and erased at extraction, so the oracle is unchanged.
+   ====================================================================================== *)
+
+(* ---- 9a. no null ---- *)
+
+(* A `jval` viewed as a foreign document. It has no arm that produces `NNull`, and cannot: there
+   is no `jval` constructor to map from. *)
+[@@ noextract_to "FSharp"]
+let rec embed (#num #flt: eqtype) (v: jval num flt)
+  : Tot (jvaln num flt) (decreases %[(jsize v <: nat); 0]) =
+  match v with
+  | JStr s -> NStr s
+  | JInt i -> NInt i
+  | JBool b -> NBool b
+  | JFloat f -> NFloat f
+  | JArr xs -> NArr (embed_items xs)
+  | JObj fs -> NObj (embed_fields fs)
+
+and embed_items (#num #flt: eqtype) (xs: list (jval num flt))
+  : Tot (list (jvaln num flt)) (decreases %[(jsizes xs <: nat); 1]) =
+  match xs with
+  | [] -> []
+  | x :: t -> embed x :: embed_items t
+
+and embed_fields (#num #flt: eqtype) (fs: list (string & jval num flt))
+  : Tot (list (string & jvaln num flt)) (decreases %[(fsize fs <: nat); 1]) =
+  match fs with
+  | [] -> []
+  | (k, v) :: t -> (k, embed v) :: embed_fields t
+
+(* The view is null-free and loses nothing: either reader returns exactly the value viewed. *)
+let rec embed_is_null_free (#num #flt: eqtype) (p: null_policy) (v: jval num flt)
+  : Lemma (ensures not (has_null (embed v)) /\ not (NNull? (embed v)) /\ read p (embed v) == Ok v)
+          (decreases %[(jsize v <: nat); 0]) =
+  match v with
+  | JArr xs -> embed_items_null_free p xs
+  | JObj fs -> embed_fields_null_free p fs
+  | _ -> ()
+
+and embed_items_null_free (#num #flt: eqtype) (p: null_policy) (xs: list (jval num flt))
+  : Lemma (ensures not (has_null_items (embed_items xs)) /\ read_items p (embed_items xs) == Ok xs)
+          (decreases %[(jsizes xs <: nat); 1]) =
+  match xs with
+  | [] -> ()
+  | x :: t -> embed_is_null_free p x; embed_items_null_free p t
+
+and embed_fields_null_free (#num #flt: eqtype) (p: null_policy) (fs: list (string & jval num flt))
+  : Lemma (ensures not (has_null_fields (embed_fields fs)) /\ read_fields p (embed_fields fs) == Ok fs)
+          (decreases %[(fsize fs <: nat); 1]) =
+  match fs with
+  | [] -> ()
+  | (_, v) :: t -> embed_is_null_free p v; embed_fields_null_free p t
+
+(* The strict reader accepts EXACTLY the null-free documents — the converse of the view, and the
+   half that makes "null-free" a statement about the wire rather than about one function's image. *)
+let rec strict_read_refuses_null (#num #flt: eqtype) (d: jvaln num flt)
+  : Lemma (ensures Ok? (read RejectNull d) == not (has_null d))
+          (decreases %[(nsize d <: nat); 0]) =
+  match d with
+  | NArr xs -> strict_items_refuse_null #num #flt xs
+  | NObj fs -> strict_fields_refuse_null #num #flt fs
+  | _ -> ()
+
+and strict_items_refuse_null (#num #flt: eqtype) (xs: list (jvaln num flt))
+  : Lemma (ensures Ok? (read_items RejectNull xs) == not (has_null_items xs))
+          (decreases %[(nsizes xs <: nat); 1]) =
+  match xs with
+  | [] -> ()
+  | x :: t -> strict_read_refuses_null #num #flt x; strict_items_refuse_null #num #flt t
+
+and strict_fields_refuse_null (#num #flt: eqtype) (fs: list (string & jvaln num flt))
+  : Lemma (ensures Ok? (read_fields RejectNull fs) == not (has_null_fields fs))
+          (decreases %[(fnsize fs <: nat); 1]) =
+  match fs with
+  | [] -> ()
+  | (_, v) :: t -> strict_read_refuses_null #num #flt v; strict_fields_refuse_null #num #flt t
+
+(* THE LEMMA (§2 rule 4, the value half). *)
+let no_null_ever (#num #flt: eqtype) (p: null_policy) (v: jval num flt) (d: jvaln num flt)
+  : Lemma (ensures
+      (* no `jval` contains a null, at any depth … *)
+      not (has_null (embed v)) /\
+      (* … and the view that says so loses nothing: either reader returns exactly `v` *)
+      read p (embed v) == Ok v /\
+      (* the strict reader accepts EXACTLY the null-free documents … *)
+      (Ok? (read RejectNull d) <==> not (has_null d)) /\
+      (* … and whatever EITHER reader returns is null-free, whichever policy produced it: the
+         tolerant policy erases a member null, it never carries one through *)
+      (Ok? (read p d) ==> not (has_null (embed (Ok?.v (read p d)))))) =
+  embed_is_null_free p v;
+  strict_read_refuses_null d;
+  (match read p d with
+   | Ok r -> embed_is_null_free p r
+   | Error _ -> ())
+
+(* ---- 9b. no invokable term ---- *)
+
+(* THE LEMMA (§2 rule 10 / §4, the type half). Every type a `Decode` combinator or `decode_node`
+   returns — and the foreign document model too — has decidable equality. `hasEq` is derived by F*
+   for an inductive only when EVERY constructor argument has it, and is derivable for no arrow
+   type; a constructor carrying a function makes the type definition itself an error unless it is
+   qualified `noeq`, and then this lemma does not discharge. (Both directions were measured before
+   the lemma was believed — README, "the control".) `t` is the domain's own decoded type, for the
+   walker. *)
+let no_invokable (#num #flt: eqtype) (#t: eqtype) (u: unit)
+  : Lemma (ensures
+      (* the wire value, and the foreign document it is read from *)
+      hasEq (jval num flt) /\ hasEq (jvaln num flt) /\
+      (* the reference vocabulary's decoded node *)
+      hasEq rnode /\
+      (* what each combinator returns: `as_string`/`kind_of`/`str_field`, `as_int`/`int_field`,
+         `as_bool`, `as_float`, `get_prop`, `map_list`, `decode_node`, `read` *)
+      hasEq (outcome string) /\ hasEq (outcome num) /\ hasEq (outcome bool) /\
+      hasEq (outcome flt) /\ hasEq (outcome (jval num flt)) /\ hasEq (outcome (list t)) /\
+      hasEq (outcome rnode) /\ hasEq (outcome (list rnode))) =
+  ()
+
+(* ---- 9c. the sentinel is inert ---- *)
+
+(* F#: the fixed string an IDL-generated encoder emits for a function-typed slot (WIRE_FORMAT §4). *)
+[@@ noextract_to "FSharp"]
+let closure_sentinel: string = "<closure>"
+
+(* The reference vocabulary's own discriminators — the ONLY string values anything here compares. *)
+[@@ noextract_to "FSharp"]
+let is_kind_tag (x: string) : Tot bool =
+  x = "text" || x = "flag" || x = "tags" || x = "group"
+
+let closure_sentinel_is_not_a_tag (u: unit) : Lemma (ensures not (is_kind_tag closure_sentinel)) =
+  assert_norm (not (is_kind_tag closure_sentinel))
+
+(* Replace the string value `c` by `s`. *)
+[@@ noextract_to "FSharp"]
+let swap (c s x: string) : Tot string = if x = c then s else x
+
+[@@ noextract_to "FSharp"]
+let rec swap_all (c s: string) (l: list string) : Tot (list string) (decreases l) =
+  match l with
+  | [] -> []
+  | x :: t -> swap c s x :: swap_all c s t
+
+(* … throughout a document. Member KEYS are untouched: a key is a name the decoder asks for, not a
+   value it is handed, and the sentinel only ever occupies value position. *)
+[@@ noextract_to "FSharp"]
+let rec subst (#num #flt: eqtype) (c s: string) (v: jval num flt)
+  : Tot (jval num flt) (decreases %[(jsize v <: nat); 0]) =
+  match v with
+  | JStr x -> JStr (swap c s x)
+  | JArr xs -> JArr (subst_items c s xs)
+  | JObj fs -> JObj (subst_fields c s fs)
+  | other -> other
+
+and subst_items (#num #flt: eqtype) (c s: string) (xs: list (jval num flt))
+  : Tot (list (jval num flt)) (decreases %[(jsizes xs <: nat); 1]) =
+  match xs with
+  | [] -> []
+  | x :: t -> subst c s x :: subst_items c s t
+
+and subst_fields (#num #flt: eqtype) (c s: string) (fs: list (string & jval num flt))
+  : Tot (list (string & jval num flt)) (decreases %[(fsize fs <: nat); 1]) =
+  match fs with
+  | [] -> []
+  | (k, v) :: t -> (k, subst c s v) :: subst_fields c s t
+
+(* … and throughout a decoded node. *)
+[@@ noextract_to "FSharp"]
+let rec rsubst (c s: string) (n: rnode) : Tot rnode (decreases %[(rsize n <: nat); 0]) =
+  match n with
+  | RText x -> RText (swap c s x)
+  | RFlag b -> RFlag b
+  | RTags ts -> RTags (swap_all c s ts)
+  | RGroup id items -> RGroup (swap c s id) (rsubst_items c s items)
+
+and rsubst_items (c s: string) (ns: list rnode)
+  : Tot (list rnode) (decreases %[(rsizes ns <: nat); 1]) =
+  match ns with
+  | [] -> []
+  | n :: t -> rsubst c s n :: rsubst_items c s t
+
+(* A combinator's outcome under the replacement: the same refusal, MESSAGE INCLUDED, or the
+   replaced value. *)
+[@@ noextract_to "FSharp"]
+let omap (#a #b: Type) (f: a -> b) (r: outcome a) : Tot (outcome b) =
+  match r with
+  | Ok v -> Ok (f v)
+  | Error m -> Error m
+
+(* The walker's accumulator law, for the two list replacements. *)
+let rec swap_all_rev_app (c s: string) (l acc: list string)
+  : Lemma (ensures swap_all c s (rev_app l acc) == rev_app (swap_all c s l) (swap_all c s acc))
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | x :: t -> swap_all_rev_app c s t (x :: acc)
+
+let rec rsubst_items_rev_app (c s: string) (l acc: list rnode)
+  : Lemma (ensures rsubst_items c s (rev_app l acc) ==
+                   rev_app (rsubst_items c s l) (rsubst_items c s acc))
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | x :: t -> rsubst_items_rev_app c s t (x :: acc)
+
+(* `getProp` looks a member up BY KEY and keys are untouched, so it finds the same member, replaced. *)
+let rec subst_find_field (#num #flt: eqtype) (c s: string) (name: string)
+  (fs: list (string & jval num flt))
+  : Lemma (ensures find_field name (subst_fields c s fs) == omap (subst c s) (find_field name fs))
+          (decreases fs) =
+  match fs with
+  | [] -> ()
+  | (k, _) :: t -> if k = name then () else subst_find_field c s name t
+
+(* The walker over strings — the instance the reference vocabulary uses. *)
+let rec subst_map_list_go_strings (#num #flt: eqtype) (c s: string) (acc: list string)
+  (xs: list (jval num flt))
+  : Lemma (ensures map_list_go (as_string #num #flt) (swap_all c s acc) (subst_items c s xs) ==
+                   omap (swap_all c s) (map_list_go (as_string #num #flt) acc xs))
+          (decreases xs) =
+  match xs with
+  | [] -> swap_all_rev_app c s acc []
+  | x :: rest ->
+    (match as_string x with
+     | Ok v -> subst_map_list_go_strings #num #flt c s (v :: acc) rest
+     | Error _ -> ())
+
+(* THE COMBINATORS — under NO premise. Every one commutes with the replacement, and every refusal
+   is the same refusal word for word: `kind_name` reads a value's SHAPE and nothing in `Decode`
+   reads a string's content. *)
+let sentinel_inert_combinators (#num #flt: eqtype) (to_flt: num -> flt) (c s: string)
+  (name: string) (el: jval num flt)
+  : Lemma (ensures
+      as_string (subst c s el) == omap (swap c s) (as_string el) /\
+      as_int (subst c s el) == as_int el /\
+      as_bool (subst c s el) == as_bool el /\
+      as_float to_flt (subst c s el) == as_float to_flt el /\
+      get_prop name (subst c s el) == omap (subst c s) (get_prop name el) /\
+      kind_of (subst c s el) == omap (swap c s) (kind_of el) /\
+      str_field name (subst c s el) == omap (swap c s) (str_field name el) /\
+      int_field name (subst c s el) == int_field name el /\
+      map_list (as_string #num #flt) (subst c s el) ==
+        omap (swap_all c s) (map_list (as_string #num #flt) el)) =
+  (match el with
+   | JObj fs -> subst_find_field c s name fs; subst_find_field c s "kind" fs
+   | JArr xs -> subst_map_list_go_strings #num #flt c s [] xs
+   | _ -> ())
+
+(* Two node outcomes under the replacement: the replaced node, or a refusal on both sides. The
+   message is NOT part of this, for one reason only: `unknown kind: <tag>` quotes the tag, which
+   is itself a string value and is replaced like any other. *)
+[@@ noextract_to "FSharp"]
+let inert (c s: string) (before after: outcome rnode) : prop =
+  match before, after with
+  | Ok n, Ok n' -> n' == rsubst c s n
+  | Error _, Error _ -> True
+  | _, _ -> False
+
+[@@ noextract_to "FSharp"]
+let inert_items (c s: string) (before after: outcome (list rnode)) : prop =
+  match before, after with
+  | Ok ns, Ok ns' -> ns' == rsubst_items c s ns
+  | Error _, Error _ -> True
+  | _, _ -> False
+
+(* THE LEMMA (§4). For any two strings that are not the vocabulary's own kind tags — the closure
+   sentinel is one such, `closure_sentinel_is_not_a_tag` — replacing one by the other throughout a
+   document replaces it throughout the decoded node and changes NOTHING ELSE: the same documents
+   decode, the same documents are refused, and no arm of the decoder can tell which string it was
+   handed. *)
+let rec sentinel_inert (#num #flt: eqtype) (c s: string) (el: jval num flt)
+  : Lemma (requires not (is_kind_tag c) /\ not (is_kind_tag s))
+          (ensures inert c s (decode_node el) (decode_node (subst c s el)))
+          (decreases %[(jsize el <: nat); 0]) =
+  (match el with
+   | JObj fs ->
+     subst_find_field c s "kind" fs;
+     subst_find_field c s "value" fs;
+     subst_find_field c s "on" fs;
+     subst_find_field c s "tags" fs;
+     subst_find_field c s "id" fs;
+     subst_find_field c s "items" fs
+   | _ -> ());
+  (match kind_of el with
+   | Error _ -> ()
+   | Ok tag ->
+     if tag = "text" then ()
+     else if tag = "flag" then ()
+     else if tag = "tags" then
+       (match get_prop "tags" el with
+        | Error _ -> ()
+        | Ok v ->
+          (match v with
+           | JArr xs -> subst_map_list_go_strings #num #flt c s [] xs
+           | _ -> ()))
+     else if tag = "group" then
+       (match str_field "id" el with
+        | Error _ -> ()
+        | Ok _ ->
+          (match get_prop "items" el with
+           | Error _ -> ()
+           | Ok v ->
+             (match v with
+              | JArr ys -> sentinel_inert_items #num #flt c s [] ys
+              | _ -> ())))
+     else ())
+
+and sentinel_inert_items (#num #flt: eqtype) (c s: string) (acc: list rnode)
+  (ys: list (jval num flt))
+  : Lemma (requires not (is_kind_tag c) /\ not (is_kind_tag s))
+          (ensures inert_items c s (decode_items acc ys)
+                                   (decode_items (rsubst_items c s acc) (subst_items c s ys)))
+          (decreases %[(jsizes ys <: nat); 1]) =
+  match ys with
+  | [] -> rsubst_items_rev_app c s acc []
+  | y :: rest ->
+    sentinel_inert #num #flt c s y;
+    (match decode_node y with
+     | Ok n -> sentinel_inert_items #num #flt c s (n :: acc) rest
+     | Error _ -> ())
+
+(* The sentinel itself, as the instance: it decodes as the string it is, and swapping it for any
+   non-tag string is invisible to the decoder. *)
+let closure_sentinel_is_a_string (#num #flt: eqtype) (s: string) (el: jval num flt)
+  : Lemma (requires not (is_kind_tag s))
+          (ensures
+            as_string #num #flt (JStr closure_sentinel) == Ok closure_sentinel /\
+            decode_node #num #flt (encode (RText closure_sentinel)) == Ok (RText closure_sentinel) /\
+            inert closure_sentinel s (decode_node el) (decode_node (subst closure_sentinel s el))) =
+  closure_sentinel_is_not_a_tag ();
+  decode_encode_roundtrip #num #flt (RText closure_sentinel);
+  sentinel_inert #num #flt closure_sentinel s el
+
+(* THE PREMISE IS NECESSARY — and it is the vocabulary's dispatch, not a combinator, that makes it
+   so. A document whose `"kind"` IS the sentinel is refused; rewrite the sentinel into a tag and it
+   decodes. "Replace it with ANY other string" is therefore false as the phase first worded it,
+   in exactly this position and no other. *)
+let tag_position_is_the_exception (#num #flt: eqtype) (u: unit)
+  : Lemma (ensures
+      (let el: jval num flt = JObj [("kind", JStr closure_sentinel); ("value", JStr "x")] in
+       Error? (decode_node el) /\
+       decode_node (subst closure_sentinel "text" el) == Ok (RText "x") /\
+       ~(inert closure_sentinel "text" (decode_node el)
+               (decode_node (subst closure_sentinel "text" el))))) =
+  ()
+
+(* ======================================================================================
+   TWINS (Phase 309) — the extractor premise, sampled at this model.
+
+   The leg's extraction diff makes "the oracle is the model" a checked claim about TEXT. Nothing
+   in it says the F# the extractor emits COMPUTES what this model means: a mis-extraction that
+   compiles would pass every other step. Each fixture below applies this model's own functions to
+   a concrete input and compares the result with the value the model means there, and the
+   assertion at the end is discharged by NORMALISATION — F*'s normaliser evaluates every closure
+   to `true` under the model's own semantics. The list is extracted with the rest of the model,
+   and the `Proofs.Oracle` family runs the extracted closures against the extracted oracle
+   ("twin evaluation"): a closure that comes back `false` there is the F# backend disagreeing with
+   the normaliser on that input. Sampled, never proved: the discharge holds on these inputs, which
+   is where the `tested` rows already live. The kit's TWIN step (`kit/check-proof-leg.ps1`, step
+   2c) refuses an extracted model that declares no twins.
+   ====================================================================================== *)
+
+noeq type twin = { tname : string; tholds : unit -> bool }
+
+let rec twins_hold (l:list twin) : Tot bool =
+  match l with
+  | [] -> true
+  | t :: r -> t.tholds () && twins_hold r
+let twins : list twin = [
+  { tname = "str-field-reads-a-member";
+    tholds = (fun () -> str_field #string #string "name" (JObj [ ("name", JStr "x") ]) = Ok "x") };
+  { tname = "decode-node-a-text-node";
+    tholds = (fun () ->
+      decode_node #string #string (JObj [ ("kind", JStr "text"); ("value", JStr "hi") ]) = Ok (RText "hi")) };
+  { tname = "decode-node-an-unknown-kind";
+    tholds = (fun () -> decode_node #string #string (JObj [ ("kind", JStr "zzz") ]) = Error "unknown kind: zzz") };
+  { tname = "read-erases-a-member-null";
+    tholds = (fun () ->
+      read #string #string EraseMemberNull (NObj [ ("a", NNull); ("b", NBool true) ])
+      = Ok (JObj [ ("b", JBool true) ])) } ]
+
+let _ = assert_norm (twins_hold twins == true)

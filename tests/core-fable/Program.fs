@@ -7,7 +7,7 @@ module CoreFable.Program
 // rests on. A touch matters beyond the project reference because `inline` members and generic
 // instantiations are only compiled where they are used.
 //
-// Two constants come from `CoreFable.fsproj`. `CORE_FABLE_COMPUTE` is defined whenever the compute
+// One constant comes from `CoreFable.fsproj`. `CORE_FABLE_COMPUTE` is defined whenever the compute
 // packages (`Fuaran.Compute.DataFrame`, `Fuaran.Compute.ColumnOps`, `Fuaran.Compute.Conformance`)
 // are compiled, which is every mode except a Core-only cut: those packages ship from their own
 // producer from 0.33.0, and a Core candidate is not what they were built against. Every touch that
@@ -16,11 +16,10 @@ module CoreFable.Program
 // candidate alike were retired when the pin was raised to 0.34.0, so a cut-time run against an older
 // Core line is no longer a supported mode.
 //
-// `CORE_0_36` is defined when the Core this run compiles against (the candidate in a cut-time run,
-// otherwise the pin) is at or past 0.36.0, which widens `Query` with `Where` / `OrderBy` (Phase 398)
-// and renames `laneFoldLaws` to `laneFoldLawsAt` (Phase 390). The 0.36.0 spellings sit under it and
-// the pinned 0.35.2 spellings under its `#else`; when the pin reaches 0.36.0 the constant and the
-// old-pin arms are deleted together.
+// The program is written for Fuaran.Core 0.36.0, the pin: the `CORE_0_36` arms that let it compile
+// against the 0.35.2 pin and the 0.36.0 candidate alike were retired when the pin was raised to
+// 0.36.0. A later candidate that breaks a spelling touched here gets a version constant in
+// `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way.
 //
 // With `CORE_PARITY` defined (see `core-fable.ps1`), the program is also the VALUE leg: `--vectors`
 // prints `Fuaran.Core.ParityVectors.lines ()` — the cross-pipeline table the conformance kit ships
@@ -222,12 +221,9 @@ let private queryTouch =
           Source = Ref "src"
           TimeoutMs = Some 5000
           PageSize = None
-#if CORE_0_36
           // Core 0.36.0 (Phase 398): the declaration's row filter and order, both empty here.
           Where = []
-          OrderBy = []
-#endif
-        }
+          OrderBy = [] }
 
     let pending = QueryCodec.encodeDeferredResult Pending
 
@@ -478,11 +474,7 @@ let private foldConfluenceTouch =
           Lanes = fun n r -> [ for i in 1..n -> [ "op" + string i ] ], r }
 
     // Core 0.36.0 renames the family `laneFoldLawsAt` (Phase 390), same parameters.
-#if CORE_0_36
     let results = FoldConfluence.laneFoldLawsAt sw fp id gen 2 3 2
-#else
-    let results = FoldConfluence.laneFoldLaws sw fp id gen 2 3 2
-#endif
 
     sprintf "%d/%d" (List.length results) (List.length (FoldConfluence.arrivalOrders 3))
 

@@ -253,19 +253,63 @@ module CoreLawSupport =
           OfString = id
           Equals = (=) }
 
+    /// The pattern id a slot PLACEHOLDER carries. It names no bank pattern: a placeholder is
+    /// never reduced, and the pre-emit oracle below skips it.
+    let slotPlaceholderId = "slot-placeholder"
+
+    /// Is this node an open slot's placeholder rather than a function?
+    let isSlotPlaceholder (f: PatternFn) : bool = f.PatternId = slotPlaceholderId
+
+    /// The node an OPEN slot hole stands at. Core's admission check (`Function.validate`, which
+    /// `compose` and, from Core 0.36.0 (Phase 383), `composeAcross` run over every result) reads
+    /// a slot hole as declared AT a node, and refuses a node that declares a slot with a hole
+    /// anywhere beneath it (`HoleUnderSlot`) — the reference witness's shape, where a slot hole
+    /// is a node of its own that binding replaces. A `PatternFn` declares its slots on itself and
+    /// holds the FILLED ones as children, so an outer with one slot filled by an open inner and
+    /// the other still open would read as a hole beneath a slot. Each open slot therefore gets a
+    /// child of its own, carrying that one hole: the outer then declares no slot its children do
+    /// not, and the check reads the tree as it is. Pure, so the effect join is unchanged.
+    let private slotPlaceholder (owner: PatternFn) (h: HoleDecl) : PatternFn =
+        { Tag = owner.Tag + "#" + h.Addr
+          PatternId = slotPlaceholderId
+          ResultType = "Slot"
+          Open = [ h ]
+          Bound = Map.empty
+          Slots = []
+          Declared = Effect.pureDeterministic }
+
+    /// A node's children in address order: each filled slot's function (`true`), and each open
+    /// slot hole's placeholder (`false`). A placeholder is a leaf: the hole it carries is the one
+    /// it stands for, not a slot of its own to open another placeholder under.
+    let private childEntries (f: PatternFn) : (string * bool * PatternFn) list =
+        if isSlotPlaceholder f then
+            []
+        else
+            [ for addr, inner in f.Slots -> addr, true, inner
+              for h in f.Open do
+                  match h.Kind with
+                  | SlotHole _ -> yield h.Addr, false, slotPlaceholder f h
+                  | _ -> () ]
+            |> List.sortBy (fun (addr, _, _) -> addr)
+
     let nodew: NodeWitness<PatternFn, string> =
         { Id = fun f -> f.Tag
           KindTag = fun f -> f.ResultType
-          Children = fun f -> f.Slots |> List.map snd
+          Children = fun f -> childEntries f |> List.map (fun (_, _, c) -> c)
           ReplaceChildren =
             fun f cs ->
+                let entries = childEntries f
                 // A rebuild that changed the arity would silently drop a slot
-                // binding, so it is refused by leaving the node alone.
-                if List.length cs <> List.length f.Slots then
+                // binding, so it is refused by leaving the node alone. A
+                // placeholder's replacement is dropped: it stands for an open
+                // hole, which only `Bind` fills.
+                if List.length cs <> List.length entries then
                     f
                 else
                     { f with
-                        Slots = List.map2 (fun (k, _) c -> k, c) f.Slots cs } }
+                        Slots =
+                            List.map2 (fun (addr, filled, _) c -> if filled then Some(addr, c) else None) entries cs
+                            |> List.choose id } }
 
     /// Hygiene: an inner function's holes re-root UNDER the absolute address of
     /// the slot it was composed into, so two compositions into distinct slots
@@ -401,22 +445,27 @@ module CoreLawSupport =
         match
             Validator.ofFamilies
                 [ Validator.perNode "fastpath/pre-emit" (fun _ f ->
-                      match PreEmitValidate.validate (instantiate f) with
-                      | Ok() -> []
-                      | Error defects ->
-                          defects
-                          |> List.map (fun d ->
-                              let code, severity, message = PreEmitValidate.describe d
+                      // An open slot's placeholder is not a function and builds nothing.
+                      if isSlotPlaceholder f then
+                          []
+                      else
 
-                              { Code = code
-                                Severity =
-                                  match severity with
-                                  | PreEmitValidate.DefectSeverity.Error -> Severity.Error
-                                  | PreEmitValidate.DefectSeverity.Warning -> Severity.Warning
-                                Message = message
-                                Node = Some f.Tag
-                                Family = ""
-                                Related = [] })) ]
+                          match PreEmitValidate.validate (instantiate f) with
+                          | Ok() -> []
+                          | Error defects ->
+                              defects
+                              |> List.map (fun d ->
+                                  let code, severity, message = PreEmitValidate.describe d
+
+                                  { Code = code
+                                    Severity =
+                                      match severity with
+                                      | PreEmitValidate.DefectSeverity.Error -> Severity.Error
+                                      | PreEmitValidate.DefectSeverity.Warning -> Severity.Warning
+                                    Message = message
+                                    Node = Some f.Tag
+                                    Family = ""
+                                    Related = [] })) ]
         with
         | Ok registry -> registry
         | Error e -> failwithf "the pre-emit oracle did not register: %A" e

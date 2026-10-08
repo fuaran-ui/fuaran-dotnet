@@ -830,7 +830,7 @@ let document: SupportDocument =
 //  (Phase 1668; recovered from `Fuaran-Core@ccead29^`'s `UiIdlSupport.fs`).
 //
 //  Two of this vocabulary's shapes carry a CROSS-FIELD rule the IDL's type
-//  language cannot state, so `Sample.sampleNodes` — which samples every
+//  language cannot state, so `Sample.trySampleNodes` — which samples every
 //  combination the field declarations allow — draws vectors OFF the canonical
 //  wire:
 //

@@ -41,3 +41,11 @@ type nat = System.Numerics.BigInteger
 /// as a literal (the same second-class-backend finding the header records). Invariant by
 /// construction — `BigInteger.Parse` of a decimal digit string reads no culture.
 let parse_int (s: string) : nat = System.Numerics.BigInteger.Parse s
+
+/// F*'s `int` — an UNBOUNDED integer, unrefined. Named by the Phase 176 extraction, the first
+/// model to carry a SIGNED index: `ColumnOps.apply`'s row and `InsertColumn`'s index are F#
+/// `int`s that a caller can pass negative, and the model keeps them signed so the `row < 0`
+/// clause is a modelled refusal rather than a bridge-side convention. Same rule as `nat` above —
+/// the F# primitive under an F* spelling, `bigint` because F*'s integers are unbounded — and
+/// the same boundary: a host converts at the edge, and the width assumption lives there.
+type int = System.Numerics.BigInteger

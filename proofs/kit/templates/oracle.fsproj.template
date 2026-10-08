@@ -20,6 +20,12 @@
     <!-- The F# backend emits pre-F#-8 layout (match arms at column 1 inside a parenthesised
          lambda), which F# 10's strict indentation rejects outright. Relax it for THIS project only
          — it is a property of the extractor's output, not of anything you wrote. -->
+    <!-- WHAT THIS FLAG DOES NOT COVER. The backend also emits a mutual TYPE group with the `and`
+         one space in, and F# rejects THAT with FS0010 whether or not this relaxation is in force.
+         It is handled a step earlier: the leg's EXTRACT stage runs the kit's
+         extraction-post-pass.ps1 over each fresh extraction before the byte diff, so your
+         committed oracles are text this project can build. See the kit README, "The extraction
+         post-pass" — including the condition under which that pass is retired. -->
     <OtherFlags>$(OtherFlags) --strict-indentation-</OtherFlags>
   </PropertyGroup>
   <ItemGroup>

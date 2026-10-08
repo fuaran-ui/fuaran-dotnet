@@ -20,7 +20,7 @@ module FableLaws.Laws
 //     of the resulting tree, they would then also disagree about the outcome hash
 //     they each recorded as proof that they agreed.
 //
-//  2. THE PINNED KIT, UNDER FABLE. `FoldConfluence.laneFoldLaws` is run over this
+//  2. THE PINNED KIT, UNDER FABLE. `FoldConfluence.laneFoldLawsAt` is run over this
 //     tier's own reducer, op codec and footprint projection — the same
 //     instantiation Phase 1476 certified on .NET (`CoreDagLawTests.fs`), through
 //     the same witnesses (`TestSupport.fs` copies them verbatim). What the second
@@ -499,7 +499,7 @@ let mergeAdequacyFailures (v: MergeVerdict) : string list =
 /// byte-compared and a label that differed between them would be a divergence in the reporting
 /// rather than in the algebra. The claim it names is the harness's, not one pipeline's.
 let laneFoldFablePort =
-    "laneFoldLaws certifies through the Fable law harness over the tier's reducer and codec"
+    "laneFoldLawsAt certifies through the Fable law harness over the tier's reducer and codec"
 
 /// Three lanes off one base, folded under all 3! = 6 arrival orders per trial — the same
 /// instantiation `CoreDagLawTests.fs` runs on .NET, over the same witnesses.
@@ -508,7 +508,7 @@ let laneFoldResults (seed: int) (iterations: int) : Fuaran.Core.LawResult list =
     // through the kit's rng — see the block above `PortableRng` in `TestSupport.fs`. The kit's own
     // `seed` argument still names the run in its verdicts, so a refutation stays quotable.
     PortableRng.reseed seed
-    FoldConfluence.laneFoldLaws coreSw footprintOfEqOp hashState laneGen 3 seed iterations
+    FoldConfluence.laneFoldLawsAt coreSw footprintOfEqOp hashState laneGen 3 seed iterations
 
 // ---------------------------------------------------------------------------
 //  law 3 — the raw-DEFLATE inflater, over a FOREIGN dynamic-Huffman stream

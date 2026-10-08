@@ -8,9 +8,9 @@ namespace Fuaran.UI.FastPath.Tests
 //  row below means. Saying which is which is the whole point of running them
 //  here rather than trusting a name:
 //
-//   * PARAMETERISED — `compositionLaws`, `functionVerifyLaws`,
-//     `verifyHonestyLaws`, `memoLaws`, `memoSoundnessLaws`,
-//     `encoderInjectivityLaws`. Each is instantiated with THE TIER'S OWN
+//   * PARAMETERISED — `compositionLawsAt`, `functionVerifyLawsAt`,
+//     `verifyHonestyLawsAt`, `memoLawsAt`, `memoSoundnessLawsAt`,
+//     `encoderInjectivityLawsAt`. Each is instantiated with THE TIER'S OWN
 //     artifact witness (`CoreLawSupport.witness` over the FastPath pattern
 //     bank), its own egress gate as the validity oracle
 //     (`PreEmitValidate.validate`, the check `FastPath.tryInstantiate` runs),
@@ -52,7 +52,7 @@ module CoreFunctionLawTests =
     /// single number.
     let private lawSeed = 20260904
 
-    /// `verifyFunction` is run eight times inside `verifyHonestyLaws` (four
+    /// `verifyFunction` is run eight times inside `verifyHonestyLawsAt` (four
     /// determinism axes, sound and broken), each for `iterations` draws, so the
     /// verification families take a smaller sample than the rest. It is still
     /// far more than the ~1-in-6 chance per draw the broken fixture needs.
@@ -138,7 +138,7 @@ module CoreFunctionLawTests =
 
               // ---- parameterised over the tier's own artifact algebra ------
 
-              testCase "FastPath artifact-functions compose hygienically under Core's compositionLaws"
+              testCase "FastPath artifact-functions compose hygienically under Core's compositionLawsAt"
               <| fun _ ->
                   // One witness on both sides of the boundary, so `embed` is
                   // the identity — the shape Core's own doc names for a domain
@@ -148,10 +148,10 @@ module CoreFunctionLawTests =
                   // inner holes re-root to distinct addresses and binding one
                   // never captures the other, and the composed effect is the
                   // componentwise join.
-                  CoreConf.compositionLaws witness witness id drawComposition lawSeed 100
-                  |> assertAllPassed "compositionLaws over the FastPath signature algebra"
+                  CoreConf.compositionLawsAt witness witness id drawComposition lawSeed 100
+                  |> assertAllPassed "compositionLawsAt over the FastPath signature algebra"
 
-              testCase "a sound and a broken FastPath pattern certify under Core's functionVerifyLaws"
+              testCase "a sound and a broken FastPath pattern certify under Core's functionVerifyLawsAt"
               <| fun _ ->
                   // The validity oracle is the tier's own egress gate, so the
                   // verdict these laws read is the verdict the shipped seam
@@ -161,7 +161,7 @@ module CoreFunctionLawTests =
                   let sound = soundPattern |> fnOf "verify-sound" pureEffect
                   let broken = brokenPattern |> fnOf "verify-broken" pureEffect
 
-                  CoreConf.functionVerifyLaws
+                  CoreConf.functionVerifyLawsAt
                       witness
                       sound
                       broken
@@ -169,9 +169,9 @@ module CoreFunctionLawTests =
                       genParams
                       lawSeed
                       verifySeedIterations
-                  |> assertAllPassed "functionVerifyLaws over the FastPath egress gate"
+                  |> assertAllPassed "functionVerifyLawsAt over the FastPath egress gate"
 
-              testCase "verification over FastPath patterns claims structure only (verifyHonestyLaws)"
+              testCase "verification over FastPath patterns claims structure only (verifyHonestyLawsAt)"
               <| fun _ ->
                   let mkSound (d: DeterminismSource) =
                       soundPattern |> fnOf "honest-sound" { Host = Pure; Determinism = d }
@@ -179,7 +179,7 @@ module CoreFunctionLawTests =
                   let mkBroken (d: DeterminismSource) =
                       brokenPattern |> fnOf "honest-broken" { Host = Pure; Determinism = d }
 
-                  CoreConf.verifyHonestyLaws
+                  CoreConf.verifyHonestyLawsAt
                       witness
                       mkSound
                       mkBroken
@@ -187,14 +187,14 @@ module CoreFunctionLawTests =
                       genParams
                       lawSeed
                       verifySeedIterations
-                  |> assertAllPassed "verifyHonestyLaws over the FastPath egress gate"
+                  |> assertAllPassed "verifyHonestyLawsAt over the FastPath egress gate"
 
-              testCase "FastPath application memoises soundly under Core's memoLaws"
+              testCase "FastPath application memoises soundly under Core's memoLawsAt"
               <| fun _ ->
-                  CoreConf.memoLaws witness encode drawMemo OpStream.defaultHash lawSeed 100
-                  |> assertAllPassed "memoLaws over the FastPath artifact-function"
+                  CoreConf.memoLawsAt witness encode drawMemo OpStream.defaultHash lawSeed 100
+                  |> assertAllPassed "memoLawsAt over the FastPath artifact-function"
 
-              testCase "an under-declared FastPath function is never cached (memoSoundnessLaws)"
+              testCase "an under-declared FastPath function is never cached (memoSoundnessLawsAt)"
               <| fun _ ->
                   // The fixture's ROOT declares pure/deterministic while the
                   // sub-function composed into its slot declares
@@ -202,16 +202,16 @@ module CoreFunctionLawTests =
                   // check would have cached it and the audited gate must not.
                   // The law ignores its iteration count (the evidence is BUILT,
                   // not drawn), hence 1.
-                  CoreConf.memoSoundnessLaws witness encode (underDeclaredFn impureEffect) underDeclaredArgs lawSeed 1
-                  |> assertAllPassed "memoSoundnessLaws over the FastPath artifact-function"
+                  CoreConf.memoSoundnessLawsAt witness encode (underDeclaredFn impureEffect) underDeclaredArgs lawSeed 1
+                  |> assertAllPassed "memoSoundnessLawsAt over the FastPath artifact-function"
 
-              testCase "the FastPath memo-key encoder is collision-free (encoderInjectivityLaws)"
+              testCase "the FastPath memo-key encoder is collision-free (encoderInjectivityLawsAt)"
               <| fun _ ->
                   // The silent precondition of the two memo families above: the
                   // memo key is `Tree.encodeHash w.Tree encode node`, so a
                   // lossy encoder would let the cache serve the WRONG artifact.
-                  CoreConf.encoderInjectivityLaws witness encode genFn lawSeed 200
-                  |> assertAllPassed "encoderInjectivityLaws over the FastPath memo-key encoder"
+                  CoreConf.encoderInjectivityLawsAt witness encode genFn lawSeed 200
+                  |> assertAllPassed "encoderInjectivityLawsAt over the FastPath memo-key encoder"
 
               // ---- tier-shaped: the same properties, over the real bank ----
 

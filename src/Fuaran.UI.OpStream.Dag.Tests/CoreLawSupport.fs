@@ -303,7 +303,7 @@ let uiFootprintOfSkeleton (ops: Fuaran.Core.SkeletonOp<EqNode, NodeId> list) : F
         emptyFp
 
 // ---------------------------------------------------------------------------
-//  the stream witness (dagLaws / laneFoldLaws)
+//  the stream witness (dagLaws / laneFoldLawsAt)
 // ---------------------------------------------------------------------------
 
 /// The two-seam `StreamWitness`: `Fuaran.UI.Ops.Apply.apply` as the reducer, and the tier's

@@ -7983,6 +7983,37 @@ tier already had is kept.
   host projection), `FormFieldKind`'s handler/value projections (its cases declare those fields at different
   types), a binding-slot enumerator (its emission does not compile against the `Switch` projection), and the
   decoder's ordered kind groups and `opWireFields` (their order is the cross-host error hint).
+
+### What rides this slot — the `Fuaran.Core` 0.36.0 raise
+
+**`Fuaran.Core.*` raised 0.35.2 → 0.36.0**, every package together, now that `v0.36.0` is released; the
+cohort-lag hold beside the 0.35.2 pins is retired. The compute packages stay on `FuaranCoreComputeVersion`
+(0.37.0). No `Fuaran.UI.*` type, member, wire byte or rendered output moves: the generated structural layer
+regenerates byte-identically apart from its generator-version header. The class this slot already carries
+(BREAKING) covers the one consumer-visible effect, which is transitive — every shipped `Fuaran.UI.*` package now
+depends on a Core line that is itself breaking over 0.35.2 (`Codec<'T>` builders and writes answer `Result`,
+`Sample.sampleNodes` is removed, `Query` and `CapabilityLookup` gain fields).
+
+- **Test-side moves only.** The conformance kit's witness-taking law families take their `…At` spellings
+  (Core Phase 390): `compositionLawsAt`, `functionVerifyLawsAt`, `verifyHonestyLawsAt`, `memoLawsAt`,
+  `memoSoundnessLawsAt`, `encoderInjectivityLawsAt`, `attestationLawsAt` and `FoldConfluence.laneFoldLawsAt`
+  (on .NET and in the Fable law harness). The bare names are `[<Obsolete>]` forwards; no `FS0044` is suppressed.
+  `IdlFullVocabularyFuzzTests` samples through `Sample.trySampleNodes`.
+- **The FastPath law witness gives each open slot a node of its own.** From Core 0.36.0 (Phase 383)
+  `composeAcross` runs `Function.validate` over its result, as `compose` always did, and that check refuses a
+  node that declares a slot hole with any hole beneath it (`HoleUnderSlot`). The test witness declared its slots
+  on the function itself and held only the filled ones as children, so an outer with one slot filled by an open
+  inner and the other still open read as a hole beneath a slot, and `compositionLawsAt`'s hygiene law refused
+  it. Each open slot now has a pure placeholder child carrying that hole (`CoreLawSupport.fs`), which is the
+  reference witness's shape. Test-only; no shipped seam builds an `ArtifactWitness` over FastPath patterns.
+- **`Fuaran.UI.Renderer.Core`'s sort-descriptor reader spells `Fuaran.UI.Types.SortDirection`.** Core 0.36.0's
+  `Fuaran.Core.Query` declares a `SortDirection` of its own (Phase 398), and `BindingResolver.fs` opens
+  `Fuaran.Core` after `Fuaran.UI.Types`, so a Fable program compiling the shipped source beside that package
+  (the law harness is one) resolved the bare name to Core's. Same type, same members; source-only.
+- **Census.** The kit's 0.36.0 roster adds the `…At` spellings, the obsolete forwards under their own ids, the
+  vector families' `lawsWith` forms and the `ParityVectors` module; each has a row in
+  `CoreConformanceCensus.fs`, and `docs/core-conformance.md` is regenerated.
+- **`tests/core-fable`** drops its `CORE_0_36` arms; the smoke program is written for the 0.36.0 pin.
 ---
 
 ## 0.92.0 — the slot Phases 2038 and 2043 open: one answer to what a node's children are, and one spine walk for the DAG tier (RELEASED — tagged v0.92.0 at 9b53dfa, 2026-10-06)

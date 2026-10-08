@@ -6,7 +6,7 @@ module Fuaran.UI.OpStream.Dag.Tests.CoreDagLawTests
 //
 //  The tier's branching op-stream ships two ports and a real three-way merge,
 //  and its confluence claims were demonstrated by example rather than
-//  certified: `Conformance.dagLaws`, `FoldConfluence.laneFoldLaws`,
+//  certified: `Conformance.dagLaws`, `FoldConfluence.laneFoldLawsAt`,
 //  `Conformance.mergeConflictLaws`, `reconcileLaws`, `concurrencyLaws`,
 //  `arbitrationLaws` and `footprintLaws` all ran only in Core's own suite, over
 //  Core's own fixtures. Here they run over `Fuaran.UI`'s `Node` / `NodeId` /
@@ -19,7 +19,7 @@ module Fuaran.UI.OpStream.Dag.Tests.CoreDagLawTests
 //
 //  Two shapes, and the difference decides what a green verdict means.
 //
-//  `dagLaws` and `laneFoldLaws` are parameterised by a `StreamWitness` — this
+//  `dagLaws` and `laneFoldLawsAt` are parameterised by a `StreamWitness` — this
 //  tier's `Ops.Apply.apply` reducer and its canonical op codec — and run that
 //  witness through CORE's `Dag` (`Dag.append` / `merge` / `verifyDag` /
 //  `reconcileMany`). No `IDagOpStreamSink` enters their construction, and
@@ -149,14 +149,14 @@ let tests =
               |> assertAllPassed "dagLaws over the Fuaran.UI op-stream witness"
 
           // ---- the fold-confluence family ---------------------------------
-          testCase "N-lane folding is arrival-order-invariant under Core's laneFoldLaws"
+          testCase "N-lane folding is arrival-order-invariant under Core's laneFoldLawsAt"
           <| fun _ ->
               // Three lanes off one base, folded under all 3! = 6 arrival orders per trial.
               // The lane generator reaches both adequacy classes the pack demands (a lane set
               // that folds AND one that halts); a run that reached only one fails its coverage
               // guard rather than reporting a hollow green.
-              FoldConfluence.laneFoldLaws coreSw footprintOfEqOp hashState laneGen 3 seed 100
-              |> assertAllPassed "laneFoldLaws over the Fuaran.UI lane generator"
+              FoldConfluence.laneFoldLawsAt coreSw footprintOfEqOp hashState laneGen 3 seed 100
+              |> assertAllPassed "laneFoldLawsAt over the Fuaran.UI lane generator"
 
           testCase "lane folding survives the host hash swap under laneFoldLawsWith"
           <| fun _ ->
@@ -202,7 +202,7 @@ let tests =
           <| fun _ ->
               // The `With` form's parameter is the footprint projection, so this run routes the
               // law through `uiFootprintOfSkeleton` — the tier's own `TreeOp` address-set
-              // function, the same one `laneFoldLaws` folds through — rather than Core's.
+              // function, the same one `laneFoldLawsAt` folds through — rather than Core's.
               //
               // Stated precisely, because the difference matters: the law's generator emits
               // SKELETON ops, so what this certifies is the STRUCTURAL half of the tier's
@@ -210,7 +210,7 @@ let tests =
               // change to that half's mapping would refute here. The VERTICAL half
               // (`UpdateStyle` / `UpdateProp` / `EditNode` / `UpdateState` / `ReplaceBinding`,
               // which Core's algebra has no case for) is unreachable from this generator and is
-              // certified by `laneFoldLaws` above, which folds real `TreeOp` lanes — understating
+              // certified by `laneFoldLawsAt` above, which folds real `TreeOp` lanes — understating
               // a vertical op's footprint turns that family red, and only that family.
               CoreConf.concurrencyLawsWith nodew idw opGen encodeNode uiFootprintOfSkeleton seed 300
               |> assertAllPassed "concurrencyLawsWith over the tier's own footprint projection"

@@ -34,15 +34,12 @@
   <!--
     Version constants. `CoreFableEffectiveCore` is set by the script to the Fuaran.Core version this run
     compiles against (the candidate in a cut-time run, otherwise the pin). A candidate that breaks a
-    spelling the smoke touches gets a constant here, defined at or past that version, and Program.fs
-    writes the new spelling under it. When the pin reaches that version, the constant and the old-pin
-    arm it guards are deleted together.
-    CORE_0_36: Core 0.36.0 widens `Query` with `Where` / `OrderBy` (Core Phase 398) and renames
-    `FoldConfluence.laneFoldLaws` to `laneFoldLawsAt` (Core Phase 390).
+    spelling the smoke touches gets a constant here, defined at or past that version
+    (`$([MSBuild]::VersionGreaterThanOrEquals('$(CoreFableEffectiveCore)', '<version>'))`), and
+    Program.fs writes the new spelling under it. When the pin reaches that version, the constant and
+    the old-pin arm it guards are deleted together. None is defined today: CORE_0_36 (Core Phases 398
+    and 390) was retired when the pin was raised to 0.36.0.
   -->
-  <PropertyGroup Condition="'$(CoreFableEffectiveCore)' != ''">
-    <DefineConstants Condition="$([MSBuild]::VersionGreaterThanOrEquals('$(CoreFableEffectiveCore)', '0.36.0'))">$(DefineConstants);CORE_0_36</DefineConstants>
-  </PropertyGroup>
   <!--
     `CoreFableSkipCompute=true` is set by the script for a Core-only cut, and only then: the compute
     packages ship from their own producer from 0.33.0 and pin an older Core until this Core release is

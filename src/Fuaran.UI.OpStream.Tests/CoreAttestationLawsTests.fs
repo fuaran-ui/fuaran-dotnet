@@ -5,7 +5,7 @@ module Fuaran.UI.OpStream.Tests.CoreAttestationLawsTests
 //
 // Three families, and the third is the one that matters commercially. `attributedLaws` certifies
 // that provenance rides INSIDE the chained op encoding, so re-attribution is tamper-evident on the
-// same footing as op-tampering. `attestationLaws` certifies the signing seam end to end, including
+// same footing as op-tampering. `attestationLawsAt` certifies the signing seam end to end, including
 // the case a bare hash chain cannot defend: a forgery that was re-hashed consistently, so
 // `verifyChain` re-accepts it. `noAttestationVacuityLaws` certifies that the un-attested default
 // verifies NOTHING — an attestation mechanism that cannot fail proves nothing, and a verifier that
@@ -22,14 +22,14 @@ module Fuaran.UI.OpStream.Tests.CoreAttestationLawsTests
 //     rebuilt: two witnesses over one op algebra could disagree, and then a green law would be a
 //     statement about whichever of them the reader happened to open;
 //   * the digest is the tier's shipped SHA-256 `StreamEntry.hashFn`, not Core's FNV-1a default —
-//     which is what makes the `attestationLaws` falsification branches meaningful, since a
+//     which is what makes the `attestationLawsAt` falsification branches meaningful, since a
 //     re-hashed forgery is cheap under FNV-1a and infeasible under SHA-256;
 //   * the sink is `tierClaimSink` below, which is NOT a test double. It mints the tier's real
 //     canonical claim payload (`SegmentAttestation.claimPayload`), signs it with the tier's real
 //     BCL ECDSA P-256 signer (`EcdsaP256.signer`), and verifies through the tier's real crypto
 //     verifier (`EcdsaP256.verifier`) against the tier's real key directory
 //     (`KeyDirectory.ofList`). A defect in the claim encoding, the signer or the verifier turns
-//     `attestationLaws` red.
+//     `attestationLawsAt` red.
 //
 // ── THE ONE SHAPE MISMATCH, AND HOW IT IS HANDLED HONESTLY ────────────────────────────────────
 //
@@ -84,7 +84,7 @@ let private descriptorFor (head: string) : SegmentDescriptor =
       Head = head }
 
 /// Adapt the tier's real claim minting + real ECDSA verification + real key directory to Core's
-/// `IAttestationSink`, so `Conformance.attestationLaws` drives the tier's crypto path rather than a
+/// `IAttestationSink`, so `Conformance.attestationLawsAt` drives the tier's crypto path rather than a
 /// stand-in.
 ///
 /// `Verify` deliberately re-derives the claim from the head Core PASSES IT, never from the head the
@@ -182,7 +182,7 @@ let tests =
               CoreConf.attributedLaws eqOpSw eqOpStreamGen hashFn 20260904 100
               |> assertAllPassed "attributedLaws over the Fuaran.UI apply/codec witness"
 
-          testCase "attestationLaws certifies over the tier's claim minting and ECDSA keyring"
+          testCase "attestationLawsAt certifies over the tier's claim minting and ECDSA keyring"
           <| fun _ ->
               // The sink is the tier's real claim payload + BCL P-256 signer + crypto verifier +
               // key directory (see `tierClaimSink`). The two falsification branches are what a bare
@@ -193,8 +193,8 @@ let tests =
               // actor is inside the digest (Phase 320).
               use key = ECDsa.Create ECCurve.NamedCurves.nistP256
 
-              CoreConf.attestationLaws eqOpSw eqOpStreamGen (tierClaimSink "conformance-key" key) hashFn 20260904 100
-              |> assertAllPassed "attestationLaws over the tier's SegmentAttestation claim path"
+              CoreConf.attestationLawsAt eqOpSw eqOpStreamGen (tierClaimSink "conformance-key" key) hashFn 20260904 100
+              |> assertAllPassed "attestationLawsAt over the tier's SegmentAttestation claim path"
 
           testCase "noAttestationVacuityLaws certifies that the un-attested default proves nothing"
           <| fun _ ->

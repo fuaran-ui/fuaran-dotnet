@@ -121,7 +121,7 @@ let private snapshotTest =
 let private dagLawsTest = "the UI op-stream witness certifies under Core's dagLaws"
 
 let private laneFoldTest =
-    "N-lane folding is arrival-order-invariant under Core's laneFoldLaws"
+    "N-lane folding is arrival-order-invariant under Core's laneFoldLawsAt"
 
 /// The FABLE port of that family (fuaran#1488). It runs in `tests/fable-laws`, the repo's Fable
 /// law harness, over the same reducer / op codec / footprint projection the .NET run uses —
@@ -130,7 +130,7 @@ let private laneFoldTest =
 /// not transpile); the harness prints this name as its family label, so the census row, the code
 /// and the gate log all name one thing.
 let private laneFoldFableTest =
-    "laneFoldLaws certifies through the Fable law harness over the tier's reducer and codec"
+    "laneFoldLawsAt certifies through the Fable law harness over the tier's reducer and codec"
 
 let private laneFoldWithTest =
     "lane folding survives the host hash swap under laneFoldLawsWith"
@@ -191,21 +191,22 @@ let private deferredTest =
     "the Deferred value codec certifies under Core's deferredLaws"
 
 let private compositionTest =
-    "FastPath artifact-functions compose hygienically under Core's compositionLaws"
+    "FastPath artifact-functions compose hygienically under Core's compositionLawsAt"
 
 let private functionVerifyTest =
-    "a sound and a broken FastPath pattern certify under Core's functionVerifyLaws"
+    "a sound and a broken FastPath pattern certify under Core's functionVerifyLawsAt"
 
 let private verifyHonestyTest =
-    "verification over FastPath patterns claims structure only (verifyHonestyLaws)"
+    "verification over FastPath patterns claims structure only (verifyHonestyLawsAt)"
 
-let private memoTest = "FastPath application memoises soundly under Core's memoLaws"
+let private memoTest =
+    "FastPath application memoises soundly under Core's memoLawsAt"
 
 let private memoSoundnessTest =
-    "an under-declared FastPath function is never cached (memoSoundnessLaws)"
+    "an under-declared FastPath function is never cached (memoSoundnessLawsAt)"
 
 let private encoderInjectivityTest =
-    "the FastPath memo-key encoder is collision-free (encoderInjectivityLaws)"
+    "the FastPath memo-key encoder is collision-free (encoderInjectivityLawsAt)"
 
 /// The attributed / attestation families (fuaran#1480), enrolled from `Fuaran.UI.OpStream.Tests`
 /// beside the persistence families above and over the SAME witness those use — the attestation one
@@ -215,7 +216,7 @@ let private attributedTest =
     "attributedLaws certifies over the Fuaran.UI op-stream witness"
 
 let private attestationTest =
-    "attestationLaws certifies over the tier's claim minting and ECDSA keyring"
+    "attestationLawsAt certifies over the tier's claim minting and ECDSA keyring"
 
 let private vacuityTest =
     "noAttestationVacuityLaws certifies that the un-attested default proves nothing"
@@ -304,10 +305,10 @@ let census: (string * Adoption) list =
       // Fable port runs the same family over the same witnesses on the transpiled algebra, and
       // the harness byte-compares the two runs' output so a pipeline disagreement that leaves
       // both sides internally lawful is a failure rather than two green runs.
-      "FoldConfluence.laneFoldLaws",
+      "FoldConfluence.laneFoldLawsAt",
       AdoptedAcross
-          [ laneFoldTest, "FoldConfluence.laneFoldLaws (.NET)"
-            laneFoldFableTest, "FoldConfluence.laneFoldLaws (Fable and Node)" ]
+          [ laneFoldTest, "FoldConfluence.laneFoldLawsAt (.NET)"
+            laneFoldFableTest, "FoldConfluence.laneFoldLawsAt (Fable and Node)" ]
       // The `With` form is adopted on its own terms rather than as a second spelling: its
       // parameter is the `HashFn`, and it is instantiated with the tier's shipped SHA-256 where
       // the defaulted form takes the kit's FNV-1a. Node ids are content hashes of
@@ -380,11 +381,11 @@ let census: (string * Adoption) list =
       // bodies rather than left to be inferred from a green row.
       "Conformance.registryLaws", Adopted(registryTest, "Conformance.registryLaws")
       "Conformance.capabilityLaws", Adopted(capabilityTest, "Conformance.capabilityLaws")
-      "Conformance.memoLaws", Adopted(memoTest, "Conformance.memoLaws")
-      "Conformance.memoSoundnessLaws", Adopted(memoSoundnessTest, "Conformance.memoSoundnessLaws")
-      "Conformance.functionVerifyLaws", Adopted(functionVerifyTest, "Conformance.functionVerifyLaws")
-      "Conformance.verifyHonestyLaws", Adopted(verifyHonestyTest, "Conformance.verifyHonestyLaws")
-      "Conformance.compositionLaws", Adopted(compositionTest, "Conformance.compositionLaws")
+      "Conformance.memoLawsAt", Adopted(memoTest, "Conformance.memoLawsAt")
+      "Conformance.memoSoundnessLawsAt", Adopted(memoSoundnessTest, "Conformance.memoSoundnessLawsAt")
+      "Conformance.functionVerifyLawsAt", Adopted(functionVerifyTest, "Conformance.functionVerifyLawsAt")
+      "Conformance.verifyHonestyLawsAt", Adopted(verifyHonestyTest, "Conformance.verifyHonestyLawsAt")
+      "Conformance.compositionLawsAt", Adopted(compositionTest, "Conformance.compositionLawsAt")
       "Conformance.packLoadingLaws", Adopted(packLoadingTest, "Conformance.packLoadingLaws")
       "Conformance.paramLaws", Adopted(paramTest, "Conformance.paramLaws")
       // The two Phase-125 asks this tier routed to Core (cut as 0.23.0), enrolled from the
@@ -398,7 +399,7 @@ let census: (string * Adoption) list =
       // FastPath memo families here actually pass to `applyMemo`, which is the encoder whose
       // injectivity those two rows silently depend on — the same file, the same witness, so the
       // precondition and the thing it conditions cannot drift apart.
-      "Conformance.encoderInjectivityLaws", Adopted(encoderInjectivityTest, "Conformance.encoderInjectivityLaws")
+      "Conformance.encoderInjectivityLawsAt", Adopted(encoderInjectivityTest, "Conformance.encoderInjectivityLawsAt")
 
       // ---- fuaran#1479 — footprint and delta laws over the live-transform seam ----
       // `Conformance.footprintLaws` was listed here and is adopted by 1476 instead — see the
@@ -460,7 +461,7 @@ let census: (string * Adoption) list =
       // opaque head, so those are pinned by a fixed claim shell and are covered on their own terms
       // by `AttestationTests.fs` (`RangeMismatch`, `ChainBroken` off a signed anchor).
       "Conformance.attributedLaws", Adopted(attributedTest, "Conformance.attributedLaws")
-      "Conformance.attestationLaws", Adopted(attestationTest, "Conformance.attestationLaws")
+      "Conformance.attestationLawsAt", Adopted(attestationTest, "Conformance.attestationLawsAt")
       "Conformance.noAttestationVacuityLaws", Adopted(vacuityTest, "Conformance.noAttestationVacuityLaws")
 
       // ---- fuaran#1481 — columnar laws over the tier's Column usage ----
@@ -739,6 +740,86 @@ let census: (string * Adoption) list =
       "EncodingProfileVectors.storedCodecLaws",
       NotUsed
           "a persisted corpus of canonical texts written through a Core Codec<'T> under a declared EncodingProfile — no project here declares an EncodingProfile or keys a store on a Core codec's canonical text (see EncodingProfileVectors.laws)"
+      // ---- the families the 0.36.0 pin raise brings (Core 0.36.0) ----
+      // Core Phase 390 gives every witness-taking family an `…At` spelling and keeps the bare name
+      // as an `[<Obsolete>]` forward, removed at 1.0.0, under its own roster id. Where the tier
+      // ADOPTS the family, its tests move to the `…At` name (the adopted rows above are re-keyed),
+      // and the forward's row says the tier does not call it. Where it does not, the `…At` row is
+      // classified exactly as the bare row above it is — the rule the 0.34.0 raise applied to the
+      // `…With` forwards.
+      "Conformance.compositionLaws",
+      NotUsed
+          "the [<Obsolete>] forward of Conformance.compositionLawsAt, removed at 1.0.0 — the tier calls Conformance.compositionLawsAt itself (adopted above), never this spelling"
+      "Conformance.functionVerifyLaws",
+      NotUsed
+          "the [<Obsolete>] forward of Conformance.functionVerifyLawsAt, removed at 1.0.0 — the tier calls Conformance.functionVerifyLawsAt itself (adopted above), never this spelling"
+      "Conformance.verifyHonestyLaws",
+      NotUsed
+          "the [<Obsolete>] forward of Conformance.verifyHonestyLawsAt, removed at 1.0.0 — the tier calls Conformance.verifyHonestyLawsAt itself (adopted above), never this spelling"
+      "Conformance.memoLaws",
+      NotUsed
+          "the [<Obsolete>] forward of Conformance.memoLawsAt, removed at 1.0.0 — the tier calls Conformance.memoLawsAt itself (adopted above), never this spelling"
+      "Conformance.memoSoundnessLaws",
+      NotUsed
+          "the [<Obsolete>] forward of Conformance.memoSoundnessLawsAt, removed at 1.0.0 — the tier calls Conformance.memoSoundnessLawsAt itself (adopted above), never this spelling"
+      "Conformance.encoderInjectivityLaws",
+      NotUsed
+          "the [<Obsolete>] forward of Conformance.encoderInjectivityLawsAt, removed at 1.0.0 — the tier calls Conformance.encoderInjectivityLawsAt itself (adopted above), never this spelling"
+      "Conformance.attestationLaws",
+      NotUsed
+          "the [<Obsolete>] forward of Conformance.attestationLawsAt, removed at 1.0.0 — the tier calls Conformance.attestationLawsAt itself (adopted above), never this spelling"
+      "FoldConfluence.laneFoldLaws",
+      NotUsed
+          "the [<Obsolete>] forward of FoldConfluence.laneFoldLawsAt, removed at 1.0.0 — both ports (the .NET suite and the Fable law harness) call FoldConfluence.laneFoldLawsAt itself (adopted above), never this spelling"
+      "Conformance.compositionPilotAt",
+      NotUsed
+          "Fuaran.Core.Function's applyMemo over a cross-witness composeAcross — the 0.36.0 name of compositionPilot (see that row): the tier supplies one ArtifactWitness and no memoised cross-witness composition"
+      "Conformance.aiSurfaceKitPolicyLawsAt",
+      NotUsed
+          "Fuaran.Core.AiSurface's proposal plumbing under the kit's policy — the 0.36.0 name of aiSurfaceLawsUnderKitPolicy (see that row): no project in this tier references Fuaran.Core.AiSurface"
+      "Conformance.projectionLawsAt",
+      NotUsed
+          "Fuaran.Core.Projection — the 0.36.0 name of projectionLaws (see that row): the tier maintains no Core projection over an op stream"
+      "Conformance.propagationEvaluatorLawsAt",
+      NotUsed
+          "Fuaran.Core.Propagation's incremental evaluator seam — the 0.36.0 name of propagationEvaluatorLaws (see that row): nothing in this tier hands Propagation an evaluator"
+      "Conformance.referenceLawsAt",
+      NotUsed "a Core RefWitness — the 0.36.0 name of referenceLaws (see that row): no project here builds a RefWitness"
+      "Conformance.keyedChildrenLawsAt",
+      CarriedBy
+          "unfiled — the 0.36.0 name of keyedChildrenLaws (see that row): the ErrorBoundary fallback and state.onEmpty / state.onLoading slots are this family's subject; adoption is one KeyedWitness over them"
+      "Conformance.keyedApplyLawsAt",
+      CarriedBy "unfiled — the 0.36.0 name of keyedApplyLaws: needs the same KeyedWitness as keyedChildrenLaws above"
+      "Conformance.keyedArbitrationLawsAt",
+      CarriedBy
+          "unfiled — the 0.36.0 name of keyedArbitrationLaws: needs the same KeyedWitness as keyedChildrenLaws above"
+      "Conformance.observerLawsAt",
+      CarriedBy
+          "unfiled — the 0.36.0 name of observerLaws (see that row): Fuaran.UI.LayoutObserver is a domain instance of Fuaran.Core.Observer; adoption is one ObserverWitness over the in-memory layout observer"
+      "Conformance.sanitizeLawsAt",
+      CarriedBy
+          "unfiled — the 0.36.0 name of sanitizeLaws (see that row): Fuaran.UI.Renderer's Sanitize is this host's copy of the sanitisation floor; adoption is one SanitizeWitness over the tier's sanitiser"
+      // The vector families' caller-supplied forms (Core Phase 390): the same laws over a vector set
+      // the caller hands them. Classified as their fixed-table forms are.
+      "WireNullTolerance.lawsWith",
+      NotUsed
+          "the kit's null-tolerance laws over Core's own Wire decoders, at a caller's vector set — no host decoder or vector set to hand it; the tier's null handling is certified by the wire-format conformance corpus (see WireNullTolerance.laws)"
+      "StringEscapeVectors.lawsWith",
+      NotUsed
+          "the kit's escape laws over Core's own three escapers, at a caller's vector set — no host escaper to hand it; the tier's canonical-JSON escaping is certified by the wire-format conformance corpus (see StringEscapeVectors.laws)"
+      "EncodingProfileVectors.lawsWith",
+      NotUsed
+          "the kit's EncodingProfile laws over Core's own renderer, at a caller's vector set — no project here declares an EncodingProfile (see EncodingProfileVectors.laws)"
+      // `ParityVectors` is a law module from Core 0.36.0: the cross-pipeline value table Core's Fable
+      // gate byte-compares between .NET and node. `tests/core-fable` runs that comparison on Core's
+      // behalf and is census-exempt for exactly that reason; the table is Core's own functions, so
+      // the tier has no implementation of its own to hand it.
+      "ParityVectors.laws",
+      NotUsed
+          "the kit's cross-pipeline parity table over Core's own functions — no host implementation to hand it; tests/core-fable diffs its lines between .NET and node on Core's behalf (census-exempt, Phase 217)"
+      "ParityVectors.lawsWith",
+      NotUsed
+          "the parity table's row laws at a caller's rows — the tier renders no parity rows of its own (see ParityVectors.laws)"
       // ---- the compute kit's families from its own ids (Fuaran.Compute 0.36.0 / 0.37.0) ----
       "Conformance.plannerLaws",
       NotUsed
@@ -785,7 +866,9 @@ let private lawModules =
       "EncodingProfileVectors"
       "StoredIdentity"
       "PipelineQueryConformance"
-      "DeriveTypingConformance" ]
+      "DeriveTypingConformance"
+      // From Core 0.36.0: the cross-pipeline parity table's laws.
+      "ParityVectors" ]
 
 /// Core's roster predicate, character for character — which is over the RETURN TYPE since the
 /// 0.26.0 kit, not over the name shape.

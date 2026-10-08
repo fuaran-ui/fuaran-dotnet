@@ -1601,10 +1601,15 @@ let projectRowFieldString (row: Row) (field: string) : string =
 // LAST in both directions (unmeasured is not zero), ties keep their authored
 // relative order (`List.sortWith` is stable).
 
+// `SortDirection` is spelled `Fuaran.UI.Types.SortDirection` throughout this section: this file opens
+// `Fuaran.Core` AFTER `Fuaran.UI.Types`, and from Core 0.36.0 `Fuaran.Core.Query` declares a
+// `SortDirection` of its own (Phase 398), which a Fable program compiling this source beside that
+// package would otherwise resolve here.
+
 /// Read the sort descriptor carried at `key` in the State store. Every part is
 /// validated rather than trusted — a malformed descriptor reads as "no sort"
 /// so the authored order stands (never an arbitrary one).
-let readSortDescriptor (sources: BindingSources) (key: string) : (int * SortDirection) option =
+let readSortDescriptor (sources: BindingSources) (key: string) : (int * Fuaran.UI.Types.SortDirection) option =
     Map.tryFind key sources.State
     |> Option.bind jvalOfResolved
     |> Option.bind (fun jv ->
@@ -1620,8 +1625,8 @@ let readSortDescriptor (sources: BindingSources) (key: string) : (int * SortDire
             let dir =
                 fields
                 |> List.tryPick (function
-                    | ("direction", JStr "asc") -> Some SortDirection.Asc
-                    | ("direction", JStr "desc") -> Some SortDirection.Desc
+                    | ("direction", JStr "asc") -> Some Fuaran.UI.Types.SortDirection.Asc
+                    | ("direction", JStr "desc") -> Some Fuaran.UI.Types.SortDirection.Desc
                     | _ -> None)
 
             (match col, dir with
@@ -1644,7 +1649,7 @@ type SortSlot =
     /// `defaultSort` applies.
     | NotSorted
     /// The key holds a usable descriptor.
-    | SortedBy of column: int * direction: SortDirection
+    | SortedBy of column: int * direction: Fuaran.UI.Types.SortDirection
     /// The key holds something that is not a usable descriptor — which the
     /// header cycle writes deliberately (an empty object) to mean "back to the
     /// order the emitter wrote". A malformed value a host seeded lands here
@@ -1673,7 +1678,7 @@ let effectiveSortDescriptor
     (sortStateKey: string option)
     (defaultSort: DefaultSort option)
     (sources: BindingSources)
-    : (int * SortDirection) option =
+    : (int * Fuaran.UI.Types.SortDirection) option =
     let declared = defaultSort |> Option.map (fun d -> d.Column, d.Direction)
 
     match sortStateKey with
@@ -1811,7 +1816,7 @@ let private compareCells (a: CellValue) (b: CellValue) : int =
 /// sort is stable.
 let sortRowsByDescriptor
     (columns: ColumnErased<'Msg> list)
-    (descriptor: (int * SortDirection) option)
+    (descriptor: (int * Fuaran.UI.Types.SortDirection) option)
     (rows: Row list)
     : Row list =
     match descriptor with
@@ -1834,8 +1839,8 @@ let sortRowsByDescriptor
                     let c = compareCells ka kb
 
                     (match direction with
-                     | SortDirection.Asc -> c
-                     | SortDirection.Desc -> -c))
+                     | Fuaran.UI.Types.SortDirection.Asc -> c
+                     | Fuaran.UI.Types.SortDirection.Desc -> -c))
             |> List.map snd
 
 // ─── Data-bound grid pagination (Phase 862 — `pageStateKey` / `pageSize`) ────

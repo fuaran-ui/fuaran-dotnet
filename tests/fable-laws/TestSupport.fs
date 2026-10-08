@@ -164,7 +164,7 @@ let mkLeaf (id: string) : EqNode = mkLeafText id ""
 //  the DU: the structural five delegate to `Fuaran.Core.Ops.footprint`, and a vertical op is a
 //  content write on the node it rewrites plus a read of it.
 //
-//  It is not asserted directly. `FoldConfluence.laneFoldLaws` is instantiated with it below, so
+//  It is not asserted directly. `FoldConfluence.laneFoldLawsAt` is instantiated with it below, so
 //  the fold-confluence claim is made about THIS function.
 
 let private emptyFp: Fuaran.Core.Footprint = Fuaran.Core.Footprint.empty
@@ -208,7 +208,7 @@ let rec footprintOfTreeOp (op: TreeOp<obj>) : Fuaran.Core.Footprint =
 let footprintOfEqOp (e: EqOp) : Fuaran.Core.Footprint = footprintOfTreeOp e.Op
 
 // ---------------------------------------------------------------------------
-//  the stream witness (laneFoldLaws)
+//  the stream witness (laneFoldLawsAt)
 // ---------------------------------------------------------------------------
 
 /// The two-seam `StreamWitness`: `Fuaran.UI.Ops.Apply.apply` as the reducer, and the tier's
@@ -251,7 +251,7 @@ let hashState (e: EqNode) : string = CanonicalJson.encodeNode e.Node
 //  requirement — so the tier supplies its own source and threads the kit's rng straight back
 //  untouched. That is inside the kit's contract (at three lanes the family draws from the rng
 //  nowhere else: 3! = 6 is under `permutationBound`, so arrival orders are enumerated rather than
-//  sampled), and it is what keeps the Fable port of `laneFoldLaws` non-vacuous instead of
+//  sampled), and it is what keeps the Fable port of `laneFoldLawsAt` non-vacuous instead of
 //  certifying one lane set a hundred times.
 //
 //  xorshift32: shifts and XOR only. `<<<` on `int` is JavaScript's `<<` (exactly 32-bit) and
