@@ -53,7 +53,7 @@ open Fuaran.UI.Program
 type ScriptedEvent =
     { NodeId: string
       Event: string
-      Payload: Map<string, string> }
+      Payload: Map<string, LiveValue> }
 
 /// What a placement produced at one step, and what the corpus records for it.
 ///
@@ -185,7 +185,7 @@ let private toLiveEvent (index: int) (ev: ScriptedEvent) : LiveEvent =
     { ConnId = "parity"
       NodeId = ev.NodeId
       Event = ev.Event
-      Payload = ev.Payload |> Map.map (fun _ v -> LiveValue.Str v)
+      Payload = ev.Payload
       LastSeq = index }
 
 /// Canonical JSON of a resolved tree — the comparable projection. Canonical

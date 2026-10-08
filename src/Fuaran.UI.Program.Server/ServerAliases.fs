@@ -131,30 +131,30 @@ module ServerServices =
 module ServerDemanded =
 
     let ofHandler (handler: Handler) : DemandedProjection =
-        Fuaran.Program.Server.ServerDemanded.ofHandler UiWitness.witness handler
+        Fuaran.Program.Server.ServerDemanded.ofHandler UiWitness.demandWitness handler
 
     let ofHandlers (handlers: Handler seq) : DemandedProjection =
-        Fuaran.Program.Server.ServerDemanded.ofHandlers UiWitness.witness handlers
+        Fuaran.Program.Server.ServerDemanded.ofHandlers UiWitness.demandWitness handlers
 
     let reachable (handlers: Map<string, Handler>) (root: Node<obj>) : Handler list =
-        Fuaran.Program.Server.ServerDemanded.reachable UiWitness.witness handlers root
+        Fuaran.Program.Server.ServerDemanded.reachable UiWitness.demandWitness handlers root
 
     let ofTreeAndHandlers (handlers: Map<string, Handler>) (root: Node<obj>) : DemandedProjection =
-        Fuaran.Program.Server.ServerDemanded.ofTreeAndHandlers UiWitness.witness handlers root
+        Fuaran.Program.Server.ServerDemanded.ofTreeAndHandlers UiWitness.demandWitness handlers root
 
     let ofTreeHandlersAndRegistry
         (registry: ServerEffectRegistry)
         (handlers: Map<string, Handler>)
         (root: Node<obj>)
         : DemandedProjection =
-        Fuaran.Program.Server.ServerDemanded.ofTreeHandlersAndRegistry UiWitness.witness registry handlers root
+        Fuaran.Program.Server.ServerDemanded.ofTreeHandlersAndRegistry UiWitness.demandWitness registry handlers root
 
     let sign
         (sink: IAttestationSink)
         (handlers: Map<string, Handler>)
         (root: Node<obj>)
         : Result<SignedEnvelope, SignRefusal> =
-        Fuaran.Program.Server.ServerDemanded.sign UiWitness.witness sink handlers root
+        Fuaran.Program.Server.ServerDemanded.sign UiWitness.demandWitness sink handlers root
 
     let verify
         (crypto: IClaimSignatureVerifier)
@@ -164,7 +164,7 @@ module ServerDemanded =
         (signed: SignedEnvelope)
         : Async<Result<VerifiedEnvelope, VerifyRefusal>> =
         Fuaran.Program.Server.ServerDemanded.verify
-            UiWitness.witness
+            UiWitness.demandWitness
             (UiWitness.claimVerifier crypto)
             key
             handlers
@@ -177,7 +177,7 @@ module ServerDemanded =
         (handlers: Map<string, Handler>)
         (root: Node<obj>)
         : Result<SignedEnvelope, SignRefusal> =
-        Fuaran.Program.Server.ServerDemanded.signWithRegistry UiWitness.witness sink registry handlers root
+        Fuaran.Program.Server.ServerDemanded.signWithRegistry UiWitness.demandWitness sink registry handlers root
 
     let verifyWithRegistry
         (crypto: IClaimSignatureVerifier)
@@ -188,7 +188,7 @@ module ServerDemanded =
         (signed: SignedEnvelope)
         : Async<Result<VerifiedEnvelope, VerifyRefusal>> =
         Fuaran.Program.Server.ServerDemanded.verifyWithRegistry
-            UiWitness.witness
+            UiWitness.demandWitness
             (UiWitness.claimVerifier crypto)
             key
             registry

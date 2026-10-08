@@ -222,51 +222,67 @@ module Program =
         | Error reason -> rejected program (Gate reason)
         | Ok { Action = None } ->
             // Legitimate event, no resolvable action — nothing to do, and
-            // deliberately not a refusal.
-            program,
-            { Resolved = program.Resolved
-              Effects = []
-              Denials = []
-              Rejected = None
-              Diagnostics = [] }
-        | Ok { Action = Some action } ->
-            let budget = program.Services.Budget
-            let cost = Budget.actionCascadeCost action
-
-            if cost > budget.MaxActions then
-                rejected
-                    program
-                    (BudgetExceeded(sprintf "action cascade cost %d exceeds MaxActions %d" cost budget.MaxActions))
-            elif program.NodeCount > budget.MaxNodes then
-                rejected
-                    program
-                    (BudgetExceeded(sprintf "tree cost %d exceeds MaxNodes %d" program.NodeCount budget.MaxNodes))
-            else
-                let outcome = BoundedActions.runBoundedAction ev.NodeId action program.Store
-                let newResolved = Resolve.resolveTree outcome.Store program.BaseTree
-
-                // The op journal sees the same ops the server placement would
-                // journal for this step, derived the same way — which is what
-                // makes a client-run app replayable against a server-run one.
-                let ops = TreeOpDiff.diff program.Resolved newResolved
-                program.Services.OnApply ops
-
-                program.Services.Render newResolved
-
-                // One decision per effect, performed and REPORTED. The denials
-                // are a value rather than only a sink firing, because a caller
-                // comparing two placements needs the refusals it can hold, and
-                // the sink is a host's logging seam rather than an observation.
-                let denials = EffectRegistry.performAll program.Services.Effects outcome.Effects
-
-                { program with
-                    Store = outcome.Store
-                    Resolved = newResolved },
-                { Resolved = newResolved
-                  Effects = outcome.Effects
-                  Denials = denials
+            // deliberately not a refusal. Not an answer either, so it withdraws
+            // any pending question (Phase 2106, `ConfirmRoundTrip`).
+            match BoundedDriver.ConfirmRoundTrip.inert ev program.Store with
+            | Error reason -> rejected program (Gate reason)
+            | Ok store ->
+                { program with Store = store },
+                { Resolved = program.Resolved
+                  Effects = []
+                  Denials = []
                   Rejected = None
-                  Diagnostics = outcome.Diagnostics }
+                  Diagnostics = [] }
+        | Ok { Action = Some resolvedAction } ->
+            // Phase 2106 — the confirm round trip, exactly as the server
+            // placement runs it: pending questions out of the store, the event
+            // folded as a gesture (addressed) or an answer (`Choose`), or the
+            // answer refused.
+            let pending, store = BoundedDriver.ConfirmRoundTrip.take program.Store
+
+            match BoundedDriver.ConfirmRoundTrip.prepare program.Services.CanDispatch pending ev resolvedAction with
+            | Error reason -> rejected program (Gate reason)
+            | Ok(action, standing) ->
+                let budget = program.Services.Budget
+                let cost = Budget.actionCascadeCost action
+
+                if cost > budget.MaxActions then
+                    rejected
+                        program
+                        (BudgetExceeded(sprintf "action cascade cost %d exceeds MaxActions %d" cost budget.MaxActions))
+                elif program.NodeCount > budget.MaxNodes then
+                    rejected
+                        program
+                        (BudgetExceeded(sprintf "tree cost %d exceeds MaxNodes %d" program.NodeCount budget.MaxNodes))
+                else
+                    let outcome = BoundedActions.runBoundedAction ev.NodeId action store
+                    let newResolved = Resolve.resolveTree outcome.Store program.BaseTree
+
+                    // The op journal sees the same ops the server placement would
+                    // journal for this step, derived the same way — which is what
+                    // makes a client-run app replayable against a server-run one.
+                    let ops = TreeOpDiff.diff program.Resolved newResolved
+                    program.Services.OnApply ops
+
+                    program.Services.Render newResolved
+
+                    // One decision per effect, performed and REPORTED. The denials
+                    // are a value rather than only a sink firing, because a caller
+                    // comparing two placements needs the refusals it can hold, and
+                    // the sink is a host's logging seam rather than an observation.
+                    let denials = EffectRegistry.performAll program.Services.Effects outcome.Effects
+
+                    { program with
+                        Store =
+                            BoundedDriver.ConfirmRoundTrip.put
+                                (standing @ BoundedDriver.ConfirmRoundTrip.asked outcome.Effects)
+                                outcome.Store
+                        Resolved = newResolved },
+                    { Resolved = newResolved
+                      Effects = outcome.Effects
+                      Denials = denials
+                      Rejected = None
+                      Diagnostics = outcome.Diagnostics }
 
     /// Apply server-pushed ops to the base tree (the hybrid mode). The pushed
     /// ops edit the BASE tree, not the resolved projection, so local state
@@ -277,7 +293,9 @@ module Program =
             ops
             |> List.fold (fun t op -> Fuaran.UI.Ops.Apply.apply op t |> Result.defaultValue t) program.BaseTree
 
-        let newResolved = Resolve.resolveTree program.Store newBase
+        let newResolved =
+            Resolve.resolveTree (snd (BoundedDriver.ConfirmRoundTrip.take program.Store)) newBase
+
         program.Services.OnApply ops
         program.Services.Render newResolved
 

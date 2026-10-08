@@ -48,6 +48,21 @@ let private read (path: string) : string = readFileSync (path, "utf8")
 [<Literal>]
 let private uiFamily = "driver-semantics"
 
+/// One payload value, in the portable subset a surface sends — the .NET
+/// loader's reading, so the two legs drive the same event (Phase 2106: the
+/// confirm answer's `confirmAccepted` is a boolean, not the string "true").
+let private liveValueOf (v: obj) : Fuaran.UI.ServerDriven.Validation.LiveValue =
+    if isNullOrUndefined v then
+        Fuaran.UI.ServerDriven.Validation.LiveValue.Null
+    elif jsTypeof v = "string" then
+        Fuaran.UI.ServerDriven.Validation.LiveValue.Str(unbox<string> v)
+    elif jsTypeof v = "boolean" then
+        Fuaran.UI.ServerDriven.Validation.LiveValue.Bool(unbox<bool> v)
+    elif jsTypeof v = "number" then
+        Fuaran.UI.ServerDriven.Validation.LiveValue.Num(unbox<float> v)
+    else
+        Fuaran.UI.ServerDriven.Validation.LiveValue.Null
+
 let private parseEvents (json: string) : ScriptedEvent list =
     let arr: obj array = JS.JSON.parse json |> unbox
 
@@ -64,7 +79,7 @@ let private parseEvents (json: string) : ScriptedEvent list =
 
         { NodeId = el?nodeId
           Event = el?event
-          Payload = keys |> Array.map (fun k -> k, unbox<string> payload?(k)) |> Map.ofArray })
+          Payload = keys |> Array.map (fun k -> k, liveValueOf payload?(k)) |> Map.ofArray })
 
 /// Read one recorded denial into this host's own vocabulary — the same
 /// obligation the .NET loader has, for the same reason: a harness holding the

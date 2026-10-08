@@ -95,9 +95,20 @@ let rec private normalise (value: JVal) : JVal =
     | other -> other
 
 /// This host's reading of the arm an action lowers to (§30.2), taken from the
-/// UI witness's view. Total over the view: the four arms §30.1 never targets
+/// UI witness's view. Total over the view: the three arms §30.1 never targets
 /// are a lowering defect, reported by name.
+///
+/// Phase 2106 — `Confirm` is the one round-trip arm: its gesture lowers to the
+/// question's leaf, and its reading also carries `answer`, the reading of what
+/// the ANSWER event lowers to — read through the same witness, off the answer
+/// the loop folds (`UiWitness.answer`), so the vector certifies the code the
+/// loop runs rather than a description of it.
 let rec reading (action: Action<obj>) : JVal =
+    let answer =
+        match action with
+        | Action.Confirm _ -> [ "answer", reading (UiWitness.answer "" true action) ]
+        | _ -> []
+
     match UiWitness.view action with
     | ActionView.Sequence members -> JObj [ "arm", JStr "Sequence"; "members", JArr(List.map reading members) ]
     | ActionView.Assign(key, _, from) ->
@@ -108,7 +119,7 @@ let rec reading (action: Action<obj>) : JVal =
               "declaresTarget", JBool declaresTarget
               "endpoint", JStr endpoint ]
     | ActionView.Leaf declaration ->
-        JObj
+        JObj(
             [ "arm", JStr "Leaf"
               "effectKinds", JArr(declaration.EffectKinds |> List.map JStr)
               "hostCalls",
@@ -116,8 +127,16 @@ let rec reading (action: Action<obj>) : JVal =
                   declaration.HostCalls
                   |> List.map (fun call -> JObj [ "channel", JStr call.Channel; "name", JStr call.Name ])
               ) ]
+            @ answer
+        )
+    // Reached only through a confirm's answer (above): §30.1 targets `Choose`
+    // there and nowhere else, which the vectors pin.
+    | ActionView.Choose(_, whenTrue, whenFalse, _) ->
+        JObj
+            [ "arm", JStr "Choose"
+              "whenFalse", reading whenFalse
+              "whenTrue", reading whenTrue ]
     | ActionView.Require _ -> failwith "the UI witness lowered an action to Require, which §30.1 never targets"
-    | ActionView.Choose _ -> failwith "the UI witness lowered an action to Choose, which §30.1 never targets"
     | ActionView.Repeat _ -> failwith "the UI witness lowered an action to Repeat, which §30.1 never targets"
     | ActionView.Each _ -> failwith "the UI witness lowered an action to Each, which §30.1 never targets"
 

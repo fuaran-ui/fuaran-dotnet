@@ -7824,7 +7824,7 @@ _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised
 which reshapes the build-time walker's public modules (`AstWalker`, the per-check `check` entry points, the new
 `Syntax` module; `AccessibilityCheck` and `TabsCheck` removed); the CLI and `Validator.run` keep their contract. Phase 2141 adds a BREAKING (behaviour) change to `Apply.apply`:
 three more ops are refused past the tree limits. Phase 2039 adds a BEHAVIOUR change: `DeadOnDecode.lint` and
-`AffordanceInertness.report` now follow `Confirm` continuations.
+`AffordanceInertness.report` now follow `Confirm` continuations. Phase 2106 adds a BEHAVIOUR change: the bounded loops run `Confirm` as a two-event round trip.
 `v0.92.0` was tagged and published at `9b53dfa` while
 commits numbered 0.92.0 were still landing after it: the embedded-renderer re-syncs for Phases 2077 and 2046
 (`6a2fcd5`, `09cdb97`; `Fuaran.UI.Renderer.Web` content only) and Phase 2044 (`bf13d1f`, moved here from the
@@ -8031,6 +8031,40 @@ the slot breaking; this block names its own behaviour change.
   in `SANITIZATION.md`, "The `Mount` boundary": declared and granted, both required.
 - **Docs:** the `GuestSeam` and `GuestSeamContext` doc comments say the grant is consulted only for a
   `TwoWay` declaration.
+
+### What rides this slot — Phase 2106
+
+**Class: BEHAVIOUR change + additive API.** No wire byte moves: the `Confirm` action, the `Confirm`
+client effect and the event that answers it all keep their bytes. What moves is `Confirm`'s MEANING on
+the bounded path, from a documented no-op to a two-event round trip.
+
+- **Behaviour: every bounded placement runs `Confirm` as a round trip.** `BoundedDriver.step`,
+  `Program.handleEvent` and the server placement's `ServerSession.step` / `stepWith` fold a gesture
+  with each confirm it reaches ADDRESSED: it emits `ClientEffect.Confirm(prompt, token)`, the token
+  being the node id, `#`, and the confirm's structural path in the node's action (the server-driven
+  host's `ConfirmPath`), and runs no continuation. The answer — the originating event re-delivered
+  with `confirmToken` and `confirmAccepted` — runs `onConfirm` or `onCancel` as the bounded core's
+  `Choose` over the answer. A loop used to answer every `Confirm` with the documented no-op, so neither
+  continuation ever ran; a tree whose confirm is answered now reaches the continuation's effects.
+- **Behaviour: answers are correlated, and a bad one is refused as an EVENT.** The pending questions
+  live in host-reserved store slots (`host.confirm.<token>`), taken out of the store before a step folds
+  or re-resolves and put back after, so no binding reads one and no tree can write one. An answer must
+  name a pending token that still addresses a confirm in the node's action, and it consumes it; any
+  other admitted event withdraws every pending question. A stale, duplicate or forged answer is
+  refused (`Gate (PayloadOutOfBounds …)`), and the continuation meets `CanDispatch` on its own
+  (`Gate (DispatchDenied …)`). A prompt that resolves to nothing is refused with a diagnostic and asks
+  nothing. A raw `Confirm` folded OUTSIDE a loop (`BoundedActions.runBoundedAction`, a server handler's
+  stage) is declined exactly as before — it has no address.
+- **Behaviour: the demanded projection names both continuations.** `Demanded.ofAction` / `ofTree` /
+  `check`, `ServerDemanded.*` (including `sign` / `verify`), and the server placement's `initStrict`
+  read `UiWitness.demandWitness`, in which a confirm demands the `Confirm` effect and the union of both
+  continuations. A signed envelope over a confirm tree used to under-report what the confirm guards.
+- **Additive API (`Fuaran.UI.Program`):** `UiWitness.address`, `addressedConfirm`, `answer`,
+  `demandView`, `demandWitness`, `describe`, and the sealed `UiWitness.ConfirmCarrier` (constructed only
+  inside the package); `BoundedDriver.ConfirmRoundTrip` (`PendingPrefix`, `answerOf`, `take`, `put`,
+  `asked`, `prepare`, `inert`). `UiWitness.view` now declares the `Confirm` effect kind on a confirm's
+  leaf (it declared nothing). See `docs/DECISIONS.md` D11.
+
 ---
 
 ## 0.92.0 — the slot Phases 2038 and 2043 open: one answer to what a node's children are, and one spine walk for the DAG tier (RELEASED — tagged v0.92.0 at 9b53dfa, 2026-10-06)

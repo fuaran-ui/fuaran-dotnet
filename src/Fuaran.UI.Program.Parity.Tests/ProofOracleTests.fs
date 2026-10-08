@@ -330,7 +330,7 @@ let private corpusCases () : (string * string * Action<obj>) list =
                     { ConnId = "proof-oracle"
                       NodeId = ev.NodeId
                       Event = ev.Event
-                      Payload = ev.Payload |> Map.map (fun _ v -> LiveValue.Str v)
+                      Payload = ev.Payload
                       LastSeq = index }
 
                 match Validation.validate (fun _ -> true) tree live with

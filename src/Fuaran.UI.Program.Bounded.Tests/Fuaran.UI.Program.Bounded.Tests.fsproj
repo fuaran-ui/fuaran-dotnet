@@ -12,6 +12,7 @@
     <Compile Include="BoundedActionsTests.fs" />
     <Compile Include="BoundedDriverTests.fs" />
     <Compile Include="BoundedConnectionTests.fs" />
+    <Compile Include="ConfirmRoundTripTests.fs" />
     <Compile Include="DemandedTests.fs" />
     <Compile Include="DemandedDecodeTests.fs" />
     <Compile Include="SignedEnvelopeTests.fs" />

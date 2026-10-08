@@ -69,6 +69,18 @@ let private missing (path: string) : 'a =
          missing is worse than no check."
         path
 
+/// One payload value off the event script, in the portable subset a surface
+/// sends — a string, a number, a boolean, or the absent value. A boolean is a
+/// boolean: the confirm answer's `confirmAccepted` is one (Phase 2106), and
+/// reading it as the string "true" would be a different event.
+let private liveValueOf (v: JsonElement) : Fuaran.UI.ServerDriven.Validation.LiveValue =
+    match v.ValueKind with
+    | JsonValueKind.String -> Fuaran.UI.ServerDriven.Validation.LiveValue.Str(v.GetString())
+    | JsonValueKind.True -> Fuaran.UI.ServerDriven.Validation.LiveValue.Bool true
+    | JsonValueKind.False -> Fuaran.UI.ServerDriven.Validation.LiveValue.Bool false
+    | JsonValueKind.Number -> Fuaran.UI.ServerDriven.Validation.LiveValue.Num(v.GetDouble())
+    | _ -> Fuaran.UI.ServerDriven.Validation.LiveValue.Null
+
 let private readEvents (json: string) : ScriptedEvent list =
     use doc = JsonDocument.Parse json
 
@@ -78,7 +90,7 @@ let private readEvents (json: string) : ScriptedEvent list =
             Payload =
               match el.TryGetProperty "payload" with
               | true, p ->
-                  [ for prop in p.EnumerateObject() -> prop.Name, prop.Value.GetString() ]
+                  [ for prop in p.EnumerateObject() -> prop.Name, liveValueOf prop.Value ]
                   |> Map.ofList
               | _ -> Map.empty } ]
 
@@ -266,6 +278,14 @@ let private quoted (s: string) : string =
     sb.Append '"' |> ignore
     sb.ToString()
 
+/// One payload value as the event script spells it — `liveValueOf` read back.
+let private liveValueText (v: Fuaran.UI.ServerDriven.Validation.LiveValue) : string =
+    match v with
+    | Fuaran.UI.ServerDriven.Validation.LiveValue.Str s -> quoted s
+    | Fuaran.UI.ServerDriven.Validation.LiveValue.Bool b -> if b then "true" else "false"
+    | Fuaran.UI.ServerDriven.Validation.LiveValue.Num n -> n.ToString("R", Globalization.CultureInfo.InvariantCulture)
+    | Fuaran.UI.ServerDriven.Validation.LiveValue.Null -> "null"
+
 /// Every scenario file is written WITHOUT a trailing newline, for the reason the
 /// corpus applies to its wire vectors: the manifest digests the file, and a
 /// trailing newline is a byte like any other.
@@ -290,7 +310,7 @@ let writeTree (fixturesRoot: string) (fixture: Fixture) : unit =
             let payload =
                 ev.Payload
                 |> Map.toList
-                |> List.map (fun (k, v) -> sprintf "%s: %s" (quoted k) (quoted v))
+                |> List.map (fun (k, v) -> sprintf "%s: %s" (quoted k) (liveValueText v))
                 |> String.concat ", "
 
             sprintf

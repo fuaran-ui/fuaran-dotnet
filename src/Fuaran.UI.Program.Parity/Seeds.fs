@@ -254,6 +254,76 @@ let private nestedHandlerCall =
               bound "tail" "trailing" "init" ])
         [ click "refresh" ]
 
+
+// ─── Phase 2106: the confirm round trip ──────────────────────────────────────
+//
+// A confirm is two events on the bounded path: the gesture ASKS (the `Confirm`
+// effect, carrying the confirm's address as its token), and the answer — the
+// originating event re-delivered with `confirmToken` and `confirmAccepted` —
+// runs one continuation. Four scenarios, one per rule: the two answers, a
+// question withdrawn by an event that is not its answer, and an answer given
+// twice. The last two are where "the answer is correlated" either holds or does
+// not, so each ends on an answer the loop must REFUSE.
+
+/// The answer to a pending question: the originating event re-delivered.
+let private answer (id: string) (token: string) (accepted: bool) : ScriptedEvent =
+    { NodeId = id
+      Event = "click"
+      Payload =
+        Map.ofList
+            [ "confirmToken", Fuaran.UI.ServerDriven.Validation.LiveValue.Str token
+              "confirmAccepted", Fuaran.UI.ServerDriven.Validation.LiveValue.Bool accepted ] }
+
+/// A confirm guarding a write and a navigation, with a cancel branch.
+let private deleteConfirm: Action<obj> =
+    Action.Confirm(
+        TextSource.Literal "Delete the order?",
+        Action.Chain
+            [ Action.SetState("msg", Some(jstr "deleted"), None)
+              Action.Navigate(TextSource.Literal "/orders", NavigateTarget.Self) ],
+        Some(Action.SetState("msg", Some(jstr "kept"), None))
+    )
+
+/// Yes runs `onConfirm`, and only on the answer: the gesture itself asks and
+/// writes nothing. A confirm that IS the node's action is addressed at the
+/// empty path, so its token is the node id and a bare `#`.
+let private confirmAnswerYes =
+    fixture
+        "confirm-answer-yes"
+        (dash [ button "delete" deleteConfirm; bound "readout" "msg" "init" ])
+        [ click "delete"; answer "delete" "delete#" true ]
+
+/// No runs `onCancel`. The confirm sits second in a chain, so the gesture's
+/// first member runs on the ask, and the question's token is its position.
+let private confirmAnswerNo =
+    fixture
+        "confirm-answer-no"
+        (dash
+            [ button "delete" (Action.Chain [ Action.SetState("msg", Some(jstr "asked"), None); deleteConfirm ])
+              bound "readout" "msg" "init" ])
+        [ click "delete"; answer "delete" "delete#1" false ]
+
+/// An event that is not the answer WITHDRAWS the question, so the late answer
+/// is refused and its continuation never runs — the reader moved on.
+let private confirmWithdrawn =
+    fixture
+        "confirm-withdrawn"
+        (dash
+            [ button "delete" deleteConfirm
+              button "other" (Action.SetState("msg", Some(jstr "other"), None))
+              bound "readout" "msg" "init" ])
+        [ click "delete"; click "other"; answer "delete" "delete#" true ]
+
+/// An answer CONSUMES its question, so the same answer again is refused: the
+/// continuation ran once, and a replayed yes does not run it twice.
+let private confirmDuplicateAnswer =
+    fixture
+        "confirm-duplicate-answer"
+        (dash [ button "delete" deleteConfirm; bound "readout" "msg" "init" ])
+        [ click "delete"
+          answer "delete" "delete#" true
+          answer "delete" "delete#" true ]
+
 let all: Fixture list =
     [ setStateRebinds
       chainFolds
@@ -265,4 +335,8 @@ let all: Fixture list =
       coverageFloorReactive
       coverageFloorPassThrough
       serverHandlerCall
-      nestedHandlerCall ]
+      nestedHandlerCall
+      confirmAnswerYes
+      confirmAnswerNo
+      confirmWithdrawn
+      confirmDuplicateAnswer ]

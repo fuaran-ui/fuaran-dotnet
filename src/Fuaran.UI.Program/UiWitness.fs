@@ -68,8 +68,129 @@ let private nothing: LeafDeclaration = { EffectKinds = []; HostCalls = [] }
 
 // `Action.Dispatch` is marked in-process-only upstream, so naming it raises
 // FS0044. `view` and `lower` are TOTAL analyses of the closed union: they must
-// name every case that exists, and naming one is not authoring one.
+// name every case that exists, and naming one is not authoring one. The confirm
+// carriers below DO author one — in process, which is the case's whole purpose.
 #nowarn "44"
+
+// ─── the confirm round trip (Phase 2106) ────────────────────────────────────
+//
+// `Action.Confirm` is a TWO-EVENT round trip on the bounded path
+// (WIRE_FORMAT.md §30.1, the program specification's driver-semantics rule):
+// the gesture asks, and the answer — the originating event re-delivered with
+// `confirmToken` / `confirmAccepted` — runs one continuation as a core
+// `Choose` over the answer. Neither event's meaning is a function of the action
+// alone: the ask needs the confirm's ADDRESS inside the node's action (the
+// token), and the answer needs to know it IS the answer. The core's
+// `ActionView` has no channel for either, and the UI union must not grow one —
+// a continuation on the wire is a surface that can perform it without asking
+// (§3.6.22).
+//
+// So the LOOP marks them, after the trust boundary has admitted the event: it
+// rewrites the action it is about to fold, wrapping each addressed confirm in a
+// carrier the view below recognises. The carrier rides `Action.Dispatch`'s
+// in-process payload — the one slot the union has for a host-minted value — and
+// its type is this module's own, so no decoder can produce one: a wire
+// `Dispatch` carries the inert sentinel and nothing else. A `Confirm` that
+// reaches the fold UNADDRESSED (a server handler's stage, a direct
+// `runBoundedAction` on a raw action) is declined exactly as before this phase:
+// with no address there is no question a reader could answer.
+
+/// A confirm the loop has addressed. Sealed and constructed only here.
+[<Sealed>]
+type ConfirmCarrier private (path: string, answer: bool option, confirm: Action<obj>) =
+    /// The confirm's structural path inside the node's action (`ConfirmPath`).
+    member _.Path = path
+    /// `None` on the ask; `Some accepted` on the answer.
+    member _.Answer = answer
+    /// The `Action.Confirm` itself.
+    member _.Confirm = confirm
+    static member internal Ask(path: string, confirm: Action<obj>) = ConfirmCarrier(path, None, confirm)
+
+    static member internal Answered(path: string, accepted: bool, confirm: Action<obj>) =
+        ConfirmCarrier(path, Some accepted, confirm)
+
+let private carry (carrier: ConfirmCarrier) : Action<obj> =
+    Action.Dispatch(Unchecked.nonNull (box carrier))
+
+/// The confirm carried by an action, if the loop addressed one.
+let private carried (action: Action<obj>) : ConfirmCarrier option =
+    match action with
+    | Action.Dispatch msg ->
+        match box msg with
+        | :? ConfirmCarrier as c -> Some c
+        | _ -> None
+    | _ -> None
+
+/// Address every confirm a gesture reaches, at `path`: the members of a `Chain`
+/// at their positions, and a `Confirm` as an ASK carrier. A continuation is not
+/// reached by the ask, so it is not addressed here — the answer addresses it.
+let rec private addressAt (path: string) (action: Action<obj>) : Action<obj> =
+    match action with
+    | Action.Chain ops -> Action.Chain(ops |> List.mapi (fun i op -> addressAt (ConfirmPath.child path i) op))
+    | Action.Confirm _ -> carry (ConfirmCarrier.Ask(path, action))
+    | other -> other
+
+/// The action a gesture folds: the node's resolved action with each confirm it
+/// reaches addressed, so its question carries the token the answer names.
+let address (action: Action<obj>) : Action<obj> = addressAt ConfirmPath.root action
+
+/// The confirm a token addresses inside the node's CURRENT action, with its
+/// path. The token is untrusted payload: its node half must be this node, and
+/// every segment that names nothing is an ordinary miss, never a throw.
+let addressedConfirm (nodeId: string) (token: string) (action: Action<obj>) : (string * Action<obj>) option =
+    let prefix = nodeId + "#"
+
+    if
+        isNull (box token)
+        || not (token.StartsWith(prefix, System.StringComparison.Ordinal))
+    then
+        None
+    else
+        let path = token.Substring prefix.Length
+        let segments = if path = "" then [] else path.Split '.' |> List.ofArray
+
+        let rec go (segments: string list) (a: Action<obj>) : Action<obj> option =
+            match segments, a with
+            | [], Action.Confirm _ -> Some a
+            | [], _ -> None
+            | seg :: rest, Action.Chain ops ->
+                match System.Int32.TryParse seg with
+                | true, i when i >= 0 && i < List.length ops && string i = seg -> go rest (List.item i ops)
+                | _ -> None
+            | "onConfirm" :: rest, Action.Confirm(_, onConfirm, _) -> go rest onConfirm
+            | "onCancel" :: rest, Action.Confirm(_, _, Some onCancel) -> go rest onCancel
+            | _ -> None
+
+        go segments action |> Option.map (fun confirm -> path, confirm)
+
+/// The action an ANSWER folds: the addressed confirm as an answer carrier,
+/// which views as the core's `Choose` over the answer.
+let answer (path: string) (accepted: bool) (confirm: Action<obj>) : Action<obj> =
+    carry (ConfirmCarrier.Answered(path, accepted, confirm))
+
+/// The two arms an answer chooses between: `onConfirm`, and `onCancel` or —
+/// when the author declared none — the empty sequence, which is what "nothing
+/// happens" is. Each arm is addressed under its own continuation name, so a
+/// confirm a host-authored continuation holds is askable in its turn (the wire
+/// refuses one at decode, so only an in-process tree can carry it).
+let private arms (path: string) (confirm: Action<obj>) : (Action<obj> * Action<obj>) option =
+    match confirm with
+    | Action.Confirm(_, onConfirm, onCancel) ->
+        Some(
+            addressAt (ConfirmPath.branch path "onConfirm") onConfirm,
+            onCancel
+            |> Option.map (addressAt (ConfirmPath.branch path "onCancel"))
+            |> Option.defaultValue (Action.Chain [])
+        )
+    | _ -> None
+
+/// The answer as the core's selection: the literal answer is the entry, so the
+/// boolean `true` takes `onConfirm` and `false` the other arm. No exit
+/// assertion — a confirm is outside the reversible fragment.
+let private answerView (accepted: bool) (path: string) (confirm: Action<obj>) : ActionView<Action<obj>, Binding<JVal>> =
+    match arms path confirm with
+    | Some(whenTrue, whenFalse) -> ActionView.Choose(Binding.Static(Some(JBool accepted)), whenTrue, whenFalse, None)
+    | None -> ActionView.Leaf nothing
 
 /// `ActionWitness.View` — the total match over the closed fourteen-case union.
 /// Four cases are control structure the core owns; the other ten are leaves,
@@ -92,12 +213,70 @@ let view (action: Action<obj>) : ActionView<Action<obj>, Binding<JVal>> =
     | Action.Invoke(capabilityId, _) -> ActionView.Leaf(hostCall "Invoke" capabilityId)
     | Action.Notify(channel, _) -> ActionView.Leaf(hostCall "Notify" channel)
     | Action.AiTool(toolName, _) -> ActionView.Leaf(hostCall "AiTool" toolName)
-    // `Confirm` demands nothing, including from its continuations — the bounded
-    // interpreter answers it with a documented no-op, so neither continuation
-    // can ever run here.
-    | Action.Confirm _
-    | Action.Dispatch _
+    // Phase 2106 — the confirm round trip. The ASK is a leaf that puts the
+    // question (the `Confirm` client effect); the ANSWER is the core's `Choose`
+    // over the reader's answer. A raw `Confirm` — one no loop addressed — views
+    // as the ask's leaf too: it declares the one effect it could emit and never
+    // emits it (`lower`), and an upper bound is what a declaration is. What its
+    // continuations demand is `demandView`'s, because no single event folds both
+    // the question and an arm.
+    | Action.Confirm _ -> ActionView.Leaf(kindOf (ClientEffect.Confirm("", "")))
+    | Action.Dispatch _ as carrierOrMessage ->
+        match carried carrierOrMessage with
+        | Some c ->
+            match c.Answer with
+            | None -> ActionView.Leaf(kindOf (ClientEffect.Confirm("", "")))
+            | Some accepted -> answerView accepted c.Path c.Confirm
+        | None -> ActionView.Leaf nothing
     | Action.CommitLocal _ -> ActionView.Leaf nothing
+
+/// The view the DEMANDED projection reads: what a gesture can reach across
+/// BOTH of a confirm's events. A confirm demands its question and the union of
+/// its two continuations — an untaken arm's reach is still reach, since which
+/// arm runs is the reader's answer, which no projection can see. Every other
+/// arm is `view`'s.
+///
+/// Kept apart from `view` because a fold must never read it: it would put the
+/// question and run an arm in ONE event, which is the thing the round trip
+/// exists not to do.
+let demandView (action: Action<obj>) : ActionView<Action<obj>, Binding<JVal>> =
+    match action with
+    | Action.Confirm _ ->
+        ActionView.Sequence
+            [ carry (ConfirmCarrier.Ask(ConfirmPath.root, action))
+              carry (ConfirmCarrier.Answered(ConfirmPath.root, true, action)) ]
+    | other -> view other
+
+/// The log-safe description of an action, a carried confirm described as the
+/// `Confirm` it carries rather than as the in-process slot it rides in.
+let describe (action: Action<obj>) : string =
+    match carried action with
+    | Some c -> Validation.describeAction c.Confirm
+    | None -> Validation.describeAction action
+
+/// The prompt a question carries, resolved at DISPATCH time through the same
+/// resolver every text slot uses. A prompt that resolves to nothing — or to
+/// nothing but whitespace — is no question: a yes/no with no subject is worse
+/// than no dialogue, so it is refused rather than asked.
+let private promptOf (s: BindingSources) (prompt: TextSource) : Result<string, string> =
+    let resolved: Result<string, string> =
+        match prompt with
+        | TextSource.Literal literal -> Ok literal
+        | TextSource.Bound binding ->
+            (match resolveScalarText s binding with
+             | Resolved value -> if isNull (box value) then Ok "" else Ok value
+             | NotResolved -> Error "the prompt binding did not resolve to a value"
+             | Errored m -> Error m
+             | I18nUnresolved k -> Error(unresolvedI18n k))
+        | TextSource.I18n(key, _) ->
+            if Map.containsKey key s.I18n then
+                Ok(resolveTextSource s prompt)
+            else
+                Error(unresolvedI18n key)
+
+    match resolved with
+    | Ok text when System.String.IsNullOrWhiteSpace text -> Error "the prompt resolved to no text"
+    | other -> other
 
 /// `ActionWitness.Lower` — what each LEAF does at dispatch. The three control
 /// cases never reach it through `view`; being total, it declines them.
@@ -193,13 +372,32 @@ let lower (nodeId: string) (action: Action<obj>) (s: BindingSources) : LeafOutco
 
         LeafOutcome.Emit(ClientEffect.ReadFileBody(nodeId, enc))
 
+    // Phase 2106 — the ASK. The loop addressed this confirm, so its question
+    // carries the token the answer will name: the originating node and the
+    // confirm's structural path in that node's action. What a yes will DO does
+    // not go with it — the continuations stay with the loop (§3.6.22).
+    //
+    // An ANSWER carrier views as `Choose`, so it never reaches here; being
+    // total, this declines it.
+    | Action.Dispatch _ when Option.isSome (carried action) ->
+        match carried action with
+        | Some c when c.Answer.IsNone ->
+            match c.Confirm with
+            | Action.Confirm(prompt, _, _) ->
+                match promptOf s prompt with
+                | Ok text -> LeafOutcome.Emit(ClientEffect.Confirm(text, ConfirmPath.token nodeId c.Path))
+                | Error reason -> LeafOutcome.Refuse(sprintf "%s — nothing was asked" reason)
+            | _ -> LeafOutcome.Decline
+        | _ -> LeafOutcome.Decline
+
     // Computational host arms with no store/DOM effect on the bounded path, and
-    // the one the path has no return leg for: documented declines. A
-    // confirmation is a ROUND TRIP the bounded placement has no channel for, so
-    // NEITHER continuation runs — the fail-closed direction, and the only one
-    // available. `Dispatch` has no `update` to fold a message through, and the
-    // wire carries only the inert sentinel. `CommitLocal`'s flushed value is
-    // applied as a state write by the loop before the commit is interpreted.
+    // a confirm no loop ADDRESSED: documented declines. An unaddressed confirm
+    // has no token, so its question could never be answered — asking it would
+    // tell the reader something was pending that nothing will ever run, and
+    // NEITHER continuation runs, the fail-closed direction. `Dispatch` has no
+    // `update` to fold a message through, and the wire carries only the inert
+    // sentinel. `CommitLocal`'s flushed value is applied as a state write by
+    // the loop before the commit is interpreted.
     | Action.Confirm _
     | Action.Notify _
     | Action.AiTool _
@@ -707,7 +905,7 @@ let dispatch: DispatchWitness<Node<obj>, Action<obj>, Binding<JVal>, BindingSour
       Action =
         { View = view
           Lower = lower
-          Describe = Validation.describeAction
+          Describe = describe
           Encode = encodeAction
           Decode = decodeAction
           // No UI arm views as an `Each` (Phase 1990; `ui_view_no_flow`), so
@@ -728,3 +926,14 @@ let witness: UiProgramWitness =
     { State = state
       Walk = walk
       Dispatch = dispatch }
+
+/// The witness the DEMANDED projection reads (Phase 2106): `witness` with the
+/// dispatch axis's view replaced by `demandView`, so a confirm demands its
+/// question and both of its continuations. Never folded — see `demandView`.
+let demandWitness: UiProgramWitness =
+    { witness with
+        Dispatch =
+            { dispatch with
+                Action =
+                    { dispatch.Action with
+                        View = demandView } } }

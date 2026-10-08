@@ -45,7 +45,16 @@ module ServerSession =
         (store: BindingSources)
         (wire: WireTree)
         : Result<ServerSession, ServerStrictFinding list> =
-        Fuaran.Program.Server.ServerSession.initStrict coverage services store (WireTree.reify wire)
+        // Phase 2106 — the coverage check reads the DEMANDED view, in which a
+        // confirm demands both of its continuations; the session it builds keeps
+        // the services it was given, whose view is the one a fold reads.
+        Fuaran.Program.Server.ServerSession.initStrict
+            coverage
+            { services with
+                Witness = UiWitness.demandWitness }
+            store
+            (WireTree.reify wire)
+        |> Result.map (fun session -> { session with Services = services })
 
     /// Step the session with one untrusted inbound event, with `arm` deciding
     /// what a call action MEANS here.
@@ -62,8 +71,42 @@ module ServerSession =
         | Error reason ->
             session,
             Fuaran.Program.Server.ServerSession.rejected session (Fuaran.Program.Server.ServerReject.Gate reason)
-        | Ok { Action = None } -> session, Fuaran.Program.Server.ServerSession.inert session
-        | Ok { Action = Some action } -> Fuaran.Program.Server.ServerSession.dispatchWith arm session ev.NodeId action
+        | Ok { Action = None } ->
+            // Phase 2106 — not an answer, so it withdraws any pending question;
+            // an answer on a node with no action addresses nothing.
+            match BoundedDriver.ConfirmRoundTrip.inert ev session.Store with
+            | Error reason ->
+                session,
+                Fuaran.Program.Server.ServerSession.rejected session (Fuaran.Program.Server.ServerReject.Gate reason)
+            | Ok store ->
+                let quiet = { session with Store = store }
+                quiet, Fuaran.Program.Server.ServerSession.inert quiet
+        | Ok { Action = Some resolvedAction } ->
+            // Phase 2106 — the confirm round trip, as every bounded placement
+            // runs it (`BoundedDriver.ConfirmRoundTrip`). The core's session
+            // threads the store, so the pending questions ride there: out before
+            // the core folds and re-resolves, back in after — and a refusal, at
+            // the trust boundary or by the core's budget, leaves the session
+            // exactly as it arrived, pending questions included.
+            let pending, store = BoundedDriver.ConfirmRoundTrip.take session.Store
+
+            match BoundedDriver.ConfirmRoundTrip.prepare session.Services.CanDispatch pending ev resolvedAction with
+            | Error reason ->
+                session,
+                Fuaran.Program.Server.ServerSession.rejected session (Fuaran.Program.Server.ServerReject.Gate reason)
+            | Ok(action, standing) ->
+                let next, out =
+                    Fuaran.Program.Server.ServerSession.dispatchWith arm { session with Store = store } ev.NodeId action
+
+                match out.Rejected with
+                | Some _ -> session, out
+                | None ->
+                    { next with
+                        Store =
+                            BoundedDriver.ConfirmRoundTrip.put
+                                (standing @ BoundedDriver.ConfirmRoundTrip.asked out.ClientEffects)
+                                next.Store },
+                    out
 
     /// `stepWith` at the plain handler arm.
     let step (session: ServerSession) (ev: LiveEvent) : ServerSession * ServerStepOutput =

@@ -66,13 +66,13 @@ module QuerySchema =
 module Demanded =
 
     let ofAction (action: Action<obj>) : DemandedProjection =
-        Fuaran.Program.Bounded.Demanded.ofAction UiWitness.witness action
+        Fuaran.Program.Bounded.Demanded.ofAction UiWitness.demandWitness action
 
     let ofTree (root: Node<obj>) : DemandedProjection =
-        Fuaran.Program.Bounded.Demanded.ofTree UiWitness.witness root
+        Fuaran.Program.Bounded.Demanded.ofTree UiWitness.demandWitness root
 
     let check (coverage: HostCoverage) (tree: Node<obj>) : CoverageFinding list =
-        Fuaran.Program.Bounded.Demanded.check UiWitness.witness coverage tree
+        Fuaran.Program.Bounded.Demanded.check UiWitness.demandWitness coverage tree
 
 module ProgramWire =
 

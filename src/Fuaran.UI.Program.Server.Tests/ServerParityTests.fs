@@ -65,7 +65,7 @@ let private toLiveEvent (index: int) (ev: ScriptedEvent) : LiveEvent =
     { ConnId = "parity"
       NodeId = ev.NodeId
       Event = ev.Event
-      Payload = ev.Payload |> Map.map (fun _ v -> LiveValue.Str v)
+      Payload = ev.Payload
       LastSeq = index }
 
 /// Drive a fixture through the server placement, producing the family's

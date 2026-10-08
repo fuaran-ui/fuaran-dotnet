@@ -10,6 +10,75 @@ consequence.
 
 ---
 
+## 2026-10-08 — D11: `Confirm` is a two-event round trip on the bounded path; the pending question is host state, carried in reserved store slots
+
+**Decided (Phase 2106).** On the bounded path a `Confirm` is two events. The GESTURE asks: it emits the
+`Confirm` client effect with a token naming the confirm's address — the node id, `#`, and the
+confirm's structural path in the node's action (dot-joined chain positions and continuation names, the
+empty path being the action itself; the same `ConfirmPath` the server-driven host mints) — and runs no
+continuation; the rest of an enclosing chain runs around it. The ANSWER is the originating event
+re-delivered with `confirmToken` (a string) and `confirmAccepted` (a boolean), re-validated in full; it
+folds the addressed confirm as the bounded core's `Choose` with the answer as its entry, `onConfirm`
+the true arm and `onCancel` — or the empty sequence — the false. The tree wire specification's §30.1
+row and the program specification's driver-semantics rule (§10.5) state it; four scenarios
+(`confirm-answer-yes`, `-no`, `confirm-withdrawn`, `confirm-duplicate-answer`) pin it, and this
+repository's three bounded placements and a second host reproduce them step for step.
+
+**Where the pending question lives: host-reserved store slots, one per token, under `host.confirm.`.**
+The store is the one thing all three placements already thread — the server placement's session is a
+core type this repository cannot widen, and a record field on the other two would have been a second
+mechanism and a breaking field addition. A tree cannot write a slot (the host-reserved prefix refuses
+every tree-originated write, on every path), and it cannot READ one either: the slots are taken out of
+the store before a step folds or re-resolves anything and put back after, so they are the loop's state
+carried in the store, never a value a binding resolves. The precedent is the upload slot
+(`host.upload.<nodeId>`): a fact only the host may state lives under the host prefix.
+
+**The correlation rule.** An answer is admitted only when its token is PENDING and still addresses a
+confirm in the node's current action; admitting it consumes the token. Any other admitted event
+WITHDRAWS every pending question — a surface holds a confirmation modal, so an event that is not its
+answer means the reader moved on, and a late answer must not act on a store they have since changed.
+A stale, duplicate or forged answer is refused as an EVENT (the store, pending slots included, is
+untouched), and the selected continuation meets the dispatch gate on its own before it runs. A
+confirmation remains a courtesy and never an authorisation: a hostile surface answers yes without
+asking anyone, and the gate the continuation meets is the only control.
+
+**How a fold tells an ask from an answer: the loop addresses the action it folds.** The core's
+`ActionView` has no channel for "this confirm is at path p" or "this event IS the answer", and the UI
+union must not grow one — a continuation on the wire is a surface that can perform it without asking
+(WIRE_FORMAT §3.6.22). So after the trust boundary admits the event the loop rewrites the action it is
+about to fold, wrapping each addressed confirm in a `UiWitness.ConfirmCarrier` riding
+`Action.Dispatch`'s in-process payload: an ASK carrier views as the question's leaf and lowers to the
+effect; an ANSWER carrier views as `Choose`. The carrier type is this package's own and sealed, so no
+decoder produces one — a wire `Dispatch` carries only the inert sentinel. A RAW `Confirm` (a server
+handler's stage, `BoundedActions.runBoundedAction` on an unaddressed action) is declined exactly as
+before: it has no token, so its question could never be answered.
+
+**The demanded projection reads a separate view.** `UiWitness.demandView` makes a confirm demand its
+question and the union of both continuations; every `Demanded.*` / `ServerDemanded.*` entry point,
+`sign` / `verify` and the server placement's `initStrict` read `demandWitness`. It is never folded: it
+would ask and run an arm in one event.
+
+**Rejected.**
+- *Stateless correlation, the server-driven host's design* (the token alone, resolved against the
+  tree): it cannot refuse a duplicate answer, so a replayed yes would run the continuation twice. That
+  host keeps its design; its §3.6.22 obligation is unchanged by this decision.
+- *A token-to-continuation map holding the BRANCHES* rather than the tokens: the continuation is
+  re-read from the node's current action, as §5.2 of the program specification already required, so
+  only the question needs to be remembered.
+- *A new arm in the bounded core's view, or a core change to carry the address*: the core is another
+  repository's contract, and the carrier needs none.
+- *The ordinal of a confirm among a step's emitted effects as its token*: an unresolvable prompt asks
+  nothing, which shifts every later ordinal; a path does not move.
+
+**What the proof oracle covers, stated rather than left to be assumed.** `proofs/program/BoundedFold.fst`
+models the fold over RAW actions under `UiWitness.witness`, and its differential host feeds it raw
+actions — the oracle's view of a confirm is unchanged (a leaf its lowering declines). The ask carrier's
+emitted question and the answer carrier's `Choose` are outside that corpus: the `Choose` arm is the
+core fold's own, modelled generically, and the ask's emit is pinned by the driver-semantics scenarios
+and `ConfirmRoundTripTests`, not by a theorem.
+
+---
+
 ## 2026-10-08 — D10: UI actions keep their compact spelling and lower to the program core by a table; a generic action wire is deferred
 
 **Decided (Phase 2103).** The fourteen `Action` arms keep their UI spelling on the wire. Their
