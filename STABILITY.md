@@ -7983,6 +7983,23 @@ tier already had is kept.
   host projection), `FormFieldKind`'s handler/value projections (its cases declare those fields at different
   types), a binding-slot enumerator (its emission does not compile against the `Switch` projection), and the
   decoder's ordered kind groups and `opWireFields` (their order is the cross-host error hint).
+
+### What rides this slot — Phase 2135
+
+**Class: BREAKING (behaviour).** No API, source or wire-format change. Another phase has already made
+the slot breaking; this block names its own behaviour change.
+
+- **Behaviour: `GuestSeam.GrantTwoWay` is consulted only for a `Mount` whose declared channel
+  direction is `TwoWay`.** Before, the renderer asked the seam for every mount. A seam answering yes
+  for a mount that declared `OutOnly` upgraded it to `TwoWay`. That mount now keeps `OutOnly` and the
+  seam is not asked. A guest therefore loses a two-way channel it never declared. A host relying on
+  that upgrade must have the tree declare `TwoWay`. The seam's answer for a mount that declares
+  `TwoWay` is unchanged, and so is the recorded downgrade when the seam refuses.
+- **Why:** least privilege, and parity with the TypeScript renderer (Phase 2077). The same tree under
+  the same granting seam now yields the same channel direction on both hosts. The rule is stated once
+  in `SANITIZATION.md`, "The `Mount` boundary": declared and granted, both required.
+- **Docs:** the `GuestSeam` and `GuestSeamContext` doc comments say the grant is consulted only for a
+  `TwoWay` declaration.
 ---
 
 ## 0.92.0 — the slot Phases 2038 and 2043 open: one answer to what a node's children are, and one spine walk for the DAG tier (RELEASED — tagged v0.92.0 at 9b53dfa, 2026-10-06)

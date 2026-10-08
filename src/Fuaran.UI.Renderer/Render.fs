@@ -2634,15 +2634,17 @@ type GuestSeamContext =
         /// grant — deciding what to allow is the host policy's job.
         Capabilities: string list
         /// The guest channel as the renderer will ACTUALLY honour it (Phase
-        /// 783). Its `Direction` is `OutOnly` unless the seam granted otherwise
-        /// via `GrantTwoWay` — never simply what the tree declared.
+        /// 783). Its `Direction` is `OutOnly` unless the tree declared `TwoWay`
+        /// AND the seam granted it via `GrantTwoWay` (Phase 2135) — never simply
+        /// what the tree declared, and never more than it declared.
         Channel: GuestChannel
         /// What the TREE asked for (Phase 783). `ChannelDirection` is a required
         /// wire field, so a hostile tree simply writes `TwoWay`; `OutOnly` was
         /// only ever the default of the *authoring* smart constructor, and no
         /// host-side clamp existed. The renderer now clamps, and hands the
         /// policy both values: `Channel` is what will happen, this is what was
-        /// requested. A gate deciding `GrantTwoWay` reads this one.
+        /// requested. A gate deciding `GrantTwoWay` reads this one; it is only
+        /// ever consulted when this is `TwoWay` (Phase 2135).
         DeclaredDirection: ChannelDirection
     }
 
@@ -2665,9 +2667,12 @@ type GuestSeamContext =
 ///
 /// Both members are consulted per rendered mount, not per host, so a policy may
 /// vary by scope id / capability set without reinstalling.
-/// - `GrantTwoWay ctx` decides whether this mount gets a `TwoWay` channel
-///   (Phase 783). `ctx.DeclaredDirection` is what the tree asked for and
-///   `ctx.Channel` is the clamped `OutOnly` the renderer will otherwise use.
+/// - `GrantTwoWay ctx` decides whether a mount that DECLARED `TwoWay` gets it
+///   (Phase 783). It is consulted only for such a mount (Phase 2135): an
+///   `OutOnly` declaration is never upgraded, whatever the seam would answer —
+///   two-way needs BOTH the declaration and the grant. `ctx.DeclaredDirection`
+///   is what the tree asked for and `ctx.Channel` is the clamped `OutOnly` the
+///   renderer will otherwise use.
 ///   `TwoWay` is a HOST GRANT: the wire cannot confer it, because
 ///   `ChannelDirection` is a required wire field a decoded tree fills in itself.
 ///   `fun _ -> false` is the safe policy and the one to write unless a specific
@@ -4917,11 +4922,15 @@ let rec private renderKind
 
                 // The grant decision reads the CLAMPED context, so a policy sees
                 // what will happen by default and what was asked for, and says
-                // yes or no to the difference.
+                // yes or no to the difference. Phase 2135 — it is consulted ONLY
+                // for a mount that DECLARED `TwoWay`: two-way needs the
+                // declaration AND the grant (SANITIZATION.md, "The `Mount`
+                // boundary"), so a mount that declared `OutOnly` is never
+                // upgraded past its own declaration, whatever the seam answers.
                 let granted =
                     match seamOpt with
-                    | Some seam -> seam.GrantTwoWay clampedCtx
-                    | None -> false
+                    | Some seam when declaredDirection = ChannelDirection.TwoWay -> seam.GrantTwoWay clampedCtx
+                    | _ -> false
 
                 let effectiveChannel =
                     if granted then
