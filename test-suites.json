@@ -177,8 +177,9 @@
     },
     {
       "project": "src/Fuaran.UI.Program.Parity.Tests/Fuaran.UI.Program.Parity.Tests.fsproj",
+      "requiresCorpus": true,
       "requiresProgramSpec": true,
-      "note": "fuaran#2012 — tier parity legs (a) and (b) over the program specification's driver-semantics family, and the differential host of the two proof claims about the UI adapter (proofs.json `model-agrees-with-shipped-code`, `budget-model-agrees-with-shipped-code`). `--emit-fixtures` regenerates that family's scenarios."
+      "note": "fuaran#2012 — tier parity legs (a) and (b) over the program specification's driver-semantics family, and the differential host of the two proof claims about the UI adapter (proofs.json `model-agrees-with-shipped-code`, `budget-model-agrees-with-shipped-code`). `--emit-fixtures` regenerates that family's scenarios. Phase 2103 adds the tree wire corpus's `lowers-to/` family (WIRE_FORMAT.md section 30), so the suite loads both corpora."
     },
     {
       "project": "src/Fuaran.UI.Program.Bench/Fuaran.UI.Program.Bench.fsproj",

@@ -10,6 +10,66 @@ consequence.
 
 ---
 
+## 2026-10-08 — D10: UI actions keep their compact spelling and lower to the program core by a table; a generic action wire is deferred
+
+**Decided (Phase 2103).** The fourteen `Action` arms keep their UI spelling on the wire. Their
+meaning on the bounded path is a **lowering** onto the bounded program core's action view
+(`Fuaran.Program.Bounded`'s `Sequence` / `Assign` / `Call` / `Leaf`), stated as a normative table in
+the tree wire specification (WIRE_FORMAT.md §30) and pinned by its `lowers-to/` vectors, which this
+repository certifies through `UiWitness.view` and a second host certifies through its own bounded
+loop. Before this the mapping existed only in those two hosts' code.
+
+**Rejected: re-spelling every action in a generic `Sequence` / `Assign` / `Leaf` form.** Measured, not
+estimated, by a throwaway script (not shipped) over the conformance corpus — every parseable `.json`
+outside `reject/`, 893 documents, 101 actions at the five action positions it holds (`onClick`,
+`onConfirm`, `onCancel`, `onDismiss`, `onSubmit`); 30 deliberately malformed inputs could not be
+parsed and were skipped — and over the prompt pack's `few-shot.jsonl` (18 records). Two generic
+spellings were measured, both canonical (Ordinal keys, compact): **minimal** — `Chain` becomes
+`{"$type":"Sequence","members":[…]}`, `SetState` becomes `Assign` with `valueFrom` renamed `from`,
+`Call` is unchanged, and every other arm becomes `{"$type":"Leaf","leaf":"<arm>","args":{<its other
+members>}}`; and **self-declaring** — the same, with each leaf also carrying the §30.1 declaration
+(`"declares":{"effectKinds":[…]}` or `{"hostCalls":[…]}`), which is what a host that does not know this
+vocabulary would need in order to read anything off a leaf at all.
+
+| Measure | Minimal | Self-declaring |
+|---|---|---|
+| Corpus: bytes added | +1,154 | +2,662 |
+| … as a share of the 4,825 bytes of action sub-documents | +23.9% | +55.2% |
+| … as a share of the corpus's 2,177,426 bytes | +0.05% | +0.12% |
+| Prompt pack: bytes added (2 actions, both `Chain`, 52 bytes) | +14 | +14 |
+
+Per arm over the corpus (occurrences, then bytes added minimal / self-declaring): `Chain` 41, +287 /
++287 (+7 each); `Dispatch` 13, +182 / +182; `Notify` 12, +276 / +1,058; `Call` 9, 0 / 0; `Navigate` 7,
++161 / +441; `SetState` 7, −19 / −19; `WriteToClipboard` 4, +92 / +284; `Confirm` 2, +46 / +46;
+`Invoke` 1, +23 / +92; `AiTool` 1, +23 / +90; `ReadFileBody` 1, +23 / +67; `Focus` 1, +23 / +60;
+`CommitLocal` 1, +23 / +23; `Print` 1, +14 / +51. Each arm's figure is its own spelling's change,
+its children's excluded, so the column sums to the total.
+
+**Why the compact spelling is kept.** The byte cost is real for what it buys and small in absolute
+terms, so it does not decide this alone. What decides it is that a generic spelling buys a host that
+does not know this vocabulary nothing it can act on: a leaf it cannot perform is still a leaf it
+cannot perform, whichever way it is spelled, and the only thing a generic reader gains is the
+declaration — which the table already states, once, where every host reads it, instead of in every
+document. Against that, the migration would touch every emitter, every decoder, the corpus, the
+prompt pack and every stored emission, for a spelling that is a quarter to a half longer where
+actions are, in exchange for nothing a current host needs. The two hosts that run actions on the
+bounded path agree on the table under its vectors today.
+
+**Revisit when any of these holds:**
+
+1. a second domain's client-side actions must run on a host that is not .NET — at which point a
+   domain-neutral action spelling has a consumer the table cannot serve;
+2. the program specification's own second-domain condition (its §11.3 deferral of a generic
+   instantiation over a second domain) is met; or
+3. keeping the per-host lowering implementations in agreement costs more than the migration would —
+   measured as the `lowers-to/` family's maintenance across hosts, not asserted.
+
+**Consequence.** A host that runs actions on the bounded path certifies `lowers-to/`. An arm added to
+`Action` needs a §30.1 row and a vector in the same change-set: the family's manifest lists the arm
+set, and both certifying hosts fail when their closed union and that list disagree.
+
+---
+
 ## 2026-10-04 — D9: the program UI adapters take UI-family ids before their first release from here
 
 **Operator decision, 2026-10-04 (Phase 2022).** The two adapters that instantiate the bounded program

@@ -21,6 +21,9 @@
          extractions (declared in copies.json); nothing packs it and nothing but this suite
          consumes it. -->
     <Compile Include="ProofOracleTests.fs" />
+    <!-- Phase 2103 - the tree wire corpus's lowers-to/ family (WIRE_FORMAT.md section 30): every UI
+         action arm's lowering onto the bounded core, read through the UI witness's view. -->
+    <Compile Include="LowersToTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
