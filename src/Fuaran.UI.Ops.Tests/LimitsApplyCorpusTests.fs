@@ -3,7 +3,9 @@ module Fuaran.UI.Tests.LimitsApplyCorpus
 // ============================================================================
 //  Certifies this host against the shared `apply/limits-apply.json` family
 //  (Phase 2141): every op that can grow a tree is checked on its result, and
-//  one that takes the tree past WireLimits is refused with `LimitExceeded`.
+//  one that takes the tree past WireLimits is refused with `LimitExceeded`;
+//  and against `apply/duplicate-ids-apply.json` (Phase 2172): an op that
+//  leaves an id it installed held twice is refused with `DuplicateNodeId`.
 //
 //  Each vector's tree and op are decoded by this host's own wire decoder and
 //  applied. An absent corpus is a FAILURE, not a skip: a suite that certified
@@ -30,7 +32,7 @@ type private Vector =
       Verdict: string
       Code: string option }
 
-let private loadVectors () : int * Vector list =
+let private loadVectors (familyId: string) : int * Vector list =
     let root = Fuaran.Tests.CorpusRoot.find ()
 
     let manifest =
@@ -38,7 +40,7 @@ let private loadVectors () : int * Vector list =
 
     let declared =
         manifest.RootElement.GetProperty("families").EnumerateArray()
-        |> Seq.find (fun f -> str (f.GetProperty("id")) = "limitsApply")
+        |> Seq.find (fun f -> str (f.GetProperty("id")) = familyId)
 
     let file = str (declared.GetProperty("file"))
     let count = declared.GetProperty("vectors").GetInt32()
@@ -65,32 +67,35 @@ let private loadVectors () : int * Vector list =
 let private codeToken (code: ApplyErrorCode) : string =
     match code with
     | ApplyErrorCode.LimitExceeded -> "LimitExceeded"
+    | ApplyErrorCode.DuplicateNodeId -> "DuplicateNodeId"
     | other -> sprintf "%A" other
+
+/// Every vector of `familyId` holds on this host.
+let private certify (familyId: string) =
+    let declared, vectors = loadVectors familyId
+    Expect.equal (List.length vectors) declared "the manifest's vector count matches the family file"
+
+    for v in vectors do
+        let tree =
+            match JsonDecode.decodeNodeObj v.Tree with
+            | Ok t -> t
+            | Error e -> failtestf "%s: the tree did not decode: %A" v.Id e
+
+        let op =
+            match JsonDecode.decodeOp v.Op with
+            | Ok o -> o
+            | Error e -> failtestf "%s: the op did not decode: %A" v.Id e
+
+        match v.Verdict, Apply.apply op tree with
+        | "accept", Ok _ -> ()
+        | "accept", Error err -> failtestf "%s: expected accept, refused with %A" v.Id err.Code
+        | "reject", Error err -> Expect.equal (Some(codeToken err.Code)) v.Code (sprintf "%s: the refusal code" v.Id)
+        | "reject", Ok _ -> failtestf "%s: expected a %A refusal, the op applied" v.Id v.Code
+        | other, _ -> failtestf "%s: unknown verdict %s" v.Id other
 
 [<Tests>]
 let tests =
     testList
-        "Fuaran.UI.Ops apply/limits-apply corpus"
-        [ test "every limitsApply vector holds on this host" {
-              let declared, vectors = loadVectors ()
-              Expect.equal (List.length vectors) declared "the manifest's vector count matches the family file"
-
-              for v in vectors do
-                  let tree =
-                      match JsonDecode.decodeNodeObj v.Tree with
-                      | Ok t -> t
-                      | Error e -> failtestf "%s: the tree did not decode: %A" v.Id e
-
-                  let op =
-                      match JsonDecode.decodeOp v.Op with
-                      | Ok o -> o
-                      | Error e -> failtestf "%s: the op did not decode: %A" v.Id e
-
-                  match v.Verdict, Apply.apply op tree with
-                  | "accept", Ok _ -> ()
-                  | "accept", Error err -> failtestf "%s: expected accept, refused with %A" v.Id err.Code
-                  | "reject", Error err ->
-                      Expect.equal (Some(codeToken err.Code)) v.Code (sprintf "%s: the refusal code" v.Id)
-                  | "reject", Ok _ -> failtestf "%s: expected a %A refusal, the op applied" v.Id v.Code
-                  | other, _ -> failtestf "%s: unknown verdict %s" v.Id other
-          } ]
+        "Fuaran.UI.Ops apply/ corpus families"
+        [ test "every limitsApply vector holds on this host" { certify "limitsApply" }
+          test "every duplicateIdsApply vector holds on this host" { certify "duplicateIdsApply" } ]
