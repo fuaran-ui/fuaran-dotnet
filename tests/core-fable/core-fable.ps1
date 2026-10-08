@@ -196,13 +196,14 @@ $outDir = Join-Path $scratch 'out'
 
 # Every property below is read by MSBuild from the environment, which is what lets `dotnet restore`,
 # `dotnet fable` and `dotnet build` all see the same values. Cleared at the end either way.
-$touchedEnv = @('FuaranCoreVersion', 'CoreFableComputeVersion', 'CoreFableSkipCompute', 'CoreParity', 'NUGET_PACKAGES')
+$touchedEnv = @('FuaranCoreVersion', 'CoreFableComputeVersion', 'CoreFableSkipCompute', 'CoreFableEffectiveCore', 'CoreParity', 'NUGET_PACKAGES')
 $savedEnv = @{}
 foreach ($name in $touchedEnv) { $savedEnv[$name] = [Environment]::GetEnvironmentVariable($name) }
 [Environment]::SetEnvironmentVariable('CoreParity', $null)
 [Environment]::SetEnvironmentVariable('FuaranCoreVersion', $null)
 [Environment]::SetEnvironmentVariable('CoreFableComputeVersion', $null)
 [Environment]::SetEnvironmentVariable('CoreFableSkipCompute', $null)
+[Environment]::SetEnvironmentVariable('CoreFableEffectiveCore', $null)
 
 $pinsFile = Join-Path $repoRoot 'Directory.Packages.props'
 $pinsText = Get-Content -Raw $pinsFile
@@ -346,6 +347,11 @@ try {
     # pin raise fails the pinned run as "referenced but not pinned" and the cut-time run as "neither
     # referenced nor excluded" — one of the two, whichever way the project is written.
     $effectiveCore = if ($coreOverride) { [version]$CoreVersion } else { [version]$pins['Fuaran.Core.Conformance'] }
+    # The same version keys the program's version constants (`CoreFable.fsproj`): a Core candidate that
+    # renames or widens a surface the smoke touches compiles its new spelling under a constant defined
+    # only when the Core this run compiles against is at or past that version, so ONE Program.fs builds
+    # against the pin and the candidate alike.
+    [Environment]::SetEnvironmentVariable('CoreFableEffectiveCore', $effectiveCore.ToString())
     [xml]$projectXml = Get-Content -Raw $project
     $referenced = @($projectXml.SelectNodes('//PackageReference') |
         Where-Object { $_.Include -match '^Fuaran\.(Core|Compute)\.' } |
