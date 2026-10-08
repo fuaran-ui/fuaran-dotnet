@@ -574,6 +574,13 @@ let census: (string * Adoption) list =
       "Conformance.incrementalLawsWith",
       NotUsed
           "DataFrame.evalFrom over ColumnOps.changeOf at a domain's StreamGen<ColumnOp, Table> — the tier's incremental path is Incremental.primeOn / refreshOn over a row TableDelta (ServerDriven/LiveTransform.fs, see IncrementalDelta.laws / lawsWith), and no project here edits a table through a ColumnOp"
+      // Arrived with the Compute 0.38.1 pin raise (the compute repository's Phases 355-358): the
+      // incremental state's wire codec. `LiveTransformStore` holds its `Incremental` state in
+      // process across `primeOn` / `refreshOn` and never encodes, persists or ships it, so the
+      // codec has no subject here.
+      "IncrementalDelta.stateLaws",
+      NotUsed
+          "the Incremental state's wire codec (encode / decode, attached and detached) — LiveTransformStore keeps its Incremental state in process across primeOn / refreshOn (ServerDriven/LiveTransform.fs) and never encodes, persists or ships it"
       "Conformance.keyedChildrenLaws",
       CarriedBy
           "unfiled — this tier DOES hold nodes in named slots the conformance walk does not reach, so the family has a subject here. `Introspect.getChildren` (Fuaran.UI.Ops) is what `NodeWitness.Children` is built on, and it answers `None` for ErrorBoundary and for the State envelope; those three subtrees — `fallback`, `state.onEmpty`, `state.onLoading` — are reached only by the separate `nonStructuralSlots` lens. So an id sitting in one of them is invisible to the surface uniqueness walk, which is the defect class this family certifies. Not `NotUsed`: that would assert there is nothing keyed here, and there demonstrably is. Adopting it needs a `KeyedWitness` over those slots — the work is small and named, and it arrived with the 0.30.0 pin raise (fuaran-core#188's release slot)."
