@@ -20,16 +20,16 @@
 ///
 /// A hand-written model of `Budget.actionCascadeCost` and
 /// `Budget.treeCost` (`src/Fuaran.Program.Bounded/Budget.fs`) and of the
-/// G2 stage of `BoundedDriver.step` that consumes them
-/// (`src/Fuaran.Program.Bounded/BoundedDriver.fs:201-241`), clause for
+/// G2 stage of the UI transport loop's `BoundedDriver.step` that consumes
+/// them (in the UI tier's repository since Phase 2012), clause for
 /// clause. Every definition below names its F# counterpart in the
 /// comment above it. The differential host
-/// (`tests/Fuaran.Program.Parity.Tests/ProofOracleTests.fs`) runs the
-/// EXTRACTION of this module beside production over the trees the
-/// bounded driver's own suite drives and over generated trees that
-/// straddle the ceiling, and requires the two to return the same
-/// integer — that host is the only thing that says this model is about
-/// the code that ships.
+/// (`tests/Fuaran.Program.Tests/ToyBudgetOracleTests.fs`, at the toy
+/// witness since Phase 2017) runs the EXTRACTION of this module beside
+/// production over trees that straddle the ceiling and over every action
+/// shape the core accepts, nested, and requires the two to return the
+/// same integer — that host is the only thing that says this model is
+/// about the code that ships.
 ///
 /// [Phase 1715](BoundedFold.fst) proves the other half of WS6.1(c): that
 /// the interpreter invokes no closure a tree carries. Bounded CODE and
@@ -102,6 +102,24 @@
 ///     effects. Never a throw: the model has no exceptions, and the
 ///     `Tot` effect on `step` is what says production's total signature
 ///     is not merely a convention.
+///   * `cascade_saturates_exact` (Phase 2018) — the cascade cost, over
+///     every action shape the core accepts, is the EXACT price clipped at
+///     the saturation bound: the price `BoundedFold.fst`'s `view_cost`
+///     states — a sequence sums, a selection is one and its dearer arm, a
+///     repeat is one and its body times its bound (a parameter bound at
+///     the top of its range), an iteration is its lowered elements summed
+///     — and never anything below it. The saturation can only ever make
+///     a cascade price AT the bound, never cheaper.
+///   * One law per flow shape, in a caller's terms (Phase 2018):
+///     `choose_covers_either_arm` — a selection admitted under a cap has
+///     either arm admitted under the cap less its own step;
+///     `repeat_literal_is_unrolling` — a literal repeat is priced as its
+///     bound step plus the sequence of its body that many times, and
+///     `repeat_parameter_covers_every_count` — a parameter repeat is
+///     priced at or above every count in its range; `each_is_elements` —
+///     an iteration is priced as the sequence of its elements, and
+///     `each_member_within` / `chain_member_within` — a sequence or an
+///     iteration admitted under a cap has every member admitted under it.
 
 module Budget
 
@@ -353,32 +371,315 @@ let tree_cost (mx: int) (cap: int) (ceiling: int) (root: nd) : int =
 (* ───────────────────────────────────────────────────────────────────
    THE CASCADE COST — `Budget.actionCascadeCost`.
 
-   The function makes exactly one distinction about an action: is it a
-   `Chain`, and if so what does it contain. Every other arm reaches a
-   wildcard worth one. So the model carries that distinction and no
-   other, and the fourteen arms of the closed union — which
-   `BoundedFold.fst` does carry, one for one — are not this model's
-   subject.
+   The function reads an action through the witness's view and makes
+   FIVE distinctions about it, one per composition shape the core
+   accepts: a sequence, a selection (`Choose`, Phase 1976), a bounded
+   repeat (`Repeat`, Phase 1976), a per-element iteration over a literal
+   collection (`Each`, Phase 1990), and everything else — the assignment,
+   the call, the guard and the leaf — which reaches one arm worth one.
+   So the model carries exactly those five shapes, concretely, and the
+   fourteen arms of the closed union — which `BoundedFold.fst` does
+   carry, one for one — are not this model's subject.
 
-   NOT saturating, deliberately: production's is `List.sumBy` over `int`,
-   and modelling it as saturating would be modelling a function that does
-   not exist. What bounds it in production is the `Int32` range, which
-   this model is wider than — the assumed rung, stated in `proofs.json`.
+   What each shape carries is what the pricing READS of it and nothing
+   else, clause for clause with the F#: a selection its two arms (not its
+   condition, which is one step whichever way it falls, nor its exit,
+   which the price never reads); a repeat its bound — a literal count, or
+   a parameter's range, of which only the TOP is read — and its body; an
+   iteration its LOWERED elements, exactly as `BoundedFold.fst`'s `VEach`
+   carries them, because production prices the list
+   `ActionWitness.lowered` answers and never the collection or the
+   placeholder. That makes the model exact over every tree the core
+   accepts by construction: the host translates a tree into these shapes
+   and the differential says whether the translation was honest.
+
+   SATURATING, as production has been since Phase 1976 (before it, a
+   `List.sumBy` over `int`, which this model was then careful not to
+   saturate). Every add and multiply is `sat_add` / `sat_mul` over the
+   same bound `mx` the walk uses, so a pathological repeat prices AT the
+   bound rather than wrapping below it — the clause `cascade_saturates_
+   exact` below turns into a theorem.
    ─────────────────────────────────────────────────────────────────── *)
 
-type act =
-  | ALeaf : act
-  | AChain : ops: list act -> act
+/// F#: `Bound<'Expr>`, projected onto what the pricing reads. A literal
+/// bound is its count; a parameter bound is its range, and the count
+/// EXPRESSION is dropped because the price never resolves it — that is
+/// the whole point of pricing at the top of the range.
+type bound =
+  | BLiteral : count: int -> bound
+  | BParameter : lo: int -> hi: int -> bound
 
-let rec action_cascade_cost (a: act) : Tot int (decreases %[a; 0]) =
+/// F#: `ActionView`, projected onto what `actionCascadeCost` reads.
+type act =
+  /// F#: the `Assign` / `Call` / `Require` / `Leaf` arms, each worth one.
+  | ALeaf : act
+  /// F#: `Sequence`.
+  | AChain : ops: list act -> act
+  /// F#: `Choose(_, whenTrue, whenFalse, _)`.
+  | AChoose : when_true: act -> when_false: act -> act
+  /// F#: `Repeat(bound, body)`.
+  | ARepeat : count: bound -> body: act -> act
+  /// F#: `Each(collection, placeholder, body)`, as its LOWERED elements.
+  | AEach : elements: list act -> act
+
+/// F#: `max`, over the two arms' prices.
+let max_int (x: int) (y: int) : int = if x >= y then x else y
+
+/// F#: `max count 0` / `max hi 0` — a negative bound runs nothing and is
+/// priced as nothing, but still costs its one step.
+let clamp_nat (n: int) : nat = if n < 0 then 0 else n
+
+/// F#: `Budget.actionCascadeCost`'s inner `cost`, arm for arm.
+let rec action_cascade_cost (mx: int) (a: act) : Tot int (decreases %[a; 0]) =
   match a with
-  | AChain ops -> cascade_sum ops
+  | AChain ops -> cascade_fold mx 0 ops
+  | AChoose when_true when_false ->
+    sat_add mx 1 (max_int (action_cascade_cost mx when_true) (action_cascade_cost mx when_false))
+  | ARepeat (BLiteral count) body ->
+    sat_add mx 1 (sat_mul mx (clamp_nat count) (action_cascade_cost mx body))
+  | ARepeat (BParameter _ hi) body ->
+    sat_add mx 1 (sat_mul mx (clamp_nat hi) (action_cascade_cost mx body))
+  | AEach elements -> cascade_fold mx 0 elements
   | ALeaf -> 1
 
-and cascade_sum (ops: list act) : Tot int (decreases %[ops; 1]) =
+/// F#: `List.fold (fun acc x -> satAdd acc (cost x)) 0` — a LEFT fold with
+/// an accumulator, kept as production spells it rather than as a right
+/// recursion, so the oracle performs production's adds in production's
+/// order. (Saturating addition of non-negatives is associative, so the
+/// order cannot change the integer; it can change what a reader has to
+/// believe to see that the two are the same function.)
+and cascade_fold (mx: int) (acc: int) (ops: list act) : Tot int (decreases %[ops; 1]) =
+  match ops with
+  | [] -> acc
+  | x :: rest -> cascade_fold mx (sat_add mx acc (action_cascade_cost mx x)) rest
+
+(* ───────────────────────────────────────────────────────────────────
+   THE EXACT PRICE, AND THAT THE CASCADE COST IS IT, CLIPPED.
+
+   Ghost. `exact_cascade_cost` is the price with no bound at all — the
+   same rule `BoundedFold.fst`'s `view_cost` states over the view, which
+   `fold_steps_within_cost` proves bounds the steps a run takes. It is
+   restated here over this model's `act` because the two models share no
+   type (a deliberate separation, `proofs.json` `resource-bounds`), and
+   what is proved is that production's saturating figure is this exact
+   figure clipped at the bound — which is what lets a reader carry
+   `fold_steps_within_cost`'s bound across to the number the gate reads:
+   the gate's price is the exact price, or the bound, and never less.
+   ─────────────────────────────────────────────────────────────────── *)
+
+[@@ noextract_to "FSharp"]
+let clip (mx: int) (x: int) : int = if x > mx then mx else x
+
+[@@ noextract_to "FSharp"]
+let rec exact_cascade_cost (a: act) : Tot int (decreases %[a; 0]) =
+  match a with
+  | AChain ops -> exact_sum ops
+  | AChoose when_true when_false ->
+    1 + max_int (exact_cascade_cost when_true) (exact_cascade_cost when_false)
+  | ARepeat (BLiteral count) body -> 1 + clamp_nat count * exact_cascade_cost body
+  | ARepeat (BParameter _ hi) body -> 1 + clamp_nat hi * exact_cascade_cost body
+  | AEach elements -> exact_sum elements
+  | ALeaf -> 1
+
+and exact_sum (ops: list act) : Tot int (decreases %[ops; 1]) =
   match ops with
   | [] -> 0
-  | x :: rest -> action_cascade_cost x + cascade_sum rest
+  | x :: rest -> exact_cascade_cost x + exact_sum rest
+
+/// The exact price is never negative — the multiplication fact is
+/// supplied, since nonlinear arithmetic is off in the solver.
+let rec exact_nonneg (a: act)
+  : Lemma (ensures 0 <= exact_cascade_cost a) (decreases %[a; 0]) =
+  match a with
+  | AChain ops -> exact_sum_nonneg ops
+  | AChoose when_true when_false -> exact_nonneg when_true; exact_nonneg when_false
+  | ARepeat (BLiteral count) body ->
+    exact_nonneg body;
+    FStar.Math.Lemmas.nat_times_nat_is_nat (clamp_nat count) (exact_cascade_cost body)
+  | ARepeat (BParameter _ hi) body ->
+    exact_nonneg body;
+    FStar.Math.Lemmas.nat_times_nat_is_nat (clamp_nat hi) (exact_cascade_cost body)
+  | AEach elements -> exact_sum_nonneg elements
+  | ALeaf -> ()
+
+and exact_sum_nonneg (ops: list act)
+  : Lemma (ensures 0 <= exact_sum ops) (decreases %[ops; 1]) =
+  match ops with
+  | [] -> ()
+  | x :: rest -> exact_nonneg x; exact_sum_nonneg rest
+
+/// The saturating multiply of a clipped operand is the clipped product.
+/// This is the one place the saturation inside a repeat's price is not
+/// linear: a body whose own price already saturated, multiplied by a
+/// positive bound, still prices at the bound, because the true product is
+/// larger still.
+let sat_mul_clip (mx: int) (n: nat) (e: nat)
+  : Lemma (requires mx >= 1) (ensures sat_mul mx n (clip mx e) == clip mx (n * e)) =
+  FStar.Math.Lemmas.nat_times_nat_is_nat n e;
+  if e <= mx then ()
+  else if n = 0 then ()
+  else begin
+    // n * mx >= mx, and n * e >= n * (mx + 1) = n * mx + n > mx.
+    FStar.Math.Lemmas.lemma_mult_le_right mx 1 n;
+    FStar.Math.Lemmas.lemma_mult_le_left n (mx + 1) e;
+    FStar.Math.Lemmas.distributivity_add_right n mx 1
+  end
+
+/// **`cascade_saturates_exact`.** The cascade cost of EVERY action shape
+/// the core accepts is the exact price clipped at the bound. Two things
+/// follow for a caller, and both are the budget's whole reason to exist:
+/// the price never reads BELOW the exact figure (so a tree whose run
+/// `fold_steps_within_cost` bounds by its exact price is bounded by the
+/// gate's figure too, or refused at the bound), and a price under the
+/// bound IS the exact figure, usable as a number.
+let rec cascade_saturates_exact (mx: int) (a: act)
+  : Lemma
+      (requires mx >= 1)
+      (ensures action_cascade_cost mx a == clip mx (exact_cascade_cost a))
+      (decreases %[a; 0]) =
+  match a with
+  | AChain ops -> cascade_fold_saturates_exact mx 0 ops
+  | AChoose when_true when_false ->
+    cascade_saturates_exact mx when_true;
+    cascade_saturates_exact mx when_false;
+    exact_nonneg when_true;
+    exact_nonneg when_false
+  | ARepeat (BLiteral count) body ->
+    cascade_saturates_exact mx body;
+    exact_nonneg body;
+    sat_mul_clip mx (clamp_nat count) (exact_cascade_cost body)
+  | ARepeat (BParameter _ hi) body ->
+    cascade_saturates_exact mx body;
+    exact_nonneg body;
+    sat_mul_clip mx (clamp_nat hi) (exact_cascade_cost body)
+  | AEach elements -> cascade_fold_saturates_exact mx 0 elements
+  | ALeaf -> ()
+
+/// The fold with an accumulator already inside the bound is the clipped
+/// sum of the accumulator and the exact figure of what remains.
+and cascade_fold_saturates_exact (mx: int) (acc: int) (ops: list act)
+  : Lemma
+      (requires mx >= 1 /\ 0 <= acc /\ acc <= mx)
+      (ensures cascade_fold mx acc ops == clip mx (acc + exact_sum ops))
+      (decreases %[ops; 1]) =
+  match ops with
+  | [] -> ()
+  | x :: rest ->
+    cascade_saturates_exact mx x;
+    exact_nonneg x;
+    exact_sum_nonneg rest;
+    cascade_fold_saturates_exact mx (sat_add mx acc (action_cascade_cost mx x)) rest
+
+/// A cascade price is never negative and never above the bound.
+let cascade_cost_bounds (mx: int) (a: act)
+  : Lemma (requires mx >= 1) (ensures 0 <= action_cascade_cost mx a /\ action_cascade_cost mx a <= mx) =
+  cascade_saturates_exact mx a;
+  exact_nonneg a
+
+(* ───────────────────────────────────────────────────────────────────
+   ONE LAW PER FLOW SHAPE, IN A CALLER'S TERMS (Phase 2018).
+
+   The caller is the G2 gate: it compares the price against `MaxActions`
+   BEFORE the run and admits or refuses on that alone. So what a caller
+   can use is a statement about what an ADMITTED price says of the parts
+   that will run — which arm, how many unrollings, which elements — and
+   each law below is of that form. All carry `cap < mx`, and not as a
+   technicality: a price AT the bound says only "at least this much",
+   which is `InteractionBudget.unlimited`'s case and nobody's gate.
+   ─────────────────────────────────────────────────────────────────── *)
+
+/// **`choose_covers_either_arm`.** A selection admitted under a cap has
+/// EITHER arm admitted under the cap less the selection's own step. The
+/// run takes one arm and the price covered both, so whichever the
+/// condition picks was paid for before it was read.
+let choose_covers_either_arm (mx: int) (cap: int) (when_true: act) (when_false: act)
+  : Lemma
+      (requires mx >= 1 /\ cap < mx /\ action_cascade_cost mx (AChoose when_true when_false) <= cap)
+      (ensures
+        action_cascade_cost mx when_true <= cap - 1 /\
+        action_cascade_cost mx when_false <= cap - 1) =
+  cascade_saturates_exact mx (AChoose when_true when_false);
+  cascade_saturates_exact mx when_true;
+  cascade_saturates_exact mx when_false;
+  exact_nonneg when_true;
+  exact_nonneg when_false
+
+[@@ noextract_to "FSharp"]
+let rec replicate (n: nat) (x: act) : Tot (list act) (decreases n) =
+  if n = 0 then [] else x :: replicate (n - 1) x
+
+let rec exact_sum_replicate (n: nat) (x: act)
+  : Lemma (ensures exact_sum (replicate n x) == n * exact_cascade_cost x) (decreases n) =
+  if n = 0 then ()
+  else begin
+    exact_sum_replicate (n - 1) x;
+    FStar.Math.Lemmas.distributivity_sub_left n 1 (exact_cascade_cost x)
+  end
+
+/// **`repeat_literal_is_unrolling`.** A literal repeat is priced as its
+/// bound's one step plus the SEQUENCE of its body that many times — the
+/// unrolling `BoundedFold.fst`'s `repeat_is_unrolling` says the run IS.
+/// A negative count unrolls to nothing and still costs its step.
+let repeat_literal_is_unrolling (mx: int) (count: int) (body: act)
+  : Lemma
+      (requires mx >= 1)
+      (ensures
+        action_cascade_cost mx (ARepeat (BLiteral count) body) ==
+          sat_add mx 1 (action_cascade_cost mx (AChain (replicate (clamp_nat count) body)))) =
+  cascade_saturates_exact mx (ARepeat (BLiteral count) body);
+  cascade_saturates_exact mx (AChain (replicate (clamp_nat count) body));
+  exact_sum_replicate (clamp_nat count) body;
+  exact_nonneg body;
+  FStar.Math.Lemmas.nat_times_nat_is_nat (clamp_nat count) (exact_cascade_cost body)
+
+/// **`repeat_parameter_covers_every_count`.** A parameter repeat is
+/// priced at or above the literal repeat of EVERY count up to the top of
+/// its range — so whatever the store answers at run time, if it is within
+/// the range the price was read without consulting it, the run was paid
+/// for. (A count above the range is the fold's refusal, not the price's
+/// business: `BoundedFold.fst`'s `VRepeat` arm halts on it.)
+let repeat_parameter_covers_every_count (mx: int) (lo: int) (hi: int) (count: int) (body: act)
+  : Lemma
+      (requires mx >= 1 /\ count <= hi)
+      (ensures
+        action_cascade_cost mx (ARepeat (BLiteral count) body) <=
+          action_cascade_cost mx (ARepeat (BParameter lo hi) body)) =
+  cascade_saturates_exact mx (ARepeat (BLiteral count) body);
+  cascade_saturates_exact mx (ARepeat (BParameter lo hi) body);
+  exact_nonneg body;
+  FStar.Math.Lemmas.lemma_mult_le_right (exact_cascade_cost body) (clamp_nat count) (clamp_nat hi)
+
+/// **`each_is_elements`.** An iteration is priced EXACTLY as the sequence
+/// of its lowered elements — the price's half of `BoundedFold.fst`'s
+/// `each_is_lowering`, which says the run is that sequence's. No step
+/// for a bound, because a literal collection is not read.
+let each_is_elements (mx: int) (elements: list act)
+  : Lemma (ensures action_cascade_cost mx (AEach elements) == action_cascade_cost mx (AChain elements)) =
+  ()
+
+/// **`chain_member_within`.** A sequence admitted under a cap has its
+/// first member admitted under the cap, and the rest of the sequence too
+/// — so, by induction a caller performs, every member.
+let chain_member_within (mx: int) (cap: int) (x: act) (rest: list act)
+  : Lemma
+      (requires mx >= 1 /\ cap < mx /\ action_cascade_cost mx (AChain (x :: rest)) <= cap)
+      (ensures action_cascade_cost mx x <= cap /\ action_cascade_cost mx (AChain rest) <= cap) =
+  cascade_saturates_exact mx (AChain (x :: rest));
+  cascade_saturates_exact mx x;
+  cascade_saturates_exact mx (AChain rest);
+  exact_nonneg x;
+  exact_sum_nonneg rest
+
+/// **`each_member_within`.** The same for an iteration: admitted under a
+/// cap, its first element and the iteration over the rest are each
+/// admitted under the cap. This is the law the gate's refusal "before its
+/// first element" rests on — an `Each` whose lowered size exceeds the cap
+/// is refused whole, and one admitted has every element paid for.
+let each_member_within (mx: int) (cap: int) (x: act) (rest: list act)
+  : Lemma
+      (requires mx >= 1 /\ cap < mx /\ action_cascade_cost mx (AEach (x :: rest)) <= cap)
+      (ensures action_cascade_cost mx x <= cap /\ action_cascade_cost mx (AEach rest) <= cap) =
+  chain_member_within mx cap x rest
 
 (* ───────────────────────────────────────────────────────────────────
    THE G2 GATE — `BoundedDriver.step`, from the validation to the fold.
@@ -437,12 +738,13 @@ let refusal (reason: string) : step_output =
 /// F#: `BoundedDriver.step`'s G2 stage. The cascade cost is priced
 /// first, then the tree cost the session was built with — production's
 /// order, and it is observable, because the two refusals carry different
-/// reasons.
+/// reasons. `mx` is the saturation bound the price is computed under
+/// (Phase 2018: the cascade cost saturates, so the gate names its bound).
 let step (#v: Type0)
-         (bud: budget) (ab: admitted_branch v)
+         (mx: int) (bud: budget) (ab: admitted_branch v)
          (sess: session v) (node_id: string) (a: act)
   : session v & step_output =
-  let cost = action_cascade_cost a in
+  let cost = action_cascade_cost mx a in
   if cost > bud.b_max_actions then
     sess, refusal (budget_message "action cascade cost" cost "MaxActions" bud.b_max_actions)
   else if sess.se_node_count > bud.b_max_nodes then
@@ -450,8 +752,8 @@ let step (#v: Type0)
   else ab.run sess node_id a
 
 /// F#: the disjunction of the two `if` guards above.
-let breached (#v: Type0) (bud: budget) (sess: session v) (a: act) : bool =
-  action_cascade_cost a > bud.b_max_actions || sess.se_node_count > bud.b_max_nodes
+let breached (#v: Type0) (mx: int) (bud: budget) (sess: session v) (a: act) : bool =
+  action_cascade_cost mx a > bud.b_max_actions || sess.se_node_count > bud.b_max_nodes
 
 /// **`breach_pure`.** Clause 3. A breached step returns the session it
 /// was given — not an equal one, the SAME one — with no patches, no
@@ -464,12 +766,12 @@ let breached (#v: Type0) (bud: budget) (sess: session v) (a: act) : bool =
 /// statement about the gate: whatever the driver would have done to the
 /// session had the budget admitted the event, a breach does none of it.
 let breach_pure (#v: Type0)
-                (bud: budget) (ab: admitted_branch v)
+                (mx: int) (bud: budget) (ab: admitted_branch v)
                 (sess: session v) (node_id: string) (a: act)
   : Lemma
-      (requires breached bud sess a)
+      (requires breached mx bud sess a)
       (ensures
-        (let (sess', out) = step bud ab sess node_id a in
+        (let (sess', out) = step mx bud ab sess node_id a in
          sess' == sess /\
          out.so_patches == 0 /\
          out.so_effects == 0 /\

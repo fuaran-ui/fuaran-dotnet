@@ -230,9 +230,52 @@ if (running > ceiling) then begin
 
 let tree_cost : Prims.int  ->  Prims.int  ->  Prims.int  ->  nd  ->  Prims.int = (fun ( mx  :  Prims.int ) ( cap  :  Prims.int ) ( ceiling  :  Prims.int ) ( root  :  nd ) -> (walk mx cap ceiling ((root)::[]) (Prims.parse_int "0")))
 
+type bound =
+| BLiteral of Prims.int
+| BParameter of Prims.int * Prims.int
+
+
+let uu___is_BLiteral : bound  ->  Prims.bool = (fun ( projectee  :  bound ) -> (match (projectee) with
+| BLiteral (count) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__BLiteral__item__count : bound  ->  Prims.int = (fun ( projectee  :  bound ) -> (match (projectee) with
+| BLiteral (count) -> begin
+     count
+     end))
+
+
+let uu___is_BParameter : bound  ->  Prims.bool = (fun ( projectee  :  bound ) -> (match (projectee) with
+| BParameter (lo, hi) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__BParameter__item__lo : bound  ->  Prims.int = (fun ( projectee  :  bound ) -> (match (projectee) with
+| BParameter (lo, hi) -> begin
+     lo
+     end))
+
+
+let __proj__BParameter__item__hi : bound  ->  Prims.int = (fun ( projectee  :  bound ) -> (match (projectee) with
+| BParameter (lo, hi) -> begin
+     hi
+     end))
+
 type act =
 | ALeaf
 | AChain of Prims.list<act>
+| AChoose of act * act
+| ARepeat of bound * act
+| AEach of Prims.list<act>
 
 
 let uu___is_ALeaf : act  ->  Prims.bool = (fun ( projectee  :  act ) -> (match (projectee) with
@@ -259,19 +302,104 @@ let __proj__AChain__item__ops : act  ->  Prims.list<act> = (fun ( projectee  :  
      end))
 
 
-let rec action_cascade_cost : act  ->  Prims.int = (fun ( a  :  act ) -> (match (a) with
+let uu___is_AChoose : act  ->  Prims.bool = (fun ( projectee  :  act ) -> (match (projectee) with
+| AChoose (when_true, when_false) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__AChoose__item__when_true : act  ->  act = (fun ( projectee  :  act ) -> (match (projectee) with
+| AChoose (when_true, when_false) -> begin
+     when_true
+     end))
+
+
+let __proj__AChoose__item__when_false : act  ->  act = (fun ( projectee  :  act ) -> (match (projectee) with
+| AChoose (when_true, when_false) -> begin
+     when_false
+     end))
+
+
+let uu___is_ARepeat : act  ->  Prims.bool = (fun ( projectee  :  act ) -> (match (projectee) with
+| ARepeat (count, body) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__ARepeat__item__count : act  ->  bound = (fun ( projectee  :  act ) -> (match (projectee) with
+| ARepeat (count, body) -> begin
+     count
+     end))
+
+
+let __proj__ARepeat__item__body : act  ->  act = (fun ( projectee  :  act ) -> (match (projectee) with
+| ARepeat (count, body) -> begin
+     body
+     end))
+
+
+let uu___is_AEach : act  ->  Prims.bool = (fun ( projectee  :  act ) -> (match (projectee) with
+| AEach (elements) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__AEach__item__elements : act  ->  Prims.list<act> = (fun ( projectee  :  act ) -> (match (projectee) with
+| AEach (elements) -> begin
+     elements
+     end))
+
+
+let max_int : Prims.int  ->  Prims.int  ->  Prims.int = (fun ( x  :  Prims.int ) ( y  :  Prims.int ) ->  
+if (x >= y) then begin
+     x
+     end else begin
+     y
+     end)
+
+
+let clamp_nat : Prims.int  ->  Prims.nat = (fun ( n  :  Prims.int ) ->  
+if (n < (Prims.parse_int "0")) then begin
+     (Prims.parse_int "0")
+     end else begin
+     n
+     end)
+
+
+let rec action_cascade_cost : Prims.int  ->  act  ->  Prims.int = (fun ( mx  :  Prims.int ) ( a  :  act ) -> (match (a) with
 | AChain (ops) -> begin
-     (cascade_sum ops)
+     (cascade_fold mx (Prims.parse_int "0") ops)
+     end
+| AChoose (when_true, when_false) -> begin
+     (sat_add mx (Prims.parse_int "1") (max_int (action_cascade_cost mx when_true) (action_cascade_cost mx when_false)))
+     end
+| ARepeat (BLiteral (count), body) -> begin
+     (sat_add mx (Prims.parse_int "1") (sat_mul mx (clamp_nat count) (action_cascade_cost mx body)))
+     end
+| ARepeat (BParameter (uu___, hi), body) -> begin
+     (sat_add mx (Prims.parse_int "1") (sat_mul mx (clamp_nat hi) (action_cascade_cost mx body)))
+     end
+| AEach (elements) -> begin
+     (cascade_fold mx (Prims.parse_int "0") elements)
      end
 | ALeaf -> begin
      (Prims.parse_int "1")
      end))
-and cascade_sum : Prims.list<act>  ->  Prims.int = (fun ( ops  :  Prims.list<act> ) -> (match (ops) with
+and cascade_fold : Prims.int  ->  Prims.int  ->  Prims.list<act>  ->  Prims.int = (fun ( mx  :  Prims.int ) ( acc  :  Prims.int ) ( ops  :  Prims.list<act> ) -> (match (ops) with
 | [] -> begin
-     (Prims.parse_int "0")
+     acc
      end
 | (x)::rest -> begin
-     ((action_cascade_cost x) + (cascade_sum rest))
+     (cascade_fold mx (sat_add mx acc (action_cascade_cost mx x)) rest)
      end))
 
 type budget = {b_max_actions : Prims.int; b_max_nodes : Prims.int}
@@ -337,9 +465,9 @@ let budget_message : Prims.string  ->  Prims.int  ->  Prims.string  ->  Prims.in
 let refusal : Prims.string  ->  step_output = (fun ( reason  :  Prims.string ) -> {so_patches = (Prims.parse_int "0"); so_effects = (Prims.parse_int "0"); so_rejected = OSome (reason)})
 
 
-let step = (fun ( bud  :  budget ) ( ab  :  admitted_branch<'v> ) ( sess  :  session<'v> ) ( node_id  :  Prims.string ) ( a  :  act ) -> (
+let step = (fun ( mx  :  Prims.int ) ( bud  :  budget ) ( ab  :  admitted_branch<'v> ) ( sess  :  session<'v> ) ( node_id  :  Prims.string ) ( a  :  act ) -> (
 
-let cost = (action_cascade_cost a)
+let cost = (action_cascade_cost mx a)
 in  
 if (cost > bud.b_max_actions) then begin
      ((sess), ((refusal (budget_message "action cascade cost" cost "MaxActions" bud.b_max_actions))))
@@ -353,7 +481,7 @@ if (sess.se_node_count > bud.b_max_nodes) then begin
      end))
 
 
-let breached = (fun ( bud  :  budget ) ( sess  :  session<'v> ) ( a  :  act ) -> (((action_cascade_cost a) > bud.b_max_actions) || (sess.se_node_count > bud.b_max_nodes)))
+let breached = (fun ( mx  :  Prims.int ) ( bud  :  budget ) ( sess  :  session<'v> ) ( a  :  act ) -> (((action_cascade_cost mx a) > bud.b_max_actions) || (sess.se_node_count > bud.b_max_nodes)))
 
 
 

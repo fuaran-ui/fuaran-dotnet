@@ -763,7 +763,7 @@ let private oracleTreeCost (ceiling: int) (node: Node<obj>) : int =
     int (ProvedBudget.tree_cost satBound countedCap (bigint ceiling) (modelNode node))
 
 let private oracleCascadeCost (action: Action<obj>) : int =
-    int (ProvedBudget.action_cascade_cost (modelCascade action))
+    int (ProvedBudget.action_cascade_cost satBound (modelCascade action))
 
 let private costDivergence (cost: TreeCost) (where: string) (ceiling: int) (node: Node<obj>) : string option =
     let prod = cost ceiling node
@@ -990,7 +990,7 @@ let private gateDivergence (where: string) (budget: InteractionBudget) (onClick:
               b_max_nodes = bigint budget.MaxNodes }
 
         let modelAfter, modelOutput =
-            ProvedBudget.step modelBudget admittedBranch modelSession clickEvent.NodeId (modelCascade action)
+            ProvedBudget.step satBound modelBudget admittedBranch modelSession clickEvent.NodeId (modelCascade action)
 
         let prodRefusal =
             match output.Rejected with

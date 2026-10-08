@@ -16,7 +16,7 @@
          (Fuaran.Compute.DataFrame / .ColumnOps / .Conformance; the old ids stop at 0.34.0, built on
          Core 0.32.0). 0.37.0 is the first built on Fuaran.Core 0.34.0, which the Core pins below
          require. -->
-    <FuaranCoreComputeVersion>0.37.0</FuaranCoreComputeVersion>
+    <FuaranCoreComputeVersion>0.38.1</FuaranCoreComputeVersion>
     <!-- The THIRD producer (fuaran#2012): the bounded program core, consumed by the two program
          adapters that moved here (src/Fuaran.UI.Program, src/Fuaran.UI.Program.Server) and their
          suites. Released packages only, never a project reference: the adapters depend on the
