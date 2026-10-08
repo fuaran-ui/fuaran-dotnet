@@ -355,6 +355,17 @@ The clamp is at the RENDERER, not the decoder, deliberately: the decoder preserv
 said, so canonical round-trip and the shared conformance corpus are untouched, and the host's own
 policy decides what is honoured.
 
+**Two-way needs the declaration AND the grant (Phase 2135).** A guest channel is `TwoWay` only when
+the mount declared `TwoWay` AND the host's `GuestSeam.GrantTwoWay` granted it; either alone yields
+`OutOnly`. The renderer consults `GrantTwoWay` only for a mount that declared `TwoWay`, so a seam that
+grants unconditionally cannot upgrade a mount that never asked for two-way. Before this phase the
+renderer asked the seam for every mount, so an `OutOnly` mount under a granting seam was upgraded.
+The TypeScript renderer had already moved to declared-and-granted (Phase 2077), so the same tree under
+the same seam produced different channels on the two hosts. A tree vetted on one host must mean the
+same thing on another. This sentence is the rule a further host ports, and the .NET tests
+(`RenderEntrySeamTests.fs`, "Mount guest capability seam") and the TypeScript parity oracle
+(`mountGuestPrivilege.test.tsx`) cite it.
+
 ## `sanitizeMarkdownHtml` is a floor over escaped-by-construction input, not a general sanitizer (Phase 303)
 
 `Sanitize.sanitizeMarkdownHtml` is a **public** binding, but its correctness rests on a precondition: its

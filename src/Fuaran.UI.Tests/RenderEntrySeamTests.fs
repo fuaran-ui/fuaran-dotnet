@@ -484,6 +484,8 @@ let guestSeamTests =
               let warnings = ResizeArray<string>()
               let hostCalls = ResizeArray<string>()
 
+              let consulted = ResizeArray<Render.GuestSeamContext>()
+
               let host =
                   mountNodeWithDirection "grant-outer" outerScope ChannelDirection.TwoWay None
 
@@ -499,7 +501,10 @@ let guestSeamTests =
                           seenContexts.Add ctx
                           rt
                     GateBubble = fun _ raw -> raw
-                    GrantTwoWay = fun ctx -> ctx.ScopeId = outerScope }
+                    GrantTwoWay =
+                      fun ctx ->
+                          consulted.Add ctx
+                          ctx.ScopeId = outerScope }
 
               try
                   Render.installGuestSeam seam
@@ -512,14 +517,94 @@ let guestSeamTests =
                           ignore
                           host)
 
+                  // Phase 2135 — the grant is consulted because the tree DECLARED
+                  // TwoWay, and only then; it reads the clamped context.
+                  Expect.equal consulted.Count 1 "the seam was asked once, for the mount that declared TwoWay"
+
+                  Expect.equal
+                      consulted[0].DeclaredDirection
+                      ChannelDirection.TwoWay
+                      "the grant decision sees the TwoWay declaration"
+
+                  Expect.equal
+                      consulted[0].Channel.Direction
+                      ChannelDirection.OutOnly
+                      "and decides over the clamped OutOnly channel"
+
                   Expect.equal
                       seenContexts[0].Channel.Direction
                       ChannelDirection.TwoWay
-                      "the host GRANTED TwoWay, so that is what the guest gets"
+                      "declared AND granted, so that is what the guest gets"
 
                   Expect.isFalse
                       (warnings |> Seq.exists (fun w -> w.Contains "downgraded to OutOnly"))
                       "a granted TwoWay is not a downgrade"
+              finally
+                  Render.clearGuestSeam ()
+                  StateStore.resetAllScopes ()
+          }
+
+          // Phase 2135 — SANITIZATION.md, "The `Mount` boundary": "A guest channel
+          // is `TwoWay` only when the mount declared `TwoWay` AND the host's
+          // `GuestSeam.GrantTwoWay` granted it; either alone yields `OutOnly`."
+          test "an OutOnly mount under a granting seam is NOT upgraded and the seam is not consulted" {
+              Render.clearGuestSeam ()
+              StateStore.resetAllScopes ()
+              let seenContexts = ResizeArray<Render.GuestSeamContext>()
+              let consulted = ResizeArray<Render.GuestSeamContext>()
+              let warnings = ResizeArray<string>()
+              let hostCalls = ResizeArray<string>()
+
+              let host =
+                  mountNodeWithDirection "outonly-outer" outerScope ChannelDirection.OutOnly None
+
+              let load (scopeId: string) =
+                  if scopeId = outerScope then
+                      Some(benignBox "outonly-body")
+                  else
+                      None
+
+              // A seam that grants unconditionally: before Phase 2135 it upgraded
+              // a mount that never asked for two-way.
+              let seam: Render.GuestSeam =
+                  { WrapRuntime =
+                      fun ctx rt ->
+                          seenContexts.Add ctx
+                          rt
+                    GateBubble = fun _ raw -> raw
+                    GrantTwoWay =
+                      fun ctx ->
+                          consulted.Add ctx
+                          true }
+
+              try
+                  Render.installGuestSeam seam
+
+                  renderTolerantly (fun () ->
+                      Render.renderWithSourcesAndSink
+                          BindingResolver.empty
+                          (warningRuntime warnings hostCalls load)
+                          (RecordingSink() :> IFuaranTelemetrySink)
+                          ignore
+                          host)
+
+                  Expect.equal seenContexts.Count 1 "the seam still wraps the guest's runtime"
+
+                  Expect.equal
+                      seenContexts[0].Channel.Direction
+                      ChannelDirection.OutOnly
+                      "a mount that declared OutOnly keeps OutOnly under a seam that grants"
+
+                  Expect.equal
+                      seenContexts[0].DeclaredDirection
+                      ChannelDirection.OutOnly
+                      "the policy sees the OutOnly declaration"
+
+                  Expect.equal consulted.Count 0 "GrantTwoWay is not consulted for a mount that never asked for TwoWay"
+
+                  Expect.isFalse
+                      (warnings |> Seq.exists (fun w -> w.Contains "downgraded to OutOnly"))
+                      "an OutOnly declaration honoured as OutOnly is not a downgrade"
               finally
                   Render.clearGuestSeam ()
                   StateStore.resetAllScopes ()
