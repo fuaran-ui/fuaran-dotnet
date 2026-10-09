@@ -8205,6 +8205,32 @@ generated member does yet.
   form-field slot in the corpus's node fixtures as recorded BEFORE the change, and requires them byte-identical
   in the current corpus, with `onChange` as the only handler key.
 
+### What rides this slot — Phase 2063
+
+`Fuaran.UI.OpStream.Replay`'s tree diffs. **Class: NONE (cost only).** No public surface, wire, corpus or
+behaviour change: `TreeOpDiff.diff` emits the same ops, byte for byte, and `TreeDiff.diff` the same records.
+
+- **`TreeOpDiff` encodes each node's childless shell once.** It used to encode four childless shells per
+  node to ask whether the kind or the state drifted. Each candidate field cost two more WHOLE-NODE encodes,
+  subtree included. Now `diffNode` encodes each side's shell once and passes it down. Equal shells settle
+  "no own-content drift" without another encode. A field that carries no closure and has an injective
+  canonical encoding (`int`, `bool`, a payload-free variant DU) is compared by value. Strings and floats
+  still compare by shell, because the canonical render aliases a lone surrogate with U+FFFD and `-0` with `0`.
+- **One node index.** `TreeDiff` and `TreeOpDiff` share an internal `NodeIndex` (index, childless shell,
+  ancestor check). The move pre-pass's cycle check climbs the indexed parent chain, O(depth) per moved id,
+  where it used to search a subtree.
+- **Vestiges gone.** The `disp` / `lay` identity wrappers left by Phase 692 are inlined. The `stateChanged`
+  comment that its only caller contradicted now says why both call sites isolate `State`. The swallowed
+  candidate-apply error in `tryFieldLevel` is justified where it is swallowed: the verify that follows
+  already rejects the set.
+- **Measured** (`benchmarks/Fuaran.UI.Ops.Benchmarks`, `tree-diff 20`, Release, a 2,001-node tree, two runs
+  each): one changed field 42–77 ms → 15–23 ms; one moved leaf 54–67 ms → 20 ms; allocation per diff
+  38.7 MB → 22.2 MB (unchanged tree) and 50.4 MB → 33.9 MB (one move).
+- **Pinned by** `TreeOpDiffEquivalenceTests`. It runs the pre-2063 diff, kept verbatim as a test oracle,
+  beside the shipped one over 12,718 corpus-derived pairs. The pairs include one-field mutations of every
+  node fixture, the op fixtures, the diff goldens and synthetic cross-parent moves. It asserts equal op-list
+  bytes, and that no pair loses a round trip.
+
 ## 0.92.0 — the slot Phases 2038 and 2043 open: one answer to what a node's children are, and one spine walk for the DAG tier (RELEASED — tagged v0.92.0 at 9b53dfa, 2026-10-06)
 
 _Class: **BREAKING (API + source + behaviour)** — Phase 2038 removes one public function and Phase 2043 changes
