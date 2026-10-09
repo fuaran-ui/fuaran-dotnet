@@ -7824,7 +7824,7 @@ _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised
 which reshapes the build-time walker's public modules (`AstWalker`, the per-check `check` entry points, the new
 `Syntax` module; `AccessibilityCheck` and `TabsCheck` removed); the CLI and `Validator.run` keep their contract. Phase 2141 adds a BREAKING (behaviour) change to `Apply.apply`:
 three more ops are refused past the tree limits. Phase 2039 adds a BEHAVIOUR change: `DeadOnDecode.lint` and
-`AffordanceInertness.report` now follow `Confirm` continuations. Phase 2106 adds a BEHAVIOUR change: the bounded loops run `Confirm` as a two-event round trip.
+`AffordanceInertness.report` now follow `Confirm` continuations. Phase 2106 adds a BEHAVIOUR change: the bounded loops run `Confirm` as a two-event round trip. Phase 2139 adds an additive packaging change: `Fuaran.UI.OpStream.Dag.Merge` ships its Fable sources.
 `v0.92.0` was tagged and published at `9b53dfa` while
 commits numbered 0.92.0 were still landing after it: the embedded-renderer re-syncs for Phases 2077 and 2046
 (`6a2fcd5`, `09cdb97`; `Fuaran.UI.Renderer.Web` content only) and Phase 2044 (`bf13d1f`, moved here from the
@@ -8093,6 +8093,28 @@ the bounded path, from a documented no-op to a two-event round trip.
   inside the package); `BoundedDriver.ConfirmRoundTrip` (`PendingPrefix`, `answerOf`, `take`, `put`,
   `asked`, `prepare`, `inert`). `UiWitness.view` now declares the `Confirm` effect kind on a confirm's
   leaf (it declared nothing). See `docs/DECISIONS.md` D11.
+
+### What rides this slot — Phase 2139
+
+**Class: additive (packaging).** No API, behaviour or wire-format change; the compiled assembly is the one
+0.92.0 shipped.
+
+- **`Fuaran.UI.OpStream.Dag.Merge` ships its F# sources under `fable/` (fuaran#2139).** Until this slot it
+  was published as a compiled assembly only and declared `<FableDotNetOnly>`, so a Fable consumer that
+  referenced it read it as an assembly whose signatures point at the `Fuaran.UI` and
+  `Fuaran.UI.OpStream.Dag.Abstractions` ASSEMBLIES, which Fable replaces with those packages' sources:
+  every call into `TreeMerge` or `DagMerge` failed with FS0074. The declaration is gone and the package
+  packs its sources by the `Fuaran.UI.Telemetry.Default` convention. **Consumer cost:** none on .NET. A
+  Fable consumer references `Fuaran.UI.OpStream.Dag.Merge` alone (its five direct dependencies — `Fuaran.UI`,
+  `Fuaran.UI.Ops`, `Fuaran.UI.OpStream.Abstractions`, `Fuaran.UI.OpStream.Replay`,
+  `Fuaran.UI.OpStream.Dag.Abstractions`, and `Fuaran.UI.Ops.Abstractions` beneath them — already ship
+  their sources) and transpiles it with no source reference into this repository.
+- **The gate keeps it so.** Shipping the sources puts the project in the Fable stage's derived
+  portability set, where it is a graph root and is Fable-compiled under its own properties on every
+  run; `build/FablePackCheck.fs` now classifies it as source-shipped; and the packed-consumer leg
+  (`tests/fable-pack-consumer/`) packs it with its closure and Fable-compiles a call into
+  `TreeMerge.merge3Way` and a `DagMerge.merge` binding against the PACKAGES. That leg failed with FS0074
+  twice before the pack path was added.
 
 ---
 

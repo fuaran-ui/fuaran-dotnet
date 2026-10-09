@@ -1,14 +1,15 @@
 <Project>
   <!--
     The packed-consumer leg's package versions (Phase 2128): this repository's own pins, imported
-    unchanged, plus the two Telemetry packages at the version `fable-pack-consumer.ps1` packs them
+    unchanged, plus the two Telemetry packages and (Phase 2139) `Fuaran.UI.OpStream.Dag.Merge` at the version `fable-pack-consumer.ps1` packs them
     under. The script sets `FablePackConsumerVersion` for its restore and its compile alone; unset,
-    the two references below resolve nothing and the project is not restorable, which is the point —
+    the references below resolve nothing and the project is not restorable, which is the point —
     it is only meaningful against packages this repository has just packed.
   -->
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Packages.props', '$(MSBuildThisFileDirectory)..'))" />
   <ItemGroup Condition="'$(FablePackConsumerVersion)' != ''">
     <PackageVersion Include="Fuaran.UI.Telemetry.Abstractions" Version="$(FablePackConsumerVersion)" />
     <PackageVersion Include="Fuaran.UI.Telemetry.Default" Version="$(FablePackConsumerVersion)" />
+    <PackageVersion Include="Fuaran.UI.OpStream.Dag.Merge" Version="$(FablePackConsumerVersion)" />
   </ItemGroup>
 </Project>
