@@ -2668,13 +2668,78 @@ let private checkTreeLimits (tree: Node<'Msg>) : Result<Node<'Msg>, ApplyError> 
     else
         Ok tree
 
+// ─── Apply-time id uniqueness (WIRE_FORMAT §8.1) ───────────────────────────
+//
+// Every op addresses its target by NodeId alone, so a tree that holds one id
+// twice makes every later id-addressed op ambiguous. The decoder judges shape
+// and accepts a repeated id; the pre-emit validator sees one only on a finished
+// tree, after an apply has already built it. And an apply COULD build one from
+// parts that each decoded cleanly: a `ReplaceRoot` whose payload repeats an id,
+// an `EditNode` or `UpdateState` whose new nodes collide with the rest of the
+// tree (Phase 2172). `InsertChild` was already refused through Core's keyed
+// engine; it is checked here as well, because what follows is one rule over
+// what an op installs rather than a per-op list.
+//
+// The check reads the RESULT and charges the op only for ids IT installed
+// (`TreeOp.inserted`, through every keyed position): an installed id the result
+// holds more than once is refused with `DuplicateNodeId`. Reading the result is
+// what lets an `EditNode` restate the children it replaces, and an
+// `UpdateState` replace an alternative with one of the same id - the old node
+// leaves as the new one arrives. A duplicate already present before the op is
+// not the op's: the decoder admits such a tree, and refusing every later edit
+// to it would strand a document the op did not break, the same posture the
+// limits guard takes toward a tree already over a limit.
+//
+// Cost: one walk of the result to count ids, plus one walk of the installed
+// subtrees, paid only by an op that installs nodes. This host keeps no id
+// index, so the rest of the tree has to be walked to know what an installed id
+// could collide with.
+
+/// The first id an op installed that `tree` holds more than once.
+let private firstInstalledDuplicate (installed: Node<'Msg> list) (tree: Node<'Msg>) : NodeId option =
+    let counts = Dictionary<string, int>()
+
+    let rec count (node: Node<'Msg>) =
+        match counts.TryGetValue node.Id with
+        | true, n -> counts[node.Id] <- n + 1
+        | _ -> counts[node.Id] <- 1
+
+        for child in descendantNodes node do
+            count child
+
+    count tree
+
+    let rec firstRepeated (node: Node<'Msg>) : NodeId option =
+        match counts.TryGetValue node.Id with
+        | true, n when n > 1 -> Some(NodeId node.Id)
+        | _ -> descendantNodes node |> List.tryPick firstRepeated
+
+    installed |> List.tryPick firstRepeated
+
+/// Refuse a result in which an id the op installed is held twice. Runs after
+/// the limits guard, so an op breaching both reports `LimitExceeded`.
+let private checkInstalledIds (op: TreeOp<'Msg>) (tree: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
+    match Fuaran.UI.Ops.TreeOp.inserted op with
+    | [] -> Ok tree
+    | installed ->
+        match firstInstalledDuplicate installed tree with
+        | Some nodeId -> Error(duplicateNodeId nodeId)
+        | None -> Ok tree
+
 // ─── Public entry ──────────────────────────────────────────────────────────
 
 /// Apply a single tree-op against `root`, returning either the updated tree
 /// or a structured §4d AI-recovery error. Callers fold this themselves to
 /// apply an ordered op list; for atomic application of multiple ops, wrap
 /// in `TreeOp.Batch`.
+///
+/// The result of an op that can grow the tree is checked against the §21
+/// limits (`LimitExceeded`), then the result of an op that installs nodes is
+/// checked for an installed id held twice (`DuplicateNodeId`, §8.1). A `Batch`
+/// is checked once, on the tree it produces.
 let apply (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
     match applyOne op root with
     | Error err -> Error err
-    | Ok updated -> if opCanGrow op then checkTreeLimits updated else Ok updated
+    | Ok updated ->
+        let limited = if opCanGrow op then checkTreeLimits updated else Ok updated
+        limited |> Result.bind (checkInstalledIds op)

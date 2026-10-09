@@ -7954,6 +7954,35 @@ defect vocabulary re-emits byte-identical, and `validator-coverage.json` is unto
   no apply-time limit; the corpus manifest records their adoption as `proposed`, and `SANITIZATION.md`
   says so under "What is not claimed".
 
+### What rides this slot — Phase 2172
+
+**Class: BREAKING (behaviour).** No wire-format change and no API change; the corpus gains the
+`apply/duplicate-ids-apply.json` family. The slot is already breaking, so this rides it.
+
+- **Behaviour: `Apply.apply` refuses, with `DuplicateNodeId`, an op whose result holds an id the op
+  installed more than once.** A `ReplaceRoot` whose payload repeats an id, an `EditNode` whose new kind
+  holds an id the tree already holds (or repeats one within itself, or repeats the edited node's own
+  id), and an `UpdateState` whose `onLoading` / `onEmpty` collides with the tree were each accepted
+  before, leaving every later id-addressed op ambiguous. `InsertChild` was already refused through the
+  structural engine and is unchanged.
+- **The check reads the RESULT, and charges the op only for what it installed** (`TreeOp.inserted`).
+  An `EditNode` that restates the children it replaces and an `UpdateState` that replaces an
+  alternative with one of the same id still apply: the old node leaves as the new one arrives. A
+  duplicate already present before the op is NOT refused here — the decoder admits such a tree, and
+  refusing every later edit to it would strand a document the op did not break, the posture the
+  limits guard takes toward a tree already over a limit.
+- **Order: the limits check runs first**, so an op that breaches a tree limit and also installs a
+  duplicate reports `LimitExceeded`. The corpus vector `editnode-repeated-id-past-maxdepth`
+  (`apply/limits-apply.json`) pins exactly that op as `LimitExceeded`.
+- **A `Batch` is checked once, on the tree it produces**, as the limits are: a batch whose
+  intermediate state repeats an id and whose result does not applies; one whose result repeats an
+  installed id is refused whole with `DuplicateNodeId` (not `BatchAborted`).
+- **Cost:** one walk of the result to count ids and one walk of the installed subtrees, paid only by
+  an op that installs nodes. This host keeps no id index, so the rest of the tree must be walked to
+  know what an installed id could collide with.
+- **Cross-host:** `fuaran-go`, `fuaran-rs`, `fuaran-ts` and `fuaran-py` make the same refusals on the
+  same inputs under the same error code, and all five certify against `apply/duplicate-ids-apply.json`.
+
 ### What rides this slot — Phase 2039
 
 The generated structural layer now emits the per-kind helpers the tier wrote by hand, through
