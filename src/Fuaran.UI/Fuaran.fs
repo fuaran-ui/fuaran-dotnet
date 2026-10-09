@@ -703,14 +703,20 @@ module FormFieldKind =
         (max: float option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.RangedNumber(Some value, Some onChange, min, max, step)
+        FormFieldKind.RangedNumber(Some(FieldValue.ofNumber value), Some(FieldChange.ofNumber onChange), min, max, step)
 
     /// `RangedNumber` shorthand for the common "stepped only"
     /// shape (e.g. a percentage field that allows any value but advances
     /// by 0.5 on the spinner). Equivalent to `rangedNumber value onChange
     /// ?step=step` — distinct name for grep-ability at the call site.
     let numberStepped (value: Binding<float>) (onChange: float -> Action<'Msg>) (step: float) : FormFieldKind<'Msg> =
-        FormFieldKind.RangedNumber(Some value, Some onChange, None, None, Some step)
+        FormFieldKind.RangedNumber(
+            Some(FieldValue.ofNumber value),
+            Some(FieldChange.ofNumber onChange),
+            None,
+            None,
+            Some step
+        )
 
     /// `SegmentedChoice` with the same triple `Choice` takes plus
     /// an optional orientation defaulting to `Horizontal` (segmented row).
@@ -731,7 +737,12 @@ module FormFieldKind =
         // "No selection" is `Binding.Static None` since the swap (the slot is
         // `Binding<string> option`; the old `Binding<string option>` payload
         // option moved into the generated Static payload).
-        FormFieldKind.SegmentedChoice(options, Some value, Some onChange, orientation)
+        FormFieldKind.SegmentedChoice(
+            options,
+            Some(FieldValue.ofText value),
+            Some(FieldChange.ofChoice onChange),
+            orientation
+        )
 
     /// `Combobox` (Phase 1113) — the typeahead / autocomplete control: the same
     /// triple `choice` takes plus the free-text admission, in `segmentedChoice`'s
@@ -752,7 +763,12 @@ module FormFieldKind =
         (onChange: string option -> Action<'Msg>)
         (allowFreeText: bool)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Combobox(allowFreeText, Some onChange, options, Some value)
+        FormFieldKind.Combobox(
+            allowFreeText,
+            Some(FieldChange.ofChoice onChange),
+            options,
+            Some(FieldValue.ofText value)
+        )
 
     /// `Rating` (Phase 1130) — the subjective score on a small ordinal scale.
     /// `max` is the scale (5 is the conventional choice and the one
@@ -775,7 +791,7 @@ module FormFieldKind =
         (max: int)
         (allowHalf: bool)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Rating(allowHalf, max, Some onChange, Some value)
+        FormFieldKind.Rating(allowHalf, max, Some(FieldChange.ofNumber onChange), Some(FieldValue.ofNumber value))
 
     /// `Color` (Phase 1130) — the platform's own colour picker. The bound value
     /// is the canonical `#rrggbb` hex form, which is the one shape a native
@@ -787,7 +803,7 @@ module FormFieldKind =
     ///       (value = binding.state "brand" "#ff8800")
     ///       (onChange = SetBrand >> Action.dispatch)
     let color (value: Binding<string>) (onChange: string -> Action<'Msg>) : FormFieldKind<'Msg> =
-        FormFieldKind.Color(Some onChange, Some value)
+        FormFieldKind.Color(Some(FieldChange.ofText onChange), Some(FieldValue.ofText value))
 
     /// `Tokens` (Phase 1121) — the multi-token input: several values
     /// accumulated as removable chips, over a set that may be open, searchable,
@@ -817,7 +833,12 @@ module FormFieldKind =
         (suggestions: Binding<SelectOption list> option)
         (allowFreeText: bool)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Tokens(allowFreeText, Some onChange, suggestions, Some value)
+        FormFieldKind.Tokens(
+            allowFreeText,
+            Some(FieldChange.ofTokens onChange),
+            suggestions,
+            Some(FieldValue.ofTokens value)
+        )
 
     /// `DateTime` field (Phase 288; renamed from `date` by Phase 1811) — a
     /// date, a time of day or a date-time per `variant`, with the optional
@@ -842,7 +863,14 @@ module FormFieldKind =
         // The generated Date handler receives `string option` (a clearable
         // control); the typed builder keeps its plain-string signature and
         // maps a cleared value to "".
-        FormFieldKind.DateTime(Some value, Some(fun v -> onChange (defaultArg v "")), variant, min, max, step)
+        FormFieldKind.DateTime(
+            Some(FieldValue.ofText value),
+            Some(FieldChange.ofChoice (fun v -> onChange (defaultArg v ""))),
+            variant,
+            min,
+            max,
+            step
+        )
 
     /// Single-control date-time range (Phase 725; renamed from `dateRange` by
     /// Phase 1811) — the pair-valued sibling of `dateTime`. `value` is a `Binding<DateTimeRangePair>` carrying the ordered
@@ -865,7 +893,14 @@ module FormFieldKind =
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.DateTimeRange(Some value, Some onChange, variant, min, max, step)
+        FormFieldKind.DateTimeRange(
+            Some(FieldValue.ofDateRange value),
+            Some(FieldChange.ofDateRange onChange),
+            variant,
+            min,
+            max,
+            step
+        )
 
     // ── Handler-free (declarative) ctors — Phase 426, the control write-back
     //    default. Each emits `onChange = None`, the shape an AI author uses: the
@@ -876,14 +911,16 @@ module FormFieldKind =
 
     /// Handler-free `Text` — the renderer writes the typed string to the
     /// `value` binding's own State/Filter slot on change.
-    let textDeclarative (value: Binding<string>) : FormFieldKind<'Msg> = FormFieldKind.Text(Some value, None)
+    let textDeclarative (value: Binding<string>) : FormFieldKind<'Msg> =
+        FormFieldKind.Text(Some(FieldValue.ofText value), None)
 
     /// Handler-free `Number` — writes the typed float back to the value slot.
-    let numberDeclarative (value: Binding<float>) : FormFieldKind<'Msg> = FormFieldKind.Number(Some value, None)
+    let numberDeclarative (value: Binding<float>) : FormFieldKind<'Msg> =
+        FormFieldKind.Number(Some(FieldValue.ofNumber value), None)
 
     /// Handler-free `Checkbox` — writes the toggled bool back to the value slot.
     let checkboxDeclarative (value: Binding<bool>) : FormFieldKind<'Msg> =
-        FormFieldKind.Checkbox(Some value, None)
+        FormFieldKind.Checkbox(Some(FieldValue.ofBool value), None)
 
     /// Handler-free `Toggle` — the on/off SWITCH affordance (Phase 766). Same
     /// boolean data and write-back as `checkbox`; what differs is the rendered
@@ -892,16 +929,17 @@ module FormFieldKind =
     ///
     /// Reach for it when the prompt says switch / toggle / on-off / start-stop;
     /// reach for `checkbox` for consent, opt-in and multi-select list items.
-    let toggleDeclarative (value: Binding<bool>) : FormFieldKind<'Msg> = FormFieldKind.Toggle(Some value, None)
+    let toggleDeclarative (value: Binding<bool>) : FormFieldKind<'Msg> =
+        FormFieldKind.Toggle(Some(FieldValue.ofBool value), None)
 
     /// Handler-free `Choice` — writes the chosen option (string option) back to
     /// the value slot; a cleared choice clears the slot.
     let choiceDeclarative (options: Binding<SelectOption list>) (value: Binding<string>) : FormFieldKind<'Msg> =
-        FormFieldKind.Choice(options, Some value, None)
+        FormFieldKind.Choice(options, Some(FieldValue.ofText value), None)
 
     /// Handler-free `TextArea` — writes the typed string back to the value slot.
     let textAreaDeclarative (value: Binding<string>) (rows: int) : FormFieldKind<'Msg> =
-        FormFieldKind.TextArea(Some value, None, rows)
+        FormFieldKind.TextArea(Some(FieldValue.ofText value), None, rows)
 
     /// Handler-free `RangedNumber` — writes the typed float back to the value slot.
     let rangedNumberDeclarative
@@ -910,7 +948,7 @@ module FormFieldKind =
         (max: float option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.RangedNumber(Some value, None, min, max, step)
+        FormFieldKind.RangedNumber(Some(FieldValue.ofNumber value), None, min, max, step)
 
     /// Handler-free `SegmentedChoice` — writes the chosen option back to the value slot.
     let segmentedChoiceDeclarative
@@ -918,7 +956,7 @@ module FormFieldKind =
         (value: Binding<string>)
         (orientation: Orientation)
         : FormFieldKind<'Msg> =
-        FormFieldKind.SegmentedChoice(options, Some value, None, orientation)
+        FormFieldKind.SegmentedChoice(options, Some(FieldValue.ofText value), None, orientation)
 
     /// Handler-free `Combobox` (Phase 1113) — writes the chosen or typed value
     /// back to the value slot; a cleared entry clears the slot.
@@ -927,16 +965,17 @@ module FormFieldKind =
         (value: Binding<string>)
         (allowFreeText: bool)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Combobox(allowFreeText, None, options, Some value)
+        FormFieldKind.Combobox(allowFreeText, None, options, Some(FieldValue.ofText value))
 
     /// Handler-free `Rating` (Phase 1130) — writes the chosen score back to the
     /// value slot.
     let ratingDeclarative (value: Binding<float>) (max: int) (allowHalf: bool) : FormFieldKind<'Msg> =
-        FormFieldKind.Rating(allowHalf, max, None, Some value)
+        FormFieldKind.Rating(allowHalf, max, None, Some(FieldValue.ofNumber value))
 
     /// Handler-free `Color` (Phase 1130) — writes the picked `#rrggbb` back to
     /// the value slot.
-    let colorDeclarative (value: Binding<string>) : FormFieldKind<'Msg> = FormFieldKind.Color(None, Some value)
+    let colorDeclarative (value: Binding<string>) : FormFieldKind<'Msg> =
+        FormFieldKind.Color(None, Some(FieldValue.ofText value))
 
     /// Handler-free `Tokens` (Phase 1121) — writes the WHOLE token list back to
     /// the value slot on every add and every remove. That is what keeps the
@@ -947,7 +986,7 @@ module FormFieldKind =
         (suggestions: Binding<SelectOption list> option)
         (allowFreeText: bool)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Tokens(allowFreeText, None, suggestions, Some value)
+        FormFieldKind.Tokens(allowFreeText, None, suggestions, Some(FieldValue.ofTokens value))
 
     /// Handler-free `DateTime` — writes the ISO-8601 string back to the value slot.
     let dateTimeDeclarative
@@ -957,7 +996,7 @@ module FormFieldKind =
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.DateTime(Some value, None, variant, min, max, step)
+        FormFieldKind.DateTime(Some(FieldValue.ofText value), None, variant, min, max, step)
 
     /// Handler-free `DateTimeRange` — writes the changed `(from, to)` ISO-8601
     /// pair back to the value slot.
@@ -968,7 +1007,7 @@ module FormFieldKind =
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.DateTimeRange(Some value, None, variant, min, max, step)
+        FormFieldKind.DateTimeRange(Some(FieldValue.ofDateRange value), None, variant, min, max, step)
 
 /// Smart-ctors for filter strips. Closure-bearing ctors (`Some onChange`) preserve the
 /// F#-authored dispatch behaviour byte-for-byte; the closure-free ctors (Phase 423) emit

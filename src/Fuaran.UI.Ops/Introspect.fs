@@ -695,7 +695,10 @@ let isAncestorOf (ancestorId: NodeId) (descendantId: NodeId) (root: Node<'Msg>) 
 let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
     // A value slot that spells the field's exact auto-binding collapses to
     // `None` (the canonical omitted form). Any other value passes through.
-    let collapse (expected: 'v option) (value: Binding<'v> option) : Binding<'v> option =
+    let collapse
+        (expected: Fuaran.Core.JVal option)
+        (value: Binding<Fuaran.Core.JVal> option)
+        : Binding<Fuaran.Core.JVal> option =
         match value with
         | Some(Binding.State(key, dv)) when key = field.Id && dv = expected -> None
         | v -> v
@@ -703,31 +706,57 @@ let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
     let kind =
         match field.Kind with
         | FormFieldKind.Text(value, oc) ->
-            FormFieldKind.Text(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.text) value, oc)
+            FormFieldKind.Text(
+                collapse (Some(FieldValue.encodeText Fuaran.UI.Defaults.ControlValueDefaults.text)) value,
+                oc
+            )
         | FormFieldKind.Number(value, oc) ->
-            FormFieldKind.Number(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.number) value, oc)
+            FormFieldKind.Number(
+                collapse (Some(FieldValue.encodeNumber Fuaran.UI.Defaults.ControlValueDefaults.number)) value,
+                oc
+            )
         | FormFieldKind.Checkbox(value, ot) ->
-            FormFieldKind.Checkbox(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) value, ot)
+            FormFieldKind.Checkbox(
+                collapse (Some(FieldValue.encodeBool Fuaran.UI.Defaults.ControlValueDefaults.checkbox)) value,
+                ot
+            )
         | FormFieldKind.Toggle(value, ot) ->
-            FormFieldKind.Toggle(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) value, ot)
+            FormFieldKind.Toggle(
+                collapse (Some(FieldValue.encodeBool Fuaran.UI.Defaults.ControlValueDefaults.checkbox)) value,
+                ot
+            )
         | FormFieldKind.Choice(options, value, oc) ->
-            FormFieldKind.Choice(options, collapse Fuaran.UI.Defaults.ControlValueDefaults.choice value, oc)
+            FormFieldKind.Choice(
+                options,
+                collapse (Option.map FieldValue.encodeText Fuaran.UI.Defaults.ControlValueDefaults.choice) value,
+                oc
+            )
         | FormFieldKind.TextArea(value, oc, rows) ->
-            FormFieldKind.TextArea(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.text) value, oc, rows)
+            FormFieldKind.TextArea(
+                collapse (Some(FieldValue.encodeText Fuaran.UI.Defaults.ControlValueDefaults.text)) value,
+                oc,
+                rows
+            )
         | FormFieldKind.RangedNumber(value, oc, mn, mx, st) ->
             FormFieldKind.RangedNumber(
-                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.number) value,
+                collapse (Some(FieldValue.encodeNumber Fuaran.UI.Defaults.ControlValueDefaults.number)) value,
                 oc,
                 mn,
                 mx,
                 st
             )
         | FormFieldKind.Range(value, oc, mn, mx, st) ->
-            FormFieldKind.Range(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.range) value, oc, mn, mx, st)
+            FormFieldKind.Range(
+                collapse (Some(FieldValue.encodeRange Fuaran.UI.Defaults.ControlValueDefaults.range)) value,
+                oc,
+                mn,
+                mx,
+                st
+            )
         | FormFieldKind.SegmentedChoice(options, value, oc, orientation) ->
             FormFieldKind.SegmentedChoice(
                 options,
-                collapse Fuaran.UI.Defaults.ControlValueDefaults.choice value,
+                collapse (Option.map FieldValue.encodeText Fuaran.UI.Defaults.ControlValueDefaults.choice) value,
                 oc,
                 orientation
             )
@@ -736,11 +765,11 @@ let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
                 allowFreeText,
                 oc,
                 options,
-                collapse Fuaran.UI.Defaults.ControlValueDefaults.combobox value
+                collapse (Option.map FieldValue.encodeText Fuaran.UI.Defaults.ControlValueDefaults.combobox) value
             )
         | FormFieldKind.DateTime(value, oc, variant, mn, mx, st) ->
             FormFieldKind.DateTime(
-                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime) value,
+                collapse (Some(FieldValue.encodeText Fuaran.UI.Defaults.ControlValueDefaults.dateTime)) value,
                 oc,
                 variant,
                 mn,
@@ -749,7 +778,7 @@ let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
             )
         | FormFieldKind.DateTimeRange(value, oc, variant, mn, mx, st) ->
             FormFieldKind.DateTimeRange(
-                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.dateTimeRange) value,
+                collapse (Some(FieldValue.encodeDateRange Fuaran.UI.Defaults.ControlValueDefaults.dateTimeRange)) value,
                 oc,
                 variant,
                 mn,
@@ -765,10 +794,13 @@ let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
                 allowHalf,
                 max,
                 oc,
-                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.rating) value
+                collapse (Some(FieldValue.encodeNumber Fuaran.UI.Defaults.ControlValueDefaults.rating)) value
             )
         | FormFieldKind.Color(oc, value) ->
-            FormFieldKind.Color(oc, collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.color) value)
+            FormFieldKind.Color(
+                oc,
+                collapse (Some(FieldValue.encodeText Fuaran.UI.Defaults.ControlValueDefaults.color)) value
+            )
         // Phase 1121 — the token list collapses on the same rule: a value slot
         // spelling exactly this field's auto-binding IS the omitted form, and
         // the empty list is the one placeholder a token field has.
@@ -777,7 +809,7 @@ let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
                 allowFreeText,
                 oc,
                 suggestions,
-                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.tokens) value
+                collapse (Some(FieldValue.encodeTokens Fuaran.UI.Defaults.ControlValueDefaults.tokens)) value
             )
 
     { field with Kind = kind }

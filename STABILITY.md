@@ -8166,6 +8166,71 @@ changes.
 - **Documented, not changed:** `Streaming.StreamFrame.Position` is RESERVED — always 0, read by nothing —
   and is dropped at the next frame-protocol version, not now.
 
+### What rides this slot — Phase 2177
+
+_Class: **BREAKING (API + wire)** — rides the 0.93.0 draft, already BREAKING; this block does not raise the
+slot's class._
+
+**`FormFieldKind`'s value and change handler have one shape on every case.** Every case now carries
+`value: Binding<JVal> option` — the payload in its wire spelling — and ONE handler,
+`onChange: (JVal -> Action<'Msg>) option`. Before, the value was `Binding<string>` / `Binding<float>` /
+`Binding<bool>` / `Binding<RangePair>` / `Binding<DateTimeRangePair>` / `Binding<string list>` by case, and the
+handler was `onChange` at seven argument types, or `onToggle` on `Checkbox` and `Toggle`. One type each is what
+lets the IDL project them: `Generated.FormFieldKind.value` and `Generated.FormFieldKind.onChange` are generated,
+and the walks that read a field's binding or ask whether it has a handler (`BindingWalk`'s three form-field
+walks, `DeadOnDecode`'s two, `PreEmitValidate`'s write-back, owned-key and FUARAN069 checks, and the renderer's
+subscription keys) read them instead of matching fifteen cases each. The matches that remain classify per
+control (a CSS class, a sink class, which rule slots a control can honour) or REWRITE a slot, which no
+generated member does yet.
+
+- **Wire.** The value bytes do not move on any case. The one wire change is the handler key on `Checkbox` and
+  `Toggle`: `"onToggle":"<closure>"` is now `"onChange":"<closure>"`, emitted only when a closure-authored
+  field carries one (`nodes/form-1.json`). The retired spelling is not lenient-accepted — §16 admits no
+  backward-compatibility shorthand — so a document carrying it decodes as the handler-free field.
+  `Disclosure.onToggle` and `CellKindErased.Checkbox`'s `onToggle` are different slots and keep their names.
+- **What changes for an F# author constructing a case directly.** The typed authoring helpers
+  (`FormFieldKind.rangedNumber`, `.combobox`, `.tokens`, the `*Declarative` family, the filter-chip helpers)
+  keep their typed signatures. A direct construction erases its typed binding with `FieldValue.ofText` /
+  `.ofNumber` / `.ofBool` / `.ofRange` / `.ofDateRange` / `.ofTokens` and adapts a typed handler with
+  `FieldChange.ofText` / `.ofNumber` / `.ofBool` / `.ofChoice` / `.ofRange` / `.ofDateRange` / `.ofTokens`
+  (a cleared choice is `FieldChange.noSelection`). A reader that needs the typed value views the slot back
+  with `FieldValue.text` / `.number` / …, or inside a pattern with the total `FieldView` active patterns
+  (`FormFieldKind.Checkbox(FieldView.Bool value, FieldView.OnBool onChange)`).
+- **C# and VB.** The `Fuaran.UI.CSharp` factories keep their public signatures; only their bodies moved. The
+  VB XML mapping builds through those factories and did not change.
+- **Diagnostics.** `DeadOnDecode` names a form field's handler slot `FormFieldKind.onChange` on every kind
+  (it said `FormFieldKind.onToggle` for a checkbox or a switch); `SlotCapability` drops its
+  `FormFieldKind.onToggle` row.
+- **The no-moved-byte condition is a test.** `FormFieldValueBytesTests` holds the value bytes of every
+  form-field slot in the corpus's node fixtures as recorded BEFORE the change, and requires them byte-identical
+  in the current corpus, with `onChange` as the only handler key.
+
+### What rides this slot — Phase 2063
+
+`Fuaran.UI.OpStream.Replay`'s tree diffs. **Class: NONE (cost only).** No public surface, wire, corpus or
+behaviour change: `TreeOpDiff.diff` emits the same ops, byte for byte, and `TreeDiff.diff` the same records.
+
+- **`TreeOpDiff` encodes each node's childless shell once.** It used to encode four childless shells per
+  node to ask whether the kind or the state drifted. Each candidate field cost two more WHOLE-NODE encodes,
+  subtree included. Now `diffNode` encodes each side's shell once and passes it down. Equal shells settle
+  "no own-content drift" without another encode. A field that carries no closure and has an injective
+  canonical encoding (`int`, `bool`, a payload-free variant DU) is compared by value. Strings and floats
+  still compare by shell, because the canonical render aliases a lone surrogate with U+FFFD and `-0` with `0`.
+- **One node index.** `TreeDiff` and `TreeOpDiff` share an internal `NodeIndex` (index, childless shell,
+  ancestor check). The move pre-pass's cycle check climbs the indexed parent chain, O(depth) per moved id,
+  where it used to search a subtree.
+- **Vestiges gone.** The `disp` / `lay` identity wrappers left by Phase 692 are inlined. The `stateChanged`
+  comment that its only caller contradicted now says why both call sites isolate `State`. The swallowed
+  candidate-apply error in `tryFieldLevel` is justified where it is swallowed: the verify that follows
+  already rejects the set.
+- **Measured** (`benchmarks/Fuaran.UI.Ops.Benchmarks`, `tree-diff 20`, Release, a 2,001-node tree, two runs
+  each): one changed field 42–77 ms → 15–23 ms; one moved leaf 54–67 ms → 20 ms; allocation per diff
+  38.7 MB → 22.2 MB (unchanged tree) and 50.4 MB → 33.9 MB (one move).
+- **Pinned by** `TreeOpDiffEquivalenceTests`. It runs the pre-2063 diff, kept verbatim as a test oracle,
+  beside the shipped one over 12,718 corpus-derived pairs. The pairs include one-field mutations of every
+  node fixture, the op fixtures, the diff goldens and synthetic cross-parent moves. It asserts equal op-list
+  bytes, and that no pair loses a round trip.
+
 ### What rides this slot — Phase 2191
 
 **Class: BREAKING (dependency + API)** — the slot is already BREAKING, so this rides it. The program adapters

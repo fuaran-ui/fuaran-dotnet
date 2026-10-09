@@ -104,10 +104,17 @@ let private renderForm (fields: FormField<obj> list) : string =
     Render.render BindingResolver.empty (formWith fields)
 
 let private toggleField (value: bool) : FormField<obj> =
-    field "notify" (FormFieldKind.Toggle(Some(Binding.Static(Some value)), None))
+    field "notify" (FormFieldKind.Toggle(Some(FieldValue.ofBool (Binding.Static(Some value))), None))
 
 let private segmentedField (orientation: Orientation) : FormField<obj> =
-    field "cadence" (FormFieldKind.SegmentedChoice(options, Some(Binding.Static(Some "weekly")), None, orientation))
+    field
+        "cadence"
+        (FormFieldKind.SegmentedChoice(
+            options,
+            Some(FieldValue.ofText (Binding.Static(Some "weekly"))),
+            None,
+            orientation
+        ))
 
 // ─── Toggle ──────────────────────────────────────────────────────────────────
 
@@ -164,7 +171,10 @@ let toggleFloor =
               // what proves the assertions above can fail: the identical helper
               // over the identical shape reports absence here.
               let html =
-                  renderForm [ field "agree" (FormFieldKind.Checkbox(Some(Binding.Static(Some true)), None)) ]
+                  renderForm
+                      [ field
+                            "agree"
+                            (FormFieldKind.Checkbox(Some(FieldValue.ofBool (Binding.Static(Some true))), None)) ]
 
               let tag = openTagOf "input" html
 

@@ -68,7 +68,9 @@ let tests =
 
           test "harvestFields honours an explicit State binding's own key" {
               let fields =
-                  [ field "name" (FormFieldKind.Text(Some(Binding.State("custom.slot", Some "")), None)) ]
+                  [ field
+                        "name"
+                        (FormFieldKind.Text(Some(FieldValue.ofText (Binding.State("custom.slot", Some ""))), None)) ]
 
               let sources = sourcesWith [ "custom.slot", nn "from-custom" ]
 
@@ -84,13 +86,15 @@ let tests =
                         "draft"
                         (FormFieldKind.Text(
                             Some(
-                                // fuaran-validator: disable-next-line FUARAN042 — harvest-semantics fixture; the formatter is not under test
-                                binding.local
-                                    (Binding.Static(Some "committed"))
-                                    LocalFlushTrigger.OnSubmit
-                                    (fun _ -> Action.Dispatch Submitted)
-                                    None
-                                    (fun s -> Ok s)
+                                FieldValue.ofText (
+                                    // fuaran-validator: disable-next-line FUARAN042 — harvest-semantics fixture; the formatter is not under test
+                                    binding.local
+                                        (Binding.Static(Some "committed"))
+                                        LocalFlushTrigger.OnSubmit
+                                        (fun _ -> Action.Dispatch Submitted)
+                                        None
+                                        (fun s -> Ok s)
+                                )
                             ),
                             None
                         )) ]

@@ -989,7 +989,7 @@ orchestrated run).
 |---|---|
 | `Binding.Computed` (a compute closure) | `Binding.Transform` (declarative data derivation), `Binding.Format` (locale/number formatting), or `Binding.State` / `Binding.Filter` (reactive values) |
 | a closure grid column (`Column.value (fun row -> …)`) | `Column.field "propertyName"` + a typed `CellFormat` – the renderer projects the named row property with zero host code |
-| a value-changed handler (`onChange` / `onToggle` / `onSelect` closure) | **omit it** – the renderer's write-back default writes the change to the control's own writable `Binding.State` / `Binding.Filter` value slot |
+| a value-changed handler (`onChange` / `onToggle` / `onSelect` closure — a form field's is always `onChange`) | **omit it** – the renderer's write-back default writes the change to the control's own writable `Binding.State` / `Binding.Filter` value slot |
 | an `onResult` continuation on `Action.Call` | `Action.Call … into: State/Query` – the declarative result target |
 | `RowKey` (a row→string closure) | `RowKeyField "propertyName"` |
 | `CellFormat.Custom (fun v -> …)` | one of the six typed `CellFormat` cases (`Number` / `Currency` / `Percent` / `SignificantDigits` / `DateTime` / `None`) |

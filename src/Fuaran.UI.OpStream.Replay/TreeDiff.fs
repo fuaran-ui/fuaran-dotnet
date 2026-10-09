@@ -140,35 +140,34 @@ type StepDiffsError<'Msg> =
     /// `ReplayError`.
     | ReplayFailed of completedSteps: StepDiff<'Msg> list * failedAt: int * replayError: ReplayError
 
-module TreeDiff =
-
-    // ─── Internal: tree indexing ─────────────────────────────────────────
+/// The node index and childless-shell encoding the two diff engines share
+/// (Phase 2063): `TreeDiff` (descriptive `NodeChange` records) and `TreeOpDiff`
+/// (applyable `TreeOp`s) each used to carry a private copy of both.
+module internal NodeIndex =
 
     /// Per-node location entry: where the node sits in its tree (parent +
     /// 0-based position) plus the node itself. Root nodes have `Parent =
     /// None` and `Position = 0`.
-    type private NodeLocation<'Msg> =
+    type Location<'Msg> =
         { Parent: NodeId option
           Position: int
           Node: Node<'Msg> }
 
-    /// Walk a tree producing `(rawIdString, NodeLocation)` pairs. Uses
-    /// the unwrapped string id form so the resulting Map keys are
-    /// orderable for deterministic Map-merging without an `NodeId`
-    /// IComparer.
-    let private indexTree<'Msg> (root: Node<'Msg>) : Map<string, NodeLocation<'Msg>> =
+    /// Walk a tree producing `(rawIdString, Location)` pairs. Uses the
+    /// unwrapped string id form so the resulting Map keys are orderable for
+    /// deterministic Map-merging without an `NodeId` IComparer. An id that
+    /// occurs twice keeps its LAST location in walk order.
+    let build<'Msg> (root: Node<'Msg>) : Map<string, Location<'Msg>> =
         let rec walk
-            (acc: Map<string, NodeLocation<'Msg>>)
+            (acc: Map<string, Location<'Msg>>)
             (parent: NodeId option)
             (position: int)
             (node: Node<'Msg>)
-            : Map<string, NodeLocation<'Msg>> =
-            let raw = node.Id
-
+            : Map<string, Location<'Msg>> =
             let acc' =
                 acc
                 |> Map.add
-                    raw
+                    node.Id
                     { Parent = parent
                       Position = position
                       Node = node }
@@ -182,22 +181,43 @@ module TreeDiff =
 
         walk Map.empty None 0 root
 
-    // ─── Internal: shell encoding ────────────────────────────────────────
+    /// `true` when `ancestor` is `node` itself or one of its ancestors in the
+    /// indexed tree — a parent-chain walk, O(depth), where a subtree search is
+    /// O(subtree). Agrees with `Introspect.isAncestorOf` on a tree whose ids
+    /// are unique; the walk is bounded by the index size, so an index built
+    /// over duplicated ids (whose parent links can loop) still terminates.
+    let isAncestorOrSelf<'Msg> (index: Map<string, Location<'Msg>>) (ancestor: string) (node: string) : bool =
+        let rec climb (current: string) (budget: int) =
+            if current = ancestor then
+                true
+            elif budget <= 0 then
+                false
+            else
+                match Map.tryFind current index with
+                | Some { Parent = Some(NodeId parent) } -> climb parent (budget - 1)
+                | _ -> false
+
+        Map.containsKey ancestor index && climb node index.Count
 
     /// Produce a children-stripped clone of `node` so the canonical-JSON
     /// shell encoding compares ONLY this node's own props — drift in
     /// descendants is attributed to those descendants by id, not to
     /// every ancestor. Leaves (kinds with `getChildren = None`) are
     /// passed through unchanged.
-    let private stripChildren<'Msg> (node: Node<'Msg>) : Node<'Msg> =
+    let stripChildren<'Msg> (node: Node<'Msg>) : Node<'Msg> =
         match withChildren node.Kind [] with
         | Some newKind -> { node with Kind = newKind }
         | None -> node
 
     /// Canonical-JSON shell of `node` (children stripped). Two nodes
-    /// whose shells differ are PropChanged candidates.
-    let private encodeShell<'Msg> (node: Node<'Msg>) : string =
+    /// whose shells differ differ in their own content.
+    let encodeShell<'Msg> (node: Node<'Msg>) : string =
         CanonicalJson.encodeNode (stripChildren node)
+
+module TreeDiff =
+
+    // The tree index and the shell encoding are `NodeIndex`'s, shared with
+    // `TreeOpDiff` (Phase 2063).
 
     // ─── Internal: text-source extraction ────────────────────────────────
 
@@ -231,8 +251,8 @@ module TreeDiff =
     /// Added → Removed → Moved → KindChanged → PropChanged →
     /// TextChanged groups, each internally sorted by raw NodeId string.
     let diff<'Msg> (oldTree: Node<'Msg>) (nextTree: Node<'Msg>) : TreeDiff =
-        let oldIndex = indexTree oldTree
-        let newIndex = indexTree nextTree
+        let oldIndex = NodeIndex.build oldTree
+        let newIndex = NodeIndex.build nextTree
 
         let mutable addedAcc: NodeChange list = []
         let mutable removedAcc: NodeChange list = []
@@ -270,8 +290,8 @@ module TreeDiff =
                 else
                     // Same kind discriminator — shell compare for prop drift,
                     // location compare for move, narrow text-change check.
-                    let oldShell = encodeShell oldLoc.Node
-                    let newShell = encodeShell newLoc.Node
+                    let oldShell = NodeIndex.encodeShell oldLoc.Node
+                    let newShell = NodeIndex.encodeShell newLoc.Node
 
                     if oldShell <> newShell then
                         propChangedAcc <-

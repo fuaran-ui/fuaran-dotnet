@@ -111,11 +111,11 @@ let fieldFlushAction (field: FormField<'Msg>) (value: LiveValue) : Action<'Msg> 
             | None, None -> None
 
     match field.Kind with
-    | FormFieldKind.Text(Some(Binding.Local(_, _, _, oc, p, _, ct)), _)
-    | FormFieldKind.TextArea(Some(Binding.Local(_, _, _, oc, p, _, ct)), _, _) ->
+    | FormFieldKind.Text(FieldView.Text(Some(Binding.Local(_, _, _, oc, p, _, ct))), _)
+    | FormFieldKind.TextArea(FieldView.Text(Some(Binding.Local(_, _, _, oc, p, _, ct))), _, _) ->
         asStr value |> Option.bind (commitOf p oc ct)
-    | FormFieldKind.Number(Some(Binding.Local(_, _, _, oc, p, _, ct)), _)
-    | FormFieldKind.RangedNumber(Some(Binding.Local(_, _, _, oc, p, _, ct)), _, _, _, _) ->
+    | FormFieldKind.Number(FieldView.Number(Some(Binding.Local(_, _, _, oc, p, _, ct))), _)
+    | FormFieldKind.RangedNumber(FieldView.Number(Some(Binding.Local(_, _, _, oc, p, _, ct))), _, _, _, _) ->
         asStr value |> Option.bind (commitOf p oc ct)
     // Non-`Local` fields are not buffered by this protocol; other field shapes
     // (Checkbox / Choice / Segmented) carry no `Local` value binding.

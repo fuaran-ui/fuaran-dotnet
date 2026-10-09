@@ -251,11 +251,19 @@ let private demoForm (tone, weight, emphasis) : Node<unit> =
                       Id = "form-text"
                       Label = TextSource.Literal "Cohort name"
                       Required = true
-                      Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Some(fun _ -> Action.Chain [])) }
+                      Kind =
+                          FormFieldKind.Text(
+                              Some(FieldValue.ofText (Binding.Static(Some ""))),
+                              Some(FieldChange.ofText (fun _ -> Action.Chain []))
+                          ) }
                   { Defaults.formField<unit> with
                       Id = "form-number"
                       Label = TextSource.Literal "Sample size"
-                      Kind = FormFieldKind.Number(Some(Binding.Static(Some 100.0)), Some(fun _ -> Action.Chain [])) } ] }
+                      Kind =
+                          FormFieldKind.Number(
+                              Some(FieldValue.ofNumber (Binding.Static(Some 100.0))),
+                              Some(FieldChange.ofNumber (fun _ -> Action.Chain []))
+                          ) } ] }
 
 let private demoFormRangedNumber (tone, weight, emphasis) : Node<unit> =
     // Catalog axis. Each field exercises one of the eight
@@ -305,7 +313,11 @@ let private demoFilters (tone, weight, emphasis) : Node<unit> =
         [ { Defaults.filter<unit> with
               Name = "text-filter"
               Label = TextSource.Literal "Search"
-              Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Some(fun _ -> Action.Chain [])) } ]
+              Kind =
+                  FormFieldKind.Text(
+                      Some(FieldValue.ofText (Binding.Static(Some ""))),
+                      Some(FieldChange.ofText (fun _ -> Action.Chain []))
+                  ) } ]
 
 let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
     // Catalog axis. Three exclusive-choice surfaces:
@@ -341,8 +353,8 @@ let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
                       Kind =
                           FormFieldKind.SegmentedChoice(
                               Binding.Static(Some metricOpts),
-                              Some(Binding.Static None),
-                              Some(fun _ -> Action.Chain []),
+                              Some(FieldValue.ofText (Binding.Static None)),
+                              Some(FieldChange.ofChoice (fun _ -> Action.Chain [])),
                               Orientation.Horizontal
                           ) }
                   { Defaults.formField<unit> with
@@ -352,8 +364,8 @@ let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
                       Kind =
                           FormFieldKind.SegmentedChoice(
                               Binding.Static(Some tierOpts),
-                              Some(Binding.Static None),
-                              Some(fun _ -> Action.Chain []),
+                              Some(FieldValue.ofText (Binding.Static None)),
+                              Some(FieldChange.ofChoice (fun _ -> Action.Chain [])),
                               Orientation.Vertical
                           ) }
                   { Defaults.formField<unit> with
@@ -363,8 +375,8 @@ let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
                       Kind =
                           FormFieldKind.SegmentedChoice(
                               Binding.Static(Some metricOpts),
-                              Some(Binding.Static(Some "marginal")),
-                              Some(fun _ -> Action.Chain []),
+                              Some(FieldValue.ofText (Binding.Static(Some "marginal"))),
+                              Some(FieldChange.ofChoice (fun _ -> Action.Chain [])),
                               Orientation.Horizontal
                           ) } ] }
 

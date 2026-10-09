@@ -41,7 +41,7 @@ let private textFieldBinding (json: string) : Binding<string> =
             match spec.Fields with
             | [ f ] ->
                 match f.Kind with
-                | FormFieldKind.Text(Some b, _) -> b
+                | FormFieldKind.Text(FieldView.Text(Some b), _) -> b
                 | other -> failtestf "expected a Text field with a value binding, got %A" other
             | fs -> failtestf "expected exactly one field, got %d" (List.length fs)
         | other -> failtestf "expected a Form, got %A" other
@@ -56,7 +56,7 @@ let private numberFieldBinding (json: string) : Binding<float> =
             match spec.Fields with
             | [ f ] ->
                 match f.Kind with
-                | FormFieldKind.Number(Some b, _) -> b
+                | FormFieldKind.Number(FieldView.Number(Some b), _) -> b
                 | other -> failtestf "expected a Number field with a value binding, got %A" other
             | fs -> failtestf "expected exactly one field, got %d" (List.length fs)
         | other -> failtestf "expected a Form, got %A" other

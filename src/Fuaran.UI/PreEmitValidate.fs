@@ -4325,10 +4325,16 @@ module private FormRules =
         let defects = ctx.Defects
 
         match kind with
-        | FormFieldKind.Rating(_, max, _, Some(Binding.Static(Some v))) when v < 0.0 || v > float max ->
-            defects.Add(PreEmitDefect.RatingValueOutOfScale(nodeId, fieldId, v, max))
-        | FormFieldKind.Color(_, Some(Binding.Static(Some text))) when not (Fuaran.UI.HostPrelude.HexColor.isValid text) ->
-            defects.Add(PreEmitDefect.ColorValueNotHex(nodeId, fieldId, text))
+        | FormFieldKind.Rating(_, max, _, Some value) ->
+            match FieldValue.number value with
+            | Binding.Static(Some v) when v < 0.0 || v > float max ->
+                defects.Add(PreEmitDefect.RatingValueOutOfScale(nodeId, fieldId, v, max))
+            | _ -> ()
+        | FormFieldKind.Color(_, Some value) ->
+            match FieldValue.text value with
+            | Binding.Static(Some text) when not (Fuaran.UI.HostPrelude.HexColor.isValid text) ->
+                defects.Add(PreEmitDefect.ColorValueNotHex(nodeId, fieldId, text))
+            | _ -> ()
         | _ -> ()
 
     /// FUARAN135 / FUARAN136 — the two static checks `Tokens`
@@ -4355,7 +4361,7 @@ module private FormRules =
                 defects.Add(PreEmitDefect.TokensAdmitsNothing(nodeId, fieldId))
             | _ -> ()
 
-            match value with
+            match value |> Option.map FieldValue.tokens with
             | Some(Binding.Static(Some tokens)) ->
                 let seen = System.Collections.Generic.HashSet<string>()
 
@@ -4384,29 +4390,17 @@ module private FormRules =
             // value slot (`None`) is the Phase 596 symmetric auto-bind and
             // writes `$state.<field id>` — record the field id as the key
             // (this is the shape a decoded / AI-authored field takes).
-            let recordWriteBack (value: Binding<'v> option) (handlerAbsent: bool) =
+            let recordWriteBack (value: Binding<JVal> option) (handlerAbsent: bool) =
                 if handlerAbsent then
                     match value with
                     | Some(Binding.State(key, _)) -> writeBackKeys.Add(key, nodeIdStr, field.Id)
                     | None -> writeBackKeys.Add(field.Id, nodeIdStr, field.Id)
                     | Some _ -> ()
 
-            (match field.Kind with
-             | FormFieldKind.Text(value, oc) -> recordWriteBack value oc.IsNone
-             | FormFieldKind.Number(value, oc) -> recordWriteBack value oc.IsNone
-             | FormFieldKind.Checkbox(value, ot) -> recordWriteBack value ot.IsNone
-             | FormFieldKind.Toggle(value, ot) -> recordWriteBack value ot.IsNone
-             | FormFieldKind.Choice(_, value, oc) -> recordWriteBack value oc.IsNone
-             | FormFieldKind.TextArea(value, oc, _) -> recordWriteBack value oc.IsNone
-             | FormFieldKind.RangedNumber(value, oc, _, _, _) -> recordWriteBack value oc.IsNone
-             | FormFieldKind.Range(value, oc, _, _, _) -> recordWriteBack value oc.IsNone
-             | FormFieldKind.SegmentedChoice(_, value, oc, _) -> recordWriteBack value oc.IsNone
-             | FormFieldKind.DateTime(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
-             | FormFieldKind.DateTimeRange(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
-             | FormFieldKind.Combobox(_, oc, _, value) -> recordWriteBack value oc.IsNone
-             | FormFieldKind.Rating(_, _, oc, value) -> recordWriteBack value oc.IsNone
-             | FormFieldKind.Color(oc, value) -> recordWriteBack value oc.IsNone
-             | FormFieldKind.Tokens(_, oc, _, value) -> recordWriteBack value oc.IsNone)
+            // Phase 2177 — the generated projections reach every field kind.
+            recordWriteBack
+                (Generated.FormFieldKind.value field.Kind)
+                (Generated.FormFieldKind.onChange field.Kind).IsNone
 
             // ── The declared-rule family (FUARAN099/100/101) ──
             //
@@ -4417,27 +4411,12 @@ module private FormRules =
             // ownership and the two are seen in either order.
             formOwnedStateKeys.Add field.Id |> ignore
 
-            let recordOwnedKey (value: Binding<'v> option) =
+            let recordOwnedKey (value: Binding<JVal> option) =
                 match value with
                 | Some(Binding.State(key, _)) -> formOwnedStateKeys.Add key |> ignore
                 | _ -> ()
 
-            (match field.Kind with
-             | FormFieldKind.Text(value, _) -> recordOwnedKey value
-             | FormFieldKind.Number(value, _) -> recordOwnedKey value
-             | FormFieldKind.Checkbox(value, _) -> recordOwnedKey value
-             | FormFieldKind.Toggle(value, _) -> recordOwnedKey value
-             | FormFieldKind.Choice(_, value, _) -> recordOwnedKey value
-             | FormFieldKind.TextArea(value, _, _) -> recordOwnedKey value
-             | FormFieldKind.RangedNumber(value, _, _, _, _) -> recordOwnedKey value
-             | FormFieldKind.Range(value, _, _, _, _) -> recordOwnedKey value
-             | FormFieldKind.SegmentedChoice(_, value, _, _) -> recordOwnedKey value
-             | FormFieldKind.DateTime(value, _, _, _, _, _) -> recordOwnedKey value
-             | FormFieldKind.DateTimeRange(value, _, _, _, _, _) -> recordOwnedKey value
-             | FormFieldKind.Combobox(_, _, _, value) -> recordOwnedKey value
-             | FormFieldKind.Rating(_, _, _, value) -> recordOwnedKey value
-             | FormFieldKind.Color(_, value) -> recordOwnedKey value
-             | FormFieldKind.Tokens(_, _, _, value) -> recordOwnedKey value)
+            recordOwnedKey (Generated.FormFieldKind.value field.Kind)
 
             match field.Rule with
             | None -> ()
@@ -4545,25 +4524,13 @@ module private FormRules =
 
             // An OMITTED value slot is always live: the Phase 596 auto-bind
             // gives the write-back default `$state.<field id>` to write to.
-            let valueLive (value: Binding<'v> option) =
+            let valueLive (value: Binding<JVal> option) =
                 match value with
                 | None -> true
                 | Some b -> isWriteBackTarget b
 
             let inert =
                 match field.Kind with
-                | FormFieldKind.Text(value, oc) -> oc.IsNone && not (valueLive value)
-                | FormFieldKind.Number(value, oc) -> oc.IsNone && not (valueLive value)
-                | FormFieldKind.Checkbox(value, ot) -> ot.IsNone && not (valueLive value)
-                | FormFieldKind.Toggle(value, ot) -> ot.IsNone && not (valueLive value)
-                | FormFieldKind.Choice(_, value, oc) -> oc.IsNone && not (valueLive value)
-                | FormFieldKind.TextArea(value, oc, _) -> oc.IsNone && not (valueLive value)
-                | FormFieldKind.RangedNumber(value, oc, _, _, _) -> oc.IsNone && not (valueLive value)
-                | FormFieldKind.Range(value, oc, _, _, _) -> oc.IsNone && not (valueLive value)
-                | FormFieldKind.SegmentedChoice(_, value, oc, _) -> oc.IsNone && not (valueLive value)
-                | FormFieldKind.DateTime(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
-                | FormFieldKind.DateTimeRange(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
-                | FormFieldKind.Combobox(_, oc, _, value) -> oc.IsNone && not (valueLive value)
                 // RATING IS EXEMPT, and this is a decision
                 // rather than an omission.
                 //
@@ -4595,8 +4562,12 @@ module private FormRules =
                 // of it, and a colour input nobody can change is the defect
                 // FUARAN069 describes.
                 | FormFieldKind.Rating _ -> false
-                | FormFieldKind.Color(oc, value) -> oc.IsNone && not (valueLive value)
-                | FormFieldKind.Tokens(_, oc, _, value) -> oc.IsNone && not (valueLive value)
+                // Every other kind: a handler-free field whose value slot no
+                // write-back can reach (Phase 2177 — the generated projections,
+                // so a new kind is judged here with no arm to add).
+                | kind ->
+                    (Generated.FormFieldKind.onChange kind).IsNone
+                    && not (valueLive (Generated.FormFieldKind.value kind))
 
             comboboxWithoutOptions ctx nodeIdStr field.Id field.Kind
             ratingAndColourValue ctx nodeIdStr field.Id field.Kind

@@ -53,7 +53,6 @@ let all: SlotCapability list =
     [ // ── Write-back defaults (the 423/426/427 family) ──
       row "FilterKind.onChange" SlotPosture.WriteBack "423"
       row "FormFieldKind.onChange" SlotPosture.WriteBack "426"
-      row "FormFieldKind.onToggle" SlotPosture.WriteBack "426"
       row "SelectSpec.onChange" SlotPosture.WriteBack "426"
       row "SelectSpec.onChangeMulti" SlotPosture.WriteBack "426"
       row "TabsSpec.onSelect" SlotPosture.WriteBack "426"
@@ -163,7 +162,6 @@ let decoderPlaceholderSlots: string list =
       "Action.Call.onResult"
       "Action.ReadFileBody.onRead"
       "FormFieldKind.onChange"
-      "FormFieldKind.onToggle"
       "SelectSpec.onChange"
       "SelectSpec.onChangeMulti"
       "FileUploadSpec.onSelect"

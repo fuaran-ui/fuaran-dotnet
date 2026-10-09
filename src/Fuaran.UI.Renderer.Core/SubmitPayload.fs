@@ -83,41 +83,41 @@ let private harvestField (sources: BindingResolver.BindingSources) (field: FormF
         |> BindingResolver.tryResolve sources
 
     match field.Kind with
-    | FormFieldKind.Text(v, _) ->
+    | FormFieldKind.Text(FieldView.Text v, _) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.text) v
         |> Option.map (fun s -> field.Id, JStr s)
-    | FormFieldKind.TextArea(v, _, _) ->
+    | FormFieldKind.TextArea(FieldView.Text v, _, _) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.text) v
         |> Option.map (fun s -> field.Id, JStr s)
-    | FormFieldKind.DateTime(v, _, _, _, _, _) ->
+    | FormFieldKind.DateTime(FieldView.Text v, _, _, _, _, _) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime) v
         |> Option.map (fun s -> field.Id, JStr s)
-    | FormFieldKind.Number(v, _) ->
+    | FormFieldKind.Number(FieldView.Number v, _) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.number) v
         |> Option.map (fun n -> field.Id, JFloat n)
-    | FormFieldKind.RangedNumber(v, _, _, _, _) ->
+    | FormFieldKind.RangedNumber(FieldView.Number v, _, _, _, _) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.number) v
         |> Option.map (fun n -> field.Id, JFloat n)
-    | FormFieldKind.Checkbox(v, _) ->
+    | FormFieldKind.Checkbox(FieldView.Bool v, _) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) v
         |> Option.map (fun b -> field.Id, JBool b)
-    | FormFieldKind.Toggle(v, _) ->
+    | FormFieldKind.Toggle(FieldView.Bool v, _) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) v
         |> Option.map (fun b -> field.Id, JBool b)
-    | FormFieldKind.Choice(_, v, _)
-    | FormFieldKind.SegmentedChoice(_, v, _, _)
+    | FormFieldKind.Choice(_, FieldView.Text v, _)
+    | FormFieldKind.SegmentedChoice(_, FieldView.Text v, _, _)
     // Phase 1113 — the combobox harvests as a choice: same value slot, same
     // no-selection contract. Free text is still just the string in that slot.
-    | FormFieldKind.Combobox(_, _, _, v) ->
+    | FormFieldKind.Combobox(_, _, _, FieldView.Text v) ->
         // The choice value is `Binding<string>`; a null resolution (the
         // default-less auto-bind State resolving `Unchecked.defaultof<string>`)
         // is no-selection — contribute nothing, like an unselected `<select>`.
         resolveWith Fuaran.UI.Defaults.ControlValueDefaults.choice v
         |> Option.bind (fun s -> if isNull (box s) then None else Some(field.Id, JStr s))
-    | FormFieldKind.Range(v, _, _, _, _) ->
+    | FormFieldKind.Range(FieldView.Range v, _, _, _, _) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.range) v
         |> Option.map (fun (p: RangePair) -> field.Id, JFloat p.Min)
-    | FormFieldKind.DateTimeRange(v, _, _, _, _, _) ->
+    | FormFieldKind.DateTimeRange(FieldView.DateRange v, _, _, _, _, _) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.dateTimeRange) v
         |> Option.map (fun (p: DateTimeRangePair) -> field.Id, JStr p.From)
     // Phase 1130 — a rating harvests as the number it is (`JFloat`, so a
@@ -125,10 +125,10 @@ let private harvestField (sources: BindingResolver.BindingSources) (field: FormF
     // colour as the `#rrggbb` string the native input holds. Neither needs the
     // no-selection dance a `Choice` needs: both placeholders are real values a
     // reader can see on the screen, so contributing them is truthful.
-    | FormFieldKind.Rating(_, _, _, v) ->
+    | FormFieldKind.Rating(_, _, _, FieldView.Number v) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.rating) v
         |> Option.map (fun n -> field.Id, JFloat n)
-    | FormFieldKind.Color(_, v) ->
+    | FormFieldKind.Color(_, FieldView.Text v) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.color) v
         |> Option.map (fun s -> field.Id, JStr s)
     // Phase 1121 — a token field harvests as the ARRAY it is, in reader order:
@@ -139,7 +139,7 @@ let private harvestField (sources: BindingResolver.BindingSources) (field: FormF
     // array rather than dropping out — "no tokens" is a real answer to a
     // question the form asked, and `Required` is the slot that decides whether
     // it is an acceptable one.
-    | FormFieldKind.Tokens(_, _, _, v) ->
+    | FormFieldKind.Tokens(_, _, _, FieldView.Tokens v) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.tokens) v
         |> Option.map (fun (ts: string list) -> field.Id, JArr(ts |> List.map JStr))
 

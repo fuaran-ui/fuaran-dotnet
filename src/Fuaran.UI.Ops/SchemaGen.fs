@@ -915,7 +915,7 @@ let private defs: (string * J) list =
       "LocaleSource", union [ duCase "Ambient" [] []; duCase "Explicit" [ "tag" ] [ "tag", str ] ]
 
       // ── FormFieldKind / FilterKind (§3.3) ─────────────────────────────────
-      // `onChange` / `onToggle` are optional (Phase 426, the control write-back
+      // `onChange` is optional (Phase 426, the control write-back
       // default) — present as the `"<closure>"` const when an F#-authored
       // closure is set, omitted for a declarative (AI-authored) field — so each
       // stays in `props` but leaves every case's `required` list (the Phase 423
@@ -932,8 +932,8 @@ let private defs: (string * J) list =
                   "min", number
                   "max", number
                   "step", number ]
-            duCase "Checkbox" [] [ "onToggle", closure; "value", binding "bool" ]
-            duCase "Toggle" [] [ "onToggle", closure; "value", binding "bool" ]
+            duCase "Checkbox" [] [ "onChange", closure; "value", binding "bool" ]
+            duCase "Toggle" [] [ "onChange", closure; "value", binding "bool" ]
             duCase
                 "Choice"
                 [ "options" ]

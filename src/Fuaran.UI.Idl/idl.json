@@ -6806,13 +6806,21 @@
                 "$type": "optional"
               },
               "type": {
-                "$type": "union",
-                "args": [
-                  {
-                    "$type": "str"
-                  }
-                ],
-                "name": "Binding"
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)",
+                  "encode": "(encBinding id)",
+                  "fsharp": "Binding<JVal>"
+                },
+                "wire": {
+                  "$type": "union",
+                  "args": [
+                    {
+                      "$type": "str"
+                    }
+                  ],
+                  "name": "Binding"
+                }
               }
             },
             {
@@ -6823,8 +6831,8 @@
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "string -> Action<'Msg>",
-                  "placeholder": "(fun (_: string) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: string) => Action"
                 },
                 "wire": "<closure>"
@@ -6841,13 +6849,21 @@
                 "$type": "optional"
               },
               "type": {
-                "$type": "union",
-                "args": [
-                  {
-                    "$type": "float"
-                  }
-                ],
-                "name": "Binding"
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun (j: JVal) -> decBinding (fun __p -> dFloat __p |> Result.map encFloat) j |> Result.mapError DecodeError.describe)",
+                  "encode": "(encBinding id)",
+                  "fsharp": "Binding<JVal>"
+                },
+                "wire": {
+                  "$type": "union",
+                  "args": [
+                    {
+                      "$type": "float"
+                    }
+                  ],
+                  "name": "Binding"
+                }
               }
             },
             {
@@ -6858,8 +6874,8 @@
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "float -> Action<'Msg>",
-                  "placeholder": "(fun (_: float) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: number) => Action"
                 },
                 "wire": "<closure>"
@@ -6876,25 +6892,33 @@
                 "$type": "optional"
               },
               "type": {
-                "$type": "union",
-                "args": [
-                  {
-                    "$type": "bool"
-                  }
-                ],
-                "name": "Binding"
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun (j: JVal) -> decBinding (fun __p -> dBool __p |> Result.map JBool) j |> Result.mapError DecodeError.describe)",
+                  "encode": "(encBinding id)",
+                  "fsharp": "Binding<JVal>"
+                },
+                "wire": {
+                  "$type": "union",
+                  "args": [
+                    {
+                      "$type": "bool"
+                    }
+                  ],
+                  "name": "Binding"
+                }
               }
             },
             {
-              "name": "onToggle",
+              "name": "onChange",
               "optionality": {
                 "$type": "optional"
               },
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "bool -> Action<'Msg>",
-                  "placeholder": "(fun (_: bool) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: boolean) => Action"
                 },
                 "wire": "<closure>"
@@ -6911,25 +6935,33 @@
                 "$type": "optional"
               },
               "type": {
-                "$type": "union",
-                "args": [
-                  {
-                    "$type": "bool"
-                  }
-                ],
-                "name": "Binding"
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun (j: JVal) -> decBinding (fun __p -> dBool __p |> Result.map JBool) j |> Result.mapError DecodeError.describe)",
+                  "encode": "(encBinding id)",
+                  "fsharp": "Binding<JVal>"
+                },
+                "wire": {
+                  "$type": "union",
+                  "args": [
+                    {
+                      "$type": "bool"
+                    }
+                  ],
+                  "name": "Binding"
+                }
               }
             },
             {
-              "name": "onToggle",
+              "name": "onChange",
               "optionality": {
                 "$type": "optional"
               },
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "bool -> Action<'Msg>",
-                  "placeholder": "(fun (_: bool) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: boolean) => Action"
                 },
                 "wire": "<closure>"
@@ -6965,13 +6997,21 @@
                 "$type": "optional"
               },
               "type": {
-                "$type": "union",
-                "args": [
-                  {
-                    "$type": "str"
-                  }
-                ],
-                "name": "Binding"
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)",
+                  "encode": "(encBinding id)",
+                  "fsharp": "Binding<JVal>"
+                },
+                "wire": {
+                  "$type": "union",
+                  "args": [
+                    {
+                      "$type": "str"
+                    }
+                  ],
+                  "name": "Binding"
+                }
               }
             },
             {
@@ -6982,8 +7022,8 @@
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "string option -> Action<'Msg>",
-                  "placeholder": "(fun (_: string option) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: string | null) => Action"
                 },
                 "wire": "<closure>"
@@ -7000,13 +7040,21 @@
                 "$type": "optional"
               },
               "type": {
-                "$type": "union",
-                "args": [
-                  {
-                    "$type": "str"
-                  }
-                ],
-                "name": "Binding"
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)",
+                  "encode": "(encBinding id)",
+                  "fsharp": "Binding<JVal>"
+                },
+                "wire": {
+                  "$type": "union",
+                  "args": [
+                    {
+                      "$type": "str"
+                    }
+                  ],
+                  "name": "Binding"
+                }
               }
             },
             {
@@ -7017,8 +7065,8 @@
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "string -> Action<'Msg>",
-                  "placeholder": "(fun (_: string) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: string) => Action"
                 },
                 "wire": "<closure>"
@@ -7044,13 +7092,21 @@
                 "$type": "optional"
               },
               "type": {
-                "$type": "union",
-                "args": [
-                  {
-                    "$type": "float"
-                  }
-                ],
-                "name": "Binding"
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun (j: JVal) -> decBinding (fun __p -> dFloat __p |> Result.map encFloat) j |> Result.mapError DecodeError.describe)",
+                  "encode": "(encBinding id)",
+                  "fsharp": "Binding<JVal>"
+                },
+                "wire": {
+                  "$type": "union",
+                  "args": [
+                    {
+                      "$type": "float"
+                    }
+                  ],
+                  "name": "Binding"
+                }
               }
             },
             {
@@ -7061,8 +7117,8 @@
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "float -> Action<'Msg>",
-                  "placeholder": "(fun (_: float) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: number) => Action"
                 },
                 "wire": "<closure>"
@@ -7108,9 +7164,9 @@
               "type": {
                 "$type": "hosted",
                 "hostSurface": {
-                  "decode": "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decRangePair __other) |> Result.mapError DecodeError.describe)",
-                  "encode": "(fun (v: Binding<RangePair>) -> match v with | Binding.Static(Some p) -> encRangePair p | __other -> encBinding encRangePair __other)",
-                  "fsharp": "Binding<RangePair>"
+                  "decode": "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decRangePair j |> Result.map (fun p -> Binding.Static(Some(encRangePair p))) | __other -> decBinding (fun __p -> decRangePair __p |> Result.map encRangePair) __other) |> Result.mapError DecodeError.describe)",
+                  "encode": "(fun (v: Binding<JVal>) -> match v with | Binding.Static(Some p) -> p | __other -> encBinding id __other)",
+                  "fsharp": "Binding<JVal>"
                 },
                 "wire": "json"
               }
@@ -7123,8 +7179,8 @@
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "float * float -> Action<'Msg>",
-                  "placeholder": "(fun (_: float * float) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: [number, number]) => Action"
                 },
                 "wire": "<closure>"
@@ -7187,13 +7243,21 @@
                 "$type": "optional"
               },
               "type": {
-                "$type": "union",
-                "args": [
-                  {
-                    "$type": "str"
-                  }
-                ],
-                "name": "Binding"
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)",
+                  "encode": "(encBinding id)",
+                  "fsharp": "Binding<JVal>"
+                },
+                "wire": {
+                  "$type": "union",
+                  "args": [
+                    {
+                      "$type": "str"
+                    }
+                  ],
+                  "name": "Binding"
+                }
               }
             },
             {
@@ -7204,8 +7268,8 @@
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "string option -> Action<'Msg>",
-                  "placeholder": "(fun (_: string option) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: string | null) => Action"
                 },
                 "wire": "<closure>"
@@ -7232,13 +7296,21 @@
                 "$type": "optional"
               },
               "type": {
-                "$type": "union",
-                "args": [
-                  {
-                    "$type": "str"
-                  }
-                ],
-                "name": "Binding"
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)",
+                  "encode": "(encBinding id)",
+                  "fsharp": "Binding<JVal>"
+                },
+                "wire": {
+                  "$type": "union",
+                  "args": [
+                    {
+                      "$type": "str"
+                    }
+                  ],
+                  "name": "Binding"
+                }
               }
             },
             {
@@ -7249,8 +7321,8 @@
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "string option -> Action<'Msg>",
-                  "placeholder": "(fun (_: string option) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: string | null) => Action"
                 },
                 "wire": "<closure>"
@@ -7306,9 +7378,9 @@
               "type": {
                 "$type": "hosted",
                 "hostSurface": {
-                  "decode": "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateTimeRangePair __other) |> Result.mapError DecodeError.describe)",
-                  "encode": "(fun (v: Binding<DateTimeRangePair>) -> match v with | Binding.Static(Some p) -> encDateTimeRangePair p | __other -> encBinding encDateTimeRangePair __other)",
-                  "fsharp": "Binding<DateTimeRangePair>"
+                  "decode": "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some(encDateTimeRangePair p))) | __other -> decBinding (fun __p -> decDateTimeRangePair __p |> Result.map encDateTimeRangePair) __other) |> Result.mapError DecodeError.describe)",
+                  "encode": "(fun (v: Binding<JVal>) -> match v with | Binding.Static(Some p) -> p | __other -> encBinding id __other)",
+                  "fsharp": "Binding<JVal>"
                 },
                 "wire": "json"
               }
@@ -7321,8 +7393,8 @@
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "string * string -> Action<'Msg>",
-                  "placeholder": "(fun (_: string * string) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: [string, string]) => Action"
                 },
                 "wire": "<closure>"
@@ -7391,8 +7463,8 @@
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "string option -> Action<'Msg>",
-                  "placeholder": "(fun (_: string option) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: string | null) => Action"
                 },
                 "wire": "<closure>"
@@ -7423,13 +7495,21 @@
                 "$type": "optional"
               },
               "type": {
-                "$type": "union",
-                "args": [
-                  {
-                    "$type": "str"
-                  }
-                ],
-                "name": "Binding"
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)",
+                  "encode": "(encBinding id)",
+                  "fsharp": "Binding<JVal>"
+                },
+                "wire": {
+                  "$type": "union",
+                  "args": [
+                    {
+                      "$type": "str"
+                    }
+                  ],
+                  "name": "Binding"
+                }
               }
             }
           ],
@@ -7467,8 +7547,8 @@
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "float -> Action<'Msg>",
-                  "placeholder": "(fun (_: float) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: number) => Action"
                 },
                 "wire": "<closure>"
@@ -7480,13 +7560,21 @@
                 "$type": "optional"
               },
               "type": {
-                "$type": "union",
-                "args": [
-                  {
-                    "$type": "float"
-                  }
-                ],
-                "name": "Binding"
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun (j: JVal) -> decBinding (fun __p -> dFloat __p |> Result.map encFloat) j |> Result.mapError DecodeError.describe)",
+                  "encode": "(encBinding id)",
+                  "fsharp": "Binding<JVal>"
+                },
+                "wire": {
+                  "$type": "union",
+                  "args": [
+                    {
+                      "$type": "float"
+                    }
+                  ],
+                  "name": "Binding"
+                }
               }
             }
           ],
@@ -7502,8 +7590,8 @@
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "string -> Action<'Msg>",
-                  "placeholder": "(fun (_: string) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: string) => Action"
                 },
                 "wire": "<closure>"
@@ -7515,13 +7603,21 @@
                 "$type": "optional"
               },
               "type": {
-                "$type": "union",
-                "args": [
-                  {
-                    "$type": "str"
-                  }
-                ],
-                "name": "Binding"
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)",
+                  "encode": "(encBinding id)",
+                  "fsharp": "Binding<JVal>"
+                },
+                "wire": {
+                  "$type": "union",
+                  "args": [
+                    {
+                      "$type": "str"
+                    }
+                  ],
+                  "name": "Binding"
+                }
               }
             }
           ],
@@ -7550,8 +7646,8 @@
               "type": {
                 "$type": "fn",
                 "hostSurface": {
-                  "fsharp": "string list -> Action<'Msg>",
-                  "placeholder": "(fun (_: string list) -> Action.Chain [])",
+                  "fsharp": "JVal -> Action<'Msg>",
+                  "placeholder": "(fun (_: JVal) -> Action.Chain [])",
                   "typescript": "(v: string[]) => Action"
                 },
                 "wire": "<closure>"
@@ -7582,16 +7678,24 @@
                 "$type": "optional"
               },
               "type": {
-                "$type": "union",
-                "args": [
-                  {
-                    "$type": "list",
-                    "of": {
-                      "$type": "str"
+                "$type": "hosted",
+                "hostSurface": {
+                  "decode": "(fun (j: JVal) -> decBinding (fun __p -> (dList dStr) __p |> Result.map (fun __l -> JArr(List.map JStr __l))) j |> Result.mapError DecodeError.describe)",
+                  "encode": "(encBinding id)",
+                  "fsharp": "Binding<JVal>"
+                },
+                "wire": {
+                  "$type": "union",
+                  "args": [
+                    {
+                      "$type": "list",
+                      "of": {
+                        "$type": "str"
+                      }
                     }
-                  }
-                ],
-                "name": "Binding"
+                  ],
+                  "name": "Binding"
+                }
               }
             }
           ],

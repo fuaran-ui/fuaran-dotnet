@@ -25,6 +25,9 @@ open Fuaran.UI.Ops.Benchmarks
 //   - `append-rate [count]`  — (RUN — deferred) print the durable-append mean_ns
 //        + alloc_b per op shape over `count` appends (default 20000) to a fresh
 //        InMemory sink — the off-hot-path half of the op-stream write baseline.
+//   - `tree-diff [iterations]` — (RUN) print mean_us + alloc_b per
+//        `TreeOpDiff.diff` over a 2,001-node tree for each single-edit shape
+//        (identical / one field / one container field / one move) — Phase 2063.
 //   - (default / BDN args)   — (RUN — deferred) run the BenchmarkDotNet suite
 //        (both the apply and op-stream classes; filter with `--filter *OpStream*`).
 //        Capturing the numbers + refreshing the baseline to `captured` is the
@@ -156,6 +159,25 @@ let main argv =
         | other ->
             eprintfn "unknown capture target '%s' — expected apply | op | render" other
             2
+    | "tree-diff" :: rest ->
+        let iterations =
+            rest
+            |> List.tryHead
+            |> Option.bind (fun s ->
+                match Int32.TryParse s with
+                | true, n -> Some n
+                | _ -> None)
+            |> Option.defaultValue 50
+
+        printfn "treediff.nodes = %d" (TreeDiffRate.nodeCount ())
+
+        for s in TreeDiffRate.all do
+            let meanUs, allocB, ops = TreeDiffRate.measure s iterations
+            printfn "treediff.%s.mean_us = %.1f" s.Name meanUs
+            printfn "treediff.%s.alloc_b = %.0f" s.Name allocB
+            printfn "treediff.%s.ops = %d" s.Name ops
+
+        0
     | "append-rate" :: rest ->
         let count =
             rest

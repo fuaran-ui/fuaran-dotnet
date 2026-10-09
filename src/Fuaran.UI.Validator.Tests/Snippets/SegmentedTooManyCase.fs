@@ -16,7 +16,7 @@ let field: FormFieldKind<unit> =
                   { Value = "g"; Label = "G" }
                   { Value = "h"; Label = "H" } ]
         ),
-        Some(binding.state "tier" "a"),
+        Some(FieldValue.ofText (binding.state "tier" "a")),
         None,
         Orientation.Vertical
     )

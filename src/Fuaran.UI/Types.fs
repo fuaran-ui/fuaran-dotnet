@@ -1543,6 +1543,13 @@ and CompareOp = Generated.CompareOp
 // name in F# (the compiler generates a nested `Tags` class in every union for
 // its case-tag constants), so no F# host can spell it. The vocabulary charter's
 // reserved NAME is still `Tags`, which is what a reader searches for.
+//
+// Phase 2177 — every case carries its value as `value: Binding<JVal> option`
+// (the payload in its wire spelling) and ONE handler, `onChange:
+// (JVal -> Action<'Msg>) option`, so `Generated.FormFieldKind.value` /
+// `.onChange` reach every case and a walk over a field's binding or handler
+// matches none. Typed authoring and typed reading go through `FieldValue`,
+// `FieldChange` and `FieldView` below.
 and FormFieldKind<'Msg> = Generated.FormFieldKind<'Msg>
 
 /// Optional date/time-field bounds (Phase 288). `Min` / `Max` are ISO-8601
@@ -2563,6 +2570,318 @@ module Binding =
                 | None -> failwithf "Selection field '%s' is not present on the selected row" field
             | _ -> failwithf "Selection field '%s': the selected value is not a row (Map<string, obj>)" field
 #endif
+
+/// Phase 2177 — typed views over a `FormFieldKind` value slot.
+///
+/// Every `FormFieldKind` case carries its value as `Binding<JVal>` and its
+/// handler as `onChange: JVal -> Action`, one type each, so the generated
+/// `Generated.FormFieldKind.value` / `.onChange` projections reach every case and
+/// a walk that only reads the binding's SHAPE (its key, its source, whether it
+/// is writable) never matches the cases. The payload is the value as the wire
+/// carries it — a string for the text-shaped controls, a number for the numeric
+/// ones, a bool for Checkbox / Toggle, `{"max","min"}` for Range,
+/// `{"from","to"}` for DateTimeRange and a string array for Tokens — exactly the
+/// JVal the typed slot's encoder wrote before the reshape, so no wire byte moved.
+///
+/// The typed side lives HERE, once: an author's typed binding is erased with
+/// `ofText` / `ofNumber` / …, a reader that needs the typed value views the slot
+/// back with `text` / `number` / … (a `Static` payload of the wrong JSON type
+/// views as absent; the decoder refuses that shape on the wire, so only a
+/// hand-built tree can carry one), and a typed handler is adapted with the
+/// `FieldChange` module below.
+[<RequireQualifiedAccess>]
+module FieldValue =
+
+    /// Erase a typed binding to the wire-value binding a `FormFieldKind` case
+    /// carries. `enc` writes a payload as the wire does; `dec` reads one back,
+    /// for the binding positions that CONSUME a payload (a `Local`'s formatter
+    /// and commit callback), which see the erased value.
+    let rec erase<'T> (enc: 'T -> JVal) (dec: JVal -> 'T option) (b: Binding<'T>) : Binding<JVal> =
+        match b with
+        | Binding.Static v -> Binding.Static(Option.map enc v)
+        | Binding.Query(name, accessor, dependsOn) -> Binding.Query(name, accessor >> enc, dependsOn)
+        | Binding.Filter(name, dv) -> Binding.Filter(name, Option.map enc dv)
+        | Binding.Selection(nodeId, accessor, dv, field) ->
+            Binding.Selection(nodeId, accessor >> enc, Option.map enc dv, field)
+        | Binding.State(key, dv) -> Binding.State(key, Option.map enc dv)
+        | Binding.Now(accessor, grain) -> Binding.Now(accessor >> enc, grain)
+        | Binding.Computed fn -> Binding.Computed(fn >> enc)
+        | Binding.Local(flushOn, format, initialFrom, onCommit, parse, codec, commitTo) ->
+            Binding.Local(
+                flushOn,
+                (fun j ->
+                    match dec j with
+                    | Some v -> format v
+                    | None -> ""),
+                erase enc dec initialFrom,
+                onCommit
+                |> Option.map (fun oc ->
+                    fun j ->
+                        match dec j with
+                        | Some v -> oc v
+                        | None -> box j),
+                (fun s -> parse s |> Result.map enc),
+                codec,
+                commitTo
+            )
+        | Binding.Format(source, format, locale) -> Binding.Format(source, format, locale)
+        | Binding.I18n(key, args) -> Binding.I18n(key, args)
+        | Binding.Transform(source, pipeline, parameters) -> Binding.Transform(source, pipeline, parameters)
+        | Binding.Expr(expr, parameters) -> Binding.Expr(expr, parameters)
+        | Binding.Invoke(capabilityId, args) -> Binding.Invoke(capabilityId, args)
+
+    /// View a wire-value binding back at its typed payload — the inverse of
+    /// `erase`. A payload `dec` cannot read views as absent where the position
+    /// is optional, and as `fallback` where the binding must produce a value
+    /// (an accessor, a parse).
+    let rec view<'T> (dec: JVal -> 'T option) (enc: 'T -> JVal) (fallback: 'T) (b: Binding<JVal>) : Binding<'T> =
+        let read j = dec j |> Option.defaultValue fallback
+
+        match b with
+        | Binding.Static v -> Binding.Static(Option.bind dec v)
+        | Binding.Query(name, accessor, dependsOn) -> Binding.Query(name, accessor >> read, dependsOn)
+        | Binding.Filter(name, dv) -> Binding.Filter(name, Option.bind dec dv)
+        | Binding.Selection(nodeId, accessor, dv, field) ->
+            Binding.Selection(nodeId, accessor >> read, Option.bind dec dv, field)
+        | Binding.State(key, dv) -> Binding.State(key, Option.bind dec dv)
+        | Binding.Now(accessor, grain) -> Binding.Now(accessor >> read, grain)
+        | Binding.Computed fn -> Binding.Computed(fn >> read)
+        | Binding.Local(flushOn, format, initialFrom, onCommit, parse, codec, commitTo) ->
+            Binding.Local(
+                flushOn,
+                enc >> format,
+                view dec enc fallback initialFrom,
+                onCommit |> Option.map (fun oc -> enc >> oc),
+                (fun s ->
+                    parse s
+                    |> Result.bind (fun j ->
+                        match dec j with
+                        | Some v -> Ok v
+                        | None -> Error "the parsed value is not of this control's type")),
+                codec,
+                commitTo
+            )
+        | Binding.Format(source, format, locale) -> Binding.Format(source, format, locale)
+        | Binding.I18n(key, args) -> Binding.I18n(key, args)
+        | Binding.Transform(source, pipeline, parameters) -> Binding.Transform(source, pipeline, parameters)
+        | Binding.Expr(expr, parameters) -> Binding.Expr(expr, parameters)
+        | Binding.Invoke(capabilityId, args) -> Binding.Invoke(capabilityId, args)
+
+    // ── The six payload codecs — each the wire's own spelling ─────────────────
+
+    /// A string payload (Text, TextArea, Choice, SegmentedChoice, DateTime,
+    /// Combobox, Color).
+    let encodeText (s: string) : JVal = JStr s
+
+    let decodeText (j: JVal) : string option =
+        match j with
+        | JStr s -> Some s
+        | _ -> None
+
+    /// A number payload (Number, RangedNumber, Rating). A non-finite value rides
+    /// as its quoted sentinel, as every float slot spells it (WIRE_FORMAT §7).
+    let encodeNumber (f: float) : JVal =
+        if System.Double.IsNaN f then
+            JStr "NaN"
+        elif System.Double.IsPositiveInfinity f then
+            JStr "Infinity"
+        elif System.Double.IsNegativeInfinity f then
+            JStr "-Infinity"
+        else
+            JFloat f
+
+    let decodeNumber (j: JVal) : float option =
+        match j with
+        | JFloat f -> Some f
+        | JInt i -> Some(float i)
+        | JStr "NaN" -> Some System.Double.NaN
+        | JStr "Infinity" -> Some System.Double.PositiveInfinity
+        | JStr "-Infinity" -> Some System.Double.NegativeInfinity
+        | _ -> None
+
+    /// A bool payload (Checkbox, Toggle).
+    let encodeBool (b: bool) : JVal = JBool b
+
+    let decodeBool (j: JVal) : bool option =
+        match j with
+        | JBool b -> Some b
+        | _ -> None
+
+    /// A numeric pair (Range) — the `{"max","min"}` object.
+    let encodeRange (p: RangePair) : JVal =
+        JObj [ "max", encodeNumber p.Max; "min", encodeNumber p.Min ]
+
+    let decodeRange (j: JVal) : RangePair option =
+        match j with
+        | JObj fields ->
+            let num k =
+                fields
+                |> List.tryFind (fun (n, _) -> n = k)
+                |> Option.bind (snd >> decodeNumber)
+
+            match num "max", num "min" with
+            | Some mx, Some mn -> Some { Max = mx; Min = mn }
+            | _ -> None
+        | _ -> None
+
+    /// A date pair (DateTimeRange) — the `{"from","to"}` object.
+    let encodeDateRange (p: DateTimeRangePair) : JVal =
+        JObj [ "from", JStr p.From; "to", JStr p.To ]
+
+    let decodeDateRange (j: JVal) : DateTimeRangePair option =
+        match j with
+        | JObj fields ->
+            let str k =
+                fields |> List.tryFind (fun (n, _) -> n = k) |> Option.bind (snd >> decodeText)
+
+            match str "from", str "to" with
+            | Some f, Some t -> Some { From = f; To = t }
+            | _ -> None
+        | _ -> None
+
+    /// A token list (Tokens) — a string array.
+    let encodeTokens (ts: string list) : JVal = JArr(List.map JStr ts)
+
+    let decodeTokens (j: JVal) : string list option =
+        match j with
+        | JArr items ->
+            let strs = items |> List.choose decodeText
+
+            if List.length strs = List.length items then
+                Some strs
+            else
+                None
+        | _ -> None
+
+    // ── Erasing a typed binding (authoring) ───────────────────────────────────
+
+    let ofText (b: Binding<string>) : Binding<JVal> = erase encodeText decodeText b
+    let ofNumber (b: Binding<float>) : Binding<JVal> = erase encodeNumber decodeNumber b
+    let ofBool (b: Binding<bool>) : Binding<JVal> = erase encodeBool decodeBool b
+    let ofRange (b: Binding<RangePair>) : Binding<JVal> = erase encodeRange decodeRange b
+
+    let ofDateRange (b: Binding<DateTimeRangePair>) : Binding<JVal> = erase encodeDateRange decodeDateRange b
+
+    let ofTokens (b: Binding<string list>) : Binding<JVal> = erase encodeTokens decodeTokens b
+
+    // ── Viewing a slot at its typed payload (reading) ─────────────────────────
+
+    let text (b: Binding<JVal>) : Binding<string> = view decodeText encodeText "" b
+    let number (b: Binding<JVal>) : Binding<float> = view decodeNumber encodeNumber 0.0 b
+    let bool (b: Binding<JVal>) : Binding<bool> = view decodeBool encodeBool false b
+
+    let range (b: Binding<JVal>) : Binding<RangePair> =
+        view decodeRange encodeRange { Min = 0.0; Max = 0.0 } b
+
+    let dateRange (b: Binding<JVal>) : Binding<DateTimeRangePair> =
+        view decodeDateRange encodeDateRange { From = ""; To = "" } b
+
+    let tokens (b: Binding<JVal>) : Binding<string list> = view decodeTokens encodeTokens [] b
+
+/// Phase 2177 — adapting a typed change handler to the one `onChange` shape
+/// every `FormFieldKind` case carries (`JVal -> Action`), and back. The argument
+/// is the new value in its wire spelling (`FieldValue`'s codecs). A cleared
+/// selection — Choice, SegmentedChoice, Combobox, DateTime — is the empty array
+/// `noSelection`: the wire has no null, and "zero values chosen" is what the
+/// empty list says.
+[<RequireQualifiedAccess>]
+module FieldChange =
+
+    /// The argument a choice-shaped handler receives when the selection clears.
+    let noSelection: JVal = JArr []
+
+    let private readOr (dec: JVal -> 'T option) (fallback: 'T) (j: JVal) : 'T = dec j |> Option.defaultValue fallback
+
+    // ── Typed handler → the carried shape (authoring) ─────────────────────────
+
+    let ofText (h: string -> Action<'Msg>) : JVal -> Action<'Msg> =
+        fun j -> h (readOr FieldValue.decodeText "" j)
+
+    let ofNumber (h: float -> Action<'Msg>) : JVal -> Action<'Msg> =
+        fun j -> h (readOr FieldValue.decodeNumber 0.0 j)
+
+    let ofBool (h: bool -> Action<'Msg>) : JVal -> Action<'Msg> =
+        fun j -> h (readOr FieldValue.decodeBool false j)
+
+    /// A choice-shaped handler: a string selects, `noSelection` clears.
+    let ofChoice (h: string option -> Action<'Msg>) : JVal -> Action<'Msg> = fun j -> h (FieldValue.decodeText j)
+
+    let ofRange (h: float * float -> Action<'Msg>) : JVal -> Action<'Msg> =
+        fun j ->
+            let p = readOr FieldValue.decodeRange { Min = 0.0; Max = 0.0 } j
+            h (p.Min, p.Max)
+
+    let ofDateRange (h: string * string -> Action<'Msg>) : JVal -> Action<'Msg> =
+        fun j ->
+            let p = readOr FieldValue.decodeDateRange { From = ""; To = "" } j
+            h (p.From, p.To)
+
+    let ofTokens (h: string list -> Action<'Msg>) : JVal -> Action<'Msg> =
+        fun j -> h (readOr FieldValue.decodeTokens [] j)
+
+    // ── The carried shape → a typed call (a renderer invoking the handler) ────
+
+    let text (h: JVal -> Action<'Msg>) : string -> Action<'Msg> = fun v -> h (FieldValue.encodeText v)
+
+    let number (h: JVal -> Action<'Msg>) : float -> Action<'Msg> = fun v -> h (FieldValue.encodeNumber v)
+
+    let bool (h: JVal -> Action<'Msg>) : bool -> Action<'Msg> = fun v -> h (FieldValue.encodeBool v)
+
+    let choice (h: JVal -> Action<'Msg>) : string option -> Action<'Msg> =
+        fun v ->
+            match v with
+            | Some s -> h (JStr s)
+            | None -> h noSelection
+
+    let range (h: JVal -> Action<'Msg>) : float * float -> Action<'Msg> =
+        fun (mn, mx) -> h (FieldValue.encodeRange { Min = mn; Max = mx })
+
+    let dateRange (h: JVal -> Action<'Msg>) : string * string -> Action<'Msg> =
+        fun (f, t) -> h (FieldValue.encodeDateRange { From = f; To = t })
+
+    let tokens (h: JVal -> Action<'Msg>) : string list -> Action<'Msg> = fun v -> h (FieldValue.encodeTokens v)
+
+/// Phase 2177 — total active patterns that view a `FormFieldKind` slot at its
+/// typed payload inside a pattern, for the code that genuinely works per
+/// control (a renderer drawing a number input, a harvest writing a bool):
+///
+///     | FormFieldKind.Checkbox(FieldView.Bool value, FieldView.OnBool onChange) -> …
+///
+/// binds `value: Binding<bool> option` and `onChange: (bool -> Action) option`.
+/// Each is a single-case total pattern, so wrapping a slot never makes a match
+/// partial. A walk that only reads the binding's shape or the handler's
+/// presence uses `Generated.FormFieldKind.value` / `.onChange` instead and
+/// matches no case at all.
+[<RequireQualifiedAccess>]
+module FieldView =
+
+    let (|Text|) (b: Binding<JVal> option) : Binding<string> option = Option.map FieldValue.text b
+    let (|Number|) (b: Binding<JVal> option) : Binding<float> option = Option.map FieldValue.number b
+    let (|Bool|) (b: Binding<JVal> option) : Binding<bool> option = Option.map FieldValue.bool b
+    let (|Range|) (b: Binding<JVal> option) : Binding<RangePair> option = Option.map FieldValue.range b
+
+    let (|DateRange|) (b: Binding<JVal> option) : Binding<DateTimeRangePair> option = Option.map FieldValue.dateRange b
+
+    let (|Tokens|) (b: Binding<JVal> option) : Binding<string list> option = Option.map FieldValue.tokens b
+
+    let (|OnText|) (h: (JVal -> Action<'Msg>) option) : (string -> Action<'Msg>) option = Option.map FieldChange.text h
+
+    let (|OnNumber|) (h: (JVal -> Action<'Msg>) option) : (float -> Action<'Msg>) option =
+        Option.map FieldChange.number h
+
+    let (|OnBool|) (h: (JVal -> Action<'Msg>) option) : (bool -> Action<'Msg>) option = Option.map FieldChange.bool h
+
+    let (|OnChoice|) (h: (JVal -> Action<'Msg>) option) : (string option -> Action<'Msg>) option =
+        Option.map FieldChange.choice h
+
+    let (|OnRange|) (h: (JVal -> Action<'Msg>) option) : (float * float -> Action<'Msg>) option =
+        Option.map FieldChange.range h
+
+    let (|OnDateRange|) (h: (JVal -> Action<'Msg>) option) : (string * string -> Action<'Msg>) option =
+        Option.map FieldChange.dateRange h
+
+    let (|OnTokens|) (h: (JVal -> Action<'Msg>) option) : (string list -> Action<'Msg>) option =
+        Option.map FieldChange.tokens h
 
 /// The behavioural category a kind belongs to. Phase 692 unnested these from
 /// `NodeKind` — they were a host-side envelope over a wire that has never had

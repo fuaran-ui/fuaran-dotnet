@@ -400,7 +400,7 @@ let formField<'Msg> : FormField<'Msg> =
     // State/Filter-bound `value` gets the typed string written back.
     { Id = ""
       Label = emptyLiteral
-      Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Option.None)
+      Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.Static(Some ""))), Option.None)
       Required = false
       Help = Option.None
       // Phase 864 — an unconstrained field. `required` is the pre-existing
@@ -428,7 +428,7 @@ let dateFieldConstraints: DateFieldConstraints =
 let filter<'Msg> : FilterSpec<'Msg> =
     { Name = ""
       Label = emptyLiteral
-      Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Option.None) }
+      Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.Static(Some ""))), Option.None) }
 
 let fileUpload<'Msg> : FileUploadSpec<'Msg> =
     { Label = emptyLiteral

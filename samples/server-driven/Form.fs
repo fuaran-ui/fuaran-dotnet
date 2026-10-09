@@ -66,14 +66,16 @@ let private nameField: FormField<obj> =
         Kind =
             FormFieldKind.Text(
                 Some(
-                    binding.local
-                        (Binding.Static(Some ""))
-                        LocalFlushTrigger.OnCommitAction
-                        (fun n -> dispatch (SetName n))
-                        None
-                        (fun s -> Ok s)
+                    FieldValue.ofText (
+                        binding.local
+                            (Binding.Static(Some ""))
+                            LocalFlushTrigger.OnCommitAction
+                            (fun n -> dispatch (SetName n))
+                            None
+                            (fun s -> Ok s)
+                    )
                 ),
-                Some(fun _ -> Action.Chain [])
+                Some(FieldChange.ofText (fun _ -> Action.Chain []))
             ) }
 
 // An age field (0..120), client-buffered + range-checked server-side (Phase 156
@@ -85,17 +87,19 @@ let private ageField: FormField<obj> =
         Kind =
             FormFieldKind.RangedNumber(
                 Some(
-                    binding.local
-                        (Binding.Static(Some 30.0))
-                        LocalFlushTrigger.OnSubmit
-                        (fun a -> dispatch (SetAge a))
-                        None
-                        (fun s ->
-                            match System.Double.TryParse s with
-                            | true, v -> Ok v
-                            | _ -> Error "Enter a number")
+                    FieldValue.ofNumber (
+                        binding.local
+                            (Binding.Static(Some 30.0))
+                            LocalFlushTrigger.OnSubmit
+                            (fun a -> dispatch (SetAge a))
+                            None
+                            (fun s ->
+                                match System.Double.TryParse s with
+                                | true, v -> Ok v
+                                | _ -> Error "Enter a number")
+                    )
                 ),
-                Some(fun _ -> Action.Chain []),
+                Some(FieldChange.ofNumber (fun _ -> Action.Chain [])),
                 Some 0.0,
                 Some 120.0,
                 None

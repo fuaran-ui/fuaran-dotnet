@@ -150,8 +150,8 @@ let nodeMapTests =
                       Label = TextSource.Literal "Name"
                       Kind =
                           FormFieldKind.Text(
-                              Some(Binding.Static(Some "")),
-                              Some(fun (s: string) -> Action.Dispatch s.Length)
+                              Some(FieldValue.ofText (Binding.Static(Some ""))),
+                              Some(FieldChange.ofText (fun (s: string) -> Action.Dispatch s.Length))
                           ) }
 
               let node: Node<int> =
@@ -169,7 +169,7 @@ let nodeMapTests =
                   match spec.Fields with
                   | [ f ] ->
                       match f.Kind with
-                      | FormFieldKind.Text(_, Some onChange) ->
+                      | FormFieldKind.Text(_, FieldView.OnText(Some onChange)) ->
                           match onChange "abc" with
                           | Action.Dispatch s -> Expect.equal s "3" "onChange result is f-applied"
                           | other -> failtestf "expected Dispatch from onChange, got %A" other

@@ -21,6 +21,7 @@
     <Compile Include="HitRate.fs" />
     <Compile Include="OpStreamBenchmarks.fs" />
     <Compile Include="AppendRate.fs" />
+    <Compile Include="TreeDiffRate.fs" />
     <Compile Include="Capture.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
@@ -37,6 +38,8 @@
          HashChain.computeHash (Abstractions) + InMemorySink.Append (InMemory). -->
     <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
     <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.InMemory\Fuaran.UI.OpStream.InMemory.fsproj" />
+    <!-- Phase 2063: the tree diff under measurement (`TreeOpDiff.diff`, `tree-diff`). -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
