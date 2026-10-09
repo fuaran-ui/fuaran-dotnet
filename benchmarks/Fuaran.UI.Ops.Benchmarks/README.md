@@ -100,7 +100,13 @@ keyed by metric id:
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- hit-rate
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- render-alloc 20000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- append-rate 20000
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- tree-diff 20
 ```
+
+`tree-diff` (Phase 2063) is not a baseline metric: it prints the cost of `TreeOpDiff.diff`
+over a 2,001-node tree for four single-edit shapes (none, one field, one container field,
+one cross-parent move), with the op count of each diff as a sanity line, so a change to
+the diff can quote before-and-after figures from one command.
 
 The pending templates are regenerated with `-- emit-template` / `-- emit-op-template` /
 `-- emit-render-template` after a catalogue change.

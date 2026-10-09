@@ -1,4 +1,4 @@
-namespace Fuaran.UI.OpStream.Replay
+namespace Fuaran.UI.OpStream.Tests
 
 open Fuaran.Core
 open Fuaran.UI.Types
@@ -7,85 +7,23 @@ open Fuaran.UI.Ops.Introspect
 open Fuaran.UI.OpStream.Abstractions
 
 // ============================================================================
-//  TreeOpDiff — the **TreeOp-emitting** tree diff (Phase 152, Track A).
+//  TreeOpDiffPre2063 — the TEST ORACLE for Phase 2063's byte-equality law.
 //
-//  The inverse of `Apply.apply`: given two `Node<'Msg>` snapshots, produce a
-//  `TreeOp<'Msg> list` that, folded through the apply engine against the old
-//  tree, reconstructs the new one. This is the genuinely-missing primitive
-//  the server-driven tier (Phase 152) and the closed-loop orchestrator need —
-//  distinct from `TreeDiff` (this file's neighbour), which emits *descriptive*
-//  `NodeChange` records for an inspector, not *applyable* ops.
+//  A verbatim copy of `Fuaran.UI.OpStream.Replay.TreeOpDiff` as it stood
+//  before Phase 2063 made it encode each node once: every own-content question
+//  answered by whole-node canonical-JSON encodings (twice per candidate field,
+//  twice more per node for kind and state drift) and the move pre-pass's cycle
+//  check a subtree search per moved id. It reads only the public surface, so
+//  it needs no access to the production module's internals.
 //
-//  **Round-trip contract (the acceptance test):**
-//    fold Apply.apply a (diff a b)  ≡  b   (canonical-JSON equality)
-//  Closure-safe equality is canonical-JSON equality (closures render as the
-//  `"<closure>"` sentinel), the same surface `TreeDiff` / `CanonicalJson`
-//  already trust — NOT F# structural equality (which a closure-bearing kind
-//  doesn't support).
-//
-//  **Coarse-but-correct floor (this file).** Per Phase 152 Track A, ship the
-//  trivially-correct floor first; per-kind *field-level* minimisation
-//  (`UpdateProp` / `ReplaceBinding` instead of a wholesale `EditNode`) is the
-//  follow-on optimisation over this floor. The floor:
-//    - same container kind + identical own-content (kind fields + state +
-//      style, children excluded) → recurse into children only (minimal
-//      structural ops: remove / insert / reorder + recurse common).
-//    - otherwise (leaf content change, kind-discriminator change, or a
-//      container whose own content changed) → wholesale node replace:
-//      `EditNode(id, b.Kind)` (brings b's kind incl. its whole subtree) +
-//      `UpdateState(id, b.State)` + `UpdateStyle(id, b.Style)` (EditNode
-//      preserves Id/State/Style, so state/style are set explicitly). Coarse
-//      (may resend an unchanged subtree / re-set unchanged state·style) but
-//      unconditionally correct. The refinement trims to minimal patches.
-//
-//  **Closure-blindness (documented limitation, inherited).** A changed
-//  `Action` / `Binding` closure that renders identically emits **no** op —
-//  closures are the `"<closure>"` sentinel in the canonical shell, so two
-//  nodes differing only in closure identity compare equal. Correct for the
-//  DOM (identical markup); the orchestrator consumer that cares about closure
-//  identity must know this boundary.
-//
-//  **Node-trait vocabulary gap (documented limitation).** The canonical wire
-//  surface is id + kind + state + style + **accessibility** + **tooltip**, but
-//  the `TreeOp` vocabulary has **no op for either trait** (only
-//  EditNode/UpdateState/UpdateStyle + structural ops, and `EditNode` replaces
-//  `Kind` alone). So a change to either is **not expressible** and does not
-//  round-trip: an accessibility-only edit diffs to NO ops at all, and a
-//  tooltip-only edit falls to the `EditNode` floor, which reinstates the kind
-//  and leaves the trait as it was. This is acceptable for the server-driven use
-//  case — both traits are author-structural and stable across a re-render (they
-//  are not `Model`-driven) — but it is a real gap, and `ReplaceRoot` is the only
-//  op that closes it, wholesale.
-//
-//  **What is NOT acceptable is a caller that cannot tell.** Phase 1526: the DAG
-//  merge takes this diff as the replay delta of a merge node that commits, by
-//  hash, to the merged tree — and `TreeMerge` merges both traits as facets of
-//  their own, so a merge that took the other branch's accessibility minted a
-//  node whose delta reached a different tree, silently, at every layer. The mint
-//  now REPLAYS its own delta and refuses the node
-//  (`Fuaran.UI.OpStream.Dag.Merge.DagMerge.buildMergeRecord`), and `DagReplay`
-//  reports the same mismatch on a node an older engine already wrote. Both live
-//  with the caller, not here: this function's contract is to be honest about
-//  what it can express, and it is a consumer's business whether a gap in that
-//  expressiveness is fatal to what the consumer is doing. Closing the gap
-//  outright means new `TreeOp` cases, which is a wire event under WIRE_FORMAT
-//  §11 (encoder, decoder, corpus and every conformant host in one change-set).
-//
-//  (`Motion` / `ExtraAttributes` are omitted from the canonical surface
-//  entirely, so they are invisible to the round-trip — no gap there.)
-//
-//  **Precondition.** `diff a b` assumes `a.Id = b.Id` (a re-render of the same
-//  tree — no `TreeOp` changes a node's Id). Differing root ids cannot be
-//  expressed; the function returns a best-effort wholesale replace at a's id
-//  and the precondition is the caller's to honour.
-//
-//  FGP 2: FSharp.Core + Fuaran.UI + Fuaran.UI.Ops + OpStream.Abstractions
-//  only (CanonicalJson for the closure-safe shell) — Fable-clean, no renderer
-//  dep. Built adjacent to `TreeDiff` to share its indexing + shell-encode
-//  posture (Phase 152 Key files).
+//  Phase 2063 changed what the diff COSTS, never what it emits;
+//  `TreeOpDiffEquivalenceTests` runs both over the wire corpus and asserts the
+//  encoded op lists are byte-identical. This copy is therefore pinned to the
+//  pre-2063 BEHAVIOUR: a later phase that deliberately changes what the diff
+//  emits changes this oracle in the same commit, and says so.
 // ============================================================================
 
-module TreeOpDiff =
+module TreeOpDiffPre2063 =
 
     // Stage 4b of the 692-694 swap: `Node.State` / `Node.Style` are OPTIONS
     // (`None` ≡ the old empty-state / default-style records — the canonical
@@ -102,6 +40,24 @@ module TreeOpDiff =
     let private childrenOf<'Msg> (node: Node<'Msg>) : Node<'Msg> list =
         getChildren node.Kind |> Option.defaultValue []
 
+    let private childlessKind<'Msg> (node: Node<'Msg>) : NodeKind<'Msg> =
+        match withChildren node.Kind [] with
+        | Some k -> k
+        | None -> node.Kind
+
+    /// Index a tree as `rawNodeId → parent-raw-id` (`None` for the root) — the
+    /// global view cross-parent move detection needs (the per-parent
+    /// recursive diff can't see a node reappear under a different parent).
+    let private indexParents<'Msg> (root: Node<'Msg>) : Map<string, string option> =
+        let rec walk (acc: Map<string, string option>) (parent: string option) (node: Node<'Msg>) =
+            let acc = Map.add node.Id parent acc
+
+            match getChildren node.Kind with
+            | None -> acc
+            | Some kids -> kids |> List.fold (fun a c -> walk a (Some node.Id) c) acc
+
+        walk Map.empty None root
+
     /// Safe cross-parent moves: ids present in **both** trees whose parent
     /// changed, where the new parent exists in `a` and the move introduces no
     /// cycle (`id` is not an ancestor of its new parent in `a`). Returns
@@ -110,71 +66,54 @@ module TreeOpDiff =
     /// identity-preserving). Emitting `MoveNode` for the safe set preserves the
     /// moved node's DOM identity (focus / scroll / element state) — the
     /// server-driven tier's "unchanged nodes keep identity" goal.
-    ///
-    /// Both trees are indexed once through `NodeIndex` (the index `TreeDiff`
-    /// builds), and the cycle check climbs `a`'s parent chain from the new
-    /// parent — O(depth) per moved id, where a subtree search per id was
-    /// quadratic on a wide tree (Phase 2063).
     let private detectMoves<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : (NodeId * NodeId) list =
-        let idxA = NodeIndex.build a
-        let idxB = NodeIndex.build b
+        let idxA = indexParents a
+        let idxB = indexParents b
 
-        [ for KeyValue(id, locB) in idxB do
-              match Map.tryFind id idxA, locB.Parent with
-              | Some locA, Some(NodeId newParentRaw as newParent) when
-                  locA.Parent <> locB.Parent
+        [ for KeyValue(id, parentB) in idxB do
+              match Map.tryFind id idxA, parentB with
+              | Some parentA, Some newParentRaw when
+                  parentA <> parentB
                   && Map.containsKey newParentRaw idxA
-                  && not (NodeIndex.isAncestorOrSelf idxA id newParentRaw)
+                  && not (isAncestorOf (NodeId id) (NodeId newParentRaw) a)
                   ->
-                  yield (NodeId id, newParent)
+                  yield (NodeId id, NodeId newParentRaw)
               | _ -> () ]
-
-    // ── Own-content comparison (Phase 2063) ─────────────────────────────────
-    //
-    // Every comparison below is canonical-JSON equality over CHILDLESS shells
-    // (`NodeIndex.encodeShell`), and `diffNode` encodes each node's shell ONCE,
-    // passing `b`'s shell down to the predicates that compare against it. Two
-    // facts make that equivalent to the whole-node encodings it replaced:
-    //   • a node's canonical JSON is an object whose members are its fields, so
-    //     swapping one non-children field changes the whole-node bytes iff it
-    //     changes the childless bytes — the children member is common to both;
-    //   • equal canonical JSON parses to equal members, so two nodes with equal
-    //     shells have equal kind own-fields, state, style, accessibility and
-    //     tooltip — neither predicate below can then be `true`.
 
     /// `true` when the node's **kind own-fields** changed (the kind
     /// discriminator, or a scalar/binding field of the spec — children,
     /// state, style and accessibility excluded). Closure-safe: compares the
     /// childless kinds via canonical JSON with state·style·accessibility
-    /// normalised to `b`'s, so only kind drift (or a tooltip, which no op can
-    /// set) moves the needle. When this is `false`, the kind shape is identical
-    /// and a wholesale `EditNode` (which would re-send the whole subtree) is
-    /// unnecessary. `shellB` is `NodeIndex.encodeShell b`.
-    let private kindChanged<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) (shellB: string) : bool =
-        NodeIndex.encodeShell
+    /// normalised to `b`'s, so only kind drift moves the needle. When this is
+    /// `false`, the kind shape is identical and a wholesale `EditNode` (which
+    /// would re-send the whole subtree) is unnecessary.
+    let private kindChanged<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : bool =
+        let aNorm =
             { a with
+                Kind = childlessKind a
                 State = b.State
                 Style = b.Style
                 Accessibility = b.Accessibility }
-        <> shellB
 
-    /// `true` when the node's `State` block changed. Substituting `b`'s
-    /// childless kind, style and accessibility into `a` leaves state, id and
-    /// tooltip as the only members that can differ from `b`'s shell; both call
-    /// sites in `diffNode` have already established the tooltip is equal — one
-    /// because `kindChanged` is `false`, the other because the field-level
-    /// patch passed `tryFieldLevel`'s verify, which is `kindChanged` over the
-    /// patched node and no field op sets a tooltip — and `diffNode` is only
-    /// reached for equal ids. So the comparison isolates `State`, whether or
-    /// not the kind changed. Closure-safe via canonical JSON; `shellB` is
-    /// `NodeIndex.encodeShell b`.
-    let private stateChanged<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) (shellB: string) : bool =
-        NodeIndex.encodeShell
+        let bNorm = { b with Kind = childlessKind b }
+        CanonicalJson.encodeNode aNorm <> CanonicalJson.encodeNode bNorm
+
+    /// `true` when the node's `State` block changed. Only meaningful (and only
+    /// called) when `kindChanged` is `false` — then both nodes' childless
+    /// kinds encode identically, so substituting `b`'s childless kind into
+    /// both isolates the `State` field (style·accessibility normalised to
+    /// `b`'s). Closure-safe via canonical JSON.
+    let private stateChanged<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : bool =
+        let k = childlessKind b
+
+        let aNorm =
             { a with
-                Kind = b.Kind
+                Kind = k
                 Style = b.Style
                 Accessibility = b.Accessibility }
-        <> shellB
+
+        let bNorm = { b with Kind = k }
+        CanonicalJson.encodeNode aNorm <> CanonicalJson.encodeNode bNorm
 
     /// Launder `box` to a non-null `obj` (F# 10 nullness: `box` yields
     /// `objnull`; `UpdateProp`'s `PropValue.Native` wants non-null).
@@ -342,15 +281,18 @@ module TreeOpDiff =
     /// Best-effort per-kind **scalar/text field** extraction → granular
     /// `UpdateProp`s. For the covered kinds, emit `UpdateProp(id, field, bValue)`
     /// for each scalar field whose value differs (detected closure-safely by
-    /// canonical-isolation: setting a's field to b's value changes a's childless
-    /// shell, `shellA`, iff they differed — or, for a closure-free field with an
-    /// injective encoding, by comparing the two values directly), and
-    /// `ReplaceBinding(id, slot, binding)` for a covered binding slot that
-    /// differs. Uncovered fields and kinds yield nothing (and so fall through to
-    /// the `EditNode` floor via the verify in `tryFieldLevel`). The field names
-    /// match `Apply`'s `UpdateProp` dispatch exactly; `tryUnbox`'s fast path
-    /// resolves a `box`ed typed value directly.
-    let private extractFieldUpdates<'Msg> (a: Node<'Msg>) (shellA: string) (b: Node<'Msg>) : TreeOp<'Msg> list =
+    /// canonical-isolation: setting a's field to b's value changes a's canonical
+    /// iff they differed). Binding-typed slots + uncovered kinds yield nothing
+    /// (and so fall through to the `EditNode` floor via the verify in
+    /// `tryFieldLevel`). The field names match `Apply`'s `UpdateProp` dispatch
+    /// exactly; `tryUnbox`'s fast path resolves a `box`ed typed value directly.
+    let private extractFieldUpdates<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : TreeOp<'Msg> list =
+        // Phase 692 — the category wrappers are gone; the kinds are flat, so the
+        // rebuild helpers are the identity and are kept only to avoid touching
+        // the fifty swap sites below.
+        let disp (d: NodeKind<'Msg>) = d
+        let lay (l: NodeKind<'Msg>) = l
+
         // Emit UpdateProp(field, b's `PropValue`) only when swapping a's field to
         // b's value actually changes a's canonical shell. The caller builds the
         // `PropValue` via the `pv*` encoders above — `Wire` for the fields that are
@@ -358,21 +300,7 @@ module TreeOpDiff =
         // structured / closure / None residue. `tryFieldLevel`'s verify guarantees
         // the round-trip regardless of the population chosen.
         let prop (field: string) (pv: PropValue) (aSwapped: Node<'Msg>) : TreeOp<'Msg> list =
-            if NodeIndex.encodeShell aSwapped <> shellA then
-                [ TreeOp.UpdateProp(NodeId a.Id, field, pv) ]
-            else
-                []
-
-        // Phase 2063 — the structural flavour, for a field whose value carries no
-        // closure and whose canonical encoding is injective: an `int`, a `bool`,
-        // or a payload-free variant DU (each is emitted by the generated encoder,
-        // omit-when-default included, so distinct values never share bytes).
-        // There `<>` on the values IS the shell comparison, without an encode.
-        // Strings and floats are deliberately NOT here: the canonical render
-        // aliases a lone surrogate with U+FFFD and `-0` with `0`, so structural
-        // inequality could emit an op the shell comparison would not.
-        let scalar (field: string) (pv: PropValue) (differs: bool) : TreeOp<'Msg> list =
-            if differs then
+            if CanonicalJson.encodeNode a <> CanonicalJson.encodeNode aSwapped then
                 [ TreeOp.UpdateProp(NodeId a.Id, field, pv) ]
             else
                 []
@@ -389,33 +317,45 @@ module TreeOpDiff =
         // Emit ReplaceBinding(slot, b's erased binding) only when swapping a's
         // slot to b's binding actually changes a's canonical shell.
         let bind (slot: string) (bObj: Binding<obj>) (aSwapped: Node<'Msg>) : TreeOp<'Msg> list =
-            if NodeIndex.encodeShell aSwapped <> shellA then
+            if CanonicalJson.encodeNode a <> CanonicalJson.encodeNode aSwapped then
                 [ TreeOp.ReplaceBinding(NodeId a.Id, slot, bObj) ]
             else
                 []
 
         match a.Kind, b.Kind with
         | NodeKind.Heading(sa), NodeKind.Heading(sb) ->
-            scalar "Level" (pvInt sb.Level) (sa.Level <> sb.Level)
+            prop
+                "Level"
+                (pvInt sb.Level)
+                { a with
+                    Kind = disp (NodeKind.Heading { sa with Level = sb.Level }) }
             @ prop
                 "Text"
                 (pvText sb.Text)
                 { a with
-                    Kind = NodeKind.Heading { sa with Text = sb.Text } }
-            @ scalar "Variant" (pvHeadingVariant sb.Variant) (sa.Variant <> sb.Variant)
+                    Kind = disp (NodeKind.Heading { sa with Text = sb.Text }) }
+            @ prop
+                "Variant"
+                (pvHeadingVariant sb.Variant)
+                { a with
+                    Kind = disp (NodeKind.Heading { sa with Variant = sb.Variant }) }
         | NodeKind.Markdown(sa), NodeKind.Markdown(sb) ->
             prop
                 "Text"
                 (pvText sb.Text)
                 { a with
-                    Kind = NodeKind.Markdown { sa with Text = sb.Text } }
+                    Kind = disp (NodeKind.Markdown { sa with Text = sb.Text }) }
         | NodeKind.Badge(sa), NodeKind.Badge(sb) ->
             prop
                 "Label"
                 (pvText sb.Label)
                 { a with
-                    Kind = NodeKind.Badge { sa with Label = sb.Label } }
-            @ scalar "Variant" (pvBadgeVariant sb.Variant) (sa.Variant <> sb.Variant)
+                    Kind = disp (NodeKind.Badge { sa with Label = sb.Label }) }
+            @ prop
+                "Variant"
+                (pvBadgeVariant sb.Variant)
+                { a with
+                    Kind = disp (NodeKind.Badge { sa with Variant = sb.Variant }) }
         | NodeKind.Metric(sa), NodeKind.Metric(sb) ->
             // Scalar fields + the Source binding slot. The optional Trend slot
             // (Binding option) falls to the EditNode floor (ReplaceBinding only
@@ -424,115 +364,153 @@ module TreeOpDiff =
                 "Label"
                 (pvText sb.Label)
                 { a with
-                    Kind = NodeKind.Metric { sa with Label = sb.Label } }
+                    Kind = disp (NodeKind.Metric { sa with Label = sb.Label }) }
             @ prop
                 "Format"
                 (pvCellFormat sb.Format)
                 { a with
-                    Kind = NodeKind.Metric { sa with Format = sb.Format } }
-            @ scalar "Tone" (pvTone sb.Tone) (sa.Tone <> sb.Tone)
-            @ scalar "Weight" (pvWeight sb.Weight) (sa.Weight <> sb.Weight)
-            @ scalar "Emphasis" (pvEmphasis sb.Emphasis) (sa.Emphasis <> sb.Emphasis)
+                    Kind = disp (NodeKind.Metric { sa with Format = sb.Format }) }
+            @ prop
+                "Tone"
+                (pvTone sb.Tone)
+                { a with
+                    Kind = disp (NodeKind.Metric { sa with Tone = sb.Tone }) }
+            @ prop
+                "Weight"
+                (pvWeight sb.Weight)
+                { a with
+                    Kind = disp (NodeKind.Metric { sa with Weight = sb.Weight }) }
+            @ prop
+                "Emphasis"
+                (pvEmphasis sb.Emphasis)
+                { a with
+                    Kind = disp (NodeKind.Metric { sa with Emphasis = sb.Emphasis }) }
             @ bind
                 "Value"
                 (toObjBinding sb.Value)
                 { a with
-                    Kind = NodeKind.Metric { sa with Value = sb.Value } }
+                    Kind = disp (NodeKind.Metric { sa with Value = sb.Value }) }
         | NodeKind.Callout(sa), NodeKind.Callout(sb) ->
-            scalar "Tone" (pvTone sb.Tone) (sa.Tone <> sb.Tone)
+            prop
+                "Tone"
+                (pvTone sb.Tone)
+                { a with
+                    Kind = disp (NodeKind.Callout { sa with Tone = sb.Tone }) }
             @ propOpt
                 "Heading"
                 (pvTextOpt sb.Heading)
                 { a with
-                    Kind = NodeKind.Callout { sa with Heading = sb.Heading } }
+                    Kind = disp (NodeKind.Callout { sa with Heading = sb.Heading }) }
             @ prop
                 "Body"
                 (pvText sb.Body)
                 { a with
-                    Kind = NodeKind.Callout { sa with Body = sb.Body } }
+                    Kind = disp (NodeKind.Callout { sa with Body = sb.Body }) }
             @ propOpt
                 "Icon"
                 (pvIconOpt sb.Icon)
                 { a with
-                    Kind = NodeKind.Callout { sa with Icon = sb.Icon } }
-            @ scalar "Dismissable" (pvBool sb.Dismissable) (sa.Dismissable <> sb.Dismissable)
+                    Kind = disp (NodeKind.Callout { sa with Icon = sb.Icon }) }
+            @ prop
+                "Dismissable"
+                (pvBool sb.Dismissable)
+                { a with
+                    Kind = disp (NodeKind.Callout { sa with Dismissable = sb.Dismissable }) }
         | NodeKind.Progress(sa), NodeKind.Progress(sb) ->
             propOpt
                 "Label"
                 (pvTextOpt sb.Label)
                 { a with
-                    Kind = NodeKind.Progress { sa with Label = sb.Label } }
+                    Kind = disp (NodeKind.Progress { sa with Label = sb.Label }) }
             @ propOpt
                 "Caveat"
                 (pvTextOpt sb.Caveat)
                 { a with
-                    Kind = NodeKind.Progress { sa with Caveat = sb.Caveat } }
+                    Kind = disp (NodeKind.Progress { sa with Caveat = sb.Caveat }) }
             @ prop
                 "Indeterminate"
                 (pvBool sb.Indeterminate)
                 { a with
                     Kind =
-
-                        NodeKind.Progress
-                            { sa with
-                                Indeterminate = sb.Indeterminate } }
-            @ scalar "Tone" (pvTone sb.Tone) (sa.Tone <> sb.Tone)
+                        disp (
+                            NodeKind.Progress
+                                { sa with
+                                    Indeterminate = sb.Indeterminate }
+                        ) }
+            @ prop
+                "Tone"
+                (pvTone sb.Tone)
+                { a with
+                    Kind = disp (NodeKind.Progress { sa with Tone = sb.Tone }) }
             @ bind
                 "Fraction"
                 (toObjBinding sb.Fraction)
                 { a with
-                    Kind = NodeKind.Progress { sa with Fraction = sb.Fraction } }
+                    Kind = disp (NodeKind.Progress { sa with Fraction = sb.Fraction }) }
         | NodeKind.LabelValueRow(sa), NodeKind.LabelValueRow(sb) ->
             prop
                 "Label"
                 (pvText sb.Label)
                 { a with
-                    Kind = NodeKind.LabelValueRow { sa with Label = sb.Label } }
+                    Kind = disp (NodeKind.LabelValueRow { sa with Label = sb.Label }) }
             @ prop
                 "Format"
                 (pvCellFormat sb.Format)
                 { a with
-                    Kind = NodeKind.LabelValueRow { sa with Format = sb.Format } }
-            @ scalar "Emphasis" (pvBool sb.Emphasis) (sa.Emphasis <> sb.Emphasis)
+                    Kind = disp (NodeKind.LabelValueRow { sa with Format = sb.Format }) }
+            @ prop
+                "Emphasis"
+                (pvBool sb.Emphasis)
+                { a with
+                    Kind = disp (NodeKind.LabelValueRow { sa with Emphasis = sb.Emphasis }) }
             @ propOpt
                 "Help"
                 (pvTextOpt sb.Help)
                 { a with
-                    Kind = NodeKind.LabelValueRow { sa with Help = sb.Help } }
+                    Kind = disp (NodeKind.LabelValueRow { sa with Help = sb.Help }) }
             @ bind
                 "Value"
                 (toObjBinding sb.Value)
                 { a with
-                    Kind = NodeKind.LabelValueRow { sa with Value = sb.Value } }
+                    Kind = disp (NodeKind.LabelValueRow { sa with Value = sb.Value }) }
         | NodeKind.Link(sa), NodeKind.Link(sb) ->
             prop
                 "Label"
                 (pvText sb.Label)
                 { a with
-                    Kind = NodeKind.Link { sa with Label = sb.Label } }
+                    Kind = disp (NodeKind.Link { sa with Label = sb.Label }) }
             @ propOpt
                 "Rel"
                 (pvStrOpt sb.Rel)
                 { a with
-                    Kind = NodeKind.Link { sa with Rel = sb.Rel } }
+                    Kind = disp (NodeKind.Link { sa with Rel = sb.Rel }) }
             @ propOpt
                 "Target"
                 (pvStrOpt sb.Target)
                 { a with
-                    Kind = NodeKind.Link { sa with Target = sb.Target } }
-            @ scalar "Download" (pvBool sb.Download) (sa.Download <> sb.Download)
+                    Kind = disp (NodeKind.Link { sa with Target = sb.Target }) }
+            @ prop
+                "Download"
+                (pvBool sb.Download)
+                { a with
+                    Kind = disp (NodeKind.Link { sa with Download = sb.Download }) }
             @ bind
                 "Href"
                 (toObjBinding sb.Href)
                 { a with
-                    Kind = NodeKind.Link { sa with Href = sb.Href } }
+                    Kind = disp (NodeKind.Link { sa with Href = sb.Href }) }
         | NodeKind.Sparkline(sa), NodeKind.Sparkline(sb) ->
             bind
                 "Source"
                 (toObjBinding sb.Source)
                 { a with
-                    Kind = NodeKind.Sparkline { sa with Source = sb.Source } }
-        | NodeKind.Skeleton(sa), NodeKind.Skeleton(sb) -> scalar "Rows" (pvInt sb.Rows) (sa.Rows <> sb.Rows)
+                    Kind = disp (NodeKind.Sparkline { sa with Source = sb.Source }) }
+        | NodeKind.Skeleton(sa), NodeKind.Skeleton(sb) ->
+            prop
+                "Rows"
+                (pvInt sb.Rows)
+                { a with
+                    Kind = disp (NodeKind.Skeleton { sa with Rows = sb.Rows }) }
         | NodeKind.Box(sa), NodeKind.Box(sb) ->
             // Phase 390 — diff the layout-mode fields (mirroring the retired
             // Stack/GridLayout diffs) + Heading. Propose-then-verify (below)
@@ -546,28 +524,65 @@ module TreeOpDiff =
             // floor — exactly the pre-swap behaviour for an uncovered field.
             let layoutOps =
                 match sa.Layout, sb.Layout with
-                | BoxLayout.Flex(dirA, wrapA, _), BoxLayout.Flex(dirB, wrapB, _) ->
-                    scalar "Orientation" (pvOrientation dirB) (dirA <> dirB)
-                    @ scalar "Wrap" (pvBool wrapB) (wrapA <> wrapB)
+                | BoxLayout.Flex(dirA, wrapA, gapA), BoxLayout.Flex(dirB, wrapB, _) ->
+                    prop
+                        "Orientation"
+                        (pvOrientation dirB)
+                        { a with
+                            Kind =
+                                lay (
+                                    NodeKind.Box
+                                        { sa with
+                                            Layout = BoxLayout.Flex(dirB, wrapA, gapA) }
+                                ) }
+                    @ prop
+                        "Wrap"
+                        (pvBool wrapB)
+                        { a with
+                            Kind =
+                                lay (
+                                    NodeKind.Box
+                                        { sa with
+                                            Layout = BoxLayout.Flex(dirA, wrapB, gapA) }
+                                ) }
                 | BoxLayout.Grid(colsA, tmplA, gapA), BoxLayout.Grid(colsB, tmplB, _) ->
-                    scalar "Cols" (pvInt colsB) (colsA <> colsB)
+                    prop
+                        "Cols"
+                        (pvInt colsB)
+                        { a with
+                            Kind =
+                                lay (
+                                    NodeKind.Box
+                                        { sa with
+                                            Layout = BoxLayout.Grid(colsB, tmplA, gapA) }
+                                ) }
                     @ propOpt
                         "TemplateColumns"
                         (pvStrOpt tmplB)
                         { a with
                             Kind =
-
-                                NodeKind.Box
-                                    { sa with
-                                        Layout = BoxLayout.Grid(colsA, tmplB, gapA) } }
+                                lay (
+                                    NodeKind.Box
+                                        { sa with
+                                            Layout = BoxLayout.Grid(colsA, tmplB, gapA) }
+                                ) }
                 // Masonry → Masonry diffs its one settable field. Without this
                 // arm a column-count change between two masonry boxes falls to
                 // `[]` and the diff silently reports no op, so a replay would
                 // not reproduce it. Cross-MODE changes (Grid ↔ Masonry) stay in
                 // the `_` arm deliberately: they are a layout REPLACEMENT, not a
                 // field edit, and `UpdateProp` has no spelling for one.
-                | BoxLayout.Masonry(colsA, _), BoxLayout.Masonry(colsB, _) ->
-                    scalar "Cols" (pvInt colsB) (colsA <> colsB)
+                | BoxLayout.Masonry(_, gapA), BoxLayout.Masonry(colsB, _) ->
+                    prop
+                        "Cols"
+                        (pvInt colsB)
+                        { a with
+                            Kind =
+                                lay (
+                                    NodeKind.Box
+                                        { sa with
+                                            Layout = BoxLayout.Masonry(colsB, gapA) }
+                                ) }
                 | _ -> []
 
             layoutOps
@@ -575,39 +590,47 @@ module TreeOpDiff =
                 "Heading"
                 (pvTextOpt sb.Heading)
                 { a with
-                    Kind = NodeKind.Box { sa with Heading = sb.Heading } }
+                    Kind = lay (NodeKind.Box { sa with Heading = sb.Heading }) }
         | NodeKind.SplitPanel(sa), NodeKind.SplitPanel(sb) ->
             prop
                 "Weight"
                 (pvFloat sb.Weight)
                 { a with
-                    Kind = NodeKind.SplitPanel { sa with Weight = sb.Weight } }
+                    Kind = lay (NodeKind.SplitPanel { sa with Weight = sb.Weight }) }
         | NodeKind.Tabs(sa), NodeKind.Tabs(sb) ->
-            scalar "Orientation" (pvOrientation sb.Orientation) (sa.Orientation <> sb.Orientation)
+            prop
+                "Orientation"
+                (pvOrientation sb.Orientation)
+                { a with
+                    Kind = lay (NodeKind.Tabs { sa with Orientation = sb.Orientation }) }
         | NodeKind.SummaryList(sa), NodeKind.SummaryList(sb) ->
             propOpt
                 "Heading"
                 (pvTextOpt sb.Heading)
                 { a with
-                    Kind = NodeKind.SummaryList { sa with Heading = sb.Heading } }
+                    Kind = lay (NodeKind.SummaryList { sa with Heading = sb.Heading }) }
         | NodeKind.Disclosure(sa), NodeKind.Disclosure(sb) ->
             prop
                 "Heading"
                 (pvText sb.Heading)
                 { a with
-                    Kind = NodeKind.Disclosure { sa with Heading = sb.Heading } }
-            @ scalar "DefaultOpen" (pvBool sb.DefaultOpen) (sa.DefaultOpen <> sb.DefaultOpen)
+                    Kind = lay (NodeKind.Disclosure { sa with Heading = sb.Heading }) }
+            @ prop
+                "DefaultOpen"
+                (pvBool sb.DefaultOpen)
+                { a with
+                    Kind = lay (NodeKind.Disclosure { sa with DefaultOpen = sb.DefaultOpen }) }
             @ bind
                 "Open"
                 (toObjBinding sb.Open)
                 { a with
-                    Kind = NodeKind.Disclosure { sa with Open = sb.Open } }
+                    Kind = lay (NodeKind.Disclosure { sa with Open = sb.Open }) }
         | NodeKind.Stepper(sa), NodeKind.Stepper(sb) ->
             bind
                 "ActiveStep"
                 (toObjBinding sb.ActiveStep)
                 { a with
-                    Kind = NodeKind.Stepper { sa with ActiveStep = sb.ActiveStep } }
+                    Kind = lay (NodeKind.Stepper { sa with ActiveStep = sb.ActiveStep }) }
         // Visualisation (Grid/Chart/Map), Input (Button/Select/Form/FileUpload),
         // Custom / ErrorBoundary / Fragment*, and Dashboard fall through to the
         // EditNode floor (still correct via the verify in `tryFieldLevel`).
@@ -620,13 +643,8 @@ module TreeOpDiff =
     /// fully reproduce the kind (a binding/uncovered field also drifted, an
     /// unknown field, etc.), return `None` so the caller uses the always-correct
     /// `EditNode` floor — round-trip can never break.
-    let private tryFieldLevel<'Msg>
-        (a: Node<'Msg>)
-        (shellA: string)
-        (b: Node<'Msg>)
-        (shellB: string)
-        : TreeOp<'Msg> list option =
-        match extractFieldUpdates a shellA b with
+    let private tryFieldLevel<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : TreeOp<'Msg> list option =
+        match extractFieldUpdates a b with
         | [] -> None
         | candidates ->
             let applied =
@@ -635,32 +653,21 @@ module TreeOpDiff =
                     (fun (n: Node<'Msg>) op ->
                         match Fuaran.UI.Ops.Apply.apply op n with
                         | Ok n' -> n'
-                        // Swallowed on purpose: a candidate is emitted only for a field
-                        // whose value differs from `b`'s, so one that fails to apply
-                        // leaves that difference in place and the verify below rejects
-                        // the whole set — the node takes the `EditNode` floor, and the
-                        // error carries nothing the verify does not already decide.
                         | Error _ -> n)
                     a
 
-            if not (kindChanged applied b shellB) then
+            if not (kindChanged applied b) then
                 Some candidates
             else
                 None
 
     /// Diff two nodes known to share a NodeId (the root, or a child matched by
-    /// id during recursion). Each side's childless shell is encoded once here
-    /// and handed to every own-content comparison (Phase 2063); equal shells
-    /// mean no kind, state, style, accessibility or tooltip drift, so an
-    /// unchanged node costs two encodes and nothing more.
+    /// id during recursion).
     let rec private diffNode<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : TreeOp<'Msg> list =
         let id = NodeId a.Id
-        let shellA = NodeIndex.encodeShell a
-        let shellB = NodeIndex.encodeShell b
-        let ownContentEqual = shellA = shellB
 
-        if not ownContentEqual && kindChanged a b shellB then
-            match tryFieldLevel a shellA b shellB with
+        if kindChanged a b then
+            match tryFieldLevel a b with
             | Some fieldOps ->
                 // Granular field-level patch reproduced the kind own-fields — no
                 // wholesale EditNode. State / style + children are handled
@@ -670,7 +677,7 @@ module TreeOpDiff =
                 [ yield! fieldOps
                   if styleOf a <> styleOf b then
                       TreeOp.UpdateStyle(id, styleOf b)
-                  if stateChanged a b shellB then
+                  if stateChanged a b then
                       TreeOp.UpdateState(id, stateOf b)
                   yield! childrenDiff id (childrenOf a) (childrenOf b) ]
             | None ->
@@ -688,7 +695,7 @@ module TreeOpDiff =
             // minimal patch instead of re-sending the kind + subtree.
             [ if styleOf a <> styleOf b then
                   TreeOp.UpdateStyle(id, styleOf b)
-              if not ownContentEqual && stateChanged a b shellB then
+              if stateChanged a b then
                   TreeOp.UpdateState(id, stateOf b)
               yield! childrenDiff id (childrenOf a) (childrenOf b) ]
 
@@ -782,12 +789,3 @@ module TreeOpDiff =
                         a
 
                 moveOps @ diffNode intermediate b
-
-    /// Diff `a` → `b` as a single atomic unit: wraps the op list in `Batch`
-    /// when there are ≥2 ops (one interaction = one atomic patch, per Phase
-    /// 152), passes a single op through unwrapped, and yields `[]` unchanged.
-    let diffBatched<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : TreeOp<'Msg> list =
-        match diff a b with
-        | []
-        | [ _ ] as ops -> ops
-        | many -> [ TreeOp.Batch many ]

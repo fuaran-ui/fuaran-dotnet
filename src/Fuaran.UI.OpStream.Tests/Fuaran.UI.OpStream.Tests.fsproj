@@ -38,6 +38,9 @@
     <Compile Include="SqliteTests.fs" />
     <Compile Include="TreeDiffTests.fs" />
     <Compile Include="TreeOpDiffTests.fs" />
+    <!-- Phase 2063: the pre-2063 diff as a test oracle, and the byte-equality law over the corpus. -->
+    <Compile Include="TreeOpDiffPre2063.fs" />
+    <Compile Include="TreeOpDiffEquivalenceTests.fs" />
     <Compile Include="CheckpointTests.fs" />
     <Compile Include="ChainMigrationTests.fs" />
     <Compile Include="ChainCorpusTests.fs" />
