@@ -10,6 +10,49 @@ consequence.
 
 ---
 
+## 2026-10-09 — D13: `Dispatch` is an opaque leaf of class `in-process`, and no host this tier ships accepts that class by default
+
+**Decided (Phase 2194).** The UI witness views `Action.Dispatch` as an OPAQUE leaf, through the
+declaration Program 0.8.0 added (`LeafDeclaration.opaque`, Program D40): reason class `in-process`,
+name `Dispatch`. Its message is folded by the host's own `update`, which no walk of the tree can see
+into, and a leaf that declares nothing read, in the demanded document, exactly like an action that
+does nothing. Now the demanded projection names it in `opaqueLeaves`, a signed envelope over that
+projection names it too, and the tree wire specification's §30.1 row and `lowers-to/` vector say so,
+certified on this host and on the Rust host. A wire `Dispatch` carries only the inert sentinel and is
+marked all the same: the declaration belongs to the arm, and the projection is computed from the
+action rather than from where it was decoded. The confirm carriers, which ride the same slot
+in-process, are not the escape and still view as the confirm they carry.
+
+**No host coverage this tier builds accepts `in-process` by default.** Program's `HostCoverage.Opaque`
+is empty unless a host calls `HostCoverage.acceptingOpaque`, and nothing here calls it:
+
+- `Program.coverageOf` (behind `mkBoundedStrict`) reads its coverage off the effect registry, and a
+  bounded client has no `update` to fold a message through, so its fold DECLINES the arm. Accepting
+  the class there would claim a capability the placement does not have.
+- `BoundedDriver.initStrict` and the server placement's `initStrict` take the caller's coverage, and
+  declare nothing on the caller's behalf, for the reason `coverageOf` gives about host-call surfaces:
+  inventing a declaration the host never made is this tier asserting something it does not know.
+
+**Consequence:** a strict construction over a tree that contains a `Dispatch` is refused with
+`CoverageFinding.UnacceptedOpaqueLeaf("in-process", "Dispatch")` until the host accepts the class.
+That is a change from before this phase, when the same tree passed because the leaf declared nothing,
+and it is the intended one: the strict paths promise that the host covers everything the tree can ask
+for, and no bounded placement covers a message for an `update` it does not have. The DEFAULT
+constructions (`mkBounded`, `BoundedDriver.init`) check no coverage and are unchanged, and the fold
+still declines the arm exactly as before. A host that genuinely folds `Dispatch` through an in-process
+`update`, and wants the strict check, accepts the class explicitly. The decision to accept it is the
+host's, and it is visible in the host's own code.
+
+**Rejected: accepting `in-process` in `coverageOf`.** It would keep every strict construction that
+passed before passing, but on a false claim, and the class would then be accepted on a placement that
+cannot perform it. That is the fail-open default Program D40 refuses.
+
+**Rejected: a public constant for the class name here.** The class is the program core's vocabulary.
+A second spelling in this tier's public surface would be one more place for the two to drift, so the
+witness names it once, privately.
+
+---
+
 ## 2026-10-09 — D12: the program adapters move onto Fuaran.Program 0.8.0, and the demanded corpus stays generated here even where the canonical copy was moved by hand
 
 **Decided (Phase 2191).** `FuaranProgramVersion` moves 0.7.1 → 0.8.0, the first Program release cut

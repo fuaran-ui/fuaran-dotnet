@@ -119,6 +119,14 @@ let rec reading (action: Action<obj>) : JVal =
               "declaresTarget", JBool declaresTarget
               "endpoint", JStr endpoint ]
     | ActionView.Leaf declaration ->
+        // Phase 2194 — `opaque` is present exactly when the leaf declares
+        // itself an escape (§30.2), so a leaf that declares nothing and one
+        // that cannot be analysed never read alike.
+        let opaque =
+            match declaration.Opaque with
+            | Some o -> [ "opaque", JObj [ "name", JStr o.Name; "reason", JStr o.Reason ] ]
+            | None -> []
+
         JObj(
             [ "arm", JStr "Leaf"
               "effectKinds", JArr(declaration.EffectKinds |> List.map JStr)
@@ -127,6 +135,7 @@ let rec reading (action: Action<obj>) : JVal =
                   declaration.HostCalls
                   |> List.map (fun call -> JObj [ "channel", JStr call.Channel; "name", JStr call.Name ])
               ) ]
+            @ opaque
             @ answer
         )
     // Reached only through a confirm's answer (above): §30.1 targets `Choose`
@@ -236,4 +245,23 @@ let tests =
                   | other -> other
 
               Expect.equal actual (normalise reordered) "member order alone never decides a comparison"
+          }
+
+          // Phase 2194 — the go-red half of the `Dispatch` row: the reading of
+          // a `Dispatch` viewed as a PLAIN leaf (the view before this phase,
+          // declaring nothing) fails the vector, so the row cannot be met by a
+          // witness that hides the escape.
+          test "a Dispatch viewed as a plain leaf fails its vector (the opaque mark is what the row certifies)" {
+              let _, vectors = load ()
+              let vector = vectors |> List.find (fun v -> v.Arm = "Dispatch")
+
+              let actual = reading (decodeOrFail vector)
+
+              let plain =
+                  match actual with
+                  | JObj members -> members |> List.filter (fun (k, _) -> k <> "opaque") |> JObj
+                  | other -> failwithf "the Dispatch reading is not an object: %A" other
+
+              Expect.equal (normalise actual) (normalise vector.Expected) "the witness meets the row"
+              Expect.notEqual (normalise plain) (normalise vector.Expected) "the same leaf without its mark does not"
           } ]

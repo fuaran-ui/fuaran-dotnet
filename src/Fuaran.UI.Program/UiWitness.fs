@@ -66,6 +66,12 @@ let private hostCall (channel: string) (name: string) : LeafDeclaration =
 
 let private nothing: LeafDeclaration = LeafDeclaration.none
 
+/// `Dispatch`'s declaration (Phase 2194; WIRE_FORMAT §30.1): an escape, named,
+/// with the reason class of an act performed in the host's own process through
+/// a value the wire cannot carry.
+let private inProcessDispatch: LeafDeclaration =
+    LeafDeclaration.opaque "in-process" "Dispatch"
+
 // `Action.Dispatch` is marked in-process-only upstream, so naming it raises
 // FS0044. `view` and `lower` are TOTAL analyses of the closed union: they must
 // name every case that exists, and naming one is not authoring one. The confirm
@@ -227,7 +233,13 @@ let view (action: Action<obj>) : ActionView<Action<obj>, Binding<JVal>> =
             match c.Answer with
             | None -> ActionView.Leaf(kindOf (ClientEffect.Confirm("", "")))
             | Some accepted -> answerView accepted c.Path c.Confirm
-        | None -> ActionView.Leaf nothing
+        // Phase 2194 — a message for the host's own `update`: the one arm no
+        // walk can see into. It views as an OPAQUE leaf (Program D40), so the
+        // demanded document names it, and a signed envelope over that document
+        // tells "cannot be analysed" apart from "does nothing" — which a leaf
+        // declaring nothing could not. A host's coverage refuses it until the
+        // host accepts the `in-process` class (this tier's DECISIONS D13).
+        | None -> ActionView.Leaf inProcessDispatch
     | Action.CommitLocal _ -> ActionView.Leaf nothing
 
 /// The view the DEMANDED projection reads: what a gesture can reach across

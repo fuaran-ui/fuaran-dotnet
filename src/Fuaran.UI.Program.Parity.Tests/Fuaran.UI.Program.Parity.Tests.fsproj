@@ -24,6 +24,9 @@
     <!-- Phase 2103 - the tree wire corpus's lowers-to/ family (WIRE_FORMAT.md section 30): every UI
          action arm's lowering onto the bounded core, read through the UI witness's view. -->
     <Compile Include="LowersToTests.fs" />
+    <!-- Phase 2194 - Dispatch is an opaque leaf: the demanded document, the signed envelope and
+         the coverage default. -->
+    <Compile Include="OpaqueDispatchTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
