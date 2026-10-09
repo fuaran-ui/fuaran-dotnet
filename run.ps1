@@ -209,13 +209,10 @@ $corpusRoot =
     if ($env:FUARAN_WIRE_FIXTURES) { $env:FUARAN_WIRE_FIXTURES.Trim() }
     else { Join-Path $PSScriptRoot "../wire-format-fixtures" }
 $corpusPresent = Test-Path (Join-Path $corpusRoot "manifest.json")
-# fuaran#2012 - the PROGRAM specification's corpus, which the program adapters' suites load
-# (`requiresProgramSpec` in the roster). FUARAN_PROGRAM_SPEC names the specification clone, else the
-# sibling walk; the suites resolve it the same way.
-$programSpecRoot =
-    if ($env:FUARAN_PROGRAM_SPEC) { $env:FUARAN_PROGRAM_SPEC.Trim() }
-    else { Join-Path $PSScriptRoot "../fuaran-program-spec" }
-$programSpecPresent = Test-Path (Join-Path $programSpecRoot "wire-fixtures/manifest.json")
+# Phase 2014 - the PROGRAM specification's corpus, which the program adapters' suites load, has NO
+# skip here: the specification is public (https://github.com/Fuaran-Core/fuaran-program-specification),
+# so an absent clone fails those suites, which name where to clone it from. FUARAN_PROGRAM_SPEC names
+# the clone, else the suites walk to a sibling `fuaran-program-spec`.
 
 # Phase 1553 - the SUITE-level half of the lane. `lane` is declared per suite in the roster above
 # ("pure" / "slow"; absent = the ordinary tier), so this filter and Build.fs's read the same
@@ -282,11 +279,6 @@ if (-not $SkipTests) {
             if ($suite.requiresCorpus -and -not $corpusPresent) {
                 Write-Step "SKIPPING $project"
                 Write-Host "wire-format-fixtures corpus absent (single-repo checkout; conformance runs where the workspace corpus is present)." -ForegroundColor Yellow
-                continue
-            }
-            if ($suite.requiresProgramSpec -and -not $programSpecPresent) {
-                Write-Step "SKIPPING $project"
-                Write-Host "program specification corpus absent at $programSpecRoot (set FUARAN_PROGRAM_SPEC, or clone it beside this repository); the program adapters' conformance and parity did NOT run." -ForegroundColor Yellow
                 continue
             }
 

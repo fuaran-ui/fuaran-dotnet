@@ -78,6 +78,29 @@ jobs:
       # loudly, which is the correct failure. `proofs.json`'s `proof-leg` policy row declares the
       # reduced posture, because how many cold runs a check is IS the claim that row carries.
       # A developer still runs `-Runs 3` by hand; see proofs/README.md, "Running it".
+      # Phase 2014 — the program leg's two differential hosts run over the PROGRAM
+      # specification's corpus and the leg FAILS when it is absent; their host suite
+      # also loads the tree wire corpus. Both are public, so no token. This job
+      # checks this repo out at the workspace root, so the corpora cannot sit
+      # beside it and are named through the environment instead.
+      - name: Checkout the wire-format corpus (fuaran-ui-specification)
+        uses: actions/checkout@v4
+        with:
+          repository: fuaran-ui/fuaran-ui-specification
+          path: wire-format-fixtures
+      - name: Checkout the program specification corpus (fuaran-program-specification)
+        uses: actions/checkout@v4
+        with:
+          repository: Fuaran-Core/fuaran-program-specification
+          path: fuaran-program-spec
+      - name: Assert both corpora are where the environment names them
+        shell: pwsh
+        run: |
+          if (-not (Test-Path wire-format-fixtures/manifest.json)) { throw 'wire-format corpus missing' }
+          if (-not (Test-Path fuaran-program-spec/wire-fixtures/manifest.json)) { throw 'program specification corpus missing' }
       - name: Proof leg (./proofs/check.ps1 -Runs 1)
         shell: pwsh
+        env:
+          FUARAN_WIRE_FIXTURES: ${{ github.workspace }}/wire-format-fixtures
+          FUARAN_PROGRAM_SPEC: ${{ github.workspace }}/fuaran-program-spec
         run: ./proofs/check.ps1 -Runs 1

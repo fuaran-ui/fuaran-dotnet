@@ -175,16 +175,16 @@ if ($Leg -in @('all', 'vocabulary')) {
 }
 if ($Leg -in @('all', 'program')) {
     # The program leg's two differential families compare over the program specification's
-    # driver-semantics family, a sibling clone (or FUARAN_PROGRAM_SPEC) that a single-repository
-    # checkout — the proofs CI job — does not have. There the models are still CHECKED and their
-    # extractions still byte-diffed; the hosts are skipped and the skip is SAID, never silent, the
-    # same posture test-suites.json's `requiresProgramSpec` takes for the suites that read it.
+    # driver-semantics family, a sibling clone (or FUARAN_PROGRAM_SPEC). The specification is public
+    # (Phase 2014), so an absent corpus FAILS the leg rather than skipping its hosts: the proofs CI
+    # job checks it out, and a checkout without it has not run the claims this leg certifies.
+    # `-SkipOracleHost` remains the one explicit way to run the models without their hosts.
     $programSpecRoot =
         if ($env:FUARAN_PROGRAM_SPEC) { $env:FUARAN_PROGRAM_SPEC.Trim() }
         else { Join-Path (Split-Path $PSScriptRoot -Parent) '../fuaran-program-spec' }
     if (-not $SkipOracleHost -and -not (Test-Path (Join-Path $programSpecRoot 'wire-fixtures/manifest.json'))) {
-        Write-Host "==== proofs: program leg - the program specification corpus is ABSENT at $programSpecRoot; the two differential hosts are SKIPPED (the models are still checked and their extractions byte-diffed). Set FUARAN_PROGRAM_SPEC, or clone it beside this repository, to run them." -ForegroundColor Yellow
-        $programArgs.SkipOracleHost = $true
+        Write-Host "==== proofs: program leg - RED: the program specification corpus is ABSENT at $programSpecRoot, so the two differential hosts cannot run. Clone https://github.com/Fuaran-Core/fuaran-program-specification beside this repository as 'fuaran-program-spec', or point FUARAN_PROGRAM_SPEC at a clone of it." -ForegroundColor Red
+        exit 1
     }
     & (Join-Path $PSScriptRoot 'kit/check-proof-leg.ps1') @programArgs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

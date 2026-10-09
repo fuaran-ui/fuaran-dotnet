@@ -163,6 +163,20 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File tests/fable-laws/fable-check.ps1 -List
 
+      # Phase 2014 — the stage's program UI parity leg (section 2c) runs over the
+      # PROGRAM specification's corpus and FAILS when it is absent. The
+      # specification is public, so no token; this job checks this repo out at the
+      # workspace root, so the corpus cannot sit beside it and is named through
+      # FUARAN_PROGRAM_SPEC instead (it holds no project the stage could pick up).
+      - name: Checkout the program specification corpus (fuaran-program-specification)
+        uses: actions/checkout@v4
+        with:
+          repository: Fuaran-Core/fuaran-program-specification
+          path: fuaran-program-spec
+
+      - name: Assert the program corpus is where FUARAN_PROGRAM_SPEC names it
+        run: test -f fuaran-program-spec/wire-fixtures/manifest.json
+
       # `-SkipLaws` because the law harness is the `run.ps1` gate's business; this
       # job is the portability half, which is what the guard's own header is about.
       # It also runs the Fuaran.Core gate (`tests/core-fable/`, Phase 217): the
@@ -170,6 +184,8 @@ jobs:
       # leg, which fails rather than skips without Node.
       - name: Fable-compile every gated package under its own settings
         shell: pwsh
+        env:
+          FUARAN_PROGRAM_SPEC: ${{ github.workspace }}/fuaran-program-spec
         run: pwsh -NoProfile -File tests/fable-laws/fable-check.ps1 -SkipLaws
 
   # ── The out-of-solution project guard ─────────────────────────────────────

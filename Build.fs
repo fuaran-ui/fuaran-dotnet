@@ -32,9 +32,6 @@ type private TestSuite =
     {
         Project: string
         RequiresCorpus: bool
-        /// fuaran#2012 — the suite loads the PROGRAM specification's corpus (the program
-        /// adapters' suites); skipped loudly when that corpus is absent, as `RequiresCorpus` is.
-        RequiresProgramSpec: bool
         /// Phase 1553 — the suite-level gate lane, verbatim from the roster. `None` is the ordinary
         /// tier (runs in `full` and `fast`, not in `pure`); `Some "pure"` joins the per-commit lane;
         /// `Some "slow"` leaves `fast` and `pure` both.
@@ -64,10 +61,6 @@ let private readTestSuites () =
               { Project = Path.Combine(repoRoot, relative.Replace('/', Path.DirectorySeparatorChar))
                 RequiresCorpus =
                   match entry.TryGetProperty "requiresCorpus" with
-                  | true, flag -> flag.GetBoolean()
-                  | _ -> false
-                RequiresProgramSpec =
-                  match entry.TryGetProperty "requiresProgramSpec" with
                   | true, flag -> flag.GetBoolean()
                   | _ -> false
                 Lane =
@@ -707,30 +700,15 @@ let private registerTargets (args: string array) =
 
         let corpusPresent = File.Exists corpusManifest
 
-        // fuaran#2012 — the program specification's corpus, resolved as run.ps1 and the suites
-        // resolve it: FUARAN_PROGRAM_SPEC first, the sibling walk second.
-        let programSpecRoot =
-            match System.Environment.GetEnvironmentVariable "FUARAN_PROGRAM_SPEC" with
-            | null
-            | "" -> Path.Combine(repoRoot, "..", "fuaran-program-spec")
-            | declared -> declared.Trim()
-
-        let programSpecPresent =
-            File.Exists(Path.Combine(programSpecRoot, "wire-fixtures", "manifest.json"))
-
+        // Phase 2014 — the program specification's corpus has NO skip here. The specification is
+        // public, so the program adapters' suites run whenever they are rostered and fail, naming
+        // where to clone it from, when it is absent.
         for suite in testSuites do
             if suite.RequiresCorpus && not corpusPresent then
                 Trace.traceImportant (
                     sprintf
                         "SKIPPING %s — wire-format-fixtures corpus absent (single-repo checkout; conformance runs where the workspace corpus is present)."
                         (Path.GetFileNameWithoutExtension suite.Project)
-                )
-            elif suite.RequiresProgramSpec && not programSpecPresent then
-                Trace.traceImportant (
-                    sprintf
-                        "SKIPPING %s — program specification corpus absent at %s (set FUARAN_PROGRAM_SPEC, or clone it beside this repository); the program adapters' conformance and parity did NOT run."
-                        (Path.GetFileNameWithoutExtension suite.Project)
-                        programSpecRoot
                 )
             else
                 // `GetFileNameWithoutExtension` is `string | null` under F# 10 nullness. A rostered

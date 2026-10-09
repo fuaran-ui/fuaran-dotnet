@@ -64,7 +64,8 @@ let scenarioFamily: string = "driver-semantics"
 let private missing (path: string) : 'a =
     failwithf
         "the conformance corpus is not present at '%s'. It is a sibling clone and a BUILD INPUT to this gate, \
-         not an optional extra — clone it beside this repository, or point FUARAN_PROGRAM_SPEC at it. This \
+         not an optional extra — clone https://github.com/Fuaran-Core/fuaran-program-specification beside \
+         this repository as `fuaran-program-spec`, or point FUARAN_PROGRAM_SPEC at a clone of it. This \
          suite fails rather than skipping, deliberately: a conformance check that passes when its oracle is \
          missing is worse than no check."
         path
