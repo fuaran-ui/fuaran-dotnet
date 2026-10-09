@@ -8118,6 +8118,54 @@ the bounded path, from a documented no-op to a two-event round trip.
 
 ---
 
+### What rides this slot — Phase 2064
+
+Ops vestiges and dead arms removed. **Class: BREAKING (API + behaviour)** — the slot is already BREAKING
+(see the class line above); this block names its own breaks. No wire-format or corpus change; no wire id
+changes.
+
+- **BREAKING (API): `JsonDecode.Reliance.count`, `snapshot` and `reset` are removed — the process-wide
+  counter goes.** Reliance events are RETURNED per document instead: `DecodeOutcome<'T>` gains
+  **`Refused: string list`** beside `Recovered` (a record gaining a field breaks a full-literal
+  construction, FS0764; the type is an output, and nothing in this repo constructs it). The ids are
+  unchanged — `implied-node-close`, `over-close-unique`, `over-close-refused` — and their set is pinned by
+  a test. Migration: read `decodeNodeWithOutcome` / `decodeNodeObjWithOutcome`, and sum the outcomes you
+  hold where you need a cohort total.
+- **BREAKING (API): `ValidatorGate.MergePolicy<'Msg>` is a union** — `Lenient | Gated of MergeValidator |
+  Diagnostic of MergeValidator` (`[<RequireQualifiedAccess>]`). It was a record whose fourth combination,
+  `{ Validator = None; GateOnIntroducedDefect = true }`, asked for a gate and silently gated nothing; that
+  combination is unrepresentable now. `MergePolicy.lenient` / `gated` / `diagnostic` are unchanged, and the
+  union keeps read-only `Validator` / `GateOnIntroducedDefect` members answering what the fields did. The
+  record's literal is replaced by the obsolete constructor `MergePolicy.ofFields validator gate`, which
+  **refuses** the gate-without-validator combination with `ArgumentException` (behaviour, pinned by a
+  test that failed before it).
+- **BREAKING (API, source-compatible for `Result.isOk` callers): `Placement.canPlace` returns
+  `Result<NodeId list, PlaceError>`** — the destination's child order after the move, the order
+  `moveOp` states — where it returned `Result<unit, PlaceError>` and discarded the order it had computed.
+  Verdicts are unchanged.
+- **BEHAVIOUR: `TreeOp.mapMsg` over a `Batch` collects.** Every inner op is mapped; the refusal still
+  names the FIRST refusing inner op and its `ops[i].` slot, and its `Payloads` are every distinct payload
+  the batch declined, in first-seen order (it stopped at the first). And the mapper is asked ONCE per
+  eagerly-stored payload — one walk, where it probed and then mapped. Both pinned by tests that failed
+  before them.
+- **BEHAVIOUR (bytes): `ErrorRender.render` has one implementation on both compile targets** — the
+  envelope as a `JVal`, written by `Canon.renderOrdered` (the canonical escape, members in authored
+  order; keys and their order unchanged). The bytes that change: on .NET, `<` `>` `&` `'` `+` are raw
+  rather than `\u003C` `\u003E` `\u0026` `\u0027` `\u002B`, `"` is `\"` rather than `\u0022`, non-ASCII is
+  raw UTF-8 rather than `\uXXXX`, and a control character is lower-case `\u00xx` (`\n` `\r` `\t` `\b` `\f`
+  included) rather than its short escape; under Fable, `\n` `\r` `\t` `\b` `\f` become `\u000a` `\u000d`
+  `\u0009` `\u0008` `\u000c`, and every other control character — written raw before, which was invalid
+  JSON — is `\u00xx`. Pinned byte-for-byte by a test that failed before it.
+- **Unchanged, internal only:** `GuestFork.genesis` is `step` with the mount anchor as the parent (the two
+  had identical bodies; both names stay). `Streaming.framesOf` and `lowerTree` share one lowering, so
+  `framesOf` no longer re-matches ops (its unreachable `failwithf` arm is gone). `Apply`'s structural path
+  takes a private four-case type, so its `failwith` arm for the seven ops that never reach it is gone.
+  `JsonDecode.decodeLayoutKind`'s `getSpecFields` vestige (eight dead `Error` arms) is gone, and
+  `exposedNodeIds` goes through the shared `traverseIndexed` rather than a quadratic `xs @ [v]` fold (the
+  same answer: every element was already decoded, and the first error returned).
+- **Documented, not changed:** `Streaming.StreamFrame.Position` is RESERVED — always 0, read by nothing —
+  and is dropped at the next frame-protocol version, not now.
+
 ## 0.92.0 — the slot Phases 2038 and 2043 open: one answer to what a node's children are, and one spine walk for the DAG tier (RELEASED — tagged v0.92.0 at 9b53dfa, 2026-10-06)
 
 _Class: **BREAKING (API + source + behaviour)** — Phase 2038 removes one public function and Phase 2043 changes

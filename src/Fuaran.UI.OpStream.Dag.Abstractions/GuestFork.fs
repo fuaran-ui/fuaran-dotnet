@@ -41,11 +41,27 @@ module GuestFork =
     /// keys the same way whether it wields the linear or the DAG sink.
     let streamId (scopeId: string) : string = GuestStream.streamId scopeId
 
-    // Both builders below are thin guest-keyed aliases of `DagOpRecord.create`,
+    // The builder below is a thin guest-keyed alias of `DagOpRecord.create`,
     // which has been Fable-visible since Phase 408 (the pre-405 SHA-256 fence
-    // was stale). They carried a `#if !FABLE_COMPILER` fence inherited from that
+    // was stale). The builders carried a `#if !FABLE_COMPILER` fence inherited from that
     // era, which left a Fable host able to name a guest stream but not open one.
     // De-fenced with `DagVerify`.
+
+    /// Append an op INSIDE a guest scope: a single-parent DAG step recorded
+    /// under `guest-<scopeId>`, its parent `parentHash`. The one guest-keyed
+    /// builder over `DagOpRecord.create`, so a caller never hand-assembles the
+    /// guest stream id. For the guest's first op the parent is the mount anchor
+    /// (`genesis` names that call); after it, the guest's current head.
+    let step<'Msg>
+        (scopeId: string)
+        (parentHash: string)
+        (op: TreeOp<'Msg>)
+        (promptId: string option)
+        (actor: Actor)
+        (timestamp: DateTimeOffset)
+        (resultEnvelope: OpResultEnvelope)
+        : DagOpRecord<'Msg> =
+        DagOpRecord.create (GuestStream.streamId scopeId) [ parentHash ] op promptId actor timestamp resultEnvelope
 
     /// Build a guest stream's GENESIS `DagOpRecord`: the first op applied inside
     /// guest scope `scopeId`, recorded under `guest-<scopeId>` as a DAG child of
@@ -54,8 +70,9 @@ module GuestFork =
     /// `[ mountOpHash ]`, so the host branch and this guest branch share
     /// `mountOpHash` as an ancestor — the LCA a convergence merge resolves on.
     ///
-    /// Mirrors `DagOpRecord.create`'s parameter shape; the only difference is
-    /// the stream id (guest-keyed) and the guaranteed single parent (the anchor).
+    /// Exactly `step` with the mount anchor as the parent (Phase 2064: the two
+    /// had identical bodies). Kept as the name a reader looks for at the
+    /// anchor, not as a second implementation.
     let genesis<'Msg>
         (scopeId: string)
         (mountOpHash: string)
@@ -65,23 +82,7 @@ module GuestFork =
         (timestamp: DateTimeOffset)
         (resultEnvelope: OpResultEnvelope)
         : DagOpRecord<'Msg> =
-        DagOpRecord.create (GuestStream.streamId scopeId) [ mountOpHash ] op promptId actor timestamp resultEnvelope
-
-    /// Append a subsequent op INSIDE a guest scope: an ordinary single-parent
-    /// DAG step under `guest-<scopeId>`, its parent the guest's current head
-    /// (`priorGuestHash`). This is a thin guest-keyed alias of `DagOpRecord.create`
-    /// for the post-genesis interior ops, so a caller never hand-assembles the
-    /// guest stream id.
-    let step<'Msg>
-        (scopeId: string)
-        (priorGuestHash: string)
-        (op: TreeOp<'Msg>)
-        (promptId: string option)
-        (actor: Actor)
-        (timestamp: DateTimeOffset)
-        (resultEnvelope: OpResultEnvelope)
-        : DagOpRecord<'Msg> =
-        DagOpRecord.create (GuestStream.streamId scopeId) [ priorGuestHash ] op promptId actor timestamp resultEnvelope
+        step scopeId mountOpHash op promptId actor timestamp resultEnvelope
 
     /// Project a guest op's provenance — `(scopeId, promptId)` — so "which
     /// region, from which prompt" resolves per guest (consumed by the per-guest

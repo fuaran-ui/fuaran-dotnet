@@ -83,6 +83,12 @@ let shellOf (node: Node<'Msg>) : Node<'Msg> =
 /// The children to fill for a node, or `None` when the node is a streaming leaf
 /// (childless kind, kept-whole kind, or a decomposable kind that is already
 /// empty — nothing to stream into).
+///
+/// The `isDecomposable` test is NOT implied by `getChildren` answering: a
+/// `FragmentDecl` holds an ordered list of exactly one body, so `getChildren`
+/// answers `Some [ body ]` while its shell cannot be emptied. Without the test
+/// the body would be streamed into a parent `shellOf` left whole (Phase 2064
+/// checked this; the `StreamingProperties` suite pins it).
 let private fillableChildren (node: Node<'Msg>) : Node<'Msg> list option =
     match Introspect.getChildren node.Kind with
     | Some children when isDecomposable node && not (List.isEmpty children) -> Some children
@@ -95,6 +101,22 @@ let private fillableChildren (node: Node<'Msg>) : Node<'Msg> list option =
 /// This is the genesis tree both the batch and streaming op-streams build from.
 let skeletonRoot (root: Node<'Msg>) : Node<'Msg> = shellOf root
 
+/// The canonical lowering as data: each `(parent, shell)` an `InsertChild`
+/// carries, in pre-order. `lowerTree` states them as ops and `framesOf` as
+/// frames — one plan, so neither has to recover the other's shape.
+let private lowerInserts (root: Node<'Msg>) : (NodeId * Node<'Msg>) list =
+    let rec fill (node: Node<'Msg>) : (NodeId * Node<'Msg>) list =
+        match fillableChildren node with
+        | None -> []
+        | Some children ->
+            children
+            // `Node.Id` is a bare string since the swap; the op layer still
+            // addresses parents by the `NodeId` wrapper.
+            |> List.map (fun child -> (NodeId node.Id, shellOf child) :: fill child)
+            |> List.concat
+
+    fill root
+
 /// Lower a fully-decoded tree into the canonical, deterministic
 /// `TreeOp.InsertChild` sequence that reconstructs it from its own
 /// `skeletonRoot`. Pre-order: each child is inserted at its position as its OWN
@@ -105,17 +127,8 @@ let skeletonRoot (root: Node<'Msg>) : Node<'Msg> = shellOf root
 /// once; the streaming path emits the same ops as each subtree frame arrives.
 /// Their op-streams are therefore byte-identical (FGP 5).
 let lowerTree (root: Node<'Msg>) : TreeOp<'Msg> list =
-    let rec fill (node: Node<'Msg>) : TreeOp<'Msg> list =
-        match fillableChildren node with
-        | None -> []
-        | Some children ->
-            children
-            // `Node.Id` is a bare string since the swap; the op layer still
-            // addresses parents by the `NodeId` wrapper.
-            |> List.map (fun child -> TreeOp.InsertChild(NodeId node.Id, shellOf child) :: fill child)
-            |> List.concat
-
-    fill root
+    lowerInserts root
+    |> List.map (fun (parentId, shell) -> TreeOp.InsertChild(parentId, shell))
 
 // ─── Wire frame protocol (Task 1) ───────────────────────────────────────────
 //
@@ -127,12 +140,20 @@ let lowerTree (root: Node<'Msg>) : TreeOp<'Msg> list =
 // delivered in `lowerTree` pre-order.
 
 /// One streaming frame — the canonical wire of a single shell node plus its
-/// insertion target. `ParentId = None` marks the skeleton-root frame (its
-/// `Position` is unused); `ParentId = Some pid` is an `InsertChild` op.
+/// insertion target. `ParentId = None` marks the skeleton-root frame;
+/// `ParentId = Some pid` is an `InsertChild` op.
 type StreamFrame =
-    { ParentId: NodeId option
-      Position: int
-      NodeJson: string }
+    {
+        ParentId: NodeId option
+        /// RESERVED — always 0, and read by nothing. The frame protocol kept an
+        /// ordinal when `InsertChild` stopped carrying one; frames stream in
+        /// document order and each op appends, so no position is needed. The
+        /// field stays until the next frame-protocol version, which drops it:
+        /// removing it now would change the frame shape under every consumer
+        /// for no behaviour (Phase 2064).
+        Position: int
+        NodeJson: string
+    }
 
 /// Emitter side: lower `root` to the ordered frame sequence a streaming
 /// transport ships. `encodeNode` is injected (the canonical encoder lives in
@@ -147,22 +168,14 @@ let framesOf (encodeNode: Node<'Msg> -> string) (root: Node<'Msg>) : StreamFrame
           NodeJson = encodeNode (skeletonRoot root) }
 
     let childFrames =
-        lowerTree root
-        |> List.map (fun op ->
-            match op with
-            | TreeOp.InsertChild(parentId, child) ->
-                { ParentId = Some parentId
-                  // The FRAME protocol keeps its ordinal: frames stream in order and a
-                  // progressive client may place them as they arrive. It is a separate
-                  // wire from the TreeOp and is deliberately not changed here — only the
-                  // op stops carrying one. Reconstruction below ignores it, because the
-                  // op appends and the frames are already in document order.
-                  Position = 0
-                  NodeJson = encodeNode child }
-            // `lowerTree` only ever produces `InsertChild`; this arm is
-            // unreachable, kept total so a future lowering change is caught at
-            // the call site rather than silently dropped.
-            | other -> failwithf "Streaming.framesOf: lowerTree produced a non-InsertChild op: %A" other)
+        lowerInserts root
+        |> List.map (fun (parentId, shell) ->
+            { ParentId = Some parentId
+              // Reserved: every frame carries 0 (see `StreamFrame.Position`).
+              // Reconstruction ignores it, because the op appends and the
+              // frames are already in document order.
+              Position = 0
+              NodeJson = encodeNode shell })
 
     skeletonFrame :: childFrames
 

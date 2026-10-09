@@ -32,15 +32,15 @@ module Fuaran.UI.Ops.Repair
 //  entered from two places — `Recovery.Lenient` is `repair` then strict decode,
 //  not a second copy of either recovery.
 //
-//  Pure: no counters are written here. The decoder's `Recovery.Lenient` path
-//  records the `Reliance` counters, as it always has; a caller of `repair`
+//  Pure: nothing is recorded here. The decoder's `Recovery.Lenient` path
+//  returns the `Reliance` events in its `DecodeOutcome`; a caller of `repair`
 //  reads what was applied from the result itself.
 //
 //  Fable-compatible: strings, `ResizeArray` and `StringBuilder` only.
 // ============================================================================
 
 /// The stable repair ids (WIRE_FORMAT.md §28.2). The same strings the
-/// decoder's `Reliance` counters and `DecodeOutcome.Recovered` use, so the
+/// decoder's `Reliance` ids and `DecodeOutcome.Recovered` use, so the
 /// reliance accounting, the per-decode record and the eval provenance speak
 /// one vocabulary.
 module RepairId =
@@ -166,8 +166,8 @@ let MaxOverCloseLength = Fuaran.UI.KindPolicy.DecodePolicy.MaxRecoverableLength
 //     repaired text that still does not parse — declines, and `repair` moves on
 //     to the next catalogue entry.
 //   - NAMED: a repair is returned with the id `implied-node-close`, and the
-//     decoder's opt-in lenient path counts it under the `Reliance` counter of
-//     the same id. This is error REPAIR, not §16 shorthand normalisation — a
+//     decoder's opt-in lenient path returns it under the `Reliance` id of
+//     the same name. This is error REPAIR, not §16 shorthand normalisation — a
 //     silently-repaired class stops generating demand signal, and the name is
 //     what keeps it measurable while ceasing to be a loss (see
 //     `docs/migrations/850-implied-node-close-recovery.md`).
@@ -575,9 +575,9 @@ module private ImpliedNodeClose =
 //     past the bounds are each a named `NotRepairable` refusal, and the strict
 //     decode's `INVALID_JSON` stands. An `INVALID_JSON` the demand loop can
 //     feed on is worth more than a wrong tree no counter can flag.
-//   - COUNTED BOTH WAYS on the decoder's opt-in lenient path:
-//     `Reliance.OverCloseUnique` on an acceptance, `Reliance.OverCloseRefused`
-//     on a refusal (see
+//   - REPORTED BOTH WAYS on the decoder's opt-in lenient path, in its
+//     `DecodeOutcome`: `Reliance.OverCloseUnique` on an acceptance,
+//     `Reliance.OverCloseRefused` on a refusal (see
 //     `docs/migrations/855-uniqueness-gated-overclose-recovery.md`).
 //
 // The failure-offset rule — "the repair lies in the contiguous closer run

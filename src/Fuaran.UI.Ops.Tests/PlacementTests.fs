@@ -413,8 +413,21 @@ let moveOpTests =
 
               Expect.equal
                   (Placement.canPlace t (NodeId "a") (at "right" (Placement.Before(NodeId "d"))))
-                  (Ok())
-                  "legal drop"
+                  (Ok [ NodeId "a"; NodeId "d" ])
+                  "legal drop, answered with the destination's post-move order"
+          }
+
+          test "canPlace answers the order moveOp states" {
+              // Phase 2064 — the pre-check computed the order and discarded it;
+              // moveOp computed it again. The order is now canPlace's answer.
+              let t = fixture ()
+              let target = at "left" (Placement.Before(NodeId "a"))
+
+              match Placement.canPlace t (NodeId "c") target, Placement.moveOp t (NodeId "c") target with
+              | Ok order, Ok(TreeOp.Batch [ TreeOp.MoveNode _; TreeOp.ReorderChildren(_, stated) ]) ->
+                  Expect.equal order [ NodeId "c"; NodeId "a"; NodeId "b" ] "the post-move order"
+                  Expect.equal stated order "moveOp states exactly canPlace's order"
+              | c, m -> failtestf "expected an order and a Batch [move; reorder], got %A / %A" c m
           } ]
 
 // ─── Unit tests: reorderOp ───────────────────────────────────────────────────
@@ -785,7 +798,7 @@ let private moveCorresponds (t: Node<obj>) (moved: NodeId) (target: Target) : bo
 
 let private canPlaceAgreesWithMoveOp (t: Node<obj>) (moved: NodeId) (target: Target) : bool =
     match Placement.canPlace t moved target, Placement.moveOp t moved target with
-    | Ok(), Ok _ -> true
+    | Ok _, Ok _ -> true
     | Error a, Error b -> a = b
     | _ -> false
 

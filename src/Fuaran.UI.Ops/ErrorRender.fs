@@ -25,16 +25,13 @@ module Fuaran.UI.Ops.ErrorRender
 //  This module is pure rendering — it takes typed inputs and returns a
 //  string. No I/O.
 //
-//  Fable portability: `System.Text.Json` / `Utf8JsonWriter` / `MemoryStream`
-//  are server-only and the Fable compiler rejects them. This package is
-//  pulled into Fable client compiles transitively (Renderer →
-//  Telemetry.Abstractions → Ops), so the renderer must compile under Fable
-//  even though the client never calls it. The server keeps the
-//  `Utf8JsonWriter` implementation verbatim (byte-identical wire output for
-//  the AI orchestrator + fixtures); the Fable side gets a hand-rolled
-//  string builder mirroring `JsonDecode.fs`'s "no System.Text.Json" stance.
+//  Fable portability: this package is pulled into Fable client compiles
+//  transitively (Renderer → Telemetry.Abstractions → Ops), so `render` is
+//  written over `JVal` and the canonical writer, which both compile targets
+//  share — one implementation, the same bytes on each (Phase 2064).
 // ============================================================================
 
+open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 
@@ -61,206 +58,74 @@ let private codeToken (code: ApplyErrorCode) : string =
 /// not matched here).
 let private opKindToken (op: TreeOp<'Msg>) : string = Fuaran.UI.Ops.TreeOp.kindName op
 
-#if !FABLE_COMPILER
-
-// ─── Server implementation — System.Text.Json, byte-identical to pre-12.E ──
-
-open System.Text.Json
-
-let private writeNodeId (jw: Utf8JsonWriter) (key: string) (NodeId rawId) = jw.WriteString(key, rawId)
-
-let private writeOpFields (jw: Utf8JsonWriter) (op: TreeOp<'Msg>) =
-    jw.WriteString("kind", opKindToken op)
-
-    match op with
-    | TreeOp.EditNode(target, _) -> writeNodeId jw "id" target
-    | TreeOp.UpdateProp(target, path, _) ->
-        writeNodeId jw "id" target
-        jw.WriteString("path", path)
-    | TreeOp.ReplaceBinding(target, slot, _) ->
-        writeNodeId jw "id" target
-        jw.WriteString("slot", slot)
-    | TreeOp.UpdateStyle(target, _) -> writeNodeId jw "id" target
-    | TreeOp.UpdateState(target, _) -> writeNodeId jw "id" target
-    | TreeOp.InsertChild(parentId, child) ->
-        writeNodeId jw "parent_id" parentId
-        writeNodeId jw "child_id" (NodeId child.Id)
-    | TreeOp.RemoveNode target -> writeNodeId jw "id" target
-    | TreeOp.MoveNode(target, newParentId) ->
-        writeNodeId jw "id" target
-        writeNodeId jw "new_parent_id" newParentId
-    | TreeOp.ReorderChildren(parentId, newOrder) ->
-        writeNodeId jw "parent_id" parentId
-        jw.WriteStartArray("new_order")
-
-        for NodeId rawId in newOrder do
-            jw.WriteStringValue rawId
-
-        jw.WriteEndArray()
-    | TreeOp.ReplaceRoot node -> writeNodeId jw "id" (NodeId node.Id)
-    | TreeOp.Batch inner -> jw.WriteNumber("inner_count", inner.Length)
-
-let private writeHint (jw: Utf8JsonWriter) (failingField: string option) (hint: ApplyHint) =
-    jw.WriteStartObject("hint")
-
-    match hint.NodeKind with
-    | Some nk -> jw.WriteString("node_kind", nk)
-    | None -> ()
-
-    if not (List.isEmpty hint.AvailableFields) then
-        jw.WriteStartArray("available_fields")
-
-        for f in hint.AvailableFields do
-            jw.WriteStringValue f
-
-        jw.WriteEndArray()
-
-    match hint.NodesWithField with
-    | Some(field, ids) when not (List.isEmpty ids) ->
-        let key = sprintf "nodes_with_%s_field" (field.ToLowerInvariant())
-        jw.WriteStartArray key
-
-        for NodeId rawId in ids do
-            jw.WriteStringValue rawId
-
-        jw.WriteEndArray()
-    | _ ->
-        match failingField with
-        | Some _ -> ()
-        | None -> ()
-
-    match hint.Suggestion with
-    | Some s -> jw.WriteString("suggestion", s)
-    | None -> ()
-
-    jw.WriteEndObject()
-
-let private failingFieldOf (op: TreeOp<'Msg>) : string option =
-    match op with
-    | TreeOp.UpdateProp(_, path, _) -> Some path
-    | TreeOp.ReplaceBinding(_, slot, _) -> Some slot
-    | _ -> None
-
-/// Render an (op, error) pair to the §4d-shaped JSON envelope.
-let render (op: TreeOp<'Msg>) (error: ApplyError) : string =
-    use buffer = new System.IO.MemoryStream()
-
-    do
-        use jw = new Utf8JsonWriter(buffer)
-        jw.WriteStartObject()
-
-        // op
-        jw.WriteStartObject("op")
-        writeOpFields jw op
-        jw.WriteEndObject()
-
-        // error
-        jw.WriteStartObject("error")
-        jw.WriteString("code", codeToken error.Code)
-
-        match error.Code with
-        | ApplyErrorCode.BatchAborted idx -> jw.WriteNumber("batch_index", idx)
-        | _ -> ()
-
-        jw.WriteString("message", error.Message)
-        writeHint jw (failingFieldOf op) error.Hint
-        jw.WriteEndObject()
-
-        jw.WriteEndObject()
-
-    buffer.ToArray() |> System.Text.Encoding.UTF8.GetString
-
-#else
-
-// ─── Fable implementation — hand-rolled JSON string builder ────────────────
+// ─── The envelope as a `JVal`, rendered by the canonical writer ────────────
 //
-// Mirrors JsonDecode.fs's "no System.Text.Json (server-only); hand-roll"
-// stance. Produces the same §4d envelope shape — minimal compact JSON with
-// standard string escaping. (The Fable client never invokes `render`; this
-// exists so the package compiles under Fable as a transitive dependency.)
+// ONE implementation on every compile target (Phase 2064). The envelope is
+// built as a `JVal` and written by `Canon.renderOrdered`: the canonical escape
+// (only `"`, `\` and control characters, the latter as lower-case `\u00xx`)
+// with the members in the order they are authored here — `op` before
+// `error`, `kind` first — because the §4d envelope is read by a model, and its
+// order is part of how it reads.
+//
+// The bytes this changed, named per pipeline (against the two implementations
+// it replaced):
+//
+//  * .NET (was `Utf8JsonWriter` with its default encoder): `<` `>` `&` `'` `+`
+//    are now written raw rather than as `\u003C` `\u003E` `\u0026` `\u0027`
+//    `\u002B`; `"` is `\"` rather than `\u0022`; a non-ASCII character is
+//    written raw (UTF-8) rather than as `\uXXXX`; and a control character is
+//    `\u00xx` in lower-case hex — `\n` `\r` `\t` `\b` `\f` included — where it
+//    was the short escape.
+//  * Fable (was a hand-rolled string builder): `\n` `\r` `\t` `\b` `\f` are now
+//    `\u000a` `\u000d` `\u0009` `\u0008` `\u000c`; every other control
+//    character, which it used to write raw (invalid JSON), is now `\u00xx`.
+//
+// Everything else — keys, their order, numbers — is byte-identical to both.
 
-let private jsonString (s: string) : string =
-    let escaped =
-        s
-            .Replace("\\", "\\\\")
-            .Replace("\"", "\\\"")
-            .Replace("\b", "\\b")
-            .Replace("\f", "\\f")
-            .Replace("\n", "\\n")
-            .Replace("\r", "\\r")
-            .Replace("\t", "\\t")
+let private nodeIdValue (NodeId rawId) : JVal = JStr rawId
 
-    "\"" + escaped + "\""
-
-let private jsonObj (fields: string list) : string = "{" + String.concat "," fields + "}"
-
-let private jsonArr (items: string list) : string = "[" + String.concat "," items + "]"
-
-let private fieldStr (key: string) (value: string) : string = jsonString key + ":" + jsonString value
-
-let private fieldNum (key: string) (value: int) : string = jsonString key + ":" + string value
-
-let private fieldRaw (key: string) (rawJson: string) : string = jsonString key + ":" + rawJson
-
-let private rawId (NodeId r) = r
-
-let private opFields (op: TreeOp<'Msg>) : string list =
-    let kind = fieldStr "kind" (opKindToken op)
-
+let private opFields (op: TreeOp<'Msg>) : (string * JVal) list =
     let rest =
         match op with
-        | TreeOp.EditNode(target, _) -> [ fieldStr "id" (rawId target) ]
-        | TreeOp.UpdateProp(target, path, _) -> [ fieldStr "id" (rawId target); fieldStr "path" path ]
-        | TreeOp.ReplaceBinding(target, slot, _) -> [ fieldStr "id" (rawId target); fieldStr "slot" slot ]
-        | TreeOp.UpdateStyle(target, _) -> [ fieldStr "id" (rawId target) ]
-        | TreeOp.UpdateState(target, _) -> [ fieldStr "id" (rawId target) ]
-        | TreeOp.InsertChild(parentId, child) -> [ fieldStr "parent_id" (rawId parentId); fieldStr "child_id" child.Id ]
-        | TreeOp.RemoveNode target -> [ fieldStr "id" (rawId target) ]
-        | TreeOp.MoveNode(target, newParentId) ->
-            [ fieldStr "id" (rawId target); fieldStr "new_parent_id" (rawId newParentId) ]
+        | TreeOp.EditNode(target, _) -> [ "id", nodeIdValue target ]
+        | TreeOp.UpdateProp(target, path, _) -> [ "id", nodeIdValue target; "path", JStr path ]
+        | TreeOp.ReplaceBinding(target, slot, _) -> [ "id", nodeIdValue target; "slot", JStr slot ]
+        | TreeOp.UpdateStyle(target, _) -> [ "id", nodeIdValue target ]
+        | TreeOp.UpdateState(target, _) -> [ "id", nodeIdValue target ]
+        | TreeOp.InsertChild(parentId, child) -> [ "parent_id", nodeIdValue parentId; "child_id", JStr child.Id ]
+        | TreeOp.RemoveNode target -> [ "id", nodeIdValue target ]
+        | TreeOp.MoveNode(target, newParentId) -> [ "id", nodeIdValue target; "new_parent_id", nodeIdValue newParentId ]
         | TreeOp.ReorderChildren(parentId, newOrder) ->
-            [ fieldStr "parent_id" (rawId parentId)
-              fieldRaw "new_order" (jsonArr (newOrder |> List.map (rawId >> jsonString))) ]
-        | TreeOp.ReplaceRoot node -> [ fieldStr "id" node.Id ]
-        | TreeOp.Batch inner -> [ fieldNum "inner_count" inner.Length ]
+            [ "parent_id", nodeIdValue parentId
+              "new_order", JArr(newOrder |> List.map nodeIdValue) ]
+        | TreeOp.ReplaceRoot node -> [ "id", JStr node.Id ]
+        | TreeOp.Batch inner -> [ "inner_count", JInt inner.Length ]
 
-    kind :: rest
+    ("kind", JStr(opKindToken op)) :: rest
 
-let private hintObj (hint: ApplyHint) : string =
-    [ yield!
-          (match hint.NodeKind with
-           | Some nk -> [ fieldStr "node_kind" nk ]
-           | None -> [])
-      yield!
-          (if List.isEmpty hint.AvailableFields then
-               []
-           else
-               [ fieldRaw "available_fields" (jsonArr (hint.AvailableFields |> List.map jsonString)) ])
-      yield!
-          (match hint.NodesWithField with
-           | Some(field, ids) when not (List.isEmpty ids) ->
-               [ fieldRaw
-                     (sprintf "nodes_with_%s_field" (field.ToLowerInvariant()))
-                     (jsonArr (ids |> List.map (rawId >> jsonString))) ]
-           | _ -> [])
-      yield!
-          (match hint.Suggestion with
-           | Some s -> [ fieldStr "suggestion" s ]
-           | None -> []) ]
-    |> jsonObj
+let private hintValue (hint: ApplyHint) : JVal =
+    JObj
+        [ match hint.NodeKind with
+          | Some nk -> "node_kind", JStr nk
+          | None -> ()
+          if not (List.isEmpty hint.AvailableFields) then
+              "available_fields", JArr(hint.AvailableFields |> List.map JStr)
+          match hint.NodesWithField with
+          | Some(field, ids) when not (List.isEmpty ids) ->
+              sprintf "nodes_with_%s_field" (field.ToLowerInvariant()), JArr(ids |> List.map nodeIdValue)
+          | _ -> ()
+          match hint.Suggestion with
+          | Some s -> "suggestion", JStr s
+          | None -> () ]
 
 /// Render an (op, error) pair to the §4d-shaped JSON envelope.
 let render (op: TreeOp<'Msg>) (error: ApplyError) : string =
     let errorFields =
-        [ fieldStr "code" (codeToken error.Code)
+        [ "code", JStr(codeToken error.Code)
           match error.Code with
-          | ApplyErrorCode.BatchAborted idx -> fieldNum "batch_index" idx
+          | ApplyErrorCode.BatchAborted idx -> "batch_index", JInt idx
           | _ -> ()
-          fieldStr "message" error.Message
-          fieldRaw "hint" (hintObj error.Hint) ]
+          "message", JStr error.Message
+          "hint", hintValue error.Hint ]
 
-    jsonObj
-        [ fieldRaw "op" (jsonObj (opFields op))
-          fieldRaw "error" (jsonObj errorFields) ]
-
-#endif
+    Canon.renderOrdered (JObj [ "op", JObj(opFields op); "error", JObj errorFields ])

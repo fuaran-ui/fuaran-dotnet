@@ -1,5 +1,8 @@
 module Fuaran.UI.OpStream.Dag.Tests.ValidatorGateTests
 
+// The obsolete `MergePolicy.ofFields` is exercised on purpose (Phase 2064).
+#nowarn "44"
+
 open Expecto
 open Fuaran.UI
 open Fuaran.UI.Types
@@ -258,4 +261,41 @@ let tests =
                   (ValidatorGate.encodeVerdict [ d1; d2 ])
                   "\"nodeId\":\"left\""
                   "verdict names the offending nodes"
+          }
+
+          // Phase 2064 — the policy is a union of the three meaningful
+          // combinations. The former record had a fourth, `{ Validator = None;
+          // GateOnIntroducedDefect = true }`, which asked for a gate and gated
+          // nothing; the obsolete flag constructor refuses it rather than
+          // silently building a lenient policy.
+          test "the flag constructor refuses a gate with no validator" {
+              Expect.throws
+                  (fun () -> MergePolicy.ofFields<TestMsg> None true |> ignore)
+                  "a gate with nothing to run is refused, never silently lenient"
+          }
+
+          test "the flag constructor maps the three meaningful combinations onto the union" {
+              match MergePolicy.ofFields<TestMsg> None false with
+              | MergePolicy.Lenient -> ()
+              | other -> failtestf "no validator, no gate is Lenient, got %A" other
+
+              match MergePolicy.ofFields (Some brandSiblingValidator) true with
+              | MergePolicy.Gated _ -> ()
+              | other -> failtestf "a validator with the gate on is Gated, got %A" other
+
+              match MergePolicy.ofFields (Some brandSiblingValidator) false with
+              | MergePolicy.Diagnostic _ -> ()
+              | other -> failtestf "a validator with the gate off is Diagnostic, got %A" other
+          }
+
+          test "the union's projections answer what the record fields answered" {
+              Expect.isNone (MergePolicy<TestMsg>.Lenient).Validator "Lenient runs no validator"
+              Expect.isFalse (MergePolicy<TestMsg>.Lenient).GateOnIntroducedDefect "Lenient gates nothing"
+              Expect.isSome (MergePolicy.gated brandSiblingValidator).Validator "Gated runs its validator"
+              Expect.isTrue (MergePolicy.gated brandSiblingValidator).GateOnIntroducedDefect "Gated gates"
+              Expect.isSome (MergePolicy.diagnostic brandSiblingValidator).Validator "Diagnostic runs its validator"
+
+              Expect.isFalse
+                  (MergePolicy.diagnostic brandSiblingValidator).GateOnIntroducedDefect
+                  "Diagnostic does not gate"
           } ]

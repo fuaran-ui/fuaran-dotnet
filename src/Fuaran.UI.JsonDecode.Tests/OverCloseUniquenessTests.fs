@@ -35,8 +35,9 @@ module Fuaran.UI.JsonDecode.Tests.OverCloseUniqueness
 //  number. If a future change reaches for leftmost-first — the obvious
 //  implementation — this suite fails.
 //
-//  Counter-sensitive tests share the process-wide `JsonDecode.Reliance`
-//  counters, so the whole list runs sequenced.
+//  The list runs sequenced beside the other recovery suites. (It used to share
+//  a process-wide `Reliance` counter; since Phase 2064 each decode returns its
+//  own reliance events in `DecodeOutcome`.)
 // ============================================================================
 
 open System
@@ -99,15 +100,21 @@ let tests =
               let files = emissionFiles ()
               Expect.equal files.Length 28 "the labelled set is complete"
 
-              let beforeUnique = JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseUnique
-              let beforeRefused = JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused
-
               let mutable recovered = 0
               let mutable refused = 0
+              let mutable recoveryEvents = 0
+              let mutable refusalEvents = 0
 
               for file in files do
                   let name = Path.GetFileName file
                   let text = File.ReadAllText file
+                  let outcome = JsonDecode.decodeNodeObjWithOutcome lenient text
+
+                  if outcome.Recovered = [ JsonDecode.Reliance.OverCloseUnique ] then
+                      recoveryEvents <- recoveryEvents + 1
+
+                  if outcome.Refused = [ JsonDecode.Reliance.OverCloseRefused ] then
+                      refusalEvents <- refusalEvents + 1
 
                   match intendedFor file with
                   | Some intended ->
@@ -136,18 +143,34 @@ let tests =
               Expect.equal recovered 14 "14 of the 28 admit exactly one clean repair and are recovered"
               Expect.equal refused 14 "14 of the 28 admit two or more and are refused"
 
-              // Both directions are counted, under distinct ids. A refused cell
+              // Both directions are reported, under distinct ids. A refused cell
               // that vanished from the accounting would be the demand signal
               // this class exists to generate, silently dropped.
-              Expect.equal
-                  (JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseUnique - beforeUnique)
-                  14
-                  "every recovery is counted"
+              Expect.equal recoveryEvents 14 "every recovery is reported"
+              Expect.equal refusalEvents 14 "every refusal is reported"
+          }
+
+          test "the decode outcome returns the reliance events of THIS document" {
+              // Phase 2064 — the events used to land only in a process-wide
+              // counter, so a refusal the gate made could not be attributed to
+              // the document it was made on.
+              let refusedOutcome =
+                  JsonDecode.decodeNodeObjWithOutcome lenient """{"id":"a","children":[{"id":"b"}]]}"""
+
+              Expect.isError refusedOutcome.Result "over-closed with nothing to recover is refused"
+              Expect.equal refusedOutcome.Recovered [] "a refused document was not repaired"
 
               Expect.equal
-                  (JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused - beforeRefused)
-                  14
-                  "every refusal is counted"
+                  refusedOutcome.Refused
+                  [ JsonDecode.Reliance.OverCloseRefused ]
+                  "the gate's refusal is returned with the document it was made on"
+
+              let recoveredOutcome = JsonDecode.decodeNodeObjWithOutcome lenient overClosedUnique
+              Expect.isOk recoveredOutcome.Result "the unique over-close recovers"
+
+              Expect.equal recoveredOutcome.Recovered [ JsonDecode.Reliance.OverCloseUnique ] "the recovery is returned"
+
+              Expect.equal recoveredOutcome.Refused [] "a recovered document records no refusal"
           }
 
           test "the leftmost-legal deletion is PINNED as the wrong fix" {
@@ -200,69 +223,64 @@ let tests =
               | r, c -> failtestf "expected both forms to decode; got %A / %A" r c
           }
 
-          test "the counter ids are the documented strings and both surface in the snapshot" {
-              Expect.equal JsonDecode.Reliance.OverCloseUnique "over-close-unique" "the recovery counter id"
-              Expect.equal JsonDecode.Reliance.OverCloseRefused "over-close-refused" "the refusal counter id"
+          test "the reliance ids are the documented strings — the set is pinned" {
+              // The ids are an instrument's vocabulary (WIRE_FORMAT §28.6): an
+              // evaluation record names a repair by them, so the set the outcome
+              // carries is exactly the set the removed counter used (Phase 2064).
+              Expect.equal
+                  (Set.ofList
+                      [ JsonDecode.Reliance.ImpliedNodeClose
+                        JsonDecode.Reliance.OverCloseUnique
+                        JsonDecode.Reliance.OverCloseRefused ])
+                  (Set.ofList [ "implied-node-close"; "over-close-unique"; "over-close-refused" ])
+                  "the three reliance ids, unchanged"
 
               Expect.notEqual
                   JsonDecode.Reliance.OverCloseUnique
                   JsonDecode.Reliance.OverCloseRefused
                   "recovery and refusal are distinct ids, never two readings of one"
-
-              let snapshot = JsonDecode.Reliance.snapshot ()
-
-              Expect.isTrue
-                  (snapshot |> Map.containsKey JsonDecode.Reliance.OverCloseUnique)
-                  "the snapshot surfaces the recovery counter"
-
-              Expect.isTrue
-                  (snapshot |> Map.containsKey JsonDecode.Reliance.OverCloseRefused)
-                  "the snapshot surfaces the refusal counter"
           }
 
           test "a document that was never in the class is not counted as a refusal" {
-              // The refusal counter measures THIS class declining. A malformed
-              // document that is not over-closed at all must leave it alone, or
+              // The refusal event measures THIS class declining. A malformed
+              // document that is not over-closed at all must not report it, or
               // the demand signal is diluted into noise.
-              let before = JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused
+              for label, text in
+                  [ "under-closed, not the 850 profile either", """{"id":"a","items":[{"x":1]}"""
+                    "balanced but invalid", """{"id":"a","kind":,}"""
+                    "cut inside a string", """{"id":"a","children":[{"id":"b""" ] do
+                  expectRefused label text
 
-              expectRefused "under-closed, not the 850 profile either" """{"id":"a","items":[{"x":1]}"""
-              expectRefused "balanced but invalid" """{"id":"a","kind":,}"""
-              expectRefused "cut inside a string" """{"id":"a","children":[{"id":"b"""
-
-              Expect.equal
-                  (JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused)
-                  before
-                  "none of these is over-closed, so none is a refusal of this class"
+                  Expect.isEmpty
+                      (JsonDecode.decodeNodeObjWithOutcome lenient text).Refused
+                      (sprintf "%s: not over-closed, so not a refusal of this class" label)
           }
 
           test "an over-closed document with no clean repair refuses, and IS counted" {
-              let before = JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused
-
               // Over-closed, and no deletion yields a decodable node (there is
               // no `kind`): profile matched, gate declined.
-              expectRefused "over-closed with nothing to recover" """{"id":"a","children":[{"id":"b"}]]}"""
+              let text = """{"id":"a","children":[{"id":"b"}]]}"""
+              expectRefused "over-closed with nothing to recover" text
 
               Expect.equal
-                  (JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused - before)
-                  1
-                  "a profile-matching document the gate declines is a counted refusal"
+                  (JsonDecode.decodeNodeObjWithOutcome lenient text).Refused
+                  [ JsonDecode.Reliance.OverCloseRefused ]
+                  "a profile-matching document the gate declines is a reported refusal"
           }
 
           test "over-closure past the surplus bound is out of scope, not merely refused" {
-              let before = JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused
 
               // Three surplus closers at the same sibling boundary. Deliberately
               // MID-document: a purely trailing surplus never reaches this gate,
               // because the parser stops at the first complete value and ignores
               // what follows (long-standing behaviour, untouched here).
-              expectRefused
-                  "surplus of three"
+              let text =
                   """{"id":"root","kind":{"$type":"Box","role":"Group","layout":{"$type":"Auto"},"children":[{"id":"m1","kind":{"$type":"Metric","label":"Revenue","value":{"$type":"Static","value":1420}}}}}},{"id":"m2","kind":{"$type":"Metric","label":"Cost","value":{"$type":"Static","value":7}}}]}}"""
 
-              Expect.equal
-                  (JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused)
-                  before
+              expectRefused "surplus of three" text
+
+              Expect.isEmpty
+                  (JsonDecode.decodeNodeObjWithOutcome lenient text).Refused
                   "a surplus past the bound is a differently-shaped defect, not this class"
           }
 
@@ -277,23 +295,13 @@ let tests =
           }
 
           test "decodeOp keeps the strict parse — the gate is node payloads only" {
-              let before = JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseUnique
-
               match JsonDecode.decodeOp overClosedUnique with
               | Ok _ -> failtest "decodeOp must not recover"
               | Error e -> Expect.equal e.Code "INVALID_JSON" "the strict op parse is untouched"
-
-              Expect.equal
-                  (JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseUnique)
-                  before
-                  "no recovery is attributed to the op path"
           }
 
           test "happy path — the gate never fires on a valid document, and corpus decode is unchanged" {
               let corpusRoot, entries = Corpus.load ()
-              let beforeUnique = JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseUnique
-              let beforeRefused = JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused
-              let beforeImplied = JsonDecode.Reliance.count JsonDecode.Reliance.ImpliedNodeClose
 
               let nodeEntries = entries |> List.filter (fun e -> e.Kind = "node-round-trip")
 
@@ -310,18 +318,9 @@ let tests =
                           (sprintf "%s: decode result unchanged (round-trips byte-identically)" e.Id)
                   | Error err -> failtestf "%s: corpus fixture failed to decode: %A" e.Id err
 
-              Expect.equal
-                  (JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseUnique)
-                  beforeUnique
-                  "no over-close recovery fired on any valid corpus document"
+                  let outcome = JsonDecode.decodeNodeObjWithOutcome lenient wire
 
-              Expect.equal
-                  (JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused)
-                  beforeRefused
-                  "no over-close refusal fired on any valid corpus document"
+                  Expect.isEmpty outcome.Recovered (sprintf "%s: no recovery fired on a valid corpus document" e.Id)
 
-              Expect.equal
-                  (JsonDecode.Reliance.count JsonDecode.Reliance.ImpliedNodeClose)
-                  beforeImplied
-                  "the Phase 850 counter is untouched by a valid corpus"
+                  Expect.isEmpty outcome.Refused (sprintf "%s: no refusal fired on a valid corpus document" e.Id)
           } ]

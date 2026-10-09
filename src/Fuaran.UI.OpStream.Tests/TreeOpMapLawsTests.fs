@@ -231,6 +231,52 @@ let tests =
                   Expect.equal refusal.Slot "ops[1].child" "the slot carries the index within the batch"
           }
 
+          test "a Batch collects every declined payload across its inner ops" {
+              // Phase 2064 — a single op names every payload it declined; a Batch
+              // used to stop at its first refusing inner op, so a host learnt one
+              // payload per attempt. The first refusing op still names the op and
+              // slot; the payloads are every one the batch declined.
+              let second =
+                  TreeOp.InsertChild(
+                      NodeId "law-parent",
+                      { dispatchingButton with
+                          Id = "law-button-2"
+                          Kind =
+                              NodeKind.Button
+                                  { Defaults.button with
+                                      Label = TextSource.Literal "Again"
+                                      OnClick = Action.Dispatch(box "law-payload-2") } }
+                  )
+
+              let batch = TreeOp.Batch [ insertingOp; TreeOp.RemoveNode(NodeId "x"); second ]
+
+              match TreeOp.mapMsg refusingMapper batch with
+              | Ok _ -> failtest "a Batch containing unmappable ops must refuse"
+              | Error refusal ->
+                  Expect.equal refusal.Op "InsertChild" "the first refusing inner op names the refusal"
+                  Expect.equal refusal.Slot "ops[0].child" "the first refusing inner op's slot and index"
+
+                  Expect.isTrue
+                      (refusal.Payloads |> List.exists (fun p -> p.Contains "law-payload-2"))
+                      (sprintf "the second inner op's payload is collected too: %A" refusal.Payloads)
+
+                  Expect.equal (List.length refusal.Payloads) 2 "each declined payload once, in first-seen order"
+          }
+
+          test "the mapper is asked once per eagerly-stored payload" {
+              // Phase 2064 — the map used to probe every payload and then map it
+              // again, asking the host's mapper twice for one payload.
+              let calls = ref 0
+
+              let counting (payload: obj) : LawMsg option =
+                  calls.Value <- calls.Value + 1
+                  totalMapper payload
+
+              match TreeOp.mapMsg counting insertingOp with
+              | Error refusal -> failtestf "a total mapper must map this op — %s" (MapRefusal.render refusal)
+              | Ok _ -> Expect.equal calls.Value 1 "one payload, one question"
+          }
+
           test "the eagerly-reachable payload IS reached — a total mapper maps the same op" {
               // The go-red half of the refusal law: without this, a `mapMsg`
               // that refused unconditionally would pass the two tests above.

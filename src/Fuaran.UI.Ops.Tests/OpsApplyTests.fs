@@ -862,4 +862,21 @@ let tests =
                   Expect.stringContains json "\"node_kind\":\"Metric\"" "Hint node_kind"
                   Expect.stringContains json "\"available_fields\"" "Available fields enumerated"
                   Expect.stringContains json "\"nodes_with_columns_field\"" "Dynamic field-search key present"
+          }
+          test "ErrorRender.render writes the canonical escape, the same bytes on every compile target" {
+              // Phase 2064 — one implementation over `JVal`. The .NET writer used
+              // to escape `<` as `\u003C` and non-ASCII as `\uXXXX` while the
+              // Fable builder wrote both raw; the canonical escape writes them raw
+              // and spells a control character `\u00xx` on both.
+              let op = TreeOp.RemoveNode(NodeId "a<b")
+
+              let err =
+                  { Code = ApplyErrorCode.NodeNotFound
+                    Message = "x < y\n\"q\" é"
+                    Hint = ApplyHint.empty }
+
+              Expect.equal
+                  (ErrorRender.render op err)
+                  "{\"op\":{\"kind\":\"RemoveNode\",\"id\":\"a<b\"},\"error\":{\"code\":\"NodeNotFound\",\"message\":\"x < y\\u000a\\\"q\\\" é\",\"hint\":{}}}"
+                  "the §4d envelope in authored key order under the canonical escape"
           } ]
