@@ -133,6 +133,16 @@ type DecodeErrorCode =
     /// code is unreachable, which is what keeps §22's "a decoder owes nothing"
     /// true of the default decoder.
     | KIND_NOT_ADMITTED
+    /// A streamed emission (`Streaming.decodeStream`) carried no frames at all —
+    /// not even the skeleton root. Phase 2065: the frame-protocol refusals
+    /// join this vocabulary rather than riding ad-hoc strings beside it.
+    | STREAM_EMPTY
+    /// The first streamed frame carried a `ParentId`; it must be the skeleton
+    /// root.
+    | STREAM_NO_SKELETON
+    /// A streamed frame after the first omitted its `ParentId`; only the
+    /// skeleton root may.
+    | STREAM_ORPHAN_SKELETON
 
 module DecodeErrorCode =
     let toString (code: DecodeErrorCode) : string =
@@ -145,6 +155,9 @@ module DecodeErrorCode =
         | DecodeErrorCode.EMPTY_NODE_ID -> "EMPTY_NODE_ID"
         | DecodeErrorCode.LIMIT_EXCEEDED -> "LIMIT_EXCEEDED"
         | DecodeErrorCode.KIND_NOT_ADMITTED -> "KIND_NOT_ADMITTED"
+        | DecodeErrorCode.STREAM_EMPTY -> "STREAM_EMPTY"
+        | DecodeErrorCode.STREAM_NO_SKELETON -> "STREAM_NO_SKELETON"
+        | DecodeErrorCode.STREAM_ORPHAN_SKELETON -> "STREAM_ORPHAN_SKELETON"
 
 /// AI-recoverable decode-time failure. Mirrors the §4d AI-recovery JSON
 /// envelope vocabulary from `Fuaran.UI.Ops.ErrorRender` so eval gate-1
@@ -215,6 +228,13 @@ module DecodeError =
             sink.Add e
 
         e
+
+    /// The one-line rendering a codec seam prints for a refusal —
+    /// `CODE at 'path': message`. Phase 2065: the seams keep the typed
+    /// `DecodeError` and render it only where text is wanted, through this one
+    /// function, rather than flattening it to this string at the boundary.
+    let render (error: DecodeError) : string =
+        sprintf "%s at '%s': %s" error.Code error.Path error.Message
 
 // ─── Local JSON AST + parser ─────────────────────────────────────────────
 //
@@ -9635,90 +9655,91 @@ module Coerce =
     /// `decodeObj` produces. Path is a fixed sentinel — Apply re-frames
     /// the error message into its own `KindMismatch` shape with the real
     /// field path attached at the call site.
-    let private viaJson (decoder: string -> Json -> Result<'T, DecodeError>) (v: obj) : Result<'T, string> =
-        match decoder "$value" (objToJson v) with
-        | Ok x -> Ok x
-        | Error e -> Error e.Message
+    ///
+    /// The refusal is the decoder's own typed `DecodeError` (Phase 2065) — code,
+    /// path and expected shape intact; a caller that wants text reads `Message`.
+    let private viaJson (decoder: string -> Json -> Result<'T, DecodeError>) (v: obj) : Result<'T, DecodeError> =
+        decoder "$value" (objToJson v)
 
     /// Optional flavour: a JSON `null` (or CLR `null`) decodes to `None`;
     /// anything else is decoded as `'T` and wrapped in `Some`.
-    let private viaJsonOpt (decoder: string -> Json -> Result<'T, DecodeError>) (v: obj) : Result<'T option, string> =
+    let private viaJsonOpt
+        (decoder: string -> Json -> Result<'T, DecodeError>)
+        (v: obj)
+        : Result<'T option, DecodeError> =
         match v with
         | null -> Ok None
-        | _ ->
-            match decoder "$value" (objToJson v) with
-            | Ok x -> Ok(Some x)
-            | Error e -> Error e.Message
+        | _ -> decoder "$value" (objToJson v) |> Result.map Some
 
-    let tryTextSource (v: obj) : Result<TextSource, string> = viaJson decodeTextSource v
+    let tryTextSource (v: obj) : Result<TextSource, DecodeError> = viaJson decodeTextSource v
 
-    let tryTextSourceOption (v: obj) : Result<TextSource option, string> = viaJsonOpt decodeTextSource v
+    let tryTextSourceOption (v: obj) : Result<TextSource option, DecodeError> = viaJsonOpt decodeTextSource v
 
-    let tryBindingFloat (v: obj) : Result<Binding<float>, string> = viaJson decodeBindingFloat v
+    let tryBindingFloat (v: obj) : Result<Binding<float>, DecodeError> = viaJson decodeBindingFloat v
 
-    let tryBindingFloatOption (v: obj) : Result<Binding<float> option, string> = viaJsonOpt decodeBindingFloat v
+    let tryBindingFloatOption (v: obj) : Result<Binding<float> option, DecodeError> = viaJsonOpt decodeBindingFloat v
 
-    let tryBindingInt (v: obj) : Result<Binding<int>, string> = viaJson decodeBindingInt v
-    let tryBindingBool (v: obj) : Result<Binding<bool>, string> = viaJson decodeBindingBool v
+    let tryBindingInt (v: obj) : Result<Binding<int>, DecodeError> = viaJson decodeBindingInt v
+    let tryBindingBool (v: obj) : Result<Binding<bool>, DecodeError> = viaJson decodeBindingBool v
 
     /// `Anchor.Href : Binding<string>` — wire shape is a Binding discriminator
     /// object (`{ "$type": "Static", "value": "…" }` etc.), which `decodeObj`
     /// surfaces as a `Map<string,obj>`. Previously this call site relied on the
     /// .NET-only `unbox` fast path (no Coerce arm); naming the decoder makes the
     /// coercion run under Fable too (Phase 191).
-    let tryBindingString (v: obj) : Result<Binding<string>, string> = viaJson decodeBindingString v
+    let tryBindingString (v: obj) : Result<Binding<string>, DecodeError> = viaJson decodeBindingString v
 
     /// Bare-string fields (`FragmentDecl.Name` / `FragmentRef.Name`, the
     /// `GridLayout.TemplateColumns` raw-string sugar). The wire value is a JSON
     /// string, which `decodeObj` boxes as a CLR `string`. `requireString` over
     /// `objToJson v` validates it uniformly with the other coercers (Phase 191).
-    let tryString (v: obj) : Result<string, string> = viaJson requireString v
+    let tryString (v: obj) : Result<string, DecodeError> = viaJson requireString v
 
     /// Optional bare-string fields (`Anchor.Rel` / `Anchor.Target` /
     /// `GridLayout.TemplateColumns`). The encoder writes `Some s` as the bare
     /// string and omits / nulls `None`; `viaJsonOpt` maps a CLR `null` to `None`
     /// and decodes anything else as the string (Phase 191).
-    let tryStringOption (v: obj) : Result<string option, string> = viaJsonOpt requireString v
+    let tryStringOption (v: obj) : Result<string option, DecodeError> = viaJsonOpt requireString v
 
-    let tryCellFormat (v: obj) : Result<CellFormat, string> = viaJson decodeCellFormat v
+    let tryCellFormat (v: obj) : Result<CellFormat, DecodeError> = viaJson decodeCellFormat v
 
-    let tryCellFormatOption (v: obj) : Result<CellFormat option, string> = viaJsonOpt decodeCellFormat v
+    let tryCellFormatOption (v: obj) : Result<CellFormat option, DecodeError> = viaJsonOpt decodeCellFormat v
 
     /// `Column.Width : ColumnWidth` — wire shape is a `$type` object
     /// (`{"$type":"Fixed","pixels":120}` etc.). Added for the Phase 364 nested
     /// UpdateProp surface (`Columns[i].Width`).
-    let tryColumnWidth (v: obj) : Result<ColumnWidth, string> = viaJson decodeColumnWidth v
+    let tryColumnWidth (v: obj) : Result<ColumnWidth, DecodeError> = viaJson decodeColumnWidth v
 
-    let tryIconSourceOption (v: obj) : Result<IconSource option, string> = viaJsonOpt decodeIconSource v
+    let tryIconSourceOption (v: obj) : Result<IconSource option, DecodeError> = viaJsonOpt decodeIconSource v
 
-    let tryOrientation (v: obj) : Result<Orientation, string> = viaJson decodeOrientation v
-    let tryTone (v: obj) : Result<ToneVariant, string> = viaJson decodeTone v
+    let tryOrientation (v: obj) : Result<Orientation, DecodeError> = viaJson decodeOrientation v
+    let tryTone (v: obj) : Result<ToneVariant, DecodeError> = viaJson decodeTone v
 
     /// `Icon.Size : IconSize` (Phase 821) — the UpdateProp twin of
     /// `decodeIconSize`, added with the standalone Icon display kind.
-    let tryIconSize (v: obj) : Result<IconSize, string> = viaJson decodeIconSize v
-    let tryStyleWeight (v: obj) : Result<StyleWeight, string> = viaJson decodeWeight v
-    let tryEmphasis (v: obj) : Result<Emphasis, string> = viaJson decodeEmphasis v
+    let tryIconSize (v: obj) : Result<IconSize, DecodeError> = viaJson decodeIconSize v
+    let tryStyleWeight (v: obj) : Result<StyleWeight, DecodeError> = viaJson decodeWeight v
+    let tryEmphasis (v: obj) : Result<Emphasis, DecodeError> = viaJson decodeEmphasis v
 
     /// Phase 867 - `Metric.trendPolarity`.
-    let tryTrendPolarity (v: obj) : Result<TrendPolarity, string> = viaJson decodeTrendPolarity v
+    let tryTrendPolarity (v: obj) : Result<TrendPolarity, DecodeError> = viaJson decodeTrendPolarity v
 
     /// The behavioural `emphasis` BOOL on Fact / LabelValueRow — the
     /// UpdateProp twin of `decodeEmphasisFlag`, so a TreeOp edit gets the
     /// same cross-vocabulary admission as a fresh decode (2026-07-19 sweep).
-    let tryEmphasisFlag (v: obj) : Result<bool, string> = viaJson decodeEmphasisFlag v
-    let tryHeadingVariant (v: obj) : Result<HeadingVariant, string> = viaJson decodeHeadingVariant v
-    let tryBadgeVariant (v: obj) : Result<BadgeVariant, string> = viaJson decodeBadgeVariant v
+    let tryEmphasisFlag (v: obj) : Result<bool, DecodeError> = viaJson decodeEmphasisFlag v
+    let tryHeadingVariant (v: obj) : Result<HeadingVariant, DecodeError> = viaJson decodeHeadingVariant v
+    let tryBadgeVariant (v: obj) : Result<BadgeVariant, DecodeError> = viaJson decodeBadgeVariant v
 
     /// `Button.Variant : ButtonVariant` — the UpdateProp twin of
     /// `decodeButtonVariant`, added with the Input family's field-level
     /// UpdateProp surface so a `Button` is editable field-by-field rather than
     /// only swappable wholesale via `EditNode`.
-    let tryButtonVariant (v: obj) : Result<ButtonVariant, string> = viaJson decodeButtonVariant v
+    let tryButtonVariant (v: obj) : Result<ButtonVariant, DecodeError> = viaJson decodeButtonVariant v
 
     /// `FileUpload.Accept : string list` / `Chart.YFields : string list` — a
     /// JSON array of strings.
-    let tryStringList (v: obj) : Result<string list, string> =
+    let tryStringList (v: obj) : Result<string list, DecodeError> =
         let decodeStringList (path: string) (j: Json) =
             requireArray path j
             |> Result.bind (traverseIndexed (fun i item -> requireString (sprintf "%s[%d]" path i) item))
@@ -9726,7 +9747,7 @@ module Coerce =
         viaJson decodeStringList v
 
     /// `CodeBlock.HighlightLines : int list`.
-    let tryIntList (v: obj) : Result<int list, string> =
+    let tryIntList (v: obj) : Result<int list, DecodeError> =
         let decodeIntList (path: string) (j: Json) =
             requireArray path j
             |> Result.bind (traverseIndexed (fun i item -> requireInt (sprintf "%s[%d]" path i) item))
@@ -9734,7 +9755,7 @@ module Coerce =
         viaJson decodeIntList v
 
     /// `List.Items : TextSource list`.
-    let tryTextSourceList (v: obj) : Result<TextSource list, string> =
+    let tryTextSourceList (v: obj) : Result<TextSource list, DecodeError> =
         let decodeTextSourceList (path: string) (j: Json) =
             requireArray path j
             |> Result.bind (traverseIndexed (fun i item -> decodeTextSource (sprintf "%s[%d]" path i) item))
@@ -9743,35 +9764,35 @@ module Coerce =
 
     // The remaining closed-enum twins, added with the Display / Layout /
     // Visualisation field-level UpdateProp surface.
-    let tryImageVariant (v: obj) : Result<ImageVariant, string> = viaJson decodeImageVariant v
+    let tryImageVariant (v: obj) : Result<ImageVariant, DecodeError> = viaJson decodeImageVariant v
 
     // Phase 1077 — the `Image` presentation twins.
-    let tryImageFit (v: obj) : Result<ImageFit, string> = viaJson decodeImageFit v
+    let tryImageFit (v: obj) : Result<ImageFit, DecodeError> = viaJson decodeImageFit v
 
-    let tryImageAspect (v: obj) : Result<ImageAspect, string> = viaJson decodeImageAspect v
+    let tryImageAspect (v: obj) : Result<ImageAspect, DecodeError> = viaJson decodeImageAspect v
 
-    let tryImageLoading (v: obj) : Result<ImageLoading, string> = viaJson decodeImageLoading v
+    let tryImageLoading (v: obj) : Result<ImageLoading, DecodeError> = viaJson decodeImageLoading v
 
-    let tryMathDisplay (v: obj) : Result<MathDisplay, string> = viaJson decodeMathDisplay v
+    let tryMathDisplay (v: obj) : Result<MathDisplay, DecodeError> = viaJson decodeMathDisplay v
 
-    let tryScrollOrientation (v: obj) : Result<ScrollOrientation, string> = viaJson decodeScrollOrientation v
+    let tryScrollOrientation (v: obj) : Result<ScrollOrientation, DecodeError> = viaJson decodeScrollOrientation v
 
     /// Phase 1119 — `ModalSpec.Modality`. Coerced like any other wire enum, so an
     /// `UpdateProp` switches a surface between blocking and anchored exactly as
     /// one switches a scroll axis.
-    let tryModalityKind (v: obj) : Result<ModalityKind, string> = viaJson decodeModalityKind v
+    let tryModalityKind (v: obj) : Result<ModalityKind, DecodeError> = viaJson decodeModalityKind v
 
     /// Phase 1116 — `FileUploadSpec.Capture`. An OPTION coercion, so a `null`
     /// clears the declaration back to the ordinary picker and a string names a
     /// device; an unrecognised string is the decoder's own refusal rather than a
     /// silent clear, which is the difference between "no device" and "a device I
     /// could not read".
-    let tryCaptureSourceOption (v: obj) : Result<CaptureSource option, string> = viaJsonOpt decodeCaptureSource v
+    let tryCaptureSourceOption (v: obj) : Result<CaptureSource option, DecodeError> = viaJsonOpt decodeCaptureSource v
 
-    let tryChartKind (v: obj) : Result<ChartKind, string> = viaJson decodeChartKind v
+    let tryChartKind (v: obj) : Result<ChartKind, DecodeError> = viaJson decodeChartKind v
 
     /// `ScrollArea.MaxHeight` / `MaxWidth : int option`.
-    let tryIntOption (v: obj) : Result<int option, string> = viaJsonOpt requireInt v
+    let tryIntOption (v: obj) : Result<int option, DecodeError> = viaJsonOpt requireInt v
 
     /// JSON numbers decode as boxed float — narrow to int for fields like
     /// `Heading.Level` / `Grid.Cols` / `Skeleton.Rows`. Native F# callers
@@ -9781,22 +9802,27 @@ module Coerce =
     // CLR type name: `v.GetType().FullName` is not Fable-portable (Fable can
     // only resolve types at compile time), and this coercion path must run on
     // both the .NET host and the Fable browser host (Phase 191).
-    let tryInt (v: obj) : Result<int, string> =
+    /// A scalar coercion's refusal, typed like every other `Coerce` refusal:
+    /// `WRONG_TYPE` at the `$value` sentinel path the structural twins use.
+    let private coerceMismatch (message: string) : DecodeError =
+        DecodeError.create DecodeErrorCode.WRONG_TYPE "$value" message None
+
+    let tryInt (v: obj) : Result<int, DecodeError> =
         match v with
         | :? int as i -> Ok i
         | :? float as f -> Ok(int f)
-        | _ -> Error(sprintf "expected int (or JSON-decoded float); got value %A" v)
+        | _ -> Error(coerceMismatch (sprintf "expected int (or JSON-decoded float); got value %A" v))
 
-    let tryFloat (v: obj) : Result<float, string> =
+    let tryFloat (v: obj) : Result<float, DecodeError> =
         match v with
         | :? float as f -> Ok f
         | :? int as i -> Ok(float i)
-        | _ -> Error(sprintf "expected float; got value %A" v)
+        | _ -> Error(coerceMismatch (sprintf "expected float; got value %A" v))
 
-    let tryBool (v: obj) : Result<bool, string> =
+    let tryBool (v: obj) : Result<bool, DecodeError> =
         match v with
         | :? bool as b -> Ok b
-        | _ -> Error(sprintf "expected bool; got value %A" v)
+        | _ -> Error(coerceMismatch (sprintf "expected bool; got value %A" v))
 
 // ─── Public surface ─────────────────────────────────────────────────────
 

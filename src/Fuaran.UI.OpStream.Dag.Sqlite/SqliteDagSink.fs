@@ -318,7 +318,13 @@ FROM dag_op_record WHERE stream_id = @s AND hash = @h;"""
             let op =
                 match codec.DecodeOp opJson with
                 | Ok o -> o
-                | Error msg -> failwithf "SqliteDagSink: codec failed to decode op at (%s, %s): %s" streamId hash msg
+                | Error error ->
+                    raise (
+                        CodecDecodeFailed(
+                            sprintf "SqliteDagSink: codec failed to decode op at (%s, %s)" streamId hash,
+                            error
+                        )
+                    )
 
             let outcomeHash = if reader.IsDBNull 2 then None else Some(reader.GetString 2)
             let promptId = if reader.IsDBNull 3 then None else Some(reader.GetString 3)
@@ -360,7 +366,13 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
             let op =
                 match codec.DecodeOp opJson with
                 | Ok o -> o
-                | Error msg -> failwithf "SqliteDagSink: codec failed to decode op at (%s, %s): %s" streamId hash msg
+                | Error error ->
+                    raise (
+                        CodecDecodeFailed(
+                            sprintf "SqliteDagSink: codec failed to decode op at (%s, %s)" streamId hash,
+                            error
+                        )
+                    )
 
             let outcomeHash = if reader.IsDBNull 3 then None else Some(reader.GetString 3)
             let promptId = if reader.IsDBNull 4 then None else Some(reader.GetString 4)

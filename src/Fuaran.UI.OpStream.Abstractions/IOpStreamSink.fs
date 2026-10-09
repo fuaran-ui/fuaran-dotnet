@@ -14,6 +14,39 @@ open Fuaran.UI.Ops.Types
 //  (Postgres / Kafka / Event Store) wires into the same suite.
 // ============================================================================
 
+/// Why a codec could not read a stored document back (Phase 2065). The seams
+/// that persist and replay — `IOpJsonCodec.DecodeOp`, `INodeJsonCodec.DecodeNode`
+/// — return this typed value rather than a flattened string, so a refusal that
+/// reaches a sink or a checkpoint still carries the decoder's code and path.
+[<RequireQualifiedAccess>]
+type CodecError =
+    /// The decoder refused the document; its `DecodeError` intact.
+    | Decode of Fuaran.UI.Ops.JsonDecode.DecodeError
+    /// The document decoded, and the host's message mapper declined a payload
+    /// in it (`TreeOp.mapMsg`).
+    | Unmapped of Fuaran.UI.Ops.TreeOpMap.MapRefusal
+    /// The codec does not read at all — an encode-only codec, named with the
+    /// member it does not implement.
+    | DecodeUnsupported of codec: string * mem: string
+
+module CodecError =
+    /// The one-line text of a refusal — byte-identical to the string each seam
+    /// returned before it was typed: `CODE at 'path': message` for a decode
+    /// refusal, `MapRefusal.render` for a mapper refusal, and
+    /// `<codec> does not implement <member>` for an encode-only codec.
+    let render (error: CodecError) : string =
+        match error with
+        | CodecError.Decode e -> Fuaran.UI.Ops.JsonDecode.DecodeError.render e
+        | CodecError.Unmapped r -> Fuaran.UI.Ops.TreeOpMap.MapRefusal.render r
+        | CodecError.DecodeUnsupported(codec, mem) -> sprintf "%s does not implement %s" codec mem
+
+/// Raised by a sink whose codec refused a STORED document on read-back — the
+/// sink cannot return a `Result` through its `Async<_>` contract, so the typed
+/// refusal rides the exception (`Error`) beside the sink's own account of where
+/// it was reading (`Context`). `Message` is `<context>: <rendered refusal>`.
+exception CodecDecodeFailed of Context: string * Error: CodecError with
+    override this.Message = sprintf "%s: %s" this.Context (CodecError.render this.Error)
+
 /// Host-provided codec for `TreeOp<'Msg>` JSON serialisation. Sinks that
 /// persist to text storage (Sqlite, future Postgres, etc.) take a codec
 /// because closure-bearing typed ops cannot round-trip generically — the
@@ -22,7 +55,7 @@ open Fuaran.UI.Ops.Types
 /// `Replay` will return decoder errors.
 type IOpJsonCodec<'Msg> =
     abstract member EncodeOp: TreeOp<'Msg> -> string
-    abstract member DecodeOp: string -> Result<TreeOp<'Msg>, string>
+    abstract member DecodeOp: string -> Result<TreeOp<'Msg>, CodecError>
 
 module OpJsonCodec =
     /// Codec that encodes via `CanonicalJson.encodeOp` and rejects every
@@ -33,7 +66,7 @@ module OpJsonCodec =
             member _.EncodeOp op = CanonicalJson.encodeOp op
 
             member _.DecodeOp _ =
-                Error "OpJsonCodec.encodeOnly does not implement DecodeOp" }
+                Error(CodecError.DecodeUnsupported("OpJsonCodec.encodeOnly", "DecodeOp")) }
 
     // ── The reference codec (Phase 1587) ────────────────────────────────────
     //
@@ -48,12 +81,6 @@ module OpJsonCodec =
     // This pair was already written by hand twice in this repo's own test code
     // (the DAG and persistence law suites) before it was written anywhere a
     // consumer could reach it. Promoting it is the point.
-
-    /// Render a decoder refusal as the flat string `IOpJsonCodec` reports.
-    /// Both halves of the decode — the wire refusal and the mapper's — reach a
-    /// consumer through the same one-line shape.
-    let private renderDecodeError (error: Fuaran.UI.Ops.JsonDecode.DecodeError) : string =
-        sprintf "%s at '%s': %s" error.Code error.Path error.Message
 
     /// The reference codec: the tier's canonical encoder, and the tier's own
     /// decoder composed with `TreeOp.mapMsg mapper`.
@@ -74,10 +101,10 @@ module OpJsonCodec =
 
             member _.DecodeOp json =
                 Fuaran.UI.Ops.JsonDecode.decodeOp json
-                |> Result.mapError renderDecodeError
+                |> Result.mapError CodecError.Decode
                 |> Result.bind (
                     Fuaran.UI.Ops.TreeOpMap.TreeOp.mapMsg mapper
-                    >> Result.mapError Fuaran.UI.Ops.TreeOpMap.MapRefusal.render
+                    >> Result.mapError CodecError.Unmapped
                 ) }
 
     /// The ERASED reference codec — `canonical` at `'Msg = obj`, where the

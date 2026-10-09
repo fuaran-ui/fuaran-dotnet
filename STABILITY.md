@@ -8450,6 +8450,50 @@ below this slot's class, so it rides the draft. No public record gains a field: 
   tags the moved rule comments carried are now the code table's `Notes`; the comments keep their
   rationale.
 
+### What rides this slot — Phase 2065
+
+_Class: **BREAKING (API)** — two public interface signatures change, a public module of literals becomes a
+union, and `DecodeErrorCode` gains cases; rides the 0.93.0 draft, already BREAKING, and does not raise the
+slot's class. **No wire byte moves**: the three stream codes were already these strings._
+
+**Typed errors survive the codec seams.** A decode refusal used to be flattened to a string at the codec
+boundary, so a sink or a checkpoint that read a stored document back could report only text. It now keeps
+its code, path and expected shape all the way through.
+
+- **`IOpJsonCodec.DecodeOp` and `INodeJsonCodec.DecodeNode` return `Result<_, CodecError>`** (was
+  `Result<_, string>`). `CodecError` (`Fuaran.UI.OpStream.Abstractions`) is closed:
+  `Decode of DecodeError` (the decoder refused), `Unmapped of MapRefusal` (the host's message mapper
+  declined a payload), `DecodeUnsupported of codec * mem` (an encode-only codec). `CodecError.render`
+  gives the text each seam returned before, byte for byte, and a test pins it.
+- **A sink that cannot read a stored document raises `CodecDecodeFailed(Context, Error)`** in place of
+  `failwithf`. `Error` is the codec's `CodecError`; `Message` is the text the sink always printed. The
+  SQLite op sink, its checkpoint read-backs and the SQLite DAG sink all raise it.
+- **Migration for an implementer of either interface** (two `IOpJsonCodec` implementers and no
+  `INodeJsonCodec` implementer known outside this repository, counted 2026-10-09; every in-repo implementer moved
+  in the same commit): return
+  `CodecError.Decode decodeError` where you returned a rendered decode error, and wrap any other failure
+  you produce as a `DecodeError` with your own code. An implementer composing `JsonDecode.decodeOp` /
+  `decodeNodeObj` writes `|> Result.mapError CodecError.Decode`. A caller that printed the string calls
+  `CodecError.render`. A caller that caught a sink's exception by message keeps working; one that wants
+  the code matches `CodecDecodeFailed(_, CodecError.Decode e)`.
+- **`DecodeErrorCode` gains `STREAM_EMPTY`, `STREAM_NO_SKELETON`, `STREAM_ORPHAN_SKELETON`.**
+  `Streaming.decodeStream`'s frame-protocol refusals were ad-hoc strings beside the vocabulary; they are
+  cases of it now, with the same strings. An exhaustive match over `DecodeErrorCode` needs the three arms.
+- **`DecodeError.render`** — the one `CODE at 'path': message` line, used wherever a seam wants text.
+- **`JsonDecode.Coerce.try*` return `Result<_, DecodeError>`** (was `Result<_, string>`); the scalar
+  coercers (`tryInt`, `tryFloat`, `tryBool`) refuse with `WRONG_TYPE` at `$value`. `Apply` still reports
+  the message inside its `KindMismatch`, so no apply error text changes.
+- **`ApplyErrorCode.name`** (`Fuaran.UI.Ops.Abstractions`) — the one code-to-string projection. The §4d
+  envelope (`ErrorRender.render`) and the apply telemetry (`OpOutcome.ofApplyResult`) both read it, each
+  adding its own rendering of a payload; neither re-matches the cases. No rendered text changes.
+- **`CustomCardJson.CardErrorCode` is a union** (`UNSUPPORTED_VERSION`, `UNDECLARED_FIELD`,
+  `DUPLICATE_CARD`, with `CardErrorCode.toString`) where it was a module of string literals, and every
+  structural card refusal names its code through `DecodeErrorCode`. The codes on the wire are unchanged.
+- **Kept, deliberately: card decode stays fail-fast.** WIRE_FORMAT §25.3 makes card decode fail fast in
+  member order so every host names the same first error; the §29 multi-defect collection is scoped to
+  node decoders and orders by path (§29.3), which would name a different first error (a card missing both
+  `moduleId` and `componentId` is refused at `moduleId` under §25.3, at `componentId` under §29.3).
+
 ---
 
 ## 0.91.0 — the slot Phase 2005 opens: the compute 0.37.0 adoption completes (DRAFT — untagged)

@@ -70,6 +70,7 @@
          corpus's registered op set, the map's wire-invisibility through the
          shipped reference codec, and a refusal that names the op and the slot. -->
     <Compile Include="TreeOpMapLawsTests.fs" />
+    <Compile Include="CodecSeamTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

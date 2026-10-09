@@ -524,12 +524,16 @@ ORDER BY sequence;"""
                     let opJson = reader.GetString(4)
 
                     match codec.DecodeOp opJson with
-                    | Error msg ->
-                        failwithf
-                            "SqliteSink: codec failed to decode op at (StreamId=%s, Sequence=%d): %s"
-                            (reader.GetString(0))
-                            (reader.GetInt32(1))
-                            msg
+                    | Error error ->
+                        raise (
+                            CodecDecodeFailed(
+                                sprintf
+                                    "SqliteSink: codec failed to decode op at (StreamId=%s, Sequence=%d)"
+                                    (reader.GetString(0))
+                                    (reader.GetInt32(1)),
+                                error
+                            )
+                        )
                     | Ok op ->
                         let envelopeJson = reader.GetString(8)
 
@@ -658,13 +662,17 @@ LIMIT 1;"""
                     let snapshotJson = reader.GetString(4)
 
                     match nodeCodec.DecodeNode snapshotJson with
-                    | Error msg ->
+                    | Error error ->
                         return
-                            failwithf
-                                "SqliteSink: node codec failed to decode snapshot at (StreamId=%s, Sequence=%d): %s"
-                                (reader.GetString(0))
-                                (reader.GetInt32(1))
-                                msg
+                            raise (
+                                CodecDecodeFailed(
+                                    sprintf
+                                        "SqliteSink: node codec failed to decode snapshot at (StreamId=%s, Sequence=%d)"
+                                        (reader.GetString(0))
+                                        (reader.GetInt32(1)),
+                                    error
+                                )
+                            )
                     | Ok snapshot ->
                         return
                             Some
@@ -696,12 +704,16 @@ ORDER BY sequence;"""
                     let snapshotJson = reader.GetString(4)
 
                     match nodeCodec.DecodeNode snapshotJson with
-                    | Error msg ->
-                        failwithf
-                            "SqliteSink: node codec failed to decode snapshot at (StreamId=%s, Sequence=%d): %s"
-                            (reader.GetString(0))
-                            (reader.GetInt32(1))
-                            msg
+                    | Error error ->
+                        raise (
+                            CodecDecodeFailed(
+                                sprintf
+                                    "SqliteSink: node codec failed to decode snapshot at (StreamId=%s, Sequence=%d)"
+                                    (reader.GetString(0))
+                                    (reader.GetInt32(1)),
+                                error
+                            )
+                        )
                     | Ok snapshot ->
                         results.Add
                             { StreamId = reader.GetString(0)

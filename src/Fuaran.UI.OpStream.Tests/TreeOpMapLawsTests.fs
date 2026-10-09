@@ -201,7 +201,8 @@ let tests =
                           (erased.EncodeOp untyped)
                           (sprintf "ops/%s: the typed and erased codecs agree on the bytes" name)
                   | Error e, _
-                  | _, Error e -> failtestf "ops/%s: the reference codec refused a corpus fixture — %s" name e
+                  | _, Error e ->
+                      failtestf "ops/%s: the reference codec refused a corpus fixture — %s" name (CodecError.render e)
           }
 
           test "refusal names the op and the slot, and constructs nothing" {

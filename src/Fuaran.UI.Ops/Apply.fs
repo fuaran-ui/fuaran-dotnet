@@ -354,14 +354,18 @@ type private UpdateResult<'Msg> =
 /// decoder there either. Naming the coercer at the call site makes coercion run
 /// identically on both pipelines: Fable runs it unconditionally; .NET keeps the
 /// fast-path-then-fallback shape. (Phase 191 — Fable-portable apply engine.)
-let inline private coerceField (coerce: obj -> Result<'T, string>) (v: obj) : Result<'T, string> =
+///
+/// The coercer refuses with its typed `DecodeError` (Phase 2065); the apply
+/// engine keeps only its `Message`, because the `KindMismatch` it re-frames into
+/// is an `ApplyError` whose §4d envelope has no slot for a decode code.
+let inline private coerceField (coerce: obj -> Result<'T, JsonDecode.DecodeError>) (v: obj) : Result<'T, string> =
 #if FABLE_COMPILER
-    coerce v
+    coerce v |> Result.mapError (fun e -> e.Message)
 #else
     try
         Ok(unbox<'T> v)
     with ex when isCastMismatch ex ->
-        coerce v
+        coerce v |> Result.mapError (fun e -> e.Message)
 #endif
 
 // A `PropValue` lowers to the coercer-facing `obj` at the `applyOne` entry via
