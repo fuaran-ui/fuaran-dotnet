@@ -779,7 +779,7 @@ let encodeTextSourceJson (t: TextSource) : JVal = encTextSource t"""
                   // coercion, at any of the three.
                   "FormFieldKind.Color",
                   """match value with
-            | Some(Binding.Static(Some __text)) when not (Fuaran.UI.HostPrelude.HexColor.isValid __text) ->
+            | Some(Binding.Static(Some(JStr __text))) when not (Fuaran.UI.HostPrelude.HexColor.isValid __text) ->
                 Error (sprintf "Color 'value' must be a '#rrggbb' hex colour — got %s" __text)
             | _ -> Ok(FormFieldKind.Color(onChange, value))"""
                   // Phase 1121 — the ONE cross-member refusal on `Tokens`, and the
@@ -1028,13 +1028,11 @@ let rec canonicaliseVector (v: IdlValue) : IdlValue =
 /// mechanically from the vocabulary and that the tier's consumers would
 /// otherwise write by hand. Each request names what it replaces.
 ///
-/// Two requests are deliberately ABSENT, because the generator refuses them for
-/// this vocabulary rather than because nothing wants them: `MapMsg` (the
+/// One request is deliberately ABSENT, because the generator refuses it for
+/// this vocabulary rather than because nothing wants it: `MapMsg` (the
 /// `Switch` kind is a host projection whose record the generator cannot
 /// construct, and a projection carries no map member — `NodeMap.mapMsg` stays
-/// hand-written until it can), and a `Projections` over `FormFieldKind` (its
-/// cases declare `value` and their handler at different types and names, so no
-/// single accessor type exists). A third, `SlotsOf "Binding"`, is absent because
+/// hand-written until it can). A second, `SlotsOf "Binding"`, is absent because
 /// its emission does not compile here: it reads the `Switch` projection's fields
 /// from the IDL (an optional `on`) rather than from the projected record (a
 /// required `On`), so the enumerator waits on the generator honouring a host
@@ -1057,4 +1055,10 @@ let derivations: Gen.Derivation list =
       // `opFieldNames` as `Set`s. The decoder's ORDERED kind groups and
       // `opWireFields` stay hand-declared: their order is the cross-host error
       // hint, and the op fields carry a required flag these sets do not.
-      Gen.Derivation.VocabularyConstants ]
+      Gen.Derivation.VocabularyConstants
+      // Phase 2177 — `FormFieldKind.value` and `FormFieldKind.onChange`. Every
+      // case declares its value as `Binding<JVal>` and its change handler as
+      // `onChange: JVal -> Action`, so both project to one type; the walks that
+      // read a field's binding or ask whether a handler is present read these
+      // instead of matching fifteen cases each.
+      Gen.Derivation.Projections("FormFieldKind", [ "value"; "onChange" ]) ]

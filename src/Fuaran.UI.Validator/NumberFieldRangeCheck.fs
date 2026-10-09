@@ -18,7 +18,7 @@ module Fuaran.UI.Validator.NumberFieldRangeCheck
 //
 //    FormFieldKind.rangedNumber (Binding.Static (Some 1900.0)) onChange (Some 1979.0) (Some 2028.0) None
 //    FormFieldKind.rangedNumberDeclarative (Binding.Static (Some 1900.0)) (Some 1979.0) (Some 2028.0) None
-//    FormFieldKind.RangedNumber(Some (Binding.Static (Some 1900.0)), None, Some 1979.0, Some 2028.0, None)
+//    FormFieldKind.RangedNumber(Some (FieldValue.ofNumber (Binding.Static (Some 1900.0))), None, Some 1979.0, Some 2028.0, None)
 //
 //  Non-detectable shapes (no finding): a `value` bound to a query / state /
 //  computed source (no compile-time value), or a non-literal `min` / `max`.
@@ -57,7 +57,15 @@ let private rangedArgs (head: SynExpr) (args: SynExpr list) =
             match unwrap tuple with
             | SynExpr.Tuple(exprs = items) ->
                 let item i = List.tryItem i items
-                Some(item 0 |> Option.bind (applied "Some"), item 2, item 3)
+                // Phase 2177 — the case's value slot is the wire-value binding, so
+                // a direct construction spells the typed literal through the
+                // `FieldValue.ofNumber` eraser; read through it to the literal.
+                let value =
+                    item 0
+                    |> Option.bind (applied "Some")
+                    |> Option.map (fun v -> applied "ofNumber" v |> Option.defaultValue v)
+
+                Some(value, item 2, item 3)
             | _ -> None
         | _ -> None
     else

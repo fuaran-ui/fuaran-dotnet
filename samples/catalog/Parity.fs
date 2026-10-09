@@ -230,11 +230,19 @@ let private fuaranForm () : Node<unit> =
                 [ { Defaults.formField<unit> with
                       Id = "cohort-name"
                       Label = TextSource.Literal "Cohort name"
-                      Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Some(fun _ -> Action.Chain [])) }
+                      Kind =
+                          FormFieldKind.Text(
+                              Some(FieldValue.ofText (Binding.Static(Some ""))),
+                              Some(FieldChange.ofText (fun _ -> Action.Chain []))
+                          ) }
                   { Defaults.formField<unit> with
                       Id = "sample-size"
                       Label = TextSource.Literal "Sample size"
-                      Kind = FormFieldKind.Number(Some(Binding.Static(Some 0.0)), Some(fun _ -> Action.Chain [])) } ] }
+                      Kind =
+                          FormFieldKind.Number(
+                              Some(FieldValue.ofNumber (Binding.Static(Some 0.0))),
+                              Some(FieldChange.ofNumber (fun _ -> Action.Chain []))
+                          ) } ] }
 
 let private fuaranTabbedCard () : Node<unit> =
     Fuaran.tabs

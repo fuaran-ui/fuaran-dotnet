@@ -6,7 +6,7 @@
     },
     {
       "case": "FormFieldKind.Color",
-      "expression": "match value with\u000a            | Some(Binding.Static(Some __text)) when not (Fuaran.UI.HostPrelude.HexColor.isValid __text) ->\u000a                Error (sprintf \"Color 'value' must be a '#rrggbb' hex colour — got %s\" __text)\u000a            | _ -> Ok(FormFieldKind.Color(onChange, value))"
+      "expression": "match value with\u000a            | Some(Binding.Static(Some(JStr __text))) when not (Fuaran.UI.HostPrelude.HexColor.isValid __text) ->\u000a                Error (sprintf \"Color 'value' must be a '#rrggbb' hex colour — got %s\" __text)\u000a            | _ -> Ok(FormFieldKind.Color(onChange, value))"
     },
     {
       "case": "FormFieldKind.Rating",

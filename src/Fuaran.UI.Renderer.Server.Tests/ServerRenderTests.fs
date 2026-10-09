@@ -635,7 +635,9 @@ let ssrCsrEmissionParityTests =
         [ test "a plain text field carries the client's `fuaran-form-input`, not the coarse field-control class" {
               let html =
                   Render.renderStatic (
-                      fieldForm "name" (FormFieldKind.Text(Some(Binding.State("name", Some "")), None))
+                      fieldForm
+                          "name"
+                          (FormFieldKind.Text(Some(FieldValue.ofText (Binding.State("name", Some ""))), None))
                   )
 
               Expect.isTrue (contains "fuaran-form-input" html) "the split vocabulary the client emits"
@@ -644,7 +646,9 @@ let ssrCsrEmissionParityTests =
           test "a textarea carries `fuaran-form-textarea`" {
               let html =
                   Render.renderStatic (
-                      fieldForm "notes" (FormFieldKind.TextArea(Some(Binding.State("notes", Some "")), None, 3))
+                      fieldForm
+                          "notes"
+                          (FormFieldKind.TextArea(Some(FieldValue.ofText (Binding.State("notes", Some ""))), None, 3))
                   )
 
               Expect.isTrue (contains "fuaran-form-textarea" html) "the textarea's own class"
@@ -656,7 +660,7 @@ let ssrCsrEmissionParityTests =
                       fieldForm
                           "when"
                           (FormFieldKind.DateTime(
-                              Some(Binding.State("when", Some "")),
+                              Some(FieldValue.ofText (Binding.State("when", Some ""))),
                               None,
                               DateTimeVariant.Date,
                               None,
@@ -700,7 +704,9 @@ let ssrCsrEmissionParityTests =
 
               let html =
                   Render.renderStatic (
-                      fieldForm "pick" (FormFieldKind.Choice(options, Some(Binding.Static(Some "b")), None))
+                      fieldForm
+                          "pick"
+                          (FormFieldKind.Choice(options, Some(FieldValue.ofText (Binding.Static(Some "b"))), None))
                   )
 
               Expect.isTrue
@@ -714,7 +720,7 @@ let ssrCsrEmissionParityTests =
                       Id = "email"
                       Label = TextSource.Literal "Email"
                       Help = Some(TextSource.Literal "We never share it.")
-                      Kind = FormFieldKind.Text(Some(Binding.State("email", Some "")), None) }
+                      Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.State("email", Some ""))), None) }
 
               let html =
                   Render.renderStatic (

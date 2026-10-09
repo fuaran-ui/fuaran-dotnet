@@ -1464,7 +1464,7 @@ let compositeTabsPanels: Node<obj> =
         { Defaults.formField with
             Id = "displayName"
             Label = TextSource.Literal "Display name"
-            Kind = FormFieldKind.Text(Some(Binding.Static(Some "Ada Lovelace")), Option.None)
+            Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.Static(Some "Ada Lovelace"))), Option.None)
             Required = true }
 
     let themeField: FormField<obj> =
@@ -1474,7 +1474,7 @@ let compositeTabsPanels: Node<obj> =
             Kind =
                 FormFieldKind.Choice(
                     Binding.Static(Some [ { Value = "light"; Label = "Light" }; { Value = "dark"; Label = "Dark" } ]),
-                    Some(Binding.Static(Some "dark")),
+                    Some(FieldValue.ofText (Binding.Static(Some "dark"))),
                     Option.None
                 )
             Required = true }
@@ -1662,7 +1662,11 @@ let formAllFields: Node<obj> =
         { Defaults.formField with
             Id = "name"
             Label = TextSource.Literal "Name"
-            Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Some(fun _ -> placeholderChain))
+            Kind =
+                FormFieldKind.Text(
+                    Some(FieldValue.ofText (Binding.Static(Some ""))),
+                    Some(FieldChange.ofText (fun _ -> placeholderChain))
+                )
             Required = true
             Help = Some(TextSource.Literal "Full legal name") }
 
@@ -1670,13 +1674,21 @@ let formAllFields: Node<obj> =
         { Defaults.formField with
             Id = "age"
             Label = TextSource.Literal "Age"
-            Kind = FormFieldKind.Number(Some(Binding.Static(Some 0.0)), Some(fun _ -> placeholderChain)) }
+            Kind =
+                FormFieldKind.Number(
+                    Some(FieldValue.ofNumber (Binding.Static(Some 0.0))),
+                    Some(FieldChange.ofNumber (fun _ -> placeholderChain))
+                ) }
 
     let checkboxField: FormField<obj> =
         { Defaults.formField with
             Id = "agree"
             Label = TextSource.Literal "I agree"
-            Kind = FormFieldKind.Checkbox(Some(Binding.Static(Some false)), Some(fun _ -> placeholderChain))
+            Kind =
+                FormFieldKind.Checkbox(
+                    Some(FieldValue.ofBool (Binding.Static(Some false))),
+                    Some(FieldChange.ofBool (fun _ -> placeholderChain))
+                )
             Required = true }
 
     let choiceField: FormField<obj> =
@@ -1686,15 +1698,20 @@ let formAllFields: Node<obj> =
             Kind =
                 FormFieldKind.Choice(
                     Binding.Static(Some [ { Value = "basic"; Label = "Basic" }; { Value = "pro"; Label = "Pro" } ]),
-                    Some(Binding.Static(Some "basic")),
-                    Some(fun _ -> placeholderChain)
+                    Some(FieldValue.ofText (Binding.Static(Some "basic"))),
+                    Some(FieldChange.ofChoice (fun _ -> placeholderChain))
                 ) }
 
     let textareaField: FormField<obj> =
         { Defaults.formField with
             Id = "notes"
             Label = TextSource.Literal "Notes"
-            Kind = FormFieldKind.TextArea(Some(Binding.Static(Some "")), Some(fun _ -> placeholderChain), 5) }
+            Kind =
+                FormFieldKind.TextArea(
+                    Some(FieldValue.ofText (Binding.Static(Some ""))),
+                    Some(FieldChange.ofText (fun _ -> placeholderChain)),
+                    5
+                ) }
 
     node
         "form-1"
@@ -1722,8 +1739,8 @@ let formRangedNumber: Node<obj> =
             Label = TextSource.Literal "Year"
             Kind =
                 FormFieldKind.RangedNumber(
-                    Some(Binding.Static(Some 2024.0)),
-                    Some(fun _ -> placeholderChain),
+                    Some(FieldValue.ofNumber (Binding.Static(Some 2024.0))),
+                    Some(FieldChange.ofNumber (fun _ -> placeholderChain)),
                     Some 1979.0,
                     Some 2028.0,
                     Some 1.0
@@ -1736,8 +1753,8 @@ let formRangedNumber: Node<obj> =
             Label = TextSource.Literal "Years contributed"
             Kind =
                 FormFieldKind.RangedNumber(
-                    Some(Binding.Static(Some 10.0)),
-                    Some(fun _ -> placeholderChain),
+                    Some(FieldValue.ofNumber (Binding.Static(Some 10.0))),
+                    Some(FieldChange.ofNumber (fun _ -> placeholderChain)),
                     Some 0.0,
                     None,
                     None
@@ -1749,8 +1766,8 @@ let formRangedNumber: Node<obj> =
             Label = TextSource.Literal "Amount"
             Kind =
                 FormFieldKind.RangedNumber(
-                    Some(Binding.Static(Some 100.0)),
-                    Some(fun _ -> placeholderChain),
+                    Some(FieldValue.ofNumber (Binding.Static(Some 100.0))),
+                    Some(FieldChange.ofNumber (fun _ -> placeholderChain)),
                     None,
                     None,
                     None
@@ -1771,7 +1788,11 @@ let filtersBoth: Node<obj> =
     let textFilter: FilterSpec<obj> =
         { Name = "q"
           Label = TextSource.Literal "Search"
-          Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Some(fun _ -> placeholderChain)) }
+          Kind =
+            FormFieldKind.Text(
+                Some(FieldValue.ofText (Binding.Static(Some ""))),
+                Some(FieldChange.ofText (fun _ -> placeholderChain))
+            ) }
 
     let choiceFilter: FilterSpec<obj> =
         { Name = "tier"
@@ -1779,8 +1800,8 @@ let filtersBoth: Node<obj> =
           Kind =
             FormFieldKind.Choice(
                 Binding.Static(Some [ { Value = "all"; Label = "All" } ]),
-                Some(Binding.Static(Some "all")),
-                Some(fun _ -> placeholderChain)
+                Some(FieldValue.ofText (Binding.Static(Some "all"))),
+                Some(FieldChange.ofChoice (fun _ -> placeholderChain))
             ) }
 
     node "filters-1" (NodeKind.Filters { Items = [ textFilter; choiceFilter ] }) None
@@ -1792,7 +1813,7 @@ let filtersDeclarative: Node<obj> =
     let textFilter: FilterSpec<obj> =
         { Name = "q"
           Label = TextSource.Literal "Search"
-          Kind = FormFieldKind.Text(Some(Binding.Filter("q", None)), None) }
+          Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.Filter("q", None))), None) }
 
     let choiceFilter: FilterSpec<obj> =
         { Name = "tier"
@@ -1800,14 +1821,21 @@ let filtersDeclarative: Node<obj> =
           Kind =
             FormFieldKind.Choice(
                 Binding.Static(Some [ { Value = "all"; Label = "All" } ]),
-                Some(Binding.Filter("tier", None)),
+                Some(FieldValue.ofText (Binding.Filter("tier", None))),
                 None
             ) }
 
     let rangeFilter: FilterSpec<obj> =
         { Name = "age"
           Label = TextSource.Literal "Age"
-          Kind = FormFieldKind.Range(Some(Binding.Static(Some { Min = 0.0; Max = 100.0 })), None, None, None, None) }
+          Kind =
+            FormFieldKind.Range(
+                Some(FieldValue.ofRange (Binding.Static(Some { Min = 0.0; Max = 100.0 }))),
+                None,
+                None,
+                None,
+                None
+            ) }
 
     node "filters-declarative" (NodeKind.Filters { Items = [ textFilter; choiceFilter; rangeFilter ] }) None
 
@@ -1832,8 +1860,8 @@ let formSegmentedChoice: Node<obj> =
             Kind =
                 FormFieldKind.SegmentedChoice(
                     Binding.Static(Some opts),
-                    Some(Binding.Static(Some "effective")),
-                    Some(fun _ -> placeholderChain),
+                    Some(FieldValue.ofText (Binding.Static(Some "effective"))),
+                    Some(FieldChange.ofChoice (fun _ -> placeholderChain)),
                     Orientation.Horizontal
                 ) }
 
@@ -1844,8 +1872,8 @@ let formSegmentedChoice: Node<obj> =
             Kind =
                 FormFieldKind.SegmentedChoice(
                     Binding.Static(Some [ { Value = "low"; Label = "Low" }; { Value = "high"; Label = "High" } ]),
-                    Some(Binding.Static None),
-                    Some(fun _ -> placeholderChain),
+                    Some(FieldValue.ofText (Binding.Static None)),
+                    Some(FieldChange.ofChoice (fun _ -> placeholderChain)),
                     Orientation.Vertical
                 )
             Required = true }
@@ -1880,9 +1908,9 @@ let formComboboxStatic: Node<obj> =
             Kind =
                 FormFieldKind.Combobox(
                     false,
-                    Some(fun _ -> placeholderChain),
+                    Some(FieldChange.ofChoice (fun _ -> placeholderChain)),
                     Binding.Static(Some opts),
-                    Some(Binding.Static(Some "fra"))
+                    Some(FieldValue.ofText (Binding.Static(Some "fra")))
                 ) }
 
     node
@@ -1940,7 +1968,7 @@ let formComboboxFreeText: Node<obj> =
                             [ { Value = "urgent"; Label = "Urgent" }
                               { Value = "blocked"; Label = "Blocked" } ]
                     ),
-                    Some(Binding.Static(Some "needs-a-second-look"))
+                    Some(FieldValue.ofText (Binding.Static(Some "needs-a-second-look")))
                 ) }
 
     node
@@ -1964,7 +1992,13 @@ let formRating: Node<obj> =
             Id = "score"
             Label = TextSource.Literal "How was it?"
             Required = true
-            Kind = FormFieldKind.Rating(false, 5, Some(fun _ -> placeholderChain), Some(Binding.Static(Some 4.0))) }
+            Kind =
+                FormFieldKind.Rating(
+                    false,
+                    5,
+                    Some(FieldChange.ofNumber (fun _ -> placeholderChain)),
+                    Some(FieldValue.ofNumber (Binding.Static(Some 4.0)))
+                ) }
 
     node
         "form-rating"
@@ -1986,7 +2020,7 @@ let formRatingHalves: Node<obj> =
         { Defaults.formField with
             Id = "stars"
             Label = TextSource.Literal "Your rating"
-            Kind = FormFieldKind.Rating(true, 5, None, Some(Binding.Static(Some 3.5))) }
+            Kind = FormFieldKind.Rating(true, 5, None, Some(FieldValue.ofNumber (Binding.Static(Some 3.5)))) }
 
     let average: FormField<obj> =
         { Defaults.formField with
@@ -2013,7 +2047,11 @@ let formColor: Node<obj> =
         { Defaults.formField with
             Id = "brand"
             Label = TextSource.Literal "Brand colour"
-            Kind = FormFieldKind.Color(Some(fun _ -> placeholderChain), Some(Binding.Static(Some "#FFAA00"))) }
+            Kind =
+                FormFieldKind.Color(
+                    Some(FieldChange.ofText (fun _ -> placeholderChain)),
+                    Some(FieldValue.ofText (Binding.Static(Some "#FFAA00")))
+                ) }
 
     node
         "form-color"
@@ -2036,10 +2074,11 @@ let filtersRatingColour: Node<obj> =
             { Items =
                 [ { Name = "stars"
                     Label = TextSource.Literal "At least"
-                    Kind = FormFieldKind.Rating(false, 5, None, Some(Binding.Filter("stars", None))) }
+                    Kind =
+                      FormFieldKind.Rating(false, 5, None, Some(FieldValue.ofNumber (Binding.Filter("stars", None)))) }
                   { Name = "swatch"
                     Label = TextSource.Literal "Colour"
-                    Kind = FormFieldKind.Color(None, Some(Binding.Filter("swatch", None))) } ] })
+                    Kind = FormFieldKind.Color(None, Some(FieldValue.ofText (Binding.Filter("swatch", None)))) } ] })
         None
 
 /// Phase 1121 — `FormFieldKind.Tokens` in its SHORTEST spelling: `allowFreeText`
@@ -2079,7 +2118,7 @@ let formTokensSuggested: Node<obj> =
             Kind =
                 FormFieldKind.Tokens(
                     false,
-                    Some(fun _ -> placeholderChain),
+                    Some(FieldChange.ofTokens (fun _ -> placeholderChain)),
                     Some(
                         Binding.Static(
                             Some
@@ -2088,7 +2127,7 @@ let formTokensSuggested: Node<obj> =
                                   { Label = "Spain"; Value = "esp" } ]
                         )
                     ),
-                    Some(Binding.Static(Some [ "deu"; "fra" ]))
+                    Some(FieldValue.ofTokens (Binding.Static(Some [ "deu"; "fra" ])))
                 ) }
 
     node
@@ -2152,7 +2191,7 @@ let filtersTokens: Node<obj> =
                                         { Label = "Blocked"; Value = "blocked" } ]
                               )
                           ),
-                          Some(Binding.Filter("labels", None))
+                          Some(FieldValue.ofTokens (Binding.Filter("labels", None)))
                       ) } ] })
         None
 
@@ -2165,8 +2204,8 @@ let filtersSegmented: Node<obj> =
           Kind =
             FormFieldKind.SegmentedChoice(
                 Binding.Static(Some [ { Value = "table"; Label = "Table" }; { Value = "chart"; Label = "Chart" } ]),
-                Some(Binding.Static(Some "table")),
-                Some(fun _ -> placeholderChain),
+                Some(FieldValue.ofText (Binding.Static(Some "table"))),
+                Some(FieldChange.ofChoice (fun _ -> placeholderChain)),
                 Orientation.Horizontal
             ) }
 
@@ -2184,8 +2223,8 @@ let formDate: Node<obj> =
             Label = TextSource.Literal "Check in"
             Kind =
                 FormFieldKind.DateTime(
-                    Some(Binding.Static(Some "2026-01-15")),
-                    Some(fun _ -> placeholderChain),
+                    Some(FieldValue.ofText (Binding.Static(Some "2026-01-15"))),
+                    Some(FieldChange.ofChoice (fun _ -> placeholderChain)),
                     DateTimeVariant.Date,
                     Some "2026-01-01",
                     Some "2026-12-31",
@@ -2199,8 +2238,8 @@ let formDate: Node<obj> =
             Label = TextSource.Literal "Alarm"
             Kind =
                 FormFieldKind.DateTime(
-                    Some(Binding.Static(Some "08:30")),
-                    Some(fun _ -> placeholderChain),
+                    Some(FieldValue.ofText (Binding.Static(Some "08:30"))),
+                    Some(FieldChange.ofChoice (fun _ -> placeholderChain)),
                     DateTimeVariant.Time,
                     None,
                     None,
@@ -2213,8 +2252,8 @@ let formDate: Node<obj> =
             Label = TextSource.Literal "Meeting"
             Kind =
                 FormFieldKind.DateTime(
-                    Some(Binding.Static(Some "2026-03-01T14:00")),
-                    Some(fun _ -> placeholderChain),
+                    Some(FieldValue.ofText (Binding.Static(Some "2026-03-01T14:00"))),
+                    Some(FieldChange.ofChoice (fun _ -> placeholderChain)),
                     DateTimeVariant.DateTime,
                     None,
                     None,
@@ -2245,13 +2284,15 @@ let formDateRange: Node<obj> =
             Kind =
                 FormFieldKind.DateTimeRange(
                     Some(
-                        Binding.Static(
-                            Some
-                                { From = "2026-03-01"
-                                  To = "2026-03-08" }
+                        FieldValue.ofDateRange (
+                            Binding.Static(
+                                Some
+                                    { From = "2026-03-01"
+                                      To = "2026-03-08" }
+                            )
                         )
                     ),
-                    Some(fun _ -> placeholderChain),
+                    Some(FieldChange.ofDateRange (fun _ -> placeholderChain)),
                     DateTimeVariant.Date,
                     Some "2026-01-01",
                     Some "2026-12-31",
@@ -2267,7 +2308,7 @@ let formDateRange: Node<obj> =
             Label = TextSource.Literal "Shift"
             Kind =
                 FormFieldKind.DateTimeRange(
-                    Some(Binding.State("shift", Some { From = "08:00"; To = "17:00" })),
+                    Some(FieldValue.ofDateRange (Binding.State("shift", Some { From = "08:00"; To = "17:00" }))),
                     None,
                     DateTimeVariant.Time,
                     None,
@@ -2282,13 +2323,15 @@ let formDateRange: Node<obj> =
             Kind =
                 FormFieldKind.DateTimeRange(
                     Some(
-                        Binding.Static(
-                            Some
-                                { From = "2026-03-01T09:00"
-                                  To = "2026-03-01T17:00" }
+                        FieldValue.ofDateRange (
+                            Binding.Static(
+                                Some
+                                    { From = "2026-03-01T09:00"
+                                      To = "2026-03-01T17:00" }
+                            )
                         )
                     ),
-                    Some(fun _ -> placeholderChain),
+                    Some(FieldChange.ofDateRange (fun _ -> placeholderChain)),
                     DateTimeVariant.DateTime,
                     None,
                     None,
@@ -2315,7 +2358,7 @@ let filtersDateRange: Node<obj> =
           Label = TextSource.Literal "Stay"
           Kind =
             FormFieldKind.DateTimeRange(
-                Some(Binding.Filter("stay", None)),
+                Some(FieldValue.ofDateRange (Binding.Filter("stay", None))),
                 None,
                 DateTimeVariant.Date,
                 None,
@@ -2867,20 +2910,21 @@ let formDeclarative: Node<obj> =
         { Defaults.formField with
             Id = "profile-name"
             Label = TextSource.Literal "Name"
-            Kind = FormFieldKind.Text(Some(Binding.State("profileName", Some "")), Option.None)
+            Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.State("profileName", Some ""))), Option.None)
             Required = true }
 
     let numberField: FormField<obj> =
         { Defaults.formField with
             Id = "profile-age"
             Label = TextSource.Literal "Age"
-            Kind = FormFieldKind.Number(Some(Binding.State("profileAge", Some 0.0)), Option.None) }
+            Kind = FormFieldKind.Number(Some(FieldValue.ofNumber (Binding.State("profileAge", Some 0.0))), Option.None) }
 
     let checkboxField: FormField<obj> =
         { Defaults.formField with
             Id = "profile-agree"
             Label = TextSource.Literal "I agree"
-            Kind = FormFieldKind.Checkbox(Some(Binding.State("profileAgree", Some false)), Option.None)
+            Kind =
+                FormFieldKind.Checkbox(Some(FieldValue.ofBool (Binding.State("profileAgree", Some false))), Option.None)
             Required = true }
 
     let choiceField: FormField<obj> =
@@ -2890,7 +2934,7 @@ let formDeclarative: Node<obj> =
             Kind =
                 FormFieldKind.Choice(
                     Binding.Static(Some [ { Value = "basic"; Label = "Basic" }; { Value = "pro"; Label = "Pro" } ]),
-                    Some(Binding.State("profileTier", None)),
+                    Some(FieldValue.ofText (Binding.State("profileTier", None))),
                     Option.None
                 ) }
 
@@ -2970,7 +3014,11 @@ let formToggle: Node<obj> =
             Label = TextSource.Literal "Irrigation"
             Kind =
                 FormFieldKind.Toggle(
-                    Some(Binding.State("irrigation-running", Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox)),
+                    Some(
+                        FieldValue.ofBool (
+                            Binding.State("irrigation-running", Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox)
+                        )
+                    ),
                     Option.None
                 ) }
 
@@ -2982,7 +3030,11 @@ let formToggle: Node<obj> =
             Label = TextSource.Literal "I accept the terms"
             Kind =
                 FormFieldKind.Checkbox(
-                    Some(Binding.State("accept-terms", Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox)),
+                    Some(
+                        FieldValue.ofBool (
+                            Binding.State("accept-terms", Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox)
+                        )
+                    ),
                     Option.None
                 )
             Required = true }
@@ -3015,7 +3067,11 @@ let formFieldRules: Node<obj> =
             Label = TextSource.Literal "Work email"
             Kind =
                 FormFieldKind.Text(
-                    Some(Binding.State("work-email", Some Fuaran.UI.Defaults.ControlValueDefaults.text)),
+                    Some(
+                        FieldValue.ofText (
+                            Binding.State("work-email", Some Fuaran.UI.Defaults.ControlValueDefaults.text)
+                        )
+                    ),
                     Option.None
                 )
             Required = true
@@ -3037,7 +3093,9 @@ let formFieldRules: Node<obj> =
             Label = TextSource.Literal "Postcode"
             Kind =
                 FormFieldKind.Text(
-                    Some(Binding.State("postcode", Some Fuaran.UI.Defaults.ControlValueDefaults.text)),
+                    Some(
+                        FieldValue.ofText (Binding.State("postcode", Some Fuaran.UI.Defaults.ControlValueDefaults.text))
+                    ),
                     Option.None
                 )
             Required = true
@@ -3056,7 +3114,9 @@ let formFieldRules: Node<obj> =
             Label = TextSource.Literal "Username"
             Kind =
                 FormFieldKind.Text(
-                    Some(Binding.State("username", Some Fuaran.UI.Defaults.ControlValueDefaults.text)),
+                    Some(
+                        FieldValue.ofText (Binding.State("username", Some Fuaran.UI.Defaults.ControlValueDefaults.text))
+                    ),
                     Option.None
                 )
             Required = true
@@ -3075,7 +3135,11 @@ let formFieldRules: Node<obj> =
             Label = TextSource.Literal "Start date"
             Kind =
                 FormFieldKind.DateTime(
-                    Some(Binding.State("hire-start-date", Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime)),
+                    Some(
+                        FieldValue.ofText (
+                            Binding.State("hire-start-date", Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime)
+                        )
+                    ),
                     Option.None,
                     DateTimeVariant.Date,
                     None,
@@ -3093,7 +3157,11 @@ let formFieldRules: Node<obj> =
             Label = TextSource.Literal "End date"
             Kind =
                 FormFieldKind.DateTime(
-                    Some(Binding.State("hire-end-date", Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime)),
+                    Some(
+                        FieldValue.ofText (
+                            Binding.State("hire-end-date", Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime)
+                        )
+                    ),
                     Option.None,
                     DateTimeVariant.Date,
                     None,
@@ -3144,7 +3212,7 @@ let formRuleTokens: Node<obj> =
             Label = TextSource.Literal label
             Kind =
                 FormFieldKind.Text(
-                    Some(Binding.State(id, Some Fuaran.UI.Defaults.ControlValueDefaults.text)),
+                    Some(FieldValue.ofText (Binding.State(id, Some Fuaran.UI.Defaults.ControlValueDefaults.text))),
                     Option.None
                 )
             Required = true }
@@ -3201,7 +3269,11 @@ let formDeclarativeMinimal: Node<obj> =
             Label = TextSource.Literal "Name"
             Kind =
                 FormFieldKind.Text(
-                    Some(Binding.State("guest-name", Some Fuaran.UI.Defaults.ControlValueDefaults.text)),
+                    Some(
+                        FieldValue.ofText (
+                            Binding.State("guest-name", Some Fuaran.UI.Defaults.ControlValueDefaults.text)
+                        )
+                    ),
                     Option.None
                 )
             Required = true }
@@ -3212,7 +3284,11 @@ let formDeclarativeMinimal: Node<obj> =
             Label = TextSource.Literal "Party size"
             Kind =
                 FormFieldKind.Number(
-                    Some(Binding.State("party-size", Some Fuaran.UI.Defaults.ControlValueDefaults.number)),
+                    Some(
+                        FieldValue.ofNumber (
+                            Binding.State("party-size", Some Fuaran.UI.Defaults.ControlValueDefaults.number)
+                        )
+                    ),
                     Option.None
                 ) }
 
@@ -3227,7 +3303,7 @@ let formDeclarativeMinimal: Node<obj> =
                             [ { Value = "indoor"; Label = "Indoor" }
                               { Value = "terrace"; Label = "Terrace" } ]
                     ),
-                    Some(Binding.State("seating", Fuaran.UI.Defaults.ControlValueDefaults.choice)),
+                    Some(FieldValue.ofText (Binding.State("seating", Fuaran.UI.Defaults.ControlValueDefaults.choice))),
                     Option.None
                 ) }
 
@@ -3237,7 +3313,11 @@ let formDeclarativeMinimal: Node<obj> =
             Label = TextSource.Literal "Date"
             Kind =
                 FormFieldKind.DateTime(
-                    Some(Binding.State("visit-date", Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime)),
+                    Some(
+                        FieldValue.ofText (
+                            Binding.State("visit-date", Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime)
+                        )
+                    ),
                     Option.None,
                     DateTimeVariant.Date,
                     None,
@@ -5623,7 +5703,7 @@ let filterableStaticDashboard: Node<obj> =
           Kind =
             FormFieldKind.Choice(
                 Binding.Static(Some [ for value, optLabel in options -> { Value = value; Label = optLabel } ]),
-                Some(Binding.Filter(name, None)),
+                Some(FieldValue.ofText (Binding.Filter(name, None))),
                 None
             ) }
 
@@ -5749,7 +5829,7 @@ let private filterEdgeChip (name: string) (label: string) (options: (string * st
       Kind =
         FormFieldKind.Choice(
             Binding.Static(Some [ for value, optLabel in options -> { Value = value; Label = optLabel } ]),
-            Some(Binding.Filter(name, None)),
+            Some(FieldValue.ofText (Binding.Filter(name, None))),
             None
         ) }
 
@@ -6830,7 +6910,11 @@ let formLocalText: Node<obj> =
         { Defaults.formField with
             Id = "salary-input"
             Label = TextSource.Literal "Salary"
-            Kind = FormFieldKind.Text(Some localFloat, Some(fun _ -> placeholderChain)) }
+            Kind =
+                FormFieldKind.Text(
+                    (Some localFloat |> Option.map FieldValue.ofText),
+                    Some(FieldChange.ofText (fun _ -> placeholderChain))
+                ) }
 
     node
         "form-local-1"
@@ -6860,7 +6944,11 @@ let formLocalDebounce: Node<obj> =
         { Defaults.formField with
             Id = "email-input"
             Label = TextSource.Literal "Email"
-            Kind = FormFieldKind.Text(Some localDebounce, Some(fun _ -> placeholderChain))
+            Kind =
+                FormFieldKind.Text(
+                    (Some localDebounce |> Option.map FieldValue.ofText),
+                    Some(FieldChange.ofText (fun _ -> placeholderChain))
+                )
             Required = true }
 
     node
@@ -6898,7 +6986,7 @@ let formLocalDeclared: Node<obj> =
         { Defaults.formField with
             Id = "unit-price"
             Label = TextSource.Literal "Unit price"
-            Kind = FormFieldKind.Number(Some localDeclared, None) }
+            Kind = FormFieldKind.Number((Some localDeclared |> Option.map FieldValue.ofNumber), None) }
 
     node
         "form-local-declared"

@@ -630,21 +630,21 @@ and [<RequireQualifiedAccess>] CurveCommand =
     | Close
 
 and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
-    | Text of value: Binding<string> option * onChange: (string -> Action<'Msg>) option
-    | Number of value: Binding<float> option * onChange: (float -> Action<'Msg>) option
-    | Checkbox of value: Binding<bool> option * onToggle: (bool -> Action<'Msg>) option
-    | Toggle of value: Binding<bool> option * onToggle: (bool -> Action<'Msg>) option
-    | Choice of options: Binding<SelectOption list> * value: Binding<string> option * onChange: (string option -> Action<'Msg>) option
-    | TextArea of value: Binding<string> option * onChange: (string -> Action<'Msg>) option * rows: int
-    | RangedNumber of value: Binding<float> option * onChange: (float -> Action<'Msg>) option * min: float option * max: float option * step: float option
-    | Range of value: Binding<RangePair> option * onChange: (float * float -> Action<'Msg>) option * min: float option * max: float option * step: float option
-    | SegmentedChoice of options: Binding<SelectOption list> * value: Binding<string> option * onChange: (string option -> Action<'Msg>) option * orientation: Orientation
-    | DateTime of value: Binding<string> option * onChange: (string option -> Action<'Msg>) option * variant: DateTimeVariant * min: string option * max: string option * step: float option
-    | DateTimeRange of value: Binding<DateTimeRangePair> option * onChange: (string * string -> Action<'Msg>) option * variant: DateTimeVariant * min: string option * max: string option * step: float option
-    | Combobox of allowFreeText: bool * onChange: (string option -> Action<'Msg>) option * options: Binding<SelectOption list> * value: Binding<string> option
-    | Rating of allowHalf: bool * max: int * onChange: (float -> Action<'Msg>) option * value: Binding<float> option
-    | Color of onChange: (string -> Action<'Msg>) option * value: Binding<string> option
-    | Tokens of allowFreeText: bool * onChange: (string list -> Action<'Msg>) option * suggestions: Binding<SelectOption list> option * value: Binding<string list> option
+    | Text of value: Binding<JVal> option * onChange: (JVal -> Action<'Msg>) option
+    | Number of value: Binding<JVal> option * onChange: (JVal -> Action<'Msg>) option
+    | Checkbox of value: Binding<JVal> option * onChange: (JVal -> Action<'Msg>) option
+    | Toggle of value: Binding<JVal> option * onChange: (JVal -> Action<'Msg>) option
+    | Choice of options: Binding<SelectOption list> * value: Binding<JVal> option * onChange: (JVal -> Action<'Msg>) option
+    | TextArea of value: Binding<JVal> option * onChange: (JVal -> Action<'Msg>) option * rows: int
+    | RangedNumber of value: Binding<JVal> option * onChange: (JVal -> Action<'Msg>) option * min: float option * max: float option * step: float option
+    | Range of value: Binding<JVal> option * onChange: (JVal -> Action<'Msg>) option * min: float option * max: float option * step: float option
+    | SegmentedChoice of options: Binding<SelectOption list> * value: Binding<JVal> option * onChange: (JVal -> Action<'Msg>) option * orientation: Orientation
+    | DateTime of value: Binding<JVal> option * onChange: (JVal -> Action<'Msg>) option * variant: DateTimeVariant * min: string option * max: string option * step: float option
+    | DateTimeRange of value: Binding<JVal> option * onChange: (JVal -> Action<'Msg>) option * variant: DateTimeVariant * min: string option * max: string option * step: float option
+    | Combobox of allowFreeText: bool * onChange: (JVal -> Action<'Msg>) option * options: Binding<SelectOption list> * value: Binding<JVal> option
+    | Rating of allowHalf: bool * max: int * onChange: (JVal -> Action<'Msg>) option * value: Binding<JVal> option
+    | Color of onChange: (JVal -> Action<'Msg>) option * value: Binding<JVal> option
+    | Tokens of allowFreeText: bool * onChange: (JVal -> Action<'Msg>) option * suggestions: Binding<SelectOption list> option * value: Binding<JVal> option
 
 and [<RequireQualifiedAccess>] Format =
     | Number of decimals: int option
@@ -2149,21 +2149,21 @@ and private encCurveCommand (v: CurveCommand) : JVal =
 
 and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     match v with
-    | FormFieldKind.Text (value, onChange) -> Canon.typed "Text" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
-    | FormFieldKind.Number (value, onChange) -> Canon.typed "Number" ([ (value |> Option.map (fun v -> "value", (encBinding encFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
-    | FormFieldKind.Checkbox (value, onToggle) -> Canon.typed "Checkbox" ([ (value |> Option.map (fun v -> "value", (encBinding JBool) v)); (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")) ] |> List.choose id)
-    | FormFieldKind.Toggle (value, onToggle) -> Canon.typed "Toggle" ([ (value |> Option.map (fun v -> "value", (encBinding JBool) v)); (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")) ] |> List.choose id)
-    | FormFieldKind.Choice (options, value, onChange) -> Canon.typed "Choice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
-    | FormFieldKind.TextArea (value, onChange, rows) -> Canon.typed "TextArea" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("rows", JInt rows) ] |> List.choose id)
-    | FormFieldKind.RangedNumber (value, onChange, min, max, step) -> Canon.typed "RangedNumber" ([ (value |> Option.map (fun v -> "value", (encBinding encFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
-    | FormFieldKind.Range (value, onChange, min, max, step) -> Canon.typed "Range" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<RangePair>) -> match v with | Binding.Static(Some p) -> encRangePair p | __other -> encBinding encRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
-    | FormFieldKind.SegmentedChoice (options, value, onChange, orientation) -> Canon.typed "SegmentedChoice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("orientation", encOrientation orientation) ] |> List.choose id)
-    | FormFieldKind.DateTime (value, onChange, variant, min, max, step) -> Canon.typed "DateTime" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateTimeVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
-    | FormFieldKind.DateTimeRange (value, onChange, variant, min, max, step) -> Canon.typed "DateTimeRange" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<DateTimeRangePair>) -> match v with | Binding.Static(Some p) -> encDateTimeRangePair p | __other -> encBinding encDateTimeRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateTimeVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
-    | FormFieldKind.Combobox (allowFreeText, onChange, options, value) -> Canon.typed "Combobox" ([ (if allowFreeText = false then None else Some("allowFreeText", JBool allowFreeText)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
-    | FormFieldKind.Rating (allowHalf, max, onChange, value) -> Canon.typed "Rating" ([ (if allowHalf = false then None else Some("allowHalf", JBool allowHalf)); Some("max", JInt max); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding encFloat) v)) ] |> List.choose id)
-    | FormFieldKind.Color (onChange, value) -> Canon.typed "Color" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
-    | FormFieldKind.Tokens (allowFreeText, onChange, suggestions, value) -> Canon.typed "Tokens" ([ (if allowFreeText = true then None else Some("allowFreeText", JBool allowFreeText)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (suggestions |> Option.map (fun v -> "suggestions", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) v)); (value |> Option.map (fun v -> "value", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
+    | FormFieldKind.Text (value, onChange) -> Canon.typed "Text" ([ (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.Number (value, onChange) -> Canon.typed "Number" ([ (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.Checkbox (value, onChange) -> Canon.typed "Checkbox" ([ (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.Toggle (value, onChange) -> Canon.typed "Toggle" ([ (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.Choice (options, value, onChange) -> Canon.typed "Choice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.TextArea (value, onChange, rows) -> Canon.typed "TextArea" ([ (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("rows", JInt rows) ] |> List.choose id)
+    | FormFieldKind.RangedNumber (value, onChange, min, max, step) -> Canon.typed "RangedNumber" ([ (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+    | FormFieldKind.Range (value, onChange, min, max, step) -> Canon.typed "Range" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<JVal>) -> match v with | Binding.Static(Some p) -> p | __other -> encBinding id __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+    | FormFieldKind.SegmentedChoice (options, value, onChange, orientation) -> Canon.typed "SegmentedChoice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("orientation", encOrientation orientation) ] |> List.choose id)
+    | FormFieldKind.DateTime (value, onChange, variant, min, max, step) -> Canon.typed "DateTime" ([ (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateTimeVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+    | FormFieldKind.DateTimeRange (value, onChange, variant, min, max, step) -> Canon.typed "DateTimeRange" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<JVal>) -> match v with | Binding.Static(Some p) -> p | __other -> encBinding id __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateTimeVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+    | FormFieldKind.Combobox (allowFreeText, onChange, options, value) -> Canon.typed "Combobox" ([ (if allowFreeText = false then None else Some("allowFreeText", JBool allowFreeText)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding id) v)) ] |> List.choose id)
+    | FormFieldKind.Rating (allowHalf, max, onChange, value) -> Canon.typed "Rating" ([ (if allowHalf = false then None else Some("allowHalf", JBool allowHalf)); Some("max", JInt max); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding id) v)) ] |> List.choose id)
+    | FormFieldKind.Color (onChange, value) -> Canon.typed "Color" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding id) v)) ] |> List.choose id)
+    | FormFieldKind.Tokens (allowFreeText, onChange, suggestions, value) -> Canon.typed "Tokens" ([ (if allowFreeText = true then None else Some("allowFreeText", JBool allowFreeText)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (suggestions |> Option.map (fun v -> "suggestions", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) v)); (value |> Option.map (fun v -> "value", (encBinding id) v)) ] |> List.choose id)
 
 and private encFormat (v: Format) : JVal =
     match v with
@@ -3470,62 +3470,62 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, DecodeError>
         dTag __fs |> Result.bind (fun __t ->
         match __t with
         | "Text" ->
-            dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            dOpt "value" __fs (fun (__j: JVal) -> (decBinding dStr) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)) __j))) |> Result.bind (fun value ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
             Ok(FormFieldKind.Text(value, onChange))))
         | "Number" ->
-            dOpt "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
-            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: float) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            dOpt "value" __fs (fun (__j: JVal) -> (decBinding dFloat) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dFloat __p |> Result.map encFloat) j |> Result.mapError DecodeError.describe)) __j))) |> Result.bind (fun value ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
             Ok(FormFieldKind.Number(value, onChange))))
         | "Checkbox" ->
-            dOpt "value" __fs (decBinding dBool) |> Result.bind (fun value ->
-            dOpt "onToggle" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: bool) -> Action.Chain []))) |> Result.bind (fun onToggle ->
-            Ok(FormFieldKind.Checkbox(value, onToggle))))
+            dOpt "value" __fs (fun (__j: JVal) -> (decBinding dBool) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dBool __p |> Result.map JBool) j |> Result.mapError DecodeError.describe)) __j))) |> Result.bind (fun value ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            Ok(FormFieldKind.Checkbox(value, onChange))))
         | "Toggle" ->
-            dOpt "value" __fs (decBinding dBool) |> Result.bind (fun value ->
-            dOpt "onToggle" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: bool) -> Action.Chain []))) |> Result.bind (fun onToggle ->
-            Ok(FormFieldKind.Toggle(value, onToggle))))
+            dOpt "value" __fs (fun (__j: JVal) -> (decBinding dBool) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dBool __p |> Result.map JBool) j |> Result.mapError DecodeError.describe)) __j))) |> Result.bind (fun value ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            Ok(FormFieldKind.Toggle(value, onChange))))
         | "Choice" ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
-            dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string option) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            dOpt "value" __fs (fun (__j: JVal) -> (decBinding dStr) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)) __j))) |> Result.bind (fun value ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
             Ok(FormFieldKind.Choice(options, value, onChange)))))
         | "TextArea" ->
-            dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            dOpt "value" __fs (fun (__j: JVal) -> (decBinding dStr) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)) __j))) |> Result.bind (fun value ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dReq "rows" __fs dInt |> Result.bind (fun rows ->
             Ok(FormFieldKind.TextArea(value, onChange, rows)))))
         | "RangedNumber" ->
-            dOpt "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
-            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: float) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            dOpt "value" __fs (fun (__j: JVal) -> (decBinding dFloat) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dFloat __p |> Result.map encFloat) j |> Result.mapError DecodeError.describe)) __j))) |> Result.bind (fun value ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dOpt "min" __fs dFloat |> Result.bind (fun min ->
             dOpt "max" __fs dFloat |> Result.bind (fun max ->
             dOpt "step" __fs dFloat |> Result.bind (fun step ->
             Ok(FormFieldKind.RangedNumber(value, onChange, min, max, step)))))))
         | "Range" ->
-            dOpt "value" __fs (fun (__j: JVal) -> dHosted (((fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = "$type")) -> decRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decRangePair __other) |> Result.mapError DecodeError.describe)) __j)) |> Result.bind (fun value ->
-            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: float * float) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            dOpt "value" __fs (fun (__j: JVal) -> dHosted (((fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = "$type")) -> decRangePair j |> Result.map (fun p -> Binding.Static(Some(encRangePair p))) | __other -> decBinding (fun __p -> decRangePair __p |> Result.map encRangePair) __other) |> Result.mapError DecodeError.describe)) __j)) |> Result.bind (fun value ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dOpt "min" __fs dFloat |> Result.bind (fun min ->
             dOpt "max" __fs dFloat |> Result.bind (fun max ->
             dOpt "step" __fs dFloat |> Result.bind (fun step ->
             Ok(FormFieldKind.Range(value, onChange, min, max, step)))))))
         | "SegmentedChoice" ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
-            dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string option) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            dOpt "value" __fs (fun (__j: JVal) -> (decBinding dStr) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)) __j))) |> Result.bind (fun value ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dReq "orientation" __fs decOrientation |> Result.bind (fun orientation ->
             Ok(FormFieldKind.SegmentedChoice(options, value, onChange, orientation))))))
         | "DateTime" ->
-            dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string option) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            dOpt "value" __fs (fun (__j: JVal) -> (decBinding dStr) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)) __j))) |> Result.bind (fun value ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dReq "variant" __fs decDateTimeVariant |> Result.bind (fun variant ->
             dOpt "min" __fs dStr |> Result.bind (fun min ->
             dOpt "max" __fs dStr |> Result.bind (fun max ->
             dOpt "step" __fs dFloat |> Result.bind (fun step ->
             Ok(FormFieldKind.DateTime(value, onChange, variant, min, max, step))))))))
         | "DateTimeRange" ->
-            dOpt "value" __fs (fun (__j: JVal) -> dHosted (((fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = "$type")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateTimeRangePair __other) |> Result.mapError DecodeError.describe)) __j)) |> Result.bind (fun value ->
-            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string * string) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            dOpt "value" __fs (fun (__j: JVal) -> dHosted (((fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = "$type")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some(encDateTimeRangePair p))) | __other -> decBinding (fun __p -> decDateTimeRangePair __p |> Result.map encDateTimeRangePair) __other) |> Result.mapError DecodeError.describe)) __j)) |> Result.bind (fun value ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dReq "variant" __fs decDateTimeVariant |> Result.bind (fun variant ->
             dOpt "min" __fs dStr |> Result.bind (fun min ->
             dOpt "max" __fs dStr |> Result.bind (fun max ->
@@ -3533,31 +3533,31 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, DecodeError>
             Ok(FormFieldKind.DateTimeRange(value, onChange, variant, min, max, step))))))))
         | "Combobox" ->
             dDef "allowFreeText" __fs dBool (false) |> Result.bind (fun allowFreeText ->
-            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string option) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
-            dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
+            dOpt "value" __fs (fun (__j: JVal) -> (decBinding dStr) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)) __j))) |> Result.bind (fun value ->
             Ok(FormFieldKind.Combobox(allowFreeText, onChange, options, value))))))
         | "Rating" ->
             dDef "allowHalf" __fs dBool (false) |> Result.bind (fun allowHalf ->
             dReq "max" __fs dInt |> Result.bind (fun max ->
-            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: float) -> Action.Chain []))) |> Result.bind (fun onChange ->
-            dOpt "value" __fs (decBinding dFloat) |> dRefine (fun value ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            dOpt "value" __fs (fun (__j: JVal) -> (decBinding dFloat) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dFloat __p |> Result.map encFloat) j |> Result.mapError DecodeError.describe)) __j))) |> dRefine (fun value ->
             if max < 1 then
                 Error (sprintf "Rating 'max' must be at least 1 — a scale with %d positions cannot be rendered or announced" max)
             else
                 Ok(FormFieldKind.Rating(allowHalf, max, onChange, value))))))
         | "Color" ->
-            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string) -> Action.Chain []))) |> Result.bind (fun onChange ->
-            dOpt "value" __fs (decBinding dStr) |> dRefine (fun value ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            dOpt "value" __fs (fun (__j: JVal) -> (decBinding dStr) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)) __j))) |> dRefine (fun value ->
             match value with
-            | Some(Binding.Static(Some __text)) when not (Fuaran.UI.HostPrelude.HexColor.isValid __text) ->
+            | Some(Binding.Static(Some(JStr __text))) when not (Fuaran.UI.HostPrelude.HexColor.isValid __text) ->
                 Error (sprintf "Color 'value' must be a '#rrggbb' hex colour — got %s" __text)
             | _ -> Ok(FormFieldKind.Color(onChange, value))))
         | "Tokens" ->
             dDef "allowFreeText" __fs dBool (true) |> Result.bind (fun allowFreeText ->
-            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: string list) -> Action.Chain []))) |> Result.bind (fun onChange ->
+            dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
             dOpt "suggestions" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun suggestions ->
-            dOpt "value" __fs (decBinding (dList dStr)) |> dRefine (fun value ->
+            dOpt "value" __fs (fun (__j: JVal) -> (decBinding (dList dStr)) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> (dList dStr) __p |> Result.map (fun __l -> JArr(List.map JStr __l))) j |> Result.mapError DecodeError.describe)) __j))) |> dRefine (fun value ->
             if not allowFreeText && Option.isNone suggestions then
                 Error "Tokens declares 'allowFreeText' false and no 'suggestions' source — the field could admit no token by any gesture. Give it a suggestion source, or leave 'allowFreeText' at its default of true"
             else
@@ -4768,3 +4768,43 @@ module Action =
         | Action.Chain(__f0) -> List.fold (fun __s0 __x0 -> fold folder __s0 __x0) state __f0
         | Action.Confirm(__f0, __f1, __f2) -> (let __c0_0 = fold folder state __f1 in let __c0_1 = (match __f2 with Some __o1 -> fold folder __c0_0 __o1 | None -> __c0_0) in __c0_1)
         | _ -> state
+
+/// Derived members of `FormFieldKind`.
+module FormFieldKind =
+    /// The `value` field, which every case carries.
+    let value (v: FormFieldKind<'Msg>) : Binding<JVal> option =
+        match v with
+        | FormFieldKind.Text(__v, _) -> __v
+        | FormFieldKind.Number(__v, _) -> __v
+        | FormFieldKind.Checkbox(__v, _) -> __v
+        | FormFieldKind.Toggle(__v, _) -> __v
+        | FormFieldKind.Choice(_, __v, _) -> __v
+        | FormFieldKind.TextArea(__v, _, _) -> __v
+        | FormFieldKind.RangedNumber(__v, _, _, _, _) -> __v
+        | FormFieldKind.Range(__v, _, _, _, _) -> __v
+        | FormFieldKind.SegmentedChoice(_, __v, _, _) -> __v
+        | FormFieldKind.DateTime(__v, _, _, _, _, _) -> __v
+        | FormFieldKind.DateTimeRange(__v, _, _, _, _, _) -> __v
+        | FormFieldKind.Combobox(_, _, _, __v) -> __v
+        | FormFieldKind.Rating(_, _, _, __v) -> __v
+        | FormFieldKind.Color(_, __v) -> __v
+        | FormFieldKind.Tokens(_, _, _, __v) -> __v
+
+    /// The `onChange` field, which every case carries.
+    let onChange (v: FormFieldKind<'Msg>) : (JVal -> Action<'Msg>) option =
+        match v with
+        | FormFieldKind.Text(_, __v) -> __v
+        | FormFieldKind.Number(_, __v) -> __v
+        | FormFieldKind.Checkbox(_, __v) -> __v
+        | FormFieldKind.Toggle(_, __v) -> __v
+        | FormFieldKind.Choice(_, _, __v) -> __v
+        | FormFieldKind.TextArea(_, __v, _) -> __v
+        | FormFieldKind.RangedNumber(_, __v, _, _, _) -> __v
+        | FormFieldKind.Range(_, __v, _, _, _) -> __v
+        | FormFieldKind.SegmentedChoice(_, _, __v, _) -> __v
+        | FormFieldKind.DateTime(_, __v, _, _, _, _) -> __v
+        | FormFieldKind.DateTimeRange(_, __v, _, _, _, _) -> __v
+        | FormFieldKind.Combobox(_, __v, _, _) -> __v
+        | FormFieldKind.Rating(_, _, __v, _) -> __v
+        | FormFieldKind.Color(__v, _) -> __v
+        | FormFieldKind.Tokens(_, __v, _, _) -> __v

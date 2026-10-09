@@ -308,8 +308,8 @@ and mapFormFieldKind (f: 'a -> 'b) (kind: FormFieldKind<'a>) : FormFieldKind<'b>
     match kind with
     | FormFieldKind.Text(value, onChange) -> FormFieldKind.Text(value, mapHandler onChange)
     | FormFieldKind.Number(value, onChange) -> FormFieldKind.Number(value, mapHandler onChange)
-    | FormFieldKind.Checkbox(value, onToggle) -> FormFieldKind.Checkbox(value, mapHandler onToggle)
-    | FormFieldKind.Toggle(value, onToggle) -> FormFieldKind.Toggle(value, mapHandler onToggle)
+    | FormFieldKind.Checkbox(value, onChange) -> FormFieldKind.Checkbox(value, mapHandler onChange)
+    | FormFieldKind.Toggle(value, onChange) -> FormFieldKind.Toggle(value, mapHandler onChange)
     | FormFieldKind.Choice(options, value, onChange) -> FormFieldKind.Choice(options, value, mapHandler onChange)
     | FormFieldKind.TextArea(value, onChange, rows) -> FormFieldKind.TextArea(value, mapHandler onChange, rows)
     | FormFieldKind.RangedNumber(value, onChange, mn, mx, st) ->

@@ -344,7 +344,11 @@ let tests =
                                         [ { Defaults.formField with
                                               Id = "name"
                                               Label = TextSource.Literal "Name"
-                                              Kind = FormFieldKind.Text(Some(Binding.State("name", Some "")), None) } ]
+                                              Kind =
+                                                  FormFieldKind.Text(
+                                                      Some(FieldValue.ofText (Binding.State("name", Some ""))),
+                                                      None
+                                                  ) } ]
                                     SubmitLabel = TextSource.Literal "Save" }
                             )) ]
 

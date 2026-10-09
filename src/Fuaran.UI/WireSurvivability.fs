@@ -130,12 +130,12 @@ let all: Classification list =
       pt "NodeKind.FileUpload" None // OnSelect closure carries a non-scalar payload — host wiring
       pt "NodeKind.Select" writeBack // OnChange / OnChangeMulti closures erase
 
-      // ── FormFieldKind (value survives; onChange/onToggle closure erases) ──
+      // ── FormFieldKind (value survives; the onChange closure erases) ──
       pt "FormFieldKind.Text" writeBack
       pt "FormFieldKind.Number" writeBack
       pt "FormFieldKind.Checkbox" writeBack
       // Phase 766 — the switch affordance; identical survivability to Checkbox
-      // (the bool value survives, the onToggle closure erases).
+      // (the bool value survives, the onChange closure erases).
       pt "FormFieldKind.Toggle" writeBack
       pt "FormFieldKind.Choice" writeBack
       pt "FormFieldKind.TextArea" writeBack

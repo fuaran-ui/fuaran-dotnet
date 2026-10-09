@@ -2550,7 +2550,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
     // resolution behaves identically to the pre-swap decoded shape.
     let controlType, valueText =
         match field.Kind with
-        | FormFieldKind.Text(v, _) ->
+        | FormFieldKind.Text(FieldView.Text v, _) ->
             let v =
                 v
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.text))
@@ -2567,7 +2567,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                 | None -> "text"
 
             t, (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
-        | FormFieldKind.Number(v, _) ->
+        | FormFieldKind.Number(FieldView.Number v, _) ->
             let v =
                 v
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.number))
@@ -2576,7 +2576,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
             (BindingResolver.tryResolve ctx.Sources v
              |> Option.map string
              |> Option.defaultValue "")
-        | FormFieldKind.RangedNumber(v, _, _, _, _) ->
+        | FormFieldKind.RangedNumber(FieldView.Number v, _, _, _, _) ->
             let v =
                 v
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.number))
@@ -2588,7 +2588,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
         | FormFieldKind.Range _ -> "range", ""
         | FormFieldKind.Checkbox _ -> "checkbox", ""
         | FormFieldKind.Toggle _ -> "toggle", ""
-        | FormFieldKind.TextArea(v, _, _) ->
+        | FormFieldKind.TextArea(FieldView.Text v, _, _) ->
             let v =
                 v
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.text))
@@ -2596,7 +2596,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
             "textarea", (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
         | FormFieldKind.Choice _ -> "choice", ""
         | FormFieldKind.SegmentedChoice _ -> "segmented-choice", ""
-        | FormFieldKind.Combobox(_, _, _, v) ->
+        | FormFieldKind.Combobox(_, _, _, FieldView.Text v) ->
             // Phase 1113 — the combobox's own branch below builds the control;
             // this tuple carries the resolved entry text so the SSR floor ships
             // a filled input rather than an empty one.
@@ -2646,7 +2646,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
         // for the client renderer's reason — a native colour input substitutes
         // its own default silently, so handing it a bad literal would show a
         // colour the document did not choose.
-        | FormFieldKind.Color(_, v) ->
+        | FormFieldKind.Color(_, FieldView.Text v) ->
             let v =
                 v
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.color))
@@ -2680,7 +2680,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
         //      precedent — nothing in the platform reads it. Enforcement is the
         //      server-side re-check in `Fuaran.UI.ServerDriven.FormValidation`,
         //      which is where a constraint a client can type past belongs.
-        | FormFieldKind.Tokens(_, _, _, v) ->
+        | FormFieldKind.Tokens(_, _, _, FieldView.Tokens v) ->
             let v =
                 v
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.tokens))
@@ -2689,7 +2689,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
             (BindingResolver.tryResolve ctx.Sources v
              |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
              |> TokensModel.toCommaSeparated)
-        | FormFieldKind.DateTime(v, _, variant, _, _, _) ->
+        | FormFieldKind.DateTime(FieldView.Text v, _, variant, _, _, _) ->
             let v =
                 v
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime))
@@ -2766,7 +2766,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
         // rides as `data-fuaran-rating-value` so it is visibly not dropped, and
         // it is NOT claimed as coverage — nothing in the platform reads that
         // attribute. Hydration restores the fraction.
-        | FormFieldKind.Rating(allowHalf, max, onChange, value) ->
+        | FormFieldKind.Rating(allowHalf, max, FieldView.OnNumber onChange, FieldView.Number value) ->
             let value =
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.rating))
@@ -2884,7 +2884,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                                       [ for option in options ->
                                             Html.option [ prop.value option.Value; prop.text option.Label ] ] ]
                         | None -> () ] ]
-        | FormFieldKind.DateTimeRange(v, _, _, mn, mx, st) ->
+        | FormFieldKind.DateTimeRange(FieldView.DateRange v, _, _, mn, mx, st) ->
             // Phase 725 — SSR parity with the client's dual-input range: two
             // native date/time inputs (per variant) over the pair's ends,
             // sharing the min/max/step attributes. Inert like every other
@@ -2955,7 +2955,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
         // (`RichTier.Behavioural`): no handler is wired, and the per-field
         // buffer marker is unchanged, so the shim harvests `el.checked` where
         // it previously read a text box that could hold no boolean.
-        | FormFieldKind.Toggle(value, _) ->
+        | FormFieldKind.Toggle(FieldView.Bool value, _) ->
             let value =
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox))
@@ -2988,7 +2988,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
         // initial. Inert like every other server-rendered control: the
         // per-field buffer marker is the only wiring, and `harvestFields` reads
         // `el.value` off a `<select>` exactly as it does off an `<input>`.
-        | FormFieldKind.Choice(options, value, _) ->
+        | FormFieldKind.Choice(options, FieldView.Text value, _) ->
             let value =
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.choice))
@@ -3035,7 +3035,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
         // value, and wiring an interaction is not what this phase ships. The
         // floor stays inert, and the selection is still visible to a reader and
         // to assistive technology through `aria-checked` / the checked radio.
-        | FormFieldKind.SegmentedChoice(options, value, _, orientation) ->
+        | FormFieldKind.SegmentedChoice(options, FieldView.Text value, _, orientation) ->
             let value =
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.choice))
@@ -3156,8 +3156,8 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
     // `Binding.Filter(spec.Name, None)` — so SSR resolution is unchanged.
     let control =
         match spec.Kind with
-        | FormFieldKind.Text(value, _)
-        | FormFieldKind.TextArea(value, _, _) ->
+        | FormFieldKind.Text(FieldView.Text value, _)
+        | FormFieldKind.TextArea(FieldView.Text value, _, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
@@ -3167,8 +3167,8 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                   prop.placeholder labelText
                   prop.value current
                   prop.custom ("data-filter-name", spec.Name) ]
-        | FormFieldKind.Number(value, _)
-        | FormFieldKind.RangedNumber(value, _, _, _, _) ->
+        | FormFieldKind.Number(FieldView.Number value, _)
+        | FormFieldKind.RangedNumber(FieldView.Number value, _, _, _, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             let current =
@@ -3179,7 +3179,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                   prop.custom ("type", "number")
                   prop.value (string current)
                   prop.custom ("data-filter-name", spec.Name) ]
-        | FormFieldKind.Checkbox(value, _) ->
+        | FormFieldKind.Checkbox(FieldView.Bool value, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             let current =
@@ -3195,7 +3195,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
         // in the SERVER HTML too: a switch that only becomes a switch after
         // hydration is announced wrongly on first paint, and for a static
         // (never-hydrated) render it would never be announced at all.
-        | FormFieldKind.Toggle(value, _) ->
+        | FormFieldKind.Toggle(FieldView.Bool value, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             let current =
@@ -3209,7 +3209,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                   prop.custom ("data-filter-name", spec.Name)
                   if current then
                       prop.custom ("checked", "checked") ]
-        | FormFieldKind.DateTime(value, _, _, _, _, _) ->
+        | FormFieldKind.DateTime(FieldView.Text value, _, _, _, _, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
@@ -3218,7 +3218,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                   prop.custom ("type", "date")
                   prop.value current
                   prop.custom ("data-filter-name", spec.Name) ]
-        | FormFieldKind.Choice(options, value, _) ->
+        | FormFieldKind.Choice(options, FieldView.Text value, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let opts = resolveOptions ctx options
 
@@ -3238,7 +3238,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                   prop.value (current |> Option.defaultValue "")
                   prop.custom ("data-filter-name", spec.Name)
                   prop.children optionItems ]
-        | FormFieldKind.Range(value, _, _, _, _) ->
+        | FormFieldKind.Range(FieldView.Range value, _, _, _, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             // The range value is the `RangePair` record since the swap (was a
@@ -3262,7 +3262,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                             [ prop.className "fuaran-filter-range-max"
                               prop.custom ("type", "number")
                               prop.value (string maxV) ] ] ]
-        | FormFieldKind.DateTimeRange(value, _, variant, mn, mx, st) ->
+        | FormFieldKind.DateTimeRange(FieldView.DateRange value, _, variant, mn, mx, st) ->
             // Phase 725 — the date-range chip, inert: two native date/time
             // inputs over ONE filter param carrying the whole pair. Mirrors
             // the client renderer's shape + class vocabulary.
@@ -3308,7 +3308,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                               prop.value toV ]
                             @ constraintAttrs
                         ) ] ]
-        | FormFieldKind.SegmentedChoice(options, value, _, orientation) ->
+        | FormFieldKind.SegmentedChoice(options, FieldView.Text value, _, orientation) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             renderSegmentedChoiceCore
@@ -3319,7 +3319,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                 options
                 value
                 orientation
-        | FormFieldKind.Combobox(allowFreeText, _, options, value) ->
+        | FormFieldKind.Combobox(allowFreeText, _, options, FieldView.Text value) ->
             // Phase 1113 — the form field's SSR floor, chip-addressed. Same
             // native `<input list>` + `<datalist>`, same recorded limit on
             // `allowFreeText = false`, `data-filter-name` in place of
@@ -3354,7 +3354,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
         // (`$filters.<name>`), so a filter rating is always the writable shape:
         // native radios here, the slider after hydration. Same reasoning as the
         // form field's branch above, with the question already answered.
-        | FormFieldKind.Rating(allowHalf, max, _, value) ->
+        | FormFieldKind.Rating(allowHalf, max, _, FieldView.Number value) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             let shown =
@@ -3391,7 +3391,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
 
                               Html.label [ prop.className "fuaran-rating-choice"; prop.children [ radio; caption ] ] ]
                   ) ]
-        | FormFieldKind.Color(_, value) ->
+        | FormFieldKind.Color(_, FieldView.Text value) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             let current =
@@ -3410,7 +3410,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
         // the same floor as the field route because it carries the same control
         // since the 0.2.0 unification — a floor on one and not the other is how
         // half a vocabulary ends up unrendered without JavaScript.
-        | FormFieldKind.Tokens(allowFreeText, _, suggestions, value) ->
+        | FormFieldKind.Tokens(allowFreeText, _, suggestions, FieldView.Tokens value) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             let current =

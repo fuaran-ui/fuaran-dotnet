@@ -429,14 +429,17 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
                 // action to dispatch (its write is the client-side FilterStore path), so the driver
                 // no-ops it just as it does the range filter.
                 match f.Kind with
-                | FormFieldKind.Text(_, onChange)
-                | FormFieldKind.TextArea(_, onChange, _) ->
+                | FormFieldKind.Text(_, FieldView.OnText onChange)
+                | FormFieldKind.TextArea(_, FieldView.OnText onChange, _) ->
                     onChange |> Option.map (fun oc -> oc (chosen |> Option.defaultValue ""))
-                | FormFieldKind.Choice(_, _, onChange) -> onChange |> Option.map (fun oc -> oc chosen)
-                | FormFieldKind.SegmentedChoice(_, _, onChange, _) -> onChange |> Option.map (fun oc -> oc chosen)
+                | FormFieldKind.Choice(_, _, FieldView.OnChoice onChange) ->
+                    onChange |> Option.map (fun oc -> oc chosen)
+                | FormFieldKind.SegmentedChoice(_, _, FieldView.OnChoice onChange, _) ->
+                    onChange |> Option.map (fun oc -> oc chosen)
                 // Phase 1113 — the combobox's handler is the choice handler
                 // (`string option`), so the clear-to-none contract is the same.
-                | FormFieldKind.Combobox(_, onChange, _, _) -> onChange |> Option.map (fun oc -> oc chosen)
+                | FormFieldKind.Combobox(_, FieldView.OnChoice onChange, _, _) ->
+                    onChange |> Option.map (fun oc -> oc chosen)
                 // Numeric / bool / range / date chip payloads are not yet
                 // server-resolvable — the driver no-ops them (client store path).
                 | FormFieldKind.Number _
