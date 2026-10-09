@@ -37,7 +37,14 @@ name: CI
 #
 #     $GITHUB_WORKSPACE/
 #     ├── fuaran-dotnet/          ← this repo
-#     └── wire-format-fixtures/   ← fuaran-ui/fuaran-ui-specification
+#     ├── wire-format-fixtures/   ← fuaran-ui/fuaran-ui-specification
+#     └── fuaran-program-spec/    ← Fuaran-Core/fuaran-program-specification
+#
+# The second corpus is the PROGRAM specification's (Phase 2014): the program UI
+# adapters' suites and the Fable stage's program parity leg read it from the
+# sibling `fuaran-program-spec/`, the same walk they make in a workspace. It is
+# public, so the checkout needs no token, and its absence FAILS those suites —
+# there is no skip for it in either test-roster reader.
 #
 # ── Why the presence guard is not decoration ─────────────────────────────────
 # `Build.fs` skips the corpus-driven suites (JsonDecode conformance, the C# PoC,
@@ -103,6 +110,17 @@ jobs:
 
       - name: Assert the corpus is where the suites resolve it
         run: test -f wire-format-fixtures/manifest.json
+
+      # Phase 2014 — the program specification's corpus, public, so no token.
+      # UNPINNED for the wire corpus's reason: one current spec for every host.
+      - name: Checkout the program specification corpus (fuaran-program-specification)
+        uses: actions/checkout@v4
+        with:
+          repository: Fuaran-Core/fuaran-program-specification
+          path: fuaran-program-spec
+
+      - name: Assert the program corpus is where the suites resolve it
+        run: test -f fuaran-program-spec/wire-fixtures/manifest.json
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4

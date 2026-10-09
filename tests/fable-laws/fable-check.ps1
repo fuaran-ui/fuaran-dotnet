@@ -52,7 +52,8 @@
   AND A FOURTH, SINCE fuaran#2012: THE PROGRAM UI ADAPTER'S PARITY LEG (c). The bounded program
   core's UI adapter moved here from the program repository with its suites; its client placement is
   compiled to JavaScript and RUN under node over the program specification's driver-semantics family
-  (section 2c). Skipped loudly when that corpus, a sibling clone, is absent.
+  (section 2c). That corpus is a sibling clone of the public specification repository, and its
+  absence FAILS the stage (Phase 2014).
 
   AND A FIFTH, SINCE PHASE 2128: THE PACKED-CONSUMER LEG (section 2d). Every compile above enters a
   project and reaches the rest by ProjectReference, which Fable always compiles from SOURCE, so none of
@@ -1657,7 +1658,8 @@ else {
 # different claims. --noCache is load-bearing for the reason the law harness gives.
 #
 # The corpus is the program specification's, a sibling clone (or FUARAN_PROGRAM_SPEC) — the same
-# input the roster's `requiresProgramSpec` suites read, and skipped LOUDLY on the same condition.
+# input the program adapters' suites read. The specification is public (Phase 2014), so an absent
+# corpus FAILS this leg, naming where to clone it from, exactly as it fails those suites.
 # A narrow lane may skip it by content address, like every other subject; the full lane always runs
 # it. Not run under a redirected -SrcRoot, for 2b's reason.
 
@@ -1673,7 +1675,8 @@ if ($PSBoundParameters.ContainsKey('SrcRoot')) {
 }
 elseif (-not (Test-Path -LiteralPath (Join-Path $programSpecCorpus 'manifest.json') -PathType Leaf)) {
     Write-Host ''
-    Write-Host "  the program UI parity leg: SKIPPED - the program specification corpus is absent at $programSpecCorpus (set FUARAN_PROGRAM_SPEC, or clone it beside this repository); leg (c) did NOT run" -ForegroundColor Yellow
+    Write-Host "  the program UI parity leg: RED - the program specification corpus is absent at $programSpecCorpus" -ForegroundColor Red
+    $failures.Add("the program UI parity leg could not run: the program specification corpus is absent at $programSpecCorpus - clone https://github.com/Fuaran-Core/fuaran-program-specification beside this repository as 'fuaran-program-spec', or point FUARAN_PROGRAM_SPEC at a clone of it")
 }
 elseif (-not (Get-Command node -CommandType Application -ErrorAction SilentlyContinue)) {
     Write-Host ''

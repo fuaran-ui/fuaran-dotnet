@@ -10,9 +10,11 @@
     "corpus from a sibling of this repo: present in a workspace checkout, absent in a",
     "single-repo checkout (e.g. the publish-packages workflow), where the suite would crash",
     "at startup. Both readers skip those loudly rather than run them.",
-    "`requiresProgramSpec` (default false, fuaran#2012) is the same posture for a suite that loads the",
-    "PROGRAM specification's corpus (`../fuaran-program-spec/wire-fixtures`, or FUARAN_PROGRAM_SPEC): the",
-    "program adapters' suites. Absent, they are skipped loudly by both readers rather than run.",
+    "There is deliberately NO equivalent flag for the PROGRAM specification's corpus (Phase 2014): the",
+    "program adapters' suites read it (`../fuaran-program-spec/wire-fixtures`, or FUARAN_PROGRAM_SPEC), and",
+    "the specification is public (https://github.com/Fuaran-Core/fuaran-program-specification), so an",
+    "absent clone FAILS those suites rather than skipping them. Clone it beside this repository as",
+    "`fuaran-program-spec`, or point FUARAN_PROGRAM_SPEC at it.",
     "`note` is documentation only — no reader consults it.",
     "",
     "`lane` (Phase 1553) is the suite-level half of the gate lanes. Absent means the ordinary",
@@ -172,13 +174,11 @@
     },
     {
       "project": "src/Fuaran.UI.Program.Server.Tests/Fuaran.UI.Program.Server.Tests.fsproj",
-      "requiresProgramSpec": true,
       "note": "fuaran#2012 — the server-logic placement through the server UI adapter (src/Fuaran.UI.Program.Server): handlers, the server-effect seam, the query-schema check, replay and durable execution, tier-parity leg (d), the program wire codec certified against the specification's UI-vocabulary vectors, and the demanded corpus's emitter. Loads the program specification's corpus at start-up."
     },
     {
       "project": "src/Fuaran.UI.Program.Parity.Tests/Fuaran.UI.Program.Parity.Tests.fsproj",
       "requiresCorpus": true,
-      "requiresProgramSpec": true,
       "note": "fuaran#2012 — tier parity legs (a) and (b) over the program specification's driver-semantics family, and the differential host of the two proof claims about the UI adapter (proofs.json `model-agrees-with-shipped-code`, `budget-model-agrees-with-shipped-code`). `--emit-fixtures` regenerates that family's scenarios. Phase 2103 adds the tree wire corpus's `lowers-to/` family (WIRE_FORMAT.md section 30), so the suite loads both corpora."
     },
     {
