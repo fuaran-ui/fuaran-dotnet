@@ -2231,12 +2231,29 @@ let private positionNotStructural (slot: string) (message: string) : ApplyError 
                         slot
                 ) } }
 
-/// The op's addressed node ids, in the order the op names them. Only the
-/// structural five reach here, so the list is one or two ids — the op's
-/// `TreeOp.targets` (Phase 2044: projected, not matched here).
-let private structuralOpTargets (op: TreeOp<'Msg>) : NodeId list = Fuaran.UI.Ops.TreeOp.targets op
+/// The four structural ops `Fuaran.Core.Ops` applies, as their own type, so
+/// the structural path is total over exactly what reaches it (Phase 2064: it
+/// took any `TreeOp` and carried a `failwith` arm for the seven that never do).
+[<RequireQualifiedAccess>]
+type private StructuralOp<'Msg> =
+    | InsertChild of parentId: NodeId * child: Node<'Msg>
+    | RemoveNode of target: NodeId
+    | MoveNode of target: NodeId * newParentId: NodeId
+    | ReorderChildren of parentId: NodeId * newOrder: NodeId list
 
-let rec private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
+    /// The `TreeOp` this is — for the projections `TreeOp` owns.
+    member this.TreeOp: TreeOp<'Msg> =
+        match this with
+        | StructuralOp.InsertChild(parentId, child) -> TreeOp.InsertChild(parentId, child)
+        | StructuralOp.RemoveNode target -> TreeOp.RemoveNode target
+        | StructuralOp.MoveNode(target, newParentId) -> TreeOp.MoveNode(target, newParentId)
+        | StructuralOp.ReorderChildren(parentId, newOrder) -> TreeOp.ReorderChildren(parentId, newOrder)
+
+/// The op's addressed node ids, in the order the op names them — one or two —
+/// the op's `TreeOp.targets` (Phase 2044: projected, not matched here).
+let private structuralOpTargets (op: StructuralOp<'Msg>) : NodeId list = Fuaran.UI.Ops.TreeOp.targets op.TreeOp
+
+let rec private applyStructural (op: StructuralOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
     // ── Phase 1666 — descend through a non-structural position, or refuse ──
     //
     // Runs BEFORE the dispatch below, because a node inside a keyed position is
@@ -2259,7 +2276,7 @@ let rec private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<N
     // Core's own keyed graft check rather than a second walk.
     let incomingCollision =
         match op with
-        | TreeOp.InsertChild(_, child) when not (List.isEmpty insidePositions) -> graftCollision root child
+        | StructuralOp.InsertChild(_, child) when not (List.isEmpty insidePositions) -> graftCollision root child
         | _ -> None
 
     match incomingCollision, insidePositions with
@@ -2296,8 +2313,8 @@ let rec private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<N
                 |> List.exists (fun (id, _, _, _, isAt) ->
                     isAt
                     && match op with
-                       | TreeOp.RemoveNode t -> t = id
-                       | TreeOp.MoveNode(t, _) -> t = id
+                       | StructuralOp.RemoveNode t -> t = id
+                       | StructuralOp.MoveNode(t, _) -> t = id
                        | _ -> false)
 
             if atPositionRoot then
@@ -2328,7 +2345,7 @@ let rec private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<N
 /// `applyStructural` with the whole tree in the ordinary case, and with a keyed
 /// position's subtree on a descent; it cannot tell the difference, which is what
 /// makes the descent a reuse rather than a second engine.
-and private applyStructuralHere (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
+and private applyStructuralHere (op: StructuralOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
     let nodew = nodeWitness<'Msg>
 
     // A Layout holds children; every Display / Input / Visualisation leaf does not.
@@ -2354,7 +2371,7 @@ and private applyStructuralHere (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<N
         | Error rej -> Error(mapRej rej)
 
     match op with
-    | TreeOp.InsertChild(parentId, child) ->
+    | StructuralOp.InsertChild(parentId, child) ->
         run (Fuaran.Core.SkeletonOp.InsertChild(parentId, child)) (fun rej ->
             match rej with
             | Fuaran.Core.Rejection.DuplicateId id -> duplicateNodeId id
@@ -2362,7 +2379,7 @@ and private applyStructuralHere (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<N
             | Fuaran.Core.Rejection.UnknownNode _ -> parentNotFound parentId
             | other -> unmapped other)
 
-    | TreeOp.RemoveNode target ->
+    | StructuralOp.RemoveNode target ->
         run (Fuaran.Core.SkeletonOp.RemoveNode target) (fun rej ->
             match rej with
             | Fuaran.Core.Rejection.CannotRemoveRoot ->
@@ -2373,7 +2390,7 @@ and private applyStructuralHere (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<N
             | Fuaran.Core.Rejection.UnknownNode _ -> nodeNotFound target
             | other -> unmapped other)
 
-    | TreeOp.ReorderChildren(parentId, newOrder) ->
+    | StructuralOp.ReorderChildren(parentId, newOrder) ->
         // Core's reorder validator has no container check — a leaf presents empty
         // children, so a non-empty reorder would surface as ReorderMismatch rather
         // than UI's ChildlessKind. Preserve the domain contract with a pre-check.
@@ -2386,7 +2403,7 @@ and private applyStructuralHere (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<N
                 | Fuaran.Core.Rejection.ReorderMismatch(_, expected, _) -> orderingMismatch parentId expected
                 | other -> unmapped other)
 
-    | TreeOp.MoveNode(target, newParentId) ->
+    | StructuralOp.MoveNode(target, newParentId) ->
         // Preserve UI's self / cycle codes+messages, which Core collapses into
         // WouldNestUnderSelf/CannotRemoveRoot and checks in a different order than
         // its canHold gate. After these two pre-checks Core sees only existence /
@@ -2415,8 +2432,6 @@ and private applyStructuralHere (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<N
                     else
                         parentNotFound newParentId
                 | other -> unmapped other)
-
-    | _ -> failwith "applyStructural: only the structural-five legs route here"
 
 // ─── Single-op apply ───────────────────────────────────────────────────────
 
@@ -2537,13 +2552,13 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
         | Some updated -> Ok updated
         | None -> Error(nodeNotFound target)
 
-    | TreeOp.InsertChild _
-    | TreeOp.RemoveNode _
-    | TreeOp.MoveNode _
-    | TreeOp.ReorderChildren _ ->
-        // The structural-five legs run through `Fuaran.Core.Ops` (Phase 379). See the
-        // Core.Ops delegation block above for the witnesses + rejection mapping.
-        applyStructural op root
+    // The structural legs run through `Fuaran.Core.Ops` (Phase 379). See the
+    // Core.Ops delegation block above for the witnesses + rejection mapping.
+    | TreeOp.InsertChild(parentId, child) -> applyStructural (StructuralOp.InsertChild(parentId, child)) root
+    | TreeOp.RemoveNode target -> applyStructural (StructuralOp.RemoveNode target) root
+    | TreeOp.MoveNode(target, newParentId) -> applyStructural (StructuralOp.MoveNode(target, newParentId)) root
+    | TreeOp.ReorderChildren(parentId, newOrder) ->
+        applyStructural (StructuralOp.ReorderChildren(parentId, newOrder)) root
 
     | TreeOp.ReplaceRoot node ->
         // The whole-tree swap: the only op that legally changes the root node id.

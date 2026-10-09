@@ -55,33 +55,63 @@ module MergeDefect =
 type MergeValidator<'Msg> = Node<'Msg> -> MergeDefect list
 
 /// Validator-gating policy for a merge (Phase 184). Additive — the default
-/// (`MergePolicy.lenient`, no validator) reproduces pre-184 behaviour exactly.
+/// (`MergePolicy.Lenient`, no validator) reproduces pre-184 behaviour exactly.
+///
+/// A union of the three meaningful policies (Phase 2064). It replaced a record
+/// of a validator option and a gate flag, whose fourth combination — a gate
+/// with no validator — asked for gating and silently gated nothing; that
+/// combination is now unrepresentable, and `MergePolicy.ofFields` (the record's
+/// obsolete constructor) refuses it.
+[<RequireQualifiedAccess>]
 type MergePolicy<'Msg> =
-    {
-        /// The domain validator to run over the merge result. `None` = no gating.
-        Validator: MergeValidator<'Msg> option
-        /// `true` → a merge-introduced defect REFUSES the merge (a
-        /// `NeedsManualMerge` carrying `CombinedCycle` conflicts). `false` → the
-        /// clean structural merge proceeds; introduced defects surface as a
-        /// post-merge diagnostic only.
-        GateOnIntroducedDefect: bool
-    }
+    /// No validator-gating — reproduces the pre-184 merge behaviour exactly.
+    | Lenient
+    /// A merge-introduced defect REFUSES the merge (a `NeedsManualMerge`
+    /// carrying `CombinedCycle` conflicts).
+    | Gated of MergeValidator<'Msg>
+    /// The clean structural merge proceeds; introduced defects surface as a
+    /// post-merge diagnostic only.
+    | Diagnostic of MergeValidator<'Msg>
+
+    /// The domain validator to run over the merge result, if any — what the
+    /// former record's `Validator` field held.
+    member this.Validator: MergeValidator<'Msg> option =
+        match this with
+        | MergePolicy.Lenient -> None
+        | MergePolicy.Gated validator
+        | MergePolicy.Diagnostic validator -> Some validator
+
+    /// Whether a merge-introduced defect refuses the merge — what the former
+    /// record's `GateOnIntroducedDefect` field held.
+    member this.GateOnIntroducedDefect: bool =
+        match this with
+        | MergePolicy.Gated _ -> true
+        | MergePolicy.Lenient
+        | MergePolicy.Diagnostic _ -> false
 
 module MergePolicy =
     /// No validator-gating — reproduces the pre-184 merge behaviour exactly.
-    let lenient<'Msg> : MergePolicy<'Msg> =
-        { Validator = None
-          GateOnIntroducedDefect = false }
+    let lenient<'Msg> : MergePolicy<'Msg> = MergePolicy.Lenient
 
     /// Gate ON: an introduced defect refuses the merge.
-    let gated<'Msg> (validator: MergeValidator<'Msg>) : MergePolicy<'Msg> =
-        { Validator = Some validator
-          GateOnIntroducedDefect = true }
+    let gated<'Msg> (validator: MergeValidator<'Msg>) : MergePolicy<'Msg> = MergePolicy.Gated validator
 
     /// Gate OFF: the clean merge proceeds, introduced defects are a diagnostic.
-    let diagnostic<'Msg> (validator: MergeValidator<'Msg>) : MergePolicy<'Msg> =
-        { Validator = Some validator
-          GateOnIntroducedDefect = false }
+    let diagnostic<'Msg> (validator: MergeValidator<'Msg>) : MergePolicy<'Msg> = MergePolicy.Diagnostic validator
+
+    /// The former record's two fields, as a policy. A gate with no validator
+    /// is refused (`ArgumentException`): it gates nothing, and building it
+    /// silently was the defect the union removes.
+    [<System.Obsolete("MergePolicy is a union since Phase 2064: use MergePolicy.Lenient, MergePolicy.Gated or MergePolicy.Diagnostic.")>]
+    let ofFields<'Msg> (validator: MergeValidator<'Msg> option) (gateOnIntroducedDefect: bool) : MergePolicy<'Msg> =
+        match validator, gateOnIntroducedDefect with
+        | None, false -> MergePolicy.Lenient
+        | None, true ->
+            invalidArg
+                (nameof gateOnIntroducedDefect)
+                "A merge gate with no validator gates nothing; use MergePolicy.Lenient, or supply the validator to gate on."
+        | Some v, true -> MergePolicy.Gated v
+        | Some v, false -> MergePolicy.Diagnostic v
 
 module ValidatorGate =
     /// Diff identity for the introduced-defect test — a defect is "the same"

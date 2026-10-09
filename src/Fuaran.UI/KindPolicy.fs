@@ -64,7 +64,7 @@ type Recovery =
     /// the posture every conformant host decodes at.
     | Off
     /// Opt-in: on `INVALID_JSON`, run `JsonDecode.repair` and strictly decode
-    /// what it returns, counting each applied repair under `Reliance`. The
+    /// what it returns, reporting each applied repair under its `Reliance` id. The
     /// over-close enumeration stays subject to the document-length ceiling
     /// below. Prefer calling `repair` yourself, where the applied ids are
     /// returned to you rather than inferred.

@@ -276,6 +276,36 @@ let unitCases =
                       "decoded ops match the lowering byte-for-byte"
               | Error e -> failtestf "decodeStream failed: %A" e)
 
+          testCase "a FragmentDecl is a streaming leaf although getChildren answers its body" (fun () ->
+              // Phase 2064 — `getChildren` answers `Some [ body ]` for a
+              // FragmentDecl, but its shell cannot be emptied, so the body must
+              // never be streamed into it: the decl is inserted whole.
+              let body = Fuaran.markdown "frag-body" "Body"
+
+              let decl =
+                  Fuaran.fragmentDecl
+                      "decl"
+                      { Defaults.fragmentDecl with
+                          Name = "frag"
+                          Body = body }
+
+              let tree =
+                  Fuaran.stack
+                      "root"
+                      { Defaults.stack<obj> with
+                          Children = [ decl ] }
+
+              Expect.isSome (Introspect.getChildren decl.Kind) "the decl's body IS an ordered child list"
+              Expect.isFalse (Streaming.isDecomposable decl) "and the decl cannot be emptied to a shell"
+
+              match Streaming.lowerTree tree with
+              | [ TreeOp.InsertChild(NodeId "root", inserted) ] ->
+                  Expect.equal
+                      (CanonicalJson.encodeNode inserted)
+                      (CanonicalJson.encodeNode decl)
+                      "the decl is inserted whole, body included"
+              | other -> failtestf "expected one InsertChild of the whole decl, got %A" other)
+
           testCase "decodeStream rejects an empty frame sequence" (fun () ->
               match Streaming.decodeStream [] with
               | Error e -> Expect.equal e.Code "STREAM_EMPTY" "empty stream is a protocol error"

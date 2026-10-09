@@ -180,6 +180,9 @@ type DecodeError =
 /// list, nor the first entry of it on every document. The layering waits on the
 /// generator emitting defect-collecting, per-spec decoders; the tests pinning
 /// that precondition are in `GeneratedLayerTests` ("structural substrate").
+//
+// Under Fable the slot is a plain static: a JS host runs one decode at a time on
+// its one thread, so a plain static IS per-thread there (Phase 2064 checked it).
 #if FABLE_COMPILER
 type private DefectSink() =
     static let mutable current: ResizeArray<DecodeError> = null
@@ -922,34 +925,36 @@ let private tryParse (input: string) : Result<Json, DecodeErrorCode * string> =
 // `Repair.fs` now (WIRE_FORMAT.md §28, Phase 1923). This decoder is strict by
 // default (`Recovery.Off`); `Recovery.Lenient` is `repair` followed by the
 // strict decode — one implementation, entered from two places. The
-// `Reliance` counters stay here because only the lenient decode path writes
+// `Reliance` ids stay here because only the lenient decode path reports
 // them: `repair` itself is pure.
 
 /// Reliance accounting for decode-time recoveries — the read side of the
 /// "recover WITH the coercion counted" posture. A recovery that fired is a
 /// document that was malformed and was repaired at the boundary; consumers
-/// measuring how much a cohort of emissions leans on the lenient decoder read
-/// these counters beside the §16 structural-divergence measurement.
+/// measuring how much a cohort of emissions leans on the lenient decoder count
+/// these events beside the §16 structural-divergence measurement.
 ///
-/// Counts are process-wide and monotonic between `reset` calls. The write side
-/// is internal (only the decode entry points record); the read side —
-/// `count` / `snapshot` / `reset` — is public surface.
+/// The events are RETURNED, per document, in `DecodeOutcome` — `Recovered` for
+/// a recovery that fired, `Refused` for one the gate declined — under the ids
+/// below (Phase 2064). A process-wide counter used to be kept here instead; a
+/// consumer that wants the cohort total sums the outcomes it already holds,
+/// and an event can no longer be separated from the document it was about.
 module Reliance =
-    /// Counter id for the implied-node-close recovery (fuaran#850): a node
+    /// Event id for the implied-node-close recovery (fuaran#850): a node
     /// wrapper's dropped closing brace at a `children[]`/`cases[]`/root
     /// boundary, repaired by ancestor-legal-token auto-close.
     [<Literal>]
     let ImpliedNodeClose = Repair.RepairId.ImpliedNodeClose
 
-    /// Counter id for an ACCEPTED uniqueness-gated over-close recovery
+    /// Event id for an ACCEPTED uniqueness-gated over-close recovery
     /// (fuaran#855): an over-closed document whose surplus closer admitted
     /// exactly one deletion repair that decoded clean through the canonical
-    /// decoder. Distinct from the refusal counter below — the two are separate
+    /// decoder. Distinct from the refusal id below — the two are separate
     /// measurements, not two readings of one.
     [<Literal>]
     let OverCloseUnique = Repair.RepairId.OverCloseUnique
 
-    /// Counter id for a REFUSED over-close repair (fuaran#855): the document
+    /// Event id for a REFUSED over-close repair (fuaran#855): the document
     /// matched the over-closed profile and the gate declined — zero clean
     /// candidates, two or more, or an enumeration past the bounds. The refusal
     /// is counted for the same reason the recovery is: a class that is
@@ -958,31 +963,6 @@ module Reliance =
     /// visible.
     [<Literal>]
     let OverCloseRefused = "over-close-refused"
-
-    // Module-level mutable, justified: this IS the process-wide accounting
-    // surface — the counter must survive across decode calls with no ambient
-    // context to thread it through (`decodeNode` is a pure string -> Result
-    // function consumed from both .NET and Fable hosts). Updates are a single
-    // reference swap; racing writers on .NET may under-count (telemetry
-    // best-effort, documented), never corrupt.
-    let mutable private counters: Map<string, int> = Map.empty
-
-    /// Record one recovery under `counterId`. Internal — the decode entry
-    /// points are the only writers.
-    let internal record (counterId: string) : unit =
-        let current = counters |> Map.tryFind counterId |> Option.defaultValue 0
-        counters <- counters |> Map.add counterId (current + 1)
-
-    /// Recoveries recorded under `counterId` since process start (or the last
-    /// `reset`).
-    let count (counterId: string) : int =
-        counters |> Map.tryFind counterId |> Option.defaultValue 0
-
-    /// Every counter id with its count — the surfacing read side.
-    let snapshot () : Map<string, int> = counters
-
-    /// Zero every counter (per-run measurement isolation; tests).
-    let reset () : unit = counters <- Map.empty
 
 // ─── The recognised NodeKind vocabulary (WIRE_FORMAT.md §3.2) ──────────────
 //
@@ -8008,349 +7988,329 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
             // directly into the kind object, so we read them from the kind
             // object's own `fields` at `path` (the `$type` key is ignored).
             let specPath = path
-
-            let getSpecFields () = Ok fields
+            let specFields = fields
 
             match disc with
             | "Box" ->
-                match getSpecFields () with
-                | Error e -> Error e
-                | Ok specFields ->
-                    let childrenR = decodeChildren w specPath specFields
+                let childrenR = decodeChildren w specPath specFields
 
-                    let headingR =
-                        match optFieldAliased specFields "heading" [ "title" ] with
-                        | None -> Ok Option.None
-                        | Some v -> decodeTextSource (specPath + ".heading") v |> Result.map Some
+                let headingR =
+                    match optFieldAliased specFields "heading" [ "title" ] with
+                    | None -> Ok Option.None
+                    | Some v -> decodeTextSource (specPath + ".heading") v |> Result.map Some
 
-                    // Phase 1473 — the print-break declarations, omitted-when-false
-                    // exactly as the IDL declares them. A wrong-typed flag is
-                    // REFUSED here, as it is on the generated arm — never coerced.
-                    let keepTogetherR =
-                        match tryField specFields "keepTogether" with
-                        | None -> Ok false
-                        | Some v -> requireBool (specPath + ".keepTogether") v
+                // Phase 1473 — the print-break declarations, omitted-when-false
+                // exactly as the IDL declares them. A wrong-typed flag is
+                // REFUSED here, as it is on the generated arm — never coerced.
+                let keepTogetherR =
+                    match tryField specFields "keepTogether" with
+                    | None -> Ok false
+                    | Some v -> requireBool (specPath + ".keepTogether") v
 
-                    let breakBeforeR =
-                        match tryField specFields "breakBefore" with
-                        | None -> Ok false
-                        | Some v -> requireBool (specPath + ".breakBefore") v
+                let breakBeforeR =
+                    match tryField specFields "breakBefore" with
+                    | None -> Ok false
+                    | Some v -> requireBool (specPath + ".breakBefore") v
 
-                    let roleR =
-                        requireField specPath specFields "role" "role string"
-                        |> Result.bind (requireString (specPath + ".role"))
-                        |> Result.bind (fun s ->
-                            match s with
-                            | "Group" -> Ok BoxRole.Group
-                            | "Card" -> Ok BoxRole.Card
-                            | "Dashboard" -> Ok BoxRole.Dashboard
-                            | "Separator" -> Ok BoxRole.Separator
-                            | other ->
-                                unknownEnumCase (specPath + ".role") other "Group | Card | Dashboard | Separator")
+                let roleR =
+                    requireField specPath specFields "role" "role string"
+                    |> Result.bind (requireString (specPath + ".role"))
+                    |> Result.bind (fun s ->
+                        match s with
+                        | "Group" -> Ok BoxRole.Group
+                        | "Card" -> Ok BoxRole.Card
+                        | "Dashboard" -> Ok BoxRole.Dashboard
+                        | "Separator" -> Ok BoxRole.Separator
+                        | other -> unknownEnumCase (specPath + ".role") other "Group | Card | Dashboard | Separator")
 
-                    let layoutR =
-                        requireField specPath specFields "layout" "layout object"
-                        |> Result.bind (fun lv -> requireObject (specPath + ".layout") lv)
-                        |> Result.bind (fun lfields ->
-                            let lpath = specPath + ".layout"
+                let layoutR =
+                    requireField specPath specFields "layout" "layout object"
+                    |> Result.bind (fun lv -> requireObject (specPath + ".layout") lv)
+                    |> Result.bind (fun lfields ->
+                        let lpath = specPath + ".layout"
 
-                            requireDiscriminator lpath lfields
-                            |> Result.bind (fun ldisc ->
-                                match ldisc with
-                                | "Flex" ->
-                                    let dirR =
-                                        requireField lpath lfields "direction" "Orientation"
-                                        |> Result.bind (decodeOrientation (lpath + ".direction"))
+                        requireDiscriminator lpath lfields
+                        |> Result.bind (fun ldisc ->
+                            match ldisc with
+                            | "Flex" ->
+                                let dirR =
+                                    requireField lpath lfields "direction" "Orientation"
+                                    |> Result.bind (decodeOrientation (lpath + ".direction"))
 
-                                    let wrapR =
-                                        requireField lpath lfields "wrap" "wrap bool"
-                                        |> Result.bind (requireBool (lpath + ".wrap"))
+                                let wrapR =
+                                    requireField lpath lfields "wrap" "wrap bool"
+                                    |> Result.bind (requireBool (lpath + ".wrap"))
 
-                                    let gapR =
-                                        match tryField lfields "gap" with
-                                        | None -> Ok Option.None
-                                        | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
+                                let gapR =
+                                    match tryField lfields "gap" with
+                                    | None -> Ok Option.None
+                                    | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
 
-                                    match dirR, wrapR, gapR with
-                                    | Ok d, Ok w, Ok g -> Ok(BoxLayout.Flex(d, w, g))
-                                    | Error e, _, _
-                                    | _, Error e, _
-                                    | _, _, Error e -> Error e
-                                | "Grid" when
-                                    tryField lfields "cols" |> Option.isNone
-                                    && tryField lfields "columns" |> Option.isNone
-                                    && tryField lfields "templateColumns" |> Option.isNone
-                                    ->
-                                    // Lenient AI-ingest (WIRE_FORMAT.md §3.6, 2026-07-17): a
-                                    // Grid with NO column spec is the CSS auto-grid prior
-                                    // (35 launch-eval cells, 8 tasks, every provider) — the
-                                    // language already has the concept the author meant:
-                                    // `Auto` (responsive auto-tile). Accept-and-canonicalise;
-                                    // re-encode emits {"$type":"Auto"}.
-                                    Ok BoxLayout.Auto
-                                | "Grid" ->
-                                    let colsR =
-                                        // `TemplateColumns` present ⇒ `Cols` is documented-ignored,
-                                        // so an absent cols defaults to 1 rather than MISSING_FIELD
-                                        // (the 0.1.6 pilot's residual Grid failure shape).
-                                        match tryField lfields "cols", tryField lfields "columns" with
-                                        | None, None when (tryField lfields "templateColumns").IsSome -> Ok 1
+                                match dirR, wrapR, gapR with
+                                | Ok d, Ok w, Ok g -> Ok(BoxLayout.Flex(d, w, g))
+                                | Error e, _, _
+                                | _, Error e, _
+                                | _, _, Error e -> Error e
+                            | "Grid" when
+                                tryField lfields "cols" |> Option.isNone
+                                && tryField lfields "columns" |> Option.isNone
+                                && tryField lfields "templateColumns" |> Option.isNone
+                                ->
+                                // Lenient AI-ingest (WIRE_FORMAT.md §3.6, 2026-07-17): a
+                                // Grid with NO column spec is the CSS auto-grid prior
+                                // (35 launch-eval cells, 8 tasks, every provider) — the
+                                // language already has the concept the author meant:
+                                // `Auto` (responsive auto-tile). Accept-and-canonicalise;
+                                // re-encode emits {"$type":"Auto"}.
+                                Ok BoxLayout.Auto
+                            | "Grid" ->
+                                let colsR =
+                                    // `TemplateColumns` present ⇒ `Cols` is documented-ignored,
+                                    // so an absent cols defaults to 1 rather than MISSING_FIELD
+                                    // (the 0.1.6 pilot's residual Grid failure shape).
+                                    match tryField lfields "cols", tryField lfields "columns" with
+                                    | None, None when (tryField lfields "templateColumns").IsSome -> Ok 1
+                                    | _ ->
+                                        requireFieldAliased lpath lfields "cols" [ "columns" ] "cols integer"
+                                        |> Result.bind (requireInt (lpath + ".cols"))
+
+                                let tcR =
+                                    match tryField lfields "templateColumns" with
+                                    | None -> Ok Option.None
+                                    | Some v -> requireString (lpath + ".templateColumns") v |> Result.map Some
+
+                                let gapR =
+                                    match tryField lfields "gap" with
+                                    | None -> Ok Option.None
+                                    | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
+
+                                match colsR, tcR, gapR with
+                                | Ok c, Ok tc, Ok g -> Ok(BoxLayout.Grid(c, tc, g))
+                                | Error e, _, _
+                                | _, Error e, _
+                                | _, _, Error e -> Error e
+                            | "Masonry" ->
+                                // Phase 1082 — column-FILL. `cols` is REQUIRED
+                                // and must be a POSITIVE integer, following the
+                                // `srcSet` width floor: a masonry container with
+                                // zero or negative columns names a layout no
+                                // renderer can realise, and `0` reads as
+                                // "unspecified" to anyone who has not read the
+                                // spec, which is exactly why it must not decode.
+                                //
+                                // There is deliberately NO auto-column leniency
+                                // here of the kind `Grid` carries: a `Grid` with
+                                // no column spec canonicalises to `Auto` because
+                                // the language already owns that concept, whereas
+                                // a masonry with no column count has no existing
+                                // case to mean — silently rewriting it to `Auto`
+                                // would discard the author's whole intent.
+                                let colsR =
+                                    requireFieldAliased
+                                        lpath
+                                        lfields
+                                        "cols"
+                                        [ "columns" ]
+                                        "positive integer column count"
+                                    |> Result.bind (fun v ->
+                                        match v with
+                                        | JNumber n when n > 0.0 && n = floor n -> Ok(int n)
                                         | _ ->
-                                            requireFieldAliased lpath lfields "cols" [ "columns" ] "cols integer"
-                                            |> Result.bind (requireInt (lpath + ".cols"))
+                                            wrongType (lpath + ".cols") "JSON number (positive integer column count)")
 
-                                    let tcR =
-                                        match tryField lfields "templateColumns" with
-                                        | None -> Ok Option.None
-                                        | Some v -> requireString (lpath + ".templateColumns") v |> Result.map Some
+                                let gapR =
+                                    match tryField lfields "gap" with
+                                    | None -> Ok Option.None
+                                    | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
 
-                                    let gapR =
-                                        match tryField lfields "gap" with
-                                        | None -> Ok Option.None
-                                        | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
+                                match colsR, gapR with
+                                | Ok c, Ok g -> Ok(BoxLayout.Masonry(c, g))
+                                | Error e, _
+                                | _, Error e -> Error e
+                            | "Auto" -> Ok BoxLayout.Auto
+                            | other -> unknownDuCase lpath other "Flex | Grid | Masonry | Auto"))
 
-                                    match colsR, tcR, gapR with
-                                    | Ok c, Ok tc, Ok g -> Ok(BoxLayout.Grid(c, tc, g))
-                                    | Error e, _, _
-                                    | _, Error e, _
-                                    | _, _, Error e -> Error e
-                                | "Masonry" ->
-                                    // Phase 1082 — column-FILL. `cols` is REQUIRED
-                                    // and must be a POSITIVE integer, following the
-                                    // `srcSet` width floor: a masonry container with
-                                    // zero or negative columns names a layout no
-                                    // renderer can realise, and `0` reads as
-                                    // "unspecified" to anyone who has not read the
-                                    // spec, which is exactly why it must not decode.
-                                    //
-                                    // There is deliberately NO auto-column leniency
-                                    // here of the kind `Grid` carries: a `Grid` with
-                                    // no column spec canonicalises to `Auto` because
-                                    // the language already owns that concept, whereas
-                                    // a masonry with no column count has no existing
-                                    // case to mean — silently rewriting it to `Auto`
-                                    // would discard the author's whole intent.
-                                    let colsR =
-                                        requireFieldAliased
-                                            lpath
-                                            lfields
-                                            "cols"
-                                            [ "columns" ]
-                                            "positive integer column count"
-                                        |> Result.bind (fun v ->
-                                            match v with
-                                            | JNumber n when n > 0.0 && n = floor n -> Ok(int n)
-                                            | _ ->
-                                                wrongType
-                                                    (lpath + ".cols")
-                                                    "JSON number (positive integer column count)")
-
-                                    let gapR =
-                                        match tryField lfields "gap" with
-                                        | None -> Ok Option.None
-                                        | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
-
-                                    match colsR, gapR with
-                                    | Ok c, Ok g -> Ok(BoxLayout.Masonry(c, g))
-                                    | Error e, _
-                                    | _, Error e -> Error e
-                                | "Auto" -> Ok BoxLayout.Auto
-                                | other -> unknownDuCase lpath other "Flex | Grid | Masonry | Auto"))
-
-                    match childrenR, headingR, roleR, layoutR, keepTogetherR, breakBeforeR with
-                    | Ok children, Ok heading, Ok role, Ok layout, Ok keepTogether, Ok breakBefore ->
-                        Ok(
-                            NodeKind.Box
-                                { Layout = layout
-                                  Role = role
-                                  Heading = heading
-                                  Children = children
-                                  KeepTogether = keepTogether
-                                  BreakBefore = breakBefore }
-                        )
-                    | Error e, _, _, _, _, _
-                    | _, Error e, _, _, _, _
-                    | _, _, Error e, _, _, _
-                    | _, _, _, Error e, _, _
-                    | _, _, _, _, Error e, _
-                    | _, _, _, _, _, Error e -> Error e
+                match childrenR, headingR, roleR, layoutR, keepTogetherR, breakBeforeR with
+                | Ok children, Ok heading, Ok role, Ok layout, Ok keepTogether, Ok breakBefore ->
+                    Ok(
+                        NodeKind.Box
+                            { Layout = layout
+                              Role = role
+                              Heading = heading
+                              Children = children
+                              KeepTogether = keepTogether
+                              BreakBefore = breakBefore }
+                    )
+                | Error e, _, _, _, _, _
+                | _, Error e, _, _, _, _
+                | _, _, Error e, _, _, _
+                | _, _, _, Error e, _, _
+                | _, _, _, _, Error e, _
+                | _, _, _, _, _, Error e -> Error e
             | "SplitPanel" ->
-                match getSpecFields () with
-                | Error e -> Error e
-                | Ok specFields ->
-                    let childrenR = decodeChildren w specPath specFields
+                let childrenR = decodeChildren w specPath specFields
 
-                    let weightR =
-                        requireField specPath specFields "weight" "weight float"
-                        |> Result.bind (requireFloat (specPath + ".weight"))
+                let weightR =
+                    requireField specPath specFields "weight" "weight float"
+                    |> Result.bind (requireFloat (specPath + ".weight"))
 
-                    match childrenR, weightR with
-                    | Ok children, Ok weight -> Ok(NodeKind.SplitPanel { Weight = weight; Children = children })
-                    | Error e, _
-                    | _, Error e -> Error e
+                match childrenR, weightR with
+                | Ok children, Ok weight -> Ok(NodeKind.SplitPanel { Weight = weight; Children = children })
+                | Error e, _
+                | _, Error e -> Error e
             | "Tabs" ->
-                match getSpecFields () with
-                | Error e -> Error e
-                | Ok specFields ->
-                    let childrenR = decodeChildren w specPath specFields
+                let childrenR = decodeChildren w specPath specFields
 
-                    let orientationR =
-                        // 0.2.0 — omitted-when-Horizontal on both boundaries.
-                        match tryField specFields "orientation" with
-                        | None -> Ok Orientation.Horizontal
-                        | Some v -> decodeOrientation (specPath + ".orientation") v
+                let orientationR =
+                    // 0.2.0 — omitted-when-Horizontal on both boundaries.
+                    match tryField specFields "orientation" with
+                    | None -> Ok Orientation.Horizontal
+                    | Some v -> decodeOrientation (specPath + ".orientation") v
 
-                    // Additive optional decoders.
-                    // `activeIndex` (Phase 126, restated Phase 1585):
-                    // OMIT-AT-DEFAULT. The IDL declares it
-                    // `omitDefault (Binding.Static (Some 0))`, so the encoder
-                    // emits it only when it differs from that identity and
-                    // absence means `Binding.Static (Some 0)` BY CONTRACT —
-                    // not, as this note read until 1585, by tolerance of legacy
-                    // wire predating the field. `onSelect` /
-                    // `onSelectTag` (Phase 426): a present `"<closure>"`
-                    // sentinel decodes to the inert placeholder `Some`; an
-                    // absent key decodes to `None` — the shape that arms the
-                    // renderer's ActiveIndex/ActiveTag write-back default.
-                    let decodeTabHeaderEntry (path: string) (j: Json) =
-                        match requireObject path j with
-                        | Error e -> Error e
-                        | Ok hFields ->
-                            // `label`, `icon` and `disabled` are sibling members (§29.1).
-                            let labelR =
-                                requireField path hFields "label" "TabHeader.label TextSource"
-                                |> Result.bind (decodeTextSource (path + ".label"))
+                // Additive optional decoders.
+                // `activeIndex` (Phase 126, restated Phase 1585):
+                // OMIT-AT-DEFAULT. The IDL declares it
+                // `omitDefault (Binding.Static (Some 0))`, so the encoder
+                // emits it only when it differs from that identity and
+                // absence means `Binding.Static (Some 0)` BY CONTRACT —
+                // not, as this note read until 1585, by tolerance of legacy
+                // wire predating the field. `onSelect` /
+                // `onSelectTag` (Phase 426): a present `"<closure>"`
+                // sentinel decodes to the inert placeholder `Some`; an
+                // absent key decodes to `None` — the shape that arms the
+                // renderer's ActiveIndex/ActiveTag write-back default.
+                let decodeTabHeaderEntry (path: string) (j: Json) =
+                    match requireObject path j with
+                    | Error e -> Error e
+                    | Ok hFields ->
+                        // `label`, `icon` and `disabled` are sibling members (§29.1).
+                        let labelR =
+                            requireField path hFields "label" "TabHeader.label TextSource"
+                            |> Result.bind (decodeTextSource (path + ".label"))
 
-                            let iconR =
-                                // Bare string since the swap (the IconSource wrapper
-                                // unwraps at this boundary).
-                                match tryField hFields "icon" with
-                                | None -> Ok Option.None
-                                | Some v ->
-                                    decodeIconSource (path + ".icon") v |> Result.map (fun (IconSource s) -> Some s)
+                        let iconR =
+                            // Bare string since the swap (the IconSource wrapper
+                            // unwraps at this boundary).
+                            match tryField hFields "icon" with
+                            | None -> Ok Option.None
+                            | Some v -> decodeIconSource (path + ".icon") v |> Result.map (fun (IconSource s) -> Some s)
 
-                            let disabledR =
-                                match tryField hFields "disabled" with
-                                | None -> Ok Option.None
-                                | Some v -> decodeBindingBool (path + ".disabled") v |> Result.map Some
+                        let disabledR =
+                            match tryField hFields "disabled" with
+                            | None -> Ok Option.None
+                            | Some v -> decodeBindingBool (path + ".disabled") v |> Result.map Some
 
-                            match labelR, iconR, disabledR with
-                            | Error e, _, _ -> Error e
-                            | Ok label, Ok icon, Ok disabled ->
-                                Ok(
-                                    { Label = label
-                                      Icon = icon
-                                      Disabled = disabled }
-                                    : TabHeader
-                                )
-                            | _, Error e, _
-                            | _, _, Error e -> Error e
+                        match labelR, iconR, disabledR with
+                        | Error e, _, _ -> Error e
+                        | Ok label, Ok icon, Ok disabled ->
+                            Ok(
+                                { Label = label
+                                  Icon = icon
+                                  Disabled = disabled }
+                                : TabHeader
+                            )
+                        | _, Error e, _
+                        | _, _, Error e -> Error e
 
-                    let tabHeadersR =
-                        match tryField specFields "tabHeaders" with
-                        | None -> Ok Option.None
-                        | Some v ->
-                            requireArray (specPath + ".tabHeaders") v
-                            |> Result.bind (fun items ->
-                                items
-                                |> List.mapi (fun i it -> i, it)
-                                |> traverse (fun (i, it) ->
-                                    decodeTabHeaderEntry (sprintf "%s.tabHeaders[%d]" specPath i) it))
-                            |> Result.map Some
+                let tabHeadersR =
+                    match tryField specFields "tabHeaders" with
+                    | None -> Ok Option.None
+                    | Some v ->
+                        requireArray (specPath + ".tabHeaders") v
+                        |> Result.bind (fun items ->
+                            items
+                            |> List.mapi (fun i it -> i, it)
+                            |> traverse (fun (i, it) ->
+                                decodeTabHeaderEntry (sprintf "%s.tabHeaders[%d]" specPath i) it))
+                        |> Result.map Some
 
-                    let tabTagsR =
-                        match tryField specFields "tabTags" with
-                        | None -> Ok Option.None
-                        | Some v ->
-                            requireArray (specPath + ".tabTags") v
-                            |> Result.bind (fun items ->
-                                items
-                                |> List.mapi (fun i it -> i, it)
-                                |> traverse (fun (i, it) -> requireString (sprintf "%s.tabTags[%d]" specPath i) it))
-                            |> Result.map Some
+                let tabTagsR =
+                    match tryField specFields "tabTags" with
+                    | None -> Ok Option.None
+                    | Some v ->
+                        requireArray (specPath + ".tabTags") v
+                        |> Result.bind (fun items ->
+                            items
+                            |> List.mapi (fun i it -> i, it)
+                            |> traverse (fun (i, it) -> requireString (sprintf "%s.tabTags[%d]" specPath i) it))
+                        |> Result.map Some
 
-                    let activeTagR =
-                        match tryField specFields "activeTag" with
-                        | None -> Ok Option.None
-                        | Some v -> decodeBindingString (specPath + ".activeTag") v |> Result.map Some
+                let activeTagR =
+                    match tryField specFields "activeTag" with
+                    | None -> Ok Option.None
+                    | Some v -> decodeBindingString (specPath + ".activeTag") v |> Result.map Some
 
-                    let activeIndexR =
-                        match tryField specFields "activeIndex" with
-                        | None -> Ok(Binding.Static(Some 0))
-                        | Some v -> decodeBindingInt (specPath + ".activeIndex") v
+                let activeIndexR =
+                    match tryField specFields "activeIndex" with
+                    | None -> Ok(Binding.Static(Some 0))
+                    | Some v -> decodeBindingInt (specPath + ".activeIndex") v
 
-                    match childrenR, orientationR, tabHeadersR, tabTagsR, activeTagR, activeIndexR with
-                    | Ok children, Ok orientation, Ok tabHeaders, Ok tabTags, Ok activeTag, Ok activeIndex ->
-                        Ok(
-                            NodeKind.Tabs
-                                { Orientation = orientation
-                                  Children = children
-                                  ActiveIndex = activeIndex
-                                  OnSelect =
-                                    (match tryField specFields "onSelect" with
-                                     | Some _ -> Some(fun _ -> Action.Chain [])
-                                     | None -> Option.None)
-                                  TabHeaders = tabHeaders
-                                  TabTags = tabTags
-                                  ActiveTag = activeTag
-                                  OnSelectTag =
-                                    (match tryField specFields "onSelectTag" with
-                                     | Some _ -> Some(fun _ -> Action.Chain [])
-                                     | None -> Option.None) }
-                        )
-                    | Error e, _, _, _, _, _
-                    | _, Error e, _, _, _, _
-                    | _, _, Error e, _, _, _
-                    | _, _, _, Error e, _, _
-                    | _, _, _, _, Error e, _
-                    | _, _, _, _, _, Error e -> Error e
+                match childrenR, orientationR, tabHeadersR, tabTagsR, activeTagR, activeIndexR with
+                | Ok children, Ok orientation, Ok tabHeaders, Ok tabTags, Ok activeTag, Ok activeIndex ->
+                    Ok(
+                        NodeKind.Tabs
+                            { Orientation = orientation
+                              Children = children
+                              ActiveIndex = activeIndex
+                              OnSelect =
+                                (match tryField specFields "onSelect" with
+                                 | Some _ -> Some(fun _ -> Action.Chain [])
+                                 | None -> Option.None)
+                              TabHeaders = tabHeaders
+                              TabTags = tabTags
+                              ActiveTag = activeTag
+                              OnSelectTag =
+                                (match tryField specFields "onSelectTag" with
+                                 | Some _ -> Some(fun _ -> Action.Chain [])
+                                 | None -> Option.None) }
+                    )
+                | Error e, _, _, _, _, _
+                | _, Error e, _, _, _, _
+                | _, _, Error e, _, _, _
+                | _, _, _, Error e, _, _
+                | _, _, _, _, Error e, _
+                | _, _, _, _, _, Error e -> Error e
             | "Stepper" ->
-                match getSpecFields () with
-                | Error e -> Error e
-                | Ok specFields ->
-                    let childrenR = decodeChildren w specPath specFields
+                let childrenR = decodeChildren w specPath specFields
 
-                    let activeR =
-                        requireField specPath specFields "activeStep" "Binding<int> activeStep"
-                        |> Result.bind (decodeBindingInt (specPath + ".activeStep"))
+                let activeR =
+                    requireField specPath specFields "activeStep" "Binding<int> activeStep"
+                    |> Result.bind (decodeBindingInt (specPath + ".activeStep"))
 
-                    // `onSelect` is a closure → a present sentinel reconstructs
-                    // a no-op `Some` (re-encodes to the same sentinel; behaviour
-                    // can't round-trip); an absent key decodes `None` — mirrors
-                    // Tabs. The slot is an option since the swap.
-                    match childrenR, activeR with
-                    | Ok children, Ok active ->
-                        Ok(
-                            NodeKind.Stepper
-                                { ActiveStep = active
-                                  Children = children
-                                  OnSelect =
-                                    (match tryField specFields "onSelect" with
-                                     | Some _ -> Some(fun _ -> Action.Chain [])
-                                     | None -> Option.None) }
-                        )
-                    | Error e, _
-                    | _, Error e -> Error e
+                // `onSelect` is a closure → a present sentinel reconstructs
+                // a no-op `Some` (re-encodes to the same sentinel; behaviour
+                // can't round-trip); an absent key decodes `None` — mirrors
+                // Tabs. The slot is an option since the swap.
+                match childrenR, activeR with
+                | Ok children, Ok active ->
+                    Ok(
+                        NodeKind.Stepper
+                            { ActiveStep = active
+                              Children = children
+                              OnSelect =
+                                (match tryField specFields "onSelect" with
+                                 | Some _ -> Some(fun _ -> Action.Chain [])
+                                 | None -> Option.None) }
+                    )
+                | Error e, _
+                | _, Error e -> Error e
             | "SummaryList" ->
-                match getSpecFields () with
-                | Error e -> Error e
-                | Ok specFields ->
-                    let childrenR = decodeChildren w specPath specFields
+                let childrenR = decodeChildren w specPath specFields
 
-                    let headingR =
-                        match optFieldAliased specFields "heading" [ "title" ] with
-                        | None -> Ok None
-                        | Some v -> decodeTextSource (specPath + ".heading") v |> Result.map Some
+                let headingR =
+                    match optFieldAliased specFields "heading" [ "title" ] with
+                    | None -> Ok None
+                    | Some v -> decodeTextSource (specPath + ".heading") v |> Result.map Some
 
-                    match childrenR, headingR with
-                    | Ok children, Ok heading ->
-                        Ok(
-                            NodeKind.SummaryList
-                                { Heading = heading
-                                  Children = children }
-                        )
-                    | Error e, _
-                    | _, Error e -> Error e
+                match childrenR, headingR with
+                | Ok children, Ok heading ->
+                    Ok(
+                        NodeKind.SummaryList
+                            { Heading = heading
+                              Children = children }
+                    )
+                | Error e, _
+                | _, Error e -> Error e
             | "Disclosure" ->
                 // Additive typed accordion. `heading`
                 // is required (TextSource); `open` is optional (decodes via
@@ -8360,145 +8320,136 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
                 // `onToggle` (Phase 426): a present `"<closure>"` sentinel
                 // decodes to the inert placeholder `Some`; an absent key
                 // decodes to `None`, arming the `Open` write-back default.
-                match getSpecFields () with
-                | Error e -> Error e
-                | Ok specFields ->
-                    let childrenR = decodeChildren w specPath specFields
+                let childrenR = decodeChildren w specPath specFields
 
-                    let headingR =
-                        requireFieldAliased specPath specFields "heading" [ "title" ] "TextSource heading"
-                        |> Result.bind (decodeTextSource (specPath + ".heading"))
+                let headingR =
+                    requireFieldAliased specPath specFields "heading" [ "title" ] "TextSource heading"
+                    |> Result.bind (decodeTextSource (specPath + ".heading"))
 
-                    let openR =
-                        match tryField specFields "open" with
-                        | None -> Ok(Binding.Static(Some false))
-                        | Some v -> decodeBindingBool (specPath + ".open") v
+                let openR =
+                    match tryField specFields "open" with
+                    | None -> Ok(Binding.Static(Some false))
+                    | Some v -> decodeBindingBool (specPath + ".open") v
 
-                    let defaultOpenR =
-                        match tryField specFields "defaultOpen" with
-                        | None -> Ok false
-                        | Some v -> requireBool (specPath + ".defaultOpen") v
+                let defaultOpenR =
+                    match tryField specFields "defaultOpen" with
+                    | None -> Ok false
+                    | Some v -> requireBool (specPath + ".defaultOpen") v
 
-                    match childrenR, headingR, openR, defaultOpenR with
-                    | Ok children, Ok heading, Ok openB, Ok defOpen ->
-                        Ok(
-                            NodeKind.Disclosure
-                                { Heading = heading
-                                  Open = openB
-                                  OnToggle =
-                                    (match tryField specFields "onToggle" with
-                                     | Some _ -> Some(fun _ -> Action.Chain [])
-                                     | None -> Option.None)
-                                  Children = children
-                                  DefaultOpen = defOpen }
-                        )
-                    | Error e, _, _, _
-                    | _, Error e, _, _
-                    | _, _, Error e, _
-                    | _, _, _, Error e -> Error e
+                match childrenR, headingR, openR, defaultOpenR with
+                | Ok children, Ok heading, Ok openB, Ok defOpen ->
+                    Ok(
+                        NodeKind.Disclosure
+                            { Heading = heading
+                              Open = openB
+                              OnToggle =
+                                (match tryField specFields "onToggle" with
+                                 | Some _ -> Some(fun _ -> Action.Chain [])
+                                 | None -> Option.None)
+                              Children = children
+                              DefaultOpen = defOpen }
+                    )
+                | Error e, _, _, _
+                | _, Error e, _, _
+                | _, _, Error e, _
+                | _, _, _, Error e -> Error e
             | "Modal" ->
                 // Phase 289 — overlay dialog. `open` is required (visibility
                 // binding); `dismissable` required bool; `onDismiss` is a
                 // wire-survivable Action (decoded via decodeAction, like
                 // Form.OnSubmit) — optional since Phase 426: absent ⇒ `None`,
                 // arming the `Open` write-back default; `heading` optional.
-                match getSpecFields () with
-                | Error e -> Error e
-                | Ok specFields ->
-                    let childrenR = decodeChildren w specPath specFields
+                let childrenR = decodeChildren w specPath specFields
 
-                    let openR =
-                        requireField specPath specFields "open" "Binding<bool> open"
-                        |> Result.bind (decodeBindingBool (specPath + ".open"))
+                let openR =
+                    requireField specPath specFields "open" "Binding<bool> open"
+                    |> Result.bind (decodeBindingBool (specPath + ".open"))
 
-                    let dismissableR =
-                        requireField specPath specFields "dismissable" "dismissable bool"
-                        |> Result.bind (requireBool (specPath + ".dismissable"))
+                let dismissableR =
+                    requireField specPath specFields "dismissable" "dismissable bool"
+                    |> Result.bind (requireBool (specPath + ".dismissable"))
 
-                    let onDismissR =
-                        match tryField specFields "onDismiss" with
-                        | None -> Ok Option.None
-                        | Some v -> decodeAction (specPath + ".onDismiss") v |> Result.map Some
+                let onDismissR =
+                    match tryField specFields "onDismiss" with
+                    | None -> Ok Option.None
+                    | Some v -> decodeAction (specPath + ".onDismiss") v |> Result.map Some
 
-                    let headingR =
-                        match optFieldAliased specFields "heading" [ "title" ] with
-                        | None -> Ok None
-                        | Some v -> decodeTextSource (specPath + ".heading") v |> Result.map Some
+                let headingR =
+                    match optFieldAliased specFields "heading" [ "title" ] with
+                    | None -> Ok None
+                    | Some v -> decodeTextSource (specPath + ".heading") v |> Result.map Some
 
-                    // Phase 1119 — `modality` is omitted at `Modal`, so absence
-                    // restores the pre-1119 blocking dialog. A present value
-                    // outside the pair is UNKNOWN_DU_CASE and a present
-                    // non-string is WRONG_TYPE: two decoder arms, two falsifiers.
-                    let modalityR =
-                        match tryField specFields "modality" with
-                        | None -> Ok ModalityKind.Modal
-                        | Some v -> decodeModalityKind (specPath + ".modality") v
+                // Phase 1119 — `modality` is omitted at `Modal`, so absence
+                // restores the pre-1119 blocking dialog. A present value
+                // outside the pair is UNKNOWN_DU_CASE and a present
+                // non-string is WRONG_TYPE: two decoder arms, two falsifiers.
+                let modalityR =
+                    match tryField specFields "modality" with
+                    | None -> Ok ModalityKind.Modal
+                    | Some v -> decodeModalityKind (specPath + ".modality") v
 
-                    // `anchor` is a NodeId. Decode admits ANY string — whether it
-                    // names a node in this tree is a question about the whole
-                    // tree, which a per-node decoder cannot answer and which the
-                    // pre-emit validator answers (FUARAN122). A dangling anchor
-                    // is therefore a validator finding, never a decode refusal.
-                    let anchorR =
-                        match tryField specFields "anchor" with
-                        | None -> Ok None
-                        | Some v -> requireString (specPath + ".anchor") v |> Result.map Some
+                // `anchor` is a NodeId. Decode admits ANY string — whether it
+                // names a node in this tree is a question about the whole
+                // tree, which a per-node decoder cannot answer and which the
+                // pre-emit validator answers (FUARAN122). A dangling anchor
+                // is therefore a validator finding, never a decode refusal.
+                let anchorR =
+                    match tryField specFields "anchor" with
+                    | None -> Ok None
+                    | Some v -> requireString (specPath + ".anchor") v |> Result.map Some
 
-                    match childrenR, openR, dismissableR, onDismissR, headingR, modalityR, anchorR with
-                    | Ok children, Ok openB, Ok dismissable, Ok onDismiss, Ok heading, Ok modality, Ok anchor ->
-                        Ok(
-                            NodeKind.Modal
-                                { Open = openB
-                                  Heading = heading
-                                  Dismissable = dismissable
-                                  Children = children
-                                  OnDismiss = onDismiss
-                                  Modality = modality
-                                  Anchor = anchor }
-                        )
-                    | Error e, _, _, _, _, _, _
-                    | _, Error e, _, _, _, _, _
-                    | _, _, Error e, _, _, _, _
-                    | _, _, _, Error e, _, _, _
-                    | _, _, _, _, Error e, _, _
-                    | _, _, _, _, _, Error e, _
-                    | _, _, _, _, _, _, Error e -> Error e
+                match childrenR, openR, dismissableR, onDismissR, headingR, modalityR, anchorR with
+                | Ok children, Ok openB, Ok dismissable, Ok onDismiss, Ok heading, Ok modality, Ok anchor ->
+                    Ok(
+                        NodeKind.Modal
+                            { Open = openB
+                              Heading = heading
+                              Dismissable = dismissable
+                              Children = children
+                              OnDismiss = onDismiss
+                              Modality = modality
+                              Anchor = anchor }
+                    )
+                | Error e, _, _, _, _, _, _
+                | _, Error e, _, _, _, _, _
+                | _, _, Error e, _, _, _, _
+                | _, _, _, Error e, _, _, _
+                | _, _, _, _, Error e, _, _
+                | _, _, _, _, _, Error e, _
+                | _, _, _, _, _, _, Error e -> Error e
             | "ScrollArea" ->
                 // Phase 289 — overflow/scroll container. `orientation` required
                 // (scroll axis); optional maxHeight/maxWidth (pixels) decode to
                 // None when absent.
-                match getSpecFields () with
-                | Error e -> Error e
-                | Ok specFields ->
-                    let childrenR = decodeChildren w specPath specFields
+                let childrenR = decodeChildren w specPath specFields
 
-                    let orientationR =
-                        requireField specPath specFields "orientation" "ScrollOrientation"
-                        |> Result.bind (decodeScrollOrientation (specPath + ".orientation"))
+                let orientationR =
+                    requireField specPath specFields "orientation" "ScrollOrientation"
+                    |> Result.bind (decodeScrollOrientation (specPath + ".orientation"))
 
-                    let maxHeightR =
-                        match tryField specFields "maxHeight" with
-                        | None -> Ok Option.None
-                        | Some v -> requireInt (specPath + ".maxHeight") v |> Result.map Some
+                let maxHeightR =
+                    match tryField specFields "maxHeight" with
+                    | None -> Ok Option.None
+                    | Some v -> requireInt (specPath + ".maxHeight") v |> Result.map Some
 
-                    let maxWidthR =
-                        match tryField specFields "maxWidth" with
-                        | None -> Ok Option.None
-                        | Some v -> requireInt (specPath + ".maxWidth") v |> Result.map Some
+                let maxWidthR =
+                    match tryField specFields "maxWidth" with
+                    | None -> Ok Option.None
+                    | Some v -> requireInt (specPath + ".maxWidth") v |> Result.map Some
 
-                    match childrenR, orientationR, maxHeightR, maxWidthR with
-                    | Ok children, Ok orientation, Ok maxHeight, Ok maxWidth ->
-                        Ok(
-                            NodeKind.ScrollArea
-                                { Orientation = orientation
-                                  Children = children
-                                  MaxHeight = maxHeight
-                                  MaxWidth = maxWidth }
-                        )
-                    | Error e, _, _, _
-                    | _, Error e, _, _
-                    | _, _, Error e, _
-                    | _, _, _, Error e -> Error e
+                match childrenR, orientationR, maxHeightR, maxWidthR with
+                | Ok children, Ok orientation, Ok maxHeight, Ok maxWidth ->
+                    Ok(
+                        NodeKind.ScrollArea
+                            { Orientation = orientation
+                              Children = children
+                              MaxHeight = maxHeight
+                              MaxWidth = maxWidth }
+                    )
+                | Error e, _, _, _
+                | _, Error e, _, _
+                | _, _, Error e, _
+                | _, _, _, Error e -> Error e
             | s -> unknownDuCase path s (String.concat " | " layoutNodeKinds)
 
 and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
@@ -8604,17 +8555,12 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
                 match tryField fields "exposedNodeIds" with
                 | None -> Ok []
                 | Some j ->
+                    // Every element decoded, each defect collected (§29.1), as its
+                    // sibling arrays are.
                     requireArray (path + ".exposedNodeIds") j
-                    |> Result.bind (fun items ->
-                        items
-                        |> List.mapi (fun i item -> requireString (sprintf "%s.exposedNodeIds[%d]" path i) item)
-                        |> List.fold
-                            (fun acc r ->
-                                match acc, r with
-                                | Ok xs, Ok v -> Ok(xs @ [ v ])
-                                | Error e, _ -> Error e
-                                | _, Error e -> Error e)
-                            (Ok []))
+                    |> Result.bind (
+                        traverseIndexed (fun i item -> requireString (sprintf "%s.exposedNodeIds[%d]" path i) item)
+                    )
 
             match moduleIdR, componentIdR, propsR, contentHashR, exposedNodeIdsR with
             | Ok moduleId, Ok componentId, Ok props, Ok hash, Ok exposedIds ->
@@ -9972,42 +9918,51 @@ let private collectDefects (walk: unit -> Result<'a, DecodeError>) : Result<'a, 
     finally
         DefectSink.Current <- outer
 
+/// The reliance events of one decode (Phase 2064): the recoveries applied to
+/// the document, and the recoveries the gate examined and declined, under the
+/// `Reliance` ids.
+type private RelianceEvents =
+    { Applied: string list
+      Declined: string list }
+
+let private noReliance = { Applied = []; Declined = [] }
+
 /// The shared node-decode spine (Phase 1923). A document that parses is decoded
 /// under `policy`. A parse failure is the answer under `Recovery.Off` — the
 /// default. Under the opt-in `Recovery.Lenient` an `INVALID_JSON` failure is
 /// handed to `repair`, and a repaired text is decoded strictly under `policy`:
 /// the lenient decoder IS `repair` then strict decode, one implementation.
-/// Only this path writes the `Reliance` counters.
+/// Only this path produces reliance events, and it RETURNS them beside the
+/// result rather than recording them anywhere.
 let private decodeNodeCoreWith
     (policy: DecodePolicy)
     (json: string)
-    : Result<Node<obj>, DecodeError list> * string list =
+    : Result<Node<obj>, DecodeError list> * RelianceEvents =
     let parseFailure failure =
         parseFailure failure |> Result.mapError List.singleton
 
     match tryParse json with
-    | Ok j -> collectDefects (fun () -> decodeNodeAst (walkRoot policy) "$" j), []
+    | Ok j -> collectDefects (fun () -> decodeNodeAst (walkRoot policy) "$" j), noReliance
     | Error((DecodeErrorCode.INVALID_JSON, _) as failure) when DecodePolicy.recovers policy ->
         match repair json with
         | Repair.RepairOutcome.Repaired(repaired, applied) when not applied.IsEmpty ->
-            for id in applied do
-                Reliance.record id
-
             match tryParse repaired with
-            | Ok j -> collectDefects (fun () -> decodeNodeAst (walkRoot policy) "$" j), applied
-            | Error _ -> parseFailure failure, []
+            | Ok j ->
+                collectDefects (fun () -> decodeNodeAst (walkRoot policy) "$" j), { noReliance with Applied = applied }
+            | Error _ -> parseFailure failure, noReliance
         | Repair.RepairOutcome.NotRepairable reason when
             reason = Repair.Refusal.OverCloseAmbiguous
             || reason = Repair.Refusal.OverCloseNoCleanCandidate
             || reason = Repair.Refusal.OverCloseBounds
             ->
-            // The over-close gate examined the document and declined — counted,
-            // because a class that is silently refused stops generating demand
-            // signal exactly as one silently recovered does.
-            Reliance.record Reliance.OverCloseRefused
-            parseFailure failure, []
-        | _ -> parseFailure failure, []
-    | Error failure -> parseFailure failure, []
+            // The over-close gate examined the document and declined — an
+            // event, because a class that is silently refused stops generating
+            // demand signal exactly as one silently recovered does.
+            parseFailure failure,
+            { noReliance with
+                Declined = [ Reliance.OverCloseRefused ] }
+        | _ -> parseFailure failure, noReliance
+    | Error failure -> parseFailure failure, noReliance
 
 /// The single-error form: the FIRST entry of the §29 defect list, so which of
 /// several defects a refusal names is fixed by the specification rather than by
@@ -10072,40 +10027,43 @@ let decodeNodeWithPolicy (policy: DecodePolicy) (json: string) : Result<WireTree
 let decodeNodeObjWithPolicy (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> =
     decodeNodeCore policy json
 
-/// The outcome of one decode: its result, and WHICH decode-time recoveries were
-/// applied to THIS document (Phase 1532).
+/// The outcome of one decode: its result, and the reliance events of THIS
+/// document — which decode-time recoveries were applied to it (Phase 1532),
+/// and which the gate examined and declined (Phase 2064).
 ///
-/// `Reliance.snapshot` counts recoveries process-wide, which answers "how much
-/// is this deployment leaning on the lenient decoder" and cannot answer "was the
-/// tree I am holding repaired". At the call site those are different questions:
-/// a repaired decode is indistinguishable from a clean one in a plain
+/// A repaired decode is indistinguishable from a clean one in a plain
 /// `Result`, so a boundary that wants to log it, refuse it, or mark the tree
 /// provenance-suspect had nothing to read. `Recovered` names the applied
-/// recoveries with the same ids `Reliance` counts them under
-/// (`Reliance.ImpliedNodeClose`, `Reliance.OverCloseUnique`), so the per-decode
-/// and the process-wide readings speak one vocabulary.
+/// recoveries and `Refused` the declined ones, under the `Reliance` ids
+/// (`Reliance.ImpliedNodeClose`, `Reliance.OverCloseUnique`,
+/// `Reliance.OverCloseRefused`). These are the only reading: there is no
+/// process-wide counter (Phase 2064 removed it), so a cohort total is the sum
+/// of the outcomes a consumer holds.
 ///
-/// Empty on every clean decode, and on every failure — a document that did not
-/// decode was not repaired.
+/// `Recovered` is empty on every clean decode and on every document that was
+/// not repaired; `Refused` is empty unless the over-close gate declined.
 type DecodeOutcome<'T> =
     { Result: Result<'T, DecodeError>
-      Recovered: string list }
+      Recovered: string list
+      Refused: string list }
 
-/// `decodeNodeWithPolicy`, plus the per-document recovery record. The `Result`
+/// `decodeNodeWithPolicy`, plus the per-document reliance record. The `Result`
 /// field is byte-for-byte what `decodeNodeWithPolicy` returns for the same
 /// inputs — this entry point observes the decode, it does not change it.
 let decodeNodeWithOutcome (policy: DecodePolicy) (json: string) : DecodeOutcome<WireTree> =
-    let result, recovered = decodeNodeCoreWith policy json
+    let result, events = decodeNodeCoreWith policy json
 
     { Result = result |> firstDefect |> Result.map WireTree.ofDecoded
-      Recovered = recovered }
+      Recovered = events.Applied
+      Refused = events.Declined }
 
-/// `decodeNodeObjWithPolicy`, plus the per-document recovery record.
+/// `decodeNodeObjWithPolicy`, plus the per-document reliance record.
 let decodeNodeObjWithOutcome (policy: DecodePolicy) (json: string) : DecodeOutcome<Node<obj>> =
-    let result, recovered = decodeNodeCoreWith policy json
+    let result, events = decodeNodeCoreWith policy json
 
     { Result = result |> firstDefect
-      Recovered = recovered }
+      Recovered = events.Applied
+      Refused = events.Declined }
 
 /// `decodeNodeWithPolicy`, reporting EVERY independent defect (WIRE_FORMAT §29;
 /// Phase 1935). A refusal carries the defect list in the §29.3 canonical order:

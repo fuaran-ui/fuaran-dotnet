@@ -28,9 +28,9 @@ module Fuaran.UI.Ops.TreeOpMap
 //  reachable:
 //
 //   * **Eagerly stored** — `Action.Dispatch`'s message is a field. Every such
-//     payload is visited BEFORE the mapped op is built (the probe pass below),
-//     so a `None` here makes `mapMsg` return `Error` having constructed
-//     nothing at all.
+//     payload is visited WHILE the mapped op is built, in the one walk below,
+//     so a `None` here makes `mapMsg` return `Error` naming every declined
+//     payload, and the op under construction is discarded unreturned.
 //   * **Closure-carried** — `Action.Call`'s `onResult`, `ReadFileBody`'s
 //     `onRead`, `Tabs.OnSelect`, a custom cell's render closure. Their
 //     payloads do not EXIST until the closure is called, and calling a
@@ -121,60 +121,57 @@ module TreeOp =
         else
             rendered
 
-    /// Run `walk` with a collector in place of the real mapper, returning the
-    /// distinct renderings of every EAGERLY-REACHABLE payload the mapper
-    /// declined. `walk`'s result is discarded — the pass exists for what the
-    /// collector saw, not for the tree it built.
-    let private declined (f: obj -> 'Msg option) (walk: (obj -> unit) -> unit) : string list =
-        let seen = System.Collections.Generic.HashSet<string>()
-        let found = ResizeArray<string>()
-
-        walk (fun payload ->
-            match f payload with
-            | Some _ -> ()
-            | None ->
-                let rendered = renderPayload payload
-
-                if seen.Add rendered then
-                    found.Add rendered)
-
-        List.ofSeq found
-
-    /// The mapper lifted to the total function `NodeMap` requires. Its `None`
-    /// branch is unreachable for eagerly-stored payloads — `declined` has
-    /// already proved there are none — and is the closure half of the contract
-    /// for the rest.
-    let private lift (op: string) (node: string option) (slot: string) (f: obj -> 'Msg option) : obj -> 'Msg =
-        fun payload ->
-            match f payload with
-            | Some msg -> msg
-            | None ->
-                raise (
-                    MapRefusalRaised
-                        { Op = op
-                          Slot = slot
-                          Node = node
-                          Payloads = [ renderPayload payload ] }
-                )
-
-    /// Probe, then map. The two passes are deliberate: nothing is constructed
-    /// at the host's `'Msg` until every payload that CAN be checked has been.
+    /// Map in ONE walk, asking `f` once per eagerly-stored payload (Phase 2064:
+    /// it used to probe every payload, then walk again and ask again). While
+    /// the op is being built a declined payload is RECORDED — by its rendering,
+    /// distinct, in first-seen order — and a placeholder stands in for it; if
+    /// any was recorded the built op is discarded unreturned, so no op holding
+    /// a message the host never wrote reaches the caller. Once the walk is
+    /// over, the same mapper is the closure half of the contract: a payload a
+    /// closure produces later and `f` declines raises `MapRefusalRaised`.
     let private through
         (op: string)
         (node: string option)
         (slot: string)
         (f: obj -> 'Msg option)
-        (probe: (obj -> unit) -> unit)
         (build: (obj -> 'Msg) -> 'a)
         : Result<'a, MapRefusal> =
-        match declined f probe with
-        | [] -> Ok(build (lift op node slot f))
-        | payloads ->
+        let seen = System.Collections.Generic.HashSet<string>()
+        let declined = ResizeArray<string>()
+        let walking = ref true
+
+        let mapper (payload: obj) : 'Msg =
+            match f payload with
+            | Some msg -> msg
+            | None ->
+                let rendered = renderPayload payload
+
+                if walking.Value then
+                    if seen.Add rendered then
+                        declined.Add rendered
+
+                    // Never escapes: an op that needed it is discarded below.
+                    Unchecked.defaultof<'Msg>
+                else
+                    raise (
+                        MapRefusalRaised
+                            { Op = op
+                              Slot = slot
+                              Node = node
+                              Payloads = [ rendered ] }
+                    )
+
+        let built = build mapper
+        walking.Value <- false
+
+        if declined.Count = 0 then
+            Ok built
+        else
             Error
                 { Op = op
                   Slot = slot
                   Node = node
-                  Payloads = payloads }
+                  Payloads = List.ofSeq declined }
 
     let private addressed (NodeId raw) = Some raw
 
@@ -193,8 +190,7 @@ module TreeOp =
     let rec mapMsg (f: obj -> 'Msg option) (op: TreeOp<obj>) : Result<TreeOp<'Msg>, MapRefusal> =
         match op with
         | TreeOp.EditNode(id, kind) ->
-            through "EditNode" (addressed id) "kind" f (fun collect -> NodeMap.mapKind collect kind |> ignore) (fun m ->
-                TreeOp.EditNode(id, NodeMap.mapKind m kind))
+            through "EditNode" (addressed id) "kind" f (fun m -> TreeOp.EditNode(id, NodeMap.mapKind m kind))
 
         | TreeOp.UpdateProp(id, path, value) -> Ok(TreeOp.UpdateProp(id, path, value))
 
@@ -203,22 +199,11 @@ module TreeOp =
         | TreeOp.UpdateStyle(id, style) -> Ok(TreeOp.UpdateStyle(id, style))
 
         | TreeOp.UpdateState(id, state) ->
-            through
-                "UpdateState"
-                (addressed id)
-                "state"
-                f
-                (fun collect -> NodeMap.mapState collect state |> ignore)
-                (fun m -> TreeOp.UpdateState(id, NodeMap.mapState m state))
+            through "UpdateState" (addressed id) "state" f (fun m -> TreeOp.UpdateState(id, NodeMap.mapState m state))
 
         | TreeOp.InsertChild(parentId, child) ->
-            through
-                "InsertChild"
-                (addressed parentId)
-                "child"
-                f
-                (fun collect -> NodeMap.mapMsg collect child |> ignore)
-                (fun m -> TreeOp.InsertChild(parentId, NodeMap.mapMsg m child))
+            through "InsertChild" (addressed parentId) "child" f (fun m ->
+                TreeOp.InsertChild(parentId, NodeMap.mapMsg m child))
 
         | TreeOp.RemoveNode id -> Ok(TreeOp.RemoveNode id)
 
@@ -227,27 +212,39 @@ module TreeOp =
         | TreeOp.ReorderChildren(parentId, newOrder) -> Ok(TreeOp.ReorderChildren(parentId, newOrder))
 
         | TreeOp.ReplaceRoot node ->
-            through
-                "ReplaceRoot"
-                (Some node.Id)
-                "node"
-                f
-                (fun collect -> NodeMap.mapMsg collect node |> ignore)
-                (fun m -> TreeOp.ReplaceRoot(NodeMap.mapMsg m node))
+            through "ReplaceRoot" (Some node.Id) "node" f (fun m -> TreeOp.ReplaceRoot(NodeMap.mapMsg m node))
 
         | TreeOp.Batch ops ->
-            // First refusal wins, and it keeps the INNER op's name: "which op
+            // Every inner op is mapped, as every payload of one op is (Phase
+            // 2064: the batch used to stop at its first refusing op). The FIRST
+            // refusal names the refusal, keeping the INNER op's name — "which op
             // could not be typed" is the question a reader has, and `Batch` is
-            // not an answer to it. The index is carried in the slot instead.
-            let rec fold index mapped remaining =
-                match remaining with
-                | [] -> Ok(TreeOp.Batch(List.rev mapped))
-                | head :: tail ->
-                    match mapMsg f head with
-                    | Ok m -> fold (index + 1) (m :: mapped) tail
-                    | Error refusal ->
-                        Error
-                            { refusal with
-                                Slot = sprintf "ops[%d].%s" index refusal.Slot }
+            // not an answer to it — with the index carried in the slot; its
+            // payloads are every distinct one the batch declined, in order.
+            let results = ops |> List.map (mapMsg f)
 
-            fold 0 [] ops
+            let refusals =
+                results
+                |> List.mapi (fun index result ->
+                    match result with
+                    | Ok _ -> None
+                    | Error refusal ->
+                        Some
+                            { refusal with
+                                Slot = sprintf "ops[%d].%s" index refusal.Slot })
+                |> List.choose id
+
+            match refusals with
+            | [] ->
+                Ok(
+                    TreeOp.Batch(
+                        results
+                        |> List.choose (function
+                            | Ok mapped -> Some mapped
+                            | Error _ -> None)
+                    )
+                )
+            | first :: _ ->
+                Error
+                    { first with
+                        Payloads = refusals |> List.collect _.Payloads |> List.distinct }

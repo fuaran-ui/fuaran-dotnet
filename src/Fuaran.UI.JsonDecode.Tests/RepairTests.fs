@@ -11,9 +11,7 @@ module Fuaran.UI.JsonDecode.Tests.Repair
 //  byte with the applied ids, or the refusal token. The TypeScript host
 //  certifies the same declaration, so the two agree byte-for-byte on every case.
 //
-//  Counter-sensitive (the purity test reads `Reliance`, and the lenient-path
-//  equivalence writes it), so the list runs sequenced beside the other
-//  recovery suites.
+//  The list runs sequenced beside the other recovery suites.
 // ============================================================================
 
 open System.IO
@@ -227,13 +225,16 @@ let tests =
               Expect.equal onDisk declared "the directory holds exactly the declared inputs and outputs"
           }
 
-          test "repair is pure — it writes no Reliance counter" {
-              let before = JsonDecode.Reliance.snapshot ()
-
+          test "repair is pure — the same text repairs the same way every time" {
+              // There is no state for it to write (Phase 2064 removed the
+              // decoder's process-wide counter); what it applied is its result.
               for c in fam.Cases do
-                  JsonDecode.repair (readText fam.Root c.InputFile) |> ignore
+                  let text = readText fam.Root c.InputFile
 
-              Expect.equal (JsonDecode.Reliance.snapshot ()) before "no counter moved"
+                  Expect.equal
+                      (JsonDecode.repair text)
+                      (JsonDecode.repair text)
+                      (sprintf "%s: deterministic" c.InputFile)
           }
 
           test "repair is idempotent — a repaired text needs nothing further" {

@@ -23,11 +23,10 @@ module Fuaran.UI.JsonDecode.Tests.RecoveryPolicy
 //    * `DecodePolicy.MaxRecoverableLength` — past it, `Lenient` refuses to
 //      enumerate and the document surfaces its original parser error.
 //
-//  Plus the per-decode `Recovered` record, because `Reliance` counts
-//  process-wide and so cannot answer "was THIS tree repaired".
+//  Plus the per-decode `Recovered` record, the one answer to "was THIS tree
+//  repaired" (Phase 2064 removed the process-wide counter beside it).
 //
-//  Counter-sensitive, so the list runs sequenced beside the other two recovery
-//  suites.
+//  The list runs sequenced beside the other two recovery suites.
 // ============================================================================
 
 open System.Diagnostics
@@ -122,28 +121,12 @@ let tests =
               | Error e -> Expect.equal e.Code "INVALID_JSON" "the ORIGINAL error code"
           }
 
-          test "Off counts nothing — it is the parser refusing, not the gate declining" {
-              let beforeRefused = JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused
-              let beforeUnique = JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseUnique
-              let beforeImplied = JsonDecode.Reliance.count JsonDecode.Reliance.ImpliedNodeClose
-
-              JsonDecode.decodeNodeObjWithPolicy strict overClosedUnique |> ignore
-              JsonDecode.decodeNodeObjWithPolicy strict impliedNodeClose |> ignore
-
-              Expect.equal
-                  (JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused)
-                  beforeRefused
-                  "a gate that never ran refused nothing"
-
-              Expect.equal
-                  (JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseUnique)
-                  beforeUnique
-                  "and recovered nothing"
-
-              Expect.equal
-                  (JsonDecode.Reliance.count JsonDecode.Reliance.ImpliedNodeClose)
-                  beforeImplied
-                  "nor did the other one"
+          test "Off reports nothing — it is the parser refusing, not the gate declining" {
+              for text in [ overClosedUnique; impliedNodeClose ] do
+                  let outcome = JsonDecode.decodeNodeObjWithOutcome strict text
+                  Expect.isError outcome.Result "Off refuses the malformed document"
+                  Expect.isEmpty outcome.Refused "a gate that never ran refused nothing"
+                  Expect.isEmpty outcome.Recovered "and recovered nothing"
           }
 
           test "Off changes nothing about a document that parses" {
@@ -171,19 +154,18 @@ let tests =
                   DecodePolicy.MaxRecoverableLength
                   "the fixture is genuinely past the ceiling"
 
-              let before = JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused
               let sw = Stopwatch.StartNew()
-              let result = JsonDecode.decodeNodeObjWithPolicy lenient hostile
+              let outcome = JsonDecode.decodeNodeObjWithOutcome lenient hostile
               sw.Stop()
 
-              match result with
+              match outcome.Result with
               | Ok _ -> failtest "a document past the recovery ceiling must not be repaired"
               | Error e -> Expect.equal e.Code "INVALID_JSON" "the ORIGINAL error code survives"
 
               Expect.equal
-                  (JsonDecode.Reliance.count JsonDecode.Reliance.OverCloseRefused - before)
-                  1
-                  "it matched the profile and the gate declined, so it is a counted refusal — the class stays visible"
+                  outcome.Refused
+                  [ JsonDecode.Reliance.OverCloseRefused ]
+                  "it matched the profile and the gate declined, so it is a reported refusal — the class stays visible"
 
               // Secondary, and generous: the bounded path is one linear profile
               // scan, so it is milliseconds. This measures that the enumeration

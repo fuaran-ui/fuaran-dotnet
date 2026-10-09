@@ -230,40 +230,45 @@ module Placement =
     /// apply. Mirrors the apply engine's rejections: absent node, move into
     /// itself, move into its own descendant (a cycle), absent or childless
     /// destination, unknown anchor.
-    let canPlace (root: Node<'Msg>) (moved: NodeId) (target: Target) : Result<unit, PlaceError> =
+    ///
+    /// A legal placement answers the destination's child order AFTER the move —
+    /// the order `moveOp` states (Phase 2064: it used to compute this and
+    /// discard it, and `moveOp` computed it again).
+    let canPlace (root: Node<'Msg>) (moved: NodeId) (target: Target) : Result<NodeId list, PlaceError> =
         // Phase 1666 — the three answers the engine now gives, in its order:
         // absence first (nothing else is meaningful about a node that is not
         // there), then the ARITY guard, then the CROSSING guard.
         let movedPosition = keyedPosition moved root
         let destPosition = keyedPosition target.ParentId root
 
+        // The op crosses a keyed position — between two of them, or between
+        // one and the structural spine. Reported at the position the MOVED
+        // node is in where there is one, since that is the side the caller
+        // addressed; otherwise at the destination's.
+        let crossedSlot =
+            if positionKey movedPosition = positionKey destPosition then
+                None
+            else
+                movedPosition
+                |> Option.orElse destPosition
+                |> Option.map (fun (_, slot, _) -> slot)
+
         if Introspect.findNode moved root |> Option.isNone then
             Error(PlaceError.NodeNotFound moved)
         elif movedPosition |> Option.exists (fun (_, _, isAt) -> isAt) then
             let _, slot, _ = Option.get movedPosition
             Error(PlaceError.PositionNotStructural(moved, slot))
-        elif positionKey movedPosition <> positionKey destPosition then
-            // The op crosses a keyed position — between two of them, or between
-            // one and the structural spine. Reported at the position the MOVED
-            // node is in where there is one, since that is the side the caller
-            // addressed; otherwise at the destination's.
-            let slot =
-                match movedPosition, destPosition with
-                | Some(_, slot, _), _
-                | None, Some(_, slot, _) -> slot
-                // Unreachable: the keys differ, so at least one side is Some.
-                | None, None -> ""
-
-            Error(PlaceError.PositionNotStructural(moved, slot))
-        elif target.ParentId = moved then
-            Error(PlaceError.MoveIntoSelf moved)
-        elif Introspect.isAncestorOf moved target.ParentId root then
-            Error(PlaceError.MoveIntoDescendant(moved, target.ParentId))
         else
-            containerChildren root target.ParentId
-            |> Result.bind (fun siblings ->
-                let membership = (siblings |> List.filter (fun id -> id <> moved)) @ [ moved ]
-                reposition membership moved target.Placement |> Result.map ignore)
+            match crossedSlot with
+            | Some slot -> Error(PlaceError.PositionNotStructural(moved, slot))
+            | None ->
+                if target.ParentId = moved then
+                    Error(PlaceError.MoveIntoSelf moved)
+                elif Introspect.isAncestorOf moved target.ParentId root then
+                    Error(PlaceError.MoveIntoDescendant(moved, target.ParentId))
+                else
+                    containerChildren root target.ParentId
+                    |> Result.bind (fun siblings -> reposition siblings moved target.Placement)
 
     /// The op an insertion becomes. `InsertChild` appends, so the wanted order
     /// is computed over the post-insert membership and stated by
@@ -300,22 +305,19 @@ module Placement =
     /// The op a move becomes. `MoveNode` appends under the new parent, and the
     /// node may already be one of that parent's children (a re-placement
     /// within one parent), so the post-move membership is the siblings WITHOUT
-    /// it plus it.
+    /// it plus it. The wanted order is `canPlace`'s answer.
     let moveOp (root: Node<'Msg>) (moved: NodeId) (target: Target) : Result<TreeOp<'Msg>, PlaceError> =
         canPlace root moved target
-        |> Result.bind (fun () ->
-            containerChildren root target.ParentId
-            |> Result.bind (fun siblings ->
-                let appended = (siblings |> List.filter (fun id -> id <> moved)) @ [ moved ]
+        |> Result.map (fun wanted ->
+            // `wanted` is the siblings without `moved`, in their order, with
+            // `moved` placed among them — so dropping it recovers the rest.
+            let appended = (wanted |> List.filter (fun id -> id <> moved)) @ [ moved ]
+            let move = TreeOp.MoveNode(moved, target.ParentId)
 
-                reposition appended moved target.Placement
-                |> Result.map (fun wanted ->
-                    let move = TreeOp.MoveNode(moved, target.ParentId)
-
-                    if wanted = appended then
-                        move
-                    else
-                        TreeOp.Batch [ move; TreeOp.ReorderChildren(target.ParentId, wanted) ])))
+            if wanted = appended then
+                move
+            else
+                TreeOp.Batch [ move; TreeOp.ReorderChildren(target.ParentId, wanted) ])
 
     /// The op a keyboard move-up (`-1`) / move-down (`+1`) becomes: the node
     /// swapped with the sibling `delta` positions away, stated as the FULL

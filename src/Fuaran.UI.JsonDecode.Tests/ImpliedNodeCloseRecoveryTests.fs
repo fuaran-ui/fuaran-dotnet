@@ -18,8 +18,9 @@ module Fuaran.UI.JsonDecode.Tests.ImpliedNodeCloseRecovery
 //  is already mis-parsed — appending closers at the end fixes nothing). If a
 //  future change reroutes the recovery through an EOF-append, the pin fails.
 //
-//  Counter-sensitive tests share the process-wide `JsonDecode.Reliance`
-//  counters, so the whole list runs sequenced.
+//  The list runs sequenced beside the other recovery suites. (It used to share
+//  a process-wide `Reliance` counter; since Phase 2064 each decode returns its
+//  own reliance events in `DecodeOutcome`.)
 // ============================================================================
 
 open System
@@ -95,14 +96,19 @@ let tests =
               let files = fixtureFiles ()
               Expect.equal files.Length 36 "the stored-emission fixture set is complete"
 
-              let before = JsonDecode.Reliance.count JsonDecode.Reliance.ImpliedNodeClose
               let mutable clean = 0
+              let mutable recovered = 0
 
               for file in files do
                   let name = Path.GetFileName file
                   let text = File.ReadAllText file
 
-                  match JsonDecode.decodeNodeWithPolicy lenient text, Map.tryFind name expectedResiduals with
+                  let outcome = JsonDecode.decodeNodeWithOutcome lenient text
+
+                  if outcome.Recovered = [ JsonDecode.Reliance.ImpliedNodeClose ] then
+                      recovered <- recovered + 1
+
+                  match outcome.Result, Map.tryFind name expectedResiduals with
                   | Ok _, None -> clean <- clean + 1
                   | Ok _, Some(path, _) ->
                       failtestf "%s: decoded clean but the record names it a MISSING_FIELD residual at %s" name path
@@ -117,9 +123,8 @@ let tests =
                       // defects (WIRE_FORMAT §29), and the recorded residual is
                       // one of them: emission-06 also lacks a Switch case's
                       // `match`, which sorts ahead of `stateKey`.
-                      // Through `repair` (which counts nothing) and the strict
-                      // decoder, so the Reliance delta below stays the 36 the
-                      // loop's own decodes recorded.
+                      // Through `repair` and the strict decoder, reading the
+                      // whole defect list.
                       let defects =
                           match JsonDecode.repair text with
                           | Repair.RepairOutcome.Repaired(repaired, _) ->
@@ -151,8 +156,7 @@ let tests =
 
               Expect.equal clean 34 "34 of 36 decode clean through the canonical decoder"
 
-              let after = JsonDecode.Reliance.count JsonDecode.Reliance.ImpliedNodeClose
-              Expect.equal (after - before) 36 "every one of the 36 recoveries is counted — 36/36 recover"
+              Expect.equal recovered 36 "every one of the 36 recoveries is reported — 36/36 recover"
           }
 
           test "the EOF-close counter-example — appending owed braces at EOF repairs NONE of the mid-document class" {
@@ -204,21 +208,17 @@ let tests =
               | r, c -> failtestf "expected both forms to decode; got %A / %A" r c
           }
 
-          test "the reliance counter fires once per recovery, under its own id" {
-              let before = JsonDecode.Reliance.count JsonDecode.Reliance.ImpliedNodeClose
-              expectRecovered "counter probe" droppedNodeClose
-              let after = JsonDecode.Reliance.count JsonDecode.Reliance.ImpliedNodeClose
-              Expect.equal (after - before) 1 "one recovery, one count"
+          test "the outcome reports one event per recovery, under its own id" {
+              expectRecovered "event probe" droppedNodeClose
+              let outcome = JsonDecode.decodeNodeObjWithOutcome lenient droppedNodeClose
+
+              Expect.equal outcome.Recovered [ JsonDecode.Reliance.ImpliedNodeClose ] "one recovery, one event"
+              Expect.equal outcome.Refused [] "and no refusal"
 
               Expect.equal
                   JsonDecode.Reliance.ImpliedNodeClose
                   "implied-node-close"
-                  "the counter id is the documented one"
-
-              Expect.isTrue
-                  (JsonDecode.Reliance.snapshot ()
-                   |> Map.containsKey JsonDecode.Reliance.ImpliedNodeClose)
-                  "the snapshot surfaces the counter id"
+                  "the event id is the documented one"
           }
 
           test "profile mismatch — the same defect outside children[]/cases[] fails closed to the original error" {
@@ -262,7 +262,6 @@ let tests =
 
           test "happy path — the recovery never fires on a valid document, and corpus decode is unchanged" {
               let corpusRoot, entries = Corpus.load ()
-              let before = JsonDecode.Reliance.count JsonDecode.Reliance.ImpliedNodeClose
 
               let nodeEntries = entries |> List.filter (fun e -> e.Kind = "node-round-trip")
 
@@ -282,6 +281,7 @@ let tests =
                           (sprintf "%s: decode result unchanged (round-trips byte-identically)" e.Id)
                   | Error err -> failtestf "%s: corpus fixture failed to decode: %A" e.Id err
 
-              let after = JsonDecode.Reliance.count JsonDecode.Reliance.ImpliedNodeClose
-              Expect.equal after before "no recovery fired on any valid corpus document"
+                  Expect.isEmpty
+                      (JsonDecode.decodeNodeObjWithOutcome lenient wire).Recovered
+                      (sprintf "%s: no recovery fired on a valid corpus document" e.Id)
           } ]
