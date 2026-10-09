@@ -140,17 +140,19 @@ let private salaryForm (model: Model) : Node<Msg> =
                       Kind =
                           FormFieldKind.Number(
                               Some(
-                                  binding.local
-                                      (binding.computed (fun _ -> float model.Salary))
-                                      LocalFlushTrigger.OnBlur
-                                      (fun v -> Action.dispatch (SetSalary(decimal v)))
-                                      (Some(fun v -> formatThousands (decimal v)))
-                                      (fun s ->
-                                          match parseDecimalLenient s with
-                                          | Ok d -> Ok(float d)
-                                          | Error e -> Error e)
+                                  FieldValue.ofNumber (
+                                      binding.local
+                                          (binding.computed (fun _ -> float model.Salary))
+                                          LocalFlushTrigger.OnBlur
+                                          (fun v -> Action.dispatch (SetSalary(decimal v)))
+                                          (Some(fun v -> formatThousands (decimal v)))
+                                          (fun s ->
+                                              match parseDecimalLenient s with
+                                              | Ok d -> Ok(float d)
+                                              | Error e -> Error e)
+                                  )
                               ),
-                              Some(fun _ -> Action.Chain [])
+                              Some(FieldChange.ofNumber (fun _ -> Action.Chain []))
                           ) } ] }
 
 let private emailForm (model: Model) : Node<Msg> =
@@ -171,14 +173,16 @@ let private emailForm (model: Model) : Node<Msg> =
                       Kind =
                           FormFieldKind.Text(
                               Some(
-                                  binding.local
-                                      (binding.computed (fun _ -> model.Email))
-                                      (LocalFlushTrigger.OnDebounce 250)
-                                      (fun v -> Action.dispatch (SetEmail v))
-                                      (Some id)
-                                      parseEmail
+                                  FieldValue.ofText (
+                                      binding.local
+                                          (binding.computed (fun _ -> model.Email))
+                                          (LocalFlushTrigger.OnDebounce 250)
+                                          (fun v -> Action.dispatch (SetEmail v))
+                                          (Some id)
+                                          parseEmail
+                                  )
                               ),
-                              Some(fun _ -> Action.Chain [])
+                              Some(FieldChange.ofText (fun _ -> Action.Chain []))
                           ) } ] }
 
 let private noteForm (model: Model) : Node<Msg> =
@@ -194,14 +198,16 @@ let private noteForm (model: Model) : Node<Msg> =
                       Kind =
                           FormFieldKind.Text(
                               Some(
-                                  binding.local
-                                      (binding.computed (fun _ -> model.Note))
-                                      LocalFlushTrigger.OnCommitAction
-                                      (fun v -> Action.dispatch (SetNote v))
-                                      (Some id)
-                                      (fun s -> Ok s)
+                                  FieldValue.ofText (
+                                      binding.local
+                                          (binding.computed (fun _ -> model.Note))
+                                          LocalFlushTrigger.OnCommitAction
+                                          (fun v -> Action.dispatch (SetNote v))
+                                          (Some id)
+                                          (fun s -> Ok s)
+                                  )
                               ),
-                              Some(fun _ -> Action.Chain [])
+                              Some(FieldChange.ofText (fun _ -> Action.Chain []))
                           ) } ] }
 
 let view (model: Model) (dispatch: Msg -> unit) : ReactElement =

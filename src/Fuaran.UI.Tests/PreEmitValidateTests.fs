@@ -326,7 +326,7 @@ let private ruleField (id: string) (kind: FormFieldKind<Msg>) (rule: FieldRule o
 /// The plainest writable text control: State-bound under its own id, which is
 /// also what makes it OWN that key for FUARAN099's purposes.
 let private textKind (id: string) : FormFieldKind<Msg> =
-    FormFieldKind.Text(Some(Binding.State(id, Some "")), None)
+    FormFieldKind.Text(Some(FieldValue.ofText (Binding.State(id, Some ""))), None)
 
 /// Phase 861 — a bound grid with the sort declarations under test. Columns are
 /// `(label, field, sortable)`; a `rowKeyField` keeps FUARAN078 out of the way.
@@ -851,7 +851,13 @@ let private comboboxForm (fieldId: string) (options: Binding<SelectOption list>)
                 [ { Defaults.formField with
                       Id = fieldId
                       Label = TextSource.Literal "Field"
-                      Kind = FormFieldKind.Combobox(false, None, options, Some(Binding.State(fieldId, None))) } ]
+                      Kind =
+                          FormFieldKind.Combobox(
+                              false,
+                              None,
+                              options,
+                              Some(FieldValue.ofText (Binding.State(fieldId, None)))
+                          ) } ]
             SubmitLabel = TextSource.Literal "Save" }
 
 /// A one-chip filter strip carrying the same control — the 0.2.0 unification
@@ -862,7 +868,7 @@ let private comboboxFilters (name: string) (options: Binding<SelectOption list>)
         "fs"
         [ { Name = name
             Label = TextSource.Literal "Chip"
-            Kind = FormFieldKind.Combobox(false, None, options, Some(Binding.Filter(name, None))) } ]
+            Kind = FormFieldKind.Combobox(false, None, options, Some(FieldValue.ofText (Binding.Filter(name, None)))) } ]
 
 /// Only the Phase 1113 defect, for the reason `embedDefects` states.
 let private comboboxDefects (tree: Node<Msg>) : PreEmitDefect list =
@@ -887,7 +893,7 @@ let private ratingForm (fieldId: string) (value: Binding<float>) : Node<Msg> =
                 [ { Defaults.formField with
                       Id = fieldId
                       Label = TextSource.Literal "Score"
-                      Kind = FormFieldKind.Rating(false, 5, None, Some value) } ]
+                      Kind = FormFieldKind.Rating(false, 5, None, (Some value |> Option.map FieldValue.ofNumber)) } ]
             SubmitLabel = TextSource.Literal "Save" }
 
 /// A one-field form whose field is a colour over `value`.
@@ -899,7 +905,7 @@ let private colourForm (fieldId: string) (value: Binding<string>) : Node<Msg> =
                 [ { Defaults.formField with
                       Id = fieldId
                       Label = TextSource.Literal "Brand"
-                      Kind = FormFieldKind.Color(None, Some value) } ]
+                      Kind = FormFieldKind.Color(None, (Some value |> Option.map FieldValue.ofText)) } ]
             SubmitLabel = TextSource.Literal "Save" }
 
 /// The same two controls as FILTER chips — the 0.2.0 unification means these
@@ -910,7 +916,7 @@ let private ratingFilters (name: string) (value: Binding<float>) : Node<Msg> =
         "fs"
         [ { Name = name
             Label = TextSource.Literal "Chip"
-            Kind = FormFieldKind.Rating(false, 5, None, Some value) } ]
+            Kind = FormFieldKind.Rating(false, 5, None, (Some value |> Option.map FieldValue.ofNumber)) } ]
 
 /// Only the two Phase 1130 defects, for the reason `embedDefects` states.
 let private ratingColourDefects (tree: Node<Msg>) : PreEmitDefect list =
@@ -1109,7 +1115,7 @@ let tests =
               let field: FormField<Msg> =
                   { Defaults.formField<Msg> with
                       Id = "inert-name"
-                      Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), None) }
+                      Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.Static(Some ""))), None) }
 
               let formNode =
                   Fuaran.form
@@ -1138,7 +1144,7 @@ let tests =
               let field: FormField<Msg> =
                   { Defaults.formField<Msg> with
                       Id = "score"
-                      Kind = FormFieldKind.Rating(false, 5, None, Some(Binding.Static(Some 4.0))) }
+                      Kind = FormFieldKind.Rating(false, 5, None, Some(FieldValue.ofNumber (Binding.Static(Some 4.0)))) }
 
               let tree =
                   dashboard
@@ -1170,7 +1176,7 @@ let tests =
               let field: FormField<Msg> =
                   { Defaults.formField<Msg> with
                       Id = "brand"
-                      Kind = FormFieldKind.Color(None, Some(Binding.Static(Some "#336699"))) }
+                      Kind = FormFieldKind.Color(None, Some(FieldValue.ofText (Binding.Static(Some "#336699")))) }
 
               let tree =
                   dashboard
@@ -1193,7 +1199,7 @@ let tests =
               let field: FormField<Msg> =
                   { Defaults.formField<Msg> with
                       Id = "profile-name"
-                      Kind = FormFieldKind.Text(Some(Binding.State("profileName", Some "")), None) }
+                      Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.State("profileName", Some ""))), None) }
 
               let formNode =
                   Fuaran.form
@@ -1521,7 +1527,7 @@ let tests =
                       "chips"
                       [ { Name = "dept"
                           Label = TextSource.Literal "dept"
-                          Kind = FormFieldKind.Text(Some(Binding.Filter("dept", None)), None) } ]
+                          Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.Filter("dept", None))), None) } ]
 
               let writer =
                   Fuaran.button
@@ -3350,7 +3356,8 @@ let tests =
                   { emptyRule with
                       Format = Some TextFormat.Email }
 
-              let kind = FormFieldKind.TextArea(Some(Binding.State("notes", Some "")), None, 4)
+              let kind =
+                  FormFieldKind.TextArea(Some(FieldValue.ofText (Binding.State("notes", Some ""))), None, 4)
 
               let tree = dashboard "root" [ ruleForm [ ruleField "notes" kind (Some rule) ] ]
 
@@ -3376,7 +3383,8 @@ let tests =
                   { emptyRule with
                       Pattern = Some "[0-9]+" }
 
-              let kind = FormFieldKind.Checkbox(Some(Binding.State("agree", Some false)), None)
+              let kind =
+                  FormFieldKind.Checkbox(Some(FieldValue.ofBool (Binding.State("agree", Some false))), None)
 
               let tree = dashboard "root" [ ruleForm [ ruleField "agree" kind (Some rule) ] ]
 
@@ -3406,7 +3414,8 @@ let tests =
                       MinLength = Some 10
                       MaxLength = Some 500 }
 
-              let kind = FormFieldKind.TextArea(Some(Binding.State("notes", Some "")), None, 4)
+              let kind =
+                  FormFieldKind.TextArea(Some(FieldValue.ofText (Binding.State("notes", Some ""))), None, 4)
 
               let tree = dashboard "root" [ ruleForm [ ruleField "notes" kind (Some rule) ] ]
 
@@ -3422,7 +3431,13 @@ let tests =
                                 Op = CompareOp.Gte } }
 
               let kind =
-                  FormFieldKind.RangedNumber(Some(Binding.State("qty", Some 1.0)), None, Some 1.0, Some 99.0, None)
+                  FormFieldKind.RangedNumber(
+                      Some(FieldValue.ofNumber (Binding.State("qty", Some 1.0))),
+                      None,
+                      Some 1.0,
+                      Some 99.0,
+                      None
+                  )
 
               let tree = dashboard "root" [ ruleForm [ ruleField "qty" kind (Some rule) ] ]
 
@@ -3455,7 +3470,13 @@ let tests =
                                 Op = CompareOp.Gte } }
 
               let kind =
-                  FormFieldKind.RangedNumber(Some(Binding.State("qty", Some 1.0)), None, Some 1.0, Some 99.0, None)
+                  FormFieldKind.RangedNumber(
+                      Some(FieldValue.ofNumber (Binding.State("qty", Some 1.0))),
+                      None,
+                      Some 1.0,
+                      Some 99.0,
+                      None
+                  )
 
               let tree =
                   dashboard
@@ -3474,7 +3495,13 @@ let tests =
                                 Op = CompareOp.Gte } }
 
               let kind =
-                  FormFieldKind.RangedNumber(Some(Binding.State("qty", Some 1.0)), None, None, None, None)
+                  FormFieldKind.RangedNumber(
+                      Some(FieldValue.ofNumber (Binding.State("qty", Some 1.0))),
+                      None,
+                      None,
+                      None,
+                      None
+                  )
 
               let tree = dashboard "root" [ ruleForm [ ruleField "qty" kind (Some rule) ] ]
 
@@ -3493,7 +3520,13 @@ let tests =
                                 Op = CompareOp.Gte } }
 
               let kind =
-                  FormFieldKind.RangedNumber(Some(Binding.State("qty", Some 1.0)), None, None, Some 99.0, None)
+                  FormFieldKind.RangedNumber(
+                      Some(FieldValue.ofNumber (Binding.State("qty", Some 1.0))),
+                      None,
+                      None,
+                      Some 99.0,
+                      None
+                  )
 
               let tree = dashboard "root" [ ruleForm [ ruleField "qty" kind (Some rule) ] ]
 
@@ -4513,7 +4546,11 @@ let comboboxOptionRuleTests =
                               [ { Defaults.formField with
                                     Id = "name"
                                     Label = TextSource.Literal "Name"
-                                    Kind = FormFieldKind.Text(Some(Binding.State("name", Some "")), None) } ]
+                                    Kind =
+                                        FormFieldKind.Text(
+                                            Some(FieldValue.ofText (Binding.State("name", Some ""))),
+                                            None
+                                        ) } ]
                           SubmitLabel = TextSource.Literal "Save" }
 
               Expect.isEmpty (comboboxDefects tree) "a control that is not a combobox is not judged"
@@ -5012,7 +5049,7 @@ let ratingAndColourValueRuleTests =
                               [ { Defaults.formField with
                                     Id = "name"
                                     Label = TextSource.Literal "Name"
-                                    Kind = FormFieldKind.Text(Some(Binding.Static(Some "x")), None) } ]
+                                    Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.Static(Some "x"))), None) } ]
                           SubmitLabel = TextSource.Literal "Save" }
 
               Expect.isEmpty (ratingColourDefects tree) "neither rule quantifies over fields in general"
@@ -5128,7 +5165,13 @@ let private tokensForm
                 [ { Defaults.formField with
                       Id = fieldId
                       Label = TextSource.Literal "Labels"
-                      Kind = FormFieldKind.Tokens(allowFreeText, None, suggestions, value) } ]
+                      Kind =
+                          FormFieldKind.Tokens(
+                              allowFreeText,
+                              None,
+                              suggestions,
+                              (value |> Option.map FieldValue.ofTokens)
+                          ) } ]
             SubmitLabel = TextSource.Literal "Save" }
 
 /// The same control as a FILTER chip. The 0.2.0 unification means these are the
@@ -5144,7 +5187,7 @@ let private tokensFilters
         "fs"
         [ { Name = name
             Label = TextSource.Literal "Chip"
-            Kind = FormFieldKind.Tokens(allowFreeText, None, suggestions, value) } ]
+            Kind = FormFieldKind.Tokens(allowFreeText, None, suggestions, (value |> Option.map FieldValue.ofTokens)) } ]
 
 /// Only the two Phase 1121 defects, for the reason `embedDefects` states: the
 /// fixtures carry other shapes, so asserting `Ok()` would couple these tests to

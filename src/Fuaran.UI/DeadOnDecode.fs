@@ -136,35 +136,16 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
         | NodeKind.Form f ->
             findings.AddRange(callFindings nodeId f.OnSubmit)
 
+            // Phase 2177 — every field kind carries ONE handler, `onChange`, and
+            // one value slot; both are the generated projections, so a new
+            // field kind is linted here with no arm to add.
             for field in f.Fields do
-                let slot kind = sprintf "FormFieldKind.%s" kind
-
-                match field.Kind with
-                | FormFieldKind.Text(v, oc) -> handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.Number(v, oc) -> handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.Range(v, oc, _, _, _) ->
-                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.Checkbox(v, ot) -> handler nodeId (slot "onToggle") ot.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.Toggle(v, ot) -> handler nodeId (slot "onToggle") ot.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.Choice(_, v, oc) ->
-                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.TextArea(v, oc, _) ->
-                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.RangedNumber(v, oc, _, _, _) ->
-                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.SegmentedChoice(_, v, oc, _) ->
-                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.DateTime(v, oc, _, _, _, _) ->
-                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.DateTimeRange(v, oc, _, _, _, _) ->
-                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.Combobox(_, oc, _, v) ->
-                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.Rating(_, _, oc, v) ->
-                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.Color(oc, v) -> handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
-                | FormFieldKind.Tokens(_, oc, _, v) ->
-                    handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                handler
+                    nodeId
+                    "FormFieldKind.onChange"
+                    (Generated.FormFieldKind.onChange field.Kind).IsSome
+                    (isWritableOpt (Generated.FormFieldKind.value field.Kind))
+                    "$state"
 
         | NodeKind.Select s ->
             handler nodeId "SelectSpec.onChange" s.OnChange.IsSome (isWritable s.Value) "$state (value)"
@@ -183,23 +164,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                 // sentinel still suppresses that, so it is always dead.
                 // 0.2.0 filters-unification: the chip's control is a
                 // FormFieldKind; the same handler-presence probe applies.
-                let present =
-                    match fs.Kind with
-                    | FormFieldKind.Text(_, oc) -> oc.IsSome
-                    | FormFieldKind.Number(_, oc) -> oc.IsSome
-                    | FormFieldKind.Checkbox(_, ot) -> ot.IsSome
-                    | FormFieldKind.Toggle(_, ot) -> ot.IsSome
-                    | FormFieldKind.Choice(_, _, oc) -> oc.IsSome
-                    | FormFieldKind.TextArea(_, oc, _) -> oc.IsSome
-                    | FormFieldKind.RangedNumber(_, oc, _, _, _) -> oc.IsSome
-                    | FormFieldKind.Range(_, oc, _, _, _) -> oc.IsSome
-                    | FormFieldKind.SegmentedChoice(_, _, oc, _) -> oc.IsSome
-                    | FormFieldKind.DateTime(_, oc, _, _, _, _) -> oc.IsSome
-                    | FormFieldKind.DateTimeRange(_, oc, _, _, _, _) -> oc.IsSome
-                    | FormFieldKind.Combobox(_, oc, _, _) -> oc.IsSome
-                    | FormFieldKind.Rating(_, _, oc, _) -> oc.IsSome
-                    | FormFieldKind.Color(oc, _) -> oc.IsSome
-                    | FormFieldKind.Tokens(_, oc, _, _) -> oc.IsSome
+                let present = (Generated.FormFieldKind.onChange fs.Kind).IsSome
 
                 if present then
                     findings.Add(

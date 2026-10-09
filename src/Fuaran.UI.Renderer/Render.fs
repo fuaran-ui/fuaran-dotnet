@@ -1795,7 +1795,7 @@ let private keysOfFormFieldKind<'Msg>
     (autoBind: ValueAutoBind)
     (kind: FormFieldKind<'Msg>)
     : string list =
-    let keysOfValue (v: Binding<'v> option) : string list =
+    let keysOfValue (v: Binding<JVal> option) : string list =
         match v with
         | Some b -> keysOfBinding channel b
         | None ->
@@ -1804,32 +1804,21 @@ let private keysOfFormFieldKind<'Msg>
             | ValueAutoBind.FilterChip name, FilterChannel -> [ name ]
             | _ -> []
 
-    match kind with
-    | FormFieldKind.Text(v, _) -> keysOfValue v
-    | FormFieldKind.Number(v, _) -> keysOfValue v
-    | FormFieldKind.Checkbox(v, _) -> keysOfValue v
-    | FormFieldKind.Toggle(v, _) -> keysOfValue v
-    | FormFieldKind.TextArea(v, _, _) -> keysOfValue v
-    | FormFieldKind.RangedNumber(v, _, _, _, _) -> keysOfValue v
-    | FormFieldKind.Range(v, _, _, _, _) -> keysOfValue v
-    | FormFieldKind.Choice(opts, value, _) -> keysOfBinding channel opts @ keysOfValue value
-    | FormFieldKind.SegmentedChoice(opts, value, _, _) -> keysOfBinding channel opts @ keysOfValue value
-    // Phase 1113 — the combobox subscribes to BOTH: its option source (a Query
-    // suggestion feed is the shape the control exists for) and its value.
-    | FormFieldKind.Combobox(_, _, opts, value) -> keysOfBinding channel opts @ keysOfValue value
-    | FormFieldKind.DateTime(v, _, _, _, _, _) -> keysOfValue v
-    | FormFieldKind.DateTimeRange(v, _, _, _, _, _) -> keysOfValue v
-    // Phase 1130 — one value slot each; a rating's scale is a literal int and a
-    // colour has no second source, so nothing else to subscribe to.
-    | FormFieldKind.Rating(_, _, _, v) -> keysOfValue v
-    | FormFieldKind.Color(_, v) -> keysOfValue v
-    // Phase 1121 — like the combobox, a token field subscribes to BOTH: its
-    // suggestion source (a Query feed is a shape the control exists for) and
-    // its value. The source is OPTIONAL here, so an absent one contributes no
-    // subscription — a plain token box re-renders on its own value alone.
-    | FormFieldKind.Tokens(_, _, suggestions, value) ->
-        (suggestions |> Option.map (keysOfBinding channel) |> Option.defaultValue [])
-        @ keysOfValue value
+    // The option sources are the only per-case subscriptions: Choice and
+    // SegmentedChoice carry a required `options` binding; the combobox
+    // (Phase 1113) and the token field (Phase 1121, OPTIONAL `suggestions`)
+    // subscribe to theirs too — a Query suggestion feed is the shape those
+    // controls exist for. The value slot is the generated projection
+    // (Phase 2177), so a new field kind subscribes with no arm to add.
+    let optionKeys =
+        match kind with
+        | FormFieldKind.Choice(opts, _, _)
+        | FormFieldKind.SegmentedChoice(opts, _, _, _)
+        | FormFieldKind.Combobox(_, _, opts, _) -> keysOfBinding channel opts
+        | FormFieldKind.Tokens(_, _, Some suggestions, _) -> keysOfBinding channel suggestions
+        | _ -> []
+
+    optionKeys @ keysOfValue (Fuaran.UI.Generated.FormFieldKind.value kind)
 
 
 /// The single-`HashSet` DFS behind `collectKeys` (Phase 207) — the reactive
@@ -5523,7 +5512,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
     // write-back default machinery and resolution behave identically.
     let control =
         match field.Kind with
-        | FormFieldKind.Text(value, onChange) ->
+        | FormFieldKind.Text(FieldView.Text value, FieldView.OnText onChange) ->
             let value =
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.text))
@@ -5595,7 +5584,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                       prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) v) ]
                     @ FieldRules.constraintAttrs true field.Rule
                 )
-        | FormFieldKind.Number(value, onChange) ->
+        | FormFieldKind.Number(FieldView.Number value, FieldView.OnNumber onChange) ->
             let value =
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.number))
@@ -5640,7 +5629,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                       prop.required field.Required
                       prop.value current
                       prop.onChange (fun (v: float) -> fieldChange ctx onChange value (Some(box v)) v) ]
-        | FormFieldKind.Checkbox(value, onToggle) ->
+        | FormFieldKind.Checkbox(FieldView.Bool value, FieldView.OnBool onToggle) ->
             let value =
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox))
@@ -5662,7 +5651,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
         // operation (Space) and focus come for free — an ARIA role on a
         // non-interactive element would have to reimplement both, and that is
         // the usual way a hand-rolled switch becomes unusable.
-        | FormFieldKind.Toggle(value, onToggle) ->
+        | FormFieldKind.Toggle(FieldView.Bool value, FieldView.OnBool onToggle) ->
             let value =
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox))
@@ -5678,7 +5667,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   prop.id field.Id
                   prop.isChecked current
                   prop.onChange (fun (b: bool) -> fieldChange ctx onToggle value (Some(box b)) b) ]
-        | FormFieldKind.Choice(options, value, onChange) ->
+        | FormFieldKind.Choice(options, FieldView.Text value, FieldView.OnChoice onChange) ->
             let value =
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.choice))
@@ -5708,7 +5697,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                       let chosen = if v = "" then None else Some v
                       fieldChange ctx onChange value (chosen |> Option.map box) chosen)
                   prop.children optionItems ]
-        | FormFieldKind.Range(value, onChange, _, _, _) ->
+        | FormFieldKind.Range(FieldView.Range value, FieldView.OnRange onChange, _, _, _) ->
             // 0.2.0 filters-unification: dual-thumb numeric range as a form
             // control (absorbed FilterKind.RangeFilter). Two paired number
             // inputs bound to the `RangePair` record (was a `(min, max)`
@@ -5741,7 +5730,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                               prop.className "fuaran-field-range-max"
                               prop.value maxV
                               prop.onChange onMaxInput ] ] ]
-        | FormFieldKind.RangedNumber(value, onChange, min, max, step) ->
+        | FormFieldKind.RangedNumber(FieldView.Number value, FieldView.OnNumber onChange, min, max, step) ->
             // Parallel-additive Number case with optional Min /
             // Max / Step (flat options since the swap; the host
             // `NumberFieldConstraints` record is rebuilt locally for the
@@ -5800,7 +5789,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                       prop.onChange (fun (v: float) -> fieldChange ctx onChange value (Some(box v)) v) ]
                     @ minAttrs
                 )
-        | FormFieldKind.TextArea(value, onChange, rows) ->
+        | FormFieldKind.TextArea(FieldView.Text value, FieldView.OnText onChange, rows) ->
             let value =
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.text))
@@ -5819,7 +5808,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) v) ]
                 @ FieldRules.constraintAttrs false field.Rule
             )
-        | FormFieldKind.Combobox(allowFreeText, onChange, options, value) ->
+        | FormFieldKind.Combobox(allowFreeText, FieldView.OnChoice onChange, options, FieldView.Text value) ->
             // Phase 1113 — the full WAI-ARIA combobox, in `ComboboxControl`.
             // The pattern is stateful (popup open, ACTIVE option, in-progress
             // query) in a way the tree is not, so it is a React function
@@ -5845,7 +5834,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                    options = resolveOptions ctx options
                    committed = current
                    commit = fun chosen -> fieldChange ctx onChange value (chosen |> Option.map box) chosen |}
-        | FormFieldKind.Rating(allowHalf, max, onChange, value) ->
+        | FormFieldKind.Rating(allowHalf, max, FieldView.OnNumber onChange, FieldView.Number value) ->
             // Phase 1130 — the star scale, in `RatingControl`. The ARIA
             // decision (slider when the control can be written, img when it
             // cannot) and the whole keyboard model live there; the renderer
@@ -5867,7 +5856,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                    label = labelText
                    value = current
                    commit = fun (v: float) -> fieldChange ctx onChange value (Some(box v)) v |}
-        | FormFieldKind.Color(onChange, value) ->
+        | FormFieldKind.Color(FieldView.OnText onChange, FieldView.Text value) ->
             // Phase 1130 — the platform's own colour picker. Nothing is
             // synthesised: `<input type="color">` IS the control, on every host
             // that has one, and it round-trips `#rrggbb` in both directions.
@@ -5895,7 +5884,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   prop.required field.Required
                   prop.value current
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) v) ]
-        | FormFieldKind.Tokens(allowFreeText, onChange, suggestions, value) ->
+        | FormFieldKind.Tokens(allowFreeText, FieldView.OnTokens onChange, suggestions, FieldView.Tokens value) ->
             // Phase 1121 — the multi-token input, in `TokensControl`. The
             // pattern is stateful (the in-progress entry, the popup, the active
             // suggestion, which chip has focus) in a way the tree is not, so it
@@ -5925,7 +5914,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                    suggestions = suggestions |> Option.map (resolveOptions ctx)
                    tokens = current
                    commit = fun next -> fieldChange ctx onChange value (Some(box next)) next |}
-        | FormFieldKind.SegmentedChoice(options, value, onChange, orientation) ->
+        | FormFieldKind.SegmentedChoice(options, FieldView.Text value, FieldView.OnChoice onChange, orientation) ->
             // Visible-options exclusive-choice input. Horizontal
             // emits a `role="radiogroup"` of `role="radio"` buttons styled
             // as a segmented control; Vertical emits a `<fieldset>` of
@@ -5942,7 +5931,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                 value
                 (fun chosen -> fieldChange ctx onChange value (chosen |> Option.map box) chosen)
                 orientation
-        | FormFieldKind.DateTime(value, onChange, variant, min, max, step) ->
+        | FormFieldKind.DateTime(FieldView.Text value, FieldView.OnChoice onChange, variant, min, max, step) ->
             // Phase 288 — native date / time / datetime control. The bound
             // value is an ISO-8601 string; min/max are ISO strings, step is
             // seconds (flat options since the swap). Parity-locked with the
@@ -5982,7 +5971,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) (Some v)) ]
                 @ constraintAttrs
             )
-        | FormFieldKind.DateTimeRange(value, onChange, variant, min, max, step) ->
+        | FormFieldKind.DateTimeRange(FieldView.DateRange value, FieldView.OnDateRange onChange, variant, min, max, step) ->
             // Phase 725 — single-control date range: `Range`'s two-input shape
             // with `Date`'s native control per variant. Both ends share the
             // min/max/step attributes (flat options since the swap; they bound
@@ -6105,7 +6094,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
     // `Binding.Filter(spec.Name, None)`.
     let control =
         match spec.Kind with
-        | FormFieldKind.Text(value, onChange) ->
+        | FormFieldKind.Text(FieldView.Text value, FieldView.OnText onChange) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
@@ -6115,7 +6104,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                   prop.placeholder labelText
                   prop.value current
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
-        | FormFieldKind.Number(value, onChange) ->
+        | FormFieldKind.Number(FieldView.Number value, FieldView.OnNumber onChange) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             let current =
@@ -6126,7 +6115,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                   prop.type'.number
                   prop.value current
                   prop.onChange (fun (v: float) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
-        | FormFieldKind.RangedNumber(value, onChange, _, _, _) ->
+        | FormFieldKind.RangedNumber(FieldView.Number value, FieldView.OnNumber onChange, _, _, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             let current =
@@ -6137,7 +6126,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                   prop.type'.number
                   prop.value current
                   prop.onChange (fun (v: float) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
-        | FormFieldKind.Checkbox(value, onToggle) ->
+        | FormFieldKind.Checkbox(FieldView.Bool value, FieldView.OnBool onToggle) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             let current =
@@ -6150,7 +6139,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                   prop.onChange (fun (v: bool) -> fieldChange ctx onToggle filterWriteBinding (Some(box v)) v) ]
         // Phase 766 — the filter-chip twin of the form toggle; same boolean
         // filter write-back, switch semantics for the screen reader.
-        | FormFieldKind.Toggle(value, onToggle) ->
+        | FormFieldKind.Toggle(FieldView.Bool value, FieldView.OnBool onToggle) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             let current =
@@ -6163,7 +6152,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                   prop.ariaChecked current
                   prop.isChecked current
                   prop.onChange (fun (v: bool) -> fieldChange ctx onToggle filterWriteBinding (Some(box v)) v) ]
-        | FormFieldKind.TextArea(value, onChange, rows) ->
+        | FormFieldKind.TextArea(FieldView.Text value, FieldView.OnText onChange, rows) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
@@ -6172,7 +6161,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                   prop.rows rows
                   prop.value current
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
-        | FormFieldKind.DateTime(value, onChange, _, _, _, _) ->
+        | FormFieldKind.DateTime(FieldView.Text value, FieldView.OnChoice onChange, _, _, _, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
@@ -6181,7 +6170,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                   prop.type'.date
                   prop.value current
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) (Some v)) ]
-        | FormFieldKind.Combobox(allowFreeText, onChange, options, value) ->
+        | FormFieldKind.Combobox(allowFreeText, FieldView.OnChoice onChange, options, FieldView.Text value) ->
             // Phase 1113 — the form field's widget, chip-addressed: the same
             // `ComboboxControl`, writing through `filterWriteBinding` like every
             // other declarative chip arm.
@@ -6201,7 +6190,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                    options = resolveOptions ctx options
                    committed = current
                    commit = fun chosen -> fieldChange ctx onChange filterWriteBinding (chosen |> Option.map box) chosen |}
-        | FormFieldKind.Choice(options, value, onChange) ->
+        | FormFieldKind.Choice(options, FieldView.Text value, FieldView.OnChoice onChange) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let opts = resolveOptions ctx options
 
@@ -6224,7 +6213,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                       let chosen = if v = "" then None else Some v
                       fieldChange ctx onChange filterWriteBinding (chosen |> Option.map box) chosen)
                   prop.children optionItems ]
-        | FormFieldKind.Range(value, onChange, _, _, _) ->
+        | FormFieldKind.Range(FieldView.Range value, FieldView.OnRange onChange, _, _, _) ->
             // Two-input range — min + max bound to a `RangePair` binding
             // (was a tuple); any change emits the whole pair back. Real
             // range sliders are session-4+ ergonomic territory.
@@ -6254,7 +6243,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                               prop.className "fuaran-filter-range-max"
                               prop.value maxV
                               prop.onChange onMaxInput ] ] ]
-        | FormFieldKind.DateTimeRange(value, onChange, variant, min, max, step) ->
+        | FormFieldKind.DateTimeRange(FieldView.DateRange value, FieldView.OnDateRange onChange, variant, min, max, step) ->
             // Phase 725 — the date-range chip: two native date/time inputs
             // over ONE filter param carrying the whole (from, to) pair. Both
             // ends share the min/max/step attributes (flat options since the
@@ -6305,7 +6294,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                               prop.onChange onToInput ]
                             @ constraintAttrs
                         ) ] ]
-        | FormFieldKind.SegmentedChoice(options, value, onChange, orientation) ->
+        | FormFieldKind.SegmentedChoice(options, FieldView.Text value, FieldView.OnChoice onChange, orientation) ->
             // Visible-options exclusive-choice filter. Parallel
             // surface to `FormFieldKind.SegmentedChoice`; uses the filter's
             // `Name` as the id-namespace for the radiogroup / fieldset.
@@ -6321,7 +6310,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
         // Phase 1130 — both new controls as filter chips. The chip's write
         // destination is `$filters.<name>` exactly as every other declarative
         // chip's is; only the READ comes from the chip's own slot.
-        | FormFieldKind.Rating(allowHalf, max, onChange, value) ->
+        | FormFieldKind.Rating(allowHalf, max, FieldView.OnNumber onChange, FieldView.Number value) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             let current =
@@ -6339,7 +6328,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                    label = labelText
                    value = current
                    commit = fun (v: float) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v |}
-        | FormFieldKind.Color(onChange, value) ->
+        | FormFieldKind.Color(FieldView.OnText onChange, FieldView.Text value) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             let current =
@@ -6355,7 +6344,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
         // Phase 1121 — the token chip. One filter key carries the whole
         // multi-token selection, which is what makes "anything carrying any of
         // these labels" a single declarative filter rather than N of them.
-        | FormFieldKind.Tokens(allowFreeText, onChange, suggestions, value) ->
+        | FormFieldKind.Tokens(allowFreeText, FieldView.OnTokens onChange, suggestions, FieldView.Tokens value) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
             let current =

@@ -5686,18 +5686,22 @@ let private decodeFormFieldKind
         | Error e -> Error e
         | Ok "Text" ->
             valueOr decodeBindingString (Some Fuaran.UI.Defaults.ControlValueDefaults.text) "Binding<string> value"
-            |> Result.map (fun value -> FormFieldKind.Text(value, handlerOpt "onChange"))
+            |> Result.map (fun value ->
+                FormFieldKind.Text((value |> Option.map FieldValue.ofText), handlerOpt "onChange"))
         | Ok "Number" ->
             valueOr decodeBindingFloat (Some Fuaran.UI.Defaults.ControlValueDefaults.number) "Binding<float> value"
-            |> Result.map (fun value -> FormFieldKind.Number(value, handlerOpt "onChange"))
+            |> Result.map (fun value ->
+                FormFieldKind.Number((value |> Option.map FieldValue.ofNumber), handlerOpt "onChange"))
         | Ok "Checkbox" ->
             valueOr decodeBindingBool (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) "Binding<bool> value"
-            |> Result.map (fun value -> FormFieldKind.Checkbox(value, handlerOpt "onToggle"))
+            |> Result.map (fun value ->
+                FormFieldKind.Checkbox((value |> Option.map FieldValue.ofBool), handlerOpt "onChange"))
         // Phase 766 — same payload as Checkbox; the DIFFERENCE is presentation
         // and the a11y contract (role="switch"), not the data.
         | Ok "Toggle" ->
             valueOr decodeBindingBool (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) "Binding<bool> value"
-            |> Result.map (fun value -> FormFieldKind.Toggle(value, handlerOpt "onToggle"))
+            |> Result.map (fun value ->
+                FormFieldKind.Toggle((value |> Option.map FieldValue.ofBool), handlerOpt "onChange"))
         | Ok "Choice" ->
             let optionsR =
                 requireField path fields "options" "Binding<SelectOption list>"
@@ -5710,7 +5714,8 @@ let private decodeFormFieldKind
                 valueOr decodeBindingChoiceValue Fuaran.UI.Defaults.ControlValueDefaults.choice "Binding<string> value"
 
             match optionsR, valueR with
-            | Ok options, Ok value -> Ok(FormFieldKind.Choice(options, value, handlerOpt "onChange"))
+            | Ok options, Ok value ->
+                Ok(FormFieldKind.Choice(options, (value |> Option.map FieldValue.ofText), handlerOpt "onChange"))
             | Error e, _
             | _, Error e -> Error e
         | Ok "Combobox" ->
@@ -5739,7 +5744,14 @@ let private decodeFormFieldKind
 
             match optionsR, valueR, allowFreeTextR with
             | Ok options, Ok value, Ok allowFreeText ->
-                Ok(FormFieldKind.Combobox(allowFreeText, handlerOpt "onChange", options, value))
+                Ok(
+                    FormFieldKind.Combobox(
+                        allowFreeText,
+                        handlerOpt "onChange",
+                        options,
+                        (value |> Option.map FieldValue.ofText)
+                    )
+                )
             | Error e, _, _
             | _, Error e, _
             | _, _, Error e -> Error e
@@ -5775,7 +5787,15 @@ let private decodeFormFieldKind
                 | Some v -> requireBool (path + ".allowHalf") v
 
             match valueR, maxR, allowHalfR with
-            | Ok value, Ok max, Ok allowHalf -> Ok(FormFieldKind.Rating(allowHalf, max, handlerOpt "onChange", value))
+            | Ok value, Ok max, Ok allowHalf ->
+                Ok(
+                    FormFieldKind.Rating(
+                        allowHalf,
+                        max,
+                        handlerOpt "onChange",
+                        (value |> Option.map FieldValue.ofNumber)
+                    )
+                )
             | Error e, _, _
             | _, Error e, _
             | _, _, Error e -> Error e
@@ -5797,7 +5817,7 @@ let private decodeFormFieldKind
                 match value with
                 | Some(Binding.Static(Some text)) when not (Fuaran.UI.HostPrelude.HexColor.isValid text) ->
                     wrongType (path + ".value") "a '#rrggbb' hex colour (the one shape a native colour input can hold)"
-                | _ -> Ok(FormFieldKind.Color(handlerOpt "onChange", value)))
+                | _ -> Ok(FormFieldKind.Color(handlerOpt "onChange", (value |> Option.map FieldValue.ofText))))
         | Ok "Tokens" ->
             // Phase 1121 — the multi-token input. The value slot is the SAME
             // `Binding<string list>` the multi-select `values` slot has carried
@@ -5851,7 +5871,14 @@ let private decodeFormFieldKind
                         (path + ".allowFreeText")
                         "true, or a 'suggestions' source alongside it (a token field admitting no free text and offering no suggestions could hold no token by any gesture)"
                 else
-                    Ok(FormFieldKind.Tokens(allowFreeText, handlerOpt "onChange", suggestions, value))
+                    Ok(
+                        FormFieldKind.Tokens(
+                            allowFreeText,
+                            handlerOpt "onChange",
+                            suggestions,
+                            (value |> Option.map FieldValue.ofTokens)
+                        )
+                    )
             | Error e, _, _
             | _, Error e, _
             | _, _, Error e -> Error e
@@ -5868,7 +5895,8 @@ let private decodeFormFieldKind
                     | NoAutoBind -> missingField path "value" "Binding<RangePair> value"
 
             valueR
-            |> Result.map (fun value -> FormFieldKind.Range(value, handlerOpt "onChange", None, None, None))
+            |> Result.map (fun value ->
+                FormFieldKind.Range((value |> Option.map FieldValue.ofRange), handlerOpt "onChange", None, None, None))
         | Ok "RangedNumber" ->
             // Parallel-additive Number case carrying optional
             // Min / Max / Step bounds at the field level. Absent keys
@@ -5897,7 +5925,15 @@ let private decodeFormFieldKind
 
             match valueR, minR, maxR, stepR with
             | Ok value, Ok min, Ok max, Ok step ->
-                Ok(FormFieldKind.RangedNumber(value, handlerOpt "onChange", min, max, step))
+                Ok(
+                    FormFieldKind.RangedNumber(
+                        (value |> Option.map FieldValue.ofNumber),
+                        handlerOpt "onChange",
+                        min,
+                        max,
+                        step
+                    )
+                )
             | Error e, _, _, _
             | _, Error e, _, _
             | _, _, Error e, _
@@ -5911,7 +5947,8 @@ let private decodeFormFieldKind
                 |> Result.bind (requireInt (path + ".rows"))
 
             match valueR, rowsR with
-            | Ok value, Ok rows -> Ok(FormFieldKind.TextArea(value, handlerOpt "onChange", rows))
+            | Ok value, Ok rows ->
+                Ok(FormFieldKind.TextArea((value |> Option.map FieldValue.ofText), handlerOpt "onChange", rows))
             | Error e, _
             | _, Error e -> Error e
         | Ok "SegmentedChoice" ->
@@ -5941,7 +5978,14 @@ let private decodeFormFieldKind
 
             match optionsR, valueR, orientationR with
             | Ok options, Ok value, Ok orientation ->
-                Ok(FormFieldKind.SegmentedChoice(options, value, handlerOpt "onChange", orientation))
+                Ok(
+                    FormFieldKind.SegmentedChoice(
+                        options,
+                        (value |> Option.map FieldValue.ofText),
+                        handlerOpt "onChange",
+                        orientation
+                    )
+                )
             | Error e, _, _
             | _, Error e, _
             | _, _, Error e -> Error e
@@ -5980,7 +6024,16 @@ let private decodeFormFieldKind
 
             match valueR, variantR, minR, maxR, stepR with
             | Ok value, Ok variant, Ok min, Ok max, Ok step ->
-                Ok(FormFieldKind.DateTime(value, handlerOpt "onChange", variant, min, max, step))
+                Ok(
+                    FormFieldKind.DateTime(
+                        (value |> Option.map FieldValue.ofText),
+                        handlerOpt "onChange",
+                        variant,
+                        min,
+                        max,
+                        step
+                    )
+                )
             | Error e, _, _, _, _
             | _, Error e, _, _, _
             | _, _, Error e, _, _
@@ -6023,7 +6076,16 @@ let private decodeFormFieldKind
 
             match valueR, variantR, minR, maxR, stepR with
             | Ok value, Ok variant, Ok min, Ok max, Ok step ->
-                Ok(FormFieldKind.DateTimeRange(value, handlerOpt "onChange", variant, min, max, step))
+                Ok(
+                    FormFieldKind.DateTimeRange(
+                        (value |> Option.map FieldValue.ofDateRange),
+                        handlerOpt "onChange",
+                        variant,
+                        min,
+                        max,
+                        step
+                    )
+                )
             | Error e, _, _, _, _
             | _, Error e, _, _, _
             | _, _, Error e, _, _

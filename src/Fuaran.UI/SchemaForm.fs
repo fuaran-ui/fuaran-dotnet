@@ -473,8 +473,8 @@ let private readEnum (ctx: Ctx<'Msg>) (path: string) (schema: JVal) : string lis
 let private options (values: string list) : SelectOption list =
     values |> List.map (fun v -> { Label = v; Value = v })
 
-let private stateDefault (fieldId: string) (value: 'T option) : Binding<'T> option =
-    value |> Option.map (fun v -> Binding.State(fieldId, Some v))
+let private stateDefault (enc: 'T -> JVal) (fieldId: string) (value: 'T option) : Binding<JVal> option =
+    value |> Option.map (fun v -> Binding.State(fieldId, Some(enc v)))
 
 /// Phase 1921 — a value slot that spells the field's exact auto-binding,
 /// `State(<field id>, <the control's own placeholder>)`, IS the omitted slot
@@ -496,20 +496,39 @@ let private withoutAutoValue (field: FormField<'Msg>) : FormField<'Msg> =
     let kind =
         match field.Kind with
         | FormFieldKind.Text(value, oc) ->
-            FormFieldKind.Text(collapse Fuaran.UI.Defaults.ControlValueDefaults.text value, oc)
+            FormFieldKind.Text(collapse (FieldValue.encodeText Fuaran.UI.Defaults.ControlValueDefaults.text) value, oc)
         | FormFieldKind.TextArea(value, oc, rows) ->
-            FormFieldKind.TextArea(collapse Fuaran.UI.Defaults.ControlValueDefaults.text value, oc, rows)
+            FormFieldKind.TextArea(
+                collapse (FieldValue.encodeText Fuaran.UI.Defaults.ControlValueDefaults.text) value,
+                oc,
+                rows
+            )
         | FormFieldKind.Number(value, oc) ->
-            FormFieldKind.Number(collapse Fuaran.UI.Defaults.ControlValueDefaults.number value, oc)
+            FormFieldKind.Number(
+                collapse (FieldValue.encodeNumber Fuaran.UI.Defaults.ControlValueDefaults.number) value,
+                oc
+            )
         | FormFieldKind.RangedNumber(value, oc, mn, mx, st) ->
-            FormFieldKind.RangedNumber(collapse Fuaran.UI.Defaults.ControlValueDefaults.number value, oc, mn, mx, st)
+            FormFieldKind.RangedNumber(
+                collapse (FieldValue.encodeNumber Fuaran.UI.Defaults.ControlValueDefaults.number) value,
+                oc,
+                mn,
+                mx,
+                st
+            )
         | FormFieldKind.Checkbox(value, ot) ->
-            FormFieldKind.Checkbox(collapse Fuaran.UI.Defaults.ControlValueDefaults.checkbox value, ot)
+            FormFieldKind.Checkbox(
+                collapse (FieldValue.encodeBool Fuaran.UI.Defaults.ControlValueDefaults.checkbox) value,
+                ot
+            )
         | FormFieldKind.Toggle(value, ot) ->
-            FormFieldKind.Toggle(collapse Fuaran.UI.Defaults.ControlValueDefaults.checkbox value, ot)
+            FormFieldKind.Toggle(
+                collapse (FieldValue.encodeBool Fuaran.UI.Defaults.ControlValueDefaults.checkbox) value,
+                ot
+            )
         | FormFieldKind.DateTime(value, oc, variant, mn, mx, st) ->
             FormFieldKind.DateTime(
-                collapse Fuaran.UI.Defaults.ControlValueDefaults.dateTime value,
+                collapse (FieldValue.encodeText Fuaran.UI.Defaults.ControlValueDefaults.dateTime) value,
                 oc,
                 variant,
                 mn,
@@ -517,13 +536,16 @@ let private withoutAutoValue (field: FormField<'Msg>) : FormField<'Msg> =
                 st
             )
         | FormFieldKind.Color(oc, value) ->
-            FormFieldKind.Color(oc, collapse Fuaran.UI.Defaults.ControlValueDefaults.color value)
+            FormFieldKind.Color(
+                oc,
+                collapse (FieldValue.encodeText Fuaran.UI.Defaults.ControlValueDefaults.color) value
+            )
         | FormFieldKind.Tokens(allowFreeText, oc, suggestions, value) ->
             FormFieldKind.Tokens(
                 allowFreeText,
                 oc,
                 suggestions,
-                collapse Fuaran.UI.Defaults.ControlValueDefaults.tokens value
+                collapse (FieldValue.encodeTokens Fuaran.UI.Defaults.ControlValueDefaults.tokens) value
             )
         | kind -> kind
 
@@ -554,7 +576,7 @@ let private deriveControl
 
         dflt
         |> Option.map (fun d ->
-            let value = stateDefault fieldId d
+            let value = stateDefault FieldValue.encodeText fieldId d
             let opts = Binding.Static(Some(options values))
 
             let kind =
@@ -622,7 +644,7 @@ let private deriveControl
                 None
             | _, None -> None
             | Ok fmt, Some dflt ->
-                let value = stateDefault fieldId dflt
+                let value = stateDefault FieldValue.encodeText fieldId dflt
 
                 let temporal variant =
                     if refuseTextKeywords "DateTime" then
@@ -776,7 +798,7 @@ let private deriveControl
 
             match dflt with
             | Some dflt when ctx.Refusals.Count = refusalsBefore ->
-                let value = stateDefault fieldId dflt
+                let value = stateDefault FieldValue.encodeNumber fieldId dflt
 
                 let step =
                     if isInteger then
@@ -800,7 +822,7 @@ let private deriveControl
 
         dflt
         |> Option.map (fun d ->
-            let value = stateDefault fieldId d
+            let value = stateDefault FieldValue.encodeBool fieldId d
 
             match ctx.Options.BooleanControl with
             | BooleanControl.Checkbox -> FormFieldKind.Checkbox(value, None), None
@@ -861,7 +883,7 @@ let private deriveControl
                                         false,
                                         None,
                                         Some(Binding.Static(Some(options values))),
-                                        stateDefault fieldId d
+                                        stateDefault FieldValue.encodeTokens fieldId d
                                     ),
                                     None)
                     else

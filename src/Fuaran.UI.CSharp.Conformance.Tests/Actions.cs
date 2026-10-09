@@ -345,9 +345,11 @@ internal static class ActionOracle
         var field = new FsGen.FormField<object>(
             "name",
             FsGen.FormFieldKind<object>.NewText(
-                FSharpOption<FsGen.Binding<string>>.Some(FsGen.Binding<string>.NewStatic(FSharpOption<string>.Some(""))),
-                FSharpOption<Microsoft.FSharp.Core.FSharpFunc<string, FsAction>>.Some(
-                    FuncConvert.FromFunc<string, FsAction>(_ => FsAction.NewChain(Microsoft.FSharp.Collections.FSharpList<FsAction>.Empty)))),
+                FSharpOption<FsGen.Binding<global::Fuaran.Core.JVal>>.Some(
+                    FsGen.Binding<global::Fuaran.Core.JVal>.NewStatic(
+                        FSharpOption<global::Fuaran.Core.JVal>.Some(global::Fuaran.Core.JVal.NewJStr("")))),
+                FSharpOption<Microsoft.FSharp.Core.FSharpFunc<global::Fuaran.Core.JVal, FsAction>>.Some(
+                    FuncConvert.FromFunc<global::Fuaran.Core.JVal, FsAction>(_ => FsAction.NewChain(Microsoft.FSharp.Collections.FSharpList<FsAction>.Empty)))),
             Lit("Name"),
             false,
             FSharpOption<FsGen.TextSource>.None,

@@ -8166,6 +8166,45 @@ changes.
 - **Documented, not changed:** `Streaming.StreamFrame.Position` is RESERVED — always 0, read by nothing —
   and is dropped at the next frame-protocol version, not now.
 
+### What rides this slot — Phase 2177
+
+_Class: **BREAKING (API + wire)** — rides the 0.93.0 draft, already BREAKING; this block does not raise the
+slot's class._
+
+**`FormFieldKind`'s value and change handler have one shape on every case.** Every case now carries
+`value: Binding<JVal> option` — the payload in its wire spelling — and ONE handler,
+`onChange: (JVal -> Action<'Msg>) option`. Before, the value was `Binding<string>` / `Binding<float>` /
+`Binding<bool>` / `Binding<RangePair>` / `Binding<DateTimeRangePair>` / `Binding<string list>` by case, and the
+handler was `onChange` at seven argument types, or `onToggle` on `Checkbox` and `Toggle`. One type each is what
+lets the IDL project them: `Generated.FormFieldKind.value` and `Generated.FormFieldKind.onChange` are generated,
+and the walks that read a field's binding or ask whether it has a handler (`BindingWalk`'s three form-field
+walks, `DeadOnDecode`'s two, `PreEmitValidate`'s write-back, owned-key and FUARAN069 checks, and the renderer's
+subscription keys) read them instead of matching fifteen cases each. The matches that remain classify per
+control (a CSS class, a sink class, which rule slots a control can honour) or REWRITE a slot, which no
+generated member does yet.
+
+- **Wire.** The value bytes do not move on any case. The one wire change is the handler key on `Checkbox` and
+  `Toggle`: `"onToggle":"<closure>"` is now `"onChange":"<closure>"`, emitted only when a closure-authored
+  field carries one (`nodes/form-1.json`). The retired spelling is not lenient-accepted — §16 admits no
+  backward-compatibility shorthand — so a document carrying it decodes as the handler-free field.
+  `Disclosure.onToggle` and `CellKindErased.Checkbox`'s `onToggle` are different slots and keep their names.
+- **What changes for an F# author constructing a case directly.** The typed authoring helpers
+  (`FormFieldKind.rangedNumber`, `.combobox`, `.tokens`, the `*Declarative` family, the filter-chip helpers)
+  keep their typed signatures. A direct construction erases its typed binding with `FieldValue.ofText` /
+  `.ofNumber` / `.ofBool` / `.ofRange` / `.ofDateRange` / `.ofTokens` and adapts a typed handler with
+  `FieldChange.ofText` / `.ofNumber` / `.ofBool` / `.ofChoice` / `.ofRange` / `.ofDateRange` / `.ofTokens`
+  (a cleared choice is `FieldChange.noSelection`). A reader that needs the typed value views the slot back
+  with `FieldValue.text` / `.number` / …, or inside a pattern with the total `FieldView` active patterns
+  (`FormFieldKind.Checkbox(FieldView.Bool value, FieldView.OnBool onChange)`).
+- **C# and VB.** The `Fuaran.UI.CSharp` factories keep their public signatures; only their bodies moved. The
+  VB XML mapping builds through those factories and did not change.
+- **Diagnostics.** `DeadOnDecode` names a form field's handler slot `FormFieldKind.onChange` on every kind
+  (it said `FormFieldKind.onToggle` for a checkbox or a switch); `SlotCapability` drops its
+  `FormFieldKind.onToggle` row.
+- **The no-moved-byte condition is a test.** `FormFieldValueBytesTests` holds the value bytes of every
+  form-field slot in the corpus's node fixtures as recorded BEFORE the change, and requires them byte-identical
+  in the current corpus, with `onChange` as the only handler key.
+
 ### What rides this slot — Phase 2063
 
 `Fuaran.UI.OpStream.Replay`'s tree diffs. **Class: NONE (cost only).** No public surface, wire, corpus or

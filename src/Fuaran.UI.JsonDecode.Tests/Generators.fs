@@ -678,30 +678,72 @@ let private genFormFields: Gen<FormField<obj> list> =
         return
             // Phase 426: cover both the `Some` closure (byte-stable `"<closure>"`) and the `None`
             // declarative (handler-free / write-back) shape for the covered handlers.
-            [ mk "f-text" (FormFieldKind.Text(Some sText, Some(fun _ -> Action.Chain [])))
-              mk "f-number" (FormFieldKind.Number(Some sNum, Some(fun _ -> Action.Chain [])))
-              mk "f-checkbox" (FormFieldKind.Checkbox(Some sBool, Some(fun _ -> Action.Chain [])))
-              mk "f-choice" (FormFieldKind.Choice(sOpts, sVal, Some(fun _ -> Action.Chain [])))
-              mk "f-textarea" (FormFieldKind.TextArea(Some sText, Some(fun _ -> Action.Chain []), rows))
+            [ mk
+                  "f-text"
+                  (FormFieldKind.Text(
+                      (Some sText |> Option.map FieldValue.ofText),
+                      Some(FieldChange.ofText (fun _ -> Action.Chain []))
+                  ))
+              mk
+                  "f-number"
+                  (FormFieldKind.Number(
+                      (Some sNum |> Option.map FieldValue.ofNumber),
+                      Some(FieldChange.ofNumber (fun _ -> Action.Chain []))
+                  ))
+              mk
+                  "f-checkbox"
+                  (FormFieldKind.Checkbox(
+                      (Some sBool |> Option.map FieldValue.ofBool),
+                      Some(FieldChange.ofBool (fun _ -> Action.Chain []))
+                  ))
+              mk
+                  "f-choice"
+                  (FormFieldKind.Choice(
+                      sOpts,
+                      (sVal |> Option.map FieldValue.ofText),
+                      Some(FieldChange.ofChoice (fun _ -> Action.Chain []))
+                  ))
+              mk
+                  "f-textarea"
+                  (FormFieldKind.TextArea(
+                      (Some sText |> Option.map FieldValue.ofText),
+                      Some(FieldChange.ofText (fun _ -> Action.Chain [])),
+                      rows
+                  ))
               mk
                   "f-ranged"
                   (FormFieldKind.RangedNumber(
-                      Some sNum,
-                      Some(fun _ -> Action.Chain []),
+                      (Some sNum |> Option.map FieldValue.ofNumber),
+                      Some(FieldChange.ofNumber (fun _ -> Action.Chain [])),
                       constraints.Min,
                       constraints.Max,
                       constraints.Step
                   ))
-              mk "f-segmented" (FormFieldKind.SegmentedChoice(sOpts, sVal, Some(fun _ -> Action.Chain []), orientation))
-              mk "f-text-decl" (FormFieldKind.Text(Some sText, None))
-              mk "f-number-decl" (FormFieldKind.Number(Some sNum, None))
-              mk "f-checkbox-decl" (FormFieldKind.Checkbox(Some sBool, None))
-              mk "f-choice-decl" (FormFieldKind.Choice(sOpts, sVal, None))
-              mk "f-textarea-decl" (FormFieldKind.TextArea(Some sText, None, rows))
+              mk
+                  "f-segmented"
+                  (FormFieldKind.SegmentedChoice(
+                      sOpts,
+                      (sVal |> Option.map FieldValue.ofText),
+                      Some(FieldChange.ofChoice (fun _ -> Action.Chain [])),
+                      orientation
+                  ))
+              mk "f-text-decl" (FormFieldKind.Text((Some sText |> Option.map FieldValue.ofText), None))
+              mk "f-number-decl" (FormFieldKind.Number((Some sNum |> Option.map FieldValue.ofNumber), None))
+              mk "f-checkbox-decl" (FormFieldKind.Checkbox((Some sBool |> Option.map FieldValue.ofBool), None))
+              mk "f-choice-decl" (FormFieldKind.Choice(sOpts, (sVal |> Option.map FieldValue.ofText), None))
+              mk "f-textarea-decl" (FormFieldKind.TextArea((Some sText |> Option.map FieldValue.ofText), None, rows))
               mk
                   "f-ranged-decl"
-                  (FormFieldKind.RangedNumber(Some sNum, None, constraints.Min, constraints.Max, constraints.Step))
-              mk "f-segmented-decl" (FormFieldKind.SegmentedChoice(sOpts, sVal, None, orientation)) ]
+                  (FormFieldKind.RangedNumber(
+                      (Some sNum |> Option.map FieldValue.ofNumber),
+                      None,
+                      constraints.Min,
+                      constraints.Max,
+                      constraints.Step
+                  ))
+              mk
+                  "f-segmented-decl"
+                  (FormFieldKind.SegmentedChoice(sOpts, (sVal |> Option.map FieldValue.ofText), None, orientation)) ]
     }
 
 let private genFormSpec: Gen<FormSpec<obj>> =
@@ -737,25 +779,51 @@ let private genFilters: Gen<FilterSpec<obj> list> =
             // Cover Some-closure + None-declarative shapes; `ft-auto` covers
             // the auto Filter(name) binding the minimal wire synthesizes;
             // `ft-range-typed` carries authorable {min,max} bounds.
-            [ mk "ft-text" (FormFieldKind.Text(Some sText, Some(fun _ -> Action.Chain [])))
-              mk "ft-choice" (FormFieldKind.Choice(sOpts, sVal, Some(fun _ -> Action.Chain [])))
+            [ mk
+                  "ft-text"
+                  (FormFieldKind.Text(
+                      (Some sText |> Option.map FieldValue.ofText),
+                      Some(FieldChange.ofText (fun _ -> Action.Chain []))
+                  ))
+              mk
+                  "ft-choice"
+                  (FormFieldKind.Choice(
+                      sOpts,
+                      (sVal |> Option.map FieldValue.ofText),
+                      Some(FieldChange.ofChoice (fun _ -> Action.Chain []))
+                  ))
               mk
                   "ft-range"
                   (FormFieldKind.Range(
-                      Some(Binding.Static(Some { Min = 0.0; Max = 0.0 })),
-                      Some(fun _ -> Action.Chain []),
+                      Some(FieldValue.ofRange (Binding.Static(Some { Min = 0.0; Max = 0.0 }))),
+                      Some(FieldChange.ofRange (fun _ -> Action.Chain [])),
                       None,
                       None,
                       None
                   ))
-              mk "ft-seg" (FormFieldKind.SegmentedChoice(sOpts, sVal, Some(fun _ -> Action.Chain []), orientation))
-              mk "ft-auto" (FormFieldKind.Text(Some(Binding.Filter("ft-auto", None)), None))
-              mk "ft-text-decl" (FormFieldKind.Text(Some(Binding.Filter("q", None)), None))
-              mk "ft-choice-decl" (FormFieldKind.Choice(sOpts, sVal, None))
+              mk
+                  "ft-seg"
+                  (FormFieldKind.SegmentedChoice(
+                      sOpts,
+                      (sVal |> Option.map FieldValue.ofText),
+                      Some(FieldChange.ofChoice (fun _ -> Action.Chain [])),
+                      orientation
+                  ))
+              mk "ft-auto" (FormFieldKind.Text(Some(FieldValue.ofText (Binding.Filter("ft-auto", None))), None))
+              mk "ft-text-decl" (FormFieldKind.Text(Some(FieldValue.ofText (Binding.Filter("q", None))), None))
+              mk "ft-choice-decl" (FormFieldKind.Choice(sOpts, (sVal |> Option.map FieldValue.ofText), None))
               mk
                   "ft-range-typed"
-                  (FormFieldKind.Range(Some(Binding.Static(Some { Min = 1.0; Max = 9.0 })), None, None, None, None))
-              mk "ft-seg-decl" (FormFieldKind.SegmentedChoice(sOpts, sVal, None, orientation)) ]
+                  (FormFieldKind.Range(
+                      Some(FieldValue.ofRange (Binding.Static(Some { Min = 1.0; Max = 9.0 }))),
+                      None,
+                      None,
+                      None,
+                      None
+                  ))
+              mk
+                  "ft-seg-decl"
+                  (FormFieldKind.SegmentedChoice(sOpts, (sVal |> Option.map FieldValue.ofText), None, orientation)) ]
     }
 
 let private genButtonSpec: Gen<ButtonSpec<obj>> =

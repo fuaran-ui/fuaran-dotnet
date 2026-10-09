@@ -244,8 +244,8 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                             Label = TextSource.Literal "Search channels"
                             Kind =
                                 FormFieldKind.Text(
-                                    Some(binding.state "textFilter" ""),
-                                    Some(fun v -> Action.dispatch (SetTextFilter v))
+                                    Some(FieldValue.ofText (binding.state "textFilter" "")),
+                                    Some(FieldChange.ofText (fun v -> Action.dispatch (SetTextFilter v)))
                                 ) } ]
 
                   Fuaran.select
@@ -276,8 +276,11 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                                                   Required = true
                                                   Kind =
                                                       FormFieldKind.Text(
-                                                          Some(binding.state "formText" ""),
-                                                          Some(fun v -> Action.dispatch (SetFormText v))
+                                                          Some(FieldValue.ofText (binding.state "formText" "")),
+                                                          Some(
+                                                              FieldChange.ofText (fun v ->
+                                                                  Action.dispatch (SetFormText v))
+                                                          )
                                                       ) }
                                               { Defaults.formField<Msg> with
                                                   Id = "form-choice"
@@ -285,8 +288,11 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                                                   Kind =
                                                       FormFieldKind.Choice(
                                                           Binding.Static(Some categoryOptions),
-                                                          Some(binding.stateNoDefault "formChoice"),
-                                                          Some(fun v -> Action.dispatch (SetFormChoice v))
+                                                          Some(FieldValue.ofText (binding.stateNoDefault "formChoice")),
+                                                          Some(
+                                                              FieldChange.ofChoice (fun v ->
+                                                                  Action.dispatch (SetFormChoice v))
+                                                          )
                                                       )
                                                   Help = Some(TextSource.Literal "Pick the dominant cohort dimension.") } ] }
 

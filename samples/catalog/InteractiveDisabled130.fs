@@ -84,8 +84,8 @@ let private readerPane: Node<Msg> =
                                     Label = TextSource.Literal "Name"
                                     Kind =
                                         FormFieldKind.Text(
-                                            Some(Binding.Static(Some "")),
-                                            Some(fun _ -> Action.Chain [])
+                                            Some(FieldValue.ofText (Binding.Static(Some ""))),
+                                            Some(FieldChange.ofText (fun _ -> Action.Chain []))
                                         ) } ] }
                   Fuaran.fileUpload
                       "idp-upload"

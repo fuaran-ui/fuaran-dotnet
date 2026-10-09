@@ -1408,7 +1408,7 @@ only when you mean it, and only a catalogue-listed spelling; an unknown case fai
    reference and the `few-shot.jsonl` examples are canonical request→tree pairs.
 6. **Every control is self-wiring — never author event handlers, and omit `value`
    unless you mean a specific binding.** The minimal control omits BOTH the handler
-   (`onChange` / `onToggle`) and `value`; an absent `value` auto-binds the control to
+   (`onChange`) and `value`; an absent `value` auto-binds the control to
    its own identity — a **filter chip** to `{ "$type": "Filter", "name": "<its own
    name>" }`, a **form field** to `{ "$type": "State", "key": "<its own id>" }` — and
    the renderer writes every change back to that slot. Consumers read the same slot:

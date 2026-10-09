@@ -56,7 +56,7 @@ let private handlerFreeForm (binding: Binding<string>) : Node<Msg> =
     let field: FormField<Msg> =
         { Defaults.formField<Msg> with
             Id = "the-field"
-            Kind = FormFieldKind.Text(Some binding, None) }
+            Kind = FormFieldKind.Text((Some binding |> Option.map FieldValue.ofText), None) }
 
     Fuaran.form
         "frm"

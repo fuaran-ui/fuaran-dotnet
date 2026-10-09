@@ -117,7 +117,8 @@ let mappingTable =
               let f = one """{"type":"string","maxLength":201}"""
 
               match f.Kind with
-              | FormFieldKind.TextArea(None, None, rows) -> Expect.equal rows opts.TextAreaRows "rows"
+              | FormFieldKind.TextArea(FieldView.Text None, FieldView.OnText None, rows) ->
+                  Expect.equal rows opts.TextAreaRows "rows"
               | k -> failtestf "expected TextArea, got %s" (kindName k)
 
               Expect.equal (f.Rule |> Option.bind _.MaxLength) (Some 201) "maxLength carried"
@@ -205,7 +206,7 @@ let mappingTable =
               Expect.equal (kindName (one (sprintf """{"enum":%s}""" (enumOf 12))).Kind) "Choice" "12"
 
               match (one (sprintf """{"type":"string","enum":%s}""" (enumOf 13))).Kind with
-              | FormFieldKind.Combobox(false, None, Binding.Static(Some os), None) ->
+              | FormFieldKind.Combobox(false, FieldView.OnChoice None, Binding.Static(Some os), FieldView.Text None) ->
                   Expect.equal os.Length 13 "every member is an option"
               | k -> failtestf "13: got %s" (kindName k)
           }
@@ -217,7 +218,10 @@ let mappingTable =
           }
           test "array of enum -> Tokens with no free text" {
               match (one """{"type":"array","items":{"type":"string","enum":["x","y"]},"uniqueItems":true}""").Kind with
-              | FormFieldKind.Tokens(false, None, Some(Binding.Static(Some os)), None) ->
+              | FormFieldKind.Tokens(false,
+                                     FieldView.OnTokens None,
+                                     Some(Binding.Static(Some os)),
+                                     FieldView.Tokens None) ->
                   Expect.equal (os |> List.map _.Value) [ "x"; "y" ] "suggestions"
               | k -> failtestf "got %s" (kindName k)
           }
@@ -240,11 +244,11 @@ let mappingTable =
           }
           test "default -> the value binding State(field id, default)" {
               match (one """{"type":"string","default":"hi"}""").Kind with
-              | FormFieldKind.Text(Some(Binding.State("f", Some "hi")), None) -> ()
+              | FormFieldKind.Text(FieldView.Text(Some(Binding.State("f", Some "hi"))), FieldView.OnText None) -> ()
               | k -> failtestf "got %A" k
 
               match (one """{"type":"integer","minimum":1,"default":3}""").Kind with
-              | FormFieldKind.RangedNumber(Some(Binding.State("f", Some 3.0)), _, _, _, _) -> ()
+              | FormFieldKind.RangedNumber(FieldView.Number(Some(Binding.State("f", Some 3.0))), _, _, _, _) -> ()
               | k -> failtestf "got %A" k
           }
           test "one nested object lowers to a labelled group of prefixed fields, in place" {

@@ -451,6 +451,8 @@
     <!-- Phase 1889 - charts and grids checked against their data: the six binding-check corpus fixtures, graded and located. -->
     <Compile Include="BindingCheckCorpusTests.fs" />
     <Compile Include="GridColumnKindTests.fs" />
+    <!-- Phase 2177 - the FormFieldKind reshape moved no value byte: the recorded pre-reshape value bytes, held against the corpus. -->
+    <Compile Include="FormFieldValueBytesTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

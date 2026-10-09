@@ -1022,40 +1022,28 @@ let private usesOfFormFieldKind<'Msg> (implicitUse: BindingUse option) (kind: Fo
     // `State(field id)` in a form, `Filter(name)` on a chip — keeping the
     // wiring lint and resume analysis semantically identical to the old
     // decode-synthesised shape.
-    let usesOfValueSlot (v: Binding<'x> option) : BindingUse list =
+    let usesOfValueSlot (v: Binding<JVal> option) : BindingUse list =
         match v with
         | Some b -> usesOfBinding b
         | None -> Option.toList implicitUse
 
-    match kind with
-    | FormFieldKind.Text(v, _) -> usesOfValueSlot v
-    | FormFieldKind.Number(v, _) -> usesOfValueSlot v
-    | FormFieldKind.Checkbox(v, _) -> usesOfValueSlot v
-    | FormFieldKind.Toggle(v, _) -> usesOfValueSlot v
-    | FormFieldKind.TextArea(v, _, _) -> usesOfValueSlot v
-    | FormFieldKind.RangedNumber(v, _, _, _, _) -> usesOfValueSlot v
-    | FormFieldKind.Range(v, _, _, _, _) -> usesOfValueSlot v
-    | FormFieldKind.Choice(opts, value, _) -> usesOfBinding opts @ usesOfValueSlot value
-    // Phase 1113 — the combobox's option source is an ordinary binding, so a
-    // Query-bound suggestion source is a real read and is walked as one.
-    | FormFieldKind.Combobox(_, _, opts, value) -> usesOfBinding opts @ usesOfValueSlot value
-    | FormFieldKind.SegmentedChoice(opts, value, _, _) -> usesOfBinding opts @ usesOfValueSlot value
-    | FormFieldKind.DateTime(v, _, _, _, _, _) -> usesOfValueSlot v
-    | FormFieldKind.DateTimeRange(v, _, _, _, _, _) -> usesOfValueSlot v
-    // Phase 1130 — both new controls hold a single value slot and no second
-    // binding (a rating's scale is a literal int; a colour has no option
-    // source), so the value slot IS the whole read.
-    | FormFieldKind.Rating(_, _, _, v) -> usesOfValueSlot v
-    | FormFieldKind.Color(_, v) -> usesOfValueSlot v
-    // Phase 1121 — the suggestion source is an ordinary binding on `Combobox`'s
-    // model, so a Query-bound suggestion feed is a real read and is walked as
-    // one. It is OPTIONAL here (a plain token box suggests nothing), so an
-    // absent source contributes no read at all — `usesOfValueSlot`'s
-    // implicit-use substitution is for the VALUE slot, which is the only slot
-    // the renderer auto-binds.
-    | FormFieldKind.Tokens(_, _, suggestions, value) ->
-        (suggestions |> Option.map usesOfBinding |> Option.defaultValue [])
-        @ usesOfValueSlot value
+    // The OPTION sources are the only per-case reads left: Choice, Combobox and
+    // SegmentedChoice carry a required `options` binding (Phase 1113 — a
+    // Query-bound suggestion source is a real read and is walked as one), and
+    // Tokens an OPTIONAL `suggestions` one (Phase 1121 — an absent source
+    // contributes no read; the implicit-use substitution is for the VALUE slot,
+    // which is the only slot the renderer auto-binds). The value slot itself is
+    // the generated projection (Phase 2177), so a new field kind is read here
+    // without an arm.
+    let optionSources =
+        match kind with
+        | FormFieldKind.Choice(opts, _, _)
+        | FormFieldKind.Combobox(_, _, opts, _)
+        | FormFieldKind.SegmentedChoice(opts, _, _, _) -> usesOfBinding opts
+        | FormFieldKind.Tokens(_, _, Some suggestions, _) -> usesOfBinding suggestions
+        | _ -> []
+
+    optionSources @ usesOfValueSlot (Generated.FormFieldKind.value kind)
 
 // Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
 // annotation, which renders as `[<Obsolete(…, false)>]`: FS0044 at every
@@ -1332,49 +1320,31 @@ type FormFieldWrite =
     }
 
 /// `writeBackTargetOf` over a `FormFieldKind`'s value slot, plus its handler.
-/// One arm per case so a new field kind is a compile error here rather than a
-/// silently-uncounted writer — the same forward-coupling posture the read walk
-/// takes in `usesOfFormFieldKind`.
+/// Phase 2177 — both read through the generated projections
+/// (`Generated.FormFieldKind.value` / `.onChange`), which reach every case, so a
+/// new field kind is counted here with no arm to forget.
 let formFieldWriteFacts<'Msg> (kind: FormFieldKind<'Msg>) : FormFieldWrite =
-    let slot v hasHandler =
-        match v with
-        | Some b ->
-            let target, opaque = writeBackTargetOf b
+    let hasHandler = (Generated.FormFieldKind.onChange kind).IsSome
 
-            { Target = target
-              SlotAbsent = false
-              Opaque = opaque || hasHandler }
-        | None ->
-            { Target = None
-              SlotAbsent = true
-              Opaque = hasHandler }
+    match Generated.FormFieldKind.value kind with
+    | Some b ->
+        let target, opaque = writeBackTargetOf b
 
-    match kind with
-    | FormFieldKind.Text(v, h) -> slot v h.IsSome
-    | FormFieldKind.Number(v, h) -> slot v h.IsSome
-    | FormFieldKind.Checkbox(v, h) -> slot v h.IsSome
-    | FormFieldKind.Toggle(v, h) -> slot v h.IsSome
-    | FormFieldKind.TextArea(v, h, _) -> slot v h.IsSome
-    | FormFieldKind.RangedNumber(v, h, _, _, _) -> slot v h.IsSome
-    | FormFieldKind.Range(v, h, _, _, _) -> slot v h.IsSome
-    | FormFieldKind.Choice(_, v, h) -> slot v h.IsSome
-    | FormFieldKind.Combobox(_, h, _, v) -> slot v h.IsSome
-    | FormFieldKind.SegmentedChoice(_, v, h, _) -> slot v h.IsSome
-    | FormFieldKind.DateTime(v, h, _, _, _, _) -> slot v h.IsSome
-    | FormFieldKind.DateTimeRange(v, h, _, _, _, _) -> slot v h.IsSome
-    | FormFieldKind.Rating(_, _, h, v) -> slot v h.IsSome
-    | FormFieldKind.Color(h, v) -> slot v h.IsSome
-    | FormFieldKind.Tokens(_, h, _, v) -> slot v h.IsSome
+        { Target = target
+          SlotAbsent = false
+          Opaque = opaque || hasHandler }
+    | None ->
+        { Target = None
+          SlotAbsent = true
+          Opaque = hasHandler }
 
 /// `filterWriteTargetOf` over a `FormFieldKind`'s value slot (Phase 1785) — the
 /// filter-channel twin of `formFieldWriteFacts`, and a sibling rather than a
 /// field on `FormFieldWrite` because that record is published.
 ///
-/// One arm per case, deliberately duplicating the match above rather than
-/// factoring it: the slot's type differs per case (`Binding<string>`,
-/// `Binding<float>`, `Binding<bool>`, …), so there is no erased slot for the two
-/// to share, and one arm per case is what makes a new field kind a compile error
-/// in BOTH — which is the property the duplication is paying for.
+/// Phase 2177 — the value slot is the generated projection, one type on every
+/// case, so this and `formFieldWriteFacts` read the same slot through the same
+/// accessor rather than through two copies of a fifteen-arm match.
 ///
 /// A HANDLER is not consulted, and the difference from `formFieldWriteFacts` is
 /// the point: that function reports opacity, because a closure may write
@@ -1383,24 +1353,7 @@ let formFieldWriteFacts<'Msg> (kind: FormFieldKind<'Msg>) : FormFieldWrite =
 /// `fieldChange` dispatches and returns. The caller that needs "a handler may
 /// have written something unseen" already has `FormFieldWrite.Opaque`.
 let formFieldFilterWrite<'Msg> (kind: FormFieldKind<'Msg>) : string option =
-    let slot (v: Binding<'T> option) = v |> Option.bind filterWriteTargetOf
-
-    match kind with
-    | FormFieldKind.Text(v, _) -> slot v
-    | FormFieldKind.Number(v, _) -> slot v
-    | FormFieldKind.Checkbox(v, _) -> slot v
-    | FormFieldKind.Toggle(v, _) -> slot v
-    | FormFieldKind.TextArea(v, _, _) -> slot v
-    | FormFieldKind.RangedNumber(v, _, _, _, _) -> slot v
-    | FormFieldKind.Range(v, _, _, _, _) -> slot v
-    | FormFieldKind.Choice(_, v, _) -> slot v
-    | FormFieldKind.Combobox(_, _, _, v) -> slot v
-    | FormFieldKind.SegmentedChoice(_, v, _, _) -> slot v
-    | FormFieldKind.DateTime(v, _, _, _, _, _) -> slot v
-    | FormFieldKind.DateTimeRange(v, _, _, _, _, _) -> slot v
-    | FormFieldKind.Rating(_, _, _, v) -> slot v
-    | FormFieldKind.Color(_, v) -> slot v
-    | FormFieldKind.Tokens(_, _, _, v) -> slot v
+    Generated.FormFieldKind.value kind |> Option.bind filterWriteTargetOf
 
 // Phase 1152 — see the note above `callsOfAction`. The inner `recordStateAction`
 // walk classifies `Action.Dispatch` as an opaque writer, so it names the marked

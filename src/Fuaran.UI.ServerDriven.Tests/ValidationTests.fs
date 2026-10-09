@@ -79,16 +79,16 @@ let private tree: Node<Msg> =
                           Kind =
                             FormFieldKind.SegmentedChoice(
                                 Binding.Static(Some [ opt "north"; opt "south" ]),
-                                Some(Binding.Static None),
-                                Some(fun v -> Action.Dispatch(RegionFiltered v)),
+                                Some(FieldValue.ofText (Binding.Static None)),
+                                Some(FieldChange.ofChoice (fun v -> Action.Dispatch(RegionFiltered v))),
                                 Orientation.Horizontal
                             ) }
                         { Name = "name"
                           Label = TextSource.Literal "Name"
                           Kind =
                             FormFieldKind.Text(
-                                Some(Binding.Static(Some "")),
-                                Some(fun v -> Action.Dispatch(NameFiltered v))
+                                Some(FieldValue.ofText (Binding.Static(Some ""))),
+                                Some(FieldChange.ofText (fun v -> Action.Dispatch(NameFiltered v)))
                             ) } ]
                   // Phase 1115 — an upload declaring BOTH ingress gestures. The
                   // fixture exists to verify (not to assert) that the two

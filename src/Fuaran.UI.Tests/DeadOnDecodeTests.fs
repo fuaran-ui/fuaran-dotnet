@@ -80,7 +80,11 @@ let tests =
                                   [ { Defaults.formField with
                                         Id = "name"
                                         Label = TextSource.Literal "Name"
-                                        Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Some placeholder) } ]
+                                        Kind =
+                                            FormFieldKind.Text(
+                                                Some(FieldValue.ofText (Binding.Static(Some ""))),
+                                                (Some placeholder |> Option.map FieldChange.ofText)
+                                            ) } ]
                               SubmitLabel = TextSource.Literal "Save" }
                       ))
 
@@ -194,7 +198,11 @@ let tests =
                                   [ { Defaults.formField with
                                         Id = "name"
                                         Label = TextSource.Literal "Name"
-                                        Kind = FormFieldKind.Text(Some(Binding.State("name", Some "")), None) } ]
+                                        Kind =
+                                            FormFieldKind.Text(
+                                                Some(FieldValue.ofText (Binding.State("name", Some ""))),
+                                                None
+                                            ) } ]
                               SubmitLabel = TextSource.Literal "Save" }
                       ))
 

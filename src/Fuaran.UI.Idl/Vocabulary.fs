@@ -442,6 +442,33 @@ let private fn (fs: string) (ts: string) (ph: string) : IdlType =
 let private handlerOf (arg: string) (tsArg: string) : IdlType =
     fn (arg + " -> Action<'Msg>") ("(v: " + tsArg + ") => Action") ("(fun (_: " + arg + ") -> Action.Chain [])")
 
+/// Phase 2177 — a `FormFieldKind` VALUE slot. Every case declares it at ONE host
+/// type, `Binding<JVal>`, so the generator can project it (`FormFieldKind.value`);
+/// the payload is the wire value itself. The wire is UNCHANGED: the declared wire
+/// form (`Binding<wire>`) is checked first, so a value of the wrong JSON type is
+/// refused exactly as the typed slot refused it, and the codec stores the payload
+/// as the JVal the typed encoder would have written (`enc`), so a decoded value
+/// re-encodes to the same bytes. Typed readers and writers go through the
+/// `FieldValue` accessors in `Types.fs`.
+let private fieldValue (wire: IdlType) (dec: string) (enc: string) : IdlType =
+    THosted
+        { FSharp = "Binding<JVal>"
+          Encode = "(encBinding id)"
+          Decode =
+            sprintf
+                "(fun (j: JVal) -> decBinding (fun __p -> %s __p |> Result.map %s) j |> Result.mapError DecodeError.describe)"
+                dec
+                enc
+          Wire = Some(TUnion("Binding", [ wire ]))
+          Format = None }
+
+/// Phase 2177 — a `FormFieldKind` CHANGE handler: one name (`onChange`) and one
+/// host type on every case, so the generator can project it
+/// (`FormFieldKind.onChange`). The argument is the new value as the wire would
+/// carry it; the `FieldChange` accessors in `Types.fs` adapt a typed handler.
+/// `tsArg` keeps the per-kind TypeScript signature the other hosts declare.
+let private fieldChange (tsArg: string) : IdlType = handlerOf "JVal" tsArg
+
 /// A pure projection `arg -> result` (no `'Msg`) — the `DataGrid` column
 /// functions and `Binding`'s accessors.
 let private projOf (arg: string) (result: string) (tsSig: string) (ph: string) : IdlType =
@@ -1128,42 +1155,42 @@ let private formFieldKind =
       Cases =
         [ { Tag = "Text"
             Fields =
-              [ opt "value" (TUnion("Binding", [ TStr ]))
-                opt "onChange" (handlerOf "string" "string") ]
+              [ opt "value" (fieldValue TStr "dStr" "JStr")
+                opt "onChange" (fieldChange "string") ]
             Annotations = Annotations.Empty }
           { Tag = "Number"
             Fields =
-              [ opt "value" (TUnion("Binding", [ TFloat ]))
-                opt "onChange" (handlerOf "float" "number") ]
+              [ opt "value" (fieldValue TFloat "dFloat" "encFloat")
+                opt "onChange" (fieldChange "number") ]
             Annotations = Annotations.Empty }
           { Tag = "Checkbox"
             Fields =
-              [ opt "value" (TUnion("Binding", [ TBool ]))
-                opt "onToggle" (handlerOf "bool" "boolean") ]
+              [ opt "value" (fieldValue TBool "dBool" "JBool")
+                opt "onChange" (fieldChange "boolean") ]
             Annotations = Annotations.Empty }
-          // Phase 766 — the boolean TOGGLE control: the same value / onToggle pair
+          // Phase 766 — the boolean TOGGLE control: the same value / handler pair
           // as `Checkbox`, a distinct affordance rather than a styling of one.
           { Tag = "Toggle"
             Fields =
-              [ opt "value" (TUnion("Binding", [ TBool ]))
-                opt "onToggle" (handlerOf "bool" "boolean") ]
+              [ opt "value" (fieldValue TBool "dBool" "JBool")
+                opt "onChange" (fieldChange "boolean") ]
             Annotations = Annotations.Empty }
           { Tag = "Choice"
             Fields =
               [ req "options" (TUnion("Binding", [ TList(TRecord "SelectOption") ]))
-                opt "value" (TUnion("Binding", [ TStr ]))
-                opt "onChange" (handlerOf "string option" "string | null") ]
+                opt "value" (fieldValue TStr "dStr" "JStr")
+                opt "onChange" (fieldChange "string | null") ]
             Annotations = Annotations.Empty }
           { Tag = "TextArea"
             Fields =
-              [ opt "value" (TUnion("Binding", [ TStr ]))
-                opt "onChange" (handlerOf "string" "string")
+              [ opt "value" (fieldValue TStr "dStr" "JStr")
+                opt "onChange" (fieldChange "string")
                 req "rows" TInt ]
             Annotations = Annotations.Empty }
           { Tag = "RangedNumber"
             Fields =
-              [ opt "value" (TUnion("Binding", [ TFloat ]))
-                opt "onChange" (handlerOf "float" "number")
+              [ opt "value" (fieldValue TFloat "dFloat" "encFloat")
+                opt "onChange" (fieldChange "number")
                 opt "min" TFloat
                 opt "max" TFloat
                 opt "step" TFloat ]
@@ -1181,14 +1208,14 @@ let private formFieldKind =
               [ opt
                     "value"
                     (THosted
-                        { FSharp = "Binding<RangePair>"
+                        { FSharp = "Binding<JVal>"
                           Encode =
-                            "(fun (v: Binding<RangePair>) -> match v with | Binding.Static(Some p) -> encRangePair p | __other -> encBinding encRangePair __other)"
+                            "(fun (v: Binding<JVal>) -> match v with | Binding.Static(Some p) -> p | __other -> encBinding id __other)"
                           Decode =
-                            "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decRangePair __other) |> Result.mapError DecodeError.describe)"
+                            "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decRangePair j |> Result.map (fun p -> Binding.Static(Some(encRangePair p))) | __other -> decBinding (fun __p -> decRangePair __p |> Result.map encRangePair) __other) |> Result.mapError DecodeError.describe)"
                           Wire = None
                           Format = None })
-                opt "onChange" (handlerOf "float * float" "[number, number]")
+                opt "onChange" (fieldChange "[number, number]")
                 opt "min" TFloat
                 opt "max" TFloat
                 opt "step" TFloat ]
@@ -1196,8 +1223,8 @@ let private formFieldKind =
           { Tag = "SegmentedChoice"
             Fields =
               [ req "options" (TUnion("Binding", [ TList(TRecord "SelectOption") ]))
-                opt "value" (TUnion("Binding", [ TStr ]))
-                opt "onChange" (handlerOf "string option" "string | null")
+                opt "value" (fieldValue TStr "dStr" "JStr")
+                opt "onChange" (fieldChange "string | null")
                 req "orientation" (TEnum "Orientation") ]
             Annotations = Annotations.Empty }
           // Phase 1811 — `DateTime` (was `Date`): the field already accepted a
@@ -1205,8 +1232,8 @@ let private formFieldKind =
           // so, and `Date{variant:"Time"}` is no longer a spelling nobody finds.
           { Tag = "DateTime"
             Fields =
-              [ opt "value" (TUnion("Binding", [ TStr ]))
-                opt "onChange" (handlerOf "string option" "string | null")
+              [ opt "value" (fieldValue TStr "dStr" "JStr")
+                opt "onChange" (fieldChange "string | null")
                 req "variant" (TEnum "DateTimeVariant")
                 opt "min" TStr
                 opt "max" TStr
@@ -1222,14 +1249,14 @@ let private formFieldKind =
               [ opt
                     "value"
                     (THosted
-                        { FSharp = "Binding<DateTimeRangePair>"
+                        { FSharp = "Binding<JVal>"
                           Encode =
-                            "(fun (v: Binding<DateTimeRangePair>) -> match v with | Binding.Static(Some p) -> encDateTimeRangePair p | __other -> encBinding encDateTimeRangePair __other)"
+                            "(fun (v: Binding<JVal>) -> match v with | Binding.Static(Some p) -> p | __other -> encBinding id __other)"
                           Decode =
-                            "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateTimeRangePair __other) |> Result.mapError DecodeError.describe)"
+                            "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some(encDateTimeRangePair p))) | __other -> decBinding (fun __p -> decDateTimeRangePair __p |> Result.map encDateTimeRangePair) __other) |> Result.mapError DecodeError.describe)"
                           Wire = None
                           Format = None })
-                opt "onChange" (handlerOf "string * string" "[string, string]")
+                opt "onChange" (fieldChange "[string, string]")
                 req "variant" (TEnum "DateTimeVariant")
                 opt "min" TStr
                 opt "max" TStr
@@ -1262,9 +1289,9 @@ let private formFieldKind =
           { Tag = "Combobox"
             Fields =
               [ omit "allowFreeText" TBool (VBool false)
-                opt "onChange" (handlerOf "string option" "string | null")
+                opt "onChange" (fieldChange "string | null")
                 req "options" (TUnion("Binding", [ TList(TRecord "SelectOption") ]))
-                opt "value" (TUnion("Binding", [ TStr ])) ]
+                opt "value" (fieldValue TStr "dStr" "JStr") ]
             Annotations = Annotations.Empty }
           // Fuaran-UI Phase 1130 — the subjective SCORE control. `RangedNumber`
           // is a numeric QUANTITY the reader types or drags; `Rating` is a
@@ -1311,8 +1338,8 @@ let private formFieldKind =
             Fields =
               [ omit "allowHalf" TBool (VBool false)
                 req "max" TInt
-                opt "onChange" (handlerOf "float" "number")
-                opt "value" (TUnion("Binding", [ TFloat ])) ]
+                opt "onChange" (fieldChange "number")
+                opt "value" (fieldValue TFloat "dFloat" "encFloat") ]
             Annotations = Annotations.Empty }
           // Fuaran-UI Phase 1130 — the colour control, projecting to the
           // platform's own `<input type="color">`.
@@ -1343,8 +1370,8 @@ let private formFieldKind =
           // to forbid.
           { Tag = "Color"
             Fields =
-              [ opt "onChange" (handlerOf "string" "string")
-                opt "value" (TUnion("Binding", [ TStr ])) ]
+              [ opt "onChange" (fieldChange "string")
+                opt "value" (fieldValue TStr "dStr" "JStr") ]
             Annotations = Annotations.Empty }
           // Fuaran-UI Phase 1121 — the MULTI-TOKEN input. `Combobox` commits ONE
           // value from a searchable set; `Tokens` accumulates SEVERAL, each
@@ -1427,9 +1454,9 @@ let private formFieldKind =
           { Tag = "Tokens"
             Fields =
               [ omit "allowFreeText" TBool (VBool true)
-                opt "onChange" (handlerOf "string list" "string[]")
+                opt "onChange" (fieldChange "string[]")
                 opt "suggestions" (TUnion("Binding", [ TList(TRecord "SelectOption") ]))
-                opt "value" (TUnion("Binding", [ TList TStr ])) ]
+                opt "value" (fieldValue (TList TStr) "(dList dStr)" "(fun __l -> JArr(List.map JStr __l))") ]
             Annotations = Annotations.Empty } ] }
 
 // _(The separate `FilterKind` union this file carried until the Phase 692

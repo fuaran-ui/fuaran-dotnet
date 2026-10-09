@@ -402,20 +402,24 @@ internal sealed class FieldBuilder
 
     private static FSharpFunc<TArg, FsAction> NoOp<TArg>() => Fs.Func<TArg, FsAction>(_ => Defaults.PlaceholderChain);
 
-    // Stage-3 field-kind shape: value slots are `Binding<T> option` (Some-wrap) and the
-    // change handlers are optional — keep the explicit no-op handlers so the wire shape
+    // Field-kind shape (Phase 2177): every value slot is `Binding<JVal> option` — the
+    // value in its wire spelling — and every kind carries ONE optional handler,
+    // `onChange: JVal -> Action`. Keep the explicit no-op handlers so the wire shape
     // (the "<closure>" sentinel) matches the pre-swap fixtures.
+    private static FSharpOption<FsGen.Binding<global::Fuaran.Core.JVal>> Value(global::Fuaran.Core.JVal v) =>
+        Fs.Some(FsGen.Binding<global::Fuaran.Core.JVal>.NewStatic(Fs.Some(v)));
+
     public static FieldBuilder Text(string id, string label, string initial = "") =>
-        new(id, label, FsGen.FormFieldKind<object>.NewText(Fs.Some(Bind.Static(initial)), Fs.Some(NoOp<string>())));
+        new(id, label, FsGen.FormFieldKind<object>.NewText(Value(global::Fuaran.Core.JVal.NewJStr(initial)), Fs.Some(NoOp<global::Fuaran.Core.JVal>())));
 
     public static FieldBuilder Number(string id, string label, double initial = 0.0) =>
-        new(id, label, FsGen.FormFieldKind<object>.NewNumber(Fs.Some(Bind.Static(initial)), Fs.Some(NoOp<double>())));
+        new(id, label, FsGen.FormFieldKind<object>.NewNumber(Value(global::Fuaran.Core.JVal.NewJFloat(initial)), Fs.Some(NoOp<global::Fuaran.Core.JVal>())));
 
     public static FieldBuilder Checkbox(string id, string label, bool initial = false) =>
-        new(id, label, FsGen.FormFieldKind<object>.NewCheckbox(Fs.Some(Bind.Static(initial)), Fs.Some(NoOp<bool>())));
+        new(id, label, FsGen.FormFieldKind<object>.NewCheckbox(Value(global::Fuaran.Core.JVal.NewJBool(initial)), Fs.Some(NoOp<global::Fuaran.Core.JVal>())));
 
     public static FieldBuilder TextArea(string id, string label, int rows, string initial = "") =>
-        new(id, label, FsGen.FormFieldKind<object>.NewTextArea(Fs.Some(Bind.Static(initial)), Fs.Some(NoOp<string>()), rows));
+        new(id, label, FsGen.FormFieldKind<object>.NewTextArea(Value(global::Fuaran.Core.JVal.NewJStr(initial)), Fs.Some(NoOp<global::Fuaran.Core.JVal>()), rows));
 
     public static FieldBuilder Choice(string id, string label, string selected, params (string Value, string Label)[] options)
     {
@@ -426,9 +430,8 @@ internal sealed class FieldBuilder
             label,
             FsGen.FormFieldKind<object>.NewChoice(
                 Bind.Static(opts),
-                // The value slot is `Binding<string> option` (the old double-option flattened).
-                Fs.Some(Bind.Static(selected)),
-                Fs.Some(NoOp<FSharpOption<string>>())));
+                Value(global::Fuaran.Core.JVal.NewJStr(selected)),
+                Fs.Some(NoOp<global::Fuaran.Core.JVal>())));
     }
 }
 

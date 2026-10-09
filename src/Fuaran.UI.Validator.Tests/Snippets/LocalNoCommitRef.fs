@@ -15,12 +15,14 @@ let build () : Node<Msg> =
                       Kind =
                           FormFieldKind.Text(
                               Some(
-                                  binding.local
-                                      (binding.state "salary" "0")
-                                      LocalFlushTrigger.OnCommitAction
-                                      (fun s -> Action.dispatch (SetSalary s))
-                                      (Some id)
-                                      (fun s -> Ok s)
+                                  FieldValue.ofText (
+                                      binding.local
+                                          (binding.state "salary" "0")
+                                          LocalFlushTrigger.OnCommitAction
+                                          (fun s -> Action.dispatch (SetSalary s))
+                                          (Some id)
+                                          (fun s -> Ok s)
+                                  )
                               ),
                               None
                           ) } ] }

@@ -47,15 +47,31 @@ public static partial class Fuaran
                     // Generated SelectOption declares (Label, Value); Label is a bare string now.
                     .Select(o => new FsGen.SelectOption(o.Label, o.Value)))));
 
-    // FormFieldKind.Choice's value slot is `Binding<string> option` (the old
-    // `Binding<string option>` double-option flattened): no selection is an
-    // absent binding, not a binding of None.
-    internal static Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<string>> ChoiceValue(
+    // FormFieldKind.Choice's value slot is a wire-value binding (Phase 2177 — every
+    // field kind carries `Binding<JVal> option`): no selection is an absent binding,
+    // not a binding of None.
+    internal static Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<global::Fuaran.Core.JVal>> ChoiceValue(
         string? selected) =>
         selected is null
-            ? Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<string>>.None
-            : Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<string>>.Some(
-                global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.Some(selected)));
+            ? Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<global::Fuaran.Core.JVal>>.None
+            : FieldValue(global::Fuaran.Core.JVal.NewJStr(selected));
+
+    // Phase 2177 — a FormFieldKind value slot is `Binding<JVal> option`: the payload is
+    // the value in its wire spelling (FsTypes.FieldValue's codecs).
+    internal static Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<global::Fuaran.Core.JVal>> FieldValue(
+        global::Fuaran.Core.JVal value) =>
+        Fs.Some(global::Fuaran.UI.Generated.Binding<global::Fuaran.Core.JVal>.NewStatic(Fs.Some(value)));
+
+    // Phase 2177 — every FormFieldKind carries ONE handler shape, `onChange: JVal -> Action`.
+    internal static Microsoft.FSharp.Core.FSharpFunc<global::Fuaran.Core.JVal, FsAction> NoFieldHandler() =>
+        Fs.Func<global::Fuaran.Core.JVal, FsAction>(_ => NoAction);
+
+    // Phase 2177 — a filter chip's value slot is its own filter key, payload absent.
+    internal static Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<global::Fuaran.Core.JVal>> OwnFilter(
+        string name) =>
+        Fs.Some(global::Fuaran.UI.Generated.Binding<global::Fuaran.Core.JVal>.NewFilter(
+            name,
+            Microsoft.FSharp.Core.FSharpOption<global::Fuaran.Core.JVal>.None));
 
     /// <summary>A form — an ordered list of fields plus a submit action.
     /// <c>OnSubmit</c> takes a wire-representable <see cref="FuaranAction"/>
@@ -169,21 +185,21 @@ public sealed class FormField
     /// <summary>A text field. <paramref name="rule"/> declares a constraint the host
     /// must enforce at submit (Phase 864).</summary>
     public static FormField Text(string id, Text label, string initial = "", bool required = false, Text? help = null, FieldRule? rule = null) =>
-        Make(id, label, FsGen.FormFieldKind<object>.NewText(Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.Some(initial))), Fs.Some(NoFieldHandler<string>())), required, help, rule);
+        Make(id, label, FsGen.FormFieldKind<object>.NewText(Fuaran.FieldValue(global::Fuaran.Core.JVal.NewJStr(initial)), Fs.Some(Fuaran.NoFieldHandler())), required, help, rule);
 
     /// <summary>A number field. A numeric RANGE is <see cref="Fuaran.RangedNumber"/>'s
     /// job, not <paramref name="rule"/>'s — the rule vocabulary deliberately does not
     /// restate a bound that already had a spelling (FUARAN101 refuses one that does).</summary>
     public static FormField Number(string id, Text label, double initial = 0.0, bool required = false, Text? help = null, FieldRule? rule = null) =>
-        Make(id, label, FsGen.FormFieldKind<object>.NewNumber(Fs.Some(global::Fuaran.UI.Generated.Binding<double>.NewStatic(Fs.Some(initial))), Fs.Some(NoFieldHandler<double>())), required, help, rule);
+        Make(id, label, FsGen.FormFieldKind<object>.NewNumber(Fuaran.FieldValue(FsTypes.FieldValue.encodeNumber(initial)), Fs.Some(Fuaran.NoFieldHandler())), required, help, rule);
 
     /// <summary>A checkbox field.</summary>
     public static FormField Checkbox(string id, Text label, bool initial = false, bool required = false, Text? help = null, FieldRule? rule = null) =>
-        Make(id, label, FsGen.FormFieldKind<object>.NewCheckbox(Fs.Some(global::Fuaran.UI.Generated.Binding<bool>.NewStatic(Fs.Some(initial))), Fs.Some(NoFieldHandler<bool>())), required, help, rule);
+        Make(id, label, FsGen.FormFieldKind<object>.NewCheckbox(Fuaran.FieldValue(global::Fuaran.Core.JVal.NewJBool(initial)), Fs.Some(Fuaran.NoFieldHandler())), required, help, rule);
 
     /// <summary>A multi-line text-area field.</summary>
     public static FormField TextArea(string id, Text label, int rows = 4, string initial = "", bool required = false, Text? help = null, FieldRule? rule = null) =>
-        Make(id, label, FsGen.FormFieldKind<object>.NewTextArea(Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.Some(initial))), Fs.Some(NoFieldHandler<string>()), rows), required, help, rule);
+        Make(id, label, FsGen.FormFieldKind<object>.NewTextArea(Fuaran.FieldValue(global::Fuaran.Core.JVal.NewJStr(initial)), Fs.Some(Fuaran.NoFieldHandler()), rows), required, help, rule);
 
     /// <summary>A single-choice (dropdown) field.</summary>
     public static FormField Choice(string id, Text label, string? selected, IEnumerable<(string Value, string Label)> options, bool required = false, Text? help = null, FieldRule? rule = null) =>
@@ -193,7 +209,7 @@ public sealed class FormField
             FsGen.FormFieldKind<object>.NewChoice(
                 Fuaran.OptionSource(options),
                 Fuaran.ChoiceValue(selected),
-                Fs.Some(Fuaran.NoOptStrHandler())),
+                Fs.Some(Fuaran.NoFieldHandler())),
             required,
             help,
             rule);
@@ -210,7 +226,7 @@ public sealed class FormField
             label,
             FsGen.FormFieldKind<object>.NewCombobox(
                 allowFreeText,
-                Fs.Some(Fuaran.NoOptStrHandler()),
+                Fs.Some(Fuaran.NoFieldHandler()),
                 Fuaran.OptionSource(options),
                 Fuaran.ChoiceValue(selected)),
             required,
@@ -230,8 +246,8 @@ public sealed class FormField
             FsGen.FormFieldKind<object>.NewRating(
                 allowHalf,
                 max,
-                Fs.Some(NoFieldHandler<double>()),
-                Fs.Some(global::Fuaran.UI.Generated.Binding<double>.NewStatic(Fs.Some(initial)))),
+                Fs.Some(Fuaran.NoFieldHandler()),
+                Fuaran.FieldValue(FsTypes.FieldValue.encodeNumber(initial))),
             required,
             help,
             rule);
@@ -245,8 +261,8 @@ public sealed class FormField
             id,
             label,
             FsGen.FormFieldKind<object>.NewColor(
-                Fs.Some(NoFieldHandler<string>()),
-                Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.Some(initial)))),
+                Fs.Some(Fuaran.NoFieldHandler()),
+                Fuaran.FieldValue(global::Fuaran.Core.JVal.NewJStr(initial))),
             required,
             help,
             rule);
@@ -268,21 +284,18 @@ public sealed class FormField
             label,
             FsGen.FormFieldKind<object>.NewTokens(
                 allowFreeText,
-                Fs.Some(NoFieldHandler<Microsoft.FSharp.Collections.FSharpList<string>>()),
+                Fs.Some(Fuaran.NoFieldHandler()),
                 // `null` suggestions is an ABSENT source, not an empty one — the two are
                 // different facts on the wire and the renderer emits combobox ARIA only
                 // for the first.
                 suggestions is null
                     ? Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<FsGen.SelectOption>>>.None
                     : Fs.Some(Fuaran.OptionSource(suggestions)),
-                Fs.Some(global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<string>>.NewStatic(
-                    Fs.Some(Fs.List(initial ?? Enumerable.Empty<string>()))))),
+                Fuaran.FieldValue(FsTypes.FieldValue.encodeTokens(Fs.List(initial ?? Enumerable.Empty<string>())))),
             required,
             help,
             rule);
 
-    private static Microsoft.FSharp.Core.FSharpFunc<T, FsAction> NoFieldHandler<T>() =>
-        Fs.Func<T, FsAction>(_ => FsAction.NewChain(Fs.Empty<FsAction>()));
 }
 
 /// <summary>A filter chip — build with the static factories.</summary>
@@ -303,7 +316,7 @@ public sealed class Filter
     public static Filter Text(string name, Text label) =>
         new(new FsGen.FilterSpec<object>(
             FsGen.FormFieldKind<object>.NewText(
-                Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewFilter(name, Microsoft.FSharp.Core.FSharpOption<string>.None)),
+                Fuaran.OwnFilter(name),
                 null),
             label.Inner,
             name));
@@ -316,9 +329,7 @@ public sealed class Filter
                 allowFreeText,
                 null,
                 Fuaran.OptionSource(options),
-                Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewFilter(
-                    name,
-                    Microsoft.FSharp.Core.FSharpOption<string>.None))),
+                Fuaran.OwnFilter(name)),
             label.Inner,
             name));
 
@@ -329,9 +340,7 @@ public sealed class Filter
                 allowHalf,
                 max,
                 null,
-                Fs.Some(global::Fuaran.UI.Generated.Binding<double>.NewFilter(
-                    name,
-                    Microsoft.FSharp.Core.FSharpOption<double>.None))),
+                Fuaran.OwnFilter(name)),
             label.Inner,
             name));
 
@@ -346,9 +355,7 @@ public sealed class Filter
                 suggestions is null
                     ? Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<FsGen.SelectOption>>>.None
                     : Fs.Some(Fuaran.OptionSource(suggestions)),
-                Fs.Some(global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<string>>.NewFilter(
-                    name,
-                    Microsoft.FSharp.Core.FSharpOption<Microsoft.FSharp.Collections.FSharpList<string>>.None))),
+                Fuaran.OwnFilter(name)),
             label.Inner,
             name));
 
@@ -357,9 +364,7 @@ public sealed class Filter
         new(new FsGen.FilterSpec<object>(
             FsGen.FormFieldKind<object>.NewColor(
                 null,
-                Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewFilter(
-                    name,
-                    Microsoft.FSharp.Core.FSharpOption<string>.None))),
+                Fuaran.OwnFilter(name)),
             label.Inner,
             name));
 
@@ -369,9 +374,7 @@ public sealed class Filter
             FsGen.FormFieldKind<object>.NewChoice(
                 Fuaran.OptionSource(options),
                 // The Choice value slot is `Binding<string> option` now (double-option flattened).
-                Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewFilter(
-                    name,
-                    Microsoft.FSharp.Core.FSharpOption<string>.None)),
+                Fuaran.OwnFilter(name),
                 null),
             label.Inner,
             name));
