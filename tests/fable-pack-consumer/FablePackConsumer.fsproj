@@ -2,7 +2,8 @@
   <!--
     The packed-consumer leg's project (Phase 2128). Compiled by `dotnet fable` in
     `fable-pack-consumer.ps1` beside it, which the Fable stage (`tests/fable-laws/fable-check.ps1`)
-    runs. It is a Fable consumer that reaches `Fuaran.UI.Telemetry.Default` the way a downstream
+    runs. It is a Fable consumer that reaches `Fuaran.UI.Telemetry.Default` (and, since Phase 2139,
+    `Fuaran.UI.OpStream.Dag.Merge`) the way a downstream
     client does: by PackageReference to the PACKED packages, never by ProjectReference. That is the
     whole point. Under Fable a ProjectReference is always compiled from source, so an in-repo
     consumer referencing the project would compile whether or not the package ships its sources;
@@ -20,5 +21,7 @@
     <PackageReference Include="FSharp.Core" />
     <PackageReference Include="Fuaran.UI.Telemetry.Abstractions" />
     <PackageReference Include="Fuaran.UI.Telemetry.Default" />
+    <!-- Phase 2139: the merge engine, reached through its PACKED package. -->
+    <PackageReference Include="Fuaran.UI.OpStream.Dag.Merge" />
   </ItemGroup>
 </Project>

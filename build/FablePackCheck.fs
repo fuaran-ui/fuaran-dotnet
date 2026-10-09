@@ -29,9 +29,10 @@
 ///               a source-shipped package over a DLL-only dependency is the same boundary one level
 ///               down. And a package cannot both ship sources and declare itself .NET-only.
 ///
-/// The check reads project files only. The packed ARTEFACT for the case that was broken is proved by
-/// `tests/fable-pack-consumer/` in the Fable stage, which packs `Telemetry.Default` and its closure
-/// and Fable-compiles a consumer against the packages.
+/// The check reads project files only. The packed ARTEFACT is proved by `tests/fable-pack-consumer/`
+/// in the Fable stage, which packs `Telemetry.Default` (the case that was broken) and
+/// `OpStream.Dag.Merge` (declared .NET-only until Phase 2139 offered it to Fable consumers) with
+/// their closure, and Fable-compiles a consumer against the packages.
 ///
 /// GO-RED. `proveRules` runs the rules over a synthetic set reproducing the pre-2128 tree before the
 /// real check runs, on every invocation — milliseconds — so a rule that stopped firing fails the gate

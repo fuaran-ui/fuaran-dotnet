@@ -1,8 +1,9 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  The packed-consumer leg (Phase 2128): pack `Fuaran.UI.Telemetry.Default` and everything it
-  references, restore a Fable consumer against THOSE PACKAGES, and compile it under Fable.
+  The packed-consumer leg (Phase 2128, widened by Phase 2139): pack `Fuaran.UI.Telemetry.Default`,
+  `Fuaran.UI.OpStream.Dag.Merge` and everything they reference, restore a Fable consumer against
+  THOSE PACKAGES, and compile it under Fable.
 
 .DESCRIPTION
   WHAT IT CATCHES. `Fuaran.UI.Telemetry.Default` packed no `fable/` sources until Phase 2128, so a
@@ -19,8 +20,13 @@
   sources or declares itself .NET-only. That check reads project files; this leg proves the packed
   artefact for the case that was broken.
 
-  WHAT IT PACKS is DERIVED, not listed: `Fuaran.UI.Telemetry.Default` and the transitive closure of
-  its `ProjectReference`s, each packed under one throwaway version (`<Version>-fablepack`) into a
+  Phase 2139 adds the second producer: `Fuaran.UI.OpStream.Dag.Merge` was published as an assembly
+  only, so a browser consumer could run the merge engine solely through a source reference into this
+  repository. It now ships its sources, and the consumer calls into the merge engine through the
+  packed package, so a regression to an assembly-only package fails here by name.
+
+  WHAT IT PACKS is DERIVED from the producer roots below, not listed: each root and the transitive
+  closure of its `ProjectReference`s, each packed under one throwaway version (`<Version>-fablepack`) into a
   scratch folder outside the repository. The consumer restores those ids from that folder and
   nowhere else (exact-id source mapping beats every prefix), and everything else from this
   repository's own sources. The package cache is isolated to the scratch root and the packed ids are
@@ -47,14 +53,19 @@ $global:LASTEXITCODE = 0
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
 $project = Join-Path $PSScriptRoot 'FablePackConsumer.fsproj'
-$producerRoot = Join-Path $repoRoot 'src' 'Fuaran.UI.Telemetry.Default' 'Fuaran.UI.Telemetry.Default.fsproj'
+# The producers whose PACKED artefacts the consumer compiles against. Each one's closure is packed too.
+$producerRoots = @(
+    (Join-Path $repoRoot 'src' 'Fuaran.UI.Telemetry.Default' 'Fuaran.UI.Telemetry.Default.fsproj')
+    # Phase 2139: the merge engine, offered to Fable consumers.
+    (Join-Path $repoRoot 'src' 'Fuaran.UI.OpStream.Dag.Merge' 'Fuaran.UI.OpStream.Dag.Merge.fsproj')
+)
 
 function Fail([string] $message) {
     Write-Host "==== fable-pack-consumer: FAILED — $message" -ForegroundColor Red
     exit 1
 }
 
-# ── What to pack: the producer and its ProjectReference closure ─────────────
+# ── What to pack: the producers and their ProjectReference closure ──────────
 
 function Get-ProjectReferences([string] $fsproj) {
     $dir = Split-Path -Parent $fsproj
@@ -64,7 +75,7 @@ function Get-ProjectReferences([string] $fsproj) {
 
 $closure = [System.Collections.Generic.List[string]]::new()
 $pending = [System.Collections.Generic.Queue[string]]::new()
-$pending.Enqueue([IO.Path]::GetFullPath($producerRoot))
+foreach ($root in $producerRoots) { $pending.Enqueue([IO.Path]::GetFullPath($root)) }
 while ($pending.Count -gt 0) {
     $next = $pending.Dequeue()
     if ($closure -contains $next) { continue }
@@ -76,7 +87,7 @@ while ($pending.Count -gt 0) {
 $closure.Reverse()
 $packedIds = @($closure | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) })
 # A reading that found only the root has stopped seeing the project graph.
-if ($packedIds.Count -lt 3) { Fail "only $($packedIds.Count) project(s) read in the closure of $producerRoot — the reading is broken" }
+if ($packedIds.Count -lt ($producerRoots.Count + 2)) { Fail "only $($packedIds.Count) project(s) read in the closure of $($producerRoots.Count) producer(s) — the reading is broken" }
 
 $versionMatch = [regex]::Match((Get-Content -Raw (Join-Path $repoRoot 'Directory.Build.props')), '<Version>\s*([^<\s]+)\s*</Version>')
 if (-not $versionMatch.Success) { Fail 'no <Version> in Directory.Build.props' }
@@ -166,9 +177,10 @@ try {
     if ($LASTEXITCODE -ne 0) { Fail 'restore of the consumer against the packed packages' }
 
     # The restore resolved every packed id from the packed version — not a released one that happened
-    # to be cached or served by another source.
+    # to be cached or served by another source. Every id, so a closure member resolved at some other
+    # version (which would compile against a different contract) fails by name.
     $assets = Get-Content -Raw (Join-Path $PSScriptRoot 'obj' 'project.assets.json') | ConvertFrom-Json -AsHashtable
-    foreach ($id in @('Fuaran.UI.Telemetry.Default', 'Fuaran.UI.Telemetry.Abstractions')) {
+    foreach ($id in $packedIds) {
         if (-not $assets['libraries'].ContainsKey("$id/$packVersion")) { Fail "the restore did not resolve $id at $packVersion" }
     }
 
