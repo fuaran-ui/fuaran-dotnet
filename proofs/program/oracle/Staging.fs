@@ -79,6 +79,15 @@ let rec rev = (fun ( xs  :  Prims.list<'a> ) -> (match (xs) with
      (app (rev rest) ((x)::[]))
      end))
 
+
+let rec length = (fun ( xs  :  Prims.list<'a> ) -> (match (xs) with
+| [] -> begin
+     (Prims.parse_int "0")
+     end
+| (uu___)::rest -> begin
+     ((Prims.parse_int "1") + (length rest))
+     end))
+
 type store<'t, 'b> = {st_tree : 't; st_bindings : 'b}
 
 
@@ -383,15 +392,16 @@ let __proj__Mkbounded_outcome__item__bo_diagnostics = (fun ( projectee  :  bound
      bo_diagnostics
      end))
 
-type op_view<'o> =
+type op_view<'v, 'o> =
 | OEdit of 'o
 | ORequire of 'o
-| OChoose of 'o * Prims.list<op_view<'o>> * Prims.list<op_view<'o>> * opt<'o>
-| ORepeat of Prims.nat * Prims.list<op_view<'o>>
-| OEach of Prims.list<Prims.list<op_view<'o>>>
+| OChoose of 'o * Prims.list<op_view<'v, 'o>> * Prims.list<op_view<'v, 'o>> * opt<'o>
+| ORepeat of Prims.nat * Prims.list<op_view<'v, 'o>>
+| OEach of Prims.list<Prims.list<op_view<'v, 'o>>>
+| OEachOf of Prims.string * Prims.nat * Prims.list<'v> * Prims.list<Prims.list<op_view<'v, 'o>>>
 
 
-let uu___is_OEdit = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let uu___is_OEdit = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | OEdit (op) -> begin
      true
      end
@@ -400,13 +410,13 @@ let uu___is_OEdit = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) wit
      end))
 
 
-let __proj__OEdit__item__op = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let __proj__OEdit__item__op = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | OEdit (op) -> begin
      op
      end))
 
 
-let uu___is_ORequire = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let uu___is_ORequire = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | ORequire (op) -> begin
      true
      end
@@ -415,13 +425,13 @@ let uu___is_ORequire = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) 
      end))
 
 
-let __proj__ORequire__item__op = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let __proj__ORequire__item__op = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | ORequire (op) -> begin
      op
      end))
 
 
-let uu___is_OChoose = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let uu___is_OChoose = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | OChoose (entry, when_true, when_false, exit) -> begin
      true
      end
@@ -430,31 +440,31 @@ let uu___is_OChoose = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) w
      end))
 
 
-let __proj__OChoose__item__entry = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let __proj__OChoose__item__entry = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | OChoose (entry, when_true, when_false, exit) -> begin
      entry
      end))
 
 
-let __proj__OChoose__item__when_true = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let __proj__OChoose__item__when_true = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | OChoose (entry, when_true, when_false, exit) -> begin
      when_true
      end))
 
 
-let __proj__OChoose__item__when_false = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let __proj__OChoose__item__when_false = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | OChoose (entry, when_true, when_false, exit) -> begin
      when_false
      end))
 
 
-let __proj__OChoose__item__exit = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let __proj__OChoose__item__exit = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | OChoose (entry, when_true, when_false, exit) -> begin
      exit
      end))
 
 
-let uu___is_ORepeat = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let uu___is_ORepeat = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | ORepeat (count, body) -> begin
      true
      end
@@ -463,19 +473,19 @@ let uu___is_ORepeat = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) w
      end))
 
 
-let __proj__ORepeat__item__count = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let __proj__ORepeat__item__count = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | ORepeat (count, body) -> begin
      count
      end))
 
 
-let __proj__ORepeat__item__body = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let __proj__ORepeat__item__body = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | ORepeat (count, body) -> begin
      body
      end))
 
 
-let uu___is_OEach = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let uu___is_OEach = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | OEach (elements) -> begin
      true
      end
@@ -484,52 +494,91 @@ let uu___is_OEach = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) wit
      end))
 
 
-let __proj__OEach__item__elements = (fun ( projectee  :  op_view<'o> ) -> (match (projectee) with
+let __proj__OEach__item__elements = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
 | OEach (elements) -> begin
      elements
      end))
 
-type witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> = {w_compute : Prims.string  ->  'a  ->  'b  ->  bounded_outcome<'b, 'eff, 'd>; w_query : Prims.string  ->  'q  ->  'b  ->  res<'b>; w_apply : 'o  ->  't  ->  res<'t>; w_op_view : 'o  ->  op_view<'o>; w_assign : Prims.string  ->  'v  ->  'b  ->  'b; w_slot_refused : Prims.string  ->  opt<Prims.string>; w_undo_compute : Prims.string  ->  'a  ->  'b  ->  opt<('b  ->  'b)>}
+
+let uu___is_OEachOf = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
+| OEachOf (collection, ceiling, extent, elements) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__OEachOf__item__collection = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
+| OEachOf (collection, ceiling, extent, elements) -> begin
+     collection
+     end))
+
+
+let __proj__OEachOf__item__ceiling = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
+| OEachOf (collection, ceiling, extent, elements) -> begin
+     ceiling
+     end))
+
+
+let __proj__OEachOf__item__extent = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
+| OEachOf (collection, ceiling, extent, elements) -> begin
+     extent
+     end))
+
+
+let __proj__OEachOf__item__elements = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
+| OEachOf (collection, ceiling, extent, elements) -> begin
+     elements
+     end))
+
+type witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> = {w_compute : Prims.string  ->  'a  ->  'b  ->  bounded_outcome<'b, 'eff, 'd>; w_query : Prims.string  ->  'q  ->  'b  ->  res<'b>; w_apply : 'o  ->  't  ->  res<'t>; w_op_view : 'o  ->  op_view<'v, 'o>; w_read_extent : Prims.string  ->  't  ->  opt<Prims.list<'v>>; w_assign : Prims.string  ->  'v  ->  'b  ->  'b; w_slot_refused : Prims.string  ->  opt<Prims.string>; w_undo_compute : Prims.string  ->  'a  ->  'b  ->  opt<('b  ->  'b)>}
 
 
 let __proj__Mkwitness__item__w_compute = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_compute
      end))
 
 
 let __proj__Mkwitness__item__w_query = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_query
      end))
 
 
 let __proj__Mkwitness__item__w_apply = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_apply
      end))
 
 
 let __proj__Mkwitness__item__w_op_view = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_op_view
      end))
 
 
+let __proj__Mkwitness__item__w_read_extent = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+     w_read_extent
+     end))
+
+
 let __proj__Mkwitness__item__w_assign = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_assign
      end))
 
 
 let __proj__Mkwitness__item__w_slot_refused = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_slot_refused
      end))
 
 
 let __proj__Mkwitness__item__w_undo_compute = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_undo_compute
      end))
 
@@ -794,7 +843,7 @@ let rec views = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( ops  
      end))
 
 
-let rec trail_views = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( vs  :  Prims.list<op_view<'o>> ) ( tree  :  't ) -> (match (vs) with
+let rec trail_views = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( vs  :  Prims.list<op_view<'v, 'o>> ) ( tree  :  't ) -> (match (vs) with
 | [] -> begin
      ROk (((tree), ([])))
      end
@@ -813,7 +862,7 @@ let rec trail_views = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) (
      end)
      end)
      end))
-and trail_view = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( x  :  op_view<'o> ) ( tree  :  't ) -> (match (x) with
+and trail_view = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( x  :  op_view<'v, 'o> ) ( tree  :  't ) -> (match (x) with
 | ORequire (op) -> begin
      (match ((w.w_apply op tree)) with
 | RErr (code) -> begin
@@ -885,8 +934,22 @@ if took_true then begin
      end
 | OEach (elements) -> begin
      (trail_each w elements tree)
+     end
+| OEachOf (collection, ceiling, uu___, elements) -> begin
+     (match ((w.w_read_extent collection tree)) with
+| OSome (xs) -> begin
+      
+if ((length xs) <= ceiling) then begin
+     (trail_each w elements tree)
+     end else begin
+     RErr ("the collection\'s extent is over its declared ceiling")
+     end
+     end
+| ONone -> begin
+     RErr ("the state holds no collection under that name")
+     end)
      end))
-and trail_repeat = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( body  :  Prims.list<op_view<'o>> ) ( n  :  Prims.nat ) ( tree  :  't ) ->  
+and trail_repeat = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( body  :  Prims.list<op_view<'v, 'o>> ) ( n  :  Prims.nat ) ( tree  :  't ) ->  
 if (Prims.op_Equals n (Prims.parse_int "0")) then begin
      ROk (((tree), ([])))
      end else begin
@@ -904,7 +967,7 @@ if (Prims.op_Equals n (Prims.parse_int "0")) then begin
      end)
      end)
      end)
-and trail_each = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( elements  :  Prims.list<Prims.list<op_view<'o>>> ) ( tree  :  't ) -> (match (elements) with
+and trail_each = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( elements  :  Prims.list<Prims.list<op_view<'v, 'o>>> ) ( tree  :  't ) -> (match (elements) with
 | [] -> begin
      ROk (((tree), ([])))
      end
@@ -943,7 +1006,7 @@ let rec edits = (fun ( xs  :  Prims.list<('t * 'o)> ) -> (match (xs) with
      end))
 
 
-let rec plan_views = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( cap  :  Prims.string ) ( stage1  :  opt<('t  ->  'o  ->  ('p * 'v))> ) ( vs  :  Prims.list<op_view<'o>> ) ( tree  :  't ) ( staged  :  Prims.list<staged_call<'v, 'p>> ) -> (match (vs) with
+let rec plan_views = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( cap  :  Prims.string ) ( stage1  :  opt<('t  ->  'o  ->  ('p * 'v))> ) ( vs  :  Prims.list<op_view<'v, 'o>> ) ( tree  :  't ) ( staged  :  Prims.list<staged_call<'v, 'p>> ) -> (match (vs) with
 | [] -> begin
      ROk (((tree), (staged)))
      end
@@ -956,7 +1019,7 @@ let rec plan_views = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( 
      (plan_views w cap stage1 rest tree' staged')
      end)
      end))
-and plan_view = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( cap  :  Prims.string ) ( stage1  :  opt<('t  ->  'o  ->  ('p * 'v))> ) ( x  :  op_view<'o> ) ( tree  :  't ) ( staged  :  Prims.list<staged_call<'v, 'p>> ) -> (match (x) with
+and plan_view = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( cap  :  Prims.string ) ( stage1  :  opt<('t  ->  'o  ->  ('p * 'v))> ) ( x  :  op_view<'v, 'o> ) ( tree  :  't ) ( staged  :  Prims.list<staged_call<'v, 'p>> ) -> (match (x) with
 | ORequire (op) -> begin
      (match ((w.w_apply op tree)) with
 | RErr (code) -> begin
@@ -1034,8 +1097,22 @@ if took_true then begin
      end
 | OEach (elements) -> begin
      (plan_each w cap stage1 elements tree staged)
+     end
+| OEachOf (collection, ceiling, uu___, elements) -> begin
+     (match ((w.w_read_extent collection tree)) with
+| OSome (xs) -> begin
+      
+if ((length xs) <= ceiling) then begin
+     (plan_each w cap stage1 elements tree staged)
+     end else begin
+     RErr ("the collection\'s extent is over its declared ceiling")
+     end
+     end
+| ONone -> begin
+     RErr ("the state holds no collection under that name")
+     end)
      end))
-and plan_repeat = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( cap  :  Prims.string ) ( stage1  :  opt<('t  ->  'o  ->  ('p * 'v))> ) ( body  :  Prims.list<op_view<'o>> ) ( n  :  Prims.nat ) ( tree  :  't ) ( staged  :  Prims.list<staged_call<'v, 'p>> ) ->  
+and plan_repeat = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( cap  :  Prims.string ) ( stage1  :  opt<('t  ->  'o  ->  ('p * 'v))> ) ( body  :  Prims.list<op_view<'v, 'o>> ) ( n  :  Prims.nat ) ( tree  :  't ) ( staged  :  Prims.list<staged_call<'v, 'p>> ) ->  
 if (Prims.op_Equals n (Prims.parse_int "0")) then begin
      ROk (((tree), (staged)))
      end else begin
@@ -1047,7 +1124,7 @@ if (Prims.op_Equals n (Prims.parse_int "0")) then begin
      (plan_repeat w cap stage1 body (n - (Prims.parse_int "1")) tree' staged')
      end)
      end)
-and plan_each = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( cap  :  Prims.string ) ( stage1  :  opt<('t  ->  'o  ->  ('p * 'v))> ) ( elements  :  Prims.list<Prims.list<op_view<'o>>> ) ( tree  :  't ) ( staged  :  Prims.list<staged_call<'v, 'p>> ) -> (match (elements) with
+and plan_each = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( cap  :  Prims.string ) ( stage1  :  opt<('t  ->  'o  ->  ('p * 'v))> ) ( elements  :  Prims.list<Prims.list<op_view<'v, 'o>>> ) ( tree  :  't ) ( staged  :  Prims.list<staged_call<'v, 'p>> ) -> (match (elements) with
 | [] -> begin
      ROk (((tree), (staged)))
      end
@@ -1611,6 +1688,47 @@ if planned.ac_halted then begin
 let r = (replay w reg dur (Prims.parse_int "0") (rev planned.ac_staged) planned)
 in {do_outcome = (finish s r.rp_acc); do_replayed = r.rp_replayed; do_invoked = r.rp_invoked; do_indeterminate = r.rp_indeterminate; do_overrides = r.rp_overrides})
      end))
+
+
+let read_entry_capability : Prims.string = "ReadEntry"
+
+
+let entry_read_diverged : Prims.string = "durable-entry-read-diverged"
+
+
+let entry_read_refusal : Prims.string  ->  Prims.string = (fun ( subject  :  Prims.string ) -> (Prims.strcat (Prims.strcat entry_read_diverged ":") subject))
+
+
+let entry_read = (fun ( dur  :  journal<'v> ) ( k  :  Prims.nat ) ( subject  :  Prims.string ) ( live  :  res<'v> ) -> (
+
+let identity = ((read_entry_capability), (OSome (subject)))
+in (
+
+let diverged = (match ((dur.j_recorded k)) with
+| OSome (recorded) -> begin
+     (not ((Prims.op_Equals recorded identity)))
+     end
+| ONone -> begin
+     false
+     end)
+in  
+if diverged then begin
+     RErr ((entry_read_refusal subject))
+     end else begin
+     (match ((dur.j_step k)) with
+| JValue (x) -> begin
+     ROk (x)
+     end
+| JRefusal (r) -> begin
+     RErr (r)
+     end
+| JUnrun -> begin
+     live
+     end
+| JIndeterminate -> begin
+     live
+     end)
+     end)))
 
 
 

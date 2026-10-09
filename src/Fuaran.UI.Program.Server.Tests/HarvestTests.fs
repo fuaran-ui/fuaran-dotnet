@@ -167,6 +167,8 @@ let harvestTests =
                     HostCalls = []
                     StateNamespaces = []
                     OpaqueHandlers = []
+                    Iterations = []
+                    OpaqueLeaves = []
                     Server =
                       Some
                           { Effects = []

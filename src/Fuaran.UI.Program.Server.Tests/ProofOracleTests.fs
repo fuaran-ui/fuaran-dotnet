@@ -176,20 +176,29 @@ let private modelWitness
       // (Phase 1990) reaches the model LOWERED — its body once per element,
       // substituted through the production `Substitute`, each body viewed.
       w_op_view =
-        let rec view (op: TreeOp<obj>) : Staging.op_view<TreeOp<obj>> =
+        let rec view (op: TreeOp<obj>) : Staging.op_view<Fuaran.Core.JVal, TreeOp<obj>> =
             match witness.State.View op with
             | OpView.Edit -> Staging.OEdit op
             | OpView.Require -> Staging.ORequire op
             | OpView.Choose(entry, whenTrue, whenFalse, exit) ->
                 Staging.OChoose(entry, whenTrue |> List.map view, whenFalse |> List.map view, modelOpt exit)
             | OpView.Repeat(count, body) -> Staging.ORepeat(bigint count, body |> List.map view)
-            | OpView.Each(collection, placeholder, body) ->
+            | OpView.Each(Collection.Literal elements, placeholder, body) ->
                 Staging.OEach(
-                    collection
+                    elements
                     |> List.map (fun element -> body |> List.map (witness.State.Substitute placeholder element >> view))
                 )
+            // A collection the state holds (Program Phase 1991): the UI tier
+            // views nothing as one (Program STABILITY, 0.8.0), so the
+            // translation is total over an extent the UI state never answers —
+            // `w_read_extent` below answers none, and the model refuses the
+            // shape exactly as the plan would.
+            | OpView.Each(Collection.Stored(collection, ceiling), _, _) ->
+                Staging.OEachOf(collection.Name, bigint (max ceiling 0), [], [])
 
         view
+      // The UI state holds no collection a stored `Each` reads.
+      w_read_extent = fun _ _ -> Staging.ONone
       w_assign = witness.Dispatch.Store.Assign
       // The landing-slot refusal as production renders it (Phase 1974): the
       // reserved-namespace text over this witness's predicate and prefix.
@@ -258,8 +267,15 @@ let private modelRegistry
       r_op_perform =
         match performance with
         | OpPerformance.InMemory -> Staging.ONone
+        // The prefix (Program Phase 2165) is outside the Staging model's
+        // token: the performers this oracle stages read none of it, so the
+        // model's side hands the entry prefix (Program `proofs.json`,
+        // `op-prefix-out-of-model`).
         | OpPerformance.Performed perform ->
-            Staging.OSome(fun state op -> (fun (_: Fuaran.Core.JVal) -> perform state op), Fuaran.Core.JObj []) }
+            let token state op : Performer * Fuaran.Core.JVal =
+                (fun (_: Fuaran.Core.JVal) -> perform (OpPrefix.atEntry state) state op), Fuaran.Core.JObj []
+
+            Staging.OSome token }
 
 let private productionDiagnostic (diagnostic: Staging.diagnostic<BoundedDiagnostic>) : ServerDiagnostic =
     match diagnostic with
@@ -396,7 +412,7 @@ let private witnessOf (case: StagingCase) : UiWitness.UiProgramWitness =
 /// The op performance a case runs under, over this run's scripted performer.
 let private performanceOf (case: StagingCase) (s: Scripted) : OpPerformance<Node<obj>, TreeOp<obj>> =
     if case.PerformOps then
-        OpPerformance.Performed s.Op
+        OpPerformance.performedBy s.Op
     else
         OpPerformance.InMemory
 
@@ -2136,8 +2152,7 @@ let private receiptFor (state: Node<obj>) (op: TreeOp<obj>) : Fuaran.Core.JVal =
 let private opContractName = "names-the-planned-op"
 
 let private plannedOpContract: OpContract<Node<obj>, TreeOp<obj>> =
-    { Name = opContractName
-      Holds = fun state op receipt -> receipt = receiptFor state op }
+    OpContract.at opContractName (fun state op receipt -> receipt = receiptFor state op)
 
 let private modelOpContract: EffectGate.op_contract<Node<obj>, TreeOp<obj>, Fuaran.Core.JVal> =
     { EffectGate.oc_name = opContractName
@@ -2282,9 +2297,9 @@ let private keyedProduction (c: KeyedCase) (side: KeyedSide) =
 
     let performance =
         if c.Contracted then
-            OpPerformance.performedChecked plannedOpContract side.Op
+            OpPerformance.performedChecked [ plannedOpContract ] (fun _ state op -> side.Op state op)
         else
-            OpPerformance.Performed side.Op
+            OpPerformance.performedBy side.Op
 
     registry, performance
 
@@ -2886,11 +2901,9 @@ let effectGateTests =
                               let modelSeen = ResizeArray<string * string>()
 
                               let production: OpContract<string, string> =
-                                  { Name = vLabel
-                                    Holds =
-                                      fun s o r ->
-                                          productionSeen.Add(s, o)
-                                          verdict s o r }
+                                  OpContract.at vLabel (fun s o r ->
+                                      productionSeen.Add(s, o)
+                                      verdict s o r)
 
                               let model: EffectGate.op_contract<string, string, Fuaran.Core.JVal> =
                                   { EffectGate.oc_name = vLabel
@@ -2901,7 +2914,18 @@ let effectGateTests =
 
                               let modelPerform (s: string) (o: string) = behaviour s o |> modelRes
 
-                              let expected = OpContract.check production behaviour state op |> modelRes
+                              // The prefix (Program Phase 2165) is outside `EffectGate`'s
+                              // model; the performer here reads none of it, so production
+                              // is checked at the entry prefix.
+                              let expected =
+                                  OpContract.check
+                                      production
+                                      (fun _ s o -> behaviour s o)
+                                      (OpPrefix.atEntry state)
+                                      state
+                                      op
+                                  |> modelRes
+
                               let actual = EffectGate.check_op model modelPerform state op
                               let label = sprintf "%s / %s / %s / %s" state op bLabel vLabel
 
@@ -3001,7 +3025,7 @@ let effectGateTests =
                   if outcome.Committed then
                       for state, op, receipt in run.ProductionReceipts do
                           Expect.isTrue
-                              (plannedOpContract.Holds state op receipt)
+                              (plannedOpContract.Holds (OpPrefix.atEntry state) state op receipt)
                               (sprintf "%s: a committed run landed a receipt its contract rejects" where)
 
                   match List.tryLast outcome.Diagnostics with

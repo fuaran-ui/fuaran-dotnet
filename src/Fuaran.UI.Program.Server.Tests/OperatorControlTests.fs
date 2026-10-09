@@ -1345,6 +1345,50 @@ let opPerformerRevocation =
 // The revoke above WORKS; until 1986 the report an operator reads to see what a
 // placement still covers said it had not, because coverage was read off the
 // registry and the op performer is not a member of it.
+//
+// Since Fuaran.Program 0.8.0 (Phase 1993, Program D37, amending D28 item 2) a
+// revoked op performer reads as ABSENT, not as a policy refusal: coverage
+// carries `ApplyOps` in `Withdrawn`, leaves the gate the registry's, and the
+// demanded-effect check reports `ServerCapabilityWithdrawn "ApplyOps"` before
+// it asks the gate. The tests below are written against that reading
+// (fuaran#2191), and the PROBE at the end feeds them the D28 reading (the
+// same withdrawal carried on the gate) to show they go red on it.
+
+/// The one finding a placement whose op performer is withdrawn reports for a
+/// projection that demands only the op arm.
+let private opPerformerWithdrawn =
+    [ CoverageFinding.ServerCapabilityWithdrawn OpPerformance.RegistrationKey ]
+
+/// The D28 (Fuaran.Program 0.7.1) reading of the same withdrawal, rebuilt from
+/// a coverage that reports it the 0.8.0 way: nothing withdrawn, and the
+/// withdrawn capabilities refused at the gate instead. Only the go-red probe
+/// uses it.
+let private asGateRefusal (coverage: ServerCoverage) : ServerCoverage =
+    { coverage with
+        Withdrawn = Set.empty
+        Gate = fun capability -> not (coverage.Withdrawn.Contains capability) && coverage.Gate capability }
+
+/// A revoke-suspend-resume stream over fresh controls, and the coverage read
+/// after each non-empty prefix of it, paired with the prefix's length.
+let private resumeStream (services: ServerServices) =
+    let journal = Controls.inMemory ()
+    let controls = controlsOn journal
+
+    for request in
+        [ Controls.revoke ops "withdrawn" OpPerformance.RegistrationKey
+          Controls.suspend ops "halt"
+          Controls.resume ops "reviewed" ] do
+        DurableControls.record controls request |> ignore
+
+    let entries = entriesOf journal
+
+    let coverages =
+        prefixes entries
+        |> List.filter (List.isEmpty >> not)
+        |> List.map (fun prefix ->
+            List.length prefix, Controls.coverage (Controls.fold prefix) services.Effects services.OpPerformance)
+
+    controls, entries, coverages
 
 [<Tests>]
 let opPerformerCoverage =
@@ -1372,11 +1416,20 @@ let opPerformerCoverage =
 
               Expect.equal
                   (Demanded.checkProjection (serverHost coverage) projection)
-                  [ CoverageFinding.ServerGateRefusesCapability OpPerformance.RegistrationKey ]
-                  "afterwards ApplyOps is withdrawn, under the key the revoke named"
+                  opPerformerWithdrawn
+                  "afterwards ApplyOps is withdrawn (ABSENT, not refused by policy) under the key the revoke named"
 
-              Expect.isFalse (coverage.Gate "ApplyOps") "the arm's one coverage fact is closed"
-              Expect.isTrue (coverage.Gate "host:audit") "and nothing else is"
+              Expect.equal
+                  coverage.Withdrawn
+                  (Set.singleton OpPerformance.RegistrationKey)
+                  "the arm is carried as withdrawn, and nothing else is"
+
+              Expect.equal
+                  (coverage.Gate "ApplyOps")
+                  (services.Effects.Gate "ApplyOps")
+                  "the gate is the registry's: a withdrawal is not a policy refusal (Program D37)"
+
+              Expect.isTrue (coverage.Gate "host:audit") "and nothing else is closed"
 
               Expect.equal
                   coverage.HostFunctions
@@ -1494,27 +1547,69 @@ let opPerformerCoverage =
                   { servicesOf (registryOf (Counter()).Performer) editsOnly with
                       OpPerformance = (OpCounter()).Performance }
 
-              let journal = Controls.inMemory ()
-              let controls = controlsOn journal
-
-              for request in
-                  [ Controls.revoke ops "withdrawn" OpPerformance.RegistrationKey
-                    Controls.suspend ops "halt"
-                    Controls.resume ops "reviewed" ] do
-                  DurableControls.record controls request |> ignore
-
-              let entries = entriesOf journal
+              let controls, entries, coverages = resumeStream services
               Expect.equal (List.length entries) 3 "the stream holds the three acts"
 
-              for prefix in prefixes entries |> List.filter (List.isEmpty >> not) do
-                  let coverage =
-                      Controls.coverage (Controls.fold prefix) services.Effects services.OpPerformance
+              let projection = coverageProjection services
 
-                  Expect.isFalse
-                      (coverage.Gate "ApplyOps")
-                      $"ApplyOps stays withdrawn after {List.length prefix} control(s)"
+              for count, coverage in coverages do
+                  Expect.isTrue
+                      (coverage.Withdrawn.Contains OpPerformance.RegistrationKey)
+                      $"ApplyOps stays withdrawn after {count} control(s)"
+
+                  // Reported before the gate is asked, so the suspended prefix
+                  // reads as withdrawn too, not as a policy refusal.
+                  Expect.equal
+                      (Demanded.checkProjection (serverHost coverage) projection)
+                      opPerformerWithdrawn
+                      $"and reads as withdrawn, not refused, after {count} control(s)"
 
               Expect.isTrue
                   ((DurableControls.coverage controls services).Gate "host:audit")
                   "the resume lifted the suspend, and only the suspend"
+          }
+
+          test "PROBE: a revoke reported as a GATE REFUSAL (the D28 reading) fails both withdrawal tests" {
+              // The go-red check for the two tests above: the same withdrawal,
+              // carried on the gate as Fuaran.Program 0.7.1 reported it, must
+              // not satisfy what they assert.
+              let opsRun = OpCounter()
+              let controls = controlsOn (Controls.inMemory ())
+
+              let services =
+                  { servicesOf (registryOf (Counter()).Performer) editsOnly with
+                      OpPerformance = opsRun.Performance }
+
+              let projection = coverageProjection services
+              revokeOps controls "ops reach the world; withdrawn"
+
+              let d28 = asGateRefusal (DurableControls.coverage controls services)
+
+              Expect.equal
+                  (Demanded.checkProjection (serverHost d28) projection)
+                  [ CoverageFinding.ServerGateRefusesCapability OpPerformance.RegistrationKey ]
+                  "the probe IS the D28 reading: the withdrawal reads as a policy refusal"
+
+              Expect.notEqual
+                  (Demanded.checkProjection (serverHost d28) projection)
+                  opPerformerWithdrawn
+                  "so the revoke test's finding assertion goes red on it"
+
+              Expect.isEmpty d28.Withdrawn "and so does its withdrawn-set assertion"
+
+              let _, _, coverages = resumeStream services
+
+              for count, coverage in coverages do
+                  let d28 = asGateRefusal coverage
+
+                  Expect.isFalse
+                      (d28.Withdrawn.Contains OpPerformance.RegistrationKey)
+                      $"the Resume test's withdrawn assertion goes red after {count} control(s)"
+
+                  Expect.notEqual
+                      (Demanded.checkProjection (serverHost d28) projection)
+                      opPerformerWithdrawn
+                      $"and so does its finding assertion after {count} control(s)"
+
+              Expect.equal opsRun.Count 0 "asking the question performs nothing"
           } ]

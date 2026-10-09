@@ -10,6 +10,39 @@ consequence.
 
 ---
 
+## 2026-10-09 — D12: the program adapters move onto Fuaran.Program 0.8.0, and the demanded corpus stays generated here even where the canonical copy was moved by hand
+
+**Decided (Phase 2191).** `FuaranProgramVersion` moves 0.7.1 → 0.8.0, the first Program release cut
+after the adapters moved here, and the two adapters and their suites take every consumer obligation it
+carries in the same change: the widened records (`LeafDeclaration.Opaque`, `DemandedProjection`'s
+`Iterations` and `OpaqueLeaves`, `HandlerArm.ReadExtent`), the prefix-first op performer and contract
+(`OpPrefix`, `OpContract.at`, a LIST at `performedChecked`), the store-bound `Each` shape in the proof
+oracles' translation (the UI tier views nothing as one, so the stored arm reaches the model as an
+extent it never answers), and the demanded document at **version 8**.
+
+**A withdrawn op performer is ABSENT in every coverage this tier reports, not refused by policy.**
+Program D37 amended D28: with ops performed and `ApplyOps` revoked, coverage carries the key in
+`Withdrawn`, the gate stays the registry's, and the demanded-effect check reports
+`ServerCapabilityWithdrawn "ApplyOps"` before it asks the gate, so a session both suspended and revoked
+still reads as withdrawn. The two fuaran#1986 coverage tests assert that reading, and a standing probe
+rebuilds the D28 reading from the same coverage (the withdrawal moved onto the gate) and shows both
+tests' assertions fail on it.
+
+**The demanded corpus is regenerated through `DemandedCorpus.emit`, never moved by hand, and where it
+and the program repository's hand-moved copy disagree the generator is right.** Program's 1991 and
+2130 moved their copy to versions 7 and 8 by inserting the new members after `opaqueHandlers`; in the
+`missing-root-member` vector, which omits `opaqueHandlers`, that insertion had nowhere to land, so the
+copy omits three members where the vector says one. The generator omits exactly `opaqueHandlers`, and
+the recorded read is the same either way (`MissingMember` naming `opaqueHandlers`). The five opaque-leaf
+vectors Program authored are now generated here, byte for byte. Rejected: making the generator
+reproduce the hand-move, which would publish a vector that does not test what its description says.
+**Consequence:** the program repository's copy is re-copied from this one (the declared direction in
+`copies.json`), not the other way.
+
+**Rejected: declaring `Dispatch` opaque here.** Program 2130 made the mark available; adopting it on
+the UI witness changes what every host's coverage reports and is fuaran#2194's change, with its own
+migration. This raise declares no opaque leaf, so no host's coverage moves.
+
 ## 2026-10-08 — D11: `Confirm` is a two-event round trip on the bounded path; the pending question is host state, carried in reserved store slots
 
 **Decided (Phase 2106).** On the bounded path a `Confirm` is two events. The GESTURE asks: it emits the

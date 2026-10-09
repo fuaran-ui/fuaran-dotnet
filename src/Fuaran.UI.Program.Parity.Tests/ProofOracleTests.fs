@@ -449,7 +449,8 @@ let private dispatchCase: string * string * Action<obj> =
 /// arm that answers is the only way the chain arm's interesting case is
 /// reached at all.
 let private answeringArm: HandlerArm<obj> =
-    { Answer =
+    { ReadExtent = ExtentReader.live
+      Answer =
         fun _ endpoint s placement ->
             if endpoint = "/api/answered" then
                 Some

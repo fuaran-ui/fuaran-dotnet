@@ -57,14 +57,14 @@ let usesOfExpr (binding: Binding<JVal>) : BindingUse list =
 /// registry key cannot drift apart — the registry is keyed on exactly this
 /// discriminator.
 let private kindOf (sample: ClientEffect) : LeafDeclaration =
-    { EffectKinds = [ ClientEffect.kind sample ]
-      HostCalls = [] }
+    { LeafDeclaration.none with
+        EffectKinds = [ ClientEffect.kind sample ] }
 
 let private hostCall (channel: string) (name: string) : LeafDeclaration =
-    { EffectKinds = []
-      HostCalls = [ { Channel = channel; Name = name } ] }
+    { LeafDeclaration.none with
+        HostCalls = [ { Channel = channel; Name = name } ] }
 
-let private nothing: LeafDeclaration = { EffectKinds = []; HostCalls = [] }
+let private nothing: LeafDeclaration = LeafDeclaration.none
 
 // `Action.Dispatch` is marked in-process-only upstream, so naming it raises
 // FS0044. `view` and `lower` are TOTAL analyses of the closed union: they must

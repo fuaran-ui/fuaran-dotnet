@@ -390,6 +390,7 @@ let private modelWitness: Staging.witness<Node<obj>, BindingSources, Fuaran.Core
       w_query = fun _ _ _ -> failwith "the replay differential plans nothing"
       w_apply = fun _ _ -> failwith "the replay differential plans nothing"
       w_op_view = fun _ -> failwith "the replay differential plans nothing"
+      w_read_extent = fun _ _ -> failwith "the replay differential plans nothing"
       w_assign = fun _ _ bindings -> bindings
       w_slot_refused = fun _ -> failwith "the replay differential plans nothing" }
 
@@ -1213,11 +1214,10 @@ let tests =
                     // second's — a performer that did the first thing it said and
                     // then claimed more than its op reaches.
                     let withinReach: OpContract<Node<obj>, TreeOp<obj>> =
-                        { Name = "within-reach"
-                          Holds = fun _ op _ -> enc op = enc removeRefresh }
+                        OpContract.at "within-reach" (fun _ op _ -> enc op = enc removeRefresh)
 
                     let overreaching =
-                        OpPerformance.performedChecked withinReach (fun _ op ->
+                        OpPerformance.performedChecked [ withinReach ] (fun _ _ op ->
                             log.Record op
                             Ok(jstr ("did:" + enc op)))
 
@@ -1257,7 +1257,7 @@ let tests =
                         runEdits
                             services
                             (auditRegistry audit)
-                            (OpPerformance.performedChecked withinReach (fun _ op ->
+                            (OpPerformance.performedChecked [ withinReach ] (fun _ _ op ->
                                 replayLog.Record op
                                 Ok(jstr "never")))
                             editsThenAudit

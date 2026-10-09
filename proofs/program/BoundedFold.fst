@@ -170,6 +170,13 @@ let rec app (#a: Type0) (xs: list a) (ys: list a) : Tot (list a) (decreases xs) 
   | [] -> ys
   | x :: rest -> x :: app rest ys
 
+/// F#: `List.length`. Defined here for the reason above; the store-bound
+/// `Each`'s ceiling check reads it (Phase 1991).
+let rec length (#a: Type0) (xs: list a) : Tot nat (decreases xs) =
+  match xs with
+  | [] -> 0
+  | _ :: rest -> 1 + length rest
+
 (* ───────────────────────────────────────────────────────────────────
    The store — D18 §3.4 `StoreWitness`'s one state channel, today
    `BoundedActions.BoundedStore` (= `BindingSources`).`State`.
@@ -297,6 +304,15 @@ type action_view (a: Type0) (e: Type0) (v: Type0) =
   /// and the trace, the inverse and the cost are a sequence's. An empty
   /// collection is the empty sequence.
   | VEach : act: a -> elements: list (action_view a e v) -> action_view a e v
+  /// `Each of collection: Collection<'Expr> (Stored (source, ceiling)) *
+  /// placeholder * body` — PER-ELEMENT ITERATION over a collection the
+  /// STORE holds (Phase 1991, D36), seen LOWERED over the extent the store
+  /// holds at entry: `extent` is what the host read through the same
+  /// resolution the fold performs, `elements` the body once per element
+  /// of it, substituted. The fold reads the source ONCE at entry and
+  /// checks the ceiling before the first element; past the check it runs
+  /// the elements exactly as `VEach` does (`each_of_is_each_over_extent`).
+  | VEachOf : act: a -> source: e -> ceiling: nat -> extent: list v -> elements: list (action_view a e v) -> action_view a e v
   /// `Leaf of LeafDeclaration` — every other domain act. The declaration
   /// is the DEMANDED projection's business and the fold never reads it,
   /// so it is not carried; what the fold does with a leaf is `w_lower`.
@@ -342,6 +358,11 @@ noeq type witness (a: Type0) (e: Type0) (v: Type0) (eff: Type0) = {
   /// `JInt n` itself; here `v` is abstract. Nothing proved here depends
   /// on what it answers.
   w_as_count: v -> opt nat;
+  /// The store-bound `Each`'s collection test (Phase 1991): whether a
+  /// resolved value is a collection, and its elements. The same kind of
+  /// arrow as `w_as_count` — the core reads `JArr xs` itself; here `v` is
+  /// abstract. Nothing proved here depends on what it answers.
+  w_as_elements: v -> opt (list v);
 }
 
 /// F#: `BoundedDiagnostic` — program-owned, so not generic. The action
@@ -590,6 +611,23 @@ let rec fold (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0) (#p: Type0)
   // as `VSequence` runs its members — `each_is_lowering` is the equation.
   | VEach _ elements -> fold_many w ar node_id elements s pl
 
+  // PER-ELEMENT ITERATION over a collection the STORE holds (Phase 1991).
+  // The source is resolved against the store ONCE, at entry, read as a
+  // collection, and its extent checked against the declared ceiling — an
+  // extent over it halts here, before the first element, which is what
+  // lets the budget price it at the ceiling without the store. Past the
+  // check the elements run exactly as `VEach`'s do.
+  | VEachOf act source ceiling _ elements ->
+    (match w.w_resolve s source with
+     | Resolved jv ->
+       (match w.w_as_elements jv with
+        | OSome xs ->
+          if length xs <= ceiling then fold_many w ar node_id elements s pl
+          else (halted node_id (w.w_describe act) "the collection's extent is over its declared ceiling" s, pl)
+        | ONone -> (halted node_id (w.w_describe act) "the collection did not resolve to a list" s, pl))
+     | NotResolved -> (halted node_id (w.w_describe act) "the collection did not resolve to a value" s, pl)
+     | Errored m -> (halted node_id (w.w_describe act) m s, pl))
+
 and fold_many (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0) (#p: Type0)
               (w: witness a e v eff) (ar: handler_arm v eff p)
               (node_id: string) (ops: list (action_view a e v)) (s: store v) (pl: p)
@@ -662,6 +700,7 @@ let handled_view (#a: Type0) (#e: Type0) (#v: Type0) (x: action_view a e v) : bo
   | VChoose _ _ _ _ _ -> true
   | VRepeat _ _ _ -> true
   | VEach _ _ -> true
+  | VEachOf _ _ _ _ _ -> true
   | VLeaf _ -> true
 
 /// The COMPOSITION shapes (Phase 1976; Phase 1990): the four whose step
@@ -670,7 +709,7 @@ let handled_view (#a: Type0) (#e: Type0) (#v: Type0) (x: action_view a e v) : bo
 /// repeat, a per-element iteration.
 [@@ noextract_to "FSharp"]
 let composition (#a: Type0) (#e: Type0) (#v: Type0) (x: action_view a e v) : bool =
-  VSequence? x || VChoose? x || VRepeat? x || VEach? x
+  VSequence? x || VChoose? x || VRepeat? x || VEach? x || VEachOf? x
 
 [@@ noextract_to "FSharp"]
 let at_most_one (#a: Type0) (l: list a) : bool =
@@ -755,6 +794,7 @@ let fold_total (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0) (#p: Type0)
   | VChoose _ _ _ _ _ -> ()
   | VRepeat _ _ _ -> ()
   | VEach _ _ -> ()
+  | VEachOf _ _ _ _ _ -> ()
 
 // ─── 2. The fold is blind to everything but the view ─────────────────
 
@@ -783,6 +823,8 @@ let rec same_shape (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0)
     w.w_describe ax == w.w_describe ay /\ c1 == c2 /\ same_shape w b1 b2
   | VEach ax e1, VEach ay e2 ->
     w.w_describe ax == w.w_describe ay /\ same_shape_list w e1 e2
+  | VEachOf ax s1 c1 _ e1, VEachOf ay s2 c2 _ e2 ->
+    w.w_describe ax == w.w_describe ay /\ s1 == s2 /\ c1 == c2 /\ same_shape_list w e1 e2
   | VLeaf ax, VLeaf ay ->
     w.w_describe ax == w.w_describe ay /\
     (forall (n: string) (st: store v). w.w_lower n ax st == w.w_lower n ay st)
@@ -840,6 +882,15 @@ let rec fold_blind (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0) (#p: Type0)
   // Per-element iteration: same-shaped elements fold alike, as a
   // sequence's members do.
   | VEach _ e1, VEach _ e2 -> fold_blind_list w ar node_id e1 e2 s pl
+  // A store-bound iteration: the same source resolves to the same extent,
+  // checked against the same ceiling, and the elements fold alike.
+  | VEachOf _ source ceiling _ e1, VEachOf _ _ _ _ e2 ->
+    (match w.w_resolve s source with
+     | Resolved jv ->
+       (match w.w_as_elements jv with
+        | OSome xs -> if length xs <= ceiling then fold_blind_list w ar node_id e1 e2 s pl else ()
+        | ONone -> ())
+     | _ -> ())
   | _, _ -> ()
 
 and fold_blind_list (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0) (#p: Type0)
@@ -1065,6 +1116,15 @@ let rec fold_reserved_untouched (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0
         | _ -> ()))
   // A per-element iteration writes only through its elements, in sequence.
   | VEach _ elements -> fold_reserved_untouched_list w ar node_id elements s pl kk
+  // A store-bound iteration reads the store and writes only through its
+  // elements, once the extent has passed the ceiling.
+  | VEachOf _ source ceiling _ elements ->
+    (match w.w_resolve s source with
+     | Resolved jv ->
+       (match w.w_as_elements jv with
+        | OSome xs -> if length xs <= ceiling then fold_reserved_untouched_list w ar node_id elements s pl kk else ()
+        | ONone -> ())
+     | _ -> ())
   | VLeaf act ->
     (match w.w_lower node_id act s with
      | Emit _ -> ()
@@ -1120,6 +1180,7 @@ let rec has_require (#a: Type0) (#e: Type0) (#v: Type0) (x: action_view a e v)
   | VChoose _ _ when_true when_false _ -> has_require when_true || has_require when_false
   | VRepeat _ _ body -> has_require body
   | VEach _ elements -> has_require_list elements
+  | VEachOf _ _ _ _ elements -> has_require_list elements
   | VAssign _ _ _ _ -> false
   | VCall _ _ _ -> false
   | VLeaf _ -> false
@@ -1147,6 +1208,10 @@ let rec has_flow (#a: Type0) (#e: Type0) (#v: Type0) (x: action_view a e v)
   | VChoose _ _ _ _ _ -> true
   | VRepeat _ _ _ -> true
   | VEach _ elements -> has_flow_list elements
+  // A store-bound iteration (Phase 1991) IS a flow shape: its extent is
+  // read from the store and checked against a ceiling, and it halts when
+  // the read fails or the extent is over it.
+  | VEachOf _ _ _ _ _ -> true
   | VRequire _ _ -> false
   | VAssign _ _ _ _ -> false
   | VCall _ _ _ -> false
@@ -1212,6 +1277,7 @@ let rec fold_no_halting_shape_no_halt (#a: Type0) (#e: Type0) (#v: Type0) (#eff:
   | VRequire _ _ -> ()
   | VChoose _ _ _ _ _ -> ()
   | VRepeat _ _ _ -> ()
+  | VEachOf _ _ _ _ _ -> ()
 
 and fold_no_halting_shape_no_halt_list (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0) (#p: Type0)
                                        (w: witness a e v eff) (ar: handler_arm v eff p)
@@ -1287,6 +1353,10 @@ type trace (v: Type0) =
   /// steps, kept under their own constructor so a reader of the trace
   /// sees how many elements ran, and inverted as a sequence is.
   | TEach : elements: list (trace v) -> trace v
+  /// A store-bound `Each`'s run (Phase 1991): the extent the read ANSWERED
+  /// at entry, beside the steps of the elements that ran. The inverse reads
+  /// this record and never the live store.
+  | TEachOf : extent: list v -> elements: list (trace v) -> trace v
 
 /// The fold, recording its trace. Arm for arm the same as `fold`
 /// (`traced_agrees` proves the outcome and the placement equal), plus the
@@ -1408,6 +1478,21 @@ let rec fold_traced (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0) (#p: Type0
   | VEach _ elements ->
     let (o, p', steps) = fold_traced_many w ar node_id elements s pl in (o, p', TEach steps)
 
+  | VEachOf act source ceiling _ elements ->
+    (match w.w_resolve s source with
+     | Resolved jv ->
+       (match w.w_as_elements jv with
+        | OSome xs ->
+          if length xs <= ceiling then
+            let (o, p', steps) = fold_traced_many w ar node_id elements s pl in (o, p', TEachOf xs steps)
+          else
+            (halted node_id (w.w_describe act) "the collection's extent is over its declared ceiling" s, pl, TNothing)
+        | ONone ->
+          (halted node_id (w.w_describe act) "the collection did not resolve to a list" s, pl, TNothing))
+     | NotResolved ->
+       (halted node_id (w.w_describe act) "the collection did not resolve to a value" s, pl, TNothing)
+     | Errored m -> (halted node_id (w.w_describe act) m s, pl, TNothing))
+
 and fold_traced_many (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0) (#p: Type0)
                      (w: witness a e v eff) (ar: handler_arm v eff p)
                      (node_id: string) (ops: list (action_view a e v)) (s: store v) (pl: p)
@@ -1462,6 +1547,13 @@ let rec traced_agrees (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0) (#p: Typ
   match x with
   | VSequence _ ops -> traced_agrees_many w ar node_id ops s pl
   | VEach _ elements -> traced_agrees_many w ar node_id elements s pl
+  | VEachOf _ source ceiling _ elements ->
+    (match w.w_resolve s source with
+     | Resolved jv ->
+       (match w.w_as_elements jv with
+        | OSome xs -> if length xs <= ceiling then traced_agrees_many w ar node_id elements s pl else ()
+        | ONone -> ())
+     | _ -> ())
   | VChoose _ entry when_true when_false _ ->
     (match w.w_resolve s entry with
      | Resolved jv ->
@@ -1523,6 +1615,10 @@ let rec reversible (#a: Type0) (#e: Type0) (#v: Type0) (x: action_view a e v)
   | VChoose _ _ when_true when_false exit -> OSome? exit && reversible when_true && reversible when_false
   | VRepeat _ count body -> BLiteral? count && reversible body
   | VEach _ elements -> reversible_list elements
+  // IN the fragment (Phase 1991, D36 item 3): the extent is recorded in
+  // the trace, so the inverse reads the record and never re-reads the
+  // store the body may have overwritten.
+  | VEachOf _ _ _ _ elements -> reversible_list elements
   | VCall _ _ _ -> false
   | VLeaf _ -> false
 
@@ -1544,6 +1640,7 @@ let rec restorable (#v: Type0) (tr: trace v) : Tot bool (decreases %[tr; 0]) =
   | TChoose _ arm -> restorable arm
   | TRepeat iterations -> restorable_list iterations
   | TEach elements -> restorable_list elements
+  | TEachOf _ elements -> restorable_list elements
 
 and restorable_list (#v: Type0) (steps: list (trace v)) : Tot bool (decreases %[steps; 1]) =
   match steps with
@@ -1564,6 +1661,7 @@ let act_of (#a: Type0) (#e: Type0) (#v: Type0) (x: action_view a e v) : a =
   | VChoose act _ _ _ _ -> act
   | VRepeat act _ _ -> act
   | VEach act _ -> act
+  | VEachOf act _ _ _ _ -> act
   | VLeaf act -> act
 
 /// **The inverse of a RUN** — a program in the fragment, built from the
@@ -1605,6 +1703,7 @@ let rec reverse (#a: Type0) (#e: Type0) (#v: Type0) (x: action_view a e v) (tr: 
     VChoose act exit (VSequence act []) (reverse when_false arm) (OSome entry)
   | VRepeat act (BLiteral n) body, TRepeat iterations -> VSequence act (reverse_many (replicate n body) iterations)
   | VEach act elements, TEach steps -> VSequence act (reverse_many elements steps)
+  | VEachOf act _ _ _ elements, TEachOf _ steps -> VSequence act (reverse_many elements steps)
   | _, _ -> VSequence (act_of x) []
 
 and reverse_many (#a: Type0) (#e: Type0) (#v: Type0)
@@ -1736,6 +1835,16 @@ let rec reverse_run (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0) (#p: Type0
   // is: the forward trace is the elements' steps and the inverse is their
   // inverses in reverse order.
   | VEach _ elements -> reverse_run_many w ar node_id elements s pl pl'
+  // A store-bound iteration is undone as the sequence of the elements the
+  // recorded extent lowered to; a run that halted at the read is excluded
+  // by the hypothesis.
+  | VEachOf _ source ceiling _ elements ->
+    (match w.w_resolve s source with
+     | Resolved jv ->
+       (match w.w_as_elements jv with
+        | OSome xs -> if length xs <= ceiling then reverse_run_many w ar node_id elements s pl pl' else ()
+        | ONone -> ())
+     | _ -> ())
   | VCall _ _ _ -> ()
   | VLeaf _ -> ()
 
@@ -1854,6 +1963,9 @@ let rec view_cost (#a: Type0) (#e: Type0) (#v: Type0) (x: action_view a e v)
   // summed — the body's cost once per element of a literal collection,
   // with no step for a bound, because a literal collection is not read.
   | VEach _ elements -> view_cost_list elements
+  // A store-bound `Each` (Phase 1991) is one step for the read and its
+  // lowered elements' costs summed.
+  | VEachOf _ _ _ _ elements -> 1 + view_cost_list elements
   | VAssign _ _ _ _ -> 1
   | VCall _ _ _ -> 1
   | VRequire _ _ -> 1
@@ -1875,6 +1987,7 @@ let rec trace_steps (#v: Type0) (tr: trace v) : Tot nat (decreases %[tr; 0]) =
   | TChoose _ arm -> trace_steps arm
   | TRepeat iterations -> steps_sum iterations
   | TEach elements -> steps_sum elements
+  | TEachOf _ elements -> steps_sum elements
 
 and steps_sum (#v: Type0) (steps: list (trace v)) : Tot nat (decreases %[steps; 1]) =
   match steps with
@@ -1900,6 +2013,13 @@ let rec fold_steps_within_cost (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0)
   match x with
   | VSequence _ ops -> fold_steps_within_cost_list w ar node_id ops s pl
   | VEach _ elements -> fold_steps_within_cost_list w ar node_id elements s pl
+  | VEachOf _ source ceiling _ elements ->
+    (match w.w_resolve s source with
+     | Resolved jv ->
+       (match w.w_as_elements jv with
+        | OSome xs -> if length xs <= ceiling then fold_steps_within_cost_list w ar node_id elements s pl else ()
+        | ONone -> ())
+     | _ -> ())
   | VChoose _ entry when_true when_false _ ->
     (match w.w_resolve s entry with
      | Resolved jv ->
@@ -2001,6 +2121,107 @@ let each_is_lowering (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0) (#p: Type
 let each_reverse_is_sequence_reverse (#a: Type0) (#e: Type0) (#v: Type0)
                                      (act: a) (elements: list (action_view a e v)) (steps: list (trace v))
   : Lemma (reverse (VEach act elements) (TEach steps) == reverse (VSequence act elements) (TSeq steps)) = ()
+
+// ─── 10. A store-bound `Each` (Phase 1991) ───────────────────────────
+
+(* ───────────────────────────────────────────────────────────────────
+   Per-element iteration over a collection the STORE holds (D36). The
+   view still carries the lowered form — the elements the host
+   substituted over the extent it read — and what the model ADDS is the
+   read: the source resolved once at entry through `w_resolve`, read as
+   a collection through `w_as_elements`, and the ceiling checked against
+   what it answered before the first element. So the equation with
+   `VEach` is CONDITIONAL on the store holding the extent the view was
+   lowered over — the differential host's obligation, stated — and the
+   refusal over the ceiling runs nothing. The trace records the extent
+   the arrow ANSWERED, which is how the model says "recorded".
+   ─────────────────────────────────────────────────────────────────── *)
+
+/// **`each_of_is_each_over_extent`.** When the source resolves to a
+/// collection whose extent is within the ceiling, a store-bound `Each`
+/// folds to the same outcome and placement as the literal `Each` over the
+/// same lowered elements; traced, it answers the same outcome and
+/// placement, recording the extent the read answered beside the same
+/// element steps; and it is in the reversible fragment exactly when the
+/// literal `Each` is.
+let each_of_is_each_over_extent (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0) (#p: Type0)
+                                (w: witness a e v eff) (ar: handler_arm v eff p)
+                                (node_id: string) (act: a) (source: e) (ceiling: nat) (jv: v) (xs: list v)
+                                (elements: list (action_view a e v)) (s: store v) (pl: p)
+  : Lemma
+      (requires w.w_resolve s source == Resolved jv /\ w.w_as_elements jv == OSome xs /\ length xs <= ceiling)
+      (ensures
+        fold w ar node_id (VEachOf act source ceiling xs elements) s pl == fold w ar node_id (VEach act elements) s pl /\
+        (let (o, p', tr) = fold_traced w ar node_id (VEachOf act source ceiling xs elements) s pl in
+         let (o', p'', tr') = fold_traced w ar node_id (VEach act elements) s pl in
+         o == o' /\ p' == p'' /\ TEachOf? tr /\ TEach? tr' /\
+         TEachOf?.extent tr == xs /\ TEachOf?.elements tr == TEach?.elements tr') /\
+        reversible (VEachOf act source ceiling xs elements) == reversible (VEach act elements)) = ()
+
+/// **`each_of_over_ceiling_runs_nothing`.** When the source resolves to a
+/// collection whose extent is OVER the ceiling, the fold halts at entry
+/// with the refusal named: the store untouched, no effect, one diagnostic,
+/// and no element run. Traced, it answers the same outcome and placement
+/// and records `TNothing`, as every halting read does.
+let each_of_over_ceiling_runs_nothing (#a: Type0) (#e: Type0) (#v: Type0) (#eff: Type0) (#p: Type0)
+                                      (w: witness a e v eff) (ar: handler_arm v eff p)
+                                      (node_id: string) (act: a) (source: e) (ceiling: nat) (jv: v) (xs: list v)
+                                      (extent: list v) (elements: list (action_view a e v)) (s: store v) (pl: p)
+  : Lemma
+      (requires w.w_resolve s source == Resolved jv /\ w.w_as_elements jv == OSome xs /\ length xs > ceiling)
+      (ensures
+        fold w ar node_id (VEachOf act source ceiling extent elements) s pl ==
+        (halted node_id (w.w_describe act) "the collection's extent is over its declared ceiling" s, pl) /\
+        (let (o, p') = fold w ar node_id (VEachOf act source ceiling extent elements) s pl in
+         o.o_store == s /\ o.o_effects == [] /\ o.o_halted /\ p' == pl) /\
+        fold_traced w ar node_id (VEachOf act source ceiling extent elements) s pl ==
+        (halted node_id (w.w_describe act) "the collection's extent is over its declared ceiling" s, pl, TNothing)) = ()
+
+/// **`each_of_reverse_is_sequence_reverse`.** The inverse of a store-bound
+/// `Each` run is the inverse of the run of the sequence of its elements.
+/// `reverse` takes a program and a trace and NO store, so the inverse is
+/// built from the record — the recorded extent's lowering — and never
+/// from the live store: D36's "never the live store" clause, by type.
+let each_of_reverse_is_sequence_reverse (#a: Type0) (#e: Type0) (#v: Type0)
+                                        (act: a) (source: e) (ceiling: nat) (extent: list v)
+                                        (elements: list (action_view a e v))
+                                        (recorded: list v) (steps: list (trace v))
+  : Lemma (reverse (VEachOf act source ceiling extent elements) (TEachOf recorded steps) ==
+           reverse (VSequence act elements) (TSeq steps)) = ()
+
+/// **`each_of_priced_at_the_read_plus_elements`.** A store-bound `Each` is
+/// priced as one step for the read plus its lowered sequence.
+let each_of_priced_at_the_read_plus_elements (#a: Type0) (#e: Type0) (#v: Type0)
+                                             (act: a) (source: e) (ceiling: nat) (extent: list v)
+                                             (elements: list (action_view a e v))
+  : Lemma (view_cost (VEachOf act source ceiling extent elements) == 1 + view_cost (VSequence act elements)) = ()
+
+/// Every element costs at most `c`. Ghost.
+[@@ noextract_to "FSharp"]
+let rec all_cost_within (#a: Type0) (#e: Type0) (#v: Type0) (c: nat) (els: list (action_view a e v))
+  : Tot bool (decreases els) =
+  match els with
+  | [] -> true
+  | x :: rest -> view_cost x <= c && all_cost_within c rest
+
+let rec view_cost_list_within (#a: Type0) (#e: Type0) (#v: Type0) (c: nat) (els: list (action_view a e v))
+  : Lemma (requires all_cost_within c els) (ensures view_cost_list els <= times (length els) c) (decreases els) =
+  match els with
+  | [] -> ()
+  | _ :: rest -> view_cost_list_within c rest
+
+/// **`each_of_priced_within_ceiling`.** Lowered over an extent within the
+/// ceiling, with every element costing at most `c`, a store-bound `Each`
+/// costs at most one step for the read plus `c` per element of the
+/// ceiling — the price the budget computes from the tree alone (D36 item
+/// 5: the parameter-bound repeat's rule at the top of its range).
+let each_of_priced_within_ceiling (#a: Type0) (#e: Type0) (#v: Type0)
+                                  (act: a) (source: e) (ceiling: nat) (extent: list v)
+                                  (elements: list (action_view a e v)) (c: nat)
+  : Lemma (requires length elements <= ceiling /\ all_cost_within c elements)
+          (ensures view_cost (VEachOf act source ceiling extent elements) <= 1 + times ceiling c) =
+  view_cost_list_within c elements;
+  times_monotone (length elements) ceiling c
 
 (* ═══════════════════════════════════════════════════════════════════
    THE UI WITNESS — today's fourteen arms seen through the view.
@@ -2322,7 +2543,8 @@ let ui_witness (#v: Type0) (#b: Type0) (#k: Type0) (ax: axioms v b)
     w_is_true = (fun _ -> false);
     // Unreachable too: no arm views as a repeat (`ui_view_no_flow`). The
     // same fail-closed constant — an unreadable count halts.
-    w_as_count = (fun _ -> ONone) }
+    w_as_count = (fun _ -> ONone);
+    w_as_elements = (fun _ -> ONone) }
 
 /// **The fold at the UI witness** — `BoundedActions.runBoundedActionWith`
 /// today, `BoundedActions.run uiWitness` after Phase 1897. Phase 1715's

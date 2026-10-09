@@ -37,6 +37,15 @@ let rec app = (fun ( xs  :  Prims.list<'a> ) ( ys  :  Prims.list<'a> ) -> (match
      end))
 
 
+let rec length = (fun ( xs  :  Prims.list<'a> ) -> (match (xs) with
+| [] -> begin
+     (Prims.parse_int "0")
+     end
+| (uu___)::rest -> begin
+     ((Prims.parse_int "1") + (length rest))
+     end))
+
+
 type key = Prims.string
 
 
@@ -168,6 +177,7 @@ type action_view<'a, 'e, 'v> =
 | VChoose of 'a * 'e * action_view<'a, 'e, 'v> * action_view<'a, 'e, 'v> * opt<'e>
 | VRepeat of 'a * bound<'e> * action_view<'a, 'e, 'v>
 | VEach of 'a * Prims.list<action_view<'a, 'e, 'v>>
+| VEachOf of 'a * 'e * Prims.nat * Prims.list<'v> * Prims.list<action_view<'a, 'e, 'v>>
 | VLeaf of 'a
 
 
@@ -360,6 +370,45 @@ let __proj__VEach__item__elements = (fun ( projectee  :  action_view<'a, 'e, 'v>
      end))
 
 
+let uu___is_VEachOf = (fun ( projectee  :  action_view<'a, 'e, 'v> ) -> (match (projectee) with
+| VEachOf (act, source, ceiling, extent, elements) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__VEachOf__item__act = (fun ( projectee  :  action_view<'a, 'e, 'v> ) -> (match (projectee) with
+| VEachOf (act, source, ceiling, extent, elements) -> begin
+     act
+     end))
+
+
+let __proj__VEachOf__item__source = (fun ( projectee  :  action_view<'a, 'e, 'v> ) -> (match (projectee) with
+| VEachOf (act, source, ceiling, extent, elements) -> begin
+     source
+     end))
+
+
+let __proj__VEachOf__item__ceiling = (fun ( projectee  :  action_view<'a, 'e, 'v> ) -> (match (projectee) with
+| VEachOf (act, source, ceiling, extent, elements) -> begin
+     ceiling
+     end))
+
+
+let __proj__VEachOf__item__extent = (fun ( projectee  :  action_view<'a, 'e, 'v> ) -> (match (projectee) with
+| VEachOf (act, source, ceiling, extent, elements) -> begin
+     extent
+     end))
+
+
+let __proj__VEachOf__item__elements = (fun ( projectee  :  action_view<'a, 'e, 'v> ) -> (match (projectee) with
+| VEachOf (act, source, ceiling, extent, elements) -> begin
+     elements
+     end))
+
+
 let uu___is_VLeaf = (fun ( projectee  :  action_view<'a, 'e, 'v> ) -> (match (projectee) with
 | VLeaf (act) -> begin
      true
@@ -418,54 +467,60 @@ let uu___is_Decline = (fun ( projectee  :  leaf_outcome<'eff> ) -> (match (proje
      false
      end))
 
-type witness<'a, 'e, 'v, 'eff> = {w_view : 'a  ->  action_view<'a, 'e, 'v>; w_lower : Prims.string  ->  'a  ->  store<'v>  ->  leaf_outcome<'eff>; w_describe : 'a  ->  Prims.string; w_resolve : store<'v>  ->  'e  ->  resolution<'v>; w_is_reserved : key  ->  Prims.bool; w_reserved_prefix : Prims.string; w_is_true : 'v  ->  Prims.bool; w_as_count : 'v  ->  opt<Prims.nat>}
+type witness<'a, 'e, 'v, 'eff> = {w_view : 'a  ->  action_view<'a, 'e, 'v>; w_lower : Prims.string  ->  'a  ->  store<'v>  ->  leaf_outcome<'eff>; w_describe : 'a  ->  Prims.string; w_resolve : store<'v>  ->  'e  ->  resolution<'v>; w_is_reserved : key  ->  Prims.bool; w_reserved_prefix : Prims.string; w_is_true : 'v  ->  Prims.bool; w_as_count : 'v  ->  opt<Prims.nat>; w_as_elements : 'v  ->  opt<Prims.list<'v>>}
 
 
 let __proj__Mkwitness__item__w_view = (fun ( projectee  :  witness<'a, 'e, 'v, 'eff> ) -> (match (projectee) with
-| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count} -> begin
+| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count; w_as_elements = w_as_elements} -> begin
      w_view
      end))
 
 
 let __proj__Mkwitness__item__w_lower = (fun ( projectee  :  witness<'a, 'e, 'v, 'eff> ) -> (match (projectee) with
-| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count} -> begin
+| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count; w_as_elements = w_as_elements} -> begin
      w_lower
      end))
 
 
 let __proj__Mkwitness__item__w_describe = (fun ( projectee  :  witness<'a, 'e, 'v, 'eff> ) -> (match (projectee) with
-| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count} -> begin
+| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count; w_as_elements = w_as_elements} -> begin
      w_describe
      end))
 
 
 let __proj__Mkwitness__item__w_resolve = (fun ( projectee  :  witness<'a, 'e, 'v, 'eff> ) -> (match (projectee) with
-| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count} -> begin
+| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count; w_as_elements = w_as_elements} -> begin
      w_resolve
      end))
 
 
 let __proj__Mkwitness__item__w_is_reserved = (fun ( projectee  :  witness<'a, 'e, 'v, 'eff> ) -> (match (projectee) with
-| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count} -> begin
+| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count; w_as_elements = w_as_elements} -> begin
      w_is_reserved
      end))
 
 
 let __proj__Mkwitness__item__w_reserved_prefix = (fun ( projectee  :  witness<'a, 'e, 'v, 'eff> ) -> (match (projectee) with
-| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count} -> begin
+| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count; w_as_elements = w_as_elements} -> begin
      w_reserved_prefix
      end))
 
 
 let __proj__Mkwitness__item__w_is_true = (fun ( projectee  :  witness<'a, 'e, 'v, 'eff> ) -> (match (projectee) with
-| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count} -> begin
+| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count; w_as_elements = w_as_elements} -> begin
      w_is_true
      end))
 
 
 let __proj__Mkwitness__item__w_as_count = (fun ( projectee  :  witness<'a, 'e, 'v, 'eff> ) -> (match (projectee) with
-| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count} -> begin
+| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count; w_as_elements = w_as_elements} -> begin
      w_as_count
+     end))
+
+
+let __proj__Mkwitness__item__w_as_elements = (fun ( projectee  :  witness<'a, 'e, 'v, 'eff> ) -> (match (projectee) with
+| {w_view = w_view; w_lower = w_lower; w_describe = w_describe; w_resolve = w_resolve; w_is_reserved = w_is_reserved; w_reserved_prefix = w_reserved_prefix; w_is_true = w_is_true; w_as_count = w_as_count; w_as_elements = w_as_elements} -> begin
+     w_as_elements
      end))
 
 type diagnostic =
@@ -802,6 +857,29 @@ if ((lo <= n) && (n <= hi)) then begin
      end
 | VEach (uu___, elements) -> begin
      (fold_many w ar node_id elements s pl)
+     end
+| VEachOf (act, source, ceiling, uu___, elements) -> begin
+     (match ((w.w_resolve s source)) with
+| Resolved (jv) -> begin
+     (match ((w.w_as_elements jv)) with
+| OSome (xs) -> begin
+      
+if ((length xs) <= ceiling) then begin
+     (fold_many w ar node_id elements s pl)
+     end else begin
+     (((halted node_id (w.w_describe act) "the collection\'s extent is over its declared ceiling" s)), (pl))
+     end
+     end
+| ONone -> begin
+     (((halted node_id (w.w_describe act) "the collection did not resolve to a list" s)), (pl))
+     end)
+     end
+| NotResolved -> begin
+     (((halted node_id (w.w_describe act) "the collection did not resolve to a value" s)), (pl))
+     end
+| Errored (m) -> begin
+     (((halted node_id (w.w_describe act) m s)), (pl))
+     end)
      end))
 and fold_many = (fun ( w  :  witness<'a, 'e, 'v, 'eff> ) ( ar  :  handler_arm<'v, 'eff, 'p> ) ( node_id  :  Prims.string ) ( ops  :  Prims.list<action_view<'a, 'e, 'v>> ) ( s  :  store<'v> ) ( pl  :  'p ) -> (match (ops) with
 | [] -> begin
@@ -861,6 +939,7 @@ type trace<'v> =
 | TChoose of Prims.bool * trace<'v>
 | TRepeat of Prims.list<trace<'v>>
 | TEach of Prims.list<trace<'v>>
+| TEachOf of Prims.list<'v> * Prims.list<trace<'v>>
 
 
 let uu___is_TNothing = (fun ( projectee  :  trace<'v> ) -> (match (projectee) with
@@ -949,6 +1028,27 @@ let uu___is_TEach = (fun ( projectee  :  trace<'v> ) -> (match (projectee) with
 
 let __proj__TEach__item__elements = (fun ( projectee  :  trace<'v> ) -> (match (projectee) with
 | TEach (elements) -> begin
+     elements
+     end))
+
+
+let uu___is_TEachOf = (fun ( projectee  :  trace<'v> ) -> (match (projectee) with
+| TEachOf (extent, elements) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__TEachOf__item__extent = (fun ( projectee  :  trace<'v> ) -> (match (projectee) with
+| TEachOf (extent, elements) -> begin
+     extent
+     end))
+
+
+let __proj__TEachOf__item__elements = (fun ( projectee  :  trace<'v> ) -> (match (projectee) with
+| TEachOf (extent, elements) -> begin
      elements
      end))
 
@@ -1149,6 +1249,35 @@ in (match (uu___1) with
 | (o, p', steps) -> begin
      ((o), (p'), (TEach (steps)))
      end))
+     end
+| VEachOf (act, source, ceiling, uu___, elements) -> begin
+     (match ((w.w_resolve s source)) with
+| Resolved (jv) -> begin
+     (match ((w.w_as_elements jv)) with
+| OSome (xs) -> begin
+      
+if ((length xs) <= ceiling) then begin
+     (
+
+let uu___1 = (fold_traced_many w ar node_id elements s pl)
+in (match (uu___1) with
+| (o, p', steps) -> begin
+     ((o), (p'), (TEachOf (xs, steps)))
+     end))
+     end else begin
+     (((halted node_id (w.w_describe act) "the collection\'s extent is over its declared ceiling" s)), (pl), (TNothing))
+     end
+     end
+| ONone -> begin
+     (((halted node_id (w.w_describe act) "the collection did not resolve to a list" s)), (pl), (TNothing))
+     end)
+     end
+| NotResolved -> begin
+     (((halted node_id (w.w_describe act) "the collection did not resolve to a value" s)), (pl), (TNothing))
+     end
+| Errored (m) -> begin
+     (((halted node_id (w.w_describe act) m s)), (pl), (TNothing))
+     end)
      end))
 and fold_traced_many = (fun ( w  :  witness<'a, 'e, 'v, 'eff> ) ( ar  :  handler_arm<'v, 'eff, 'p> ) ( node_id  :  Prims.string ) ( ops  :  Prims.list<action_view<'a, 'e, 'v>> ) ( s  :  store<'v> ) ( pl  :  'p ) -> (match (ops) with
 | [] -> begin
@@ -1233,6 +1362,9 @@ let rec reversible = (fun ( x  :  action_view<'a, 'e, 'v> ) -> (match (x) with
 | VEach (uu___, elements) -> begin
      (reversible_list elements)
      end
+| VEachOf (uu___, uu___1, uu___2, uu___3, elements) -> begin
+     (reversible_list elements)
+     end
 | VCall (uu___, uu___1, uu___2) -> begin
      false
      end
@@ -1268,6 +1400,9 @@ let rec restorable = (fun ( tr  :  trace<'v> ) -> (match (tr) with
      (restorable_list iterations)
      end
 | TEach (elements) -> begin
+     (restorable_list elements)
+     end
+| TEachOf (uu___, elements) -> begin
      (restorable_list elements)
      end))
 and restorable_list = (fun ( steps  :  Prims.list<trace<'v>> ) -> (match (steps) with
@@ -1309,6 +1444,9 @@ let act_of = (fun ( x  :  action_view<'a, 'e, 'v> ) -> (match (x) with
 | VEach (act, uu___) -> begin
      act
      end
+| VEachOf (act, uu___, uu___1, uu___2, uu___3) -> begin
+     act
+     end
 | VLeaf (act) -> begin
      act
      end))
@@ -1334,6 +1472,9 @@ let rec reverse = (fun ( x  :  action_view<'a, 'e, 'v> ) ( tr  :  trace<'v> ) ->
      VSequence (act, (reverse_many (replicate n body) iterations))
      end
 | (VEach (act, elements), TEach (steps)) -> begin
+     VSequence (act, (reverse_many elements steps))
+     end
+| (VEachOf (act, uu___, uu___1, uu___2, elements), TEachOf (uu___3, steps)) -> begin
      VSequence (act, (reverse_many elements steps))
      end
 | (uu___, uu___1) -> begin
@@ -2357,7 +2498,7 @@ let ui_resolve = (fun ( ax  :  axioms<'v, 'b> ) ( s  :  store<'v> ) ( binding  :
      end))
 
 
-let ui_witness = (fun ( ax  :  axioms<'v, 'b> ) -> {w_view = ui_view; w_lower = (ui_lower ax); w_describe = (describe ax); w_resolve = (ui_resolve ax); w_is_reserved = ax.is_reserved; w_reserved_prefix = ax.reserved_prefix; w_is_true = (fun ( uu___  :  'v ) -> false); w_as_count = (fun ( uu___  :  'v ) -> ONone)})
+let ui_witness = (fun ( ax  :  axioms<'v, 'b> ) -> {w_view = ui_view; w_lower = (ui_lower ax); w_describe = (describe ax); w_resolve = (ui_resolve ax); w_is_reserved = ax.is_reserved; w_reserved_prefix = ax.reserved_prefix; w_is_true = (fun ( uu___  :  'v ) -> false); w_as_count = (fun ( uu___  :  'v ) -> ONone); w_as_elements = (fun ( uu___  :  'v ) -> ONone)})
 
 
 let run = (fun ( ax  :  axioms<'v, 'b> ) ( ar  :  arm<'v, 'p> ) ( node_id  :  Prims.string ) ( a  :  action<'v, 'b, 'k> ) ( s  :  store<'v> ) ( pl  :  'p ) -> (run_action (ui_witness ax) ar node_id a s pl))

@@ -96,11 +96,18 @@ let private emptyServer =
 let private docWith (server: string) =
     "{\"kind\":\"demanded\",\"version\":"
     + v
-    + ",\"effects\":[],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"server\":"
+    + ",\"effects\":[],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"iterations\":[],\"opaqueLeaves\":[],\"server\":"
     + server
     + "}"
 
 let private canonical = docWith emptyServer
+
+/// The canonical document with no server walk and the given opaque leaves
+/// (Program Phase 2130, document version 8).
+let private withOpaqueLeaves (leaves: string) =
+    canonical
+        .Replace("\"server\":" + emptyServer, "\"server\":null")
+        .Replace("\"opaqueLeaves\":[]", "\"opaqueLeaves\":" + leaves)
 
 /// A server tier with one member replaced, every other member at its empty value.
 let private serverWith (key: string) (value: string) =
@@ -194,6 +201,23 @@ let vectors: (string * string * string) list =
                "[{\"function\":\"b\",\"capability\":\"host:b\"},{\"function\":\"a\",\"capability\":\"host:a\"}]"
        ),
        "The same rule in the server tier.")
+      ("opaque-leaves",
+       withOpaqueLeaves
+           "[{\"reason\":\"in-process\",\"name\":\"Relay\"},{\"reason\":\"in-process\",\"name\":\"Signal\"}]",
+       "A tree reaching leaves that declare themselves opaque, each named with its reason class (Phase 2130). Carried, never dropped: a reader that dropped one would report a program whose escape it cannot see as one that demands nothing.")
+      ("unknown-opaque-reason",
+       withOpaqueLeaves "[{\"reason\":\"teleported\",\"name\":\"Elsewhere\"}]",
+       "A reason class outside a consumer's vocabulary. Carried as written, as an unknown effect arm is: the class is what a host accepts or does not, and dropping one would hide the escape it names.")
+      ("missing-opaque-leaves",
+       (withOpaqueLeaves "[]").Replace(",\"opaqueLeaves\":[]", ""),
+       "A document without `opaqueLeaves`. Refused: an absent member says the producer predates it, an empty one says it looked and found no escape, and only the second is a claim about the program.")
+      ("non-canonical-opaque-leaves",
+       withOpaqueLeaves
+           "[{\"reason\":\"in-process\",\"name\":\"Signal\"},{\"reason\":\"in-process\",\"name\":\"Relay\"}]",
+       "Opaque leaves not in canonical order (by reason class, then name). Refused, on the client tier's terms.")
+      ("undeclared-opaque-leaf-member",
+       withOpaqueLeaves "[{\"reason\":\"in-process\",\"name\":\"Relay\",\"extra\":1}]",
+       "An opaque leaf carrying a member this version does not declare.")
       ("not-an-object", "[]", "A document whose root is not an object.")
       ("not-json", "{", "Bytes that are not readable JSON.") ]
 

@@ -238,14 +238,14 @@ let rec verdict_of : Prims.list<defect>  ->  verdict = (fun ( ds  :  Prims.list<
      end))
 
 
-let rec view_defects = (fun ( cls  :  'o  ->  undo_class<'t, 'o> ) ( vs  :  Prims.list<Staging.op_view<'o>> ) -> (match (vs) with
+let rec view_defects = (fun ( cls  :  'o  ->  undo_class<'t, 'o> ) ( vs  :  Prims.list<Staging.op_view<'v, 'o>> ) -> (match (vs) with
 | [] -> begin
      []
      end
 | (x)::rest -> begin
      (Staging.app (view_defect cls x) (view_defects cls rest))
      end))
-and view_defect = (fun ( cls  :  'o  ->  undo_class<'t, 'o> ) ( x  :  Staging.op_view<'o> ) -> (match (x) with
+and view_defect = (fun ( cls  :  'o  ->  undo_class<'t, 'o> ) ( x  :  Staging.op_view<'v, 'o> ) -> (match (x) with
 | Staging.OEdit (op) -> begin
      (match ((cls op)) with
 | Inverse (uu___) -> begin
@@ -269,8 +269,11 @@ and view_defect = (fun ( cls  :  'o  ->  undo_class<'t, 'o> ) ( x  :  Staging.op
      end
 | Staging.OEach (elements) -> begin
      (view_defects_each cls elements)
+     end
+| Staging.OEachOf (uu___, uu___1, uu___2, elements) -> begin
+     (view_defects_each cls elements)
      end))
-and view_defects_each = (fun ( cls  :  'o  ->  undo_class<'t, 'o> ) ( elements  :  Prims.list<Prims.list<Staging.op_view<'o>>> ) -> (match (elements) with
+and view_defects_each = (fun ( cls  :  'o  ->  undo_class<'t, 'o> ) ( elements  :  Prims.list<Prims.list<Staging.op_view<'v, 'o>>> ) -> (match (elements) with
 | [] -> begin
      []
      end

@@ -115,25 +115,28 @@ let tests =
           test
               "an op contract admits a receipt that holds, refuses one that does not NAMING THE CONTRACT, and passes a raw refusal through" {
               let contract: OpContract<string, string> =
-                  { Name = "names-the-op"
-                    Holds = fun state op receipt -> receipt = Fuaran.Core.JStr(state + "/" + op) }
+                  OpContract.at "names-the-op" (fun state op receipt -> receipt = Fuaran.Core.JStr(state + "/" + op))
 
-              let honest: string -> string -> Result<Fuaran.Core.JVal, string> =
-                  fun state op -> Ok(Fuaran.Core.JStr(state + "/" + op))
+              // Phase 2165 (Program D39): a performer and a contract are handed the run's prefix
+              // first; these ignore it, so each is checked at the prefix of a run's first op.
+              let prefix = OpPrefix.atEntry "planned"
 
-              let overreaching: string -> string -> Result<Fuaran.Core.JVal, string> =
-                  fun _ _ -> Ok(Fuaran.Core.JStr secret)
+              let honest: OpPrefix<string> -> string -> string -> Result<Fuaran.Core.JVal, string> =
+                  fun _ state op -> Ok(Fuaran.Core.JStr(state + "/" + op))
 
-              let refusing: string -> string -> Result<Fuaran.Core.JVal, string> =
-                  fun _ _ -> Error "the world refused"
+              let overreaching: OpPrefix<string> -> string -> string -> Result<Fuaran.Core.JVal, string> =
+                  fun _ _ _ -> Ok(Fuaran.Core.JStr secret)
+
+              let refusing: OpPrefix<string> -> string -> string -> Result<Fuaran.Core.JVal, string> =
+                  fun _ _ _ -> Error "the world refused"
 
               Expect.equal
-                  (OpContract.check contract honest "planned" "op")
+                  (OpContract.check contract honest prefix "planned" "op")
                   (Ok(Fuaran.Core.JStr "planned/op"))
                   "a receipt the contract holds of is the receipt, unchanged"
 
               Expect.equal
-                  (OpContract.check contract overreaching "planned" "op")
+                  (OpContract.check contract overreaching prefix "planned" "op")
                   (Error "return-contract:names-the-op")
                   "a receipt the contract rejects is the host's own refusal, naming the contract"
 
@@ -144,12 +147,12 @@ let tests =
                         Holds = fun _ -> true })
                   "in the ONE vocabulary a return contract's refusal has — the op axis coins no second prefix"
 
-              match OpContract.check contract overreaching "planned" "op" with
+              match OpContract.check contract overreaching prefix "planned" "op" with
               | Error reason -> Expect.isFalse (reason.Contains secret) "and the refusal never carries the receipt"
               | Ok _ -> failtest "the rejected receipt was admitted"
 
               Expect.equal
-                  (OpContract.check contract refusing "planned" "op")
+                  (OpContract.check contract refusing prefix "planned" "op")
                   (Error "the world refused")
                   "a raw refusal passes through with the performer's own reason — the contract is not consulted"
           }
@@ -159,16 +162,14 @@ let tests =
               let seen = ResizeArray<string * string>()
 
               let contract: OpContract<string, string> =
-                  { Name = "recording"
-                    Holds =
-                      fun state op _ ->
-                          seen.Add(state, op)
-                          true }
+                  OpContract.at "recording" (fun state op _ ->
+                      seen.Add(state, op)
+                      true)
 
-              match OpPerformance.performedChecked contract (fun _ _ -> Ok(Fuaran.Core.JObj [])) with
+              match OpPerformance.performedChecked [ contract ] (fun _ _ _ -> Ok(Fuaran.Core.JObj [])) with
               | OpPerformance.Performed perform ->
                   Expect.equal
-                      (perform "planned" "write")
+                      (perform (OpPrefix.atEntry "planned") "planned" "write")
                       (Ok(Fuaran.Core.JObj []))
                       "the composed performer answers the receipt the raw one did"
 
@@ -181,7 +182,7 @@ let tests =
               match OpPerformance.performedWithoutReceipt (fun (_: string) (_: string) -> Ok()) with
               | OpPerformance.Performed perform ->
                   Expect.equal
-                      (perform "planned" "write")
+                      (perform (OpPrefix.atEntry "planned") "planned" "write")
                       (Ok(Fuaran.Core.JObj []))
                       "a performer with nothing to say answers the inert empty object"
               | OpPerformance.InMemory -> failtest "a receipt-less performer is still a registered performer"

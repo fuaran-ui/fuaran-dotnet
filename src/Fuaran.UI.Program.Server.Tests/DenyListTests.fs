@@ -326,7 +326,7 @@ let tests =
                     // The discriminator selects the members: a deny-list with a
                     // `permitted` array is not an allow-list with a stray bound.
                     let document =
-                        """{"kind":"demanded","version":%d,"effects":[],"hostCalls":[],"stateNamespaces":[],"opaqueHandlers":[],"server":{"effects":[],"capabilities":[],"functions":[],"channels":[],"reach":[],"replay":[],"undo":[],"constraints":[{"capability":"ApplyOps","clauses":[{"clause":"denyList","argument":"target","refused":["call"],"permitted":["root"]}]}]}}"""
+                        """{"kind":"demanded","version":%d,"effects":[],"hostCalls":[],"stateNamespaces":[],"opaqueHandlers":[],"iterations":[],"opaqueLeaves":[],"server":{"effects":[],"capabilities":[],"functions":[],"channels":[],"reach":[],"replay":[],"undo":[],"constraints":[{"capability":"ApplyOps","clauses":[{"clause":"denyList","argument":"target","refused":["call"],"permitted":["root"]}]}]}}"""
 
                     match Demanded.decode (document.Replace("%d", string Demanded.Version)) with
                     | Error failure ->

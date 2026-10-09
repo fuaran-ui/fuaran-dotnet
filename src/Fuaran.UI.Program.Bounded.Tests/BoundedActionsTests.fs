@@ -379,7 +379,8 @@ let tests =
               // before it and is seen by the write after it. A placement that
               // collected calls and ran them afterwards could not produce this.
               let arm: HandlerArm<string list> =
-                  { Answer =
+                  { ReadExtent = ExtentReader.live
+                    Answer =
                       fun _ endpoint s seen ->
                           Some
                               { Store =
@@ -407,7 +408,8 @@ let tests =
 
           test "an arm is consulted at every depth, not only at the top" {
               let arm: HandlerArm<string list> =
-                  { Answer =
+                  { ReadExtent = ExtentReader.live
+                    Answer =
                       fun _ endpoint s seen ->
                           Some
                               { Store = s
@@ -430,7 +432,8 @@ let tests =
               // declares one too is refused rather than ignored — and refused
               // BEFORE the arm, so no placement can quietly honour it.
               let arm: HandlerArm<int> =
-                  { Answer =
+                  { ReadExtent = ExtentReader.live
+                    Answer =
                       fun _ _ s consulted ->
                           Some
                               { Store = s
