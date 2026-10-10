@@ -7818,7 +7818,7 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.93.0 — the slot opened after v0.92.0 was released (DRAFT — untagged)
+## 0.93.0 — the slot opened after v0.92.0 was released (RELEASED — tagged v0.93.0 at b654b31, 2026-10-10)
 
 _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,
 which reshapes the build-time walker's public modules (`AstWalker`, the per-check `check` entry points, the new
