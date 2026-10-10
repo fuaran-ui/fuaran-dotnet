@@ -272,6 +272,9 @@ and view_defect = (fun ( cls  :  'o  ->  undo_class<'t, 'o> ) ( x  :  Staging.op
      end
 | Staging.OEachOf (uu___, uu___1, uu___2, elements) -> begin
      (view_defects_each cls elements)
+     end
+| Staging.OLetOf (uu___, uu___1, body) -> begin
+     (view_defects cls body)
      end))
 and view_defects_each = (fun ( cls  :  'o  ->  undo_class<'t, 'o> ) ( elements  :  Prims.list<Prims.list<Staging.op_view<'v, 'o>>> ) -> (match (elements) with
 | [] -> begin

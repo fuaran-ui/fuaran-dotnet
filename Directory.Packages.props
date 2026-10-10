@@ -20,11 +20,11 @@
     <!-- The THIRD producer (fuaran#2012): the bounded program core, consumed by the two program
          adapters that moved here (src/Fuaran.UI.Program, src/Fuaran.UI.Program.Server) and their
          suites. Released packages only, never a project reference: the adapters depend on the
-         core, and the core references nothing in this repository. 0.8.0 is the first release cut
-         after the adapters moved here (fuaran#2191 adopts it), built on Fuaran.Core 0.34.0 and
-         compute 0.37.0, which the pins here meet or exceed. One property per producing
-         repository, as above. -->
-    <FuaranProgramVersion>0.8.0</FuaranProgramVersion>
+         core, and the core references nothing in this repository. 0.9.0 is the second release
+         cut after the adapters moved here (fuaran#2203 adopts it; fuaran#2191 adopted 0.8.0),
+         built on Fuaran.Core 0.34.0 and compute 0.37.0, which the pins here meet or exceed. One
+         property per producing repository, as above. -->
+    <FuaranProgramVersion>0.9.0</FuaranProgramVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="FSharp.Core" Version="10.1.300" />

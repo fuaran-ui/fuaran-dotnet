@@ -213,6 +213,42 @@ let tests =
                    host call to the perform phase, so it reports last however early it was declared"
           }
 
+          test "a UI program's findings land on its outcome in program order, kept when the handler rolls back" {
+              // Program 0.9.0 (D45): `Report` is the sixth arm. A finding moves no
+              // state at this witness either; it is carried on the outcome, in
+              // program order, and on the audit trail beside every other arm.
+              let finding code : Finding =
+                  { Code = code
+                    Severity = "info"
+                    Message = "reported " + code }
+
+              let reporting =
+                  { Name = "reporting"
+                    Stages =
+                      [ Effect(ServerEffect.Report(finding "started"))
+                        Effect(ServerEffect.ApplyOps [])
+                        Effect(ServerEffect.Report(finding "done")) ] }
+
+              let committed = Handler.run (openRegistry (ref [])) sources "call" reporting store
+
+              Expect.isTrue committed.Committed "the handler committed"
+              Expect.equal committed.Findings [ finding "started"; finding "done" ] "both findings, in program order"
+              Expect.equal committed.Performed [ "Report"; "ApplyOps"; "Report" ] "each report is on the audit trail"
+
+              // A finding reported before a host call the registry cannot serve
+              // survives the rollback, as the diagnostics do.
+              let refused =
+                  { Name = "refused"
+                    Stages =
+                      [ Effect(ServerEffect.Report(finding "started"))
+                        Effect(ServerEffect.HostCall("absent", jstr "note", None)) ] }
+
+              let rolledBack = Handler.run (openRegistry (ref [])) sources "call" refused store
+
+              Expect.isFalse rolledBack.Committed "the unserved host call rolls the handler back"
+              Expect.equal rolledBack.Findings [ finding "started" ] "and the finding reported before it is kept"
+          }
+
           test "a query lands its result in the session's query slot" {
               let handler =
                   { Name = "query"

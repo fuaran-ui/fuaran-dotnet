@@ -61,6 +61,50 @@ let __proj__RErr__item__reason = (fun ( projectee  :  res<'a> ) -> (match (proje
      reason
      end))
 
+type resolution<'v> =
+| Resolved of 'v
+| NotResolved
+| Errored of Prims.string
+
+
+let uu___is_Resolved = (fun ( projectee  :  resolution<'v> ) -> (match (projectee) with
+| Resolved (value) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__Resolved__item__value = (fun ( projectee  :  resolution<'v> ) -> (match (projectee) with
+| Resolved (value) -> begin
+     value
+     end))
+
+
+let uu___is_NotResolved = (fun ( projectee  :  resolution<'v> ) -> (match (projectee) with
+| NotResolved -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let uu___is_Errored = (fun ( projectee  :  resolution<'v> ) -> (match (projectee) with
+| Errored (message) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__Errored__item__message = (fun ( projectee  :  resolution<'v> ) -> (match (projectee) with
+| Errored (message) -> begin
+     message
+     end))
+
 
 let rec app = (fun ( xs  :  Prims.list<'a> ) ( ys  :  Prims.list<'a> ) -> (match (xs) with
 | [] -> begin
@@ -399,6 +443,7 @@ type op_view<'v, 'o> =
 | ORepeat of Prims.nat * Prims.list<op_view<'v, 'o>>
 | OEach of Prims.list<Prims.list<op_view<'v, 'o>>>
 | OEachOf of Prims.string * Prims.nat * Prims.list<'v> * Prims.list<Prims.list<op_view<'v, 'o>>>
+| OLetOf of Prims.string * 'v * Prims.list<op_view<'v, 'o>>
 
 
 let uu___is_OEdit = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
@@ -532,53 +577,86 @@ let __proj__OEachOf__item__elements = (fun ( projectee  :  op_view<'v, 'o> ) -> 
      elements
      end))
 
-type witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> = {w_compute : Prims.string  ->  'a  ->  'b  ->  bounded_outcome<'b, 'eff, 'd>; w_query : Prims.string  ->  'q  ->  'b  ->  res<'b>; w_apply : 'o  ->  't  ->  res<'t>; w_op_view : 'o  ->  op_view<'v, 'o>; w_read_extent : Prims.string  ->  't  ->  opt<Prims.list<'v>>; w_assign : Prims.string  ->  'v  ->  'b  ->  'b; w_slot_refused : Prims.string  ->  opt<Prims.string>; w_undo_compute : Prims.string  ->  'a  ->  'b  ->  opt<('b  ->  'b)>}
+
+let uu___is_OLetOf = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
+| OLetOf (name, value, body) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__OLetOf__item__name = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
+| OLetOf (name, value, body) -> begin
+     name
+     end))
+
+
+let __proj__OLetOf__item__value = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
+| OLetOf (name, value, body) -> begin
+     value
+     end))
+
+
+let __proj__OLetOf__item__body = (fun ( projectee  :  op_view<'v, 'o> ) -> (match (projectee) with
+| OLetOf (name, value, body) -> begin
+     body
+     end))
+
+type witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> = {w_compute : Prims.string  ->  'a  ->  'b  ->  bounded_outcome<'b, 'eff, 'd>; w_query : Prims.string  ->  'q  ->  'b  ->  res<'b>; w_apply : 'o  ->  't  ->  res<'t>; w_op_view : 'o  ->  op_view<'v, 'o>; w_read_extent : Prims.string  ->  't  ->  opt<Prims.list<'v>>; w_resolve : Prims.string  ->  't  ->  resolution<'v>; w_assign : Prims.string  ->  'v  ->  'b  ->  'b; w_slot_refused : Prims.string  ->  opt<Prims.string>; w_undo_compute : Prims.string  ->  'a  ->  'b  ->  opt<('b  ->  'b)>}
 
 
 let __proj__Mkwitness__item__w_compute = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_compute
      end))
 
 
 let __proj__Mkwitness__item__w_query = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_query
      end))
 
 
 let __proj__Mkwitness__item__w_apply = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_apply
      end))
 
 
 let __proj__Mkwitness__item__w_op_view = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_op_view
      end))
 
 
 let __proj__Mkwitness__item__w_read_extent = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_read_extent
      end))
 
 
+let __proj__Mkwitness__item__w_resolve = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+     w_resolve
+     end))
+
+
 let __proj__Mkwitness__item__w_assign = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_assign
      end))
 
 
 let __proj__Mkwitness__item__w_slot_refused = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_slot_refused
      end))
 
 
 let __proj__Mkwitness__item__w_undo_compute = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_undo_compute
      end))
 
@@ -948,6 +1026,18 @@ if ((length xs) <= ceiling) then begin
 | ONone -> begin
      RErr ("the state holds no collection under that name")
      end)
+     end
+| OLetOf (name, uu___, body) -> begin
+     (match ((w.w_resolve name tree)) with
+| Resolved (uu___1) -> begin
+     (trail_views w body tree)
+     end
+| NotResolved -> begin
+     RErr ((Prims.strcat "the value did not resolve: " name))
+     end
+| Errored (reason) -> begin
+     RErr (reason)
+     end)
      end))
 and trail_repeat = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( body  :  Prims.list<op_view<'v, 'o>> ) ( n  :  Prims.nat ) ( tree  :  't ) ->  
 if (Prims.op_Equals n (Prims.parse_int "0")) then begin
@@ -1110,6 +1200,18 @@ if ((length xs) <= ceiling) then begin
      end
 | ONone -> begin
      RErr ("the state holds no collection under that name")
+     end)
+     end
+| OLetOf (name, uu___, body) -> begin
+     (match ((w.w_resolve name tree)) with
+| Resolved (uu___1) -> begin
+     (plan_views w cap stage1 body tree staged)
+     end
+| NotResolved -> begin
+     RErr ((Prims.strcat "the value did not resolve: " name))
+     end
+| Errored (reason) -> begin
+     RErr (reason)
      end)
      end))
 and plan_repeat = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( cap  :  Prims.string ) ( stage1  :  opt<('t  ->  'o  ->  ('p * 'v))> ) ( body  :  Prims.list<op_view<'v, 'o>> ) ( n  :  Prims.nat ) ( tree  :  't ) ( staged  :  Prims.list<staged_call<'v, 'p>> ) ->  

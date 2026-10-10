@@ -32,6 +32,13 @@
 /// the envelope below was signed afresh by the 0.8.0 code over the SAME tree
 /// with a new key whose private half was never kept. The tree hash is still the
 /// pre-cut value.
+///
+/// fuaran#2203 is the next: Fuaran.Program 0.9.0 moved the document to version
+/// 11 (version 9 states values, Program Phase 2186; version 10 the staged-query
+/// defect, Phase 2187; version 11 the `Report` effect, Phase 2195), so the
+/// version-8 pin reported `Unreadable` drift, and the envelope below was signed
+/// afresh by the 0.9.0 code over the SAME tree with a new key whose private half
+/// was never kept. The tree hash is still the pre-cut value.
 module Fuaran.UI.Program.Bounded.Tests.PreCutEnvelopeTests
 
 open System
@@ -61,22 +68,22 @@ let private tree: Node<obj> =
 let private PreCutTreeHash =
     "sha256:2d221262c858f3488cb0a61e17e3e5472fc17399fb057c2332c0f42a9a16a542"
 
-/// The signer's PUBLIC key (SubjectPublicKeyInfo, P-256), as the fuaran#2191
+/// The signer's PUBLIC key (SubjectPublicKeyInfo, P-256), as the fuaran#2203
 /// re-pin exported it. The private half was never kept.
 [<Literal>]
 let private PublicKey =
-    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEI4kZvn0FedTejheIgIHRTOx+hnBeTGm4tTmn+2Up1VPAXNC8LckuVfIvPpsuV242fX6bIm+B3+tkqCQnDZKmug=="
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvXHCPUUJnrvHs8RweXnanz/KS7dg8ZrCNcUmf4sVkG65L/+rC/X2iMKLtqJXjU9O7/OfCs0vkc7Dd1rnv0Kl3w=="
 
-/// The signed envelope, byte for byte: the pre-cut tree hash, the version-8
-/// demanded document, and the fuaran#2191 signature over the two.
+/// The signed envelope, byte for byte: the pre-cut tree hash, the version-11
+/// demanded document, and the fuaran#2203 signature over the two.
 [<Literal>]
 let private PreCutEnvelope =
-    """{"kind":"signed-demanded","version":1,"treeHash":"sha256:2d221262c858f3488cb0a61e17e3e5472fc17399fb057c2332c0f42a9a16a542","envelope":"{\"kind\":\"demanded\",\"version\":8,\"effects\":[\"Navigate\"],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"iterations\":[],\"opaqueLeaves\":[],\"server\":null}","keyId":"k7-2191","signature":"aZIElpDDpSYlUIpsKcx+lj5HuK3DWI10s1n1vGkIs7klysRY/XxQGJ713CYONYS0gQPeRZIxUheTFGEgEb88kg=="}"""
+    """{"kind":"signed-demanded","version":1,"treeHash":"sha256:2d221262c858f3488cb0a61e17e3e5472fc17399fb057c2332c0f42a9a16a542","envelope":"{\"kind\":\"demanded\",\"version\":11,\"effects\":[\"Navigate\"],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"iterations\":[],\"opaqueLeaves\":[],\"values\":[],\"server\":null}","keyId":"k7-2203","signature":"rI36/dtLcxlHgsCEubk/VueI2AjhvQTA+o2vAmnEomFebDsjQYz5G/zByazEdN++jIXlh3TREAYRIVs9Xf+AjQ=="}"""
 
 let private publicEntry () : KeyDirectoryEntry =
     let key = ECDsa.Create()
     key.ImportSubjectPublicKeyInfo(Convert.FromBase64String PublicKey) |> ignore
-    EcdsaP256.keyEntry "k7-2191" key
+    EcdsaP256.keyEntry "k7-2203" key
 
 [<Tests>]
 let tests =

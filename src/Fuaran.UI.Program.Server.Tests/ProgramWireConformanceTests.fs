@@ -93,6 +93,10 @@ type private Vector =
         /// outside the handler round-trip family, and is not the same fact as an
         /// empty list (a handler with nothing to report).
         ReplayReasons: (int * string) list option
+        /// The host's query posture the vector's derived values are read
+        /// under (§7.4): the manifest's `queryEvaluator`, absent being the
+        /// in-memory fold — a pure read.
+        Query: QueryPosture
     }
 
 let private str (name: string) (value: JVal) : string =
@@ -115,9 +119,20 @@ let private reasonsOf (entry: JVal) : (int * string) list option =
         |> Some
     | Some _ -> failwith "a manifest vector's replayReasons is not an array"
 
-/// The reasons this host derives for a handler, in the manifest's spelling.
-let private derivedReasons (handler: Handler) : (int * string) list =
-    HandlerWire.replayReasons handler
+/// The host's query posture a vector declares. An UNKNOWN spelling FAILS
+/// rather than reading as the fold: a posture this reader could not parse
+/// would otherwise certify a staged read as a pure one.
+let private queryOf (entry: JVal) : QueryPosture =
+    match ProgramWire.tryString "queryEvaluator" entry with
+    | None
+    | Some "pure-read" -> QueryPosture.PureRead
+    | Some "reaching" -> QueryPosture.Reaching
+    | Some other -> failwithf "a manifest vector's queryEvaluator '%s' is not a posture §7.4 names" other
+
+/// The reasons this host derives for a handler under a query posture, in the
+/// manifest's spelling.
+let private derivedReasons (query: QueryPosture) (handler: Handler) : (int * string) list =
+    HandlerWire.replayReasons query handler
     |> List.map (fun reason -> reason.Stage, ProgramWire.replayDefectTag reason.Defect)
 
 /// Every token `ReplayDefect` spells, enumerated FROM THE TYPE.
@@ -179,7 +194,8 @@ let private everyVector () : Vector list =
                   Reject = ProgramWire.tryString "reject" entry
                   Subject = ProgramWire.tryString "subject" entry
                   ReplaySafety = ProgramWire.tryString "replaySafety" entry
-                  ReplayReasons = reasonsOf entry })
+                  ReplayReasons = reasonsOf entry
+                  Query = queryOf entry })
         | _ -> failwith "the corpus manifest declares no vector array"
 
 /// The vectors this suite certifies: the REFERENCED subject's, which are the
@@ -293,7 +309,7 @@ let tests =
                           // manifest's value back at it would certify nothing:
                           // a derived value nobody re-derives is a constant with
                           // a longer name.
-                          let derived = ProgramWire.replaySafetyTag (HandlerWire.replaySafety handler)
+                          let derived = ProgramWire.replaySafetyTag (HandlerWire.replaySafety v.Query handler)
                           Expect.equal derived v.ReplaySafety.Value $"{v.Id} classifies as declared"
                           v.Id)
 
@@ -326,7 +342,7 @@ let tests =
                           // attributed to the wrong stage points a reader at
                           // the wrong place while the verdict stays right.
                           Expect.equal
-                              (derivedReasons handler)
+                              (derivedReasons v.Query handler)
                               v.ReplayReasons.Value
                               $"{v.Id} reports the reasons it declares, in order"
 
@@ -352,12 +368,12 @@ let tests =
               // token and nothing else.
               for token, handler in hostConstructedCases do
                   Expect.equal
-                      (derivedReasons handler)
+                      (derivedReasons QueryPosture.PureRead handler)
                       [ 0, token ]
                       $"the host-constructed case for {token} reports exactly that reason"
 
                   Expect.equal
-                      (ProgramWire.replaySafetyTag (HandlerWire.replaySafety handler))
+                      (ProgramWire.replaySafetyTag (HandlerWire.replaySafety QueryPosture.PureRead handler))
                       "unknown"
                       $"…and the verdict it carries is the one {token} forces"
           }

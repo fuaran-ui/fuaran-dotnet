@@ -83,12 +83,12 @@ let private v = string Demanded.Version
 /// document this tier actually produces rather than one hand-written to look
 /// like one.
 let private harvested =
-    (Harvest.ofProgram registration (treeCalling "/handlers/settle")).Document
+    (Harvest.ofProgram QueryPosture.PureRead registration (treeCalling "/handlers/settle")).Document
 
 let private tierLess =
-    (Harvest.ofProgram registration (treeCalling "/handlers/nobody")).Document
+    (Harvest.ofProgram QueryPosture.PureRead registration (treeCalling "/handlers/nobody")).Document
 
-let private emptyTier = (Harvest.ofRegistration []).Document
+let private emptyTier = (Harvest.ofRegistration QueryPosture.PureRead []).Document
 
 let private emptyServer =
     "{\"effects\":[],\"capabilities\":[],\"functions\":[],\"channels\":[],\"reach\":[],\"replay\":[],\"undo\":[],\"constraints\":[]}"
@@ -96,7 +96,7 @@ let private emptyServer =
 let private docWith (server: string) =
     "{\"kind\":\"demanded\",\"version\":"
     + v
-    + ",\"effects\":[],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"iterations\":[],\"opaqueLeaves\":[],\"server\":"
+    + ",\"effects\":[],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"iterations\":[],\"opaqueLeaves\":[],\"values\":[],\"server\":"
     + server
     + "}"
 

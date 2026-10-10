@@ -195,10 +195,18 @@ let private modelWitness
             // shape exactly as the plan would.
             | OpView.Each(Collection.Stored(collection, ceiling), _, _) ->
                 Staging.OEachOf(collection.Name, bigint (max ceiling 0), [], [])
+            // A value the state holds (Program Phase 2186): the UI tier views
+            // no op as one (Program STABILITY, 0.9.0), so the translation is
+            // total over a value the UI state never resolves — `w_resolve`
+            // below answers none, and the model refuses the shape exactly as
+            // the plan would refuse an unresolved value.
+            | OpView.Let(_, value, _) -> Staging.OLetOf(value.Name, Fuaran.Core.JArr [], [])
 
         view
-      // The UI state holds no collection a stored `Each` reads.
+      // The UI state holds no collection a stored `Each` reads, and no value
+      // a `Let` resolves.
       w_read_extent = fun _ _ -> Staging.ONone
+      w_resolve = fun _ _ -> Staging.NotResolved
       w_assign = witness.Dispatch.Store.Assign
       // The landing-slot refusal as production renders it (Phase 1974): the
       // reserved-namespace text over this witness's predicate and prefix.
@@ -222,6 +230,10 @@ let private modelEffect
     | ServerEffect.HostCall(fn, args, into) -> Staging.HostCall(fn, args, modelOpt into)
     | ServerEffect.EmitPatch ops -> Staging.EmitPatch ops
     | ServerEffect.Notify(channel, payload) -> Staging.Notify(channel, payload)
+    // The staging model has no report arm (Program DECISIONS D45): a finding
+    // stages nothing, trails nothing and moves no state, so the differential
+    // draws no program that reports one.
+    | ServerEffect.Report _ -> invalidArg (nameof effect) "the staging model has no Report arm (Program D45)"
 
 let private modelStage (stage: HandlerStage) : ModelStage =
     match stage with
@@ -271,9 +283,12 @@ let private modelRegistry
         // token: the performers this oracle stages read none of it, so the
         // model's side hands the entry prefix (Program `proofs.json`,
         // `op-prefix-out-of-model`).
+        // The model's receipt is the DETAIL (Program Phase 2197, D43): the
+        // performers this oracle stages name no typed write.
         | OpPerformance.Performed perform ->
             let token state op : Performer * Fuaran.Core.JVal =
-                (fun (_: Fuaran.Core.JVal) -> perform (OpPrefix.atEntry state) state op), Fuaran.Core.JObj []
+                (fun (_: Fuaran.Core.JVal) -> perform (OpPrefix.atEntry state) state op |> Result.map _.Detail),
+                Fuaran.Core.JObj []
 
             Staging.OSome token }
 
@@ -301,7 +316,12 @@ let private productionShaped (outcome: ModelOutcome) : HandlerOutcome =
       // The model carries no flow decisions (DECISIONS.md D25): the flow is an
       // observation threaded beside the plan, not part of what the model
       // proves, and `projectionOf` below does not compare it.
-      Flow = [] }
+      Flow = []
+      // Nor any typed receipts (Program Phase 2197, D43): its performers
+      // return a detail, and the projection does not compare them.
+      Receipts = []
+      // Nor any findings (Program Phase 2195, D45): the model has no report arm.
+      Findings = [] }
 
 /// The comparable projection — the same one the durable parity leg uses,
 /// for the same reason: a resolved tree's nodes carry handler slots, so the
@@ -412,7 +432,7 @@ let private witnessOf (case: StagingCase) : UiWitness.UiProgramWitness =
 /// The op performance a case runs under, over this run's scripted performer.
 let private performanceOf (case: StagingCase) (s: Scripted) : OpPerformance<Node<obj>, TreeOp<obj>> =
     if case.PerformOps then
-        OpPerformance.performedBy s.Op
+        OpPerformance.performedWithDetail s.Op
     else
         OpPerformance.InMemory
 
@@ -1447,7 +1467,9 @@ let private runUndoCase (u: UndoCase) (failAt: int option) : UndoRun =
         | Staging.ROk out -> Ok(productionShaped out)
         | Staging.RErr reason -> Error reason
 
-    { Posture = Fuaran.Program.Server.Undo.posture w c.Handler, Fuaran.Program.Server.Undo.reasons w c.Handler
+    { Posture =
+        Fuaran.Program.Server.Undo.posture QueryPosture.PureRead w c.Handler,
+        Fuaran.Program.Server.Undo.reasons QueryPosture.PureRead w c.Handler
       ModelPosture =
         global.Undo.posture mw cls (BoundedActions.reversible w) (c.Handler.Stages |> List.map modelStage),
         global.Undo.reasons mw cls (BoundedActions.reversible w) (c.Handler.Stages |> List.map modelStage)
@@ -2152,7 +2174,7 @@ let private receiptFor (state: Node<obj>) (op: TreeOp<obj>) : Fuaran.Core.JVal =
 let private opContractName = "names-the-planned-op"
 
 let private plannedOpContract: OpContract<Node<obj>, TreeOp<obj>> =
-    OpContract.at opContractName (fun state op receipt -> receipt = receiptFor state op)
+    OpContract.at opContractName (fun state op receipt -> receipt.Detail = receiptFor state op)
 
 let private modelOpContract: EffectGate.op_contract<Node<obj>, TreeOp<obj>, Fuaran.Core.JVal> =
     { EffectGate.oc_name = opContractName
@@ -2297,9 +2319,10 @@ let private keyedProduction (c: KeyedCase) (side: KeyedSide) =
 
     let performance =
         if c.Contracted then
-            OpPerformance.performedChecked [ plannedOpContract ] (fun _ state op -> side.Op state op)
+            OpPerformance.performedChecked [ plannedOpContract ] (fun _ state op ->
+                side.Op state op |> Result.map OpReceipt.ofDetail)
         else
-            OpPerformance.performedBy side.Op
+            OpPerformance.performedWithDetail side.Op
 
     registry, performance
 
@@ -2526,6 +2549,13 @@ let private runKeyedDurably (c: KeyedCase) : DurableKeyedRun =
                  | Staging.OSome s -> Some s
                  | Staging.ONone -> None),
                 (match answer with
+                 // Production journals an op stage's TYPED receipt as its
+                 // encoding (Program Phase 2197, D43); the model's receipt is
+                 // the detail of a receipt naming no write, so the bridge is
+                 // `encode (ofDetail v)` at an op stage and the identity at a
+                 // host call.
+                 | Staging.ROk v when call.sc_capability = OpPerformance.RegistrationKey ->
+                     Ok(OpReceipt.encode (OpReceipt.ofDetail v))
                  | Staging.ROk v -> Ok v
                  | Staging.RErr r -> Error r))
 
@@ -2903,7 +2933,7 @@ let effectGateTests =
                               let production: OpContract<string, string> =
                                   OpContract.at vLabel (fun s o r ->
                                       productionSeen.Add(s, o)
-                                      verdict s o r)
+                                      verdict s o r.Detail)
 
                               let model: EffectGate.op_contract<string, string, Fuaran.Core.JVal> =
                                   { EffectGate.oc_name = vLabel
@@ -2920,10 +2950,11 @@ let effectGateTests =
                               let expected =
                                   OpContract.check
                                       production
-                                      (fun _ s o -> behaviour s o)
+                                      (fun _ s o -> behaviour s o |> Result.map OpReceipt.ofDetail)
                                       (OpPrefix.atEntry state)
                                       state
                                       op
+                                  |> Result.map _.Detail
                                   |> modelRes
 
                               let actual = EffectGate.check_op model modelPerform state op
@@ -3025,7 +3056,7 @@ let effectGateTests =
                   if outcome.Committed then
                       for state, op, receipt in run.ProductionReceipts do
                           Expect.isTrue
-                              (plannedOpContract.Holds (OpPrefix.atEntry state) state op receipt)
+                              (plannedOpContract.Holds (OpPrefix.atEntry state) state op (OpReceipt.ofDetail receipt))
                               (sprintf "%s: a committed run landed a receipt its contract rejects" where)
 
                   match List.tryLast outcome.Diagnostics with

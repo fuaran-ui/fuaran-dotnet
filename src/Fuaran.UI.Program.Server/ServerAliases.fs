@@ -102,11 +102,11 @@ module HandlerWire =
     let decodeHandler (json: string) : Result<Handler, WireRefusal> =
         Fuaran.Program.Server.HandlerWire.decodeHandler UiWitness.witness json
 
-    let replayReasons (handler: Handler) : ReplayReason list =
-        Fuaran.Program.Server.HandlerWire.replayReasons UiWitness.witness handler
+    let replayReasons (query: QueryPosture) (handler: Handler) : ReplayReason list =
+        Fuaran.Program.Server.HandlerWire.replayReasons query UiWitness.witness handler
 
-    let replaySafety (handler: Handler) : ReplaySafety =
-        Fuaran.Program.Server.HandlerWire.replaySafety UiWitness.witness handler
+    let replaySafety (query: QueryPosture) (handler: Handler) : ReplaySafety =
+        Fuaran.Program.Server.HandlerWire.replaySafety query UiWitness.witness handler
 
     let encodeReportJson (report: HandlerReport) : Result<JVal, WireRefusal> =
         Fuaran.Program.Server.HandlerWire.encodeReportJson UiWitness.witness report
@@ -198,25 +198,38 @@ module ServerDemanded =
 
 module Replay =
 
-    let admit (mode: ReplayMode) (policy: ReplayPolicy) (handler: Handler) : ReplayDecision =
-        Fuaran.Program.Server.Replay.admit UiWitness.witness mode policy handler
+    let admit (query: QueryPosture) (mode: ReplayMode) (policy: ReplayPolicy) (handler: Handler) : ReplayDecision =
+        Fuaran.Program.Server.Replay.admit query UiWitness.witness mode policy handler
 
-    let admitAll (mode: ReplayMode) (policy: ReplayPolicy) (handlers: Handler seq) : (string * ReplayDecision) list =
-        Fuaran.Program.Server.Replay.admitAll UiWitness.witness mode policy handlers
+    let admitAll
+        (query: QueryPosture)
+        (mode: ReplayMode)
+        (policy: ReplayPolicy)
+        (handlers: Handler seq)
+        : (string * ReplayDecision) list =
+        Fuaran.Program.Server.Replay.admitAll query UiWitness.witness mode policy handlers
 
-    let postureOf (handler: Handler) : ReplayPosture =
-        Fuaran.Program.Server.Replay.postureOf UiWitness.witness handler
+    let postureOf (query: QueryPosture) (handler: Handler) : ReplayPosture =
+        Fuaran.Program.Server.Replay.postureOf query UiWitness.witness handler
 
-    let withPostures (handlers: Handler seq) (projection: DemandedProjection) : DemandedProjection =
-        Fuaran.Program.Server.Replay.withPostures UiWitness.witness handlers projection
+    let withPostures
+        (query: QueryPosture)
+        (handlers: Handler seq)
+        (projection: DemandedProjection)
+        : DemandedProjection =
+        Fuaran.Program.Server.Replay.withPostures query UiWitness.witness handlers projection
 
-    let ofTreeAndHandlers (handlers: Map<string, Handler>) (root: Node<obj>) : DemandedProjection =
-        Fuaran.Program.Server.Replay.ofTreeAndHandlers UiWitness.witness handlers root
+    let ofTreeAndHandlers
+        (query: QueryPosture)
+        (handlers: Map<string, Handler>)
+        (root: Node<obj>)
+        : DemandedProjection =
+        Fuaran.Program.Server.Replay.ofTreeAndHandlers query UiWitness.witness handlers root
 
 module Harvest =
 
-    let ofProgram (handlers: Map<string, Handler>) (root: Node<obj>) : HarvestedDemand =
-        Fuaran.Program.Server.Harvest.ofProgram UiWitness.witness handlers root
+    let ofProgram (query: QueryPosture) (handlers: Map<string, Handler>) (root: Node<obj>) : HarvestedDemand =
+        Fuaran.Program.Server.Harvest.ofProgram query UiWitness.witness handlers root
 
-    let ofRegistration (handlers: Handler seq) : HarvestedDemand =
-        Fuaran.Program.Server.Harvest.ofRegistration UiWitness.witness handlers
+    let ofRegistration (query: QueryPosture) (handlers: Handler seq) : HarvestedDemand =
+        Fuaran.Program.Server.Harvest.ofRegistration query UiWitness.witness handlers

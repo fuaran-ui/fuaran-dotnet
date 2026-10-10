@@ -74,8 +74,11 @@ let harvestTests =
     testList
         "the harvest"
         [ test "the same program over the same registration harvests byte-identical bytes" {
-              let a = Harvest.ofProgram registration (treeCalling "/handlers/work")
-              let b = Harvest.ofProgram registration (treeCalling "/handlers/work")
+              let a =
+                  Harvest.ofProgram QueryPosture.PureRead registration (treeCalling "/handlers/work")
+
+              let b =
+                  Harvest.ofProgram QueryPosture.PureRead registration (treeCalling "/handlers/work")
 
               Expect.equal
                   b.Document
@@ -99,13 +102,14 @@ let harvestTests =
                   Map.ofList [ "/handlers/b", busy "/handlers/b"; "/handlers/a", busy "/handlers/a" ]
 
               Expect.equal
-                  (Harvest.ofRegistration (Map.values twoReversed)).Document
-                  (Harvest.ofRegistration (Map.values two)).Document
+                  (Harvest.ofRegistration QueryPosture.PureRead (Map.values twoReversed)).Document
+                  (Harvest.ofRegistration QueryPosture.PureRead (Map.values two)).Document
                   "the same registration built in either order publishes one document"
           }
 
           test "the document decodes back to the projection returned beside it" {
-              let harvested = Harvest.ofProgram registration (treeCalling "/handlers/work")
+              let harvested =
+                  Harvest.ofProgram QueryPosture.PureRead registration (treeCalling "/handlers/work")
 
               Expect.equal
                   (Demanded.decode harvested.Document)
@@ -120,15 +124,17 @@ let harvestTests =
               // no conformant consumer can read, and the failure would land on
               // the consumer.
               for harvested in
-                  [ Harvest.ofProgram registration (treeCalling "/handlers/work")
-                    Harvest.ofProgram registration (treeCalling "/handlers/absent")
-                    Harvest.ofRegistration [] ] do
+                  [ Harvest.ofProgram QueryPosture.PureRead registration (treeCalling "/handlers/work")
+                    Harvest.ofProgram QueryPosture.PureRead registration (treeCalling "/handlers/absent")
+                    Harvest.ofRegistration QueryPosture.PureRead [] ] do
                   Expect.isOk (Demanded.decode harvested.Document) "every harvest is readable by the pinned reader"
           }
 
           test "the two entry points answer DIFFERENT questions" {
-              let program = Harvest.ofProgram registration (treeCalling "/handlers/work")
-              let surface = Harvest.ofRegistration (Map.values registration)
+              let program =
+                  Harvest.ofProgram QueryPosture.PureRead registration (treeCalling "/handlers/work")
+
+              let surface = Harvest.ofRegistration QueryPosture.PureRead (Map.values registration)
 
               Expect.notEqual
                   surface.Document
@@ -147,7 +153,8 @@ let harvestTests =
               // server tier is present (a walk ran) and demands nothing. That
               // is a different fact from "not asked", and the encoding keeps
               // them apart.
-              let harvested = Harvest.ofProgram registration (treeCalling "/handlers/nobody")
+              let harvested =
+                  Harvest.ofProgram QueryPosture.PureRead registration (treeCalling "/handlers/nobody")
 
               match harvested.Projection.Server with
               | None -> failtest "a walk ran, so the tier must be present"
@@ -169,6 +176,7 @@ let harvestTests =
                     OpaqueHandlers = []
                     Iterations = []
                     OpaqueLeaves = []
+                    Values = []
                     Server =
                       Some
                           { Effects = []

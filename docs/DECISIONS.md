@@ -10,6 +10,33 @@ consequence.
 
 ---
 
+## 2026-10-10 — D14: the program adapters move onto Fuaran.Program 0.9.0, and the server aliases take the host's query posture rather than defaulting it
+
+**Decided (Phase 2203).** `FuaranProgramVersion` moves 0.8.0 → 0.9.0 and the two adapters and their suites
+take every consumer obligation it carries in the same change (Program D42–D45): the value channel's
+`OpView.Let` arm, the typed `OpReceipt`, the staged-query defect, the `Report` arm with its `Findings`, and
+the demanded document at **version 11**. The proof oracles' translation views a `Let` as a value the UI
+state never resolves and refuses a `Report` effect, since the staging model has no report arm (Program
+D45), so no differential case draws one. The K7 envelope is re-signed over the same tree, under a new key
+whose private half was never kept, because a version-8 envelope is refused by version.
+
+**The server aliases take `QueryPosture` as their first argument, exactly as the core does.** Program D44
+puts the host's declaration at the head of every posture derivation so that a staged read is named, not
+guessed. An alias that passed `QueryPosture.PureRead` on the host's behalf would publish a pure-read
+posture for a host whose registered evaluator is `Reaching`. Its replay posture would then read `safe`
+where the runtime stages the read and refuses to undo it. **Rejected: defaulting it in the alias.** It
+would keep every call site unchanged, but on a claim this tier cannot make. The conformance suite reads
+each handler vector's `queryEvaluator` from the manifest and recomputes under it.
+
+**The demanded corpus is still generated here, and the program repository's hand-moved copy has drifted
+in a second vector.** Program 2186 moved its copy to version 9 by inserting `values` after `opaqueLeaves`.
+In `missing-opaque-leaves`, which omits `opaqueLeaves`, that insertion had nowhere to land, which is the
+mechanism D12 records for `missing-root-member`. That vector now omits four members where its description
+names one. In both vectors the recorded read is the same either way. D12's consequence holds: the copy
+is re-copied from this one.
+
+---
+
 ## 2026-10-09 — D13: `Dispatch` is an opaque leaf of class `in-process`, and no host this tier ships accepts that class by default
 
 **Decided (Phase 2194).** The UI witness views `Action.Dispatch` as an OPAQUE leaf, through the

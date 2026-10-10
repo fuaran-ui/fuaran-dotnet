@@ -39,14 +39,18 @@ let tests =
                     ServerEffect.ApplyOps []
                     ServerEffect.HostCall("fn", Fuaran.Core.JStr secret, None)
                     ServerEffect.EmitPatch []
-                    ServerEffect.Notify("channel", Fuaran.Core.JStr secret) ]
+                    ServerEffect.Notify("channel", Fuaran.Core.JStr secret)
+                    ServerEffect.Report
+                        { Code = "code"
+                          Severity = "warning"
+                          Message = secret } ]
 
               Expect.equal
                   (sample |> List.map ServerEffect.kind)
                   ServerEffect.kinds
                   "every arm's discriminator is in the enumerated vocabulary, in order"
 
-              Expect.equal (List.length ServerEffect.kinds) 5 "the vocabulary is the five declared arms"
+              Expect.equal (List.length ServerEffect.kinds) 6 "the vocabulary is the six declared arms"
           }
 
           test "a host call's capability is namespaced away from the built-in arms" {
@@ -115,24 +119,25 @@ let tests =
           test
               "an op contract admits a receipt that holds, refuses one that does not NAMING THE CONTRACT, and passes a raw refusal through" {
               let contract: OpContract<string, string> =
-                  OpContract.at "names-the-op" (fun state op receipt -> receipt = Fuaran.Core.JStr(state + "/" + op))
+                  OpContract.at "names-the-op" (fun state op receipt ->
+                      receipt.Detail = Fuaran.Core.JStr(state + "/" + op))
 
               // Phase 2165 (Program D39): a performer and a contract are handed the run's prefix
               // first; these ignore it, so each is checked at the prefix of a run's first op.
               let prefix = OpPrefix.atEntry "planned"
 
-              let honest: OpPrefix<string> -> string -> string -> Result<Fuaran.Core.JVal, string> =
-                  fun _ state op -> Ok(Fuaran.Core.JStr(state + "/" + op))
+              let honest: OpPrefix<string> -> string -> string -> Result<OpReceipt, string> =
+                  fun _ state op -> Ok(OpReceipt.ofDetail (Fuaran.Core.JStr(state + "/" + op)))
 
-              let overreaching: OpPrefix<string> -> string -> string -> Result<Fuaran.Core.JVal, string> =
-                  fun _ _ _ -> Ok(Fuaran.Core.JStr secret)
+              let overreaching: OpPrefix<string> -> string -> string -> Result<OpReceipt, string> =
+                  fun _ _ _ -> Ok(OpReceipt.ofDetail (Fuaran.Core.JStr secret))
 
-              let refusing: OpPrefix<string> -> string -> string -> Result<Fuaran.Core.JVal, string> =
+              let refusing: OpPrefix<string> -> string -> string -> Result<OpReceipt, string> =
                   fun _ _ _ -> Error "the world refused"
 
               Expect.equal
                   (OpContract.check contract honest prefix "planned" "op")
-                  (Ok(Fuaran.Core.JStr "planned/op"))
+                  (Ok(OpReceipt.ofDetail (Fuaran.Core.JStr "planned/op")))
                   "a receipt the contract holds of is the receipt, unchanged"
 
               Expect.equal
@@ -166,11 +171,11 @@ let tests =
                       seen.Add(state, op)
                       true)
 
-              match OpPerformance.performedChecked [ contract ] (fun _ _ _ -> Ok(Fuaran.Core.JObj [])) with
+              match OpPerformance.performedChecked [ contract ] (fun _ _ _ -> Ok OpReceipt.none) with
               | OpPerformance.Performed perform ->
                   Expect.equal
                       (perform (OpPrefix.atEntry "planned") "planned" "write")
-                      (Ok(Fuaran.Core.JObj []))
+                      (Ok OpReceipt.none)
                       "the composed performer answers the receipt the raw one did"
 
                   Expect.equal
@@ -183,7 +188,7 @@ let tests =
               | OpPerformance.Performed perform ->
                   Expect.equal
                       (perform (OpPrefix.atEntry "planned") "planned" "write")
-                      (Ok(Fuaran.Core.JObj []))
-                      "a performer with nothing to say answers the inert empty object"
+                      (Ok OpReceipt.none)
+                      "a performer with nothing to say answers the empty receipt: no write, the inert empty detail"
               | OpPerformance.InMemory -> failtest "a receipt-less performer is still a registered performer"
           } ]

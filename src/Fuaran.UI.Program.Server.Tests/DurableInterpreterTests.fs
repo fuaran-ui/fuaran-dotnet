@@ -391,6 +391,7 @@ let private modelWitness: Staging.witness<Node<obj>, BindingSources, Fuaran.Core
       w_apply = fun _ _ -> failwith "the replay differential plans nothing"
       w_op_view = fun _ -> failwith "the replay differential plans nothing"
       w_read_extent = fun _ _ -> failwith "the replay differential plans nothing"
+      w_resolve = fun _ _ -> failwith "the replay differential plans nothing"
       w_assign = fun _ _ bindings -> bindings
       w_slot_refused = fun _ -> failwith "the replay differential plans nothing" }
 
@@ -1174,7 +1175,7 @@ let tests =
                     let services = DurableServices.create |> DurableServices.withJournal journal
 
                     let receipted: OpPerformance<Node<obj>, TreeOp<obj>> =
-                        OpPerformance.performedBy (fun _ op -> Ok(jstr ("did:" + enc op)))
+                        OpPerformance.performedWithDetail (fun _ op -> Ok(jstr ("did:" + enc op)))
 
                     let first = runEdits services (auditRegistry audit) receipted editsThenAudit
                     Expect.isTrue first.Outcome.Committed "committed"
@@ -1189,8 +1190,10 @@ let tests =
 
                     Expect.equal
                         completed
-                        [ jstr ("did:" + enc removeRefresh); jstr ("did:" + enc removeReadout) ]
-                        "the receipt the performer answered is the step's completed value — not the inert object"
+                        ([ removeRefresh; removeReadout ]
+                         |> List.map (fun op -> OpReceipt.encode (OpReceipt.ofDetail (jstr ("did:" + enc op)))))
+                        "the receipt the performer answered is the step's completed value, encoded as the typed \
+                         receipt it is (Program D43) — not the inert object"
 
                     let resumed =
                         runEdits
@@ -1219,7 +1222,7 @@ let tests =
                     let overreaching =
                         OpPerformance.performedChecked [ withinReach ] (fun _ _ op ->
                             log.Record op
-                            Ok(jstr ("did:" + enc op)))
+                            Ok(OpReceipt.ofDetail (jstr ("did:" + enc op))))
 
                     let outcome = runEdits services (auditRegistry audit) overreaching editsThenAudit
 
@@ -1259,7 +1262,7 @@ let tests =
                             (auditRegistry audit)
                             (OpPerformance.performedChecked [ withinReach ] (fun _ _ op ->
                                 replayLog.Record op
-                                Ok(jstr "never")))
+                                Ok(OpReceipt.ofDetail (jstr "never"))))
                             editsThenAudit
 
                     Expect.equal replayLog.Performed [] "a replay reaches no performer: the refusal is served"

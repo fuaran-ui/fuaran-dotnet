@@ -67,11 +67,11 @@ let private relative =
     TreeOp.ReorderChildren(NodeId "stack-1", [ NodeId "a"; NodeId "b" ])
 
 let private defectsOf (handler: Handler) =
-    HandlerWire.replayReasons handler
+    HandlerWire.replayReasons QueryPosture.PureRead handler
     |> List.map (fun r -> r.Stage, ProgramWire.replayDefectTag r.Defect)
 
 let private tagOf (handler: Handler) =
-    ProgramWire.replaySafetyTag (HandlerWire.replaySafety handler)
+    ProgramWire.replaySafetyTag (HandlerWire.replaySafety QueryPosture.PureRead handler)
 
 /// The three postures, each from a handler that is minimally that thing.
 let private safeHandler =
@@ -102,7 +102,7 @@ let tests =
 
           test "a safe handler carries NO reasons, and that is what makes it safe" {
               Expect.equal (tagOf safeHandler) "safe" "the verdict"
-              Expect.isEmpty (HandlerWire.replayReasons safeHandler) "nothing to explain"
+              Expect.isEmpty (HandlerWire.replayReasons QueryPosture.PureRead safeHandler) "nothing to explain"
           }
 
           test "an unsafe handler names every stage that forced it, and what each lacks" {
@@ -168,8 +168,8 @@ let tests =
               // would be a set of explanations for a conclusion nobody reached.
               for handler in [ safeHandler; unknownHandler; unsafeHandler; handlerOf [] ] do
                   Expect.equal
-                      (HandlerWire.replaySafety handler)
-                      (ProgramWire.verdictOfReasons (HandlerWire.replayReasons handler))
+                      (HandlerWire.replaySafety QueryPosture.PureRead handler)
+                      (ProgramWire.verdictOfReasons (HandlerWire.replayReasons QueryPosture.PureRead handler))
                       "the verdict is derived from the reasons, not computed beside them"
           }
 
@@ -178,7 +178,7 @@ let tests =
           test "AUDIT admits recorded ops only — unconditionally, whatever the handler declared" {
               for policy in [ Replay.strict; Replay.acceptingUnsafeResume ] do
                   for handler in [ safeHandler; unknownHandler; unsafeHandler ] do
-                      let decision = Replay.admit ReplayMode.Audit policy handler
+                      let decision = Replay.admit QueryPosture.PureRead ReplayMode.Audit policy handler
 
                       Expect.equal
                           decision.Admission
@@ -189,7 +189,8 @@ let tests =
           }
 
           test "RESUME of an unsafe handler is refused with the typed code and the reasons" {
-              let decision = Replay.admit ReplayMode.Resume Replay.strict unsafeHandler
+              let decision =
+                  Replay.admit QueryPosture.PureRead ReplayMode.Resume Replay.strict unsafeHandler
 
               match decision.Admission with
               | ReplayAdmission.Refused refusal ->
@@ -209,7 +210,8 @@ let tests =
           test "RESUME of an UNDECIDABLE handler proceeds, carrying its reasons" {
               // The rule this suite exists to protect: only a proof is a
               // finding, so `unknown` is never rounded up to `unsafe`.
-              let decision = Replay.admit ReplayMode.Resume Replay.strict unknownHandler
+              let decision =
+                  Replay.admit QueryPosture.PureRead ReplayMode.Resume Replay.strict unknownHandler
 
               match decision.Admission with
               | ReplayAdmission.ReEvaluateReads reasons ->
@@ -223,7 +225,8 @@ let tests =
           }
 
           test "RESUME of a safe handler proceeds with nothing to explain" {
-              let decision = Replay.admit ReplayMode.Resume Replay.strict safeHandler
+              let decision =
+                  Replay.admit QueryPosture.PureRead ReplayMode.Resume Replay.strict safeHandler
 
               Expect.equal decision.Admission (ReplayAdmission.ReEvaluateReads []) "reads re-evaluated, no reasons"
               Expect.isNone decision.Record "and nothing to record"
@@ -231,7 +234,7 @@ let tests =
 
           test "an explicitly-configured host may resume an unsafe handler, and MUST record that it did" {
               let decision =
-                  Replay.admit ReplayMode.Resume Replay.acceptingUnsafeResume unsafeHandler
+                  Replay.admit QueryPosture.PureRead ReplayMode.Resume Replay.acceptingUnsafeResume unsafeHandler
 
               match decision.Admission with
               | ReplayAdmission.ReEvaluateReads reasons ->
@@ -268,11 +271,11 @@ let tests =
                         Effect(ServerEffect.Notify("NEEDLE-CHANNEL", payload)) ] }
 
               let rendered =
-                  [ Replay.admit ReplayMode.Audit Replay.strict hostile
-                    Replay.admit ReplayMode.Resume Replay.strict hostile
-                    Replay.admit ReplayMode.Resume Replay.acceptingUnsafeResume hostile
-                    Replay.admit ReplayMode.Resume Replay.strict unknownHandler
-                    Replay.admit ReplayMode.Resume Replay.strict safeHandler ]
+                  [ Replay.admit QueryPosture.PureRead ReplayMode.Audit Replay.strict hostile
+                    Replay.admit QueryPosture.PureRead ReplayMode.Resume Replay.strict hostile
+                    Replay.admit QueryPosture.PureRead ReplayMode.Resume Replay.acceptingUnsafeResume hostile
+                    Replay.admit QueryPosture.PureRead ReplayMode.Resume Replay.strict unknownHandler
+                    Replay.admit QueryPosture.PureRead ReplayMode.Resume Replay.strict safeHandler ]
                   |> List.map Replay.describe
 
               for text in rendered do
@@ -296,7 +299,8 @@ let tests =
                       [ endpoint, unsafeHandler
                         "/handlers/unreached", { safeHandler with Name = "unreached" } ]
 
-              let projection = Replay.ofTreeAndHandlers handlers (treeCalling endpoint)
+              let projection =
+                  Replay.ofTreeAndHandlers QueryPosture.PureRead handlers (treeCalling endpoint)
 
               match projection.Server with
               | Some tier ->
@@ -317,8 +321,8 @@ let tests =
           test "the joined document is deterministic and the version moved with the shape" {
               let handlers = Map.ofList [ endpoint, unsafeHandler ]
               let tree = treeCalling endpoint
-              let a = Replay.ofTreeAndHandlers handlers tree
-              let b = Replay.ofTreeAndHandlers handlers tree
+              let a = Replay.ofTreeAndHandlers QueryPosture.PureRead handlers tree
+              let b = Replay.ofTreeAndHandlers QueryPosture.PureRead handlers tree
 
               Expect.equal a b "the same tree and registration project identically"
               Expect.equal (Demanded.encode a) (Demanded.encode b) "and encode to the same bytes"
@@ -344,7 +348,10 @@ let tests =
               // one no hand-built fixture can vouch for. A reader that agreed with
               // a fixture and disagreed with the emitter would be worse than none.
               let handlers = Map.ofList [ endpoint, unsafeHandler ]
-              let projection = Replay.ofTreeAndHandlers handlers (treeCalling endpoint)
+
+              let projection =
+                  Replay.ofTreeAndHandlers QueryPosture.PureRead handlers (treeCalling endpoint)
+
               let json = Demanded.encode projection
 
               match Demanded.decode json with
@@ -359,7 +366,7 @@ let tests =
               let handlers = Map.ofList [ endpoint, safeHandler ]
 
               let json =
-                  Demanded.encode (Replay.ofTreeAndHandlers handlers (treeCalling endpoint))
+                  Demanded.encode (Replay.ofTreeAndHandlers QueryPosture.PureRead handlers (treeCalling endpoint))
 
               Expect.stringContains
                   json
@@ -373,7 +380,7 @@ let tests =
               let clientOnly = Demanded.ofTree (treeCalling endpoint)
               Expect.isNone clientOnly.Server "the precondition"
 
-              let joined = Replay.withPostures [ unsafeHandler ] clientOnly
+              let joined = Replay.withPostures QueryPosture.PureRead [ unsafeHandler ] clientOnly
               Expect.isNone joined.Server "and the join left it alone"
               Expect.equal joined clientOnly "the document is untouched"
           }
@@ -400,7 +407,7 @@ let tests =
               // And the consequence at the decision, which is what the
               // difference is for.
               Expect.equal
-                  (Replay.admit ReplayMode.Resume Replay.strict addressed).Admission
+                  (Replay.admit QueryPosture.PureRead ReplayMode.Resume Replay.strict addressed).Admission
                   (ReplayAdmission.ReEvaluateReads [])
                   "the addressed one resumes with nothing to explain"
           } ]
