@@ -188,6 +188,41 @@ module ConfirmRoundTrip =
             )
         | None -> Ok(snd (take store))
 
+// ─── the bounded flush (Phase 2198) ──────────────────────────────────────────
+//
+//  `Action.CommitLocal` is the explicit "Apply" of a buffered form field. On
+//  this path it WRITES. The key is the field's `commitTo`, looked up in the
+//  fixed base tree. The value is the event's flush payload member named by the
+//  field's id, the protocol the server-driven flush speaks. Both are resolved
+//  after the trust boundary admits the event and after the confirm round trip
+//  decides what the event folds (`UiWitness.flushCommits`). The core then folds
+//  each commit as the `Assign` it is.
+//
+//  **Each flushed write meets the dispatch gate on its own, as the `SetState` it
+//  is.** A commit is a state write whose key the tree declares. A host whose
+//  policy admits the commit but not a write to that key would otherwise be
+//  bypassed by `commitTo`, and the server-driven flush gates the same write
+//  the same way. A denied write refuses the EVENT, as a denied confirm
+//  continuation does: nothing folds, and the store is unchanged.
+
+/// The flush every bounded placement shares.
+[<RequireQualifiedAccess>]
+module CommitFlush =
+
+    /// The action an admitted event folds with its commits flushed, or the
+    /// event-level refusal a gated write earns.
+    let prepare
+        (canDispatch: Action<obj> -> bool)
+        (tree: Node<obj>)
+        (ev: LiveEvent)
+        (action: Action<obj>)
+        : Result<Action<obj>, Validation.RejectReason> =
+        let flushed, writes = UiWitness.flushCommits tree ev.Payload action
+
+        match writes |> List.tryFind (canDispatch >> not) with
+        | Some denied -> Error(Validation.RejectReason.DispatchDenied(ev.NodeId, Validation.describeAction denied))
+        | None -> Ok flushed
+
 // ─── the driver ──────────────────────────────────────────────────────────────
 
 /// The host-coupled seams the bounded driver delegates to (the portability
@@ -362,7 +397,15 @@ let step (session: BoundedSession) (ev: LiveEvent) : BoundedSession * BoundedSte
         // addressed) or an answer (folded as the core's `Choose`, or refused).
         let pending, store = ConfirmRoundTrip.take session.Store
 
-        match ConfirmRoundTrip.prepare session.Services.CanDispatch pending ev resolvedAction with
+        // Phase 2198 — then the commits the event folds are flushed, each write
+        // gated on its own.
+        let prepared =
+            ConfirmRoundTrip.prepare session.Services.CanDispatch pending ev resolvedAction
+            |> Result.bind (fun (action, standing) ->
+                CommitFlush.prepare session.Services.CanDispatch session.BaseTree ev action
+                |> Result.map (fun flushed -> flushed, standing))
+
+        match prepared with
         | Error reason -> session, rejected (Gate reason)
         | Ok(action, standing) ->
             let budget = session.Services.Budget

@@ -10,6 +10,71 @@ consequence.
 
 ---
 
+## 2026-10-10 — D15: a commit is resolved against the tree at lowering and flushed from the event before the fold; it views as an `Assign`, and every flushed write meets the gate on its own
+
+**Decided (Phase 2198).** On the bounded path `CommitLocal` WRITES. The key is the `commitTo` of the `Local`
+binding on the form field the commit names, the first in document order, found with the same lookup the
+server-driven flush uses (`FormBuffer.tryFindFormField`). The value is the admitted event's payload member
+under the field's id, which is the same protocol. Both are resolved where the tree and the event are in
+view: the key at LOWERING, the value in the LOOP after the trust boundary and the confirm round trip. The
+commit is rewritten into a sealed carrier (`UiWitness.CommitCarrier`, riding `Action.Dispatch`'s in-process
+slot as the confirm carriers do), and the carrier views as the core's `Assign` with a literal. So the core
+reads nothing new and Program needs no release (Program D46). WIRE_FORMAT §30.1 states the rule, and the
+`lowers-to/` vectors pin it with the tree a commit's key is found in.
+
+**Premises checked against the tree first.** (1) *Phase 2130's refutation holds for the per-action view.*
+The action carries only a field id, and `UiWitness.view` has no tree. (2) *The server-driven channel
+already flushes.* `FormBuffer.step` reads the payload member under the field's id and folds
+`SetState(commitTo, value)`, gated. The bounded flush adopts its protocol rather than inventing one.
+(3) *A decoded tree's `Local` has no host closure*, so the flush can honour only `commitTo`. The decoder
+refuses `commitTo` beside `onCommit`, and a decoded `onCommit` is the inert sentinel. (4) *The bounded
+loops fold against a FIXED base tree.* The key the demanded document names is therefore the key the fold
+writes. All four held.
+
+**The value is written as the surface sends it, with one narrowing.** The shim harvests a number input as
+a number and a text input as a string, and each is written as it arrives. A buffer declaring the `Number`
+codec writes only a number. A string is read under the codec's own grammar (`LocalCodec.tryNumberText`)
+and anything else is refused. This is narrower than `FormBuffer.fieldFlushAction`, which stringifies the
+value and re-parses it through the binding's `parse`. That reading is per slot type and so per host, and
+`fuaran-rs` has no typed parse to share. A rule two hosts can state identically was preferred to one only
+this host can run.
+
+**Each flushed write meets `CanDispatch` on its own, as the `SetState` it is**, after the commit has passed
+the trust boundary. A denied write refuses the event, as a denied confirm continuation does. Without this
+rule, a host whose policy admits `CommitLocal` but not a write to a given key would be bypassed by a
+`commitTo` the untrusted tree declares. The server-driven flush gates the same write.
+
+**Rejected: lowering a commit to an `Assign` with no key** (2130's refused reading), and **a new core arm
+for a flush** (Program D46's three alternatives). Also **rejected: rewriting the commit into a plain
+`SetState`.** It would fold the same, but diagnostics would name an action the author never wrote. And a
+commit whose event carried no value would read as a malformed `SetState`, where it should read as a
+refused flush with its reason.
+
+**The demanded projection of a TREE reads `UiWitness.demandWitnessIn tree`**, which resolves each handler's
+commits with `lowerCommits`. The tree-blind `demandWitness` remains what a lone action reads
+(`Demanded.ofAction`, a handler stage), because it has no tree to resolve in. In that position a commit is
+a leaf that declares nothing, which is true of it: no loop flushes it there.
+
+**Assumptions kept, with the evidence that would falsify each.**
+
+- *Form field ids are unique enough that "first in document order" is the field the surface harvested.*
+  Falsified by a tree with two forms sharing a field id where the second is the one rendered under the
+  button. The validator's id rules do not cover form fields, so the host and the surface could then
+  disagree about which buffer committed.
+- *An answer to a confirm re-delivers the originating payload.* The answer's commits flush from the
+  answer event's own payload. Falsified by a surface that sends the answer bare, in which case a commit in
+  a continuation would find no value and refuse.
+
+**Tidied in the same landing.** Reviewed: `UiWitness.fs` and `BoundedDriver.fs`. In `UiWitness.lower`, the
+comment claiming "`CommitLocal`'s flushed value is applied as a state write by the loop before the commit
+is interpreted" was false before this phase and is now made true by the flush. It is rewritten to say
+which commits still reach the decline. The decline arms are KEPT, not removed. A raw action folded with no
+tree (`runBoundedAction`, a server handler's stage) still reaches them, and both the view and the lowering
+are total over the closed union. The other paths that 2130 described as "the decline" are the same arms,
+and nothing in either file was made dead or duplicate.
+
+---
+
 ## 2026-10-10 — D14: the program adapters move onto Fuaran.Program 0.9.0, and the server aliases take the host's query posture rather than defaulting it
 
 **Decided (Phase 2203).** `FuaranProgramVersion` moves 0.8.0 → 0.9.0 and the two adapters and their suites

@@ -46,14 +46,17 @@ module ServerSession =
         (wire: WireTree)
         : Result<ServerSession, ServerStrictFinding list> =
         // Phase 2106 — the coverage check reads the DEMANDED view, in which a
-        // confirm demands both of its continuations; the session it builds keeps
-        // the services it was given, whose view is the one a fold reads.
+        // confirm demands both of its continuations and a commit the key it
+        // writes (Phase 2198); the session it builds keeps the services it was
+        // given, whose view is the one a fold reads.
+        let tree = WireTree.reify wire
+
         Fuaran.Program.Server.ServerSession.initStrict
             coverage
             { services with
-                Witness = UiWitness.demandWitness }
+                Witness = UiWitness.demandWitnessIn tree }
             store
-            (WireTree.reify wire)
+            tree
         |> Result.map (fun session -> { session with Services = services })
 
     /// Step the session with one untrusted inbound event, with `arm` deciding
@@ -90,7 +93,15 @@ module ServerSession =
             // exactly as it arrived, pending questions included.
             let pending, store = BoundedDriver.ConfirmRoundTrip.take session.Store
 
-            match BoundedDriver.ConfirmRoundTrip.prepare session.Services.CanDispatch pending ev resolvedAction with
+            // Phase 2198 — then the commits the event folds are flushed, each
+            // write gated on its own (`BoundedDriver.CommitFlush`).
+            let prepared =
+                BoundedDriver.ConfirmRoundTrip.prepare session.Services.CanDispatch pending ev resolvedAction
+                |> Result.bind (fun (action, standing) ->
+                    BoundedDriver.CommitFlush.prepare session.Services.CanDispatch session.BaseTree ev action
+                    |> Result.map (fun flushed -> flushed, standing))
+
+            match prepared with
             | Error reason ->
                 session,
                 Fuaran.Program.Server.ServerSession.rejected session (Fuaran.Program.Server.ServerReject.Gate reason)

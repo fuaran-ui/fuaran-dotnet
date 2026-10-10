@@ -198,6 +198,155 @@ let private answerView (accepted: bool) (path: string) (confirm: Action<obj>) : 
     | Some(whenTrue, whenFalse) -> ActionView.Choose(Binding.Static(Some(JBool accepted)), whenTrue, whenFalse, None)
     | None -> ActionView.Leaf nothing
 
+// ─── the bounded flush (Phase 2198) ─────────────────────────────────────────
+//
+// `Action.CommitLocal` names a FORM FIELD, and the key it writes is that
+// field's `Local` binding's `commitTo`: a fact of the TREE, which the
+// per-action view cannot reach (Phase 2130's finding, WIRE_FORMAT §30.1). So a
+// commit is resolved where the tree is in view, at LOWERING. The field is
+// looked up with `FormBuffer.tryFindFormField`, the lookup the server-driven
+// flush already uses, and the commit is rewritten into a carrier naming its
+// key, which views as the core's `Assign` (DECISIONS D15). The value is the
+// event's FLUSH PAYLOAD: the member named by the field's id, which is the
+// protocol the server-driven flush already speaks. The loop reads it before
+// the fold, so the `Assign` carries a literal and the core reads nothing it did
+// not already read (Program D46).
+//
+// Two resolutions share one carrier. `lowerCommits` is the STATIC one: the tree
+// alone, every commit the action holds. The demanded projection and the
+// lowers-to certification read it; its carrier views as an `Assign` with no
+// value and is never folded. `flushCommits` is the DISPATCH one: the tree and
+// the event, and only the commits this event folds. Its carrier holds the
+// flushed value, or the reason the event carried none a write could take.
+//
+// A commit the tree cannot resolve is left as it is: no form field has its id,
+// or the field's value is not a `Local` declaring `commitTo`. Such a commit
+// writes nothing on any decoding host, and it views as the leaf that says so.
+
+/// A commit the loop has resolved against the tree. Sealed and constructed only here.
+[<Sealed>]
+type CommitCarrier private (key: string, flushed: Result<JVal, string> option, commit: Action<obj>) =
+    /// The State key the commit writes: its field's `commitTo`.
+    member _.Key = key
+    /// `None` on the lowering, which has no event. `Some` at dispatch: the
+    /// flushed value, or why the event carried none a write could take.
+    member _.Flushed = flushed
+    /// The `Action.CommitLocal` itself.
+    member _.Commit = commit
+    static member internal Lowered(key: string, commit: Action<obj>) = CommitCarrier(key, None, commit)
+
+    static member internal Flush(key: string, value: Result<JVal, string>, commit: Action<obj>) =
+        CommitCarrier(key, Some value, commit)
+
+let private carryCommit (carrier: CommitCarrier) : Action<obj> =
+    Action.Dispatch(Unchecked.nonNull (box carrier))
+
+/// The commit carried by an action, if the loop resolved one.
+let private committed (action: Action<obj>) : CommitCarrier option =
+    match action with
+    | Action.Dispatch msg ->
+        match box msg with
+        | :? CommitCarrier as c -> Some c
+        | _ -> None
+    | _ -> None
+
+/// Where a commit writes: the `commitTo` key of the `Local` binding on the form
+/// field it names, with the codec that buffer declares. `None` when the tree
+/// holds no form field of that id (the first in document order, as the
+/// server-driven flush finds it), or when the field's value is not a `Local`
+/// declaring `commitTo`. In both cases the commit writes nothing.
+let commitDestination (tree: Node<obj>) (fieldId: string) : (string * Format option) option =
+    match FormBuffer.tryFindFormField fieldId tree with
+    | Some field ->
+        match Fuaran.UI.Generated.FormFieldKind.value field.Kind with
+        | Some(Binding.Local(_, _, _, _, _, codec, Some key)) -> Some(key, codec)
+        | _ -> None
+    | None -> None
+
+/// The value a commit writes, read from the event's flush payload. The surface
+/// sends the buffer's value typed: a number input as a number, a text input as
+/// a string. That value is written as it arrives. A buffer whose codec is
+/// `Number` writes only a number: a string is read under the JSON number grammar
+/// the codec's own parse uses (`LocalCodec.tryNumberText`), and anything else is
+/// refused. An absent or `null` member writes nothing. Every refusal text is
+/// this host's own; no payload string is echoed.
+let private flushedValue (codec: Format option) (value: Validation.LiveValue option) : Result<JVal, string> =
+    let notANumber =
+        Error "the committed value is not a number, and the field's codec takes only numbers — no write performed"
+
+    match value, codec with
+    | None, _
+    | Some Validation.LiveValue.Null, _ ->
+        Error "the event carried no value for the committed field — no write performed"
+    | Some(Validation.LiveValue.Num n), _ -> Ok(JFloat n)
+    | Some(Validation.LiveValue.Str s), Some(Format.Number _) ->
+        match Fuaran.UI.HostPrelude.LocalCodec.tryNumberText s with
+        | Some n -> Ok(JFloat n)
+        | None -> notANumber
+    | Some(Validation.LiveValue.Bool _), Some(Format.Number _) -> notANumber
+    | Some(Validation.LiveValue.Str s), _ -> Ok(JStr s)
+    | Some(Validation.LiveValue.Bool b), _ -> Ok(JBool b)
+
+/// The STATIC resolution: every commit `action` holds, a confirm's
+/// continuations included, resolved against the tree. The demanded projection
+/// reads it (`demandWitnessIn`) and so does the lowers-to certification. Never
+/// folded: its carriers have no value.
+let rec lowerCommits (tree: Node<obj>) (action: Action<obj>) : Action<obj> =
+    match action with
+    | Action.CommitLocal fieldId ->
+        match commitDestination tree fieldId with
+        | Some(key, _) -> carryCommit (CommitCarrier.Lowered(key, action))
+        | None -> action
+    | Action.Chain ops -> Action.Chain(List.map (lowerCommits tree) ops)
+    | Action.Confirm(prompt, onConfirm, onCancel) ->
+        Action.Confirm(prompt, lowerCommits tree onConfirm, Option.map (lowerCommits tree) onCancel)
+    | other -> other
+
+/// The DISPATCH resolution: the commits this event folds, flushed from its
+/// payload. A gesture folds the commits its chain reaches; an answer folds those
+/// of the continuation it chose, and nothing else. A question's continuations
+/// are not reached by its ask. Returns the action to fold and the writes the
+/// flush makes, each as the `SetState` it is, so the loop can put each one to
+/// the dispatch gate on its own.
+let flushCommits
+    (tree: Node<obj>)
+    (payload: Map<string, Validation.LiveValue>)
+    (action: Action<obj>)
+    : Action<obj> * Action<obj> list =
+    let rec go (a: Action<obj>) : Action<obj> * Action<obj> list =
+        match a with
+        | Action.CommitLocal fieldId ->
+            match commitDestination tree fieldId with
+            | Some(key, codec) ->
+                let value = flushedValue codec (Map.tryFind fieldId payload)
+
+                let writes =
+                    match value with
+                    | Ok v -> [ Action.SetState(key, Some v, None) ]
+                    | Error _ -> []
+
+                carryCommit (CommitCarrier.Flush(key, value, a)), writes
+            | None -> a, []
+        | Action.Chain ops ->
+            let flushed = List.map go ops
+            Action.Chain(List.map fst flushed), List.collect snd flushed
+        | other ->
+            match carried other with
+            | Some c ->
+                match c.Answer, c.Confirm with
+                | Some true, Action.Confirm(prompt, onConfirm, onCancel) ->
+                    let branch, writes = go onConfirm
+                    carry (ConfirmCarrier.Answered(c.Path, true, Action.Confirm(prompt, branch, onCancel))), writes
+                | Some false, Action.Confirm(prompt, onConfirm, Some onCancel) ->
+                    let branch, writes = go onCancel
+
+                    carry (ConfirmCarrier.Answered(c.Path, false, Action.Confirm(prompt, onConfirm, Some branch))),
+                    writes
+                | _ -> other, []
+            | None -> other, []
+
+    go action
+
 /// `ActionWitness.View` — the total match over the closed fourteen-case union.
 /// Four cases are control structure the core owns; the other ten are leaves,
 /// each declaring what it may demand. No wildcard: a fifteenth arm fails to
@@ -239,7 +388,22 @@ let view (action: Action<obj>) : ActionView<Action<obj>, Binding<JVal>> =
         // tells "cannot be analysed" apart from "does nothing" — which a leaf
         // declaring nothing could not. A host's coverage refuses it until the
         // host accepts the `in-process` class (this tier's DECISIONS D13).
-        | None -> ActionView.Leaf inProcessDispatch
+        | None ->
+            match committed carrierOrMessage with
+            // Phase 2198 — a commit the loop resolved against the tree. It is
+            // the core's one store write, keyed by its field's `commitTo`: with
+            // no value on the lowering, which is never folded; with the flushed
+            // value at dispatch; and, when the event carried none a write could
+            // take, a leaf whose `lower` refuses and says why.
+            | Some c ->
+                match c.Flushed with
+                | None -> ActionView.Assign(c.Key, None, None)
+                | Some(Ok value) -> ActionView.Assign(c.Key, Some value, None)
+                | Some(Error _) -> ActionView.Leaf nothing
+            | None -> ActionView.Leaf inProcessDispatch
+    // A commit no loop resolved: there is no tree to find its field in, or the
+    // tree holds no field with a commit destination. It writes nothing, and the
+    // leaf says exactly that (Phase 2198; WIRE_FORMAT §30.1).
     | Action.CommitLocal _ -> ActionView.Leaf nothing
 
 /// The view the DEMANDED projection reads: what a gesture can reach across
@@ -259,12 +423,14 @@ let demandView (action: Action<obj>) : ActionView<Action<obj>, Binding<JVal>> =
               carry (ConfirmCarrier.Answered(ConfirmPath.root, true, action)) ]
     | other -> view other
 
-/// The log-safe description of an action, a carried confirm described as the
-/// `Confirm` it carries rather than as the in-process slot it rides in.
+/// The log-safe description of an action, a carried confirm or commit described
+/// as the `Confirm` or `CommitLocal` it carries rather than as the in-process
+/// slot it rides in.
 let describe (action: Action<obj>) : string =
-    match carried action with
-    | Some c -> Validation.describeAction c.Confirm
-    | None -> Validation.describeAction action
+    match carried action, committed action with
+    | Some c, _ -> Validation.describeAction c.Confirm
+    | None, Some c -> Validation.describeAction c.Commit
+    | None, None -> Validation.describeAction action
 
 /// The prompt a question carries, resolved at DISPATCH time through the same
 /// resolver every text slot uses. A prompt that resolves to nothing — or to
@@ -402,14 +568,28 @@ let lower (nodeId: string) (action: Action<obj>) (s: BindingSources) : LeafOutco
             | _ -> LeafOutcome.Decline
         | _ -> LeafOutcome.Decline
 
+    // Phase 2198 — a flushed commit whose event carried no value a write could
+    // take. It views as a leaf, so it reaches here, and it is REFUSED with the
+    // reason rather than declined: the reader asked for a write, and none was
+    // made. A commit with its value views as `Assign` and never reaches here.
+    | Action.Dispatch _ when Option.isSome (committed action) ->
+        match committed action with
+        | Some c ->
+            match c.Flushed with
+            | Some(Error reason) -> LeafOutcome.Refuse reason
+            | _ -> LeafOutcome.Decline
+        | None -> LeafOutcome.Decline
+
     // Computational host arms with no store/DOM effect on the bounded path, and
     // a confirm no loop ADDRESSED: documented declines. An unaddressed confirm
     // has no token, so its question could never be answered — asking it would
     // tell the reader something was pending that nothing will ever run, and
     // NEITHER continuation runs, the fail-closed direction. `Dispatch` has no
     // `update` to fold a message through, and the wire carries only the inert
-    // sentinel. `CommitLocal`'s flushed value is applied as a state write by
-    // the loop before the commit is interpreted.
+    // sentinel. A `CommitLocal` reaching here is one no loop resolved: a raw
+    // action, a server handler's stage, or a commit whose field declares no
+    // destination. It writes nothing. A loop flushes every commit it can
+    // resolve before the fold (Phase 2198).
     | Action.Confirm _
     | Action.Notify _
     | Action.AiTool _
@@ -949,3 +1129,17 @@ let demandWitness: UiProgramWitness =
                 Action =
                     { dispatch.Action with
                         View = demandView } } }
+
+/// The demanded witness for ONE TREE (Phase 2198): `demandWitness` with every
+/// handler's commits resolved against `tree` (`lowerCommits`), so a commit
+/// demands the namespace of the key it writes instead of reading as a leaf that
+/// demands nothing. The demanded projection of a tree reads this one. A lone
+/// action has no tree to resolve a commit in, and reads `demandWitness`.
+let demandWitnessIn (tree: Node<obj>) : UiProgramWitness =
+    { demandWitness with
+        Dispatch =
+            { demandWitness.Dispatch with
+                Handlers =
+                    fun node ->
+                        handlers node
+                        |> List.map (fun (event, action) -> event, lowerCommits tree action) } }

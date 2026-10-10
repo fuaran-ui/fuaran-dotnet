@@ -8284,6 +8284,35 @@ Program's own 0.9.0 entry (Program D42–D45), met through them:
   handler plans, replays, undoes and projects as before apart from the document's version and its empty
   `values`; no tree-wire byte moves.
 
+### What rides this slot — Phase 2198
+
+**Class: BEHAVIOUR change + additive API.** No wire byte moves. `CommitLocal` keeps its bytes, and so do
+the `Local` binding and the event. What moves is `CommitLocal`'s MEANING on the bounded path, from a
+documented no-op to a state write (WIRE_FORMAT §30.1, the bounded flush).
+
+- **Behaviour: every bounded placement flushes a commit.** `BoundedDriver.step`, `Program.handleEvent`
+  and the server placement's `ServerSession.step` / `stepWith` resolve each commit the event folds
+  against the fixed base tree: the key is the `commitTo` of the `Local` on the form field it names, and
+  the value is the event payload's member under that field's id. The commit then folds as the core's
+  `Assign`. A commit used to be declined, so a decoded tree's "Apply" wrote nothing. A tree whose commit
+  names a field with a `commitTo` now writes that key when the event carries the value.
+- **Behaviour: a flushed write meets `CanDispatch` on its own, as the `SetState` it is.** A denied write
+  refuses the event (`Gate (DispatchDenied …)`). A value the field's `Number` codec cannot take, or an
+  absent one, writes nothing and is diagnosed. A key under `host.` is refused by the core, as a
+  `SetState`'s is.
+- **Behaviour: a tree's demanded projection names the namespace a commit writes.** `Demanded.ofTree` /
+  `check`, the root-taking `ServerDemanded.*` (`reachable`, `ofTreeAndHandlers`,
+  `ofTreeHandlersAndRegistry`, `sign`, `verify`, `signWithRegistry`, `verifyWithRegistry`), and both
+  placements' `initStrict` read `UiWitness.demandWitnessIn tree`. A signed envelope over a tree with a
+  resolvable commit used to omit the write. It now names it, so an envelope signed before this slot over
+  such a tree no longer verifies and is re-signed. `Demanded.ofAction` and the handler-only
+  `ServerDemanded.*` have no tree, and are unchanged.
+- **Additive API (`Fuaran.UI.Program`):** `UiWitness.commitDestination`, `lowerCommits`,
+  `flushCommits`, `demandWitnessIn`, the sealed `UiWitness.CommitCarrier` (constructed only inside the
+  package), and `BoundedDriver.CommitFlush.prepare`. See `docs/DECISIONS.md` D15.
+- **Not changed:** a raw `CommitLocal` folded outside a loop (`BoundedActions.runBoundedAction`, a
+  server handler's stage) is declined exactly as before. It has no tree to find its field in.
+
 ## 0.92.0 — the slot Phases 2038 and 2043 open: one answer to what a node's children are, and one spine walk for the DAG tier (RELEASED — tagged v0.92.0 at 9b53dfa, 2026-10-06)
 
 _Class: **BREAKING (API + source + behaviour)** — Phase 2038 removes one public function and Phase 2043 changes

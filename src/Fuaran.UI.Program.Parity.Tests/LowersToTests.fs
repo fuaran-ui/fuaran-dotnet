@@ -150,10 +150,15 @@ let rec reading (action: Action<obj>) : JVal =
     | ActionView.Each _ -> failwith "the UI witness lowered an action to Each, which §30.1 never targets"
 
 type private Vector =
-    { Name: string
-      Arm: string
-      Action: JVal
-      Expected: JVal }
+    {
+        Name: string
+        Arm: string
+        Action: JVal
+        /// Phase 2198 — the tree the action sits in, for the one arm whose
+        /// lowering reads one (`CommitLocal`, §30.1): its key is found there.
+        Tree: JVal option
+        Expected: JVal
+    }
 
 let private load () : string list * Vector list =
     let manifest = readJson (Path.Combine(family, "manifest.json"))
@@ -169,6 +174,10 @@ let private load () : string list * Vector list =
             { Name = str (memberOf "name" entry)
               Arm = str (memberOf "arm" entry)
               Action = memberOf "action" file
+              Tree =
+                match file with
+                | JObj members -> members |> List.tryFind (fun (k, _) -> k = "tree") |> Option.map snd
+                | _ -> None
               Expected = memberOf "lowersTo" file })
 
     arms, vectors
@@ -177,6 +186,18 @@ let private decodeOrFail (vector: Vector) : Action<obj> =
     match UiWitness.decodeAction vector.Action with
     | Ok action -> action
     | Error refusal -> failwithf "%s: the action does not decode: %A" vector.Name refusal
+
+/// The action as the bounded path lowers it (Phase 2198): resolved against the
+/// vector's tree, decoded by this host's own node decoder, when it carries one.
+let private lowered (vector: Vector) : Action<obj> =
+    let action = decodeOrFail vector
+
+    match vector.Tree with
+    | None -> action
+    | Some tree ->
+        match Fuaran.UI.Ops.JsonDecode.decodeNodeObj (Canon.render tree) with
+        | Ok root -> UiWitness.lowerCommits root action
+        | Error err -> failwithf "%s: the tree does not decode: %A" vector.Name err
 
 /// The case name of a decoded action, read off the closed union itself.
 let private caseName (action: Action<obj>) : string =
@@ -216,7 +237,7 @@ let tests =
               let _, vectors = load ()
 
               for vector in vectors do
-                  let actual = reading (decodeOrFail vector)
+                  let actual = reading (lowered vector)
 
                   Expect.equal
                       (normalise actual)
@@ -264,4 +285,25 @@ let tests =
 
               Expect.equal (normalise actual) (normalise vector.Expected) "the witness meets the row"
               Expect.notEqual (normalise plain) (normalise vector.Expected) "the same leaf without its mark does not"
+          }
+
+          // Phase 2198 — the go-red half of the `CommitLocal` row: the same
+          // commit lowered WITHOUT its tree (the view before this phase, a leaf
+          // that demands nothing) fails the vector, so the row cannot be met by a
+          // witness that leaves the key unnamed.
+          test "a commit lowered without its tree fails its vector (the key is what the row certifies)" {
+              let _, vectors = load ()
+              let vector = vectors |> List.find (fun v -> v.Name = "commit-local")
+
+              Expect.isSome vector.Tree "the commit vector carries the tree its key is found in"
+
+              Expect.equal
+                  (normalise (reading (lowered vector)))
+                  (normalise vector.Expected)
+                  "the witness meets the row"
+
+              Expect.notEqual
+                  (normalise (reading (decodeOrFail vector)))
+                  (normalise vector.Expected)
+                  "the tree-blind leaf does not"
           } ]

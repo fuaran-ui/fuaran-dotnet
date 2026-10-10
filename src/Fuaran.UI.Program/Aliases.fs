@@ -68,11 +68,12 @@ module Demanded =
     let ofAction (action: Action<obj>) : DemandedProjection =
         Fuaran.Program.Bounded.Demanded.ofAction UiWitness.demandWitness action
 
+    // A tree's projection resolves each commit against the tree (Phase 2198).
     let ofTree (root: Node<obj>) : DemandedProjection =
-        Fuaran.Program.Bounded.Demanded.ofTree UiWitness.demandWitness root
+        Fuaran.Program.Bounded.Demanded.ofTree (UiWitness.demandWitnessIn root) root
 
     let check (coverage: HostCoverage) (tree: Node<obj>) : CoverageFinding list =
-        Fuaran.Program.Bounded.Demanded.check UiWitness.demandWitness coverage tree
+        Fuaran.Program.Bounded.Demanded.check (UiWitness.demandWitnessIn tree) coverage tree
 
 module ProgramWire =
 

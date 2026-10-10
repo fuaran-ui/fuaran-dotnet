@@ -240,7 +240,15 @@ module Program =
             // answer refused.
             let pending, store = BoundedDriver.ConfirmRoundTrip.take program.Store
 
-            match BoundedDriver.ConfirmRoundTrip.prepare program.Services.CanDispatch pending ev resolvedAction with
+            // Phase 2198 — then the commits the event folds are flushed, each
+            // write gated on its own, as the server placement does.
+            let prepared =
+                BoundedDriver.ConfirmRoundTrip.prepare program.Services.CanDispatch pending ev resolvedAction
+                |> Result.bind (fun (action, standing) ->
+                    BoundedDriver.CommitFlush.prepare program.Services.CanDispatch program.BaseTree ev action
+                    |> Result.map (fun flushed -> flushed, standing))
+
+            match prepared with
             | Error reason -> rejected program (Gate reason)
             | Ok(action, standing) ->
                 let budget = program.Services.Budget

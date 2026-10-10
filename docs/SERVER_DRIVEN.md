@@ -274,7 +274,8 @@ caps bound memory across queued frames – the two halves of "no arbitrary cost"
 ### Bounded-action no-op diagnostics
 
 The bounded interpreter's documented no-op arms (`Notify` / `AiTool` / `Invoke`
-/ `Dispatch` / `Call` / `CommitLocal`) each emit a readable
+/ `Dispatch` / `Call`, and a `CommitLocal` no loop could resolve against the tree –
+a loop flushes the ones it can, Phase 2198) each emit a readable
 `BoundedDiagnostic.UnsupportedOnBoundedPath (nodeId, action)` through
 `BoundedOutcome.Diagnostics`, threaded into `BoundedStepOutput.Diagnostics` – 
 so a generated tree that *intended* a `Call` is an observable "this action is
