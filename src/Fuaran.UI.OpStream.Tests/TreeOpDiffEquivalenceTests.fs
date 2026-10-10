@@ -176,12 +176,12 @@ let private fieldMutations (siblings: Map<string, string list>) (json: string) :
                   match v with
                   | null -> ()
                   | v when k = "id" || k = "$type" -> ()
-                  | v -> yield! paths v (path @ [ k ]) ]
+                  | v -> yield! paths (nonNull v) (path @ [ k ]) ]
         | :? JsonArray as a ->
             [ for i in 0 .. a.Count - 1 do
                   match a.[i] with
                   | null -> ()
-                  | v -> yield! paths v (path @ [ string i ]) ]
+                  | v -> yield! paths (nonNull v) (path @ [ string i ]) ]
         | :? JsonValue as v -> [ path, v ]
         | _ -> []
 
