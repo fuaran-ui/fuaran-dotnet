@@ -140,7 +140,20 @@ module private SimpleSinkJson =
             Ok(TreeOp.ReorderChildren(NodeId parent, ids))
         | _ -> Error(sprintf "TestOpCodec: unrecognised payload '%s'" json)
 
+
+/// A test codec's refusal, typed as the codec seam requires (Phase 2065).
+let private testCodecRefusal (message: string) : CodecError =
+    let refusal: Fuaran.UI.Ops.JsonDecode.DecodeError =
+        { Code = "TEST_CODEC"
+          Path = "$"
+          Message = message
+          ExpectedShape = None }
+
+    CodecError.Decode refusal
+
 let testCodec: IOpJsonCodec<TestMsg> =
     { new IOpJsonCodec<TestMsg> with
         member _.EncodeOp op = SimpleSinkJson.encode op
-        member _.DecodeOp json = SimpleSinkJson.decode json }
+
+        member _.DecodeOp json =
+            SimpleSinkJson.decode json |> Result.mapError testCodecRefusal }

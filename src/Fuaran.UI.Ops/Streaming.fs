@@ -193,11 +193,10 @@ type StreamDecode =
     { Skeleton: WireTree
       Ops: TreeOp<obj> list }
 
-let private streamError (code: string) (message: string) : JsonDecode.DecodeError =
-    { Code = code
-      Path = "$"
-      Message = message
-      ExpectedShape = None }
+/// A frame-protocol refusal. Its code is one of `DecodeErrorCode`'s `STREAM_*`
+/// cases (Phase 2065), so a stream refusal speaks the decoder's vocabulary.
+let private streamError (code: JsonDecode.DecodeErrorCode) (message: string) : JsonDecode.DecodeError =
+    JsonDecode.DecodeError.create code "$" message None
 
 /// Consumer side: decode an ordered frame sequence into the genesis skeleton +
 /// the fill ops. Each frame's `NodeJson` is decoded with the established
@@ -207,12 +206,19 @@ let private streamError (code: string) (message: string) : JsonDecode.DecodeErro
 /// malformed frame or a protocol violation.
 let decodeStream (frames: StreamFrame list) : Result<StreamDecode, JsonDecode.DecodeError> =
     match frames with
-    | [] -> Error(streamError "STREAM_EMPTY" "A streamed emission must carry at least the skeleton-root frame.")
+    | [] ->
+        Error(
+            streamError
+                JsonDecode.DecodeErrorCode.STREAM_EMPTY
+                "A streamed emission must carry at least the skeleton-root frame."
+        )
     | skeletonFrame :: childFrames ->
         match skeletonFrame.ParentId with
         | Some _ ->
             Error(
-                streamError "STREAM_NO_SKELETON" "The first streamed frame must be the skeleton root (ParentId = None)."
+                streamError
+                    JsonDecode.DecodeErrorCode.STREAM_NO_SKELETON
+                    "The first streamed frame must be the skeleton root (ParentId = None)."
             )
         | None ->
             match JsonDecode.decodeNodeObj skeletonFrame.NodeJson with
@@ -226,7 +232,7 @@ let decodeStream (frames: StreamFrame list) : Result<StreamDecode, JsonDecode.De
                         | None ->
                             Error(
                                 streamError
-                                    "STREAM_ORPHAN_SKELETON"
+                                    JsonDecode.DecodeErrorCode.STREAM_ORPHAN_SKELETON
                                     "Only the first streamed frame may omit a ParentId; a later frame did."
                             )
                         | Some parentId ->

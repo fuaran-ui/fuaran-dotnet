@@ -36,23 +36,9 @@ open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 
 // ─── Shared token mappings (pure; identical on both compile targets) ───────
-
-let private codeToken (code: ApplyErrorCode) : string =
-    match code with
-    | ApplyErrorCode.NodeNotFound -> "NodeNotFound"
-    | ApplyErrorCode.ParentNotFound -> "ParentNotFound"
-    | ApplyErrorCode.FieldNotFound -> "FieldNotFound"
-    | ApplyErrorCode.SlotNotFound -> "SlotNotFound"
-    | ApplyErrorCode.KindMismatch -> "KindMismatch"
-    | ApplyErrorCode.ChildlessKind -> "ChildlessKind"
-    | ApplyErrorCode.PositionOutOfRange -> "PositionOutOfRange"
-    | ApplyErrorCode.OrderingMismatch -> "OrderingMismatch"
-    | ApplyErrorCode.DuplicateNodeId -> "DuplicateNodeId"
-    | ApplyErrorCode.PathInvalid -> "PathInvalid"
-    | ApplyErrorCode.PathNotSupportedYet -> "PathNotSupportedYet"
-    | ApplyErrorCode.BatchAborted _ -> "BatchAborted"
-    | ApplyErrorCode.LimitExceeded -> "LimitExceeded"
-    | ApplyErrorCode.PositionNotStructural _ -> "PositionNotStructural"
+//
+// The code token is `ApplyErrorCode.name` (Ops.Abstractions), the one
+// projection the apply telemetry reads too (Phase 2065).
 
 /// The envelope's `kind` token — the op's case name (Phase 2044: projected,
 /// not matched here).
@@ -121,7 +107,7 @@ let private hintValue (hint: ApplyHint) : JVal =
 /// Render an (op, error) pair to the §4d-shaped JSON envelope.
 let render (op: TreeOp<'Msg>) (error: ApplyError) : string =
     let errorFields =
-        [ "code", JStr(codeToken error.Code)
+        [ "code", JStr(ApplyErrorCode.name error.Code)
           match error.Code with
           | ApplyErrorCode.BatchAborted idx -> "batch_index", JInt idx
           | _ -> ()

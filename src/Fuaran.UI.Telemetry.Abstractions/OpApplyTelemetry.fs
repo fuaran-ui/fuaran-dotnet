@@ -87,22 +87,14 @@ type OpApplyTelemetry =
 [<RequireQualifiedAccess>]
 module OpOutcome =
 
+    /// The telemetry spelling of a code: the shared case name
+    /// (`ApplyErrorCode.name`, Phase 2065) with the case's payload in
+    /// parentheses where it carries one.
     let private errorCodeName (code: ApplyErrorCode) : string =
         match code with
-        | ApplyErrorCode.NodeNotFound -> "NodeNotFound"
-        | ApplyErrorCode.ParentNotFound -> "ParentNotFound"
-        | ApplyErrorCode.FieldNotFound -> "FieldNotFound"
-        | ApplyErrorCode.SlotNotFound -> "SlotNotFound"
-        | ApplyErrorCode.KindMismatch -> "KindMismatch"
-        | ApplyErrorCode.ChildlessKind -> "ChildlessKind"
-        | ApplyErrorCode.PositionOutOfRange -> "PositionOutOfRange"
-        | ApplyErrorCode.OrderingMismatch -> "OrderingMismatch"
-        | ApplyErrorCode.DuplicateNodeId -> "DuplicateNodeId"
-        | ApplyErrorCode.PathInvalid -> "PathInvalid"
-        | ApplyErrorCode.PathNotSupportedYet -> "PathNotSupportedYet"
-        | ApplyErrorCode.BatchAborted innerIndex -> sprintf "BatchAborted(%d)" innerIndex
-        | ApplyErrorCode.LimitExceeded -> "LimitExceeded"
-        | ApplyErrorCode.PositionNotStructural slot -> sprintf "PositionNotStructural(%s)" slot
+        | ApplyErrorCode.BatchAborted innerIndex -> sprintf "%s(%d)" (ApplyErrorCode.name code) innerIndex
+        | ApplyErrorCode.PositionNotStructural slot -> sprintf "%s(%s)" (ApplyErrorCode.name code) slot
+        | _ -> ApplyErrorCode.name code
 
     /// Derive the closed, `'Msg`-free `OpOutcome` from a typed apply result.
     /// This is the single source of truth for the apply-result → outcome

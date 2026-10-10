@@ -31,18 +31,17 @@ open Fuaran.UI
 
 open Fuaran.UI.Ops.JsonDecode
 
-/// The card-specific refusal, riding the standard §6 envelope. Structural
-/// failures reuse the §6 codes; these two name what is specific to this artefact.
+/// The card-specific refusal codes, riding the standard §6 envelope. Structural
+/// failures reuse the §6 codes (`DecodeErrorCode`); these three name what is
+/// specific to this artefact. Typed since Phase 2065: every refusal this module
+/// builds names its code through `DecodeErrorCode` or this type, never a raw
+/// string.
 [<RequireQualifiedAccess>]
-module CardErrorCode =
+type CardErrorCode =
     /// `$card` / `$cards` present but not a version this decoder implements.
-    [<Literal>]
-    let UNSUPPORTED_VERSION = "UNSUPPORTED_VERSION"
-
+    | UNSUPPORTED_VERSION
     /// A key the card shape does not declare (default-deny by shape).
-    [<Literal>]
-    let UNDECLARED_FIELD = "UNDECLARED_FIELD"
-
+    | UNDECLARED_FIELD
     /// A bundle carries two cards for one `(moduleId, componentId)`.
     ///
     /// Refused rather than last-write-wins, and this is the one place the two
@@ -50,14 +49,29 @@ module CardErrorCode =
     /// chose; a bundle is a DOCUMENT, and a document that says two different
     /// things about one identity has no order to appeal to — accepting it would
     /// make the card a reader picks depend on decoder implementation detail.
-    [<Literal>]
-    let DUPLICATE_CARD = "DUPLICATE_CARD"
+    | DUPLICATE_CARD
 
-let private err (code: string) (path: string) (message: string) : DecodeError =
+module CardErrorCode =
+    /// The code as it lands in `DecodeError.Code` (WIRE_FORMAT §25.3).
+    let toString (code: CardErrorCode) : string =
+        match code with
+        | CardErrorCode.UNSUPPORTED_VERSION -> "UNSUPPORTED_VERSION"
+        | CardErrorCode.UNDECLARED_FIELD -> "UNDECLARED_FIELD"
+        | CardErrorCode.DUPLICATE_CARD -> "DUPLICATE_CARD"
+
+let private refusal (code: string) (path: string) (message: string) : DecodeError =
     { Code = code
       Path = path
       Message = message
       ExpectedShape = None }
+
+/// A structural refusal — one of the §6 codes.
+let private err (code: DecodeErrorCode) (path: string) (message: string) : DecodeError =
+    refusal (DecodeErrorCode.toString code) path message
+
+/// A refusal specific to the card artefact.
+let private cardErr (code: CardErrorCode) (path: string) (message: string) : DecodeError =
+    refusal (CardErrorCode.toString code) path message
 
 /// The first key present in `fields` that `declared` does not list. The §18
 /// undeclared-key probe, in declaration order so the refusal is deterministic
@@ -69,8 +83,8 @@ let private firstUndeclared (declared: string list) (fields: (string * JVal) lis
 let private tryString (path: string) (key: string) (fields: (string * JVal) list) : Result<string, DecodeError> =
     match fields |> List.tryPick (fun (k, v) -> if k = key then Some v else None) with
     | Some(JStr s) -> Ok s
-    | Some _ -> Error(err "WRONG_TYPE" (path + "." + key) (key + " must be a string"))
-    | None -> Error(err "MISSING_FIELD" (path + "." + key) (key + " is required"))
+    | Some _ -> Error(err DecodeErrorCode.WRONG_TYPE (path + "." + key) (key + " must be a string"))
+    | None -> Error(err DecodeErrorCode.MISSING_FIELD (path + "." + key) (key + " is required"))
 
 let private tryOptionalString
     (path: string)
@@ -79,14 +93,14 @@ let private tryOptionalString
     : Result<string option, DecodeError> =
     match fields |> List.tryPick (fun (k, v) -> if k = key then Some v else None) with
     | Some(JStr s) -> Ok(Some s)
-    | Some _ -> Error(err "WRONG_TYPE" (path + "." + key) (key + " must be a string when present"))
+    | Some _ -> Error(err DecodeErrorCode.WRONG_TYPE (path + "." + key) (key + " must be a string when present"))
     | None -> Ok None
 
 let private tryBool (path: string) (key: string) (fields: (string * JVal) list) : Result<bool, DecodeError> =
     match fields |> List.tryPick (fun (k, v) -> if k = key then Some v else None) with
     | Some(JBool b) -> Ok b
-    | Some _ -> Error(err "WRONG_TYPE" (path + "." + key) (key + " must be a boolean"))
-    | None -> Error(err "MISSING_FIELD" (path + "." + key) (key + " is required"))
+    | Some _ -> Error(err DecodeErrorCode.WRONG_TYPE (path + "." + key) (key + " must be a boolean"))
+    | None -> Error(err DecodeErrorCode.MISSING_FIELD (path + "." + key) (key + " is required"))
 
 // ─── Encode ──────────────────────────────────────────────────────────────────
 
@@ -158,19 +172,19 @@ let private decodePayload (path: string) (jv: JVal) : Result<string * string opt
     | JObj fields ->
         match firstUndeclared [ "gate"; "language" ] fields with
         | Some stray ->
-            Error(err CardErrorCode.UNDECLARED_FIELD (path + "." + stray) ("undeclared key '" + stray + "'"))
+            Error(cardErr CardErrorCode.UNDECLARED_FIELD (path + "." + stray) ("undeclared key '" + stray + "'"))
         | None ->
             tryString path "language" fields
             |> Result.bind (fun language ->
                 tryOptionalString path "gate" fields |> Result.map (fun gate -> language, gate))
-    | _ -> Error(err "WRONG_TYPE" path "payload must be an object")
+    | _ -> Error(err DecodeErrorCode.WRONG_TYPE path "payload must be an object")
 
 let private decodeProp (path: string) (jv: JVal) : Result<CustomPropCard, DecodeError> =
     match jv with
     | JObj fields ->
         match firstUndeclared [ "name"; "payload"; "required"; "type" ] fields with
         | Some stray ->
-            Error(err CardErrorCode.UNDECLARED_FIELD (path + "." + stray) ("undeclared key '" + stray + "'"))
+            Error(cardErr CardErrorCode.UNDECLARED_FIELD (path + "." + stray) ("undeclared key '" + stray + "'"))
         | None ->
             tryString path "name" fields
             |> Result.bind (fun name ->
@@ -186,7 +200,7 @@ let private decodeProp (path: string) (jv: JVal) : Result<CustomPropCard, Decode
                     | None ->
                         Error(
                             err
-                                "UNKNOWN_DU_CASE"
+                                DecodeErrorCode.UNKNOWN_DU_CASE
                                 (path + ".type")
                                 ("'" + typeTag + "' is not a declared prop type in this build")
                         )
@@ -212,23 +226,30 @@ let private decodeProp (path: string) (jv: JVal) : Result<CustomPropCard, Decode
                                       Required = required
                                       PayloadLanguage = Some language
                                       PayloadGate = gate }))))
-    | _ -> Error(err "WRONG_TYPE" path "a prop row must be an object")
+    | _ -> Error(err DecodeErrorCode.WRONG_TYPE path "a prop row must be an object")
 
 let private decodeHash (path: string) (jv: JVal) : Result<CardContentHash, DecodeError> =
     match jv with
     | JObj fields ->
         match firstUndeclared [ "algorithm"; "hash" ] fields with
         | Some stray ->
-            Error(err CardErrorCode.UNDECLARED_FIELD (path + "." + stray) ("undeclared key '" + stray + "'"))
+            Error(cardErr CardErrorCode.UNDECLARED_FIELD (path + "." + stray) ("undeclared key '" + stray + "'"))
         | None ->
             tryString path "algorithm" fields
             |> Result.bind (fun algorithm ->
                 tryString path "hash" fields
                 |> Result.map (fun hash -> { Algorithm = algorithm; Hash = hash }))
-    | _ -> Error(err "WRONG_TYPE" path "contentHash must be an object")
+    | _ -> Error(err DecodeErrorCode.WRONG_TYPE path "contentHash must be an object")
 
 /// Collect over a list, stopping at the first failure — the fail-fast decode
 /// order §25.3 pins, so every conformant host surfaces the SAME first error.
+///
+/// Deliberately NOT the node decoder's collecting `traverse` (§29.1). §29 is
+/// scoped to node decoders and orders its list by path (§29.3), and a card
+/// decode that collected would name a different first error than §25.3's member
+/// order: a card missing both `moduleId` and `componentId` is refused at
+/// `moduleId` under §25.3 and would be refused at `componentId` under §29.3
+/// (Phase 2065 measured the conflict and left the normative order standing).
 let private traverse (f: int -> 'a -> Result<'b, DecodeError>) (xs: 'a list) : Result<'b list, DecodeError> =
     let rec go i acc rest =
         match rest with
@@ -245,13 +266,13 @@ let private decodeCardAt (path: string) (jv: JVal) : Result<CustomKindCard, Deco
     | JObj fields ->
         match firstUndeclared [ "$card"; "componentId"; "contentHash"; "moduleId"; "props"; "summary" ] fields with
         | Some stray ->
-            Error(err CardErrorCode.UNDECLARED_FIELD (path + "." + stray) ("undeclared key '" + stray + "'"))
+            Error(cardErr CardErrorCode.UNDECLARED_FIELD (path + "." + stray) ("undeclared key '" + stray + "'"))
         | None ->
             tryString path "$card" fields
             |> Result.bind (fun version ->
                 if version <> CustomCard.formatVersion then
                     Error(
-                        err
+                        cardErr
                             CardErrorCode.UNSUPPORTED_VERSION
                             (path + ".$card")
                             ("card format version '" + version + "' is not supported by this decoder")
@@ -265,14 +286,23 @@ let private decodeCardAt (path: string) (jv: JVal) : Result<CustomKindCard, Deco
                                 fields
                                 |> List.tryPick (fun (k, v) -> if k = "contentHash" then Some v else None)
                             with
-                            | None -> Error(err "MISSING_FIELD" (path + ".contentHash") "contentHash is required")
+                            | None ->
+                                Error(
+                                    err
+                                        DecodeErrorCode.MISSING_FIELD
+                                        (path + ".contentHash")
+                                        "contentHash is required"
+                                )
                             | Some h ->
                                 decodeHash (path + ".contentHash") h
                                 |> Result.bind (fun hash ->
                                     match
                                         fields |> List.tryPick (fun (k, v) -> if k = "props" then Some v else None)
                                     with
-                                    | None -> Error(err "MISSING_FIELD" (path + ".props") "props is required")
+                                    | None ->
+                                        Error(
+                                            err DecodeErrorCode.MISSING_FIELD (path + ".props") "props is required"
+                                        )
                                     | Some(JArr rows) ->
                                         rows
                                         |> traverse (fun i row ->
@@ -285,36 +315,42 @@ let private decodeCardAt (path: string) (jv: JVal) : Result<CustomKindCard, Deco
                                                   Props = props
                                                   Hash = hash
                                                   Summary = summary }))
-                                    | Some _ -> Error(err "WRONG_TYPE" (path + ".props") "props must be an array")))))
-    | _ -> Error(err "WRONG_TYPE" path "a card must be an object")
+                                    | Some _ ->
+                                        Error(
+                                            err
+                                                DecodeErrorCode.WRONG_TYPE
+                                                (path + ".props")
+                                                "props must be an array"
+                                        )))))
+    | _ -> Error(err DecodeErrorCode.WRONG_TYPE path "a card must be an object")
 
 /// Decode one card document.
 let decodeCardJson (json: string) : Result<CustomKindCard, DecodeError> =
     match Json.parse json with
-    | Error m -> Error(err "INVALID_JSON" "$" ("card is not valid JSON: " + m))
+    | Error m -> Error(err DecodeErrorCode.INVALID_JSON "$" ("card is not valid JSON: " + m))
     | Ok jv -> decodeCardAt "$" jv
 
 /// Decode a card BUNDLE, refusing a document that carries two cards for one
 /// identity.
 let decodeBundleJson (json: string) : Result<CustomKindCard list, DecodeError> =
     match Json.parse json with
-    | Error m -> Error(err "INVALID_JSON" "$" ("card bundle is not valid JSON: " + m))
+    | Error m -> Error(err DecodeErrorCode.INVALID_JSON "$" ("card bundle is not valid JSON: " + m))
     | Ok(JObj fields) ->
         match firstUndeclared [ "$cards"; "cards" ] fields with
-        | Some stray -> Error(err CardErrorCode.UNDECLARED_FIELD ("$." + stray) ("undeclared key '" + stray + "'"))
+        | Some stray -> Error(cardErr CardErrorCode.UNDECLARED_FIELD ("$." + stray) ("undeclared key '" + stray + "'"))
         | None ->
             tryString "$" "$cards" fields
             |> Result.bind (fun version ->
                 if version <> CustomCard.bundleFormatVersion then
                     Error(
-                        err
+                        cardErr
                             CardErrorCode.UNSUPPORTED_VERSION
                             "$.$cards"
                             ("card bundle format version '" + version + "' is not supported by this decoder")
                     )
                 else
                     match fields |> List.tryPick (fun (k, v) -> if k = "cards" then Some v else None) with
-                    | None -> Error(err "MISSING_FIELD" "$.cards" "cards is required")
+                    | None -> Error(err DecodeErrorCode.MISSING_FIELD "$.cards" "cards is required")
                     | Some(JArr rows) ->
                         rows
                         |> traverse (fun i row -> decodeCardAt ("$.cards[" + string i + "]") row)
@@ -335,14 +371,14 @@ let decodeBundleJson (json: string) : Result<CustomKindCard list, DecodeError> =
                             match duplicate with
                             | Some(i, (m, c)) ->
                                 Error(
-                                    err
+                                    cardErr
                                         CardErrorCode.DUPLICATE_CARD
                                         ("$.cards[" + string i + "]")
                                         ("the bundle carries two cards for '" + m + "." + c + "'")
                                 )
                             | None -> Ok cards)
-                    | Some _ -> Error(err "WRONG_TYPE" "$.cards" "cards must be an array"))
-    | Ok _ -> Error(err "WRONG_TYPE" "$" "a card bundle must be an object")
+                    | Some _ -> Error(err DecodeErrorCode.WRONG_TYPE "$.cards" "cards must be an array"))
+    | Ok _ -> Error(err DecodeErrorCode.WRONG_TYPE "$" "a card bundle must be an object")
 
 /// Decode a bundle straight into the store a renderer consumes.
 let decodeStore (json: string) : Result<CustomCardStore, DecodeError> =

@@ -73,9 +73,13 @@ type Checkpoint<'Msg> =
 /// only need integrity verification (no checkpoint resume) can use the
 /// `encodeOnly` factory and accept that `LatestCheckpointAtOrBefore`
 /// will surface decoder errors.
+///
+/// `DecodeNode` refuses with the typed `CodecError` (Phase 2065), the same
+/// value `IOpJsonCodec.DecodeOp` returns, so a snapshot refusal keeps its code
+/// and path.
 type INodeJsonCodec<'Msg> =
     abstract member EncodeNode: Node<'Msg> -> string
-    abstract member DecodeNode: string -> Result<Node<'Msg>, string>
+    abstract member DecodeNode: string -> Result<Node<'Msg>, CodecError>
 
 module NodeJsonCodec =
     /// Codec that encodes via `CanonicalJson.encodeNode` and rejects every
@@ -87,7 +91,7 @@ module NodeJsonCodec =
             member _.EncodeNode node = CanonicalJson.encodeNode node
 
             member _.DecodeNode _ =
-                Error "NodeJsonCodec.encodeOnly does not implement DecodeNode" }
+                Error(CodecError.DecodeUnsupported("NodeJsonCodec.encodeOnly", "DecodeNode")) }
 
 /// Configurable retention policy. Compaction keeps the last
 /// `KeepCheckpoints` checkpoints; ops with `Sequence ≤ oldest-retained-

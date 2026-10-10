@@ -282,6 +282,30 @@ type ApplyErrorCode =
     /// structural semantics simply stops being reported here.
     | PositionNotStructural of slot: string
 
+[<RequireQualifiedAccess>]
+module ApplyErrorCode =
+    /// The code's case name — `"NodeNotFound"`, `"BatchAborted"`, … — the one
+    /// code-to-string projection (Phase 2065). The §4d envelope
+    /// (`ErrorRender.render`) and the apply telemetry
+    /// (`OpOutcome.ofApplyResult`) both read it; each adds its own rendering of
+    /// a case's payload beside the name, so neither re-matches the cases.
+    let name (code: ApplyErrorCode) : string =
+        match code with
+        | ApplyErrorCode.NodeNotFound -> "NodeNotFound"
+        | ApplyErrorCode.ParentNotFound -> "ParentNotFound"
+        | ApplyErrorCode.FieldNotFound -> "FieldNotFound"
+        | ApplyErrorCode.SlotNotFound -> "SlotNotFound"
+        | ApplyErrorCode.KindMismatch -> "KindMismatch"
+        | ApplyErrorCode.ChildlessKind -> "ChildlessKind"
+        | ApplyErrorCode.PositionOutOfRange -> "PositionOutOfRange"
+        | ApplyErrorCode.OrderingMismatch -> "OrderingMismatch"
+        | ApplyErrorCode.DuplicateNodeId -> "DuplicateNodeId"
+        | ApplyErrorCode.PathInvalid -> "PathInvalid"
+        | ApplyErrorCode.PathNotSupportedYet -> "PathNotSupportedYet"
+        | ApplyErrorCode.BatchAborted _ -> "BatchAborted"
+        | ApplyErrorCode.LimitExceeded -> "LimitExceeded"
+        | ApplyErrorCode.PositionNotStructural _ -> "PositionNotStructural"
+
 /// AI-recovery hint payload per §4d lines 745–759. Every field is
 /// optional so a renderer can emit only what's populated for a given
 /// error class.

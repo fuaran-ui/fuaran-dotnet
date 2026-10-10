@@ -261,7 +261,7 @@ let private nodeCodec: INodeJsonCodec<obj> =
         member _.EncodeNode node = CanonicalJson.encodeNode node
 
         member _.DecodeNode json =
-            JsonDecode.decodeNodeObj json |> Result.mapError (sprintf "%A") }
+            JsonDecode.decodeNodeObj json |> Result.mapError CodecError.Decode }
 
 let private freshDbPath () : string =
     Path.Combine(Path.GetTempPath(), sprintf "fuaran-persistence-laws-%s.db" (Guid.NewGuid().ToString("N")))
