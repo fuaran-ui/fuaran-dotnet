@@ -7818,7 +7818,69 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.93.0 — the slot opened after v0.92.0 was released (DRAFT — untagged)
+## 0.93.1 — the slot opened after v0.93.0 was released (DRAFT — untagged)
+
+_Class: **BEHAVIOUR change + additive API** — no type is removed or retyped and no wire byte moves. `v0.93.0`
+was tagged and published at `b654b31` while a commit numbered 0.93.0 was still landing after it: Phase 2198
+(`b33aa65`, moved here from the 0.93.0 entry, where it was recorded before the tag was seen). A released version
+names one contract, so everything after the tag rides this number. Phase 2174 opens it. An UNTAGGED DRAFT:
+changes of this class or lower ride it._
+
+### What rides this slot — Phase 2174
+
+**Class: BEHAVIOUR change (Fable leg only) + `inline` on one public function.** No type, member or wire byte
+moves, and no .NET behaviour moves. Fable's WATCH mode reported two "Cannot get type info of generic parameter
+T" errors that its one-shot compile does not print, at `binding.selectionField` (`Fuaran.fs`) and at the
+decoder's `Selection` arm (`JsonDecode.fs`): each was a non-inline generic function reaching
+`Binding.projectSelectionField`, which reads `typeof<'T>` under Fable to coerce a selected row's cell. Fable
+does not run its `--run` command after a compile that reported an error, so a consumer whose dev script runs
+Vite from `fable watch` never reached Vite. The one-shot compile emitted `const target = null` at both sites,
+so the cell coercion the Fable-leg parity fix (`26cc844`) added never fired on either path.
+
+- **`binding.selectionField` is `inline`.** Its signature is unchanged; the caller's slot type now reaches the
+  projection, so under Fable a text cell read into a `Binding<float>` becomes a number or throws, exactly as on
+  .NET, where it used to pass the string through. A consumer that calls `selectionField` from a generic,
+  non-inline function of its own meets the same Fable diagnostic at its own call site, which is where the
+  slot type is decided.
+- **The decoder's `Selection` arm projects through the instantiation's own projection.** The private
+  `bindingGeneric` takes the row-field projection as an argument, supplied at each concrete instantiation
+  (`projectSelectionField<float>` and so on). Under Fable a decoded `Binding<float>` / `<int>` / `<string>` /
+  `<bool>` selection with a `field` now coerces its cell as .NET always did; the `obj`, `JVal` and record
+  instantiations pass the value through, as before.
+- **The Fable stage gains a watch-mode leg** (`tests/fable-watch-consumer/`, skipped only by
+  `-SkipWatchConsumer` or by address in a narrow lane): a client-tier consumer compiled under
+  `dotnet fable watch` must print no error and reach its `--run` command.
+
+### What rides this slot — Phase 2198
+
+**Class: BEHAVIOUR change + additive API.** No wire byte moves. `CommitLocal` keeps its bytes, and so do
+the `Local` binding and the event. What moves is `CommitLocal`'s MEANING on the bounded path, from a
+documented no-op to a state write (WIRE_FORMAT §30.1, the bounded flush).
+
+- **Behaviour: every bounded placement flushes a commit.** `BoundedDriver.step`, `Program.handleEvent`
+  and the server placement's `ServerSession.step` / `stepWith` resolve each commit the event folds
+  against the fixed base tree: the key is the `commitTo` of the `Local` on the form field it names, and
+  the value is the event payload's member under that field's id. The commit then folds as the core's
+  `Assign`. A commit used to be declined, so a decoded tree's "Apply" wrote nothing. A tree whose commit
+  names a field with a `commitTo` now writes that key when the event carries the value.
+- **Behaviour: a flushed write meets `CanDispatch` on its own, as the `SetState` it is.** A denied write
+  refuses the event (`Gate (DispatchDenied …)`). A value the field's `Number` codec cannot take, or an
+  absent one, writes nothing and is diagnosed. A key under `host.` is refused by the core, as a
+  `SetState`'s is.
+- **Behaviour: a tree's demanded projection names the namespace a commit writes.** `Demanded.ofTree` /
+  `check`, the root-taking `ServerDemanded.*` (`reachable`, `ofTreeAndHandlers`,
+  `ofTreeHandlersAndRegistry`, `sign`, `verify`, `signWithRegistry`, `verifyWithRegistry`), and both
+  placements' `initStrict` read `UiWitness.demandWitnessIn tree`. A signed envelope over a tree with a
+  resolvable commit used to omit the write. It now names it, so an envelope signed before this slot over
+  such a tree no longer verifies and is re-signed. `Demanded.ofAction` and the handler-only
+  `ServerDemanded.*` have no tree, and are unchanged.
+- **Additive API (`Fuaran.UI.Program`):** `UiWitness.commitDestination`, `lowerCommits`,
+  `flushCommits`, `demandWitnessIn`, the sealed `UiWitness.CommitCarrier` (constructed only inside the
+  package), and `BoundedDriver.CommitFlush.prepare`. See `docs/DECISIONS.md` D15.
+- **Not changed:** a raw `CommitLocal` folded outside a loop (`BoundedActions.runBoundedAction`, a
+  server handler's stage) is declined exactly as before. It has no tree to find its field in.
+
+## 0.93.0 — the slot opened after v0.92.0 was released (RELEASED — tagged v0.93.0 at b654b31, 2026-10-10)
 
 _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,
 which reshapes the build-time walker's public modules (`AstWalker`, the per-check `check` entry points, the new
@@ -8283,35 +8345,6 @@ Program's own 0.9.0 entry (Program D42–D45), met through them:
 - **Not changed:** the UI witness views no op as a `Let` and registers no query evaluator, so every UI
   handler plans, replays, undoes and projects as before apart from the document's version and its empty
   `values`; no tree-wire byte moves.
-
-### What rides this slot — Phase 2198
-
-**Class: BEHAVIOUR change + additive API.** No wire byte moves. `CommitLocal` keeps its bytes, and so do
-the `Local` binding and the event. What moves is `CommitLocal`'s MEANING on the bounded path, from a
-documented no-op to a state write (WIRE_FORMAT §30.1, the bounded flush).
-
-- **Behaviour: every bounded placement flushes a commit.** `BoundedDriver.step`, `Program.handleEvent`
-  and the server placement's `ServerSession.step` / `stepWith` resolve each commit the event folds
-  against the fixed base tree: the key is the `commitTo` of the `Local` on the form field it names, and
-  the value is the event payload's member under that field's id. The commit then folds as the core's
-  `Assign`. A commit used to be declined, so a decoded tree's "Apply" wrote nothing. A tree whose commit
-  names a field with a `commitTo` now writes that key when the event carries the value.
-- **Behaviour: a flushed write meets `CanDispatch` on its own, as the `SetState` it is.** A denied write
-  refuses the event (`Gate (DispatchDenied …)`). A value the field's `Number` codec cannot take, or an
-  absent one, writes nothing and is diagnosed. A key under `host.` is refused by the core, as a
-  `SetState`'s is.
-- **Behaviour: a tree's demanded projection names the namespace a commit writes.** `Demanded.ofTree` /
-  `check`, the root-taking `ServerDemanded.*` (`reachable`, `ofTreeAndHandlers`,
-  `ofTreeHandlersAndRegistry`, `sign`, `verify`, `signWithRegistry`, `verifyWithRegistry`), and both
-  placements' `initStrict` read `UiWitness.demandWitnessIn tree`. A signed envelope over a tree with a
-  resolvable commit used to omit the write. It now names it, so an envelope signed before this slot over
-  such a tree no longer verifies and is re-signed. `Demanded.ofAction` and the handler-only
-  `ServerDemanded.*` have no tree, and are unchanged.
-- **Additive API (`Fuaran.UI.Program`):** `UiWitness.commitDestination`, `lowerCommits`,
-  `flushCommits`, `demandWitnessIn`, the sealed `UiWitness.CommitCarrier` (constructed only inside the
-  package), and `BoundedDriver.CommitFlush.prepare`. See `docs/DECISIONS.md` D15.
-- **Not changed:** a raw `CommitLocal` folded outside a loop (`BoundedActions.runBoundedAction`, a
-  server handler's stage) is declined exactly as before. It has no tree to find its field in.
 
 ## 0.92.0 — the slot Phases 2038 and 2043 open: one answer to what a node's children are, and one spine walk for the DAG tier (RELEASED — tagged v0.92.0 at 9b53dfa, 2026-10-06)
 

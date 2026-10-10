@@ -2616,7 +2616,12 @@ let private pipelineExprsAdmissible
     |> Option.defaultValue (Ok())
 
 let rec private decodeBindingObj (path: string) (j: Json) : Result<Binding<obj>, DecodeError> =
-    bindingGeneric<obj> path (fun _ v -> Ok(decodeObj v)) (box closureSentinel) j
+    bindingGeneric<obj>
+        path
+        (fun _ v -> Ok(decodeObj v))
+        Fuaran.UI.Types.Binding.projectSelectionField<obj>
+        (box closureSentinel)
+        j
 
 /// Fuaran-UI Phase 1534 — the optional `params` slot, shared by `Transform`
 /// (Phase 424, where it started) and `Expr`. Absent → `[]`, which is
@@ -2677,7 +2682,12 @@ and private decodeExprParams (path: string) (fields: Map<string, Json>) : Result
 /// The `Binding<JVal>` flavour (the swap's typed verbatim carrier, D3) —
 /// `Binding.I18n` args and `Binding.Transform` param sources since the swap.
 and private decodeBindingJVal (path: string) (j: Json) : Result<Binding<JVal>, DecodeError> =
-    bindingGeneric<JVal> path (fun p v -> jsonToJVal 1 p v) (JStr closureSentinel) j
+    bindingGeneric<JVal>
+        path
+        (fun p v -> jsonToJVal 1 p v)
+        Fuaran.UI.Types.Binding.projectSelectionField<JVal>
+        (JStr closureSentinel)
+        j
 
 /// Fuaran-UI Phase 1661 — a `TextSource.I18n` argument bag, discriminated BY
 /// INSPECTION (WIRE_FORMAT.md §5).
@@ -2760,6 +2770,12 @@ and private decodeLocalFlushTrigger (path: string) (j: Json) : Result<LocalFlush
 and private bindingGeneric<'T>
     (path: string)
     (parseStatic: string -> Json -> Result<'T, DecodeError>)
+    // Phase 2174 - the `Selection` arm's row-field projection, supplied at each concrete
+    // instantiation (`projectSelectionField<float>` and so on). It cannot be built here:
+    // `projectSelectionField` reads `typeof<'T>` under Fable, which erases this function's
+    // generic parameter, so the cell coercion silently never fired on the Fable leg and
+    // `fable --watch` reported "Cannot get type info of generic parameter T".
+    (projectField: string -> obj -> 'T)
     (placeholder: 'T)
     (j: Json)
     : Result<Binding<'T>, DecodeError> =
@@ -2889,7 +2905,7 @@ and private bindingGeneric<'T>
 
                         let accessor: obj -> 'T =
                             match fieldV with
-                            | Some f -> Fuaran.UI.Types.Binding.projectSelectionField<'T> f
+                            | Some f -> projectField f
                             | None -> fun (raw: obj) -> unbox raw
 
                         Binding.Selection(id, accessor, defaultV, fieldV))
@@ -3055,7 +3071,7 @@ and private bindingGeneric<'T>
                 // each one's defects are collected (WIRE_FORMAT §29.1).
                 let initialFromR =
                     requireField path fields "initialFrom" "Local InitialFrom Binding<'T>"
-                    |> Result.bind (bindingGeneric<'T> (path + ".initialFrom") parseStatic placeholder)
+                    |> Result.bind (bindingGeneric<'T> (path + ".initialFrom") parseStatic projectField placeholder)
 
                 let flushR =
                     match tryField fields "flushOn" with
@@ -3142,7 +3158,13 @@ and private bindingGeneric<'T>
                 // whatever the others hold (WIRE_FORMAT §29.1).
                 let sourceR =
                     requireField path fields "source" "Binding<float> source object"
-                    |> Result.bind (bindingGeneric<float> (path + ".source") requireFloat 0.0)
+                    |> Result.bind (
+                        bindingGeneric<float>
+                            (path + ".source")
+                            requireFloat
+                            Fuaran.UI.Types.Binding.projectSelectionField<float>
+                            0.0
+                    )
 
                 let formatR =
                     requireField path fields "format" "Format DU object"
@@ -3352,7 +3374,7 @@ and private bindingGeneric<'T>
             | Ok "Bound" ->
                 match requireField path fields "binding" "the wrapped Binding object" with
                 | Error e -> Error e
-                | Ok inner -> bindingGeneric<'T> (path + ".binding") parseStatic placeholder inner
+                | Ok inner -> bindingGeneric<'T> (path + ".binding") parseStatic projectField placeholder inner
             | Ok s ->
                 // The vocabulary this arm advertises is `ExpectedShape` on the
                 // error a refused host reads, so a stale list tells an author
@@ -3380,13 +3402,13 @@ and private decodeBindingObjArgs (path: string) (j: Json) : Result<Map<string, B
         mapped |> Result.map Map.ofList
 
 let private decodeBindingFloat (path: string) (j: Json) : Result<Binding<float>, DecodeError> =
-    bindingGeneric<float> path requireFloat 0.0 j
+    bindingGeneric<float> path requireFloat Fuaran.UI.Types.Binding.projectSelectionField<float> 0.0 j
 
 let private decodeBindingInt (path: string) (j: Json) : Result<Binding<int>, DecodeError> =
-    bindingGeneric<int> path requireInt 0 j
+    bindingGeneric<int> path requireInt Fuaran.UI.Types.Binding.projectSelectionField<int> 0 j
 
 let private decodeBindingString (path: string) (j: Json) : Result<Binding<string>, DecodeError> =
-    bindingGeneric<string> path requireString "" j
+    bindingGeneric<string> path requireString Fuaran.UI.Types.Binding.projectSelectionField<string> "" j
 
 /// A Choice/SegmentedChoice value slot — `Binding<string>` where "no
 /// selection" is the ABSENT `Static` payload (`{"$type":"Static"}`, or the
@@ -3412,7 +3434,7 @@ let private decodeBindingChoiceValue (path: string) (j: Json) : Result<Binding<s
         decodeBindingString path j
 
 let private decodeBindingBool (path: string) (j: Json) : Result<Binding<bool>, DecodeError> =
-    bindingGeneric<bool> path requireBool false j
+    bindingGeneric<bool> path requireBool Fuaran.UI.Types.Binding.projectSelectionField<bool> false j
 
 let rec private decodeSelectOption (path: string) (j: Json) : Result<SelectOption, DecodeError> =
     match j with
@@ -3534,6 +3556,7 @@ let private decodeBindingSelectOptions (path: string) (j: Json) : Result<Binding
     bindingGeneric<SelectOption list>
         path
         parseStatic
+        Fuaran.UI.Types.Binding.projectSelectionField<SelectOption list>
         [ { Value = opaqueSentinel
             Label = opaqueSentinel } ]
         j
@@ -3552,7 +3575,12 @@ let private decodeBindingStringList (path: string) (j: Json) : Result<Binding<st
             | Error e -> Error e
             | Ok xs -> traverseIndexed (fun i item -> requireString (sprintf "%s[%d]" p i) item) xs
 
-    bindingGeneric<string list> path parseStatic [ opaqueSentinel ] j
+    bindingGeneric<string list>
+        path
+        parseStatic
+        Fuaran.UI.Types.Binding.projectSelectionField<string list>
+        [ opaqueSentinel ]
+        j
 
 let private decodeBindingFloatSeq (path: string) (j: Json) : Result<Binding<float list>, DecodeError> =
     let parseStatic (p: string) (v: Json) : Result<float list, DecodeError> =
@@ -3564,7 +3592,7 @@ let private decodeBindingFloatSeq (path: string) (j: Json) : Result<Binding<floa
             | Error e -> Error e
             | Ok xs -> traverseIndexed (fun i item -> requireFloat (sprintf "%s[%d]" p i) item) xs
 
-    bindingGeneric<float list> path parseStatic [] j
+    bindingGeneric<float list> path parseStatic Fuaran.UI.Types.Binding.projectSelectionField<float list> [] j
 
 let private decodeBindingRangePair (path: string) (j: Json) : Result<Binding<RangePair>, DecodeError> =
     // 0.2.0 — the dual-thumb Range control's (min, max) pair, the `RangePair`
@@ -3597,7 +3625,13 @@ let private decodeBindingRangePair (path: string) (j: Json) : Result<Binding<Ran
         && (tryField pf "max").IsSome
         ->
         parseStatic path j |> Result.map (Some >> Binding.Static)
-    | _ -> bindingGeneric<RangePair> path parseStatic { Min = 0.0; Max = 0.0 } j
+    | _ ->
+        bindingGeneric<RangePair>
+            path
+            parseStatic
+            Fuaran.UI.Types.Binding.projectSelectionField<RangePair>
+            { Min = 0.0; Max = 0.0 }
+            j
 
 let private decodeBindingStringPair (path: string) (j: Json) : Result<Binding<DateTimeRangePair>, DecodeError> =
     // Phase 725 — the DateRange control's (from, to) ISO-8601 pair. Mirrors
@@ -3648,7 +3682,13 @@ let private decodeBindingStringPair (path: string) (j: Json) : Result<Binding<Da
         && (tryField pf "to").IsSome
         ->
         parseStatic path j |> Result.map (Some >> Binding.Static)
-    | _ -> bindingGeneric<DateTimeRangePair> path parseStatic { From = ""; To = "" } j
+    | _ ->
+        bindingGeneric<DateTimeRangePair>
+            path
+            parseStatic
+            Fuaran.UI.Types.Binding.projectSelectionField<DateTimeRangePair>
+            { From = ""; To = "" }
+            j
 
 // fuaran#665 — the typed rows decoder: a rows payload is an array of row
 // objects (each decoding to a `Row = Map<string, obj>` with `decodeObj` cell
@@ -3673,7 +3713,7 @@ let private decodeRowSeq (path: string) (j: Json) : Result<Binding<Row seq>, Dec
                 |> traverseIndexed (fun i item -> parseRow (sprintf "%s[%d]" p i) item)
                 |> Result.map Seq.ofList
 
-    bindingGeneric<Row seq> path parseStatic Seq.empty j
+    bindingGeneric<Row seq> path parseStatic Fuaran.UI.Types.Binding.projectSelectionField<Row seq> Seq.empty j
 
 let private decodeMapMarker (path: string) (j: Json) : Result<MapMarker, DecodeError> =
     match requireObject path j with
@@ -3722,7 +3762,7 @@ let private decodeBindingMarkerSeq (path: string) (j: Json) : Result<Binding<Map
             | Error e -> Error e
             | Ok xs -> traverseIndexed (fun i m -> decodeMapMarker (sprintf "%s[%d]" p i) m) xs
 
-    bindingGeneric<MapMarker list> path parseStatic [] j
+    bindingGeneric<MapMarker list> path parseStatic Fuaran.UI.Types.Binding.projectSelectionField<MapMarker list> [] j
 
 // ─── Action<obj> decoder ────────────────────────────────────────────────
 //

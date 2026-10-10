@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The watch-mode leg's project (Phase 2174). Compiled by `dotnet fable watch` in
+    `fable-watch-consumer.ps1` beside it, which the Fable stage (`tests/fable-laws/fable-check.ps1`)
+    runs. Fable's WATCH mode reports diagnostics its one-shot compile does not: Fuaran.UI 0.92.0
+    carried two "Cannot get type info of generic parameter T" errors that only `fable watch` printed,
+    so a consumer whose dev script runs Vite from Fable's watch mode never reached Vite while every one-shot compile in
+    this repository stayed green. This project is that consumer, reduced to the client tier's entry
+    points; the script asserts the watch compile prints no error and reaches the command it is told to run after a clean compile.
+    Not in the solution and not packed.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- A renderer consumer: Feliz and Fable.React predate F# 10 nullness, so an entry project that
+         compiles the renderer disables it, as `Fuaran.UI.Renderer` itself and every sample here do.
+         Fuaran.UI and Fuaran.UI.Ops under nullness ON are the portability stage's subjects. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+  </ItemGroup>
+</Project>

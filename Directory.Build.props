@@ -812,8 +812,18 @@
          raises it to BREAKING. An UNTAGGED DRAFT that no public-path consumer
          pins, so the Fuaran.Core 0.35.2 -> 0.36.0 cohort raise RIDES it: no
          Fuaran.UI.* surface moves, and the transitive Core break is of the
-         class the slot already carries. See STABILITY.md "0.93.0". -->
-    <Version>0.93.0</Version>
+         class the slot already carries. See STABILITY.md "0.93.0".
+         0.93.0 IS NOW RELEASED - tagged v0.93.0 at b654b31 and served by
+         nuget.org - so nothing may ride it. Phase 2198 landed on it after
+         the tag and moves to the next slot.
+         0.93.1 (2026-10-10) is opened by Phase 2174: binding.selectionField
+         becomes inline and the decoder's Selection arm projects through each
+         instantiation's own projection, so Fable's watch mode reports no
+         error and the Fable leg's cell coercion fires. Class BEHAVIOUR (Fable
+         leg) with Phase 2198's additive API; it ADVANCES because v0.93.0 is
+         TAGGED. An UNTAGGED DRAFT: changes of this class or lower ride it. See
+         STABILITY.md "0.93.1". -->
+    <Version>0.93.1</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

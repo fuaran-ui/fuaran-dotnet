@@ -316,7 +316,14 @@ module binding =
     /// off the clicked row — the wire-expressible twin of a typed accessor.
     /// `defaultValue` (the projected scalar, not a row) yields until the user
     /// first selects a row on `nodeId`.
-    let selectionField (nodeId: string) (field: string) (defaultValue: 'T option) : Binding<'T> =
+    ///
+    /// `inline` (Phase 2174): `Binding.projectSelectionField` reads `typeof<'T>`
+    /// under Fable to coerce the cell, and Fable erases a non-inline function's
+    /// generic parameter, so from a non-inline `selectionField` the target was
+    /// `null`, the coercion never fired, and `fable --watch` reported "Cannot get
+    /// type info of generic parameter T" here. Inlined, the caller's slot type
+    /// reaches the projection.
+    let inline selectionField (nodeId: string) (field: string) (defaultValue: 'T option) : Binding<'T> =
         Binding.Selection(nodeId, Binding.projectSelectionField<'T> field, defaultValue, Some field)
 
     let state (key: string) (defaultValue: 'T) : Binding<'T> = Binding.State(key, Some defaultValue)

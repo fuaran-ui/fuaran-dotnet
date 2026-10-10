@@ -63,6 +63,14 @@
   address in a narrow lane. Its static twin, over every published package, is the FAKE
   `FablePackCheck` target (`build/FablePackCheck.fs`).
 
+  AND A SIXTH, SINCE PHASE 2174: THE WATCH-MODE LEG (section 2e). Every compile above is Fable's
+  ONE-SHOT compile, and Fable's WATCH mode reports diagnostics the one-shot compile does not: Fuaran.UI
+  0.92.0 carried two "Cannot get type info of generic parameter T" errors that only `fable watch`
+  printed, so a consumer whose dev script runs Vite from the watcher never reached Vite while this
+  stage stayed green. `tests/fable-watch-consumer/` compiles a client-tier consumer under
+  `dotnet fable watch` and requires that it prints no error and runs its `--run` command; it is
+  skipped only by `-SkipWatchConsumer` or by a matching address in a narrow lane.
+
   THE DERIVATION (Phase 1606). Fuaran.UI 0.78.0 shipped a Renderer whose `#if FABLE_COMPILER` arm
   did not compile — four bare `JVal` / `JStr` uses with no `open Fuaran.Core` — invisible to the
   .NET build, which compiles only the `#else` arm, and to this gate, whose hand-kept list did not
@@ -429,6 +437,9 @@ param(
     # Skip the packed-consumer leg (`tests/fable-pack-consumer/`, Phase 2128) — a switch, never a
     # lane, for the same reason.
     [switch] $SkipPackConsumer,
+    # Skip the watch-mode leg (`tests/fable-watch-consumer/`, Phase 2174) — a switch, never a lane,
+    # for the same reason.
+    [switch] $SkipWatchConsumer,
     # Keep the emitted JavaScript and the two captured outputs for inspection.
     [switch] $KeepOutput,
     # Print the derived portability set — entries, why each is one, what they cover, and every
@@ -1804,6 +1815,68 @@ else {
                 Add-Timing $packConsumerLabel 'FAILED' $packConsumerClock.Elapsed.TotalSeconds
                 Clear-RecordedGreen 'PackConsumer'
                 $failures.Add("the packed-consumer leg FAILED (exit $packConsumerExit) — see tests/fable-pack-consumer/fable-pack-consumer.ps1's output above")
+            }
+        }
+    }
+}
+
+# ── 2e. The watch-mode leg (Phase 2174) ────────────────────────────────────
+#
+# Every compile above is Fable's one-shot compile, and Fable's watch mode reports diagnostics the
+# one-shot compile does not — two "Cannot get type info of generic parameter T" errors in Fuaran.UI
+# 0.92.0 among them, which kept a consumer's `fable watch --run vite` from ever starting Vite.
+# `tests/fable-watch-consumer/fable-watch-consumer.ps1` compiles a client-tier consumer under
+# `dotnet fable watch`, stops the watcher, and requires no error and a reached `--run` command; its
+# header says what green means. Run as a child process, like 2d, and recorded like any other subject.
+# The address is the consumer project's, which covers the transitive source graph of everything it
+# references, plus the script's own bytes. Not run under a redirected -SrcRoot, for 2b's reason.
+
+if ($SkipWatchConsumer) {
+    Write-Host ''
+    Write-Host '  the watch-mode leg: SKIPPED by -SkipWatchConsumer' -ForegroundColor Yellow
+}
+elseif ($PSBoundParameters.ContainsKey('SrcRoot')) {
+    Write-Host ''
+    Write-Host '  the watch-mode leg: not run under a redirected -SrcRoot' -ForegroundColor DarkGray
+}
+else {
+    $watchConsumerDir = Join-Path $repoRoot 'tests' 'fable-watch-consumer'
+    $watchConsumerScript = Join-Path $watchConsumerDir 'fable-watch-consumer.ps1'
+    $watchConsumerProject = Join-Path $watchConsumerDir 'FableWatchConsumer.fsproj'
+
+    Write-Stage "the watch-mode leg — $(ConvertTo-RepoRelative $watchConsumerScript)"
+
+    if (-not (Test-Path -LiteralPath $watchConsumerScript -PathType Leaf)) {
+        $failures.Add("the watch-mode leg script is missing: $watchConsumerScript")
+    }
+    else {
+        $watchConsumerSemantics = "pwsh fable-watch-consumer.ps1 $(Get-CachedFileSha256 $watchConsumerScript)"
+        $watchConsumerAddress = Get-CompileAddress $watchConsumerProject $watchConsumerSemantics
+        $watchConsumerRecorded = if ($laneMaySkip -and $watchConsumerAddress) { Test-RecordedGreen 'WatchConsumer' $watchConsumerAddress $watchConsumerSemantics } else { $null }
+        $watchConsumerLabel = ConvertTo-RepoRelative $watchConsumerProject
+
+        if ($watchConsumerRecorded) {
+            Add-Timing $watchConsumerLabel 'skipped' 0
+            Write-Host "  SKIPPED BY ADDRESS $watchConsumerLabel" -ForegroundColor Yellow
+            Write-Host "    address $watchConsumerAddress" -ForegroundColor DarkGray
+            Write-Host "    recorded green in lane '$($watchConsumerRecorded.lane)' at $($watchConsumerRecorded.recordedUtc)" -ForegroundColor DarkGray
+        }
+        else {
+            # A child process, never piped: its exit status is the verdict.
+            $global:LASTEXITCODE = 0
+            $watchConsumerClock = [Diagnostics.Stopwatch]::StartNew()
+            & pwsh -NoProfile -File $watchConsumerScript
+            $watchConsumerExit = $LASTEXITCODE
+            $watchConsumerClock.Stop()
+
+            if ($watchConsumerExit -eq 0) {
+                Add-Timing $watchConsumerLabel 'compiled' $watchConsumerClock.Elapsed.TotalSeconds
+                if ($watchConsumerAddress) { Write-RecordedGreen 'WatchConsumer' $watchConsumerAddress $watchConsumerSemantics }
+            }
+            else {
+                Add-Timing $watchConsumerLabel 'FAILED' $watchConsumerClock.Elapsed.TotalSeconds
+                Clear-RecordedGreen 'WatchConsumer'
+                $failures.Add("the watch-mode leg FAILED (exit $watchConsumerExit) — see tests/fable-watch-consumer/fable-watch-consumer.ps1's output above")
             }
         }
     }
