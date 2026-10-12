@@ -186,7 +186,7 @@ let private renderNodeFallback
     (corrId: string)
     : ReactElement =
     Html.div
-        [ prop.className "fuaran-node-fallback"
+        [ prop.className Css.Class.NodeFallback
           prop.custom ("data-fuaran-render-failed", "true")
           prop.custom ("data-fuaran-render-correlation", corrId)
           prop.text (RenderParity.renderFailureText nodeId kindName errorMessage) ]
@@ -542,7 +542,7 @@ let private resolveOptions (ctx: RenderContext<'Msg>) (binding: Binding<SelectOp
 
 let private iconHook (kindClass: string) (name: string) : ReactElement =
     Html.span
-        [ prop.className ("fuaran-icon " + kindClass)
+        [ prop.className (Css.iconPlacement kindClass)
           prop.custom ("data-icon", name)
           prop.custom ("aria-hidden", "true") ]
 
@@ -2387,7 +2387,7 @@ let private depthExceededElement (id: string) : ReactElement =
         [ prop.id id
           prop.custom ("data-fuaran-node-id", id)
           prop.custom ("data-fuaran-depth-exceeded", string Fuaran.UI.WireLimits.MaxDepth)
-          prop.className "fuaran-depth-exceeded"
+          prop.className Css.Class.DepthExceeded
           prop.custom ("role", "note")
           prop.children [ Html.text RenderParity.depthExceededText ] ]
 
@@ -2814,21 +2814,21 @@ let rec private renderKind
         match spec.Role, spec.Layout with
         | BoxRole.Card, _ ->
             Html.section
-                [ prop.className ("fuaran-layout-card" + brk)
+                [ prop.className (Css.Class.LayoutCard + brk)
                   prop.children
                       [ match spec.Heading with
                         | Some heading ->
-                            Html.header [ prop.className "fuaran-card-heading"; prop.text (renderText ctx heading) ]
+                            Html.header [ prop.className Css.Class.CardHeading; prop.text (renderText ctx heading) ]
                         | None -> Html.none
                         Html.div
-                            [ prop.className "fuaran-card-body"
+                            [ prop.className Css.Class.CardBody
                               prop.children (spec.Children |> List.map (render ctx)) ] ] ]
         | BoxRole.Dashboard, _
         | BoxRole.Group, BoxLayout.Auto ->
             Html.div
-                [ prop.className ("fuaran-layout-dashboard" + brk)
+                [ prop.className (Css.Class.LayoutDashboard + brk)
                   prop.children (spec.Children |> List.map (render ctx)) ]
-        | BoxRole.Separator, _ -> Html.hr [ prop.className ("fuaran-layout-separator" + brk) ]
+        | BoxRole.Separator, _ -> Html.hr [ prop.className (Css.Class.LayoutSeparator + brk) ]
         | BoxRole.Group, BoxLayout.Grid(cols, gridTemplateColumns, gridGap) ->
             // Column count rides on inline style (not a `-cols-N` class suffix)
             // so CSS hosts don't have to pre-declare / Tailwind-safelist every N.
@@ -2868,7 +2868,7 @@ let rec private renderKind
                 cspStyle ctx parentNodeId "grid" (Csp.Declarations.grid templateColumns gridGap) gridStyle
 
             Html.div (
-                [ prop.className ("fuaran-layout-grid" + brk + gridClass) ]
+                [ prop.className (Css.Class.LayoutGrid + brk + gridClass) ]
                 @ gridStyleProps
                 @ [ prop.children (spec.Children |> List.map (render ctx)) ]
                 @ (cssRefusalAttrs |> List.map (fun (k, v) -> prop.custom (k, v)))
@@ -2890,17 +2890,13 @@ let rec private renderKind
                 cspStyle ctx parentNodeId "masonry" (Csp.Declarations.masonry cols masonryGap) masonryStyle
 
             Html.div (
-                [ prop.className ("fuaran-layout-masonry" + brk + masonryClass) ]
+                [ prop.className (Css.Class.LayoutMasonry + brk + masonryClass) ]
                 @ masonryStyleProps
                 @ [ prop.children (spec.Children |> List.map (render ctx)) ]
             )
         | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
-            let dir =
-                match direction with
-                | Orientation.Vertical -> "fuaran-stack-vertical"
-                | Orientation.Horizontal -> "fuaran-stack-horizontal"
-
-            let wrap = if flexWrap then " fuaran-stack-wrap" else ""
+            let dir = Css.stackDirection direction
+            let wrap = Css.stackWrap flexWrap
 
             // `gap` emits only when set (Phase 459) — a gap-free stack carries no
             // `style` attribute, byte-identical to the pre-459 emission.
@@ -2956,15 +2952,15 @@ let rec private renderKind
                 [ style.custom ("flex", sprintf "%f 1 0" weightRight) ]
 
         Html.div
-            [ prop.className "fuaran-layout-split-panel"
+            [ prop.className Css.Class.LayoutSplitPanel
               prop.children
                   [ Html.div (
-                        [ prop.className ("fuaran-split-pane fuaran-split-pane-left" + leftClass) ]
+                        [ prop.className (Css.Class.SplitPaneLeft + leftClass) ]
                         @ leftStyleProps
                         @ [ prop.children leftChildren ]
                     )
                     Html.div (
-                        [ prop.className ("fuaran-split-pane fuaran-split-pane-right" + rightClass) ]
+                        [ prop.className (Css.Class.SplitPaneRight + rightClass) ]
                         @ rightStyleProps
                         @ [ prop.children rightChildren ]
                     ) ] ]
@@ -3020,10 +3016,7 @@ let rec private renderKind
                        icon = None
                        disabled = false |})
 
-        let orientationClass =
-            match spec.Orientation with
-            | Orientation.Horizontal -> "fuaran-tabs-horizontal"
-            | Orientation.Vertical -> "fuaran-tabs-vertical"
+        let orientationClass = Css.tabsOrientation spec.Orientation
 
         // Tag-overlay resolution. When `TabTags` + `ActiveTag` are
         // both `Some`, resolve the tag binding to a string, find its position
@@ -3157,7 +3150,7 @@ let rec private renderKind
             [ prop.className (Css.layoutTabs orientationClass)
               prop.children
                   [ Html.div
-                        [ prop.className "fuaran-tabs-bar"
+                        [ prop.className Css.Class.TabsBar
                           prop.role "tablist"
                           prop.custom ("aria-orientation", (if isVertical then "vertical" else "horizontal"))
                           prop.onKeyDown handleKeyDown
@@ -3167,19 +3160,19 @@ let rec private renderKind
 
                                     let cls =
                                         let parts =
-                                            [ "fuaran-tab"
+                                            [ Css.Class.Tab
                                               if isActive then
-                                                  "fuaran-tab-active"
+                                                  Css.Class.TabActive
                                               if t.disabled then
-                                                  "fuaran-tab-disabled" ]
+                                                  Css.Class.TabDisabled ]
 
                                         String.concat " " parts
 
                                     let labelChildren =
                                         [ match t.icon with
-                                          | Some iconSrc -> iconHook "fuaran-tab-icon" iconSrc
+                                          | Some iconSrc -> iconHook Css.Class.TabIcon iconSrc
                                           | None -> ()
-                                          Html.span [ prop.className "fuaran-tab-label"; prop.text t.label ] ]
+                                          Html.span [ prop.className Css.Class.TabLabel; prop.text t.label ] ]
 
                                     Html.button
                                         [ // The tab's own DOM id, which is what
@@ -3203,7 +3196,7 @@ let rec private renderKind
                                                   dispatchTabIndex i)
                                           prop.children labelChildren ] ] ]
                     Html.div
-                        [ prop.className "fuaran-tabs-panels"
+                        [ prop.className Css.Class.TabsPanels
                           prop.children (
                               match activeChild with
                               | Some childNode ->
@@ -3212,7 +3205,7 @@ let rec private renderKind
                                           prop.role "tabpanel"
                                           prop.custom ("aria-labelledby", tabId activeIndex)
                                           prop.tabIndex 0
-                                          prop.className "fuaran-tabs-panel"
+                                          prop.className Css.Class.TabsPanel
                                           prop.children [ render ctx childNode ] ] ]
                               | None -> []
                           ) ] ] ]
@@ -3222,16 +3215,16 @@ let rec private renderKind
         // between them (rendered via CSS, not per-child wrappers). Optional
         // section heading mirrors `Card.Heading`'s shape.
         Html.section
-            [ prop.className "fuaran-layout-summary-list"
+            [ prop.className Css.Class.LayoutSummaryList
               prop.children
                   [ match spec.Heading with
                     | Some heading ->
                         Html.header
-                            [ prop.className "fuaran-summary-list-heading"
+                            [ prop.className Css.Class.SummaryListHeading
                               prop.text (renderText ctx heading) ]
                     | None -> Html.none
                     Html.div
-                        [ prop.className "fuaran-summary-list-body"
+                        [ prop.className Css.Class.SummaryListBody
                           prop.children (spec.Children |> List.map (render ctx)) ] ] ]
     | NodeKind.Disclosure spec ->
         // Additive: HTML-native `<details>` / `<summary>`
@@ -3257,7 +3250,7 @@ let rec private renderKind
             |> Option.defaultValue spec.DefaultOpen
 
         Html.details
-            [ prop.className "fuaran-layout-disclosure"
+            [ prop.className Css.Class.LayoutDisclosure
               prop.isOpen resolvedOpen
               prop.custom (
                   "onToggle",
@@ -3277,10 +3270,10 @@ let rec private renderKind
               )
               prop.children
                   [ Html.summary
-                        [ prop.className "fuaran-disclosure-summary"
+                        [ prop.className Css.Class.DisclosureSummary
                           prop.text (renderText ctx spec.Heading) ]
                     Html.div
-                        [ prop.className "fuaran-disclosure-body"
+                        [ prop.className Css.Class.DisclosureBody
                           prop.children (spec.Children |> List.map (render ctx)) ] ] ]
     | NodeKind.Stepper spec ->
         // Each child becomes a numbered step; the active step is read from
@@ -3292,10 +3285,10 @@ let rec private renderKind
             BindingResolver.tryResolve ctx.Sources spec.ActiveStep |> Option.defaultValue 0
 
         Html.div
-            [ prop.className "fuaran-layout-stepper"
+            [ prop.className Css.Class.LayoutStepper
               prop.children
                   [ Html.ol
-                        [ prop.className "fuaran-stepper-numbers"
+                        [ prop.className Css.Class.StepperNumbers
                           prop.children
                               [ for i in 0 .. spec.Children.Length - 1 ->
                                     let isActive = i = activeIndex
@@ -3308,9 +3301,9 @@ let rec private renderKind
                                           prop.key (reconciliationKey None i)
                                           prop.className (
                                               if isActive then
-                                                  "fuaran-stepper-step fuaran-stepper-step-active"
+                                                  Css.Class.StepperStepActive
                                               else
-                                                  "fuaran-stepper-step"
+                                                  Css.Class.StepperStep
                                           )
                                           prop.onClick (fun _ ->
                                               match spec.OnSelect with
@@ -3318,7 +3311,7 @@ let rec private renderKind
                                               | None -> ())
                                           prop.text (sprintf "%d" (i + 1)) ] ] ]
                     Html.div
-                        [ prop.className "fuaran-stepper-body"
+                        [ prop.className Css.Class.StepperBody
                           prop.children (
                               match List.tryItem activeIndex spec.Children with
                               | Some node -> [ render ctx node ]
@@ -3385,21 +3378,21 @@ let rec private renderKind
             // the server renderer's; the placement and the light-dismiss
             // listeners are applied to the mounted element, not to this tree.
             PopoverSurface.surface
-                {| className = "fuaran-popover"
+                {| className = Css.Class.Popover
                    hidden = not isOpen
                    anchor = spec.Anchor
                    dismissable = spec.Dismissable
                    onDismiss = dismiss
                    children =
                     [ Html.div
-                          [ prop.className "fuaran-popover-surface"
+                          [ prop.className Css.Class.PopoverSurface
                             prop.role "dialog"
                             prop.children (
-                                surfaceChildren "fuaran-popover-heading" "fuaran-popover-dismiss" "fuaran-popover-body"
+                                surfaceChildren Css.Class.PopoverHeading Css.Class.PopoverDismiss Css.Class.PopoverBody
                             ) ] ] |}
         else
             Html.div
-                [ prop.className "fuaran-modal-overlay"
+                [ prop.className Css.Class.ModalOverlay
                   if not isOpen then
                       prop.custom ("hidden", "")
                   prop.onClick (fun _ ->
@@ -3407,21 +3400,17 @@ let rec private renderKind
                           dismiss ())
                   prop.children
                       [ Html.div
-                            [ prop.className "fuaran-modal-dialog"
+                            [ prop.className Css.Class.ModalDialog
                               prop.role "dialog"
                               prop.custom ("aria-modal", "true")
                               prop.children (
-                                  surfaceChildren "fuaran-modal-heading" "fuaran-modal-dismiss" "fuaran-modal-body"
+                                  surfaceChildren Css.Class.ModalHeading Css.Class.ModalDismiss Css.Class.ModalBody
                               ) ] ] ]
     | NodeKind.ScrollArea spec ->
         // Phase 289 — overflow/scroll container. The scroll axis is a class
         // (CSS owns `overflow`); optional pixel bounds are inline max-height /
         // max-width via the shared Feliz `style` DSL (identical SSR↔CSR).
-        let axisClass =
-            match spec.Orientation with
-            | ScrollOrientation.Vertical -> "fuaran-scrollarea fuaran-scrollarea-vertical"
-            | ScrollOrientation.Horizontal -> "fuaran-scrollarea fuaran-scrollarea-horizontal"
-            | ScrollOrientation.Both -> "fuaran-scrollarea fuaran-scrollarea-both"
+        let axisClass = Css.scrollArea spec.Orientation
 
         let styleProps =
             [ match spec.MaxHeight with
@@ -3446,12 +3435,7 @@ let rec private renderKind
         // styling can pick out the shape without overriding `<h{Level}>`
         // semantics. `Standard` emits the bare `fuaran-heading` class —
         // existing callers see no class change.
-        let variantSuffix =
-            match spec.Variant with
-            | HeadingVariant.Standard -> ""
-            | HeadingVariant.Eyebrow -> " fuaran-heading-eyebrow"
-            | HeadingVariant.Caption -> " fuaran-heading-caption"
-            | HeadingVariant.Lead -> " fuaran-heading-lead"
+        let variantSuffix = Css.headingVariant spec.Variant
 
         let props: IReactProperty list =
             [ prop.className (Css.heading variantSuffix)
@@ -3476,21 +3460,21 @@ let rec private renderKind
         let html = Markdown.toHtmlWithEgress ctx.EgressPolicy (renderText ctx spec.Text)
 
         Html.div
-            [ prop.className "fuaran-markdown"
+            [ prop.className Css.Class.Markdown
               prop.dangerouslySetInnerHTML (TrustedTypes.html html) ]
     | NodeKind.Metric spec -> renderMetric ctx parentNodeId state spec
     | NodeKind.Badge spec ->
         Html.span
-            [ prop.className (Css.badge (badgeVariantClass spec.Variant))
+            [ prop.className (Css.badge (Css.badgeVariant spec.Variant))
               prop.text (renderText ctx spec.Label) ]
     | NodeKind.Skeleton spec ->
         Html.div
-            [ prop.className "fuaran-skeleton"
+            [ prop.className Css.Class.Skeleton
               // A skeleton's rows are interchangeable placeholders with no
               // identity beyond their position, so the index IS the key here.
               prop.children
                   [ for i in 1 .. spec.Rows ->
-                        Html.div [ prop.key (reconciliationKey None i); prop.className "fuaran-skeleton-row" ] ] ]
+                        Html.div [ prop.key (reconciliationKey None i); prop.className Css.Class.SkeletonRow ] ] ]
     | NodeKind.Icon spec ->
         // Phase 821 — the standalone icon-only display kind. The glyph NAME
         // rides `data-icon` (the uniform icon-hook contract — no text
@@ -3574,7 +3558,7 @@ let rec private renderKind
             // opaque string and cannot reach inside it, and client/server parity
             // outranks reaching one tier's anchor. See `docs/DECISIONS.md` D4.
             Html.span (
-                [ prop.className "fuaran-link-protected-wrap" ]
+                [ prop.className Css.Class.LinkProtectedWrap ]
                 @ toProps semanticAttrs
                 @ [ prop.children
                         [ Html.a
@@ -3584,7 +3568,7 @@ let rec private renderKind
             )
         | _ ->
             Html.a (
-                [ prop.className "fuaran-link"; prop.href safeHref ]
+                [ prop.className Css.Class.Link; prop.href safeHref ]
                 @ optionalAttrs
                 // Phase 951 — the node's a11y projection lands on the anchor.
                 @ toProps semanticAttrs
@@ -3611,30 +3595,16 @@ let rec private renderKind
         let safeSrc, egressAttrs =
             Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolvedSrc
 
-        let variantClass =
-            match spec.Variant with
-            | ImageVariant.Default -> "fuaran-image"
-            | ImageVariant.Avatar -> "fuaran-image fuaran-image-avatar"
-            | ImageVariant.Rounded -> "fuaran-image fuaran-image-rounded"
+        let variantClass = Css.imageVariant spec.Variant
 
         // Phase 1077 — the presentation tokens map to classes and nothing
         // else: no value from the tree ever reaches a style attribute.
         // `Natural` emits NO class on either axis, so a pre-phase tree's class
         // attribute is byte-identical to what it was. Byte-parity with the
         // server arm is the contract — keep the two mappings in step.
-        let fitClass =
-            match spec.Fit with
-            | ImageFit.Natural -> ""
-            | ImageFit.Cover -> " fuaran-image-fit-cover"
-            | ImageFit.Contain -> " fuaran-image-fit-contain"
+        let fitClass = Css.imageFit spec.Fit
 
-        let aspectClass =
-            match spec.AspectRatio with
-            | ImageAspect.Natural -> ""
-            | ImageAspect.Square -> " fuaran-image-aspect-square"
-            | ImageAspect.FourThree -> " fuaran-image-aspect-four-three"
-            | ImageAspect.ThreeTwo -> " fuaran-image-aspect-three-two"
-            | ImageAspect.SixteenNine -> " fuaran-image-aspect-sixteen-nine"
+        let aspectClass = Css.imageAspect spec.AspectRatio
 
         // Phase 1077 — `Eager` emits no attribute at all (the browser default);
         // only `Lazy` is a declaration. Deferring an above-the-fold image is a
@@ -3709,7 +3679,7 @@ let rec private renderKind
         let expandable =
             if spec.Expandable && safeSrc <> "" && List.isEmpty egressAttrs then
                 Html.a
-                    [ prop.className "fuaran-image-expand"
+                    [ prop.className Css.Class.ImageExpand
                       prop.href safeSrc
                       prop.custom ("data-fuaran-expandable", "")
                       prop.children [ img ] ]
@@ -3725,11 +3695,11 @@ let rec private renderKind
         | None -> expandable
         | Some caption ->
             Html.figure
-                [ prop.className "fuaran-image-figure"
+                [ prop.className Css.Class.ImageFigure
                   prop.children
                       [ expandable
                         Html.figcaption
-                            [ prop.className "fuaran-image-figure-caption"
+                            [ prop.className Css.Class.ImageFigureCaption
                               prop.text (renderText ctx caption) ] ] ]
     // Phase 1076 — the media transport, structural parity with the server arm,
     // which states the four contract points at length. In brief, and in the
@@ -3810,21 +3780,21 @@ let rec private renderKind
             | None -> el
             | Some transcript ->
                 Html.div
-                    [ prop.className "fuaran-media-group"
+                    [ prop.className Css.Class.MediaGroup
                       prop.children
                           [ el
                             Html.details
-                                [ prop.className "fuaran-media-transcript"
+                                [ prop.className Css.Class.MediaTranscript
                                   prop.custom ("aria-label", renderText ctx spec.Label)
                                   prop.children
                                       [ Html.summary
-                                            [ prop.className "fuaran-media-transcript-summary"; prop.text "Transcript" ]
+                                            [ prop.className Css.Class.MediaTranscriptSummary; prop.text "Transcript" ]
                                         Html.div
-                                            [ prop.className "fuaran-media-transcript-body"
+                                            [ prop.className Css.Class.MediaTranscriptBody
                                               prop.text (renderText ctx transcript) ] ] ] ] ]
 
         let sharedProps (variantClass: string) =
-            [ prop.className ("fuaran-media " + variantClass)
+            [ prop.className (Css.media variantClass)
               prop.src safeSrc
               prop.custom ("aria-label", renderText ctx spec.Label) ]
             @ (if spec.Controls then [ prop.controls true ] else [])
@@ -3859,7 +3829,7 @@ let rec private renderKind
 
             withTranscript (
                 Html.video (
-                    sharedProps "fuaran-media-video"
+                    sharedProps Css.Class.MediaVideo
                     @ posterProps
                     @ autoplayProps
                     @ toProps semanticAttrs
@@ -3872,7 +3842,7 @@ let rec private renderKind
         | MediaKind.Audio ->
             withTranscript (
                 Html.audio (
-                    sharedProps "fuaran-media-audio"
+                    sharedProps Css.Class.MediaAudio
                     @ toProps semanticAttrs
                     @ toProps egressAttrs
                     @ trackChildren
@@ -3897,13 +3867,7 @@ let rec private renderKind
         let safeSrc, egressAttrs =
             Sanitize.sanitizeEmbedSrcForEgress ctx.EgressPolicy resolvedSrc
 
-        let aspectClass =
-            match spec.AspectRatio with
-            | ImageAspect.Natural -> ""
-            | ImageAspect.Square -> " fuaran-embed-aspect-square"
-            | ImageAspect.FourThree -> " fuaran-embed-aspect-four-three"
-            | ImageAspect.ThreeTwo -> " fuaran-embed-aspect-three-two"
-            | ImageAspect.SixteenNine -> " fuaran-embed-aspect-sixteen-nine"
+        let aspectClass = Css.embedAspect spec.AspectRatio
 
         let has p = List.contains p spec.Permissions
 
@@ -3916,7 +3880,7 @@ let rec private renderKind
                   "allow-forms" ]
 
         Html.iframe (
-            [ prop.className ("fuaran-embed" + aspectClass)
+            [ prop.className (Css.Class.Embed + aspectClass)
               prop.title (renderText ctx spec.Title)
               prop.custom ("sandbox", String.concat " " sandboxTokens)
               prop.custom ("loading", "lazy")
@@ -4098,7 +4062,7 @@ let rec private renderKind
                       // branch that opens above this row does not hand its
                       // expansion to the row that took its position.
                       prop.key (reconciliationKey (Some item.Id) i)
-                      prop.className "fuaran-tree-item"
+                      prop.className Css.Class.TreeItem
                       prop.role "treeitem"
                       // Stated rather than computed from contents: a treeitem
                       // OWNS its child group, so a name derived from the subtree
@@ -4128,7 +4092,7 @@ let rec private renderKind
                        | None -> [])
                     @ [ prop.children (
                             [ Html.span
-                                  [ prop.className "fuaran-tree-label"
+                                  [ prop.className Css.Class.TreeLabel
                                     // The click lands on the LABEL, not the row,
                                     // so clicking inside an open branch acts on
                                     // the row clicked rather than on every
@@ -4143,7 +4107,7 @@ let rec private renderKind
                                     prop.text label ] ]
                             @ (if isOpen then
                                    [ Html.ul
-                                         [ prop.className "fuaran-tree-group"
+                                         [ prop.className Css.Class.TreeGroup
                                            prop.role "group"
                                            prop.children (renderItems (level + 1) item.Children) ] ]
                                else
@@ -4152,7 +4116,7 @@ let rec private renderKind
                 ))
 
         Html.ul
-            [ prop.className "fuaran-tree"
+            [ prop.className Css.Class.Tree
               prop.role "tree"
               prop.children (renderItems 1 spec.Items) ]
     | NodeKind.List spec ->
@@ -4163,13 +4127,13 @@ let rec private renderKind
                 // Literal items in document order: position is the identity.
                 Html.li
                     [ prop.key (reconciliationKey None i)
-                      prop.className "fuaran-list-item"
+                      prop.className Css.Class.ListItem
                       prop.text (renderText ctx item) ])
 
         if spec.Ordered then
-            Html.ol [ prop.className "fuaran-list fuaran-list-ordered"; prop.children items ]
+            Html.ol [ prop.className Css.Class.ListOrdered; prop.children items ]
         else
-            Html.ul [ prop.className "fuaran-list fuaran-list-unordered"; prop.children items ]
+            Html.ul [ prop.className Css.Class.ListUnordered; prop.children items ]
     | NodeKind.Toast spec ->
         // Phase 289 overlay render-fidelity contract: ALWAYS in the DOM (no
         // portal); closed = the `hidden` attribute. `role="status"` +
@@ -4177,20 +4141,12 @@ let rec private renderKind
         let isOpen =
             BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
 
-        let toneClass =
-            match spec.Tone with
-            | ToneVariant.Default -> "default"
-            | ToneVariant.Subdued -> "subdued"
-            | ToneVariant.Brand -> "brand"
-            | ToneVariant.Success -> "success"
-            | ToneVariant.Warning -> "warning"
-            | ToneVariant.Critical -> "critical"
-            | ToneVariant.Info -> "info"
+        let toneClass = Theme.toneVar spec.Tone
 
         let dismissEls =
             if spec.Dismissable then
                 [ Html.button
-                      [ prop.className "fuaran-toast-dismiss"
+                      [ prop.className Css.Class.ToastDismiss
                         prop.type' "button"
                         prop.ariaLabel "Dismiss"
                         prop.text "×" ] ]
@@ -4205,7 +4161,7 @@ let rec private renderKind
                   prop.custom ("hidden", "")
               prop.children (
                   [ Html.span
-                        [ prop.className "fuaran-toast-message"
+                        [ prop.className Css.Class.ToastMessage
                           prop.text (renderText ctx spec.Message) ] ]
                   @ dismissEls
               ) ]
@@ -4222,9 +4178,9 @@ let rec private renderKind
         // docs/CODE-HIGHLIGHT.md.
         let containerClass =
             if spec.LineNumbers then
-                "fuaran-codeblock fuaran-codeblock-numbered"
+                Css.Class.CodeblockNumbered
             else
-                "fuaran-codeblock"
+                Css.Class.Codeblock
 
         let highlightAttr =
             match spec.HighlightLines with
@@ -4234,7 +4190,7 @@ let rec private renderKind
         let copyEls =
             if spec.Copyable then
                 [ Html.button
-                      [ prop.className "fuaran-codeblock-copy"
+                      [ prop.className Css.Class.CodeblockCopy
                         prop.type' "button"
                         prop.ariaLabel "Copy"
                         prop.text "Copy" ] ]
@@ -4255,7 +4211,7 @@ let rec private renderKind
             @ highlightAttr
             @ [ prop.children (
                     copyEls
-                    @ [ Html.pre [ prop.className "fuaran-codeblock-pre"; prop.children [ codeEl ] ] ]
+                    @ [ Html.pre [ prop.className Css.Class.CodeblockPre; prop.children [ codeEl ] ] ]
                 ) ]
         )
     | NodeKind.Math spec ->
@@ -4275,19 +4231,14 @@ let rec private renderKind
             | MathDisplay.Inline -> "inline", false
 
         let containerProps =
-            [ prop.className (
-                  if isBlock then
-                      "fuaran-math fuaran-math-block"
-                  else
-                      "fuaran-math fuaran-math-inline"
-              )
+            [ prop.className (Css.mathContainer isBlock)
               prop.custom ("data-math-display", displayStr)
               prop.custom ("data-fuaran-math-src", spec.Source) ]
 
         let content =
             match mathml with
             | Some markup -> [ prop.dangerouslySetInnerHTML (TrustedTypes.html markup) ]
-            | None -> [ prop.children [ Html.span [ prop.className "fuaran-math-source"; prop.text spec.Source ] ] ]
+            | None -> [ prop.children [ Html.span [ prop.className Css.Class.MathSource; prop.text spec.Source ] ] ]
 
         if isBlock then
             Html.div (containerProps @ content)
@@ -4543,10 +4494,10 @@ let rec private renderKind
                 [ prop.className "fuaran-custom-placeholder"
                   prop.children
                       [ Html.div
-                            [ prop.className "fuaran-custom-label"
+                            [ prop.className Css.Class.CustomLabel
                               prop.text (sprintf "Custom %s.%s" moduleId componentId) ]
                         Html.div
-                            [ prop.className "fuaran-custom-props"
+                            [ prop.className Css.Class.CustomProps
                               prop.text (sprintf "props: %s" propKeys) ] ] ]
 
         let registryProbe =
@@ -4641,7 +4592,7 @@ let rec private renderKind
             )
 
             Html.div
-                [ prop.className "fuaran-fragment-cycle-placeholder"
+                [ prop.className Css.Class.FragmentCyclePlaceholder
                   prop.custom ("data-fuaran-fragment-cycle", rawName)
                   prop.text (RenderParity.fragmentCycleText rawName) ]
         else
@@ -4655,7 +4606,7 @@ let rec private renderKind
                 )
 
                 Html.div
-                    [ prop.className "fuaran-fragment-unresolved-placeholder"
+                    [ prop.className Css.Class.FragmentUnresolvedPlaceholder
                       prop.custom ("data-fuaran-fragment-unresolved", rawName)
                       prop.text (sprintf "[fuaran:fragment unresolved '%s']" rawName) ]
             | Some body ->
@@ -4846,11 +4797,11 @@ let rec private renderKind
                 renderGuest guestCtx guestTree
             | _ ->
                 Html.div
-                    [ prop.className "fuaran-mount-placeholder"
+                    [ prop.className Css.Class.MountPlaceholder
                       prop.text (sprintf "[fuaran:mount '%s' — guest loader not attached]" spec.ScopeId) ]
 
         Html.div
-            [ prop.className "fuaran-mount-boundary"
+            [ prop.className Css.Class.MountBoundary
               prop.custom ("data-fuaran-mount-scope", spec.ScopeId)
               prop.children [ boundaryChild ] ]
 
@@ -4882,11 +4833,11 @@ and private renderMetric
             [ prop.className (Css.metric (Theme.toneVar spec.Tone))
               prop.children
                   [ match spec.Icon with
-                    | Some icon -> iconHook "fuaran-metric-icon" icon
+                    | Some icon -> iconHook Css.Class.MetricIcon icon
                     | None -> Html.none
-                    Html.div [ prop.className "fuaran-metric-label"; prop.text (renderText ctx spec.Label) ]
+                    Html.div [ prop.className Css.Class.MetricLabel; prop.text (renderText ctx spec.Label) ]
                     Html.div
-                        [ prop.className "fuaran-metric-value"
+                        [ prop.className Css.Class.MetricValue
                           prop.text (
                               match resolution with
                               | BindingResolver.Resolved value -> formatNumber spec.Format value
@@ -4905,42 +4856,42 @@ and private renderMetric
                             let sentiment, glyph = Theme.trendSentiment spec.TrendPolarity t
 
                             Html.div
-                                [ prop.className ("fuaran-metric-trend fuaran-metric-trend-" + sentiment)
+                                [ prop.className (Css.metricTrend sentiment)
                                   prop.children
                                       [ Html.span
-                                            [ prop.className "fuaran-metric-trend-glyph"
+                                            [ prop.className Css.Class.MetricTrendGlyph
                                               prop.role "img"
                                               prop.ariaLabel sentiment
                                               prop.text glyph ]
                                         Html.text (
                                             formatNumber (spec.TrendFormat |> Option.defaultValue CellFormat.None) t
                                         ) ] ]
-                        | None -> Html.div [ prop.className "fuaran-metric-trend"; prop.text "" ]
+                        | None -> Html.div [ prop.className Css.Class.MetricTrend; prop.text "" ]
                     | None -> Html.none
                     match spec.Subtext with
                     | Some subtext ->
-                        Html.div [ prop.className "fuaran-metric-subtext"; prop.text (renderText ctx subtext) ]
+                        Html.div [ prop.className Css.Class.MetricSubtext; prop.text (renderText ctx subtext) ]
                     | None -> Html.none ] ]
 
 and private renderFact (ctx: RenderContext<'Msg>) (spec: FactSpec) : ReactElement =
     // A labeled TEXT fact tile — Metric's chrome for a TextSource value.
     // No binding resolution stage: `renderText` already resolves the
     // Literal / Bound / I18n legs, exactly as it does for every label.
-    let emphasisSuffix = if spec.Emphasis then " fuaran-fact-emphasis" else ""
+    let emphasisSuffix = Css.factEmphasis spec.Emphasis
 
     Html.div
         [ prop.className (Css.fact (Theme.toneVar spec.Tone) emphasisSuffix)
           prop.children
-              [ Html.div [ prop.className "fuaran-fact-label"; prop.text (renderText ctx spec.Label) ]
+              [ Html.div [ prop.className Css.Class.FactLabel; prop.text (renderText ctx spec.Label) ]
                 Html.div
-                    [ prop.className "fuaran-fact-value"
+                    [ prop.className Css.Class.FactValue
                       prop.children
                           [ match spec.Icon with
-                            | Some icon -> iconHook "fuaran-fact-icon" icon
+                            | Some icon -> iconHook Css.Class.FactIcon icon
                             | None -> Html.none
                             Html.span [ prop.text (renderText ctx spec.Value) ] ] ]
                 match spec.Help with
-                | Some help -> Html.div [ prop.className "fuaran-fact-help"; prop.text (renderText ctx help) ]
+                | Some help -> Html.div [ prop.className Css.Class.FactHelp; prop.text (renderText ctx help) ]
                 | None -> Html.none ] ]
 
 and private renderCallout (ctx: RenderContext<'Msg>) (spec: CalloutSpec) : ReactElement =
@@ -4948,13 +4899,13 @@ and private renderCallout (ctx: RenderContext<'Msg>) (spec: CalloutSpec) : React
         [ prop.className (Css.callout (Theme.toneVar spec.Tone))
           prop.children
               [ match spec.Icon with
-                | Some icon -> iconHook "fuaran-callout-icon" icon
+                | Some icon -> iconHook Css.Class.CalloutIcon icon
                 | None -> Html.none
                 match spec.Heading with
                 | Some heading ->
-                    Html.div [ prop.className "fuaran-callout-heading"; prop.text (renderText ctx heading) ]
+                    Html.div [ prop.className Css.Class.CalloutHeading; prop.text (renderText ctx heading) ]
                 | None -> Html.none
-                Html.div [ prop.className "fuaran-callout-body"; prop.text (renderText ctx spec.Body) ]
+                Html.div [ prop.className Css.Class.CalloutBody; prop.text (renderText ctx spec.Body) ]
                 if spec.Dismissable then
                     Html.button
                         [ prop.className "fuaran-callout-dismiss"
@@ -4987,21 +4938,14 @@ and private renderProgress
             | _ -> 0.0
 
         Html.div
-            [ prop.className (
-                  Css.progress
-                      (Theme.toneVar spec.Tone)
-                      (if spec.Indeterminate then
-                           " fuaran-progress-indeterminate"
-                       else
-                           "")
-              )
+            [ prop.className (Css.progress (Theme.toneVar spec.Tone) (Css.progressIndeterminate spec.Indeterminate))
               prop.children
                   [ match spec.Label with
                     | Some label ->
-                        Html.div [ prop.className "fuaran-progress-label"; prop.text (renderText ctx label) ]
+                        Html.div [ prop.className Css.Class.ProgressLabel; prop.text (renderText ctx label) ]
                     | None -> Html.none
                     Html.div
-                        [ prop.className "fuaran-progress-bar"
+                        [ prop.className Css.Class.ProgressBar
                           prop.children
                               [ let fillClass, fillStyleProps =
                                     cspStyle
@@ -5011,7 +4955,7 @@ and private renderProgress
                                         (Csp.Declarations.progressFill fraction)
                                         [ style.width (length.percent (fraction * 100.0)) ]
 
-                                Html.div ([ prop.className ("fuaran-progress-fill" + fillClass) ] @ fillStyleProps) ] ]
+                                Html.div ([ prop.className (Css.Class.ProgressFill + fillClass) ] @ fillStyleProps) ] ]
                     match spec.Caveat with
                     | Some caveat ->
                         Html.div [ prop.className "fuaran-progress-caveat"; prop.text (renderText ctx caveat) ]
@@ -5041,11 +4985,7 @@ and private renderLabelValueRow
                   Message = msg
                   CorrelationId = correlationId parentNodeId })
     | _ ->
-        let emphasisSuffix =
-            if spec.Emphasis then
-                " fuaran-label-value-row-emphasis"
-            else
-                ""
+        let emphasisSuffix = Css.labelValueRowEmphasis spec.Emphasis
 
         let valueText =
             match resolution with
@@ -5061,7 +5001,7 @@ and private renderLabelValueRow
                         [ prop.className "fuaran-label-value-row-label-block"
                           prop.children
                               [ Html.span
-                                    [ prop.className "fuaran-label-value-row-label"
+                                    [ prop.className Css.Class.LabelValueRowLabel
                                       prop.text (renderText ctx spec.Label) ]
                                 match spec.Help with
                                 | Some help ->
@@ -5069,7 +5009,7 @@ and private renderLabelValueRow
                                         [ prop.className "fuaran-label-value-row-help"
                                           prop.text (renderText ctx help) ]
                                 | None -> Html.none ] ]
-                    Html.span [ prop.className "fuaran-label-value-row-value"; prop.text valueText ] ] ]
+                    Html.span [ prop.className Css.Class.LabelValueRowValue; prop.text valueText ] ] ]
 
 and private renderSparkline (ctx: RenderContext<'Msg>) (spec: SparklineSpec) : ReactElement =
     // Phase 1098 — the bespoke polyline builder is retired in favour of the
@@ -5093,12 +5033,12 @@ and private renderSparkline (ctx: RenderContext<'Msg>) (spec: SparklineSpec) : R
         match Fuaran.UI.Charts.tryLowerSparkline spec series with
         | Some drawing ->
             Html.div
-                [ prop.className "fuaran-sparkline"
+                [ prop.className Css.Class.Sparkline
                   prop.dangerouslySetInnerHTML (
                       TrustedTypes.html (DrawingSvg.render ctx.Sources (renderText ctx) drawing)
                   ) ]
-        | None -> Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
-    | None -> Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
+        | None -> Html.div [ prop.className Css.Class.SparklineEmpty; prop.text "—" ]
+    | None -> Html.div [ prop.className Css.Class.SparklineEmpty; prop.text "—" ]
 
 // ─── Inputs ────────────────────────────────────────────────────────────────
 
@@ -5113,7 +5053,7 @@ and private renderButton
     // Once a runtime is supplied the "unwired" hint is just a UI cue —
     // dispatching to the runtime still works — but it helps the
     // operator see which buttons rely on substrate vs pure Elmish.
-    let variantClass = buttonVariantClass spec.Variant
+    let variantClass = Css.buttonVariant spec.Variant
 
     let className =
         if unwired then
@@ -5147,7 +5087,7 @@ and private renderButton
           // text node beside the hook; an icon-less button keeps the plain
           // `prop.text` shape (markup unchanged for existing trees).
           match spec.Icon with
-          | Some icon -> prop.children [ iconHook "fuaran-button-icon" icon; Html.text (renderText ctx spec.Label) ]
+          | Some icon -> prop.children [ iconHook Css.Class.ButtonIcon icon; Html.text (renderText ctx spec.Label) ]
           | None -> prop.text (renderText ctx spec.Label)
           match tooltipText with
           | Some t -> prop.title t
@@ -5198,7 +5138,7 @@ and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : R
                 |> Option.defaultValue []
 
             Html.select
-                [ prop.className "fuaran-select-control"
+                [ prop.className Css.Class.SelectControl
                   prop.multiple true
                   prop.value (selectedValues |> List.toArray)
                   if isDisabled then
@@ -5220,7 +5160,7 @@ and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : R
                   prop.children optionItems ]
         else
             Html.select
-                [ prop.className "fuaran-select-control"
+                [ prop.className Css.Class.SelectControl
                   prop.value (selected |> Option.defaultValue "")
                   if isDisabled then
                       prop.disabled true
@@ -5236,9 +5176,9 @@ and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : R
                   prop.children (placeholderItem @ optionItems) ]
 
     Html.label
-        [ prop.className "fuaran-select"
+        [ prop.className Css.Class.Select
           prop.children
-              [ Html.span [ prop.className "fuaran-select-label"; prop.text (renderText ctx spec.Label) ]
+              [ Html.span [ prop.className Css.Class.SelectLabel; prop.text (renderText ctx spec.Label) ]
                 control ] ]
 
 and private renderForm (ctx: RenderContext<'Msg>) (spec: FormSpec<'Msg>) : ReactElement =
@@ -5246,7 +5186,7 @@ and private renderForm (ctx: RenderContext<'Msg>) (spec: FormSpec<'Msg>) : React
 
     let submitNode =
         Html.button
-            [ prop.className "fuaran-form-submit"
+            [ prop.className Css.Class.FormSubmit
               prop.type'.submit
               prop.text (renderText ctx spec.SubmitLabel) ]
 
@@ -5265,14 +5205,14 @@ and private renderForm (ctx: RenderContext<'Msg>) (spec: FormSpec<'Msg>) : React
                 BindingResolver.tryResolve ctx.Sources disabled |> Option.defaultValue false
 
             [ Html.fieldSet
-                  [ prop.className "fuaran-form-fieldset"
+                  [ prop.className Css.Class.FormFieldset
                     if isDisabled then
                         prop.disabled true
                     prop.children body ] ]
         | None -> body
 
     Html.form
-        [ prop.className "fuaran-form"
+        [ prop.className Css.Class.Form
           prop.onSubmit (fun (e: Browser.Types.Event) ->
               e.preventDefault ()
               // Notify every Local-bound input whose FlushOn =
@@ -5552,14 +5492,14 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
             let onMinInput, onMaxInput = rangeInputHandlers ctx onChange value current
 
             Html.span
-                [ prop.className "fuaran-field-range"
+                [ prop.className Css.Class.FieldRange
                   prop.children
                       [ Html.input
                             [ prop.type'.number
                               prop.className "fuaran-field-range-min"
                               prop.value minV
                               prop.onChange onMinInput ]
-                        Html.span [ prop.className "fuaran-field-range-sep"; prop.text "–" ]
+                        Html.span [ prop.className Css.Class.FieldRangeSep; prop.text "–" ]
                         Html.input
                             [ prop.type'.number
                               prop.className "fuaran-field-range-max"
@@ -5661,7 +5601,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
 
             ComboboxControl.combobox
                 {| fieldId = field.Id
-                   className = "fuaran-form-field-control fuaran-combobox-input"
+                   className = Css.Class.FormFieldControlComboboxInput
                    listClassName = "fuaran-combobox-list"
                    required = field.Required
                    allowFreeText = allowFreeText
@@ -5737,7 +5677,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
 
             TokensControl.tokens
                 {| fieldId = field.Id
-                   className = "fuaran-form-field-control fuaran-tokens-input"
+                   className = Css.Class.FormFieldControlTokensInput
                    listClassName = "fuaran-tokens-suggestions"
                    required = field.Required
                    allowFreeText = allowFreeText
@@ -5847,7 +5787,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   | None -> () ]
 
             Html.span
-                [ prop.className "fuaran-field-range"
+                [ prop.className Css.Class.FieldRange
                   prop.children
                       [ Html.input (
                             [ prop.className "fuaran-form-input fuaran-form-date fuaran-field-range-min"
@@ -5858,7 +5798,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                               prop.onChange onFromInput ]
                             @ constraintAttrs
                         )
-                        Html.span [ prop.className "fuaran-field-range-sep"; prop.text "–" ]
+                        Html.span [ prop.className Css.Class.FieldRangeSep; prop.text "–" ]
                         Html.input (
                             [ prop.className "fuaran-form-input fuaran-form-date fuaran-field-range-max"
                               prop.type' inputType
@@ -5874,7 +5814,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
           // A form whose fields are added, removed or re-ordered between
           // renders must move each field's uncommitted text with the field.
           prop.key field.Id
-          prop.className "fuaran-form-field"
+          prop.className Css.Class.FormField
           prop.children
               [ Html.label
                     [ prop.className "fuaran-form-label"
@@ -5882,12 +5822,12 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                       prop.text labelWithRequired ]
                 control
                 match field.Help with
-                | Some help -> Html.div [ prop.className "fuaran-form-help"; prop.text (renderText ctx help) ]
+                | Some help -> Html.div [ prop.className Css.Class.FormHelp; prop.text (renderText ctx help) ]
                 | None -> Html.none ] ]
 
 and private renderFilters (ctx: RenderContext<'Msg>) (specs: FilterSpec<'Msg> list) : ReactElement =
     Html.div
-        [ prop.className "fuaran-filters"
+        [ prop.className Css.Class.Filters
           prop.children [ for spec in specs -> renderFilterSpec ctx spec ] ]
 
 and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>) : ReactElement =
@@ -5934,7 +5874,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
             Html.input
-                [ prop.className "fuaran-filter-input"
+                [ prop.className Css.Class.FilterInput
                   prop.type'.text
                   prop.placeholder labelText
                   prop.value current
@@ -5946,7 +5886,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue 0.0
 
             Html.input
-                [ prop.className "fuaran-filter-input"
+                [ prop.className Css.Class.FilterInput
                   prop.type'.number
                   prop.value current
                   prop.onChange (fun (v: float) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
@@ -5957,7 +5897,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue 0.0
 
             Html.input
-                [ prop.className "fuaran-filter-input"
+                [ prop.className Css.Class.FilterInput
                   prop.type'.number
                   prop.value current
                   prop.onChange (fun (v: float) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
@@ -5968,7 +5908,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue false
 
             Html.input
-                [ prop.className "fuaran-filter-checkbox"
+                [ prop.className Css.Class.FilterCheckbox
                   prop.type'.checkbox
                   prop.isChecked current
                   prop.onChange (fun (v: bool) -> fieldChange ctx onToggle filterWriteBinding (Some(box v)) v) ]
@@ -5981,7 +5921,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue false
 
             Html.input
-                [ prop.className "fuaran-filter-toggle"
+                [ prop.className Css.Class.FilterToggle
                   prop.type'.checkbox
                   prop.role "switch"
                   prop.ariaChecked current
@@ -5992,7 +5932,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
             Html.textarea
-                [ prop.className "fuaran-filter-input"
+                [ prop.className Css.Class.FilterInput
                   prop.rows rows
                   prop.value current
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
@@ -6001,7 +5941,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
             Html.input
-                [ prop.className "fuaran-filter-input"
+                [ prop.className Css.Class.FilterInput
                   prop.type'.date
                   prop.value current
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) (Some v)) ]
@@ -6017,7 +5957,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
 
             ComboboxControl.combobox
                 {| fieldId = spec.Name + "-filter"
-                   className = "fuaran-filter-input fuaran-combobox-input"
+                   className = Css.Class.FilterInputComboboxInput
                    listClassName = "fuaran-combobox-list"
                    required = false
                    allowFreeText = allowFreeText
@@ -6042,7 +5982,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                          Html.option [ prop.key option.Value; prop.value option.Value; prop.text option.Label ] ]
 
             Html.select
-                [ prop.className "fuaran-filter-select"
+                [ prop.className Css.Class.FilterSelect
                   prop.value (current |> Option.defaultValue "")
                   prop.onChange (fun (v: string) ->
                       let chosen = if v = "" then None else Some v
@@ -6065,17 +6005,17 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 rangeInputHandlers ctx onChange filterWriteBinding current
 
             Html.span
-                [ prop.className "fuaran-filter-range"
+                [ prop.className Css.Class.FilterRange
                   prop.children
                       [ Html.input
                             [ prop.type'.number
-                              prop.className "fuaran-filter-range-min"
+                              prop.className Css.Class.FilterRangeMin
                               prop.value minV
                               prop.onChange onMinInput ]
-                        Html.span [ prop.className "fuaran-filter-range-sep"; prop.text "–" ]
+                        Html.span [ prop.className Css.Class.FilterRangeSep; prop.text "–" ]
                         Html.input
                             [ prop.type'.number
-                              prop.className "fuaran-filter-range-max"
+                              prop.className Css.Class.FilterRangeMax
                               prop.value maxV
                               prop.onChange onMaxInput ] ] ]
         | FormFieldKind.DateTimeRange(FieldView.DateRange value, FieldView.OnDateRange onChange, variant, min, max, step) ->
@@ -6112,19 +6052,19 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                   | None -> () ]
 
             Html.span
-                [ prop.className "fuaran-filter-range"
+                [ prop.className Css.Class.FilterRange
                   prop.children
                       [ Html.input (
                             [ prop.type' inputType
-                              prop.className "fuaran-filter-input fuaran-filter-range-min"
+                              prop.className Css.Class.FilterInputFilterRangeMin
                               prop.value fromV
                               prop.onChange onFromInput ]
                             @ constraintAttrs
                         )
-                        Html.span [ prop.className "fuaran-filter-range-sep"; prop.text "–" ]
+                        Html.span [ prop.className Css.Class.FilterRangeSep; prop.text "–" ]
                         Html.input (
                             [ prop.type' inputType
-                              prop.className "fuaran-filter-input fuaran-filter-range-max"
+                              prop.className Css.Class.FilterInputFilterRangeMax
                               prop.value toV
                               prop.onChange onToInput ]
                             @ constraintAttrs
@@ -6172,7 +6112,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.color
 
             Html.input
-                [ prop.className "fuaran-filter-input fuaran-color-input"
+                [ prop.className Css.Class.FilterInputColorInput
                   prop.type'.color
                   prop.value current
                   prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
@@ -6211,7 +6151,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
           // renderers spelling one vocabulary inline is how a vocabulary drifts.
           prop.className (Css.filter (Theme.filterKindClass spec.Kind))
           prop.children
-              [ Html.span [ prop.className "fuaran-filter-label"; prop.text labelText ]
+              [ Html.span [ prop.className Css.Class.FilterLabel; prop.text labelText ]
                 control ] ]
 
 /// Shared segmented-control / radio-group renderer.
@@ -6267,7 +6207,7 @@ and private renderSegmentedChoiceCore
                   // and compared by — not the position it happens to occupy in
                   // a list an author or a query can re-order.
                   prop.key (reconciliationKey (Some option.Value) index)
-                  prop.className "fuaran-segmented-option"
+                  prop.className Css.Class.SegmentedOption
                   prop.type'.button
                   prop.id (optionId index)
                   prop.ariaChecked isActive
@@ -6325,7 +6265,7 @@ and private renderSegmentedChoiceCore
             | _ -> ()
 
         Html.div
-            [ prop.className "fuaran-segmented-horizontal"
+            [ prop.className Css.Class.SegmentedHorizontal
               prop.id idNamespace
               prop.role "radiogroup"
               prop.custom ("aria-orientation", "horizontal")
@@ -6343,7 +6283,7 @@ and private renderSegmentedChoiceCore
 
             Html.div
                 [ prop.key (reconciliationKey (Some option.Value) index)
-                  prop.className "fuaran-segmented-row"
+                  prop.className Css.Class.SegmentedRow
                   prop.children
                       [ Html.input
                             [ prop.type'.radio
@@ -6357,10 +6297,10 @@ and private renderSegmentedChoiceCore
                         Html.label [ prop.htmlFor inputId; prop.text labelText ] ] ]
 
         Html.fieldSet
-            [ prop.className "fuaran-segmented-vertical"
+            [ prop.className Css.Class.SegmentedVertical
               prop.custom ("aria-orientation", "vertical")
               prop.children (
-                  Html.legend [ prop.className "fuaran-segmented-legend"; prop.text idNamespace ]
+                  Html.legend [ prop.className Css.Class.SegmentedLegend; prop.text idNamespace ]
                   :: [ for index, option in List.indexed opts -> optionRow index option ]
               ) ]
 
@@ -6388,7 +6328,7 @@ and private renderFileUpload
         |> Option.defaultValue false
 
     let inputProps: IReactProperty list =
-        [ prop.className "fuaran-file-upload-input"
+        [ prop.className Css.Class.FileUploadInput
           prop.type'.file
           prop.multiple spec.Multiple
           if isDisabled then
@@ -6481,7 +6421,7 @@ and private renderFileUpload
 
     let labelChildren =
         [ Html.span
-              [ prop.className "fuaran-file-upload-label"
+              [ prop.className Css.Class.FileUploadLabel
                 prop.text (renderText ctx spec.Label) ]
           Html.input inputProps ]
 
@@ -6494,14 +6434,14 @@ and private renderFileUpload
     let control =
         if spec.DropTarget || spec.AcceptPaste then
             FileUploadDrop.dropZone
-                {| className = "fuaran-file-upload"
+                {| className = Css.Class.FileUpload
                    dropTarget = spec.DropTarget
                    acceptPaste = spec.AcceptPaste
                    accept = spec.Accept
                    multiple = spec.Multiple
                    children = labelChildren |}
         else
-            Html.label [ prop.className "fuaran-file-upload"; prop.children labelChildren ]
+            Html.label [ prop.className Css.Class.FileUpload; prop.children labelChildren ]
 
     // Phase 1117 — the streaming leg. An upload with no declared destination is
     // the control above, unchanged, and pays nothing: no wrapper element, no
@@ -7854,10 +7794,10 @@ and private renderChart
                       prop.children
                           [ match spec.Title with
                             | Some title ->
-                                Html.div [ prop.className "fuaran-chart-title"; prop.text (renderText ctx title) ]
+                                Html.div [ prop.className Css.Class.ChartTitle; prop.text (renderText ctx title) ]
                             | None -> Html.none
                             Html.div
-                                [ prop.className "fuaran-chart-placeholder"
+                                [ prop.className Css.Class.ChartPlaceholder
                                   prop.text (
                                       sprintf
                                           "[Chart placeholder: %A — %d rows × {%s} → {%s}. Wire AgChartAdapter for live rendering.]"
@@ -7943,7 +7883,7 @@ and private renderTable (ctx: RenderContext<'Msg>) (printBreak: string) (spec: T
         [ for (headerIndex, h) in List.indexed spec.Headers ->
               Html.th
                   [ prop.key (reconciliationKey None headerIndex)
-                    prop.className "fuaran-table-header"
+                    prop.className Css.Class.TableHeader
                     prop.text (renderText ctx h) ] ]
 
     let bodyRows =
@@ -7952,7 +7892,7 @@ and private renderTable (ctx: RenderContext<'Msg>) (printBreak: string) (spec: T
                   [ // A static table's rows are literals in document order and
                     // nothing re-orders them, so position is the identity.
                     prop.key (reconciliationKey None i)
-                    prop.className "fuaran-table-row"
+                    prop.className Css.Class.TableRow
                     if spec.OnRowClick.IsSome then
                         prop.onClick (fun _ ->
                             match spec.OnRowClick with
@@ -7962,11 +7902,11 @@ and private renderTable (ctx: RenderContext<'Msg>) (printBreak: string) (spec: T
                         [ for (cellIndex, cell) in List.indexed row ->
                               Html.td
                                   [ prop.key (reconciliationKey None cellIndex)
-                                    prop.className "fuaran-table-cell"
+                                    prop.className Css.Class.TableCell
                                     prop.text (renderText ctx cell) ] ] ] ]
 
     Html.table
-        [ prop.className ("fuaran-table" + printBreak)
+        [ prop.className (Css.Class.Table + printBreak)
           // Phase 801 — the declared sort intent, surfaced as data attributes so a
           // progressive-enhancement script honours it without re-parsing the wire.
           // Emitted ONLY when declared: an undeclared table's markup is unchanged.
@@ -8094,22 +8034,6 @@ and private renderCellValue (format: CellFormat) (value: CellValue) : string =
             | _ -> d.ToString("yyyy-MM-dd")
         | CellValue.Empty -> ""
 
-and private badgeVariantClass (variant: BadgeVariant) : string =
-    match variant with
-    | BadgeVariant.Neutral -> "neutral"
-    | BadgeVariant.Brand -> "brand"
-    | BadgeVariant.Success -> "success"
-    | BadgeVariant.Warning -> "warning"
-    | BadgeVariant.Critical -> "critical"
-    | BadgeVariant.Info -> "info"
-
-and private buttonVariantClass (variant: ButtonVariant) : string =
-    match variant with
-    | ButtonVariant.Primary -> "primary"
-    | ButtonVariant.Secondary -> "secondary"
-    | ButtonVariant.Tertiary -> "tertiary"
-    | ButtonVariant.Destructive -> "destructive"
-
 // ─── Public entry point ────────────────────────────────────────────────────
 
 /// Render a Fuaran `Node<'Msg>` to a Feliz `ReactElement` against an
@@ -8196,12 +8120,6 @@ and private renderPresent (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactE
     let baseClassName =
         Theme.nodeClassName node.Kind (node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
 
-    let motionClassName =
-        match node.Motion with
-        // Per-node hot path — string concat, not sprintf. Do not "simplify".
-        | Some motion -> baseClassName + " fuaran-motion-" + Theme.motionVar motion
-        | None -> baseClassName
-
     // Phase 1112 — the node-level tooltip trait. An EMPTY resolved hint emits
     // nothing at all: a declared hint that says nothing is markup that reveals
     // an empty box on hover, and the wrapper class / focus stop / describedby
@@ -8214,9 +8132,7 @@ and private renderPresent (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactE
         |> Option.filter (fun t -> t.Trim() <> "")
 
     let className =
-        match tooltipText with
-        | Some _ -> motionClassName + " fuaran-has-tooltip"
-        | None -> motionClassName
+        Css.nodeWrapper baseClassName (node.Motion |> Option.map Theme.motionVar) tooltipText.IsSome
 
     // Emit consumer-side `data-*` / `aria-*` test
     // hooks from `Node.ExtraAttributes`. A render-time
@@ -8341,7 +8257,7 @@ and private renderPresent (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactE
             [ kindBody
               Html.span
                   [ prop.id (Accessibility.tooltipHintId id)
-                    prop.className "fuaran-tooltip"
+                    prop.className Css.Class.Tooltip
                     prop.custom ("role", "tooltip")
                     prop.text t ] ]
 
@@ -8391,7 +8307,7 @@ let renderBehind (ctx: RenderContext<'Msg>) (view: BehindView<'Msg>) : ReactElem
             | None -> sprintf "unknown kind %s" kind
 
         Html.div
-            [ prop.className "fuaran-unknown-placeholder"
+            [ prop.className Css.Class.UnknownPlaceholder
               prop.custom ("data-fuaran-kind", kind)
               match required with
               | Some p -> prop.custom ("data-fuaran-requires", p)

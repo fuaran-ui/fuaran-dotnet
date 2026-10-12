@@ -174,24 +174,45 @@ let private repeatedChildArms =
       "grid header", "prop.className \"fuaran-grid-header\""
       "grid button-group member", "match item.OnClick with"
       "tab", "prop.role \"tab\""
-      "stepper step", "\"fuaran-stepper-step\""
-      "tree item", "prop.className \"fuaran-tree-item\""
-      "list item", "prop.className \"fuaran-list-item\""
-      "skeleton row", "prop.className \"fuaran-skeleton-row\""
-      "form field", "prop.className \"fuaran-form-field\""
+      "stepper step", "Css.Class.StepperStep"
+      "tree item", "prop.className Css.Class.TreeItem"
+      "list item", "prop.className Css.Class.ListItem"
+      "skeleton row", "prop.className Css.Class.SkeletonRow"
+      "form field", "prop.className Css.Class.FormField"
       // Phase 1648 — the chip's class became `Css.filter (Theme.filterKindClass
       // spec.Kind)`, because this renderer had been emitting a bare
       // `fuaran-filter` where the server emits the kind suffix too. The anchor
       // moves with it; the MISSING ANCHOR report is what caught the rename,
       // which is the whole reason it is reported as loudly as a missing key.
       "filter chip", "Css.filter (Theme.filterKindClass spec.Kind)"
-      "segmented option", "prop.className \"fuaran-segmented-option\""
-      "segmented row", "prop.className \"fuaran-segmented-row\""
+      "segmented option", "prop.className Css.Class.SegmentedOption"
+      "segmented row", "prop.className Css.Class.SegmentedRow"
       "select option", "prop.text option.Label"
-      "static table header", "prop.className \"fuaran-table-header\""
-      "static table row", "prop.className \"fuaran-table-row\""
-      "static table cell", "prop.className \"fuaran-table-cell\""
+      "static table header", "prop.className Css.Class.TableHeader"
+      "static table row", "prop.className Css.Class.TableRow"
+      "static table cell", "prop.className Css.Class.TableCell"
       "map marker", "prop.className \"fuaran-map-marker\"" ]
+
+/// Does `line` carry `anchor` as a whole token? Phase 2070 moved the classes
+/// both renderers emit into `Css.Class.*` constants, and an identifier anchor
+/// is a PREFIX of its neighbours (`Css.Class.FormField` of
+/// `Css.Class.FormFieldset`, `Css.Class.StepperStep` of
+/// `Css.Class.StepperStepActive`), where a quoted literal anchor carried its
+/// own closing quote. So an anchor matches only where no identifier character
+/// follows it — exactly the sites the quoted literals matched, no more.
+let private anchoredAt (anchor: string) (line: string) : bool =
+    let rec from (start: int) =
+        match line.IndexOf(anchor, start, StringComparison.Ordinal) with
+        | -1 -> false
+        | at ->
+            let next = at + anchor.Length
+
+            if next >= line.Length || not (Char.IsLetterOrDigit line[next] || line[next] = '_') then
+                true
+            else
+                from (at + 1)
+
+    from 0
 
 /// Scan upward from an emission site to the `Html.<element>` that opens it, and
 /// report whether a `prop.key` sits between the two. Upward rather than
@@ -227,7 +248,7 @@ let emissionSiteTests =
                   [ for (name, anchor) in repeatedChildArms do
                         let sites =
                             [ for i in 0 .. lines.Length - 1 do
-                                  if lines[i].Contains anchor then
+                                  if anchoredAt anchor lines[i] then
                                       yield i ]
 
                         if List.isEmpty sites then
@@ -258,4 +279,15 @@ let emissionSiteTests =
 
               Expect.isFalse (keyedAtSite unkeyed 1) "an unkeyed props list is reported unkeyed"
               Expect.isTrue (keyedAtSite keyed 2) "and a keyed one is not"
+          }
+
+          test "GO-RED TWIN: an identifier anchor matches its own token, never a longer neighbour" {
+              let anchor = "prop.className Css.Class.FormField"
+              Expect.isTrue (anchoredAt anchor "  [ prop.className Css.Class.FormField") "the token itself"
+              Expect.isTrue (anchoredAt anchor "prop.className Css.Class.FormField ]") "followed by a delimiter"
+              Expect.isFalse (anchoredAt anchor "  [ prop.className Css.Class.FormFieldset") "a longer identifier"
+
+              Expect.isTrue
+                  (anchoredAt anchor "Css.Class.FormFieldset; prop.className Css.Class.FormField")
+                  "a later whole-token occurrence on the same line"
           } ]
