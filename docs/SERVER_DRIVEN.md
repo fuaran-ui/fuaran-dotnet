@@ -121,9 +121,9 @@ the client `runAction` dispatch gate. Four checks, first-failure-wins:
    | `Form` | `submit`, `change`, `input` | `OnSubmit` on submit; field-level change/input are the form policy's (§ forms) |
    | `Filters` | `change`, `input`, `click` | name-addressed: `payload.name` picks the filter, its `onChange` gets `payload.value` (`""` → `None` for choice-shaped filters); segmented horizontal options arrive as clicks |
    | `FileUpload` | `change`, `file-read` | `ReadFileBody` continuation |
-   | `Tabs` | `click`, `change` | `OnSelectTag (payload.value)` else `OnSelect (payload.index)` |
+   | `Tabs` | `click`, `change` | what the client dispatches for tab `i` (`payload.index`, or `payload.value` looked up in `TabTags`): `OnSelect i`, then `OnSelectTag tags[i]` when both are declared – both as one `Chain` |
    | `Stepper` | `click`, `change` | `OnSelect (payload.index)` – the shim bridges `data-step-index` |
-   | `Disclosure` | `click`, `change`, `toggle` | `OnToggle (payload.open, default true)` |
+   | `Disclosure` | `click`, `change`, `toggle` | `OnToggle (payload.open)`; with no `open`, the tree's own open state toggled |
    | everything else | – (default-deny) | – |
 3. **Payload in bounds** – a `Select` value must be one of its statically-
    resolved options (dynamic bindings + per-field form bounds are enforced
@@ -609,6 +609,10 @@ An in-place nav emits `ClientEffect.PushState route`; the shim calls
 `popstate` `LiveEvent` carrying the popped route – the routing layer swaps the
 tree to match and does **not** push state again (the browser already moved).
 `popstate` is not node-addressed, so it is handled *outside* the per-node G1 gate.
+Both paths read one route normaliser (Phase 2071): a blank route – empty or
+whitespace – or a `popstate` carrying no route at all is declined for routing and
+handed to the ordinary step, exactly as a `Navigate` whose route resolves blank is,
+so it never reaches the route table or a full reload.
 
 ### Deep-link + reload correctness
 

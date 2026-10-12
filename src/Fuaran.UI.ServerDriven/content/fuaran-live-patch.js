@@ -390,8 +390,8 @@
       // Disclosure summary clicks: <details> flips `open` AFTER dispatch (the
       // toggle is the click's default action), so `!open` here is the state
       // the user is switching to. Server-side Disclosure resolution reads
-      // `payload.open` and defaults a bare click to "open" — without this a
-      // click on an already-open disclosure would re-send "open".
+      // `payload.open`, and a bare click toggles the server tree's open state;
+      // sending the target explicitly keeps the two in step when they differ.
       var summary = target.closest("summary");
       var details = summary && summary.closest("details");
       if (details) return { open: !details.open };

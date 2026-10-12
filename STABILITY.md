@@ -7880,6 +7880,44 @@ documented no-op to a state write (WIRE_FORMAT §30.1, the bounded flush).
 - **Not changed:** a raw `CommitLocal` folded outside a loop (`BoundedActions.runBoundedAction`, a
   server handler's stage) is declined exactly as before. It has no tree to find its field in.
 
+### What rides this slot — Phase 2071
+
+**Class: BEHAVIOUR fix.** No public type, member or signature moves, and for input with no control
+character other than `\n`, `\r` and `\t` no frame byte moves (the shipped `DomPatch` corpus fixtures are
+unchanged). The server-driven tier now resolves an inbound event one way.
+
+- **`DomPatch` escapes every control character (`Fuaran.UI.ServerDriven`).** `DomPatch.encode` and
+  `ClientEffect.encode` share one JSON string writer: `\n`, `\r`, `\t` keep their short escapes and every
+  other character below U+0020 is `\u00XX` in lower-case hex, exactly as `ClientEffect` already wrote
+  them. `DomPatch` escaped only the three short forms, so a rendered fragment or label carrying U+000C put
+  a raw control byte inside a JSON string and the client's parse failed for that whole frame.
+- **`Validation.resolveAction` applies one event policy to every kind.** An event is resolved only when
+  it is one of the kind's action events, which equal `legitimateEvents` for every kind except `Form`
+  (only `submit` resolves `OnSubmit`). Through `validate` nothing changes; a direct caller of
+  `resolveAction` now gets `None` for an event name outside that set on a Disclosure, Tabs, Stepper or
+  Filters node, where it used to get the kind's action.
+- **A Disclosure event with no `open` payload toggles** the tree's own open state (the `Open` binding
+  against empty sources, else `DefaultOpen`). It defaulted to `true`, so a payload-less click on an open
+  disclosure could never close it. An explicit `open` still wins.
+- **Tabs dispatch what the client dispatches.** For tab `i` (the `index` payload, or a `value` looked up
+  in `TabTags`) the resolution is `OnSelect i`, then `OnSelectTag tags[i]` when the handler and the
+  overlay are both present, as one `Action.Chain`. It used to dispatch only the tag handler when a
+  `value` rode along, only `OnSelect` for a click, and to hand `OnSelectTag` a tag the overlay does not
+  declare, which no client click can produce.
+- **One route normaliser for both navigation paths (`Navigation.stepWithRouting`).** A `popstate`
+  carrying a blank route, or none, is now handed to the fallback step as a blank `Navigate` route already
+  was. It used to reach the route table (and so a full reload to the blank route), and a routeless one
+  was read as `/`.
+- **One not-found fallback in the lowering's insertion index.** A child absent from its found parent
+  lands at the append position (the child count), as under a missing parent (0). It got `len-1`, which
+  the shim reads as "before the last child".
+- **`RatingModel.keyIntent` commits an entry position (`Fuaran.UI.Renderer.Core`).** From an off-grid
+  value an arrow moves to the next position in its direction (2.3 goes to 3 up and 2 down, never 3.3);
+  from a position it moves one step, as before.
+- **Not changed:** the `CanonicalJson` string writer, which is a separate dialect, and every event a
+  conformant shim sends today: it sends `open` with a disclosure click, `index` with a tab click and a
+  non-blank `popstate` route.
+
 ## 0.93.0 — the slot opened after v0.92.0 was released (RELEASED — tagged v0.93.0 at b654b31, 2026-10-10)
 
 _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,

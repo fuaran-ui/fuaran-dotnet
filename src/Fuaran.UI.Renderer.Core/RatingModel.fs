@@ -103,15 +103,23 @@ let snap (allowHalf: bool) (max: int) (value: float) : float =
 /// reading: `aria-valuemin` is 0, an empty row of stars is what "no rating"
 /// looks like, and a reader who wants to take a rating back has no other
 /// gesture for it.
+///
+/// An arrow COMMITS an entry position, as a click does (Phase 2071): from an
+/// off-grid figure — a bound 2.3 — it moves to the next position in its
+/// direction (3 up, 2 down), never to 3.3. From a position it moves one step.
 let keyIntent (allowHalf: bool) (max: int) (current: float) (key: string) : float option =
     let s = step allowHalf
-    let here = clamp max current
+    let position = clamp max current / s
+    let nearest = System.Math.Round position
+    let onGrid = System.Math.Abs(position - nearest) < 1e-9
+    let below = if onGrid then nearest else System.Math.Floor position
+    let above = if onGrid then nearest else System.Math.Ceiling position
 
     match key with
     | "ArrowRight"
-    | "ArrowUp" -> Some(clamp max (here + s))
+    | "ArrowUp" -> Some(snap allowHalf max ((below + 1.0) * s))
     | "ArrowLeft"
-    | "ArrowDown" -> Some(clamp max (here - s))
+    | "ArrowDown" -> Some(snap allowHalf max ((above - 1.0) * s))
     | "Home" -> Some 0.0
     | "End" -> Some(float max)
     | _ -> None

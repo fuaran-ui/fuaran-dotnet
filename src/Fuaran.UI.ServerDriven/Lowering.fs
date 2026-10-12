@@ -46,18 +46,20 @@ let rec lowerOp<'Msg> (renderFragment: Node<'Msg> -> string) (newTree: Node<'Msg
     // The DOM genuinely needs an insertion index — but it is DERIVED here, at the
     // boundary that needs it, from the post-apply tree, rather than carried through
     // the op vocabulary. `InsertChild` / `MoveNode` append, so the landed child is
-    // last under its new parent; falling back to 0 covers the parent-not-found case
-    // (the patch is then a no-op client-side anyway).
+    // last under its new parent. ONE fallback when it cannot be found (Phase 2071):
+    // the APPEND position, the parent's child count — 0 under a missing parent or
+    // a childless kind, where the patch is a no-op client-side anyway. (A child
+    // absent from a found parent used to get `len-1`, which the shim reads as
+    // "before the last child".)
     let landedIndex (parentId: NodeId) (childId: NodeId) : int =
-        match findNode parentId newTree with
-        | Some parent ->
-            match getChildren parent.Kind with
-            | Some kids ->
-                kids
-                |> List.tryFindIndex (fun c -> NodeId c.Id = childId)
-                |> Option.defaultValue (max 0 (List.length kids - 1))
-            | None -> 0
-        | None -> 0
+        let kids =
+            findNode parentId newTree
+            |> Option.bind (fun parent -> getChildren parent.Kind)
+            |> Option.defaultValue []
+
+        kids
+        |> List.tryFindIndex (fun c -> NodeId c.Id = childId)
+        |> Option.defaultValue (List.length kids)
 
     let reRender (id: NodeId) : DomPatch list =
         match findNode id newTree with
