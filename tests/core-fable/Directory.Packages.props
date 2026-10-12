@@ -31,6 +31,9 @@
     <PackageVersion Update="Fuaran.Core.Idl.Codegen" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Observer" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.ContentAddress" Version="$(FuaranCoreVersion)" />
+    <!-- Fuaran.Core.Unit ships from 0.37.0 (Phase 426) and the root file pins no version for it yet, so this is an
+         Include, only for a candidate that carries it; the pin raise to 0.37.0 moves it to the root file. -->
+    <PackageVersion Include="Fuaran.Core.Unit" Version="$(FuaranCoreVersion)" Condition="'$(FuaranCoreVersion)' != '' And $([MSBuild]::VersionGreaterThanOrEquals('$(FuaranCoreVersion)', '0.37.0'))" />
   </ItemGroup>
   <!-- The second producer (the compute repository, from 0.33.0). The script's `$ComputeOwned` list
        names the same three ids; keep the two in step. -->

@@ -33,11 +33,6 @@ open Fuaran.Core
 open Fuaran.Compute
 #endif
 open Fuaran.Core.Idl
-// Phase 185 — `Fuaran.Core.Observer` is its own namespace, so the touch below needs it opened.
-// `IObserver` is spelled out at its one use site rather than relied on here: `System.IObserver`
-// exists, and a bare name that resolves differently depending on an unrelated `open` is not
-// something a gate project should depend on.
-open Fuaran.Core.Observer
 
 // Tree — content hashing + the portable FNV-1a.
 let private treeTouch = Hash.fnv1a "smoke"
@@ -214,7 +209,12 @@ let private queryTouch =
     let q: Query =
         { Id = "q"
           Params = []
+#if CORE_UNIT
+          // Core 0.37.0 (Phase 427): a schema entry is a `Field`.
+          ResultSchema = [ Field.create "n" IntType ]
+#else
           ResultSchema = [ "n", IntType ]
+#endif
           Effect =
             { Host = ReadsHost
               Determinism = networkDeterminism }
@@ -228,17 +228,14 @@ let private queryTouch =
     let pending = QueryCodec.encodeDeferredResult Pending
 
     let dispatched =
-        match
-            QueryRegistry.dispatch
-                { QueryRegistry.empty with
-                    Queries = Map.ofList [ q.Id, q ] }
-                q.Id
-                []
-                (fun _ -> Pending)
-        with
-        | Ok Pending -> "pending"
-        | Ok other -> sprintf "%A" other
+        // `register` is the only way in since 0.37.0 made the registry opaque (Phase 386).
+        match QueryRegistry.empty |> QueryRegistry.register q with
         | Error e -> sprintf "%A" e
+        | Ok registry ->
+            match QueryRegistry.dispatch registry q.Id [] (fun _ -> Pending) with
+            | Ok Pending -> "pending"
+            | Ok other -> sprintf "%A" other
+            | Error e -> sprintf "%A" e
 
     sprintf "%s|%s|%s" (QueryCodec.encode q) pending dispatched
 
@@ -435,7 +432,7 @@ let private attributedTouch =
     let sw: StreamWitness<int, int, string> =
         { Apply = fun op st -> Ok(st + op)
           Encode = fun op -> Json.render (JInt op)
-          Decode = fun s -> Decode.parse s |> Result.bind Decode.asInt }
+          Decode = fun s -> Decode.parse s |> Result.bind (Decoder.describing Decoder.int) }
 
     let lifted = OpStream.Attributed.liftWitness sw
 
@@ -506,7 +503,7 @@ let private sampleAdequacyTouch =
 let private constructThenEncodeTouch =
     let codec: Corpus.Codec<string> =
         { Encode = fun s -> Json.render (JStr s)
-          Decode = fun s -> Decode.parse s |> Result.bind Decode.asString }
+          Decode = fun s -> Decode.parse s |> Result.bind (Decoder.describing Decoder.str) }
 
     let witness: ConstructWitness<string> =
         { Surface = "the smoke's own constructor"
@@ -568,20 +565,20 @@ let private computeTouches =
 let private computeTouches: string list = []
 #endif
 
-// Observer (Phase 185) — the runtime-verification seam. Its header has claimed
-// "FSharp.Core only + Fable-clean … the same engine drives the in-memory .NET test substrate and a
-// Fable-compiled host" since it was written, while the package sat OFF this gate, grouped with the
-// build-time tools. The whole engine is reached: register, update, derive, observe, subscribe.
+// Observer (Phase 185) — the runtime-verification seam, reached through its witness and the pure
+// state it threads (Phase 298; the OO adapter left at 0.37.0, Phase 386). The whole engine is
+// reached: register, update, derive, snapshot, observe the tree.
 let private observerTouch =
-    let obs =
-        InMemoryObserver.create<int, string> (fun n -> if n > 1 then [ "over" ] else [])
+    let w =
+        ObserverWitness.create<int, string> (fun n -> if n > 1 then [ "over" ] else [])
 
-    let seam = obs :> Fuaran.Core.Observer.IObserver<int, string>
-    use _sub = seam.Subscribe(fun _ -> ())
-    obs.RegisterNode("n0", 1)
-    obs.Update("n0", 2)
+    let st, _ = ObserverWitness.register w "n0" 1 None ObserverWitness.empty
+    let st, _ = ObserverWitness.update w "n0" 2 st
 
-    sprintf "%A/%d" (seam.Observe "n0" |> Option.map (fun o -> o.Flags)) (seam.ObserveTree "n0" |> List.length)
+    sprintf
+        "%A/%d"
+        (ObserverWitness.snapshot st "n0" |> Option.map (fun o -> o.Flags))
+        (ObserverWitness.observeTree st "n0" |> List.length)
 
 // ContentAddress (Phase 382) — the content address of a wire value under a named encoding profile,
 // the renderer and the hash in one package. Unconditional since Phase 2039 raised the pin to 0.35.2.

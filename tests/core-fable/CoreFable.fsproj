@@ -83,4 +83,17 @@
     <!-- From Core 0.35.2 (Phase 382); unconditional since Phase 2039 raised this repository's pin to carry it. -->
     <PackageReference Include="Fuaran.Core.ContentAddress" />
   </ItemGroup>
+  <!--
+    `Fuaran.Core.Unit` ships from Core 0.37.0 (Phase 426), and this repository pins an earlier Core, so the
+    package has no pin here yet. It is referenced only in a cut-time run whose candidate carries it; the pin
+    raise that reaches 0.37.0 makes the reference unconditional and moves the pin into the root
+    Directory.Packages.props (the Fuaran.Core.ContentAddress precedent at 0.35.2).
+  -->
+  <PropertyGroup Condition="'$(FuaranCoreVersion)' != '' And $([MSBuild]::VersionGreaterThanOrEquals('$(FuaranCoreVersion)', '0.37.0'))">
+    <CoreFableUnit>true</CoreFableUnit>
+    <DefineConstants>$(DefineConstants);CORE_UNIT</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(CoreFableUnit)' == 'true'">
+    <PackageReference Include="Fuaran.Core.Unit" CandidateFrom="0.37.0" />
+  </ItemGroup>
 </Project>
