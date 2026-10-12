@@ -314,35 +314,10 @@ module HostLimits =
             Some(max fromStaticRows fromSource)
         | _ -> None
 
-    /// The UTF-8 byte length of `s`, counted without `System.Text` so the same
-    /// figure is produced under Fable. A lone surrogate counts as the three
-    /// bytes of the replacement character an encoder writes for it.
-    let utf8Length (s: string) : int =
-        let mutable n = 0
-        let mutable i = 0
-
-        while i < s.Length do
-            let c = int s.[i]
-
-            if c < 0x80 then
-                n <- n + 1
-            elif c < 0x800 then
-                n <- n + 2
-            elif
-                c >= 0xD800
-                && c <= 0xDBFF
-                && i + 1 < s.Length
-                && int s.[i + 1] >= 0xDC00
-                && int s.[i + 1] <= 0xDFFF
-            then
-                n <- n + 4
-                i <- i + 1
-            else
-                n <- n + 3
-
-            i <- i + 1
-
-        n
+    /// The UTF-8 byte length of `s`, as `Encoding.UTF8.GetByteCount` reports it.
+    /// Phase 2042: this reads the tier's one encoder (`Hashing.utf8Length`), so
+    /// the byte budget and the content hash count the same bytes.
+    let utf8Length (s: string) : int = Hashing.utf8Length s
 
     /// The tree's serialized size: the UTF-8 length of the generated canonical
     /// encoder's output.

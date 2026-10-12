@@ -514,6 +514,14 @@ let private behaviour =
               Expect.stringContains f.Message "\"onclick\"" "the on* key, not the data-* one"
           }
 
+          // Phase 2042: the build-time check reads the renderer floor's rule, so a
+          // data-* key that would open a second attribute is reported, not passed.
+          test "a data-* key carrying an attribute-name injection is flagged (FUARAN060)" {
+              let f = single "FUARAN060" (findings (setup [ "ExtraAttributeNameInjection" ]))
+              Expect.stringContains f.Message "data-x onmouseover=alert(1)" "the injecting key, not the data-testid one"
+              Expect.stringContains f.Message "second attribute" "named as name injection"
+          }
+
           // ── Custom ────────────────────────────────────────────────────────
 
           test "computeBodyShapeHash is deterministic and shape-sensitive" {

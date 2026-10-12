@@ -56,19 +56,19 @@ let private blankDisplay (node: string) (slot: string) (remedy: string) : LintFi
       Code = "FUARAN081"
       Remedy = remedy }
 
-let private isWritable (binding: Binding<'T>) : bool =
-    match binding with
-    | Binding.State _
-    | Binding.Filter(_, _) -> true
-    | _ -> false
-
 /// The optional-value-slot form (Phase 596): an OMITTED slot (`None`) is
 /// writable by construction — the symmetric auto-bind gives the write-back
 /// default `$state.<field id>` (or the chip's `$filters.<name>`) to write to.
+///
+/// A present slot is judged by `BindingWalk.isWriteBackTarget`, the one
+/// predicate FUARAN069 and both renderers read. Phase 2042: this lint used to
+/// hold a private copy that admitted State and Filter only, so for a `Local`
+/// with a declared `commitTo` it told the author to rebind a slot the
+/// validator treats as live.
 let private isWritableOpt (binding: Binding<'T> option) : bool =
     match binding with
     | None -> true
-    | Some b -> isWritable b
+    | Some b -> BindingWalk.isWriteBackTarget b
 
 /// Every `Action.Call` with an `onResult` closure in `action` and every action
 /// nested in it. Phase 2039 — the recursion is the generated `Action.fold`, so a
@@ -120,17 +120,29 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
             // sentinel — only its interior Calls are lintable.
             s.OnDismiss |> Option.iter (fun a -> findings.AddRange(callFindings nodeId a))
         | NodeKind.Tabs s ->
-            handler nodeId "TabsSpec.onSelect" s.OnSelect.IsSome (isWritable s.ActiveIndex) "$state (activeIndex)"
+            handler
+                nodeId
+                "TabsSpec.onSelect"
+                s.OnSelect.IsSome
+                (BindingWalk.isWriteBackTarget s.ActiveIndex)
+                "$state (activeIndex)"
 
             handler
                 nodeId
                 "TabsSpec.onSelectTag"
                 s.OnSelectTag.IsSome
-                (s.ActiveTag |> Option.map isWritable |> Option.defaultValue false)
+                (s.ActiveTag
+                 |> Option.map BindingWalk.isWriteBackTarget
+                 |> Option.defaultValue false)
                 "$state (activeTag)"
 
         | NodeKind.Disclosure s ->
-            handler nodeId "DisclosureSpec.onToggle" s.OnToggle.IsSome (isWritable s.Open) "$state (open)"
+            handler
+                nodeId
+                "DisclosureSpec.onToggle"
+                s.OnToggle.IsSome
+                (BindingWalk.isWriteBackTarget s.Open)
+                "$state (open)"
         // -- Input --
         | NodeKind.Button b -> findings.AddRange(callFindings nodeId b.OnClick)
         | NodeKind.Form f ->
@@ -148,13 +160,20 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                     "$state"
 
         | NodeKind.Select s ->
-            handler nodeId "SelectSpec.onChange" s.OnChange.IsSome (isWritable s.Value) "$state (value)"
+            handler
+                nodeId
+                "SelectSpec.onChange"
+                s.OnChange.IsSome
+                (BindingWalk.isWriteBackTarget s.Value)
+                "$state (value)"
 
             handler
                 nodeId
                 "SelectSpec.onChangeMulti"
                 s.OnChangeMulti.IsSome
-                (s.Values |> Option.map isWritable |> Option.defaultValue false)
+                (s.Values
+                 |> Option.map BindingWalk.isWriteBackTarget
+                 |> Option.defaultValue false)
                 "$state (values)"
 
         | NodeKind.Filters spec ->
