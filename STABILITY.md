@@ -7880,6 +7880,50 @@ documented no-op to a state write (WIRE_FORMAT §30.1, the bounded flush).
 - **Not changed:** a raw `CommitLocal` folded outside a loop (`BoundedActions.runBoundedAction`, a
   server handler's stage) is declined exactly as before. It has no tree to find its field in.
 
+### What rides this slot — Phase 2042
+
+**Class: BEHAVIOUR change (ill-formed or refused input only) + additive API.** No type is removed or
+retyped. No wire byte, corpus fixture, hash pin or finding code moves for well-formed input. Five rules
+each had more than one definition, and the copies disagreed on a concrete input. Each rule now has one
+definition, and every site calls it.
+
+- **Write-back target.** `DeadOnDecode.lint` judges a value binding with `BindingWalk.isWriteBackTarget`,
+  the predicate FUARAN069 and both renderers already read. Its private copy is gone. Behaviour: a decoded
+  control whose value is a `Binding.Local` with a destination (a `commitTo`, a writable re-sync source, or
+  an `onCommit` hook) now gets FUARAN080's "omit the handler, the binding is already writable" remedy. It
+  used to be told to rebind a slot the validator treats as live. The finding and its code are unchanged.
+- **Action recursion.** No change in this slot. The one walk is the generated `Action.fold` (Phase 2039).
+  A source census now pins that no walk in the tier recurses `Chain` / `Confirm` by hand.
+- **Chart X class.** `QueryBinding` classes a query-bound chart's `XField` by chart kind:
+  `Temporal` under `XScale = Temporal`, `Numeric` on a `Scatter`, and `Categorical` otherwise. Behaviour:
+  a scatter over an int or float X no longer raises FUARAN066, and a scatter over a string X now does,
+  matching FUARAN087. A temporal X now admits only date and timestamp, matching FUARAN097. One stricter
+  asymmetry stays: a bool scatter X raises FUARAN066, while FUARAN087 coerces bool. Additive API:
+  `QueryBinding.chartXClass`.
+- **UTF-8.** `Hashing` holds the tier's one UTF-8 encoder. Behaviour: on a string holding a lone
+  surrogate, `sha256Hex` (and every digest built on it) now hashes the bytes `Encoding.UTF8` and a WHATWG
+  `TextEncoder` write, which is U+FFFD (`EF BF BD`) for the surrogate. A high surrogate followed by any unit but a
+  low one used to take the four-byte path with a garbage scalar. Any other lone surrogate was hashed as its
+  three-byte CESU form. `HostLimits.utf8Length` now reads the same encoder, so its figures are unchanged.
+  Additive API: `Hashing.utf8Length`. **Stored hashes:** the wire decoder refuses a raw lone surrogate and
+  reads an escaped one (`\ud800`) as U+FFFD. So no hash over a wire-decoded tree could have been computed
+  from ill-formed input, and none moves. A hash over a host-constructed string carrying a lone surrogate
+  (an F#-authored tree, a custom body-shape key) did hash ill-formed input. That digest was already
+  unreproducible: the same text read back from UTF-8 storage, or hashed in a browser, carried U+FFFD and
+  gave a different digest. Re-computed under this slot, it gives the digest that storage and a browser
+  give.
+- **Extra-attribute keys.** `Fuaran.UI.ExtraAttributeKey` (`isSafeName`, `refusal`, `isAllowed`) is the one
+  key rule. `Node.withExtraAttribute`, the FUARAN060 build-time check and the renderer floor
+  (`Sanitize.isAllowedExtraAttributeKey` / `isSafeAttributeName`, now delegating) all read it. Behaviour:
+  a `data-*` / `aria-*` key with a character outside `[A-Za-z0-9-]`, such as `data-x onmouseover=alert(1)`,
+  is now dropped by the smart constructor and reported by FUARAN060. It used to pass both, and was then
+  dropped at render. FUARAN060's message keeps its three existing reasons word for word and adds one for
+  name injection. A null key (reachable only through JS interop) is now refused with the same warning;
+  it used to throw from `Trim`.
+- **Not in this slot:** the hole value-space projection (`toCoreSpace` / `toCoreEffect`) still has two
+  byte-identical private copies, in `Fuaran.UI.AiTools` and `Fuaran.UI.Validator`. Either way of giving it
+  one home changes a published package's dependency closure, so that decision is deferred.
+
 ## 0.93.0 — the slot opened after v0.92.0 was released (RELEASED — tagged v0.93.0 at b654b31, 2026-10-10)
 
 _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,

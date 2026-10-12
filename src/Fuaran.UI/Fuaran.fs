@@ -23,23 +23,84 @@ open Fuaran.Core
 
 open Fuaran.UI.Types
 
+// ─── Extra-attribute keys: the one rule ────────────────────────────────────
+
+/// Which `ExtraAttributes` keys may reach the DOM. One definition, read by the
+/// smart constructor (`Node.withExtraAttribute`), the build-time FUARAN060
+/// check and the renderers' sanitization floor.
+///
+/// Phase 2042: there were three copies. The smart constructor and the
+/// build-time check tested the `data-` / `aria-` prefix alone, and only the
+/// renderer floor also checked the key's characters. So a key such as
+/// `data-x onmouseover=alert(1)` passed at build time, was stored by the smart
+/// constructor, and was then dropped by the renderer.
+[<RequireQualifiedAccess>]
+module ExtraAttributeKey =
+
+    /// Only `[A-Za-z0-9-]`, and at least one character. A name holding anything
+    /// else could end the attribute name at the emission site and open a second
+    /// one. That is attribute-NAME injection, which escaping the value cannot
+    /// stop.
+    let isSafeName (name: string) : bool =
+        // `IsNullOrEmpty` rather than `isNull`: the nullness model types `name`
+        // non-null, but a Fable consumer can still pass `null` through JS interop.
+        if System.String.IsNullOrEmpty name then
+            false
+        else
+            name
+            |> Seq.forall (fun ch ->
+                (ch >= 'a' && ch <= 'z')
+                || (ch >= 'A' && ch <= 'Z')
+                || (ch >= '0' && ch <= '9')
+                || ch = '-')
+
+    /// Why `key` is refused, as a noun phrase for a message, or `None` when it
+    /// is admissible. Judged on the TRIMMED key, so a caller that emits the key
+    /// must trim it too.
+    let refusal (key: string) : string option =
+        let outsideAllowlist = Some "outside the data-* / aria-* allowlist"
+
+        // Null (from JS interop) or whitespace only: nothing left once trimmed.
+        if System.String.IsNullOrWhiteSpace key then
+            outsideAllowlist
+        else
+            let trimmed = key.Trim()
+
+            if trimmed.StartsWith("on", System.StringComparison.OrdinalIgnoreCase) then
+                // Any `on*` event-handler attribute, whatever its case.
+                Some "event-handler attribute (on*) — would inject inline script if reached the DOM"
+            elif trimmed.Equals("style", System.StringComparison.OrdinalIgnoreCase) then
+                // A raw CSS sink: legacy `expression()`, `url(javascript:...)`,
+                // and content spoofing.
+                Some "raw CSS sink — vector for content-spoofing and legacy expression() injection"
+            elif not (isSafeName trimmed) then
+                Some
+                    "an attribute name with characters outside [A-Za-z0-9-] — would open a second attribute at the emission site"
+            elif
+                trimmed.StartsWith("data-", System.StringComparison.Ordinal)
+                || trimmed.StartsWith("aria-", System.StringComparison.Ordinal)
+            then
+                None
+            else
+                outsideAllowlist
+
+    /// The allowlist predicate: a `data-*` or `aria-*` key that is a safe
+    /// attribute name and not an `on*` handler or `style`.
+    let isAllowed (key: string) : bool = (refusal key).IsNone
+
 // ─── Per-Node postfix-pipe modifiers ───────────────────────────────────────
 
 module Node =
     // Since the swap the Node envelope carries `State` / `Style` as OPTIONS —
     // `None` is the canonical empty-state / default-style shape (the encoder
-    // omits both). The helpers below materialise the default locally, apply
-    // the change, and NORMALISE back to `None` when the result is the empty /
-    // default record, so the wire stays byte-identical with the pre-swap
-    // always-present-record behaviour.
+    // omits both). The helpers below materialise the default locally and apply
+    // the change. A style setter NORMALISES back to `None` when the result is
+    // the default record, so the wire stays byte-identical with the pre-swap
+    // always-present-record behaviour. A state setter always adds a
+    // placeholder, so its result is never the empty record.
 
     let private stateOf (node: Node<'Msg>) : StateBehaviour<'Msg> =
         node.State |> Option.defaultValue Defaults.stateBehaviour<'Msg>
-
-    let private normaliseState (s: StateBehaviour<'Msg>) : StateBehaviour<'Msg> option =
-        match s.OnLoading, s.OnEmpty, s.OnError with
-        | Option.None, Option.None, Option.None -> Option.None
-        | _ -> Some s
 
     let private styleOf (node: Node<'Msg>) : SemanticStyle =
         node.Style |> Option.defaultValue Defaults.style
@@ -148,10 +209,11 @@ module Node =
     let withMotion (motion: Motion) (node: Node<'Msg>) : Node<'Msg> = { node with Motion = Some motion }
 
     /// Consumer-side hatch for `data-*` / `aria-*`
-    /// attributes (test hooks, analytics tags). Keys are validated against
-    /// the `data-*` / `aria-*` prefix policy; non-conforming keys are
-    /// dropped and a warning is written to stderr (consistent with the
-    /// `DiagnosticRuntime` shape). Use record-with syntax to bypass the
+    /// attributes (test hooks, analytics tags). Keys are validated by
+    /// `ExtraAttributeKey.isAllowed`, the `data-*` / `aria-*` rule the
+    /// renderer floor applies too. A non-conforming key (a null one from JS
+    /// interop included) is dropped and a warning is written to stderr
+    /// (consistent with the `DiagnosticRuntime` shape). Use record-with syntax to bypass the
     /// validator when populating from a wire payload you've already
     /// validated upstream.
     ///
@@ -159,22 +221,16 @@ module Node =
     /// AI-authorable; this one is consumer-only (the §4d JSON wire shape
     /// omits `ExtraAttributes` on emit, so the AI never sees it).
     let withExtraAttribute (key: string) (value: string) (node: Node<'Msg>) : Node<'Msg> =
-        // F# 10 nullness model says `key: string` is non-null; the .NET-side
-        // typechecker enforces this at the call site. Fable consumers can
-        // still feed `null` via JS interop, in which case `.Trim()` throws —
-        // an unambiguous runtime error rather than a silent "" key.
-        let trimmedKey = key.Trim()
-
-        let isAllowedPrefix =
-            trimmedKey.StartsWith("data-") || trimmedKey.StartsWith("aria-")
-
-        if not isAllowedPrefix then
-            eprintfn
-                "[Fuaran] Node.withExtraAttribute: rejected key '%s' — only data-* and aria-* prefixes are allowed."
-                trimmedKey
+        // The one key rule (`ExtraAttributeKey`), the same one the renderer
+        // floor applies, so a key stored here is a key that reaches the DOM.
+        match ExtraAttributeKey.refusal key with
+        | Some reason ->
+            eprintfn "[Fuaran] Node.withExtraAttribute: rejected key '%s' — %s." key reason
 
             node
-        else
+        | None ->
+            let trimmedKey = key.Trim()
+
             let current =
                 match node.ExtraAttributes with
                 | Some m -> m
