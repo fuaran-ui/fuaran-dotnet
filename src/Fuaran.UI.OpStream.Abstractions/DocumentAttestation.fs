@@ -546,7 +546,7 @@ module DocumentEnvelope =
                                     if not signatureOk || signedAtOrAfterRevocation then
                                         return Error(DocumentRefusal.SignatureInvalid attestation.KeyId)
                                     else
-                                        match JsonDecode.decodeNodeObj (Canon.render documentJv) with
+                                        match JsonDecode.decodeNodeObjJVal documentJv with
                                         | Error e -> return Error(DocumentRefusal.DocumentDecode(rePath "$.document" e))
                                         | Ok tree ->
                                             let actual =

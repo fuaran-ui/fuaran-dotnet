@@ -28,6 +28,10 @@ open Fuaran.UI.Ops.Benchmarks
 //   - `tree-diff [iterations]` — (RUN) print mean_us + alloc_b per
 //        `TreeOpDiff.diff` over a 2,001-node tree for each single-edit shape
 //        (identical / one field / one container field / one move) — Phase 2063.
+//   - `decode-rate [iterations]` — (RUN) print mean_us + alloc_b per decode of
+//        a 2,001-node tree and a 200-op history, per entry route (the text
+//        entry, the render-then-reparse route a secondary reader takes, and the
+//        `JVal` entry) — Phase 2059.
 //   - (default / BDN args)   — (RUN — deferred) run the BenchmarkDotNet suite
 //        (both the apply and op-stream classes; filter with `--filter *OpStream*`).
 //        Capturing the numbers + refreshing the baseline to `captured` is the
@@ -176,6 +180,28 @@ let main argv =
             printfn "treediff.%s.mean_us = %.1f" s.Name meanUs
             printfn "treediff.%s.alloc_b = %.0f" s.Name allocB
             printfn "treediff.%s.ops = %d" s.Name ops
+
+        0
+    | "decode-rate" :: rest ->
+        let iterations =
+            rest
+            |> List.tryHead
+            |> Option.bind (fun s ->
+                match Int32.TryParse s with
+                | true, n -> Some n
+                | _ -> None)
+            |> Option.defaultValue 50
+
+        let nodes, treeChars, ops, opChars = DecodeRate.shape ()
+        printfn "decode.tree.nodes = %d" nodes
+        printfn "decode.tree.chars = %d" treeChars
+        printfn "decode.ops.count = %d" ops
+        printfn "decode.ops.chars = %d" opChars
+
+        for s in DecodeRate.all do
+            let meanUs, allocB = DecodeRate.measure s iterations
+            printfn "decode.%s.mean_us = %.1f" s.Name meanUs
+            printfn "decode.%s.alloc_b = %.0f" s.Name allocB
 
         0
     | "append-rate" :: rest ->

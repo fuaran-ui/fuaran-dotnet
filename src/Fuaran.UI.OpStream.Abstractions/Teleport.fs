@@ -277,7 +277,7 @@ module Teleport =
             match rest with
             | [] -> Ok(List.rev acc)
             | jv :: tail ->
-                match JsonDecode.decodeOp (Canon.render jv) with
+                match JsonDecode.decodeOpJVal jv with
                 | Ok op -> go (op :: acc) (i + 1) tail
                 | Error e -> Error(TeleportError.HistoryDecode(i, e))
 
@@ -364,7 +364,7 @@ module Teleport =
                             match fieldOpt "tree" fields with
                             | None -> Error(TeleportError.InvalidEnvelope("$.tree", "missing required field"))
                             | Some treeJv ->
-                                match JsonDecode.decodeNode (Canon.render treeJv) with
+                                match JsonDecode.decodeNodeJVal treeJv with
                                 | Error e -> Error(TeleportError.TreeDecode e)
                                 | Ok wire ->
                                     decodeHistory historyItems
