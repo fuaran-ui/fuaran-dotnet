@@ -211,8 +211,9 @@ module Node =
     /// Consumer-side hatch for `data-*` / `aria-*`
     /// attributes (test hooks, analytics tags). Keys are validated by
     /// `ExtraAttributeKey.isAllowed`, the `data-*` / `aria-*` rule the
-    /// renderer floor applies too; non-conforming keys are dropped and a warning is written to stderr (consistent with the
-    /// `DiagnosticRuntime` shape). Use record-with syntax to bypass the
+    /// renderer floor applies too. A non-conforming key (a null one from JS
+    /// interop included) is dropped and a warning is written to stderr
+    /// (consistent with the `DiagnosticRuntime` shape). Use record-with syntax to bypass the
     /// validator when populating from a wire payload you've already
     /// validated upstream.
     ///

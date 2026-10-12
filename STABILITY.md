@@ -7918,7 +7918,8 @@ definition, and every site calls it.
   a `data-*` / `aria-*` key with a character outside `[A-Za-z0-9-]`, such as `data-x onmouseover=alert(1)`,
   is now dropped by the smart constructor and reported by FUARAN060. It used to pass both, and was then
   dropped at render. FUARAN060's message keeps its three existing reasons word for word and adds one for
-  name injection.
+  name injection. A null key (reachable only through JS interop) is now refused with the same warning;
+  it used to throw from `Trim`.
 - **Not in this slot:** the hole value-space projection (`toCoreSpace` / `toCoreEffect`) still has two
   byte-identical private copies, in `Fuaran.UI.AiTools` and `Fuaran.UI.Validator`. Either way of giving it
   one home changes a published package's dependency closure, so that decision is deferred.
