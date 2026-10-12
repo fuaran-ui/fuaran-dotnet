@@ -57,10 +57,24 @@ type NavOutcome<'Msg> =
     /// The route is not in-place: a full SSR page load (the browser navigates).
     | FullReload of route: string
 
-let private routeOf (ev: LiveEvent) : string =
+/// The ONE route normaliser both navigation paths read (Phase 2071): a blank
+/// route — empty or whitespace — is no route, and is declined for routing.
+/// Before 2071 the action path declined a blank route while the `popstate`
+/// path passed one straight to the route table (and so to a full reload of
+/// it), and a `popstate` with no route at all was read as `/`.
+let private normaliseRoute (route: string) : string option =
+    if System.String.IsNullOrWhiteSpace route then
+        None
+    else
+        Some route
+
+/// The route a `popstate` carries, normalised; `None` when it carries none.
+/// The shim always sends `location.pathname + location.search`, which is never
+/// blank, so a routeless `popstate` is malformed rather than a request for home.
+let private routeOf (ev: LiveEvent) : string option =
     match Map.tryFind "route" ev.Payload with
-    | Some(LiveValue.Str s) -> s
-    | _ -> "/"
+    | Some(LiveValue.Str s) -> normaliseRoute s
+    | _ -> None
 
 /// Resolve a navigation to `route` against the host route table. `pushState`
 /// distinguishes a user-initiated nav (push the new URL) from a `popstate`
@@ -120,8 +134,13 @@ let stepWithRouting
 
     if ev.Event = "popstate" then
         // A back/forward — not node-addressed; handled outside G1 (it carries a
-        // route, not a node action). No push-state on the way back.
-        applyOutcome false (routeOf ev)
+        // route, not a node action). No push-state on the way back. A popstate
+        // with no usable route is declined exactly as a blank `Navigate` is
+        // below: it goes to `fallback`, whose gate refuses an event addressed to
+        // no node.
+        match routeOf ev with
+        | Some route -> applyOutcome false route
+        | None -> fallback session ev
     else
         match validate session.Services.CanDispatch session.Tree ev with
         // Phase 1536 — in-place navigation is the `Self` case only, and only for
@@ -132,10 +151,7 @@ let stepWithRouting
         // lowers a `ClientEffect` (or, for an unresolved route, nothing) — so
         // neither is dropped here, only declined for the in-place shortcut.
         | Ok { Action = Some(Action.Navigate(route, NavigateTarget.Self)) } ->
-            let resolved = session.Services.ResolveText route
-
-            if System.String.IsNullOrWhiteSpace resolved then
-                fallback session ev
-            else
-                applyOutcome true resolved
+            match normaliseRoute (session.Services.ResolveText route) with
+            | Some resolved -> applyOutcome true resolved
+            | None -> fallback session ev
         | _ -> fallback session ev

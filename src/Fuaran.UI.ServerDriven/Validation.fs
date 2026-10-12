@@ -395,19 +395,45 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
 
 // ─── action resolution ──────────────────────────────────────────────────────
 
+/// The events on which a node's kind RESOLVES an action: the one event policy
+/// `resolveAction` applies, to every kind, before it reads a payload (Phase
+/// 2071). Always a subset of `legitimateEvents`, and equal to it for every kind
+/// but one — a Form admits its fields' bubbled `change` / `input`, which are
+/// the driver's form policy rather than the form's own action, so only
+/// `submit` resolves `OnSubmit`.
+///
+/// Before 2071 the Button and Select arms each carried a guard of their own,
+/// re-checking what `validate` had already enforced, while the Disclosure,
+/// Tabs, Stepper and Filters arms carried none, so a direct caller resolved a
+/// tab's action from any event name at all.
+let private actionEvents (node: Node<'Msg>) : Set<string> =
+    match node.Kind with
+    | NodeKind.Form _ -> set [ "submit" ]
+    | _ -> legitimateEvents node
+
+/// The disclosure's open state as the tree states it — the binding, else
+/// `DefaultOpen` — resolved the way the client renderer resolves it, against
+/// the empty sources this tier holds (the `DriverServices.ResolveText` posture):
+/// a literal resolves to itself and a state slot to its declared default.
+let private disclosureOpen (spec: DisclosureSpec<'Msg>) : bool =
+    Fuaran.UI.Renderer.BindingResolver.tryResolve Fuaran.UI.Renderer.BindingResolver.empty spec.Open
+    |> Option.defaultValue spec.DefaultOpen
+
 /// Resolve the typed `Action<'Msg>` for a legitimate `(node, event, payload)`
 /// by applying the author's handler to the validated payload. `None` when the
+/// event is not one of the kind's action events (`actionEvents`), or when the
 /// kind/event pair has no server-resolvable action yet (FileUpload's
 /// browser-held file select; bubbled form-field change without per-field
 /// addressing) — the driver no-ops those.
 let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
     match node.Kind with
-    | NodeKind.Button(spec) when ev.Event = "click" -> Some spec.OnClick
+    // The one event policy, ahead of every kind's arm; no arm guards its own.
+    | _ when not ((actionEvents node).Contains ev.Event) -> None
+    | NodeKind.Button(spec) -> Some spec.OnClick
     // `OnChange` is optional (Phase 426) — a `None` (declarative / write-back)
     // select has no server-side action to dispatch; the driver no-ops it.
-    | NodeKind.Select(spec) when ev.Event = "change" ->
-        spec.OnChange |> Option.map (fun oc -> oc (selectValue ev.Payload))
-    | NodeKind.Form(spec) when ev.Event = "submit" -> Some spec.OnSubmit
+    | NodeKind.Select(spec) -> spec.OnChange |> Option.map (fun oc -> oc (selectValue ev.Payload))
+    | NodeKind.Form(spec) -> Some spec.OnSubmit
     | NodeKind.Filters(spec) ->
         // Name-addressed: the shim bridges the changed control's filter name
         // across as `payload.name` (`data-filter-name`); boundsCheck already
@@ -468,20 +494,51 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
                 // use, exactly as the numeric chips above.
                 | FormFieldKind.Tokens _ -> None)
     | NodeKind.Disclosure(spec) ->
-        // Default to "open" when no explicit bool rides along (a summary click).
+        // An explicit `open` (the shim sends the state the reader is switching
+        // to) wins; with none, the event TOGGLES the tree's own open state
+        // (Phase 2071). It used to default to `true`, so a payload-less click on
+        // an open disclosure re-opened it and could never close it.
         // `OnToggle` is optional (Phase 426) — a `None` disclosure has no
         // server-side action; the driver no-ops it (the write-back default is
         // a client-side store path).
-        let isOpen = tryBool "open" ev.Payload |> Option.defaultValue true
+        let isOpen =
+            tryBool "open" ev.Payload
+            |> Option.defaultWith (fun () -> not (disclosureOpen spec))
+
         spec.OnToggle |> Option.map (fun ot -> ot isOpen)
     | NodeKind.Tabs(spec) ->
-        match tryStr "value" ev.Payload, spec.OnSelectTag with
-        | Some tag, Some onTag -> Some(onTag tag)
-        | _ ->
-            // `OnSelect` is optional (Phase 426) — same no-op posture.
-            match tryNum "index" ev.Payload, spec.OnSelect with
-            | Some i, Some onSelect -> Some(onSelect (int i))
-            | _ -> None
+        // Dispatch what the client's composite tab handler dispatches (Phase
+        // 2071): `OnSelect i`, then `OnSelectTag tags[i]` when the handler and
+        // the tag overlay are both present — both, in that order, as one
+        // `Chain`. The shim's click carries `index`; a tag-addressed `value`
+        // resolves through `TabTags` to the same index, so a tag the overlay
+        // does not declare dispatches nothing, exactly as no client click can
+        // produce one. `OnSelect` / `OnSelectTag` are optional (Phase 426) —
+        // an absent handler contributes nothing, and with neither the driver
+        // no-ops.
+        let index =
+            match tryNum "index" ev.Payload with
+            | Some i -> Some(int i)
+            | None ->
+                match tryStr "value" ev.Payload, spec.TabTags with
+                | Some tag, Some tags -> List.tryFindIndex ((=) tag) tags
+                | _ -> None
+
+        match index with
+        | None -> None
+        | Some i ->
+            let byIndex = spec.OnSelect |> Option.map (fun onSelect -> onSelect i)
+
+            let byTag =
+                match spec.OnSelectTag, spec.TabTags with
+                | Some onTag, Some tags -> List.tryItem i tags |> Option.map onTag
+                | _ -> None
+
+            match byIndex, byTag with
+            | Some a, Some b -> Some(Action.Chain [ a; b ])
+            | Some a, None
+            | None, Some a -> Some a
+            | None, None -> None
     | NodeKind.Stepper(spec) ->
         // A step-header click: the shim bridges the clicked step's index
         // across as `payload.index` (`data-step-index`), mirroring tabs.

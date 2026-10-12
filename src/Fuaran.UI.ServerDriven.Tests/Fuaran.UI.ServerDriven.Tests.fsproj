@@ -38,6 +38,9 @@
          reading, which reads one corpus fixture through the ONE corpus-root resolver. -->
     <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />
     <Compile Include="ParameterisedSiteTests.fs" />
+    <!-- Phase 2071: the tier resolves actions one way - one JSON string writer, one
+         event policy, one route normaliser, one landed-index fallback. -->
+    <Compile Include="ResolvesActionsOneWayTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

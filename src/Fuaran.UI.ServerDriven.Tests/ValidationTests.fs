@@ -260,11 +260,11 @@ let tests =
               expectDispatch (validate allow tree (ev "frm" "submit" [])) Submitted "form submit"
           }
 
-          test "disclosure click resolves OnToggle (defaults open=true)" {
+          test "a payload-less disclosure click toggles a closed disclosure open" {
               expectDispatch
                   (validate allow tree (ev "disc" "click" []))
                   (Toggled true)
-                  "disclosure default-open toggle"
+                  "closed disclosure toggles open"
 
               expectDispatch
                   (validate allow tree (ev "disc" "change" [ "open", LiveValue.Bool false ]))

@@ -21,6 +21,76 @@ namespace Fuaran.UI.ServerDriven
 //  lowering module, which is what pulls `Renderer.Server`).
 // ============================================================================
 
+/// The project's ONE JSON string writer (Phase 2071), shared by the `DomPatch`
+/// and `ClientEffect` encoders — the two halves of every frame. It lives here
+/// because this is the project's first compiled file.
+///
+/// The three common control characters keep their short escapes; every other
+/// character below U+0020 is written as `\u00XX` in lower-case hex. A raw control
+/// byte inside a JSON string is invalid JSON, so this is a validity requirement,
+/// not a style choice: before 2071 the `DomPatch` half escaped only `\n`, `\r`
+/// and `\t`, and a rendered label carrying U+000C failed the client's parse for
+/// that whole frame. A string with nothing to escape is returned between quotes
+/// as it is, and clean runs are copied whole, so the large HTML fragments a
+/// `DomPatch` carries are not rebuilt one character at a time.
+///
+/// This is a short-escape dialect, so it is not the op-stream's canonical
+/// string writer (`CanonicalJson`), and the bytes it emits are this wire's own.
+module internal JsonString =
+    let private hex = "0123456789abcdef"
+
+    let private needsEscape (c: char) = c = '"' || c = '\\' || c < ' '
+
+    /// `s` as a JSON string literal, quotes included.
+    ///
+    /// The escaped path assembles its pieces with `String.concat` rather than a
+    /// `StringBuilder`: under Fable with nullness on, `StringBuilder.ToString`
+    /// lowers to an import the bundled JavaScript library does not export, so a
+    /// module using it fails at its first `import` — and the wire types are
+    /// Fable-consumed.
+    let quote (s: string) : string =
+        let mutable first = -1
+        let mutable i = 0
+
+        while first < 0 && i < s.Length do
+            if needsEscape s.[i] then
+                first <- i
+
+            i <- i + 1
+
+        if first < 0 then
+            "\"" + s + "\""
+        else
+            let parts = ResizeArray<string>()
+            parts.Add "\""
+            parts.Add(s.Substring(0, first))
+            let mutable runStart = first
+
+            for j in first .. s.Length - 1 do
+                let c = s.[j]
+
+                if needsEscape c then
+                    if j > runStart then
+                        parts.Add(s.Substring(runStart, j - runStart))
+
+                    parts.Add(
+                        match c with
+                        | '"' -> "\\\""
+                        | '\\' -> "\\\\"
+                        | '\n' -> "\\n"
+                        | '\r' -> "\\r"
+                        | '\t' -> "\\t"
+                        | _ -> "\\u00" + hex.Substring(int c >>> 4, 1) + hex.Substring(int c &&& 0xF, 1)
+                    )
+
+                    runStart <- j + 1
+
+            if runStart < s.Length then
+                parts.Add(s.Substring runStart)
+
+            parts.Add "\""
+            String.concat "" parts
+
 /// One browser-applyable DOM patch, addressed by `data-fuaran-node-id`.
 type DomPatch =
     /// Set attribute `name` to `value` on the addressed node.
@@ -48,10 +118,7 @@ type DomPatch =
 module DomPatch =
     let private inv = System.Globalization.CultureInfo.InvariantCulture
 
-    let private esc (s: string) : string =
-        s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t")
-
-    let private q (s: string) : string = "\"" + esc s + "\""
+    let private q = JsonString.quote
 
     /// Stable discriminator string — PascalCase-matched to the DU cases.
     let kind (patch: DomPatch) : string =
