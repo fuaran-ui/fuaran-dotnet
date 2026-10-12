@@ -10,6 +10,54 @@ consequence.
 
 ---
 
+## 2026-10-13 — D17: the hole value-space mapping gets its own small package rather than widening `Fuaran.UI` or the validator
+
+**Decided.** `toCoreSpace` and `toCoreEffect` — the projection of a hole's `ValueSpace` and `EffectClass`
+onto the Core function model — will have ONE definition in a new, deliberately small package that both
+`Fuaran.UI.AiTools` and `Fuaran.UI.Validator` reference. Neither existing package's dependency closure moves.
+
+**Rejected.** (A) Giving `Fuaran.UI` a reference to `Fuaran.Core.Function`: that drags `Fuaran.Core.OpStream`
+and `Fuaran.Core.Ops` into every `Fuaran.UI` consumer, Fable builds included, for a mapping a few dozen lines
+long. (B) Giving `Fuaran.UI.Validator` a reference to `Fuaran.UI.AiTools`: a validator that depends on the AI
+tools, the ops and the renderer core is a layering inversion a consumer restoring the validator alone would pay
+for.
+
+**Consequence.** One more package id to publish and pin, carried as its own `STABILITY.md` slot; the two copies
+(Phase 2042 found them on opposite sides of the boundary) are deleted when it lands. The work is Phase 2234.
+
+Roadmap: [Phase 2234](../../roadmap/phases/2234-one-home-for-the-hole-value-space-mapping-is-a-packaging-decision.md),
+[Phase 2042](../../roadmap/phases/2042-core-predicates-have-one-definition.md).
+
+---
+
+## 2026-10-13 — D16: the decoder keeps its private JSON parser; Core's `JVal` is a value the host lowers, not a parser it adopts
+
+**Decided.** `JsonDecode` keeps its own JSON AST and parser. Core's parser is not adopted at the codec seam, and
+the AST is not deleted. The Core-facing seam is the additive entry points Phase 2059 shipped (`decodeNodeJVal`,
+`decodeNodeObjJVal`, `decodeOpJVal`), which lower a `JVal` into the host's AST under the same §20 and §21
+checks the text route applies, and refuse through the text route so codes, paths and messages are identical.
+
+**Why.** Three facts, none of which a host phase may change: Core's parser is not a §21 host by Core D84
+(operator ruling 2026-10-01, option b) — it caps depth at 512 against this tier's 256 and bounds no string, array
+or document; Core answers `WIRE_FORMAT.md` §20.2 rows 1, 5 and 7 differently from what the format requires
+(it refuses `1e999`, which must accept to infinity, and integers past 2^53 in non-canonical layout); and `JVal`
+has no null, while the corpus pins null outcomes BY POSITION (`lenient/*null*` accepts by read-compat;
+`reject/reject-null-*` is `WRONG_TYPE` at the null's own path), which a position-free value cannot reproduce.
+
+**Rejected.** Growing Core with a positional null and a limits-taking parse (a closed DU gaining a case —
+breaking across the cohort, and a reversal of D84); and moving the corpus's null fixtures to a position-free
+form (a specification change made to suit one host's parser).
+
+**Consequence.** The design note in `JsonDecode.fs` justifies the private parser by §20/§21 and D84, not by the
+historical Fable.SimpleJson comparison. Phase 2059's deferred task closes as decided-no; Phase 2233 records the
+ruling and is shipped on it.
+
+Roadmap: [Phase 2233](../../roadmap/phases/2233-the-codec-seams-private-parser-stays-until-core-carries-a-positional-null-and-the-limits.md),
+[Phase 2059](../../roadmap/phases/2059-one-json-value-at-the-codec-seam.md).
+
+---
+
+
 ## 2026-10-10 — D15: a commit is resolved against the tree at lowering and flushed from the event before the fold; it views as an `Assign`, and every flushed write meets the gate on its own
 
 **Decided (Phase 2198).** On the bounded path `CommitLocal` WRITES. The key is the `commitTo` of the `Local`
