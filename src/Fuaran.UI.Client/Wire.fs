@@ -207,10 +207,14 @@ module Wire =
         let message fallback =
             pickString envelope "message" "Message" |> Option.defaultValue fallback
 
-        let stage fallback =
+        // A present label is read by `TurnStage.ofLabel` and never falls back,
+        // an unknown one included. An absent stage (the member missing, or not a
+        // string) is not a label: the refusal keeps the `Provider` fallback, the
+        // transport stage.
+        let stage =
             pickString envelope "stage" "Stage"
             |> Option.map TurnStage.ofLabel
-            |> Option.defaultValue fallback
+            |> Option.defaultValue TurnStage.Provider
 
         match status with
         | 200 ->
@@ -229,7 +233,7 @@ module Wire =
                 |> Option.orElse (pickString body "Reason" "reason")
                 |> Option.defaultValue "access denied"
             )
-        | 422 -> failed (stage TurnStage.Provider) (code "TURN_FAILED") (message "the turn failed")
+        | 422 -> failed stage (code "TURN_FAILED") (message "the turn failed")
         | _ ->
             // Every other refusal — 400 / 405 / 500 / 503, and anything a proxy
             // invents — is surfaced as a provider-stage envelope so the caller
@@ -237,4 +241,4 @@ module Wire =
             // code is preferred over a synthesised one: a body-carried secret
             // and a missing key header are different mistakes with different
             // remedies, and `HTTP_400` names neither.
-            failed (stage TurnStage.Provider) (code $"HTTP_{status}") (message $"unexpected status {status}")
+            failed stage (code $"HTTP_{status}") (message $"unexpected status {status}")

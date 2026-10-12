@@ -9,6 +9,7 @@
     <Compile Include="MockTransport.fs" />
     <Compile Include="ClientTests.fs" />
     <Compile Include="RepairTests.fs" />
+    <Compile Include="TurnStageTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
