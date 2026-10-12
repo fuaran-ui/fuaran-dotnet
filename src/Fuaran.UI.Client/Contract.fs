@@ -62,26 +62,47 @@ type TurnStage =
     | Provider
     | Parse
     | Apply
+    /// A label this client does not know, kept exactly as the endpoint sent it
+    /// (the empty label included). It is never read as a known stage: it is
+    /// evidence the endpoint is newer than this client. The TypeScript client's
+    /// `TurnStage` holds the same label as its string.
+    | Unknown of label: string
 
 [<RequireQualifiedAccess>]
 module TurnStage =
 
-    /// The short stable wire label for a stage (no caller-supplied data).
+    /// The wire label for a stage: the canonical spelling of a known stage, or
+    /// the endpoint's own label for `Unknown`. Equal, on every input, to the
+    /// string the TypeScript client holds as its stage.
     let label (stage: TurnStage) : string =
         match stage with
         | TurnStage.AccessToken -> "access-token"
         | TurnStage.Provider -> "provider"
         | TurnStage.Parse -> "parse"
         | TurnStage.Apply -> "apply"
+        | TurnStage.Unknown label -> label
 
-    /// Parse a wire label back to a stage, defaulting to `Provider` for any
-    /// unrecognised label (matching the TypeScript client's tolerance).
+    /// A stage label with `-`, `_`, space, tab, CR and LF removed and ASCII
+    /// letters lower-cased. ASCII only, deliberately: the TypeScript client
+    /// folds the same way, and a Unicode-aware fold is not one two runtimes
+    /// agree on.
+    let private fold (label: string) : string =
+        label
+        |> String.filter (fun c -> not (c = '-' || c = '_' || c = ' ' || c = '\t' || c = '\r' || c = '\n'))
+        |> String.map (fun c -> if c >= 'A' && c <= 'Z' then char (int c + 32) else c)
+
+    /// Parse a wire label back to a stage, as the TypeScript client does: a
+    /// label that folds to a known stage reads as that stage (so the retired
+    /// PascalCase `AccessToken`, `Provider`, `Parse` and `Apply` read as the
+    /// canonical ones), and any other label, the empty one included, is
+    /// `Unknown` with the label kept exactly as sent.
     let ofLabel (label: string) : TurnStage =
-        match label with
-        | "access-token" -> TurnStage.AccessToken
+        match fold label with
+        | "accesstoken" -> TurnStage.AccessToken
+        | "provider" -> TurnStage.Provider
         | "parse" -> TurnStage.Parse
         | "apply" -> TurnStage.Apply
-        | _ -> TurnStage.Provider
+        | _ -> TurnStage.Unknown label
 
 /// A recoverable failure surfaced by a turn. `Code` is a stable discriminant;
 /// `Message` is model-facing — for the `Apply` stage it carries the apply-error

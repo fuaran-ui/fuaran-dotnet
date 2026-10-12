@@ -8024,6 +8024,48 @@ definition, and every site calls it.
   byte-identical private copies, in `Fuaran.UI.AiTools` and `Fuaran.UI.Validator`. Either way of giving it
   one home changes a published package's dependency closure, so that decision is deferred.
 
+### What rides this slot — Phase 2134
+
+**Class: additive API + BEHAVIOUR change.** `Fuaran.UI.Client.TurnStage` gains a case, `Unknown of label: string`,
+and the stage parser moves. Under this document's semver rule a new DU case is additive (a consumer matching
+`TurnStage` exhaustively gets the FS0025 warning, which is the correct signal), so it rides this draft and raises
+no number. The TypeScript client, `@fuaran-ui/client`, made the same change in the same change-set, where its
+union gaining a member is a compile break and advances it to 0.13.0.
+
+**An unrecognised stage label no longer reads as `Provider`.** `TurnStage.ofLabel` read only the canonical labels
+and defaulted every other label to `Provider`, which the repair loop treats as terminal; its doc comment claimed
+that matched the TypeScript client, which by then also read the retired PascalCase spellings (Phase 2077). So an
+endpoint newer than the client, sending a stage the client had never heard of, was reported as a provider
+failure, and a proxy still speaking PascalCase had its repairable `Apply` and `Parse` refusals reported as
+terminal. Both are corrected, and the doc comment's parity claim is now true.
+
+**The stage semantics, recorded in the same words by both clients:**
+
+- A stage label that matches a known stage, ignoring case, `-`, `_`, space, tab, CR and LF (ASCII only), reads as
+  that stage in its canonical spelling: `access-token`, `provider`, `parse` or `apply`. The retired PascalCase
+  spellings `AccessToken`, `Provider`, `Parse` and `Apply` are among them.
+- Any other label, the empty one included, is the unknown stage, and it carries the label exactly as the endpoint
+  sent it. It is never read as a known stage, `provider` included. Until this change both clients read it as
+  `provider`.
+- A refusal with no stage label (the member absent, or not a string) keeps the `provider` fallback, as before.
+- The repair loop does not retry an unknown stage: `isRepairable` answers false. An unknown stage is evidence the
+  endpoint is newer than the client, so the client cannot know whether a re-emission fixes it, and every retry is
+  a paid turn. The failure is surfaced with the endpoint's own label, so a caller that knows the newer stage can
+  retry it itself. The loop's behaviour for such a label is therefore unchanged; what changes is that the caller
+  can see it.
+- Each client's suite holds the same label-to-stage table, row for row, including the unknown and PascalCase
+  rows (`packages/client/test/turnStage.test.ts` in the TypeScript client,
+  `src/Fuaran.UI.Client.Tests/TurnStageTests.fs` in the F# client). A row changed in one is changed in the other
+  in the same change-set.
+
+**What changes for a consumer.** `TurnStage.label` returns the endpoint's own label for `Unknown`, so code that
+prints a stage, or relays it onward as a wire label, now shows what the endpoint sent where it showed `provider`;
+the label of a known stage is unchanged. A `match` over `TurnStage` that lists the four known cases warns
+(FS0025) until it handles `Unknown`. `Repair.isRepairable` answers false for `Unknown`.
+
+**Certified by** `src/Fuaran.UI.Client.Tests/TurnStageTests.fs`, which reads every row of the table through
+`Wire.parseTurnResponse` at a 422 and at a 500, and through `TurnStage.ofLabel`.
+
 ## 0.93.0 — the slot opened after v0.92.0 was released (RELEASED — tagged v0.93.0 at b654b31, 2026-10-10)
 
 _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,

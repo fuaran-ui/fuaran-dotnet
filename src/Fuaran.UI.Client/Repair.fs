@@ -28,12 +28,19 @@ module Repair =
     /// An `AccessToken` failure (bad credential) and a `Provider` failure
     /// (transport / provider error) are terminal — retrying the same call will
     /// not help, so the loop surfaces them immediately.
+    ///
+    /// An `Unknown` stage is terminal too, deliberately, and the TypeScript
+    /// client answers the same. It says the endpoint is newer than this client,
+    /// so this client cannot know whether a re-emission fixes it, and every
+    /// retry is a paid turn. The failure is surfaced with the endpoint's own
+    /// label, so a caller that knows the newer stage can retry it itself.
     let isRepairable (stage: TurnStage) : bool =
         match stage with
         | TurnStage.Apply
         | TurnStage.Parse -> true
         | TurnStage.AccessToken
-        | TurnStage.Provider -> false
+        | TurnStage.Provider
+        | TurnStage.Unknown _ -> false
 
     /// Thread a recoverable error's hint into the next turn's prompt. The
     /// original prompt is preserved and the current tree carried, so the turn
