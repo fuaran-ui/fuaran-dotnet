@@ -64,6 +64,10 @@
       "note": "Phase 186 — DAG-aware op-stream inspector substrate (render model + audition + overlay + arbitrary-coordinate diff)."
     },
     {
+      "project": "src/Fuaran.UI.OpStream.Contract.Tests/Fuaran.UI.OpStream.Contract.Tests.fsproj",
+      "note": "Phase 2066 — the sink contract suite: one set of cases over {in-memory, SQLite} x {linear, DAG}. Not `pure`: the SQLite cells write temp files."
+    },
+    {
       "project": "src/Fuaran.UI.LayoutObserver.Tests/Fuaran.UI.LayoutObserver.Tests.fsproj"
     },
     {

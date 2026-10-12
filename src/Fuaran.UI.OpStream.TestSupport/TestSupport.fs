@@ -77,20 +77,15 @@ let testNodeCodec: INodeJsonCodec<TestMsg> =
 
 // ─── The linear stream ───────────────────────────────────────────────────────
 
-/// Compose an `OpRecord` for `streamId`/`sequence` with its hash chain computed.
-/// `previous = None` is the genesis.
-let buildRecord
+/// The linear record at `sequence` linking to `previousHash`, its chain hash
+/// computed (actor `Human "tester"`, no prompt id, a `Success` envelope).
+let linearRecord
     (streamId: string)
     (sequence: int)
+    (previousHash: string)
     (op: TreeOp<TestMsg>)
-    (previous: OpRecord<TestMsg> option)
     (timestamp: DateTimeOffset)
     : OpRecord<TestMsg> =
-    let previousHash =
-        match previous with
-        | None -> HashChain.genesisPreviousHash
-        | Some prev -> prev.Hash
-
     let actor = Actor.Human "tester"
 
     let hash =
@@ -105,6 +100,21 @@ let buildRecord
       Actor = actor
       Timestamp = timestamp
       ResultEnvelope = OpResultEnvelope.Success }
+
+/// `linearRecord` after `previous` — `None` is the genesis.
+let buildRecord
+    (streamId: string)
+    (sequence: int)
+    (op: TreeOp<TestMsg>)
+    (previous: OpRecord<TestMsg> option)
+    (timestamp: DateTimeOffset)
+    : OpRecord<TestMsg> =
+    let previousHash =
+        match previous with
+        | None -> HashChain.genesisPreviousHash
+        | Some prev -> prev.Hash
+
+    linearRecord streamId sequence previousHash op timestamp
 
 // ─── The DAG stream ──────────────────────────────────────────────────────────
 
