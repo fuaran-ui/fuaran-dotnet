@@ -7880,6 +7880,46 @@ documented no-op to a state write (WIRE_FORMAT §30.1, the bounded flush).
 - **Not changed:** a raw `CommitLocal` folded outside a loop (`BoundedActions.runBoundedAction`, a
   server handler's stage) is declined exactly as before. It has no tree to find its field in.
 
+### What rides this slot — Phase 2070
+
+**Class: additive API + one BEHAVIOUR change (a NaN `compare` operand).** No type is removed or retyped, no
+wire byte moves, and no rendered class changes: logic both renderers need is now defined once in
+`Fuaran.UI.Renderer.Core`.
+
+- **Additive: `Fuaran.UI.Renderer.FieldRules`.** One definition of a declared field rule (`FormField.Rule`):
+  `RuleValue` (the value adapter), `hasWhitespace`, `matchesFormat`, `formatMessage`, `textInputType`,
+  `compareDeclaration`, `meets` and `unmet`. The client renderer's submit gate and
+  `Fuaran.UI.ServerDriven.FormValidation`'s server-side re-check both call `unmet`. Each tier keeps its own value
+  adapter and message policy, and the server keeps its regex `pattern` check, passed in as a predicate. Slot order,
+  the generated sentences and the declared-attribute bytes are unchanged.
+- **Additive: `Fuaran.UI.Renderer.GridModel` and `Fuaran.UI.Renderer.TreeModel`, split out of `BindingResolver`.**
+  The grid model covers sort, page, the row window and its viewport writer, the toned pill, the write destinations
+  and the row edits. The tree model covers expansion, selection, visibility and focus. New: the pure decoders
+  `GridModel.sortDescriptorOfJVal` / `pageOfJVal` / `jvalInt` and `TreeModel.expandedOfJVal` / `selectedOfJVal`,
+  plus the row-edit primitives `GridModel.tryRemoveAt` / `tryInsertAt` / `removeAt` / `insertAt`.
+  `BindingResolver` keeps the State reads (`readSortDescriptor`, `readSortSlot`, `effectiveSortDescriptor`,
+  `readExpandedItems`, `readSelectedItem`, `readPageDescriptor`, `readWindowDescriptor`, `resolveRowTotal`,
+  `gridPage`, `gridWindow`), which now decode through the models.
+- **Deprecation window: every moved name is re-exported from `BindingResolver` for one release.** The
+  re-exports are plain aliases (type abbreviations for `RowWindow`, `PresentedWindow` and `ViewportMeasure`), so a
+  consumer compiles unchanged on 0.93.1. They are not marked `[<Obsolete>]`, because under
+  `TreatWarningsAsErrors` that is a source break. New code calls `GridModel` / `TreeModel`. The aliases are removed
+  in a later release, which will be recorded here as a breaking change.
+- **The row edits share ONE out-of-range rule.** A removal (index `0 .. length - 1`), an insertion (gap
+  `0 .. length`) and a move refuse an index outside the range they address and return the SAME list instance.
+  `moveRow` is now composed as a removal followed by an insertion. Clamping stays the transfer drop's named policy
+  (`GridTransfer.clampInsert`), so `GridTransfer.insertAt` still clamps, and `moveRow` still refuses. Neither
+  function's behaviour changes; the disagreement was between two inline copies of one rule.
+- **Additive: `Css` holds the class vocabulary both renderers share.** Every fixed class string both renderers emit
+  is now a `Css.Class.*` literal. New builders: `iconPlacement`, `media`, `metricTrend`, `nodeWrapper`,
+  `stackWrap`, `factEmphasis`, `progressIndeterminate` and `labelValueRowEmphasis`. New variant maps:
+  `badgeVariant`, `buttonVariant`, `headingVariant`, `stackDirection`, `tabsOrientation`, `scrollArea`,
+  `imageVariant`, `imageFit`, `imageAspect`, `embedAspect` and `mathContainer`. Both renderers call them, and the
+  emitted class strings are byte-identical. The toast's tone fragment is `Theme.toneVar`, which already produced
+  the same bytes. A class only one renderer emits stays at its use site.
+- **Behaviour: a NaN `compare` operand is unmet.** The client gate's comparison read NaN as EQUAL to anything, so
+  `eq` was met and `neq` unmet. A NaN is not a number the specification orders, so both tiers now treat it as not
+  comparable, which is unmet. The server tier never received NaN, because JSON has no spelling for it.
 ### What rides this slot — Phase 2059
 
 **Class: additive API.** No type is removed or retyped, no wire byte moves, and no decode outcome moves.
