@@ -48,6 +48,20 @@
       <Link>renderer-sources\server\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Phase 2042 - the sources CorePredicateTests' census reads: each predicate has
+         one definition, and a copy growing back would agree on the day it was written. -->
+    <Content Include="..\Fuaran.UI\DeadOnDecode.fs;..\Fuaran.UI\AffordanceInertness.fs;..\Fuaran.UI\BindingWalk.fs;..\Fuaran.UI\HostLimits.fs;..\Fuaran.UI\Fuaran.fs">
+      <Link>predicate-sources\ui\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Fuaran.UI.Validator\ExtraAttributesCheck.fs">
+      <Link>predicate-sources\validator\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Fuaran.UI.Renderer.Core\Sanitize.fs">
+      <Link>predicate-sources\renderer-core\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <!-- Phase 1553 — the shared gate-lane markers, DECLARED ONCE at tests/lanes/Lanes.fs and
@@ -413,6 +427,7 @@
     <!-- Phase 1667 - the write-back predicate is one definition, pinned behaviourally against
          FUARAN069 and structurally by a census over the two copied renderer sources. -->
     <Compile Include="WriteBackPredicateTests.fs" />
+    <Compile Include="CorePredicateTests.fs" />
     <!-- Phase 1532 — the client Transform evaluator has a row x step budget. -->
     <Compile Include="TransformBudgetTests.fs" />
     <Compile Include="StatePersistenceTests.fs" />

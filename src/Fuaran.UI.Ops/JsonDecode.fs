@@ -60,9 +60,8 @@ module Fuaran.UI.Ops.JsonDecode
 //  carries; both move together.
 //
 //  Fable-compatible. No reflection, no `System.Text.Json` (server-only),
-//  no `Newtonsoft.Json`. Uses `Fable.SimpleJson` (already pinned in
-//  `Directory.Packages.props`, already consumed by `Fuaran.UI.Renderer` +
-//  the downstream orchestration tier) as the JSON-syntax parser.
+//  no `Newtonsoft.Json`. The JSON-syntax parser is this file's own (see
+//  "JSON AST + parser" below for why it is not the substrate's).
 // ============================================================================
 
 // F# 10 nullness (FS3261) fires throughout the obj-erasure seam: every
@@ -236,26 +235,36 @@ module DecodeError =
     let render (error: DecodeError) : string =
         sprintf "%s at '%s': %s" error.Code error.Path error.Message
 
-// ─── Local JSON AST + parser ─────────────────────────────────────────────
+// ─── JSON AST + parser ───────────────────────────────────────────────────
 //
-// Design point: `Fable.SimpleJson` is the project's go-to
-// JSON parser elsewhere (downstream orchestration tier, renderer), but its
-// implementation routes through `Fable.Parsimmon` which is *Fable-only*
-// — `Parsimmon.get_digit` calls `Fable.Core.JsInterop.import`, which
-// throws `System.Exception: JS only` under .NET. The decoder needs to
-// run on both Fable (client-side AI emit gate, eval harness) AND .NET
-// (op-stream replay, server-side AI tool dispatch, the Expecto test
-// suite). The catalog sample's narrow-decoder pattern proves a
-// hand-rolled parser works under both runtimes; this module ports the
-// same shape into the canonical decoder.
+// Why this decoder parses with its own parser into its own AST, rather than
+// with the substrate's `Json.parse` into `Fuaran.Core.JVal` (Phase 2059 asked,
+// and read both against WIRE_FORMAT §20 and §21 at the pinned Core):
 //
-// The parser produces the same `Json` DU shape `Fable.SimpleJson`
-// uses (`JNull | JBool | JNumber | JString | JArray | JObject of Map<string, Json>`)
-// so the per-NodeKind dispatch downstream stays unchanged.
+//  1. §21 is this host's to enforce, by ruling. Core's DECISIONS D84 (operator,
+//     2026-10-01) rules that Core is NOT a §21 host: its depth cap (512) is its
+//     own stack guard, it bounds no string, array or document size, and it adds
+//     no limits-taking entry point because "the hosts already carry the
+//     enforcement". This parser is where this host carries it, in the units
+//     and with the `LIMIT_EXCEEDED` the section requires.
+//  2. §20.2 answers differ. The substrate parser keeps a repeated member (row 1,
+//     which this host refuses) and passes a raw C0 control through (row 5),
+//     while it refuses an overflowing exponent (row 7, which §20 ratifies as
+//     an accept) and an integer past 2^53 that is not a double's canonical
+//     layout (which this host reads). §20.1 binds every decode entry point, so
+//     the policy decoder cannot inherit those answers.
+//  3. `JVal` has no null, and this decoder's answers to a null depend on where
+//     it stands: read-compat at some slots (a `Static` value, a pre-429 list),
+//     `WRONG_TYPE` at the null's own path in a rule-12 payload — both pinned by
+//     the corpus (`lenient/`, `reject/reject-null-*`). A parse that erases or
+//     refuses null before the decode knows the position cannot give either.
 //
-// Anti-pattern note: "Don't add Newtonsoft.Json
-// or System.Text.Json. Both are server-only." Hand-rolling is the
-// universal answer.
+// So `JNull` stays here, and a caller that already holds a `JVal` enters through
+// the `JVal` entry points (`decodeNodeJVal` / `decodeNodeObjJVal` /
+// `decodeOpJVal`), which lower the value into this AST without a render.
+//
+// No `Newtonsoft.Json` or `System.Text.Json` either: both are server-only, and
+// the decoder runs under Fable (the client-side emit gate) as well as .NET.
 
 type private Json =
     | JNull
@@ -938,6 +947,184 @@ let private tryParse (input: string) : Result<Json, DecodeErrorCode * string> =
                     | None -> message
 
             Error(code, message)
+
+// ─── The `JVal` entry: lowering a parsed Core value (Phase 2059) ─────────
+//
+// A secondary reader — a teleport bundle, an elicitation envelope, an attested
+// document — already holds its tree or op as a `Fuaran.Core.JVal`, parsed by the
+// substrate's parser along with the envelope around it. Until Phase 2059 the
+// only way in was text: `Canon.render` the value, then decode the string, which
+// paid for a canonical render and a second parse of bytes that were already a
+// value. `lowerJVal` takes the value into this decoder's AST directly.
+//
+// The contract is that the `JVal` entry decides EXACTLY what the text entry
+// decides over `Canon.render jv`: the same tree, or the same refusal with the
+// same code, path and message. Lowering is therefore only the FAST PATH, taken
+// when the walk can prove the canonical text would parse cleanly here; every
+// value it cannot prove that for goes down the text path, and the text path's
+// own refusal is the answer. What it proves, each a condition `tryParse` checks:
+//
+//   - no repeated member in any object (WIRE_FORMAT §20.2 row 1 — the substrate
+//     parser keeps both members, and `Canon.render` writes both);
+//   - every string, key or value, is well-formed UTF-16 (§20.2 row 6) and at
+//     most `MaxStringLength` code points (§21.6);
+//   - no composite nests past `MaxJsonDepth`, and none holds more than
+//     `MaxArrayLength` items or members (§21.1);
+//   - the canonical rendering is at most a third of `MaxDocumentBytes` UTF-16
+//     units (§21.7), the bound under which `documentBytes` needs no count.
+//
+// The number policy is `Canon.canonicalFloat`'s, so the lowered number is the
+// one the re-parse would have read: a `JInt` is its integer, a negative zero is
+// zero, a non-finite float is its quoted sentinel (`"NaN"` / `"Infinity"` /
+// `"-Infinity"`, §7), and every other float is itself, because the layout
+// round-trips. A raw control character needs no check: the render escapes it.
+
+/// The canonical-rendering length, in UTF-16 units, of one string — its two
+/// quotes, plus each unit as `Canon.render` escapes it (`"` and `\` take two, a
+/// C0 control six, every other unit one) — or `None` when its canonical text
+/// would not re-parse here: a lone or ill-ordered surrogate (§20.2 row 6), or
+/// more than `MaxStringLength` code points (§21.6). The surrogate and count rules
+/// are `appendStringChar`'s, unit for unit.
+let private lowerableStringUnits (s: string) : int option =
+    let mutable units = 2
+    let mutable codePoints = 0
+    let mutable pendingHigh = false
+    let mutable ok = true
+    let mutable i = 0
+
+    while ok && i < s.Length do
+        let c = s[i]
+        let code = int c
+
+        if code >= 0xD800 && code <= 0xDBFF then
+            if pendingHigh then
+                ok <- false
+            else
+                pendingHigh <- true
+                codePoints <- codePoints + 1
+        elif code >= 0xDC00 && code <= 0xDFFF then
+            if pendingHigh then pendingHigh <- false else ok <- false
+        elif pendingHigh then
+            ok <- false
+        else
+            codePoints <- codePoints + 1
+
+        units <-
+            units
+            + (if c = '"' || c = '\\' then 2
+               elif code < 0x20 then 6
+               else 1)
+
+        if codePoints > Fuaran.UI.WireLimits.MaxStringLength then
+            ok <- false
+
+        i <- i + 1
+
+    if ok && not pendingHigh then Some units else None
+
+/// The longest canonical number text: a finite double's round-trip layout is at
+/// most 24 characters (`-1.7976931348623157E+308`), a quoted sentinel at most 11
+/// (`"-Infinity"`), an `Int32` at most 11. An upper bound is all the §21.7
+/// short-circuit needs.
+[<Literal>]
+let private MaxNumberUnits = 26
+
+/// Lower a Core `JVal` into this decoder's AST when its canonical text would
+/// parse cleanly here; `None` when it would not, or when that cannot be decided
+/// without the text (see the section note). The walk's recursion is bounded by
+/// `MaxJsonDepth`: a value nested deeper is `None` at that depth.
+let private lowerJVal (jv: JVal) : Json option =
+    let mutable ok = true
+    // An upper bound on the canonical rendering's UTF-16 length.
+    let mutable units = 0
+
+    let rec go (depth: int) (v: JVal) : Json =
+        if not ok then
+            JNull
+        else
+            match v with
+            | Fuaran.Core.JStr s ->
+                match lowerableStringUnits s with
+                | Some n ->
+                    units <- units + n
+                    JString s
+                | None ->
+                    ok <- false
+                    JNull
+            | Fuaran.Core.JBool b ->
+                units <- units + 5
+                JBool b
+            | Fuaran.Core.JInt i ->
+                units <- units + MaxNumberUnits
+                JNumber(float i)
+            | Fuaran.Core.JFloat f ->
+                units <- units + MaxNumberUnits
+
+                match JVal.nonFiniteToken f with
+                | Some token -> JString token
+                | None -> JNumber(if f = 0.0 then 0.0 else f)
+            | Fuaran.Core.JArr items ->
+                if depth >= Fuaran.UI.WireLimits.MaxJsonDepth then
+                    ok <- false
+                    JNull
+                else
+                    units <- units + 2
+                    let mutable count = 0
+
+                    let lowered =
+                        items
+                        |> List.map (fun item ->
+                            count <- count + 1
+                            units <- units + 1
+                            go (depth + 1) item)
+
+                    if count > Fuaran.UI.WireLimits.MaxArrayLength then
+                        ok <- false
+
+                    JArray lowered
+            | Fuaran.Core.JObj members ->
+                if depth >= Fuaran.UI.WireLimits.MaxJsonDepth then
+                    ok <- false
+                    JNull
+                else
+                    units <- units + 2
+                    // The default string equality is ordinal: the comparison `tryParse` makes.
+                    let seen = System.Collections.Generic.HashSet<string>()
+                    let mutable count = 0
+
+                    let lowered =
+                        members
+                        |> List.map (fun (key, value) ->
+                            count <- count + 1
+
+                            match lowerableStringUnits key with
+                            | Some n when seen.Add key ->
+                                units <- units + n + 2
+                                key, go (depth + 1) value
+                            | _ ->
+                                ok <- false
+                                key, JNull)
+
+                    if count > Fuaran.UI.WireLimits.MaxArrayLength then
+                        ok <- false
+
+                    JObject(Map.ofList lowered)
+
+    let lowered = go 0 jv
+
+    if ok && units <= Fuaran.UI.WireLimits.MaxDocumentBytes / 3 then
+        Some lowered
+    else
+        None
+
+/// Parse a Core `JVal` as this host parses `Canon.render jv`: the lowered value
+/// when `lowerJVal` can prove the text would parse cleanly, otherwise
+/// `tryParse` over the rendering, whose refusal — code, path and message — is
+/// then the answer. `rendered` is the same rendering the lenient decode repairs.
+let private parseJVal (jv: JVal) (rendered: Lazy<string>) : Result<Json, DecodeErrorCode * string> =
+    match lowerJVal jv with
+    | Some j -> Ok j
+    | None -> tryParse rendered.Value
 
 // ─── Decode-time recovery -> deliberate repair (fuaran#850 / #855) ────────
 //
@@ -10062,17 +10249,22 @@ let private noReliance = { Applied = []; Declined = [] }
 /// the lenient decoder IS `repair` then strict decode, one implementation.
 /// Only this path produces reliance events, and it RETURNS them beside the
 /// result rather than recording them anywhere.
-let private decodeNodeCoreWith
+///
+/// `parsed` is the document already parsed (by `tryParse`, or by `parseJVal` for
+/// a `JVal` entry), and `text` the bytes it was parsed from, read only when the
+/// lenient path repairs a refusal.
+let private decodeParsedNodeWith
     (policy: DecodePolicy)
-    (json: string)
+    (parsed: Result<Json, DecodeErrorCode * string>)
+    (text: Lazy<string>)
     : Result<Node<obj>, DecodeError list> * RelianceEvents =
     let parseFailure failure =
         parseFailure failure |> Result.mapError List.singleton
 
-    match tryParse json with
+    match parsed with
     | Ok j -> collectDefects (fun () -> decodeNodeAst (walkRoot policy) "$" j), noReliance
     | Error((DecodeErrorCode.INVALID_JSON, _) as failure) when DecodePolicy.recovers policy ->
-        match repair json with
+        match repair text.Value with
         | Repair.RepairOutcome.Repaired(repaired, applied) when not applied.IsEmpty ->
             match tryParse repaired with
             | Ok j ->
@@ -10092,6 +10284,12 @@ let private decodeNodeCoreWith
         | _ -> parseFailure failure, noReliance
     | Error failure -> parseFailure failure, noReliance
 
+let private decodeNodeCoreWith
+    (policy: DecodePolicy)
+    (json: string)
+    : Result<Node<obj>, DecodeError list> * RelianceEvents =
+    decodeParsedNodeWith policy (tryParse json) (lazy json)
+
 /// The single-error form: the FIRST entry of the §29 defect list, so which of
 /// several defects a refusal names is fixed by the specification rather than by
 /// the order this host happens to decode members in.
@@ -10099,6 +10297,14 @@ let private firstDefect (r: Result<'a, DecodeError list>) : Result<'a, DecodeErr
 
 let private decodeNodeCore (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> =
     fst (decodeNodeCoreWith policy json) |> firstDefect
+
+/// `decodeNodeCore` over a Core `JVal` — what `decodeNodeCore policy (Canon.render jv)`
+/// decides, without the render and re-parse on the path that accepts.
+let private decodeNodeCoreJVal (policy: DecodePolicy) (jv: JVal) : Result<Node<obj>, DecodeError> =
+    let rendered = lazy (Canon.render jv)
+
+    fst (decodeParsedNodeWith policy (parseJVal jv rendered) rendered)
+    |> firstDefect
 
 /// Decode a canonical-JSON encoded `Node<'Msg>` payload into a `WireTree` —
 /// the storage-shape `Node<obj>` marked as wire-originated. The wire format is
@@ -10126,6 +10332,28 @@ let decodeNodeObj (json: string) : Result<Node<obj>, DecodeError> =
 /// `Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeOp`.
 let decodeOp (json: string) : Result<TreeOp<obj>, DecodeError> =
     match tryParse json with
+    | Error failure -> parseFailure failure
+    | Ok j -> decodeTreeOpAst (walkRoot DecodePolicy.admitAll) "$" j
+
+// ─── `JVal` entry points (Phase 2059) ────────────────────────────────────
+//
+// For a caller that already holds the payload as a Core `JVal` — parsed out of
+// an envelope by the substrate's parser — and would otherwise `Canon.render` it
+// only to hand this decoder the text. Each decides exactly what its text twin
+// decides over `Canon.render jv`: the same value, or the same refusal, code,
+// path and message alike (see `lowerJVal`). Only the work differs.
+
+/// `decodeNode` over a Core `JVal`: what `decodeNode (Canon.render jv)` returns.
+let decodeNodeJVal (jv: JVal) : Result<WireTree, DecodeError> =
+    decodeNodeCoreJVal DecodePolicy.admitAll jv |> Result.map WireTree.ofDecoded
+
+/// `decodeNodeObj` over a Core `JVal`: what `decodeNodeObj (Canon.render jv)` returns.
+let decodeNodeObjJVal (jv: JVal) : Result<Node<obj>, DecodeError> =
+    decodeNodeCoreJVal DecodePolicy.admitAll jv
+
+/// `decodeOp` over a Core `JVal`: what `decodeOp (Canon.render jv)` returns.
+let decodeOpJVal (jv: JVal) : Result<TreeOp<obj>, DecodeError> =
+    match parseJVal jv (lazy (Canon.render jv)) with
     | Error failure -> parseFailure failure
     | Ok j -> decodeTreeOpAst (walkRoot DecodePolicy.admitAll) "$" j
 
@@ -10231,8 +10459,9 @@ let decodeOpWithPolicy (policy: DecodePolicy) (json: string) : Result<TreeOp<obj
 ///     nothing here constructs one, and `reencode` of the preserved payload is
 ///     byte-for-byte the producer's bytes (`fallback` included).
 ///  2. `liftFallback` reads the `fallback` key off the preserved payload and hands
-///     its canonical bytes to the SAME policy-gated decoder a top-level node meets
-///     (`decodeNodeObjWithPolicy`). A `DecodePolicy` that refuses a kind refuses it
+///     the value to the SAME policy-gated decoder a top-level node meets, through
+///     its `JVal` entry, which decides what `decodeNodeObjWithPolicy` decides over
+///     the value's canonical bytes. A `DecodePolicy` that refuses a kind refuses it
 ///     inside a fallback exactly as it does at the root; the §21 bounds apply; the
 ///     preserved payload is never edited.
 ///  3. A fallback that fails to decode is a `Placeholder`, never a partial render
@@ -10257,7 +10486,7 @@ module BehindReader =
         |> Result.bind Decode.asString
 
     let private decodeKnownWith (policy: DecodePolicy) (jv: JVal) : Result<Node<obj>, string> =
-        match decodeNodeObjWithPolicy policy (Canon.render jv) with
+        match decodeNodeCoreJVal policy jv with
         | Ok n -> Ok n
         | Error e -> Error(e.Code + " at " + e.Path)
 
@@ -10282,7 +10511,7 @@ module BehindReader =
         : Result<Node<obj> option, DecodeError> =
         match Decode.getProp "fallback" u.Payload with
         | Error _ -> Ok None
-        | Ok fb -> decodeNodeObjWithPolicy policy (Canon.render fb) |> Result.map Some
+        | Ok fb -> decodeNodeCoreJVal policy fb |> Result.map Some
 
     /// `liftFallbackWithPolicy` under the default policy.
     let liftFallback (u: Versioning.UnknownKind) : Result<Node<obj> option, DecodeError> =

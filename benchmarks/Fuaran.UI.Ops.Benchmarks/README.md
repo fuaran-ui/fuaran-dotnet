@@ -101,12 +101,20 @@ dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- hit-rate
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- render-alloc 20000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- append-rate 20000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- tree-diff 20
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- decode-rate 50
 ```
 
 `tree-diff` (Phase 2063) is not a baseline metric: it prints the cost of `TreeOpDiff.diff`
 over a 2,001-node tree for four single-edit shapes (none, one field, one container field,
 one cross-parent move), with the op count of each diff as a sanity line, so a change to
 the diff can quote before-and-after figures from one command.
+
+`decode-rate` (Phase 2059) is not a baseline metric either: it prints the cost of decoding
+that same 2,001-node tree, and a 200-op history, by each route a caller takes — the text
+entry (`decodeNodeObj` / `decodeOp` over the encoded string), the render-then-reparse
+route a reader holding a Core `JVal` used to take (`Canon.render`, then the text entry),
+and the `JVal` entry (`decodeNodeObjJVal` / `decodeOpJVal`). All three run in one process,
+so the route-against-route comparison does not depend on the machine's state between runs.
 
 The pending templates are regenerated with `-- emit-template` / `-- emit-op-template` /
 `-- emit-render-template` after a catalogue change.

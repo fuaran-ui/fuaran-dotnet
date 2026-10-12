@@ -94,33 +94,83 @@ let private rotr (x: uint32) (n: int) : uint32 = (x >>> n) ||| (x <<< (32 - n))
 /// no-op — uint32 addition wraps natively — so digests are unchanged there.
 let inline private (.+.) (x: uint32) (y: uint32) : uint32 = (x + y) &&& 0xFFFFFFFFu
 
-/// UTF-8 encode a string to bytes (BMP + surrogate pairs). Pure managed.
+// ─── UTF-8: the tier's one encoder ──────────────────────────────────────────
+//
+// Phase 2042. The hash and the host-limit byte meter (`HostLimits.utf8Length`)
+// each held a hand UTF-8 encoder, and the two had drifted. This one took the
+// four-byte path for a high surrogate without checking that a low one followed;
+// the meter checked. The BCL (`Encoding.UTF8`), like every WHATWG
+// `TextEncoder`, writes U+FFFD for a surrogate that is not half of a
+// well-formed pair. So for U+D800 then `A` the digest here differed from the
+// validator's BCL body-shape hash. Both now read the scalar decode below, and
+// both match the BCL on every input, well-formed or not.
+
+/// The Unicode scalar value that starts at UTF-16 index `i` of `s`. A surrogate
+/// that is not half of a well-formed pair reads as U+FFFD, which is what the
+/// BCL encoder writes for it. A value at or above 0x10000 spans two code units.
+let private scalarAt (s: string) (i: int) : int =
+    let c = int s[i]
+
+    if c >= 0xD800 && c <= 0xDBFF && i + 1 < s.Length then
+        let lo = int s[i + 1]
+
+        if lo >= 0xDC00 && lo <= 0xDFFF then
+            0x10000 + ((c - 0xD800) <<< 10) + (lo - 0xDC00)
+        else
+            0xFFFD
+    elif c >= 0xD800 && c <= 0xDFFF then
+        0xFFFD
+    else
+        c
+
+/// The UTF-16 code units the scalar `cp` spans.
+let private unitsOf (cp: int) : int = if cp >= 0x10000 then 2 else 1
+
+/// The UTF-8 byte length of `s`, as `Encoding.UTF8.GetByteCount` reports it,
+/// with no `System.Text`, so the same figure is produced under Fable.
+let utf8Length (s: string) : int =
+    let mutable n = 0
+    let mutable i = 0
+
+    while i < s.Length do
+        let cp = scalarAt s i
+
+        n <-
+            n
+            + (if cp < 0x80 then 1
+               elif cp < 0x800 then 2
+               elif cp < 0x10000 then 3
+               else 4)
+
+        i <- i + unitsOf cp
+
+    n
+
+/// UTF-8 encode a string to bytes, byte-for-byte as `Encoding.UTF8.GetBytes`
+/// does. Pure managed.
 let private utf8Bytes (s: string) : ResizeArray<byte> =
     let out = ResizeArray<byte>()
     let mutable i = 0
 
     while i < s.Length do
-        let c = int s[i]
+        let cp = scalarAt s i
 
-        if c < 0x80 then
-            out.Add(byte c)
-        elif c < 0x800 then
-            out.Add(byte (0xC0 ||| (c >>> 6)))
-            out.Add(byte (0x80 ||| (c &&& 0x3F)))
-        elif c >= 0xD800 && c <= 0xDBFF && i + 1 < s.Length then
-            let lo = int s[i + 1]
-            let cp = 0x10000 + ((c - 0xD800) <<< 10) + (lo - 0xDC00)
+        if cp < 0x80 then
+            out.Add(byte cp)
+        elif cp < 0x800 then
+            out.Add(byte (0xC0 ||| (cp >>> 6)))
+            out.Add(byte (0x80 ||| (cp &&& 0x3F)))
+        elif cp < 0x10000 then
+            out.Add(byte (0xE0 ||| (cp >>> 12)))
+            out.Add(byte (0x80 ||| ((cp >>> 6) &&& 0x3F)))
+            out.Add(byte (0x80 ||| (cp &&& 0x3F)))
+        else
             out.Add(byte (0xF0 ||| (cp >>> 18)))
             out.Add(byte (0x80 ||| ((cp >>> 12) &&& 0x3F)))
             out.Add(byte (0x80 ||| ((cp >>> 6) &&& 0x3F)))
             out.Add(byte (0x80 ||| (cp &&& 0x3F)))
-            i <- i + 1
-        else
-            out.Add(byte (0xE0 ||| (c >>> 12)))
-            out.Add(byte (0x80 ||| ((c >>> 6) &&& 0x3F)))
-            out.Add(byte (0x80 ||| (c &&& 0x3F)))
 
-        i <- i + 1
+        i <- i + unitsOf cp
 
     out
 

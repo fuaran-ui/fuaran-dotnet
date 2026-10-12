@@ -129,7 +129,7 @@ let generatedLayerTests =
                   Expect.equal (Generated.encodeNode generated) expected "generated encoder == corpus bytes"
           }
 
-          test "generated and hand-written encoders agree DIRECTLY on the same fixture" {
+          test "the generated and canonical encoders agree DIRECTLY on the same fixture" {
               // The migration recipe's step 2, made direct rather than transitive.
               match fixture "heading-1" with
               | None -> skiptest "wire-format-fixtures/nodes/heading-1.json not found"
@@ -203,7 +203,7 @@ let generatedLayerTests =
           //  have to reproduce the corpus bytes exactly to pass.
           // ================================================================
 
-          test "hand-written encoder reproduces every corpus fixture" {
+          test "the canonical encoder reproduces every corpus fixture" {
               // The control leg. It needs no generated layer, so it covers the
               // whole corpus even where the IDL does not yet model a fixture —
               // which is what makes the generated leg's shortfall attributable
@@ -220,14 +220,13 @@ let generatedLayerTests =
                   |> List.choose (fun (name, json) ->
                       match JsonDecode.decodeNodeObj json with
                       | Error e -> Some(name, sprintf "hand-written decode failed: %s at %s" e.Code e.Path)
-                      | Ok node when CanonicalJson.encodeNode node <> json ->
-                          Some(name, "hand-written re-encode differs")
+                      | Ok node when CanonicalJson.encodeNode node <> json -> Some(name, "canonical re-encode differs")
                       | Ok _ -> None)
 
               Expect.isEmpty failures (sprintf "hand-written round-trip is not the identity for: %A" failures)
           }
 
-          test "generated and hand-written encoders agree byte-for-byte across the corpus" {
+          test "the generated and canonical encoders agree byte-for-byte across the corpus" {
               // Phase 671 step 2 proper: the DIRECT diff, every fixture the
               // generated layer can express. Three-way — each side against the
               // corpus, and the two against each other.
@@ -277,7 +276,7 @@ let generatedLayerTests =
               Expect.equal
                   (disagreed |> List.map (fun (n, _, _) -> n))
                   []
-                  "the generated and hand-written encoders now agree on every decodable fixture"
+                  "the generated and canonical encoders now agree on every decodable fixture"
 
               // The claim is "no residue" — EVERY fixture is directly comparable —
               // so it is stated against the corpus size, not a literal. That keeps

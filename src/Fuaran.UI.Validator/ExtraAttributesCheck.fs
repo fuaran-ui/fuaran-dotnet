@@ -4,8 +4,9 @@ module Fuaran.UI.Validator.ExtraAttributesCheck
 //  ExtraAttributes-sanitization check.
 //
 //  FUARAN060 (Warning) — a `Node.withExtraAttribute "key" "value"` call whose
-//  literal `key` argument violates the data-* / aria-* allowlist OR matches
-//  a known dangerous key prefix (`on*` event handlers, `style`). Renderer-
+//  literal `key` argument the one key rule (`Fuaran.UI.ExtraAttributeKey`)
+//  refuses: outside the data-* / aria-* allowlist, a known dangerous key
+//  (`on*` event handlers, `style`), or an unsafe attribute name. Renderer-
 //  side `Sanitize.sanitizeExtraAttributes` is the runtime floor, but the
 //  build-time signal catches the author mistake before it ships.
 //
@@ -19,7 +20,6 @@ module Fuaran.UI.Validator.ExtraAttributesCheck
 // ============================================================================
 
 
-open System
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Syntax
 
@@ -27,28 +27,13 @@ type private ExtraAttrCall =
     { Location: Location
       KeyLiteral: string }
 
-let private isAllowedKey (key: string) : bool =
-    if String.IsNullOrEmpty key then
-        false
-    else
-        let trimmed = key.Trim()
-
-        if trimmed.StartsWith("on", StringComparison.OrdinalIgnoreCase) then
-            false
-        elif trimmed.Equals("style", StringComparison.OrdinalIgnoreCase) then
-            false
-        else
-            trimmed.StartsWith("data-", StringComparison.Ordinal)
-            || trimmed.StartsWith("aria-", StringComparison.Ordinal)
-
-
 let private scan (sources: ParsedSource list) : ExtraAttrCall list =
     sources
     |> collectApps (fun file head args ->
         match args with
         | keyExpr :: _ when isQualified "Node" "withExtraAttribute" head ->
             match literalString keyExpr with
-            | Some key when not (isAllowedKey key) ->
+            | Some key when not (Fuaran.UI.ExtraAttributeKey.isAllowed key) ->
                 Some
                     { Location = mkLocation file keyExpr.Range
                       KeyLiteral = key }
@@ -62,14 +47,8 @@ let check (sources: ParsedSource list) : Finding list =
         allCalls
         |> List.map (fun call ->
             let reason =
-                let trimmed = call.KeyLiteral.Trim()
-
-                if trimmed.StartsWith("on", StringComparison.OrdinalIgnoreCase) then
-                    "event-handler attribute (on*) — would inject inline script if reached the DOM"
-                elif trimmed.Equals("style", StringComparison.OrdinalIgnoreCase) then
-                    "raw CSS sink — vector for content-spoofing and legacy expression() injection"
-                else
-                    "outside the data-* / aria-* allowlist"
+                Fuaran.UI.ExtraAttributeKey.refusal call.KeyLiteral
+                |> Option.defaultValue "outside the data-* / aria-* allowlist"
 
             let base' =
                 create
