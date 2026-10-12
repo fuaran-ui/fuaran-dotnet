@@ -57,7 +57,8 @@ open Fuaran.Core
 /// The scalar *class* a query-bindable UI sink accepts. The taxonomy IS the
 /// relation: each query-bindable slot in the typed tree (`Types.fs`) maps to
 /// exactly one class, fixed by the slot's position — a `Metric.Source` is
-/// `Numeric`, a chart `XField` is `Categorical`, and so on. Closed by intent
+/// `Numeric`, a chart's Y series is `Numeric`, and so on. The one slot whose
+/// class also reads its node is a chart's `XField` (`chartXClass`). Closed by intent
 /// (a new class is an additive case, never an open extension point).
 [<RequireQualifiedAccess>]
 type BindingSinkClass =
@@ -155,10 +156,10 @@ let ColumnAbsentCode = "FUARAN067"
 //
 // Sinks covered (the taxonomy from Types.fs):
 //   Numeric     — Metric.Source, Metric.Trend, LabelValueRow.Source,
-//                 Progress.Fraction, Sparkline.Source, chart YFields,
-//                 form Number / RangedNumber values.
-//   Temporal    — form Date field value.
-//   Categorical — chart XField (axis), form Text / TextArea / Choice /
+//                 Progress.Fraction, Sparkline.Source, chart YFields, a
+//                 scatter's XField, form Number / RangedNumber values.
+//   Temporal    — form Date field value, a temporal chart's XField.
+//   Categorical — any other chart's XField (axis), form Text / TextArea / Choice /
 //                 SegmentedChoice values.
 //   Boolean     — form Checkbox value.
 //
@@ -174,6 +175,23 @@ let private queryRef (b: Binding<'T>) : string option =
     match b with
     | Binding.Query(name, _, _) -> Some name
     | _ -> None
+
+/// The sink class of a chart's X field, by chart kind, agreeing with the
+/// validator's grounding rules on the same field. A temporal declaration
+/// (`XScale = Temporal`) reads its X as dates, on any kind (FUARAN097). A
+/// scatter otherwise plots X on a numeric scale (FUARAN087's x arm). Every
+/// other kind lays X out as a category.
+///
+/// Phase 2042: X was `Categorical` on every kind, so a scatter over a float X
+/// raised FUARAN066 here while FUARAN087 required exactly that float. One
+/// asymmetry remains, and it is a stricter answer, never a looser one: a bool X
+/// on a scatter. FUARAN087 coerces bool to 1/0, but this table's numeric class
+/// admits int and float only, as it does for every numeric sink.
+let chartXClass (spec: ChartSpec<'Msg>) : BindingSinkClass =
+    match spec.XScale, spec.Kind with
+    | Some ChartXScale.Temporal, _ -> BindingSinkClass.Temporal
+    | _, ChartKind.Scatter -> BindingSinkClass.Numeric
+    | _ -> BindingSinkClass.Categorical
 
 let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
     // `Node.Id` is a bare string since the swap.
@@ -212,7 +230,7 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
         | Binding.Query _ ->
             acc.Add
                 { Column = spec.XField
-                  Sink = BindingSinkClass.Categorical
+                  Sink = chartXClass spec
                   NodeId = nid }
 
             for yf in spec.YFields do

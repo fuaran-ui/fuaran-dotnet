@@ -3,8 +3,8 @@ module Fuaran.UI.Renderer.Sanitize
 // ============================================================================
 //  Fuaran — render-time sanitization contract.
 //
-//  The Author API (`Node.withExtraAttribute`) gates with a
-//  data-* / aria-* prefix allowlist, but the typed-tree's record-with
+//  The Author API (`Node.withExtraAttribute`) gates with the same key rule
+//  (`Fuaran.UI.ExtraAttributeKey`), but the typed-tree's record-with
 //  syntax (`{ node with ExtraAttributes = Some ... }`) bypasses that gate.
 //  Wire decode is similarly best-effort — a malformed AI
 //  emission that constructs ExtraAttributes through the JSON decoder OR a
@@ -78,23 +78,11 @@ open System
 ///
 /// Exported so the emission sites that write a name verbatim can re-check it as
 /// defence in depth rather than trusting upstream validation alone.
+///
+/// Phase 2042: the rule is `Fuaran.UI.ExtraAttributeKey.isSafeName`, the one
+/// definition the smart constructor and the build-time check read too.
 let isSafeAttributeName (name: string) : bool =
-    if isNull name || name = "" then
-        false
-    else
-        let mutable ok = true
-
-        for ch in name do
-            let allowed =
-                (ch >= 'a' && ch <= 'z')
-                || (ch >= 'A' && ch <= 'Z')
-                || (ch >= '0' && ch <= '9')
-                || ch = '-'
-
-            if not allowed then
-                ok <- false
-
-        ok
+    Fuaran.UI.ExtraAttributeKey.isSafeName name
 
 /// Allowlist predicate for an ExtraAttributes key. The data-* / aria-* prefix
 /// rule the smart-ctor enforces, plus explicit rejects for `on*` handlers and
@@ -105,29 +93,12 @@ let isSafeAttributeName (name: string) : bool =
 /// Note the predicate answers "is this key admissible", judged on its TRIMMED
 /// form; `sanitizeExtraAttributes` is what emits the trimmed key, so a caller
 /// using this predicate directly must trim before emission too.
+///
+/// Phase 2042: the rule is `Fuaran.UI.ExtraAttributeKey.isAllowed`. This floor
+/// used to hold the only copy that checked the key's characters, so the smart
+/// constructor and the build-time check admitted keys it then dropped.
 let isAllowedExtraAttributeKey (key: string) : bool =
-    if isNull key then
-        false
-    else
-        let trimmed = key.Trim()
-
-        if trimmed = "" then
-            false
-        elif trimmed.StartsWith("on", StringComparison.OrdinalIgnoreCase) then
-            // Explicit reject: any `on*` event-handler attribute, even if
-            // an author hand-constructed it through the record-with hatch.
-            false
-        elif trimmed.Equals("style", StringComparison.OrdinalIgnoreCase) then
-            // CSS injection vector (`expression()`, `url(javascript:...)`
-            // in legacy browsers, plus content-spoofing). Out of scope.
-            false
-        elif not (isSafeAttributeName trimmed) then
-            // Attribute-NAME injection: any character that could terminate the
-            // name and open a second attribute at the emission site.
-            false
-        else
-            trimmed.StartsWith("data-", StringComparison.Ordinal)
-            || trimmed.StartsWith("aria-", StringComparison.Ordinal)
+    Fuaran.UI.ExtraAttributeKey.isAllowed key
 
 /// Reject values containing C0 control / NUL bytes (tab excepted) or angle
 /// brackets. Quote characters are deliberately NOT rejected here: both
