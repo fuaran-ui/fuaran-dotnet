@@ -676,7 +676,7 @@ module Elicitation =
                     (match fieldOpt "tree" fields with
                      | None -> Error(err "MISSING_FIELD" "$.tree" "missing required field 'tree'")
                      | Some treeJv ->
-                         match JsonDecode.decodeNodeObj (Canon.render treeJv) with
+                         match JsonDecode.decodeNodeObjJVal treeJv with
                          | Ok tree -> Ok tree
                          | Error e -> Error(rePath "$.tree" e))
                     |> Result.bind (fun tree ->

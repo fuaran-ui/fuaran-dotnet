@@ -7880,6 +7880,29 @@ documented no-op to a state write (WIRE_FORMAT §30.1, the bounded flush).
 - **Not changed:** a raw `CommitLocal` folded outside a loop (`BoundedActions.runBoundedAction`, a
   server handler's stage) is declined exactly as before. It has no tree to find its field in.
 
+### What rides this slot — Phase 2059
+
+**Class: additive API.** No type is removed or retyped, no wire byte moves, and no decode outcome moves.
+
+- **Additive API (`Fuaran.UI.Ops`):** `JsonDecode.decodeNodeJVal : JVal -> Result<WireTree, DecodeError>`,
+  `JsonDecode.decodeNodeObjJVal : JVal -> Result<Node<obj>, DecodeError>` and
+  `JsonDecode.decodeOpJVal : JVal -> Result<TreeOp<obj>, DecodeError>`. They are for a caller that already
+  holds the payload as a Core `JVal`, and each decides exactly what its text twin decides over
+  `Canon.render jv`. Codes and paths are unchanged, and so is message text: a value the decoder would
+  refuse goes through the text route, so its refusal is the text route's own, rendered-string offset
+  included. Only the work differs. An accepted value is lowered into the decoder's AST without a render
+  or a second parse.
+- **Behaviour-neutral call-site moves:** the teleport bundle's tree and history (`Teleport.decodeWith` /
+  `decode`), the elicitation envelope's tree (`Elicitation.decodeEnvelope`), the attested document's tree
+  (`DocumentEnvelope.decodeAttestedDocument`), and `BehindReader`'s known-kind decode and
+  fallback lift now call the `JVal` entry instead of rendering and re-parsing. Their results are unchanged.
+- **Measured** (`decode-rate 200`, Release, all routes in one process): a 2,001-node tree went from
+  29.9 ms and 11.6 MB allocated through render-then-decode to 14.0 ms and 5.6 MB through
+  `decodeNodeObjJVal`. A 200-op history went from 7.3 ms and 4.7 MB to 3.2 ms and 2.1 MB through
+  `decodeOpJVal`. The text entry did not change: 7.66 MB allocated before and after.
+- **Not changed:** the decoder's own parser and AST stay. Core's parser is not a §21 host (Core D84), it
+  answers §20.2 rows 1, 5 and 7 differently, and its `JVal` cannot carry the position-dependent null the
+  corpus pins. The design note above `JsonDecode`'s parser records why.
 ### What rides this slot — Phase 2042
 
 **Class: BEHAVIOUR change (ill-formed or refused input only) + additive API.** No type is removed or

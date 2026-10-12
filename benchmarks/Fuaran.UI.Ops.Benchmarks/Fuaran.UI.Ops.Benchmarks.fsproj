@@ -22,6 +22,7 @@
     <Compile Include="OpStreamBenchmarks.fs" />
     <Compile Include="AppendRate.fs" />
     <Compile Include="TreeDiffRate.fs" />
+    <Compile Include="DecodeRate.fs" />
     <Compile Include="Capture.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
