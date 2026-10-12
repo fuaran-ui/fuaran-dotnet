@@ -191,6 +191,8 @@
     <Compile Include="KindNearMissTests.fs" />
     <!-- Phase 1935: every independent defect (WIRE_FORMAT §29) — the corpus lists, the canonical order, the entry point. -->
     <Compile Include="DefectListTests.fs" />
+    <!-- Phase 2059: the JVal entry points decide exactly what render-then-decode decides. -->
+    <Compile Include="JValEntryTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

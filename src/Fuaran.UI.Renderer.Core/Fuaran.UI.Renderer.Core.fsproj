@@ -33,6 +33,9 @@
     <Compile Include="Css.fs" />
     <Compile Include="Theme.fs" />
     <Compile Include="Formatting.fs" />
+    <Compile Include="FieldRules.fs" />
+    <Compile Include="GridModel.fs" />
+    <Compile Include="TreeModel.fs" />
     <Compile Include="BindingResolver.fs" />
     <Compile Include="RatingModel.fs" />
     <Compile Include="TokensModel.fs" />

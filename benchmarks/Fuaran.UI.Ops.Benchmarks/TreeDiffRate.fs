@@ -127,6 +127,10 @@ let all: Scenario list =
 
 let nodeCount () : int = count baseTree
 
+/// The unedited 2,001-node tree, for the benchmarks that measure something other
+/// than the diff over the same shape (`DecodeRate`).
+let tree () : Node<unit> = baseTree
+
 /// Mean wall-time (µs) and allocation (bytes) per `TreeOpDiff.diff baseTree
 /// scenario.After`, plus the op count of one diff (a sanity line: the edit shape
 /// the scenario claims is the edit the diff found).

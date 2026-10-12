@@ -221,6 +221,28 @@ let private scannedClasses () : Set<string> =
 let private emittedClasses () : Set<string> =
     Set.union (projectedClasses ()) (scannedClasses ())
 
+/// Phase 2070 — the `Css.Class.*` constants in core's `Css.fs`, by name: the
+/// fixed class strings both renderers emit, defined once and referenced by
+/// each tier. Fails when none are found, because a tier scan resolving its
+/// references against an empty table would report every shared class missing
+/// for the wrong reason.
+let private sharedClassConstants () : Map<string, string> =
+    let path = Path.Combine(rendererSourceDir, "core", "Css.fs")
+
+    let constants =
+        Regex.Matches(File.ReadAllText path, "\\[<Literal>\\]\\s*let\\s+([A-Za-z0-9_]+)\\s*=\\s*\"([^\"]*)\"")
+        |> Seq.cast<Match>
+        |> Seq.map (fun m -> m.Groups[1].Value, m.Groups[2].Value)
+        |> Map.ofSeq
+
+    if Map.isEmpty constants then
+        failwithf "No Css.Class constants found in %s — the tier scan would resolve nothing." path
+
+    constants
+
+let private sharedClassReference =
+    Regex(@"\bCss\.Class\.([A-Za-z0-9_]+)", RegexOptions.Compiled)
+
 /// The same scan, narrowed to ONE tier's sources (`client` / `server` / `core`).
 /// Used only by the Lock A mirror below — the coverage assertions above are about
 /// the vocabulary as a whole and must never be narrowed to a tier, or a class the
@@ -234,13 +256,33 @@ let private scannedClassesInTier (tier: string) : Set<string> =
             tier
             dir
 
+    let constants = sharedClassConstants ()
+
     Directory.EnumerateFiles(dir, "*.fs", SearchOption.AllDirectories)
     |> Seq.collect (fun path ->
         let source = Regex.Replace(File.ReadAllText path, @"(?m)//.*$", "")
 
-        stringLiteral.Matches source
-        |> Seq.cast<Match>
-        |> Seq.collect (fun m -> m.Groups[1].Value.Split([| ' '; '\t' |], StringSplitOptions.RemoveEmptyEntries))
+        let literals =
+            stringLiteral.Matches source
+            |> Seq.cast<Match>
+            |> Seq.map (fun m -> m.Groups[1].Value)
+
+        // Phase 2070 — a class both renderers emit is a `Css.Class.*` constant
+        // in core, so a tier EMITS it by referencing the constant. The reference
+        // stands in for the literal it replaced; a name with no constant behind
+        // it fails rather than reading as "this tier emits nothing".
+        let referenced =
+            sharedClassReference.Matches source
+            |> Seq.cast<Match>
+            |> Seq.map (fun m ->
+                let name = m.Groups[1].Value
+
+                match Map.tryFind name constants with
+                | Some value -> value
+                | None -> failwithf "%s references Css.Class.%s, which core/Css.fs does not define" path name)
+
+        Seq.append literals referenced
+        |> Seq.collect (fun s -> s.Split([| ' '; '\t' |], StringSplitOptions.RemoveEmptyEntries))
         |> Seq.filter classTokenShape.IsMatch)
     |> Set.ofSeq
 

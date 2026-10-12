@@ -23,7 +23,7 @@ module Fuaran.UI.Renderer.GridTransfer
 //  cluster exists to foreclose: the reader drags, an object appears in State,
 //  and no row moves. So the renderer owes the APPLICATION as well as the
 //  gesture — on drop it writes the record AND commits each half through that
-//  end's own already-shipped write destination (`BindingResolver`'s one
+//  end's own already-shipped write destination (`GridModel`'s one
 //  `gridWriteDestination` rule: a declared `editStateKey`, else the Phase-663
 //  `State`-source floor, else nothing). No second write path is minted, and
 //  every write still crosses `writeBackTo`'s tree-state-write gate and
@@ -117,30 +117,25 @@ let canReceive (lifted: Lifted<'Row>) (targetNodeId: string) (targetInKey: strin
 
 /// Where an incoming row lands in the target's full set. Clamped rather than
 /// refused: an index past the end is an append, which is what a drop below the
-/// last row means, and a negative one is the top.
+/// last row means, and a negative one is the top. This is the drop's POLICY,
+/// applied by name before the insert; the row edits themselves refuse an
+/// out-of-range index (`GridModel`'s one rule, Phase 2070).
 let clampInsert (index: int) (count: int) : int =
     if index < 0 then 0
     elif index > count then count
     else index
 
-/// Insert `item` at `index` (already clamped by the caller, and clamped again
-/// here so the function is total on its own).
+/// Insert `item` at `index` after `clampInsert`, so the drop policy and the
+/// insertion compose into a function total on its own: `GridModel.insertAt` at
+/// a gap the clamp has already put in range.
 let insertAt (index: int) (item: 'a) (xs: 'a list) : 'a list =
-    let i = clampInsert index (List.length xs)
-    (List.truncate i xs) @ (item :: List.skip i xs)
+    GridModel.insertAt (clampInsert index (List.length xs)) item xs
 
-/// Remove the item at `index`. Out of range returns the list UNCHANGED — the
-/// caller writes the result back wholesale, so "invalid removal writes nothing
-/// new" and "invalid removal is refused" are the same behaviour, with no
-/// partial state in between. `BindingResolver.moveRow`'s rule, restated for the
-/// one-sided operation.
-let removeAt (index: int) (xs: 'a list) : 'a list =
-    if index < 0 || index >= List.length xs then
-        xs
-    else
-        List.mapi (fun i x -> i, x) xs
-        |> List.filter (fun (i, _) -> i <> index)
-        |> List.map snd
+/// Remove the item at `index`; out of range returns the SAME list instance
+/// (`GridModel.removeAt`, whose rule `moveRow` shares — the caller writes the
+/// result back wholesale, so "invalid removal writes nothing new" and "invalid
+/// removal is refused" are one behaviour).
+let removeAt (index: int) (xs: 'a list) : 'a list = GridModel.removeAt index xs
 
 /// The transfer record, exactly as `WIRE_FORMAT.md` §3.6.11 specifies it:
 /// `{"itemId","from","to","index"}`, all four always present. Built here rather
