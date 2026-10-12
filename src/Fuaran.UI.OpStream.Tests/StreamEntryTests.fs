@@ -8,6 +8,7 @@ open Fuaran.UI.Types
 open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  StreamEntry.decode (the Phase 409 tail) — the inverse of the pinned
@@ -26,8 +27,6 @@ open Fuaran.UI.OpStream.Abstractions
 //     a decoded entry must reproduce the original envelope exactly, which is
 //     the property the chain actually depends on (the pre-image is the bytes).
 // ============================================================================
-
-let private ts (unix: int64) : DateTimeOffset = DateTimeOffset.FromUnixTimeSeconds unix
 
 /// The obj-typed op decoder — the language tier's wire decoder with its
 /// structured error flattened, the shape `StreamEntry.decode` takes.
@@ -70,7 +69,7 @@ let private entryCorpus: StreamEntry<obj> list =
           for promptId, envelope in lineageCorpus do
               for unix in [ 0L; 1_700_000_000L ] do
                   { Op = op
-                    Timestamp = ts unix
+                    Timestamp = timestamp unix
                     PromptId = promptId
                     ResultEnvelope = envelope } ]
 
@@ -103,7 +102,7 @@ let tests =
               // A whole-string scan would find the payload's own "ts" first.
               let entry =
                   { Op = TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "k" "{\"ts\":99999}")
-                    Timestamp = ts 1_700_000_000L
+                    Timestamp = timestamp 1_700_000_000L
                     PromptId = None
                     ResultEnvelope = OpResultEnvelope.Success }
 
@@ -122,7 +121,7 @@ let tests =
               let encoded =
                   StreamEntry.encode
                       { Op = TreeOp.RemoveNode(NodeId "n1")
-                        Timestamp = ts 1L
+                        Timestamp = timestamp 1L
                         PromptId = None
                         ResultEnvelope = OpResultEnvelope.Success }
 
@@ -167,11 +166,11 @@ let tests =
               // `StreamWitness` contract, so Core's list operations work over it.
               let entries =
                   [ { Op = TreeOp.RemoveNode(NodeId "a")
-                      Timestamp = ts 1_700_000_001L
+                      Timestamp = timestamp 1_700_000_001L
                       PromptId = Some "p1"
                       ResultEnvelope = OpResultEnvelope.Success }
                     { Op = TreeOp.RemoveNode(NodeId "b")
-                      Timestamp = ts 1_700_000_002L
+                      Timestamp = timestamp 1_700_000_002L
                       PromptId = None
                       ResultEnvelope = OpResultEnvelope.Failure("E", "m") } ]
 
@@ -210,7 +209,7 @@ let tests =
               let wellFormed =
                   StreamEntry.encode
                       { Op = TreeOp.RemoveNode(NodeId "n1")
-                        Timestamp = ts 1L
+                        Timestamp = timestamp 1L
                         PromptId = None
                         ResultEnvelope = OpResultEnvelope.Success }
 
@@ -239,7 +238,7 @@ let tests =
                   StreamEntry.encode
                       { Op =
                           TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "k" "a \"quoted\" body with a back\\slash")
-                        Timestamp = ts 1_700_000_000L
+                        Timestamp = timestamp 1_700_000_000L
                         PromptId = Some "prompt-1"
                         ResultEnvelope = OpResultEnvelope.Failure("APPLY_REFUSED", "no such node") }
 
@@ -339,7 +338,7 @@ let tests =
                   let encoded =
                       StreamEntry.encode
                           { Op = TreeOp.RemoveNode(NodeId "n1")
-                            Timestamp = ts 1L
+                            Timestamp = timestamp 1L
                             PromptId = None
                             ResultEnvelope = OpResultEnvelope.Success }
 

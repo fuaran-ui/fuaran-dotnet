@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Phase 2066 - the sink contract suite: ONE set of contract cases run over every store and both
+       stream shapes, {in-memory, SQLite} x {linear, DAG}. A behaviour only one cell has is either an
+       intended difference, recorded beside the case that shows it, or a defect an open phase owns,
+       pinned as today's behaviour so that phase's landing turns it red. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Cells.fs" />
+    <Compile Include="ContractTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.InMemory\Fuaran.UI.OpStream.InMemory.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Sqlite\Fuaran.UI.OpStream.Sqlite.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Abstractions\Fuaran.UI.OpStream.Dag.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.InMemory\Fuaran.UI.OpStream.Dag.InMemory.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Sqlite\Fuaran.UI.OpStream.Dag.Sqlite.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.TestSupport\Fuaran.UI.OpStream.TestSupport.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

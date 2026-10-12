@@ -8,7 +8,7 @@ open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.InMemory
 open Fuaran.UI.OpStream.Replay
 open Fuaran.UI.Telemetry.Abstractions
-open Fuaran.UI.OpStream.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  applyWithSinks — the both-sinks fan-out (Phase 124).

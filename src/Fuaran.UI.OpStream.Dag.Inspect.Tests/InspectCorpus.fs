@@ -8,6 +8,7 @@ open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.InMemory
 open Fuaran.UI.OpStream.Dag.Merge
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Shared branch/merge DAG corpus for the inspector suite.
@@ -30,26 +31,8 @@ open Fuaran.UI.OpStream.Dag.Merge
 //  that is never merged and not a GC root — the prune candidate.
 // ============================================================================
 
-type TestMsg =
-    | NoOp
-    | Selected of int
-
-let ts (unix: int64) : DateTimeOffset = DateTimeOffset.FromUnixTimeSeconds unix
-
-let leftChildId = NodeId "left"
-let rightChildId = NodeId "right"
-
-let buildDashboard () : Node<TestMsg> =
-    Fuaran.dashboard
-        "dash"
-        { Defaults.dashboard<TestMsg> with
-            Children = [ Fuaran.markdown "left" "Left pane"; Fuaran.markdown "right" "Right pane" ] }
-
 let private restyle (id: NodeId) (tone: ToneVariant) : TreeOp<TestMsg> =
     TreeOp.UpdateStyle(id, { Defaults.style with Tone = tone })
-
-let private add (sink: IDagOpStreamSink<TestMsg>) (r: DagOpRecord<TestMsg>) : unit =
-    sink.Add r |> Async.RunSynchronously
 
 /// The corpus records, by their role in the forest.
 type Corpus =
@@ -60,16 +43,6 @@ type Corpus =
       BranchB: DagOpRecord<TestMsg>
       BranchC: DagOpRecord<TestMsg>
       Merge: DagOpRecord<TestMsg> }
-
-/// Host-side precedence classifier: no `PromptId` ⇒ `Primary` (the human pin in
-/// this host's chosen semantics), else `Secondary` carrying the prompt id as an
-/// opaque tag. The merge layer no longer bakes this in (Phase 331) — the
-/// consumer supplies it.
-let recordAuthor (r: DagOpRecord<TestMsg>) : MergeAuthor =
-    if Option.isNone r.PromptId then
-        MergeAuthor.Primary
-    else
-        MergeAuthor.Secondary r.PromptId
 
 /// `getRecord` over the corpus sink (synchronous; tests are single-threaded).
 let getRecordOf (c: Corpus) : string -> DagOpRecord<TestMsg> option =
@@ -90,7 +63,7 @@ let build () : Corpus =
             (restyle leftChildId ToneVariant.Brand)
             None
             (Actor.Human "human")
-            (ts 1L)
+            (timestamp 1L)
             OpResultEnvelope.Success
 
     add sink a
@@ -103,7 +76,7 @@ let build () : Corpus =
             (restyle rightChildId ToneVariant.Success)
             (Some "prompt-ai")
             (Actor.Agent("claude", "4.8", "planner"))
-            (ts 2L)
+            (timestamp 2L)
             OpResultEnvelope.Success
 
     add sink branchA
@@ -116,7 +89,7 @@ let build () : Corpus =
             (restyle leftChildId ToneVariant.Critical)
             None
             (Actor.Human "human")
-            (ts 3L)
+            (timestamp 3L)
             OpResultEnvelope.Success
 
     add sink branchB
@@ -129,7 +102,7 @@ let build () : Corpus =
             (restyle rightChildId ToneVariant.Brand)
             (Some "prompt-ai-2")
             (Actor.Agent("claude", "4.8", "planner"))
-            (ts 4L)
+            (timestamp 4L)
             OpResultEnvelope.Success
 
     add sink branchC
@@ -137,7 +110,7 @@ let build () : Corpus =
     // merge branchA ⋈ branchB (primary = branchA).
     let mergeRecord =
         match
-            DagMerge.merge recordAuthor sink "s" initial branchA.Hash branchB.Hash (ts 5L)
+            DagMerge.merge recordAuthor sink "s" initial branchA.Hash branchB.Hash (timestamp 5L)
             |> Async.RunSynchronously
         with
         | MergeResult.Merged(record, _) -> record

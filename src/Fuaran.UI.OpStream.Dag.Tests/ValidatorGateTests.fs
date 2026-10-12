@@ -9,7 +9,7 @@ open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Dag.InMemory
 open Fuaran.UI.OpStream.Dag.Merge
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Validator-gated merge (Phase 184): a structurally-clean, NodeId-disjoint
@@ -19,7 +19,7 @@ open Fuaran.UI.OpStream.Dag.Tests.TestSupport
 //  never flagged. Gating is policy-controlled.
 // ============================================================================
 
-let private now = ts 9_000L
+let private now = timestamp 9_000L
 
 /// A sample DOMAIN validator — the plug-point each domain supplies its own of.
 /// Flags a dashboard whose direct children include MORE THAN ONE `Brand`-toned

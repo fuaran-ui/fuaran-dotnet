@@ -6,14 +6,14 @@ open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Dag.InMemory
 open Fuaran.UI.OpStream.Dag.Merge
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Batch-aware partial accept (criterion C) + peer-autonomous multi-agent
 //  CAS-retry (criterion E, fuaran-side) — Phase 179.
 // ============================================================================
 
-let private now = ts 7_000L
+let private now = timestamp 7_000L
 
 [<Tests>]
 let tests =

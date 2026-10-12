@@ -248,9 +248,9 @@ let private entryStreamGen: Fuaran.Core.StreamGen<StreamEntry<obj>, EqNode> =
 // ---------------------------------------------------------------------------
 
 /// The tier's real shipped codecs at the erased `'Msg`, so the SQLite round-trip below exercises
-/// `CanonicalJson` + `JsonDecode` rather than a test-only format. (`TestSupport.testCodec` covers
-/// only four closure-free op shapes and cannot decode a node at all, which is why the existing
-/// checkpoint suite could not read a snapshot back out of SQLite.)
+/// `CanonicalJson` + `JsonDecode` rather than a test-only format. (Since Phase 2066 the suites'
+/// `TestSupport.testCodec` / `testNodeCodec` are the same reference pair at `TestMsg`; these run it
+/// at `obj`, where the message mapper is the identity.)
 /// Phase 1587 — the same pair the DAG law suite wrote, promoted to the tier as
 /// `OpJsonCodec.canonicalObj`. This leg now runs the SHIPPED reference codec at
 /// the erased `'Msg`, which is what makes it evidence about what a host gets.

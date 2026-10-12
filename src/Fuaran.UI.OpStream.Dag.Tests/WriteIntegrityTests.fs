@@ -13,7 +13,7 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.InMemory
 open Fuaran.UI.OpStream.Dag.Sqlite
 open Fuaran.UI.OpStream.Dag.Merge
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Phase 1525 — VERIFY ON WRITE, on both DAG sinks.
@@ -100,8 +100,9 @@ let private refusal (what: string) (write: unit -> unit) : string =
 /// defending against: it defends against a record whose stored address is not the
 /// address of its content.)
 /// The canonical structural op decoder — the one the DAG wire form's nested `op`
-/// is written with (`CanonicalJson.encodeOp`). The test codec elsewhere in this
-/// suite is a compact SQL-column format and is not a wire decoder.
+/// is written with (`CanonicalJson.encodeOp`), read at the erased `'Msg` the
+/// decoder produces. (The SQLite legs use `TestSupport.testCodec`, the same
+/// reference pair retyped onto `TestMsg`.)
 let private canonicalDecodeOp (s: string) : Result<TreeOp<obj>, string> =
     JsonDecode.decodeOp s |> Result.mapError (sprintf "%A")
 
@@ -127,7 +128,7 @@ let tests =
                       removeRight
                       None
                       (Actor.Human "tester")
-                      (ts 1L)
+                      (timestamp 1L)
                       OpResultEnvelope.Success
 
               let message = refusal "InMemoryDagSink.Add" (fun () -> add sink orphan)
@@ -145,7 +146,7 @@ let tests =
               let path = freshDbPath ()
 
               try
-                  let sink = SqliteDagSink.create<TestMsg> (connectionString path) dagTestCodec
+                  let sink = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
 
                   let absentParent = String.replicate 64 "d"
 
@@ -156,7 +157,7 @@ let tests =
                           removeRight
                           None
                           (Actor.Human "tester")
-                          (ts 1L)
+                          (timestamp 1L)
                           OpResultEnvelope.Success
 
                   let message = refusal "SqliteDagSink.Add" (fun () -> add sink orphan)
@@ -189,7 +190,7 @@ let tests =
                       removeRight
                       None
                       (Actor.Human "tester")
-                      (ts 2L)
+                      (timestamp 2L)
                       OpResultEnvelope.Success
 
               add sink guestGenesis
@@ -236,7 +237,7 @@ let tests =
               let path = freshDbPath ()
 
               try
-                  let sink = SqliteDagSink.create<TestMsg> (connectionString path) dagTestCodec
+                  let sink = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
 
                   let original = stepRecord "s" None brand 1L
                   add sink original
@@ -253,7 +254,7 @@ let tests =
                   // path would refuse the forged record for an unrelated reason,
                   // and this assertion is about the WRITE not having landed.
                   let unchecked' =
-                      SqliteDagSink.createWith<TestMsg> LoadVerification.Off (connectionString path) dagTestCodec
+                      SqliteDagSink.createWith<TestMsg> LoadVerification.Off (connectionString path) testCodec
 
                   match unchecked'.TryGet("s", original.Hash) |> Async.RunSynchronously with
                   | Some stored ->
@@ -280,7 +281,7 @@ let tests =
               let path = freshDbPath ()
 
               try
-                  let sql = SqliteDagSink.create<TestMsg> (connectionString path) dagTestCodec
+                  let sql = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
                   add sql g
                   add sql g
                   add sql g
@@ -316,7 +317,7 @@ let tests =
               let path = freshDbPath ()
 
               try
-                  let sink = SqliteDagSink.create<TestMsg> (connectionString path) dagTestCodec
+                  let sink = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
 
                   let g = stepRecord "s" None brand 1L
                   let a = stepRecord "s" (Some g) success 2L
@@ -352,7 +353,7 @@ let tests =
 
               let mergeRecord =
                   match
-                      DagMerge.merge recordAuthor sink "s" initial branchA.Hash branchB.Hash (ts 9L)
+                      DagMerge.merge recordAuthor sink "s" initial branchA.Hash branchB.Hash (timestamp 9L)
                       |> Async.RunSynchronously
                   with
                   | MergeResult.Merged(record, _) -> record
@@ -413,7 +414,7 @@ let tests =
               let path = freshDbPath ()
 
               try
-                  let sink = SqliteDagSink.create<TestMsg> (connectionString path) dagTestCodec
+                  let sink = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
 
                   let g = stepRecord "s" None brand 1L
                   let a = stepRecord "s" (Some g) success 2L
@@ -436,7 +437,7 @@ VALUES
                   insert.Parameters.AddWithValue("@s", a.StreamId) |> ignore
                   insert.Parameters.AddWithValue("@h", a.Hash) |> ignore
                   insert.Parameters.AddWithValue("@parents", sprintf "[\"%s\"]" g.Hash) |> ignore
-                  insert.Parameters.AddWithValue("@op", dagTestCodec.EncodeOp a.Op) |> ignore
+                  insert.Parameters.AddWithValue("@op", testCodec.EncodeOp a.Op) |> ignore
                   insert.Parameters.AddWithValue("@user", Actor.encode a.Actor) |> ignore
 
                   insert.Parameters.AddWithValue("@ts", a.Timestamp.ToUnixTimeSeconds()) |> ignore
@@ -464,7 +465,7 @@ VALUES
                   adding.GetAwaiter().GetResult()
 
                   let unchecked' =
-                      SqliteDagSink.createWith<TestMsg> LoadVerification.Off (connectionString path) dagTestCodec
+                      SqliteDagSink.createWith<TestMsg> LoadVerification.Off (connectionString path) testCodec
 
                   Expect.isSome
                       (unchecked'.TryGet("s", b.Hash) |> Async.RunSynchronously)
@@ -492,7 +493,7 @@ VALUES
                     OutcomeHash = None
                     PromptId = None
                     Actor = Actor.Human "tester"
-                    Timestamp = ts 1L
+                    Timestamp = timestamp 1L
                     ResultEnvelope = poisoned
                     Tombstoned = false }
 
@@ -510,7 +511,7 @@ VALUES
                     OutcomeHash = None
                     PromptId = None
                     Actor = Actor.Human "tester"
-                    Timestamp = ts 1L
+                    Timestamp = timestamp 1L
                     ResultEnvelope = OpResultEnvelope.Success
                     Tombstoned = false }
 
@@ -552,7 +553,7 @@ VALUES
                       initial
                       branchA.Hash
                       branchB.Hash
-                      (ts 9L)
+                      (timestamp 9L)
                       MergePolicy.lenient
                       context
                   |> Async.RunSynchronously
@@ -568,7 +569,7 @@ VALUES
                   // recording it beside the record.
                   let anonymous =
                       match
-                          DagMerge.merge recordAuthor sink "s" initial branchA.Hash branchB.Hash (ts 9L)
+                          DagMerge.merge recordAuthor sink "s" initial branchA.Hash branchB.Hash (timestamp 9L)
                           |> Async.RunSynchronously
                       with
                       | MergeResult.Merged(r, _) -> r
@@ -612,7 +613,15 @@ VALUES
               Expect.isTrue (sink.TryAdvanceHead("s", None, trunk.Hash) |> Async.RunSynchronously) "trunk head set"
 
               let outcome =
-                  DagMerge.mergeIntoTrunkWith recordAuthor sink "s" initial branch.Hash (ts 9L) 3 MergeContext.defaults
+                  DagMerge.mergeIntoTrunkWith
+                      recordAuthor
+                      sink
+                      "s"
+                      initial
+                      branch.Hash
+                      (timestamp 9L)
+                      3
+                      MergeContext.defaults
                   |> Async.RunSynchronously
 
               match outcome with
@@ -627,7 +636,7 @@ VALUES
 
               // The lossy face is unchanged — existing callers still see `None`.
               Expect.isNone
-                  (DagMerge.mergeIntoTrunk recordAuthor sink "s" initial branch.Hash (ts 9L) 3
+                  (DagMerge.mergeIntoTrunk recordAuthor sink "s" initial branch.Hash (timestamp 9L) 3
                    |> Async.RunSynchronously)
                   "the pre-1525 projection still answers None"
           }
@@ -661,7 +670,7 @@ VALUES
                       initial
                       branchA.Hash
                       branchB.Hash
-                      (ts 9L)
+                      (timestamp 9L)
                       MergePolicy.lenient
                       context
                   |> Async.RunSynchronously
@@ -711,7 +720,7 @@ VALUES
                       initial
                       branchA.Hash
                       branchB.Hash
-                      (ts 9L)
+                      (timestamp 9L)
                       MergePolicy.lenient
                       { MergeContext.defaults<TestMsg> with
                           Checkpoint = Some tampered }

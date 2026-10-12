@@ -10,7 +10,7 @@
          and linked (not copied) into every suite that reads the shared wire-format-fixtures corpus,
          so a git worktree resolves it through FUARAN_WIRE_FIXTURES rather than skipping silently.
          Must compile FIRST: the resolvers below delegate to it. -->
-    <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />    <Compile Include="TestSupport.fs" />
+    <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />
     <Compile Include="DagCorpus.fs" />
     <Compile Include="MergeCorpus.fs" />
     <Compile Include="DegenerateTests.fs" />
@@ -57,6 +57,7 @@
     <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.InMemory\Fuaran.UI.OpStream.Dag.InMemory.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Sqlite\Fuaran.UI.OpStream.Dag.Sqlite.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.TestSupport\Fuaran.UI.OpStream.TestSupport.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />

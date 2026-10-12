@@ -9,7 +9,7 @@ open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.Merge
 open Fuaran.UI.OpStream.Dag.InMemory
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Phase 267 — guest op-stream fork + host-convergence anchor (§4o).
@@ -77,7 +77,7 @@ let tests =
                       (styleLeft ToneVariant.Critical)
                       None
                       (Actor.Human "guest")
-                      (ts 2L)
+                      (timestamp 2L)
                       OpResultEnvelope.Success
 
               add sink g0
@@ -110,7 +110,7 @@ let tests =
                       (styleLeft ToneVariant.Critical)
                       None
                       (Actor.Human "guest")
-                      (ts 3L)
+                      (timestamp 3L)
                       OpResultEnvelope.Success
 
               add sink g0
@@ -139,13 +139,13 @@ let tests =
                       (styleLeft ToneVariant.Critical)
                       None
                       (Actor.Human "guest")
-                      (ts 3L)
+                      (timestamp 3L)
                       OpResultEnvelope.Success
 
               add sink g0
 
               match
-                  GuestConvergence.converge sink "host" "g1" initial hostHead.Hash g0.Hash (ts 100L)
+                  GuestConvergence.converge sink "host" "g1" initial hostHead.Hash g0.Hash (timestamp 100L)
                   |> Async.RunSynchronously
               with
               | MergeResult.Merged(record, tree) ->
@@ -178,7 +178,7 @@ let tests =
                       (styleLeft ToneVariant.Critical)
                       None
                       (Actor.Human "guest")
-                      (ts 2L)
+                      (timestamp 2L)
                       OpResultEnvelope.Success
 
               add sink g0
@@ -190,13 +190,13 @@ let tests =
                       (styleRight ToneVariant.Success)
                       None
                       (Actor.Human "guest")
-                      (ts 3L)
+                      (timestamp 3L)
                       OpResultEnvelope.Success
 
               add sink g1
 
               match
-                  GuestConvergence.converge sink "host" "g1" initial mountOp.Hash g1.Hash (ts 100L)
+                  GuestConvergence.converge sink "host" "g1" initial mountOp.Hash g1.Hash (timestamp 100L)
                   |> Async.RunSynchronously
               with
               | MergeResult.FastForward h -> Expect.equal h g1.Hash "fast-forward to the guest head"
@@ -219,13 +219,13 @@ let tests =
                       (styleLeft ToneVariant.Critical)
                       None
                       (Actor.Human "guest")
-                      (ts 3L)
+                      (timestamp 3L)
                       OpResultEnvelope.Success
 
               add sink g0
 
               match
-                  GuestConvergence.converge sink "host" "g1" initial hostHead.Hash g0.Hash (ts 100L)
+                  GuestConvergence.converge sink "host" "g1" initial hostHead.Hash g0.Hash (timestamp 100L)
                   |> Async.RunSynchronously
               with
               | MergeResult.NeedsManualMerge conflicts ->
@@ -257,7 +257,7 @@ let tests =
                       (styleLeft ToneVariant.Critical)
                       None
                       (Actor.Human "guest")
-                      (ts 2L)
+                      (timestamp 2L)
                       OpResultEnvelope.Success
 
               add sink g0
@@ -269,7 +269,7 @@ let tests =
                       (styleRight ToneVariant.Success)
                       None
                       (Actor.Human "guest")
-                      (ts 3L)
+                      (timestamp 3L)
                       OpResultEnvelope.Success
 
               add sink g1
@@ -309,7 +309,7 @@ let tests =
                       (styleLeft ToneVariant.Critical)
                       None
                       (Actor.Human "guest")
-                      (ts 2L)
+                      (timestamp 2L)
                       OpResultEnvelope.Success
 
               let g1 =
@@ -319,7 +319,7 @@ let tests =
                       (styleRight ToneVariant.Success)
                       None
                       (Actor.Human "guest")
-                      (ts 3L)
+                      (timestamp 3L)
                       OpResultEnvelope.Success
 
               let claimed = String.replicate 64 "0"
@@ -332,7 +332,7 @@ let tests =
                       claimed
                       None
                       (Actor.Human "guest")
-                      (ts 4L)
+                      (timestamp 4L)
                       OpResultEnvelope.Success
 
               let getGuest = lookupOf [ g0; g1; bogus ]
@@ -357,7 +357,7 @@ let tests =
                       (styleLeft ToneVariant.Critical)
                       (Some "prompt-42")
                       (Actor.Human "guest")
-                      (ts 2L)
+                      (timestamp 2L)
                       OpResultEnvelope.Success
 
               Expect.equal (GuestFork.provenance g0) (Some "g1", Some "prompt-42") "guest op resolves (scope, prompt)"

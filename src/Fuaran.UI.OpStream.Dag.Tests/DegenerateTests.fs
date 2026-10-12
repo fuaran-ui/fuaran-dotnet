@@ -8,7 +8,7 @@ open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Replay
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.InMemory
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Degenerate-chain equivalence (Phase 178 acceptance #1).
@@ -45,7 +45,7 @@ let private buildLinear () : OpRecord<TestMsg> list =
                 | [] -> HashChain.genesisPreviousHash
                 | prev :: _ -> prev.Hash
 
-            let timestamp = ts (int64 (1_000 + seq))
+            let timestamp = timestamp (int64 (1_000 + seq))
             let actor = Actor.Human "tester"
 
             let hash =

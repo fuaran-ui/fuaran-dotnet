@@ -5,6 +5,7 @@ open Fuaran.UI.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Merge
 open Fuaran.UI.OpStream.Dag.Inspect
+open Fuaran.UI.OpStream.TestSupport
 open Fuaran.UI.OpStream.Dag.Inspect.Tests.InspectCorpus
 
 // ============================================================================

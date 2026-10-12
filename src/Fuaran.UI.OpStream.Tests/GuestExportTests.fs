@@ -7,6 +7,7 @@ open Fuaran.UI.Types
 open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
+open Fuaran.UI.OpStream.TestSupport
 open Fuaran.UI.OpStream.InMemory
 open Fuaran.UI.OpStream.Replay
 
@@ -19,8 +20,6 @@ open Fuaran.UI.OpStream.Replay
 //  the identity remap (fresh scope + NodeId rebase, hash chain re-derived,
 //  lineage verbatim); the collision guard; and chain tamper-evidence.
 // ============================================================================
-
-let private ts (unix: int64) : DateTimeOffset = DateTimeOffset.FromUnixTimeSeconds unix
 
 /// The guest's tree at mount time: a dashboard with two markdown panes.
 let private initialTree: Node<obj> =
@@ -52,7 +51,7 @@ let private buildRecords (scopeId: string) : OpRecord<obj> list =
     (([], HashChain.genesisPreviousHash), List.zip guestOps lineage)
     ||> List.fold (fun (acc, previousHash) (op, (promptId, actor)) ->
         let sequence = List.length acc + 1
-        let timestamp = ts (1_700_000_000L + int64 sequence)
+        let timestamp = timestamp (1_700_000_000L + int64 sequence)
 
         let hash =
             HashChain.computeHash previousHash op sequence timestamp actor promptId OpResultEnvelope.Success

@@ -7,6 +7,7 @@ open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.Inspect
+open Fuaran.UI.OpStream.TestSupport
 open Fuaran.UI.OpStream.Dag.Inspect.Tests.InspectCorpus
 
 // ============================================================================
@@ -33,7 +34,7 @@ let private buildForest () =
             (restyle "left" ToneVariant.Brand)
             None
             (Actor.Human "human")
-            (ts 1L)
+            (timestamp 1L)
             OpResultEnvelope.Success
 
     let hostStep =
@@ -43,7 +44,7 @@ let private buildForest () =
             (restyle "right" ToneVariant.Success)
             None
             (Actor.Human "human")
-            (ts 2L)
+            (timestamp 2L)
             OpResultEnvelope.Success
 
     let guestA1 =
@@ -53,7 +54,7 @@ let private buildForest () =
             (restyle "left" ToneVariant.Critical)
             (Some "prompt-a")
             (Actor.Agent("claude", "4.8", "planner"))
-            (ts 3L)
+            (timestamp 3L)
             OpResultEnvelope.Success
 
     let guestA2 =
@@ -63,7 +64,7 @@ let private buildForest () =
             (restyle "right" ToneVariant.Brand)
             (Some "prompt-a")
             (Actor.Agent("claude", "4.8", "planner"))
-            (ts 4L)
+            (timestamp 4L)
             OpResultEnvelope.Success
 
     let guestB1 =
@@ -73,7 +74,7 @@ let private buildForest () =
             (restyle "left" ToneVariant.Success)
             (Some "prompt-b")
             (Actor.Agent("claude", "4.8", "planner"))
-            (ts 5L)
+            (timestamp 5L)
             OpResultEnvelope.Success
 
     hostGenesis, hostStep, guestA1, guestA2, guestB1

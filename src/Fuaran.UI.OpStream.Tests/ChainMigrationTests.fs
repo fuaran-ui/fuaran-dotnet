@@ -5,7 +5,7 @@ open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Replay
-open Fuaran.UI.OpStream.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // Phase 406 — the pre-406 -> Core-canonical chain migrator. Builds a stream in the
 // FROZEN legacy format (via ChainMigration.legacyChainHash), then asserts the

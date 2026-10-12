@@ -8,7 +8,7 @@ open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.InMemory
 open Fuaran.UI.OpStream.Dag.Merge
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  M1 merge — fast-forward + disjoint auto-merge + conflict refusal + the
@@ -40,7 +40,7 @@ let private restyleRight =
             Tone = ToneVariant.Success }
     )
 
-let private now = ts 5_000L
+let private now = timestamp 5_000L
 
 /// Build a fresh sink seeded with a single base op `a` off the genesis tree;
 /// returns (sink, initial, a).
@@ -183,7 +183,7 @@ let tests =
                           brand
                           None
                           (Actor.Human "t")
-                          (ts 4L)
+                          (timestamp 4L)
                           OpResultEnvelope.Success
 
                   let h2 =
@@ -193,7 +193,7 @@ let tests =
                           critical
                           None
                           (Actor.Human "t")
-                          (ts 5L)
+                          (timestamp 5L)
                           OpResultEnvelope.Success
 
                   add sink h1

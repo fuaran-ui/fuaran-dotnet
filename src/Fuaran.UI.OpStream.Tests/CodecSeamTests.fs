@@ -27,7 +27,7 @@ open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Sqlite
-open Fuaran.UI.OpStream.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 /// An op document missing its required target — a decode refusal with a real
 /// code and path, not just a message.

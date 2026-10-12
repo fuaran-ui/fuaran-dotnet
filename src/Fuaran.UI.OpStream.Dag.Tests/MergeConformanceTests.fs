@@ -3,7 +3,7 @@ module Fuaran.UI.OpStream.Dag.Tests.MergeConformanceTests
 open System.IO
 open Expecto
 open Fuaran.UI.OpStream.Dag.Merge
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Merge-conformance — Leg A (F# merge == corpus).

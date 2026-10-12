@@ -7,7 +7,7 @@ open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.InMemory
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  tryAdvanceHead CAS + DAG topology (parents / reachable / lca).
@@ -33,10 +33,10 @@ let provenanceInDagHash =
               let op = TreeOp.RemoveNode rightChildId
 
               let a =
-                  DagOpRecord.create "s" [] op None (Actor.Human "alice") (ts 1L) OpResultEnvelope.Success
+                  DagOpRecord.create "s" [] op None (Actor.Human "alice") (timestamp 1L) OpResultEnvelope.Success
 
               let b =
-                  DagOpRecord.create "s" [] op None (Actor.Human "mallory") (ts 1L) OpResultEnvelope.Success
+                  DagOpRecord.create "s" [] op None (Actor.Human "mallory") (timestamp 1L) OpResultEnvelope.Success
 
               Expect.notEqual a.Hash b.Hash "different userId → different content id"
           }
@@ -45,10 +45,10 @@ let provenanceInDagHash =
               let op = TreeOp.RemoveNode rightChildId
 
               let a =
-                  DagOpRecord.create "s" [] op None (Actor.Human "u") (ts 1L) OpResultEnvelope.Success
+                  DagOpRecord.create "s" [] op None (Actor.Human "u") (timestamp 1L) OpResultEnvelope.Success
 
               let b =
-                  DagOpRecord.create "s" [] op (Some "p-1") (Actor.Human "u") (ts 1L) OpResultEnvelope.Success
+                  DagOpRecord.create "s" [] op (Some "p-1") (Actor.Human "u") (timestamp 1L) OpResultEnvelope.Success
 
               Expect.notEqual a.Hash b.Hash "absent vs present promptId → different content id"
           }
@@ -57,7 +57,7 @@ let provenanceInDagHash =
               let op = TreeOp.RemoveNode rightChildId
 
               let ok =
-                  DagOpRecord.create "s" [] op None (Actor.Human "u") (ts 1L) OpResultEnvelope.Success
+                  DagOpRecord.create "s" [] op None (Actor.Human "u") (timestamp 1L) OpResultEnvelope.Success
 
               let fail =
                   DagOpRecord.create
@@ -66,7 +66,7 @@ let provenanceInDagHash =
                       op
                       None
                       (Actor.Human "u")
-                      (ts 1L)
+                      (timestamp 1L)
                       (OpResultEnvelope.Failure("KindMismatch", "boom"))
 
               Expect.notEqual ok.Hash fail.Hash "flipping Success → Failure → different content id"
@@ -76,7 +76,7 @@ let provenanceInDagHash =
               let op = TreeOp.RemoveNode rightChildId
 
               let r =
-                  DagOpRecord.create "s" [] op None (Actor.Human "alice") (ts 1L) OpResultEnvelope.Success
+                  DagOpRecord.create "s" [] op None (Actor.Human "alice") (timestamp 1L) OpResultEnvelope.Success
               // Re-attribute WITHOUT re-hashing — the stored hash no longer recomputes.
               let tampered = { r with Actor = Actor.Human "mallory" }
 

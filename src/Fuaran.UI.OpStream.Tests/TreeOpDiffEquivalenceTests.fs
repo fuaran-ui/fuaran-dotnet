@@ -173,15 +173,19 @@ let private fieldMutations (siblings: Map<string, string list>) (json: string) :
         match node with
         | :? JsonObject as o ->
             [ for KeyValue(k, v) in o do
+                  // `Null` / `NonNull` rather than a `null` arm and `nonNull`: whether a `null`
+                  // arm narrows the arms after it differs between F# compiler versions (one
+                  // reports FS3261 without the assertion, a later one FS3262 with it), and the
+                  // active patterns narrow on both.
                   match v with
-                  | null -> ()
-                  | v when k = "id" || k = "$type" -> ()
-                  | v -> yield! paths (nonNull v) (path @ [ k ]) ]
+                  | Null -> ()
+                  | NonNull _ when k = "id" || k = "$type" -> ()
+                  | NonNull v -> yield! paths v (path @ [ k ]) ]
         | :? JsonArray as a ->
             [ for i in 0 .. a.Count - 1 do
                   match a.[i] with
-                  | null -> ()
-                  | v -> yield! paths (nonNull v) (path @ [ string i ]) ]
+                  | Null -> ()
+                  | NonNull v -> yield! paths v (path @ [ string i ]) ]
         | :? JsonValue as v -> [ path, v ]
         | _ -> []
 

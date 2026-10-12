@@ -16,9 +16,7 @@ open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Replay
-open Fuaran.UI.OpStream.Tests.TestSupport
-
-let private canonical (n: Node<TestMsg>) : string = CanonicalJson.encodeNode n
+open Fuaran.UI.OpStream.TestSupport
 
 /// Fold `diff a b` through the apply engine against `a` and assert the
 /// result is canonical-equal to `b`. Returns the op list for further
@@ -38,24 +36,18 @@ let private roundTrip (a: Node<TestMsg>) (b: Node<TestMsg>) : TreeOp<TestMsg> li
     Expect.equal (canonical folded) (canonical b) "diff(a,b) folded through apply must reconstruct b"
     ops
 
-let private dash (children: Node<TestMsg> list) : Node<TestMsg> =
-    Fuaran.dashboard
-        "dash"
-        { Defaults.dashboard<TestMsg> with
-            Children = children }
-
 [<Tests>]
 let tests =
     testList
         "TreeOpDiff (Phase 152 Track A)"
         [ test "identical trees diff to no ops" {
-              let a = dash [ Fuaran.markdown "m" "hello" ]
+              let a = container "dash" [ Fuaran.markdown "m" "hello" ]
               Expect.isEmpty (TreeOpDiff.diff a a) "no change → no ops"
           }
 
           test "leaf text change round-trips via granular UpdateProp (not EditNode)" {
-              let a = dash [ Fuaran.markdown "m" "before" ]
-              let b = dash [ Fuaran.markdown "m" "after" ]
+              let a = container "dash" [ Fuaran.markdown "m" "before" ]
+              let b = container "dash" [ Fuaran.markdown "m" "after" ]
               let ops = roundTrip a b
               // A single text-field change is now a granular UpdateProp, not a
               // wholesale EditNode.
@@ -82,8 +74,8 @@ let tests =
                           Label = TextSource.Literal "Revenue"
                           Tone = tone }
 
-              let a = dash [ metric ToneVariant.Default ]
-              let b = dash [ metric ToneVariant.Brand ]
+              let a = container "dash" [ metric ToneVariant.Default ]
+              let b = container "dash" [ metric ToneVariant.Brand ]
               let ops = roundTrip a b
 
               // Only Tone drifted → exactly one UpdateProp("Tone"), no others.
@@ -111,8 +103,8 @@ let tests =
                           Label = TextSource.Literal "Revenue"
                           Value = src }
 
-              let a = dash [ metric (Binding.Static(Some 1.0)) ]
-              let b = dash [ metric (Binding.Static(Some 2.0)) ]
+              let a = container "dash" [ metric (Binding.Static(Some 1.0)) ]
+              let b = container "dash" [ metric (Binding.Static(Some 2.0)) ]
               let ops = roundTrip a b
 
               Expect.isTrue
@@ -138,8 +130,8 @@ let tests =
                           Orientation = orientation
                           Children = [ Fuaran.markdown "k" "kid" ] }
 
-              let a = dash [ stack Orientation.Vertical ]
-              let b = dash [ stack Orientation.Horizontal ]
+              let a = container "dash" [ stack Orientation.Vertical ]
+              let b = container "dash" [ stack Orientation.Horizontal ]
               let ops = roundTrip a b
 
               Expect.isTrue
@@ -168,8 +160,8 @@ let tests =
                           Label = TextSource.Literal "Revenue"
                           Trend = trend }
 
-              let a = dash [ metric None ]
-              let b = dash [ metric (Some(Binding.Static(Some 0.1))) ]
+              let a = container "dash" [ metric None ]
+              let b = container "dash" [ metric (Some(Binding.Static(Some 0.1))) ]
               let ops = roundTrip a b
 
               Expect.isTrue
@@ -181,8 +173,8 @@ let tests =
           }
 
           test "child insertion round-trips" {
-              let a = dash [ Fuaran.markdown "l" "left" ]
-              let b = dash [ Fuaran.markdown "l" "left"; Fuaran.markdown "r" "right" ]
+              let a = container "dash" [ Fuaran.markdown "l" "left" ]
+              let b = container "dash" [ Fuaran.markdown "l" "left"; Fuaran.markdown "r" "right" ]
               let ops = roundTrip a b
 
               Expect.isTrue
@@ -194,8 +186,8 @@ let tests =
           }
 
           test "child removal round-trips" {
-              let a = dash [ Fuaran.markdown "l" "left"; Fuaran.markdown "r" "right" ]
-              let b = dash [ Fuaran.markdown "l" "left" ]
+              let a = container "dash" [ Fuaran.markdown "l" "left"; Fuaran.markdown "r" "right" ]
+              let b = container "dash" [ Fuaran.markdown "l" "left" ]
               let ops = roundTrip a b
 
               Expect.isTrue
@@ -207,8 +199,8 @@ let tests =
           }
 
           test "child reorder round-trips via ReorderChildren" {
-              let a = dash [ Fuaran.markdown "l" "left"; Fuaran.markdown "r" "right" ]
-              let b = dash [ Fuaran.markdown "r" "right"; Fuaran.markdown "l" "left" ]
+              let a = container "dash" [ Fuaran.markdown "l" "left"; Fuaran.markdown "r" "right" ]
+              let b = container "dash" [ Fuaran.markdown "r" "right"; Fuaran.markdown "l" "left" ]
               let ops = roundTrip a b
 
               Expect.isTrue
@@ -221,10 +213,10 @@ let tests =
 
           test "simultaneous add + remove + reorder round-trips" {
               let a =
-                  dash [ Fuaran.markdown "a" "A"; Fuaran.markdown "b" "B"; Fuaran.markdown "c" "C" ]
+                  container "dash" [ Fuaran.markdown "a" "A"; Fuaran.markdown "b" "B"; Fuaran.markdown "c" "C" ]
               // drop b, add d, and reorder.
               let b =
-                  dash [ Fuaran.markdown "d" "D"; Fuaran.markdown "c" "C"; Fuaran.markdown "a" "A" ]
+                  container "dash" [ Fuaran.markdown "d" "D"; Fuaran.markdown "c" "C"; Fuaran.markdown "a" "A" ]
 
               roundTrip a b |> ignore
           }
@@ -237,8 +229,12 @@ let tests =
                           Children = kids }
 
               // 'x' moves from s1 to s2.
-              let a = dash [ withKids "s1" [ Fuaran.markdown "x" "moving" ]; withKids "s2" [] ]
-              let b = dash [ withKids "s1" []; withKids "s2" [ Fuaran.markdown "x" "moving" ] ]
+              let a =
+                  container "dash" [ withKids "s1" [ Fuaran.markdown "x" "moving" ]; withKids "s2" [] ]
+
+              let b =
+                  container "dash" [ withKids "s1" []; withKids "s2" [ Fuaran.markdown "x" "moving" ] ]
+
               let ops = roundTrip a b
 
               Expect.isTrue
@@ -265,17 +261,21 @@ let tests =
                       { Defaults.stack<TestMsg> with
                           Children = kids }
 
-              let a = dash [ withKids "s1" [ Fuaran.markdown "x" "old" ]; withKids "s2" [] ]
-              let b = dash [ withKids "s1" []; withKids "s2" [ Fuaran.markdown "x" "new" ] ]
+              let a =
+                  container "dash" [ withKids "s1" [ Fuaran.markdown "x" "old" ]; withKids "s2" [] ]
+
+              let b =
+                  container "dash" [ withKids "s1" []; withKids "s2" [ Fuaran.markdown "x" "new" ] ]
               // Moved AND its text changed — both must round-trip.
               roundTrip a b |> ignore
           }
 
           test "kind-discriminator change round-trips (markdown → stack)" {
-              let a = dash [ Fuaran.markdown "x" "leaf" ]
+              let a = container "dash" [ Fuaran.markdown "x" "leaf" ]
 
               let b =
-                  dash
+                  container
+                      "dash"
                       [ Fuaran.stack
                             "x"
                             { Defaults.stack<TestMsg> with
@@ -293,14 +293,16 @@ let tests =
 
           test "nested content change recurses (no wholesale parent replace)" {
               let a =
-                  dash
+                  container
+                      "dash"
                       [ Fuaran.stack
                             "s"
                             { Defaults.stack<TestMsg> with
                                 Children = [ Fuaran.markdown "m" "old" ] } ]
 
               let b =
-                  dash
+                  container
+                      "dash"
                       [ Fuaran.stack
                             "s"
                             { Defaults.stack<TestMsg> with
@@ -335,8 +337,8 @@ let tests =
                               { Defaults.style with
                                   Tone = ToneVariant.Brand } }
 
-              let a = dash [ baseMd ]
-              let b = dash [ toned ]
+              let a = container "dash" [ baseMd ]
+              let b = container "dash" [ toned ]
               let ops = roundTrip a b
 
               Expect.isTrue
@@ -357,8 +359,8 @@ let tests =
           }
 
           test "diffBatched wraps a multi-op diff in a single atomic Batch" {
-              let a = dash [ Fuaran.markdown "l" "left" ]
-              let b = dash [ Fuaran.markdown "l" "LEFT"; Fuaran.markdown "r" "right" ]
+              let a = container "dash" [ Fuaran.markdown "l" "left" ]
+              let b = container "dash" [ Fuaran.markdown "l" "LEFT"; Fuaran.markdown "r" "right" ]
 
               match TreeOpDiff.diffBatched a b with
               | [ TreeOp.Batch inner ] -> Expect.isGreaterThan (List.length inner) 1 "≥2 ops wrapped in one Batch"
@@ -371,8 +373,8 @@ let tests =
           }
 
           test "diffBatched passes a single op through unwrapped" {
-              let a = dash [ Fuaran.markdown "m" "before" ]
-              let b = dash [ Fuaran.markdown "m" "before"; Fuaran.markdown "n" "new" ]
+              let a = container "dash" [ Fuaran.markdown "m" "before" ]
+              let b = container "dash" [ Fuaran.markdown "m" "before"; Fuaran.markdown "n" "new" ]
               // one InsertChild only.
               match TreeOpDiff.diffBatched a b with
               | [ TreeOp.InsertChild _ ] -> ()
@@ -389,8 +391,8 @@ let tests =
           // now emit `PropValue.Wire` and serialise faithfully via `encodeOp`.
 
           test "a TextSource.Literal change emits a log-faithful Wire payload" {
-              let a = dash [ Fuaran.markdown "m" "before" ]
-              let b = dash [ Fuaran.markdown "m" "after" ]
+              let a = container "dash" [ Fuaran.markdown "m" "before" ]
+              let b = container "dash" [ Fuaran.markdown "m" "after" ]
               let ops = roundTrip a b
 
               let payload =
@@ -420,8 +422,8 @@ let tests =
                           Label = TextSource.Literal "Revenue"
                           Tone = tone }
 
-              let a = dash [ metric ToneVariant.Default ]
-              let b = dash [ metric ToneVariant.Brand ]
+              let a = container "dash" [ metric ToneVariant.Default ]
+              let b = container "dash" [ metric ToneVariant.Brand ]
               let ops = roundTrip a b
 
               match
@@ -442,8 +444,8 @@ let tests =
                           Level = lvl
                           Text = TextSource.Literal "Title" }
 
-              let a = dash [ heading 1 ]
-              let b = dash [ heading 3 ]
+              let a = container "dash" [ heading 1 ]
+              let b = container "dash" [ heading 3 ]
               let ops = roundTrip a b
 
               match
