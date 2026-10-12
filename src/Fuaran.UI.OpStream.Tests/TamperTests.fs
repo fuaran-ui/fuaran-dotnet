@@ -5,7 +5,7 @@ open Expecto
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
-open Fuaran.UI.OpStream.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Verify.chain rejects every tamper class — modifying any of the five

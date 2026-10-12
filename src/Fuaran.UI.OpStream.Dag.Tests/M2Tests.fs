@@ -8,14 +8,14 @@ open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.InMemory
 open Fuaran.UI.OpStream.Dag.Merge
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  M2 refinements (Phase 179): SemanticStyle sub-field blending + human
 //  primacy (provenance-derived pins + the three-up conflict envelope).
 // ============================================================================
 
-let private now = ts 9_000L
+let private now = timestamp 9_000L
 
 /// An AI-authored single-parent record (carries a PromptId → not human-pinned).
 let private aiStep (parent: DagOpRecord<TestMsg> option) (op: TreeOp<TestMsg>) (prompt: string) (unix: int64) =
@@ -30,7 +30,7 @@ let private aiStep (parent: DagOpRecord<TestMsg> option) (op: TreeOp<TestMsg>) (
         op
         (Some prompt)
         (Actor.Agent("claude", "4.8", "planner"))
-        (ts unix)
+        (timestamp unix)
         OpResultEnvelope.Success
 
 let private styleWith (f: SemanticStyle -> SemanticStyle) =

@@ -2,6 +2,7 @@ module Fuaran.UI.OpStream.Dag.Inspect.Tests.GraphModelTests
 
 open Expecto
 open Fuaran.UI.OpStream.Dag.Inspect
+open Fuaran.UI.OpStream.TestSupport
 open Fuaran.UI.OpStream.Dag.Inspect.Tests.InspectCorpus
 
 // ============================================================================

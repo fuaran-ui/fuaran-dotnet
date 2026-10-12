@@ -6,7 +6,7 @@ open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Merge
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Merge-conformance corpus (Phase 179, additive).
@@ -248,12 +248,6 @@ let envelopeOf (baseT: Node<TestMsg>) (a: Node<TestMsg>) (b: Node<TestMsg>) : Me
 // invisible to every host that does not read it, so each adopts the wider
 // contract when it ports the arm, and until then its merge leg is exactly as
 // green as it was.
-
-let private container (id: string) (children: Node<TestMsg> list) : Node<TestMsg> =
-    Fuaran.dashboard
-        id
-        { Defaults.dashboard<TestMsg> with
-            Children = children }
 
 /// `dash → [ boxa → [ m ], boxb ]` — the shape a MOVE needs. The flat two-pane
 /// genesis the other families use cannot express one: a node has to have

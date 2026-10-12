@@ -24,6 +24,7 @@
     <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.InMemory\Fuaran.UI.OpStream.Dag.InMemory.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Inspect\Fuaran.UI.OpStream.Dag.Inspect.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.TestSupport\Fuaran.UI.OpStream.TestSupport.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />

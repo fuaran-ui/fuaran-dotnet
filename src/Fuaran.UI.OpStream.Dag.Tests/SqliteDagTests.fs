@@ -8,7 +8,7 @@ open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.Sqlite
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  SqliteDagSink durability + CAS (Phase 178 task — Sqlite impl of the DAG
@@ -37,8 +37,7 @@ let private freshSink () : IDagOpStreamSink<TestMsg> * string =
     let path =
         Path.Combine(Path.GetTempPath(), sprintf "fuaran-dag-%s.db" (Path.GetRandomFileName()))
 
-    let sink =
-        SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) dagTestCodec
+    let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
     sink, path
 

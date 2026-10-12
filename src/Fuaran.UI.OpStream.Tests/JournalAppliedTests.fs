@@ -6,7 +6,7 @@ open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.InMemory
 open Fuaran.UI.OpStream.Replay
-open Fuaran.UI.OpStream.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  journalApplied — the append-only leg behind the Phase 193 in-page apply seam.

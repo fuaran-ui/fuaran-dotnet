@@ -32,7 +32,7 @@ open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Dag.Merge
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 let private styleOp (f: SemanticStyle -> SemanticStyle) (id: NodeId) : TreeOp<TestMsg> =
     TreeOp.UpdateStyle(id, f Defaults.style)

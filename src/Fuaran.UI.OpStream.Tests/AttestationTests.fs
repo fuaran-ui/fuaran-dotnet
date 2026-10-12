@@ -13,7 +13,7 @@ open Expecto
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
-open Fuaran.UI.OpStream.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Phase 789 — segment attestation. Three layers, go-red first:

@@ -7,7 +7,7 @@ open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Replay
-open Fuaran.UI.OpStream.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Replay correctness — drive the apply engine through recorded op sequences

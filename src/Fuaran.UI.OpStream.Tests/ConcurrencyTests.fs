@@ -7,7 +7,7 @@ open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.InMemory
-open Fuaran.UI.OpStream.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Concurrent appends — the in-memory sink serialises appends via a single

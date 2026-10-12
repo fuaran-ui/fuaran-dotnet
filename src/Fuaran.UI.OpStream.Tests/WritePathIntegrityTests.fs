@@ -10,7 +10,7 @@ open Fuaran.UI.OpStream.InMemory
 open Fuaran.UI.OpStream.Sqlite
 open Fuaran.UI.OpStream.Replay
 open Fuaran.UI.Telemetry.Abstractions
-open Fuaran.UI.OpStream.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Phase 1525 — the WRITE path.

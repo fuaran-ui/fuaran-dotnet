@@ -5,7 +5,7 @@ open Expecto
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
-open Fuaran.UI.OpStream.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 /// The actor folded into every fixture hash below (Phase 320).
 let private actor = Actor.Human "tester"

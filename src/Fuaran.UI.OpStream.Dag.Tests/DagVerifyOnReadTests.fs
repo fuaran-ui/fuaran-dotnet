@@ -11,7 +11,7 @@ open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.InMemory
 open Fuaran.UI.OpStream.Dag.Sqlite
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Phase 793 — `DagVerify` is wired at the DAG sinks' READ paths.
@@ -135,7 +135,7 @@ let tests =
                       removeRight
                       None
                       (Actor.Human "tester")
-                      (ts 2L)
+                      (timestamp 2L)
                       OpResultEnvelope.Success
 
               add sink guestGenesis
@@ -164,8 +164,7 @@ let tests =
               let path = freshDbPath ()
 
               try
-                  let sink =
-                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) dagTestCodec
+                  let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
                   let g = stepRecord "s" None brand 1L
                   let child = stepRecord "s" (Some g) removeRight 2L
@@ -190,7 +189,7 @@ let tests =
                           failtest "expected to delete exactly the parent row"
 
                   let reopened =
-                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) dagTestCodec
+                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
                   let message =
                       refusalMessage "SqliteDagSink.Records" (fun () ->
@@ -216,8 +215,7 @@ let tests =
               let path = freshDbPath ()
 
               try
-                  let sink =
-                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) dagTestCodec
+                  let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
                   let g = stepRecord "s" None brand 1L
                   let child = stepRecord "s" (Some g) removeRight 2L
@@ -234,7 +232,7 @@ let tests =
                   corruptRowInDb path child.Hash
 
                   let reopened =
-                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) dagTestCodec
+                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
                   let message =
                       refusalMessage "SqliteDagSink.Records" (fun () ->
@@ -250,8 +248,7 @@ let tests =
               let path = freshDbPath ()
 
               try
-                  let sink =
-                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) dagTestCodec
+                  let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
                   let g = stepRecord "s" None brand 1L
                   add sink g
@@ -263,7 +260,7 @@ let tests =
                   corruptRowInDb path g.Hash
 
                   let reopened =
-                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) dagTestCodec
+                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
                   refusalMessage "SqliteDagSink.TryGet" (fun () ->
                       reopened.TryGet("s", g.Hash) |> Async.RunSynchronously |> ignore)
@@ -276,18 +273,14 @@ let tests =
               let path = freshDbPath ()
 
               try
-                  let sink =
-                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) dagTestCodec
+                  let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
                   let g = stepRecord "s" None brand 1L
                   add sink g
                   corruptRowInDb path g.Hash
 
                   let unchecked' =
-                      SqliteDagSink.createWith<TestMsg>
-                          LoadVerification.Off
-                          (sprintf "Data Source=%s" path)
-                          dagTestCodec
+                      SqliteDagSink.createWith<TestMsg> LoadVerification.Off (sprintf "Data Source=%s" path) testCodec
 
                   Expect.equal
                       (unchecked'.Records "s" |> Async.RunSynchronously).Length

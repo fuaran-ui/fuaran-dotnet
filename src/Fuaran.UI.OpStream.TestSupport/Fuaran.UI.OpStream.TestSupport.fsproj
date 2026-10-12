@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Phase 2066 - the ONE test-support library of the op-stream suites. The linear suite, the DAG
+       suite, the DAG inspector suite and the sink contract suite each used to carry their own copy of
+       the test message type, the two-pane dashboard, the child ids, the record builders, the host
+       precedence classifier and a test-only op codec (one of them lossy). They reference this instead.
+       Test-only: it ships in no package. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="TestSupport.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Abstractions\Fuaran.UI.OpStream.Dag.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

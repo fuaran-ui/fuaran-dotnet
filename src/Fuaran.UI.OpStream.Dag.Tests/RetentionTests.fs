@@ -9,7 +9,7 @@ open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.InMemory
 open Fuaran.UI.OpStream.Dag.Merge
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Retention MECHANISM (Phase 178 acceptance #4) + resume-coordinate
@@ -258,19 +258,19 @@ let tests =
                   [ { ProposalHash = d.Hash
                       ProposedAtHash = a.Hash
                       Reason = "off-brand restyle"
-                      RejectedAt = ts 100L } ]
+                      RejectedAt = timestamp 100L } ]
 
               let policy = RetentionPolicy.withGrace (TimeSpan.FromSeconds 60.0)
 
               // 30s after rejection — still inside grace, NOT eligible.
               let early =
-                  DagRetentionPolicy.contentGcEligible policy (ts 130L) rejections allHashes getParents roots
+                  DagRetentionPolicy.contentGcEligible policy (timestamp 130L) rejections allHashes getParents roots
 
               Expect.isFalse (early.Contains d.Hash) "within grace ⇒ content held live"
 
               // 90s after rejection — past grace, eligible.
               let late =
-                  DagRetentionPolicy.contentGcEligible policy (ts 190L) rejections allHashes getParents roots
+                  DagRetentionPolicy.contentGcEligible policy (timestamp 190L) rejections allHashes getParents roots
 
               Expect.equal late (Set.ofList [ d.Hash ]) "past grace ⇒ content GC-eligible"
           }
@@ -290,7 +290,7 @@ let tests =
                   [ { ProposalHash = d.Hash
                       ProposedAtHash = a.Hash
                       Reason = "rejected"
-                      RejectedAt = ts 100L } ]
+                      RejectedAt = timestamp 100L } ]
 
               // Auto-pin `d` (e.g. "keep this branch for audit"); grace long past.
               let policy =
@@ -298,7 +298,7 @@ let tests =
                       AutoPin = (fun h -> h = d.Hash) }
 
               let eligible =
-                  DagRetentionPolicy.contentGcEligible policy (ts 9_999L) rejections allHashes getParents roots
+                  DagRetentionPolicy.contentGcEligible policy (timestamp 9_999L) rejections allHashes getParents roots
 
               Expect.isFalse (eligible.Contains d.Hash) "auto-pinned content is never GC-eligible"
           }
@@ -318,7 +318,7 @@ let tests =
                   [ { ProposalHash = d.Hash
                       ProposedAtHash = a.Hash
                       Reason = "rejected"
-                      RejectedAt = ts 100L } ]
+                      RejectedAt = timestamp 100L } ]
 
               // Trigger fires only when ≥2 records are eligible; here exactly 1 is.
               let deferred =
@@ -326,14 +326,14 @@ let tests =
                       PurgeWhen = (fun s -> Set.count s >= 2) }
 
               Expect.isEmpty
-                  (DagRetentionPolicy.purgeBatch deferred (ts 200L) rejections allHashes getParents roots)
+                  (DagRetentionPolicy.purgeBatch deferred (timestamp 200L) rejections allHashes getParents roots)
                   "below the purge threshold ⇒ candidates wait for a later sweep"
 
               // The default immediate trigger sweeps the single eligible record.
               Expect.equal
                   (DagRetentionPolicy.purgeBatch
                       RetentionPolicy.immediate
-                      (ts 200L)
+                      (timestamp 200L)
                       rejections
                       allHashes
                       getParents
@@ -351,7 +351,7 @@ let tests =
                   { ProposalHash = d.Hash
                     ProposedAtHash = a.Hash
                     Reason = "human rejected the AI restyle"
-                    RejectedAt = ts 100L }
+                    RejectedAt = timestamp 100L }
 
               // Purge the CONTENT half via the mechanism's tombstone.
               Expect.isTrue (sink.Tombstone("s", d.Hash) |> Async.RunSynchronously) "content tombstoned"

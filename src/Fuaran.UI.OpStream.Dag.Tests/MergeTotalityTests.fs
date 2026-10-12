@@ -10,7 +10,7 @@ open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.InMemory
 open Fuaran.UI.OpStream.Dag.Merge
-open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
 //  Phase 1526 — three-way merge TOTALITY.
@@ -44,7 +44,7 @@ open Fuaran.UI.OpStream.Dag.Tests.TestSupport
 //  to either side alone fails it.
 // ============================================================================
 
-let private now = ts 9_000L
+let private now = timestamp 9_000L
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 
@@ -52,12 +52,6 @@ let private movableId = NodeId "m"
 let private boxAId = NodeId "boxa"
 let private boxBId = NodeId "boxb"
 let private boxCId = NodeId "boxc"
-
-let private container (id: string) (children: Node<TestMsg> list) : Node<TestMsg> =
-    Fuaran.dashboard
-        id
-        { Defaults.dashboard<TestMsg> with
-            Children = children }
 
 /// `dash → [ boxa → [ m ], boxb, boxc ]` — the shape a MOVE needs. The flat
 /// two-pane genesis in `TestSupport` cannot express one: a node has to have
@@ -454,7 +448,7 @@ let tests =
                       claimed
                       None
                       (Actor.Human "tester")
-                      (ts 3L)
+                      (timestamp 3L)
                       OpResultEnvelope.Success
 
               let byHash =

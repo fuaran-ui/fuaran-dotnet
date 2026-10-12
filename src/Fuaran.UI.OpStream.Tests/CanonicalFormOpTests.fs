@@ -28,7 +28,7 @@ open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
-open Fuaran.UI.OpStream.Tests.TestSupport
+open Fuaran.UI.OpStream.TestSupport
 
 /// A `Filters` strip whose single chip carries an EXPLICIT `value` binding
 /// that is exactly the chip's own auto binding — `Filter(<own name>, None)`.
